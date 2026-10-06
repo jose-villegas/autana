@@ -329,39 +329,55 @@ class CaptureRulesTests(unittest.TestCase):
             self.assertEqual(len(plan), 1)
             self.assertIn('quiet', plan[0]['error'])
 
-    def silent_run(self, root, silent_sides):
+    def silent_run(self, root, silent_sides, silent=('silent',), first_run_only=False):
         args = arguments(root)
-        args.suite = [('suite', '-', '-'), ('silent', '-', '-')]
+        args.suite = [('suite', '-', '-')] + [(name, '-', 'table_' + name) for name in silent]
         fake = chained_seed(FakeAutana(root))
         def runner(command, log, timeout):
             code, lines, wall = fake(command, log, timeout)
             side = Path(command[command.index('--project') + 1]).name if '--project' in command else None
-            if 'silent' in command and side in silent_sides:
-                for _, line in lines:
-                    if line.startswith('report: '):
-                        path = Path(line[8:]).with_suffix('.log')
-                        path.write_text('device_tests silent: 1234 us per step\n:1:test_silent:PASS\n')
+            if any(name in command for name in silent) and side in silent_sides:
+                reports = [line[8:] for _, line in lines if line.startswith('report: ')]
+                for report in reports[:1] if first_run_only else reports:
+                    Path(report).with_suffix('.log').write_text(
+                        'device_tests silent: 1234 us per step' + chr(10) + ':1:test_silent:PASS' + chr(10))
             return code, lines, wall
         return args, runner
 
-    def test_first_flashes_without_rows_stop_naming_suite(self):
+    def measure_silent(self, *arguments_, **options):
         with tempfile.TemporaryDirectory() as root:
-            args, runner = self.silent_run(root, ('a', 'b'))
-            with contextlib.redirect_stdout(io.StringIO()), \
-                    self.assertRaisesRegex(RuntimeError, r"silent.*no timing rows.*table command"):
-                tool.measure(args, runner)
-            plan = json.loads((args.out / 'plan.json').read_text())['plan']
-            self.assertEqual(sorted(item['side'] for item in plan), ['a', 'b'])
-            self.assertIn('Incomplete', (args.out / 'summary.md').read_text())
+            args, runner = self.silent_run(root, *arguments_, **options)
+            with patch.object(capture, 'make_table', side_effect=lambda template, path, *rest: path),                     contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    return tool.measure(args, runner), None, args
+                except RuntimeError as error:
+                    plan = json.loads((args.out / 'plan.json').read_text())['plan']
+                    return plan, error, (args.out / 'summary.md').read_text()
+
+    def test_first_flashes_without_rows_stop_naming_suite(self):
+        plan, error, summary = self.measure_silent(('a', 'b'))
+        self.assertRegex(str(error), r"silent.*no timing rows with table 'table_silent'.*table command")
+        self.assertEqual(sorted(item['side'] for item in plan), ['a', 'b'])
+        self.assertIn('Incomplete', summary)
+
+    def test_every_silent_suite_is_named_with_its_table(self):
+        _, error, _ = self.measure_silent(('a', 'b'), silent=('silent', 'mute'))
+        self.assertIn("silent: the first flash on each side gave no timing rows with table 'table_silent'", str(error))
+        self.assertIn("mute: the first flash on each side gave no timing rows with table 'table_mute'", str(error))
+        self.assertNotIn('suite:', str(error))
+
+    def test_suite_with_rows_in_a_later_run_keeps_measuring(self):
+        result, error, _ = self.measure_silent(('a', 'b'), first_run_only=True)
+        self.assertIsNone(error)
+        self.assertGreater(len(result['plan']), 2)
 
     def test_suite_silent_on_one_side_only_keeps_measuring(self):
-        with tempfile.TemporaryDirectory() as root:
-            args, runner = self.silent_run(root, ('b',))
-            args.max_seeds = 4
-            with contextlib.redirect_stdout(io.StringIO()):
-                result = tool.measure(args, runner)
-            self.assertIn('silent/quiet', result['rows'])
-            self.assertEqual(result['rows']['suite/quiet']['verdict'], 'no change')
+        for side in ('a', 'b'):
+            with self.subTest(side=side):
+                result, error, _ = self.measure_silent((side,))
+                self.assertIsNone(error)
+                self.assertIn('silent/quiet', result['rows'])
+                self.assertEqual(result['rows']['suite/quiet']['verdict'], 'no change')
 
     def test_status_after_exception_and_table_timeout(self):
         with tempfile.TemporaryDirectory() as root:
