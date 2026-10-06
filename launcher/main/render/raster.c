@@ -7,6 +7,7 @@
 #include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
+#include "util/runtime/frame_cost.h"
 #include "util/runtime/job.h"
 
 #define JOB_WAIT_MS 1000
@@ -102,29 +103,57 @@ raster_scratch_bytes(const raster_t* raster) {
            + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
 
+/* The shape the camera frames: the destination's when upscaled, so a render
+ * scaled more in one axis than the other still shows the same view. */
+static viewport_t
+picture_viewport(const raster_t* raster, int quarter) {
+    if (raster->upscaled && raster->destination_width > 0 && raster->destination_height > 0) {
+        return (viewport_t){raster->destination_width, raster->destination_height, quarter};
+    }
+    return (viewport_t){raster->width, raster->height, quarter};
+}
+
+/* Culls one instance into the scratch block's visible list, counting what
+ * survived into `stats`, and leaves the lens it culled with in `lens`. */
+static int
+cull_instance(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter,
+              r3d_lens_t* lens, raster_stats_t* stats) {
+    const r3d_lit_mesh_t* mesh = instance->mesh;
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    r3d_lens_init(lens, camera, mesh->position_scale, picture_viewport(raster, quarter));
+    r3d_lens_fit(lens, raster->width, raster->height);
+    if (instance->placement != NULL) {
+        r3d_lens_place(lens, instance->placement, mesh->position_scale);
+    }
+    FRAME_COST_BEGIN(culled_from);
+    const int visible = r3d_pipeline_cull(mesh, lens, b.visible);
+    stats->clusters += visible;
+    for (int i = 0; i < visible; i++) {
+        stats->triangles += mesh->clusters[b.visible[i]].triangle_count;
+    }
+    FRAME_COST_END(culled_from, "r3d.cull");
+    return visible;
+}
+
 static void
 draw_instance(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter, bool clear,
               raster_stats_t* stats) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     r3d_lens_t lens;
-    r3d_lens_init(&lens, camera, mesh->position_scale, (viewport_t){raster->width, raster->height, quarter});
-    if (instance->placement != NULL) {
-        r3d_lens_place(&lens, instance->placement, mesh->position_scale);
-    }
-    const int visible = r3d_pipeline_cull(mesh, &lens, b.visible);
-    stats->clusters += visible;
-    for (int i = 0; i < visible; i++) {
-        stats->triangles += mesh->clusters[b.visible[i]].triangle_count;
-    }
+    const int visible = cull_instance(raster, instance, camera, quarter, &lens, stats);
 
+    FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, b.visible, visible);
     run_split(transform_slice, (slice_t){raster, mesh, &lens, visible, 0, half, clear},
               (slice_t){raster, mesh, &lens, visible, half, visible - half, clear});
+    FRAME_COST_END(transformed_from, "r3d.transform");
 
+    FRAME_COST_BEGIN(drawn_from);
     const int mid = r3d_pipeline_draw_split(mesh, b.visible, b.rows, visible, raster->height);
     run_split(draw_slice, (slice_t){raster, mesh, &lens, visible, mid, raster->height - mid, clear},
               (slice_t){raster, mesh, &lens, visible, 0, mid, clear});
+    FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
 RENDER_ENTRY_OFFSET(4) raster_stats_t
@@ -137,11 +166,23 @@ raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     return stats;
 }
 
+raster_stats_t
+raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
+    assert(raster->instance_count > 0);
+    raster_stats_t stats = {0, 0};
+    for (int i = 0; i < raster->instance_count; i++) {
+        r3d_lens_t lens;
+        (void)cull_instance(raster, &raster->instances[i], camera, quarter, &lens, &stats);
+    }
+    return stats;
+}
+
 RENDER_ENTRY_OFFSET(12) void
 raster_upscale(raster_t* raster) {
     assert(raster->upscaled && raster->destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
+    FRAME_COST_BEGIN(upscaled_from);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     uint16_t* columns = b.visible + raster_cluster_capacity(raster);
     uint16_t* rows = columns + raster->destination_width;
@@ -156,4 +197,5 @@ raster_upscale(raster_t* raster) {
     const int mid = raster->destination_height / 2;
     run_split(upscale_slice, (slice_t){raster, NULL, NULL, 0, mid, raster->destination_height - mid, false},
               (slice_t){raster, NULL, NULL, 0, 0, mid, false});
+    FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

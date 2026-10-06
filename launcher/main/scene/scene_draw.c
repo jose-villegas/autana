@@ -6,8 +6,10 @@
 #include <stdlib.h>
 
 #include "gfx/gfx_color.h"
+#include "render/resolution/resolution.h"
 #include "scene/scene_internal.h"
 #include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 #include "util/runtime/tune.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -28,6 +30,14 @@ static bool rendered; /* it drew, and scene_compose() has not upscaled it */
 #if TUNE_ENABLED
 static raster_show_t debug_view = RASTER_SHOW_SHADED;
 #endif
+
+/* Dynamic resolution: off, or one of the two policies picking each frame's
+ * step. The cost fed back is this frame's draw and upscale. */
+static enum { FIXED, STEPPED, PREDICTED } policy;
+
+static resolution_control_t control;
+static resolution_predict_t predict;
+static scene_resolution_t resolution;
 
 bool
 scene_has_active_camera(void) {
@@ -74,6 +84,8 @@ scene_draw_release(void) {
     raster = (raster_t){0};
     stats = (raster_stats_t){0, 0};
     paused = false;
+    policy = FIXED;
+    resolution = (scene_resolution_t){0};
 }
 
 static scene_camera_t*
@@ -92,6 +104,24 @@ scene_set_render_scale(int percent) {
 raster_stats_t
 scene_stats(void) {
     return stats;
+}
+
+void
+scene_set_dynamic_resolution(const resolution_config_t* config, const resolution_model_t* model, int first_step) {
+    if (config == NULL) {
+        policy = FIXED;
+        return;
+    }
+    policy = model == NULL ? STEPPED : PREDICTED;
+    resolution_control_init(&control, config, first_step);
+    if (model != NULL) {
+        resolution_predict_init(&predict, config, model, first_step);
+    }
+}
+
+scene_resolution_t
+scene_resolution(void) {
+    return resolution;
 }
 
 #if TUNE_ENABLED
@@ -129,10 +159,19 @@ fill_instances(scene_t* scene) {
     return count;
 }
 
-/* Gives the raster a scratch block big enough for what it draws now. */
+/* Gives the raster a scratch block big enough for what it draws now: under
+ * dynamic resolution, for the finest step, so a change never allocates. */
 static bool
 fit_scratch(void) {
+    const int width = raster.width;
+    const int height = raster.height;
+    if (policy != FIXED) {
+        raster.width = control.config.steps[0].width;
+        raster.height = control.config.steps[0].height;
+    }
     const size_t needed = raster_scratch_bytes(&raster);
+    raster.width = width;
+    raster.height = height;
     if (needed > scratch_bytes) {
         memory_free(scratch);
         scratch = memory_alloc(needed, MEMORY_PSRAM);
@@ -153,8 +192,9 @@ draw_active(int quarter, int width, int height) {
     }
     raster.instances = scene->instances;
     raster.instance_count = count;
-    raster.width = width * camera->render_scale_percent / 100;
-    raster.height = height * camera->render_scale_percent / 100;
+    const int step = policy == STEPPED ? control.step : predict.step;
+    raster.width = policy == FIXED ? width * camera->render_scale_percent / 100 : control.config.steps[step].width;
+    raster.height = policy == FIXED ? height * camera->render_scale_percent / 100 : control.config.steps[step].height;
     raster.clear = camera->clear;
     raster.upscaled = true; /* scene_compose() names the picture */
     raster.destination_width = width;
@@ -163,7 +203,19 @@ draw_active(int quarter, int width, int height) {
         return;
     }
     const camera_t view = r3d_scene_camera_at(&camera->lens, scene->elapsed_ms);
+    const int64_t draw_began_us = timing_now_us();
+    if (policy == PREDICTED) {
+        const resolution_step_t* chosen =
+            &predict.config
+                 .steps[resolution_predict_choose(&predict, raster_census(&raster, &view, quarter).triangles)];
+        raster.width = chosen->width;
+        raster.height = chosen->height;
+    }
+    resolution.step = policy == FIXED ? -1 : (policy == STEPPED ? control.step : predict.step);
+    resolution.width = raster.width;
+    resolution.height = raster.height;
     stats = raster_draw(&raster, &view, quarter);
+    resolution.draw_us = (int32_t)(timing_now_us() - draw_began_us);
 #if TUNE_ENABLED
     raster_show(&raster, debug_view);
 #endif
@@ -194,7 +246,15 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     }
     if (rendered && target->pixels != NULL) {
         raster.destination = target->pixels;
+        const int64_t upscale_began_us = timing_now_us();
         raster_upscale(&raster);
+        resolution.upscale_us = (int32_t)(timing_now_us() - upscale_began_us);
+        const int32_t cost_us = resolution.draw_us + resolution.upscale_us;
+        if (policy == STEPPED) {
+            (void)resolution_control_update(&control, cost_us);
+        } else if (policy == PREDICTED) {
+            resolution_predict_measured(&predict, stats.triangles, cost_us);
+        }
     }
     rendered = false;
     stepped = false;

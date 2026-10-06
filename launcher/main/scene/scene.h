@@ -27,6 +27,7 @@
 #include "render/r3d_instance.h"
 #include "render/r3d_scene.h"
 #include "render/raster.h"
+#include "render/resolution/resolution.h"
 
 typedef struct scene scene_t;
 
@@ -99,6 +100,22 @@ void scene_set_render_scale(int percent);
 
 /* What the last draw kept after culling. */
 raster_stats_t scene_stats(void);
+
+/* Dynamic resolution for whatever camera is active, until the app exits:
+ * each frame draws at a step of `config` to hold its budget, chosen by the
+ * stepped controller, or by the predictor when `model` is not NULL. NULL
+ * `config` returns to the camera's fixed scale. */
+void scene_set_dynamic_resolution(const resolution_config_t* config, const resolution_model_t* model, int first_step);
+
+/* The last frame's step (-1 at a fixed scale), its render size, and what
+ * its draw (with any census) and upscale cost. */
+typedef struct {
+    int step;
+    int width, height;
+    int32_t draw_us, upscale_us;
+} scene_resolution_t;
+
+scene_resolution_t scene_resolution(void);
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 /* Between draw and upscale, shows the frame as `mode` says; development only. */

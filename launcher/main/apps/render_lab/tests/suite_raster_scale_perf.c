@@ -1,0 +1,372 @@
+/*
+ * Device-only suite: where a raster frame's time goes at each render size,
+ * along the render lab's flythrough. One line per size gives the raster's
+ * frame_cost stages on both cores and one core's span stages, which is what
+ * a dynamic-resolution controller's steps and cost model are sized from.
+ * Then each policy flies the path through the scene manager at a fixed
+ * frame step, one record per frame, against two budgets.
+ * launcher/tools/r3d/dynres_report.py reads the capture.
+ *
+ * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
+ */
+#include "suites.h" /* portable - needed by SUITE_REGISTER() even on host */
+
+#ifdef DEVICE_BUILD
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "unity.h"
+
+#include "esp_log.h"
+
+#include "apps/render_lab/sponza_content.h"
+#include "asset/asset_store.h"
+#include "gfx/gfx.h"
+#include "render/r3d.h"
+#include "render/r3d_pipeline.h"
+#include "render/r3d_span_internal.h"
+#include "render/resolution/resolution.h"
+#include "scene/scene.h"
+#include "scene/scene_shell.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
+
+static const char* TAG = "scale_perf";
+
+/* Denser than the scene's own pose spacing, so a size's mean is not two poses. */
+#define POSE_EVERY_MS 2500
+#define POSES_MAX     64
+
+typedef struct {
+    int width, height;
+} size_wh_t;
+
+/* The isotropic steps 1x to 4x, then each axis cut on its own: half of
+ * one, and 1.5x of one with half of the other. */
+static const size_wh_t sizes[] = {
+    {368, 448}, {294, 358}, {276, 336}, {245, 298}, {210, 256}, {184, 224},
+    {147, 179}, {92, 112},  {368, 224}, {184, 448}, {245, 224}, {184, 298},
+};
+#define SIZE_COUNT ((int)(sizeof sizes / sizeof sizes[0]))
+
+static scene_t* scene;
+static const asset_pack_t* pack;
+static const r3d_scene_camera_t* path;
+static r3d_lit_mesh_t mesh;
+
+static int
+compare_us(const void* a, const void* b) {
+    const int32_t x = *(const int32_t*)a;
+    const int32_t y = *(const int32_t*)b;
+    return (x > y) - (x < y);
+}
+
+/* One core's whole draw, cleared first, stopped after the stage `stop`
+ * names (r3d_span_stop_after; 0 runs every stage). */
+static int64_t
+one_core_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    memset(b.depth, 0, pixels * sizeof(*b.depth));
+    r3d_span_stop_after = stop;
+    const int64_t start = timing_now_us();
+    const r3d_span_target_t target = {b.color, b.depth, raster->width, 0, raster->height};
+    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.visible, visible, b.cs, b.rows, &target);
+    const int64_t us = timing_now_us() - start;
+    r3d_span_stop_after = 0;
+    return us;
+}
+
+typedef struct {
+    int64_t setup, rows, span_setup, fill, clear;
+} span_split_t;
+
+/* One core, one pose: each stage as the difference of two stopped draws. */
+static void
+add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
+    const camera_t camera = r3d_scene_camera_at(path, t_ms);
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &camera, mesh.position_scale, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    r3d_lens_fit(&lens, raster->width, raster->height);
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    const int visible = r3d_pipeline_cull(&mesh, &lens, b.visible);
+    r3d_pipeline_transform(&mesh, &lens, b.visible, visible, b.cs, b.rows);
+    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    const int64_t clear_from = timing_now_us();
+    memset(b.depth, 0, pixels * sizeof(*b.depth));
+    sum->clear += timing_now_us() - clear_from;
+    const int64_t setup = one_core_draw_us(raster, &lens, visible, 1);
+    const int64_t rows = one_core_draw_us(raster, &lens, visible, 2);
+    const int64_t span_setup = one_core_draw_us(raster, &lens, visible, 3);
+    const int64_t whole = one_core_draw_us(raster, &lens, visible, 0);
+    sum->setup += setup;
+    sum->rows += rows - setup;
+    sum->span_setup += span_setup - rows;
+    sum->fill += whole - span_setup;
+}
+
+static void
+measure_size(raster_t* raster, size_wh_t size, int32_t* frame_us) {
+    raster->width = size.width;
+    raster->height = size.height;
+    static char report[FRAME_COST_REPORT_MAX];              /* too big for the frame task's stack */
+    (void)frame_cost_take_report(1, report, sizeof report); /* forget whatever ran before */
+    const uint32_t period = r3d_scene_camera_period_ms(path);
+    int poses = 0;
+    int64_t triangles = 0;
+    for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
+        const camera_t camera = r3d_scene_camera_at(path, t_ms);
+        const int64_t start = timing_now_us();
+        const raster_stats_t stats = raster_draw(raster, &camera, 0);
+        raster_upscale(raster);
+        frame_us[poses++] = (int32_t)(timing_now_us() - start);
+        triangles += stats.triangles;
+    }
+    (void)frame_cost_take_report((uint32_t)poses, report, sizeof report);
+
+    span_split_t spans = {0};
+    for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
+        add_span_split(raster, t_ms, &spans);
+    }
+
+    int64_t sum = 0;
+    for (int i = 0; i < poses; i++) {
+        sum += frame_us[i];
+    }
+    qsort(frame_us, (size_t)poses, sizeof *frame_us, compare_us);
+    ESP_LOGI(TAG, "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s", size.width,
+             size.height, poses, (long long)(triangles / poses), (long long)(sum / poses), (long)frame_us[poses / 2],
+             (long)frame_us[poses - 1], report);
+    ESP_LOGI(TAG, "scale_spans: %dx%d one core us/pose setup %lld rows %lld span_setup %lld fill %lld clear %lld",
+             size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.rows / poses),
+             (long long)(spans.span_setup / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses));
+}
+
+void
+test_raster_stage_split_by_size(void) {
+#if !FRAME_COST_ENABLED
+    TEST_IGNORE_MESSAGE("frame_cost is a development build's");
+#endif
+    TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
+    const r3d_instance_t instance = {&mesh, NULL};
+    raster_t raster = {
+        .instances = &instance,
+        .instance_count = 1,
+        .upscaled = true,
+        .destination_width = GFX_WIDTH,
+        .destination_height = GFX_HEIGHT,
+    };
+    size_t scratch_bytes = 0;
+    for (int i = 0; i < SIZE_COUNT; i++) {
+        raster.width = sizes[i].width;
+        raster.height = sizes[i].height;
+        const size_t bytes = raster_scratch_bytes(&raster);
+        scratch_bytes = bytes > scratch_bytes ? bytes : scratch_bytes;
+    }
+    raster.scratch = memory_alloc(scratch_bytes, MEMORY_PSRAM);
+    raster.destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    int32_t* frame_us = malloc(sizeof(int32_t) * POSES_MAX);
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    TEST_ASSERT_NOT_NULL(raster.destination);
+    TEST_ASSERT_NOT_NULL(frame_us);
+    for (int i = 0; i < SIZE_COUNT; i++) {
+        measure_size(&raster, sizes[i], frame_us);
+    }
+    free(frame_us);
+    memory_free(raster.destination);
+    memory_free(raster.scratch);
+    TEST_PASS();
+}
+
+/* Two ladders. Isotropic: 1.33x is dropped for costing little less than
+ * 1.25x, 1.75x splits the widest gap. Height first, since rows and span
+ * setup follow the height: the width is cut only once the height is half.
+ * 2.5x and 4x close both, recovery only. */
+typedef struct {
+    const char* name;
+    int divisors[RESOLUTION_STEPS_MAX][2];
+    int count, recovery_from, half;
+} ladder_t;
+
+static const ladder_t ladders[] = {
+    {"isotropic", {{100, 100}, {125, 125}, {150, 150}, {175, 175}, {200, 200}, {250, 250}, {400, 400}}, 7, 5, 4},
+    {"height",
+     {{100, 100}, {100, 125}, {100, 150}, {100, 200}, {150, 200}, {200, 200}, {250, 250}, {400, 400}},
+     8,
+     6,
+     5},
+};
+
+#define FRAME_DT_MS 50
+#define FRAMES_MAX  1024
+#define LINE_FRAMES 40
+
+typedef struct {
+    int8_t step;
+    int32_t draw_us, upscale_us;
+    int32_t triangles;
+} frame_record_t;
+
+/* Every step at every pose, drawn as the scene draws it, for the fit. */
+static bool
+calibrate(const resolution_config_t* config, resolution_model_t* model) {
+    const r3d_instance_t instance = {&mesh, NULL};
+    raster_t raster = {.instances = &instance,
+                       .instance_count = 1,
+                       .upscaled = true,
+                       .width = config->steps[0].width,
+                       .height = config->steps[0].height,
+                       .destination_width = GFX_WIDTH,
+                       .destination_height = GFX_HEIGHT};
+    const uint32_t period = r3d_scene_camera_period_ms(path);
+    const int poses = (int)((period + POSE_EVERY_MS - 1) / POSE_EVERY_MS);
+    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
+    raster.destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    resolution_sample_t* samples = memory_alloc(sizeof(*samples) * (size_t)(poses * config->step_count), MEMORY_PSRAM);
+    bool fitted = false;
+    if (raster.scratch != NULL && raster.destination != NULL && samples != NULL) {
+        int count = 0;
+        for (int step = 0; step < config->step_count; step++) {
+            raster.width = config->steps[step].width;
+            raster.height = config->steps[step].height;
+            for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
+                const camera_t camera = r3d_scene_camera_at(path, t_ms);
+                const int64_t start = timing_now_us();
+                const raster_stats_t stats = raster_draw(&raster, &camera, 0);
+                const int64_t drawn = timing_now_us();
+                raster_upscale(&raster);
+                samples[count++] = (resolution_sample_t){step, stats.triangles, (int32_t)(drawn - start),
+                                                         (int32_t)(timing_now_us() - drawn)};
+            }
+        }
+        fitted = resolution_model_fit(model, config, samples, count);
+    }
+    memory_free(samples);
+    memory_free(raster.destination);
+    memory_free(raster.scratch);
+    return fitted;
+}
+
+static void
+log_frames(const char* policy, const char* ladder, int32_t budget_us, const frame_record_t* records, int frames) {
+    static char line[(LINE_FRAMES * 32) + 64];
+    for (int first = 0; first < frames; first += LINE_FRAMES) {
+        int length = snprintf(line, sizeof line, "dynres_frames: %s %s %ld %d", policy, ladder, (long)budget_us, first);
+        for (int i = first; i < frames && i < first + LINE_FRAMES && length > 0 && (size_t)length < sizeof line; i++) {
+            const frame_record_t* r = &records[i];
+            length += snprintf(line + length, sizeof line - (size_t)length, " %d:%ld:%ld:%ld", r->step,
+                               (long)r->draw_us, (long)r->upscale_us, (long)r->triangles);
+        }
+        ESP_LOGI(TAG, "%s", line);
+    }
+}
+
+/* The path flown through the scene manager at FRAME_DT_MS a frame: at the
+ * camera's half scale when `config` is NULL, else under the policy. */
+static void
+fly(const char* policy, const ladder_t* ladder, const resolution_config_t* config, const resolution_model_t* model,
+    uint16_t* picture, frame_record_t* records, int frames) {
+    scene_failure_t why;
+    scene_t* flown = scene_load(SPONZA_SCENE, &why);
+    TEST_ASSERT_NOT_NULL(flown);
+    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+        scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
+    }
+    TEST_ASSERT_TRUE(scene_activate(flown, NULL));
+    scene_set_render_scale(50);
+    scene_set_dynamic_resolution(config, model, ladder == NULL ? 0 : ladder->half);
+    const scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT};
+    for (int i = 0; i < frames; i++) {
+        scene_render(FRAME_DT_MS, 0, GFX_WIDTH, GFX_HEIGHT);
+        scene_compose(FRAME_DT_MS, 0, &target);
+        const scene_resolution_t r = scene_resolution();
+        records[i] = (frame_record_t){(int8_t)r.step, r.draw_us, r.upscale_us, scene_stats().triangles};
+    }
+    scene_set_dynamic_resolution(NULL, NULL, 0);
+    scene_unload(flown);
+    log_frames(policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records, frames);
+}
+
+/* A ladder's config at `budget_us`, fitted to the board on every one of its steps. */
+static void
+fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config, resolution_model_t* model) {
+    *config =
+        resolution_config(GFX_WIDTH, GFX_HEIGHT, ladder->divisors, ladder->count, ladder->recovery_from, budget_us);
+    TEST_ASSERT_TRUE_MESSAGE(calibrate(config, model), "the calibration frames did not fit a model");
+    ESP_LOGI(TAG, "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f",
+             ladder->name, (double)model->base_us, (double)model->per_triangle_us, (double)model->per_triangle_row_us,
+             (double)model->per_pixel_share_us);
+    for (int step = 0; step < ladder->count; step++) {
+        ESP_LOGI(TAG, "dynres_step: %s %d %dx%d upscale %.0f", ladder->name, step, config->steps[step].width,
+                 config->steps[step].height, (double)model->upscale_us[step]);
+    }
+}
+
+void
+test_dynamic_resolution_policies_along_the_path(void) {
+    TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
+    static const int32_t budgets_us[] = {60000, 75000};
+    resolution_config_t isotropic, height;
+    resolution_model_t isotropic_model, height_model;
+    fit_ladder(&ladders[0], budgets_us[0], &isotropic, &isotropic_model);
+    fit_ladder(&ladders[1], budgets_us[0], &height, &height_model);
+    const int path_frames = (int)(r3d_scene_camera_period_ms(path) / FRAME_DT_MS);
+    const int frames = path_frames < FRAMES_MAX ? path_frames : FRAMES_MAX;
+    uint16_t* picture = memory_alloc(sizeof(uint16_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    frame_record_t* records = memory_alloc(sizeof(*records) * FRAMES_MAX, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(picture);
+    TEST_ASSERT_NOT_NULL(records);
+    fly("fixed", NULL, NULL, NULL, picture, records, frames);
+    for (int b = 0; b < (int)(sizeof budgets_us / sizeof budgets_us[0]); b++) {
+        isotropic.budget_us = budgets_us[b];
+        height.budget_us = budgets_us[b];
+        fly("stepped", &ladders[0], &isotropic, NULL, picture, records, frames);
+        fly("predicted", &ladders[0], &isotropic, &isotropic_model, picture, records, frames);
+        fly("predicted", &ladders[1], &height, &height_model, picture, records, frames);
+    }
+    memory_free(records);
+    memory_free(picture);
+    TEST_PASS();
+}
+
+void
+run_raster_scale_perf_suite(void) {
+    scene_failure_t why;
+    scene = scene_load(SPONZA_SCENE, &why);
+    if (scene == NULL) {
+        ESP_LOGE(TAG, "scene: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
+                 why.what);
+    } else {
+        pack = asset_store_pack(SPONZA_SCENE);
+        path = scene_camera_lens(scene, NULL);
+        const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
+        const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
+        if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
+            ESP_LOGE(TAG, "the scene's full bake did not open");
+            scene_unload(scene);
+            scene = NULL;
+        }
+    }
+    RUN_TEST(test_raster_stage_split_by_size);
+    RUN_TEST(test_dynamic_resolution_policies_along_the_path);
+    if (pack != NULL) {
+        asset_store_release(SPONZA_SCENE);
+    }
+    scene_unload(scene);
+    scene = NULL;
+    pack = NULL;
+    path = NULL;
+}
+
+#else /* !DEVICE_BUILD */
+
+void
+run_raster_scale_perf_suite(void) {}
+
+#endif /* DEVICE_BUILD */
+
+SUITE_REGISTER_ON_REQUEST(run_raster_scale_perf_suite);

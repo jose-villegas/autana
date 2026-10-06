@@ -52,6 +52,10 @@ size_t raster_scratch_bytes(const raster_t* raster);
 /* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
+/* What raster_draw() would keep after culling, without drawing: the same
+ * view at any render size, so a caller can price sizes before choosing one. */
+raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter);
+
 /* Fills `destination` from what raster_draw() last drew, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster);

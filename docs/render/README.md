@@ -14,6 +14,7 @@ To put a model on screen, start with [Building a Scene](Building-a-Scene.md).
 | [Scene-Manager.md](Scene-Manager.md) | The runtime side of a scene: load by name, the packed component arrays, the one active camera, what the shell does each frame and who owns what. |
 | [Mesh-Import.md](Mesh-Import.md) | The import file and the bake stages: opt-in processing steps, simplify, light, meshlets, and the baked format a renderer consumes. |
 | [Mesh-Rendering.md](Mesh-Rendering.md) | The runtime: cameras, culling, the span rasterizer, instances at transforms, the two-core frame and the view modes. |
+| [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: where a frame's time goes at each size, the stepped controller and the predictor, and how they flew the test path on the board. |
 
 Related: [Animation Tracks](../Animation-Tracks.md) for the camera path,
 [Firmware Architecture](../Firmware-Architecture.md) for the layers, and the

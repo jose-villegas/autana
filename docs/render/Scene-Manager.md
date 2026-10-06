@@ -38,7 +38,8 @@ pack, so on the board they read flash in place and cost no RAM.
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
 | `scene_set_render_scale()` | the active camera's render size as a share of the screen |
-| `scene_stats()` | triangles and clusters the last draw kept |
+| `scene_set_dynamic_resolution(config, model, step)` | the render size picked each frame to hold a budget instead, by the stepped controller or, given a fitted `model`, the predictor; NULL returns to the fixed scale ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `scene_stats()` / `scene_resolution()` | triangles and clusters the last draw kept; its step, render size and what its draw and upscale cost |
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's
