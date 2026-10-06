@@ -99,7 +99,7 @@ def find_manifest_entry(capture_path, index_path):
 
 
 def parse_suite_results(text):
-    parsed = results(text, ignored=False)
+    parsed = results(text)
     failures = [(r["name"], r["message"] or "") for r in parsed if r["status"] == "FAIL"]
     return sum(r["status"] == "PASS" for r in parsed), len(failures), failures
 

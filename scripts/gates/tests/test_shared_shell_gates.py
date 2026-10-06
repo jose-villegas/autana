@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
 sys.path.insert(0, str(ROOT / 'scripts/device'))
 import device
-import pinned_tool
 
 
 class ShellGateTests(unittest.TestCase):
@@ -36,8 +35,23 @@ class ShellGateTests(unittest.TestCase):
         (lib / 'pinned_tool.py').write_text(resolver)
         return gate
 
+    def formatter(self):
+        binary = self.root / 'clang-format'
+        self.calls = self.root / 'formatter.calls'
+        binary.write_text(
+            '#!/bin/sh\n'
+            'printf "%s\\n" "$@" >> "' + self.calls.as_posix() + '"\n'
+            'case "$1" in\n'
+            '    --dry-run) [ "$2" = --Werror ] || exit 9; shift 2;\n'
+            '        [ "$(cat "$1")" = "int main(void) { return 0; }" ] ;;\n'
+            '    -i) printf "int main(void) { return 0; }\\n" > "$2" ;;\n'
+            '    *) exit 9 ;;\n'
+            'esac\n')
+        binary.chmod(0o755)
+        return binary.as_posix()
+
     def test_crlf_resolution_broken_clean_and_format(self):
-        binary, major = pinned_tool.resolve('clang-format')
+        binary = self.formatter()
         gate = self.format_gate('import sys\nsys.stdout.buffer.write(' +
             repr(('19\r\n' + binary + '\r\n').encode()) + ')\n')
         shutil.copyfile(ROOT / '.clang-format', self.root / '.clang-format')
@@ -52,8 +66,12 @@ class ShellGateTests(unittest.TestCase):
         result = self.run_shell(gate, '--check', source)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+        self.assertEqual(self.calls.read_text().splitlines(), [
+            '--dry-run', '--Werror', str(source), '-i', str(source),
+            '--dry-run', '--Werror', str(source)])
+
     def test_failed_resolution_exits_before_formatting(self):
-        binary, _ = pinned_tool.resolve('clang-format')
+        binary = self.formatter()
         gate = self.format_gate('import sys\nprint("19")\nprint(' + repr(binary) + ')\nsys.exit(1)\n')
         source = self.root / 'scratch.c'
         source.write_text('int main(){return 0;}\n')
@@ -62,6 +80,7 @@ class ShellGateTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(source.read_bytes(), before)
         self.assertNotIn('Formatted', result.stdout)
+        self.assertFalse(self.calls.exists())
 
     def asset_gate(self, conversion):
         tests = self.root / 'render/tests'

@@ -32,11 +32,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 from device_capture import results, SELFTEST_COMPLETE_RE
 
-# The device prints this line only when the self-test loop actually reaches
-# its end; absent means the run never finished, for any reason (timeout,
-# device wedged, serial dropped). A capture of ONE suite triggered by
-# RUNSUITE never prints it at all, which is what --no-complete is for.
-
 # Both phrases appear on ESP-IDF's panic banner; either is sufficient to
 # call it a crash. The parenthesised text after "panic'ed" is the exception
 # type (e.g. "Stack protection fault") and is worth surfacing verbatim;
@@ -47,9 +42,6 @@ PANIC_TYPE_RE = re.compile(r"panic'ed\s*\(([^)]+)\)")
 # One per boot. More than one means the device reset mid-run, a crash
 # loop, not a slow run, which changes what a stall in the capture means.
 BOOT_BANNER = "ESP-ROM:esp32s3"
-
-# A line matching this is a Unity test result. Used both as proof that any
-# test ran at all and, around a panic, to name the last few that did.
 
 # Not fatal by itself, but its presence means an old diag image: the
 # current build disables the task watchdog on purpose, because historically
