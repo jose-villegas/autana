@@ -2,7 +2,7 @@
 
 #include <stdbool.h>
 
-#include "boot/post.h"
+#include "selftest/post.h"
 
 /* What one screenful of the retained self-test results says. `quarter` is
  * the quarter turn the panel is read at, numbered as display.h does;

@@ -42,7 +42,7 @@
 
 #include "esp_log.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "apps/sand/app_sand_test.h"
 #include "build_variant.h"
 #include "display/display.h"

@@ -1,4 +1,4 @@
-#include "boot/post.h"
+#include "selftest/post.h"
 
 #include <inttypes.h>
 #include <stdio.h>

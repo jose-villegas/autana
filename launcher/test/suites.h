@@ -3,7 +3,7 @@
  *
  * Every suite here is compiled into BOTH:
  *   - the host runner (test/host_main.c), for a sub-second TDD loop
- *   - the shipped firmware (main/selftest.c), which runs them at boot
+ *   - the shipped firmware (main/selftest/selftest.c), which runs them at boot
  *
  * Running the same suites in both places is deliberate. The host loop is for
  * developing; the on-device run proves the code behaves identically when built
@@ -13,7 +13,7 @@
  * Suites REGISTER THEMSELVES with SUITE_REGISTER, so there is no list to keep
  * in step. That matters most for app-owned suites: a suite living in
  * main/apps/<name>/ disappears with its app when the folder is deleted, and
- * nothing else needs editing. See main/app.h for the same pattern applied to
+ * nothing else needs editing. See main/app/app.h for the same pattern applied to
  * apps themselves.
  *
  * A portable suite must not include any ESP-IDF or hardware header, so it can

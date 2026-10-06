@@ -13,8 +13,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "app.h"
-#include "app_arena.h"
+#include "app/app.h"
+#include "app/app_arena.h"
 #include "build_variant.h"
 #include "gfx/gfx.h"
 #include "render_lab.h"

@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"

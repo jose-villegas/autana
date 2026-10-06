@@ -1,13 +1,13 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
-    "app_arena.c"
-    "app_registry.c"
+    "app/app_arena.c"
+    "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_tracks_generated.c"
-    "boot/post.c"
-    "boot/post_layout.c"
-    "boot/post_ui.c"
+    "selftest/post.c"
+    "selftest/post_layout.c"
+    "selftest/post_ui.c"
     "display/display.c"
     "display/display_device.c"
     "display/panel_clock.c"
@@ -223,7 +223,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     endif()
 
     list(APPEND app_srcs
-        "boot/selftest.c"
+        "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"

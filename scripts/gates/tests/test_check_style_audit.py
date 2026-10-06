@@ -269,6 +269,20 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual([f.path for f in findings], ["launcher/main/gfx/gfx.c"])
 
+    def test_boot_and_selftest_may_not_include_each_other(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.layer_tree(root)
+            self.write(root, "launcher/main/boot/boot_anim.h", "#pragma once\n")
+            self.write(root, "launcher/main/selftest/post.h", "#pragma once\n")
+            self.write(root, "launcher/main/gfx/gfx.h", "#pragma once\n")
+            self.write(root, "launcher/main/boot/boot_anim.c", '#include "selftest/post.h"\n')
+            self.write(root, "launcher/main/selftest/post.c", '#include "boot/boot_anim.h"\n#include "gfx/gfx.h"\n')
+            self.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        self.assertEqual(sorted((f.path, f.line) for f in findings),
+                         [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
+
     def test_a_folder_this_table_does_not_know_about_fails_loudly(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

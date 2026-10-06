@@ -27,6 +27,13 @@ class ProblemsTest(unittest.TestCase):
         found = self.problems({"launcher/main/gfx/gfx.c": "/* sand calls this */\nint x;\n"})
         self.assertEqual(found, ["launcher/main/gfx/gfx.c:1: comment names sand"])
 
+    def test_every_folder_below_the_apps_is_checked_without_being_listed(self):
+        for path in ("launcher/main/app/app.h", "launcher/main/selftest/post.c",
+                     "launcher/main/shell/shell.c", "launcher/main/main.c", "launcher/main/new_layer/x.h"):
+            with self.subTest(path=path):
+                self.assertEqual(self.problems({path: "/* sand calls this */\nint x;\n"}),
+                                 [f"{path}:1: comment names sand"])
+
     def test_an_app_may_name_itself(self):
         self.assertEqual(self.problems({
             "launcher/main/apps/sand/sand.c": "/* sand steps here */\nint x;\n"}), [])

@@ -22,7 +22,7 @@
 
 #include "esp_log.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "util/memory.h"

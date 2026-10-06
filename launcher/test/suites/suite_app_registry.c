@@ -10,7 +10,7 @@
 
 #include "unity.h"
 
-#include "app.h"
+#include "app/app.h"
 
 static app_t apps[4];
 

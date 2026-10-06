@@ -8,7 +8,7 @@
 
 #include <stddef.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_control_center.h"

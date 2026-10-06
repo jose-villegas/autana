@@ -21,7 +21,7 @@
 
 #include "esp_log.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "apps/input_lab/touch_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"

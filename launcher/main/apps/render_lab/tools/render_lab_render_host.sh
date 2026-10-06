@@ -19,8 +19,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=render_lab
 
 scene_sources="
-main/app_arena.c
-main/app_registry.c
+main/app/app_arena.c
+main/app/app_registry.c
 main/gfx/gfx.c
 main/util/tune.c
 main/util/job.c

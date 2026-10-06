@@ -11,7 +11,7 @@
 
 #include "editor/runtime.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"

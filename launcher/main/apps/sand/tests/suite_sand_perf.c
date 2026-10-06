@@ -4497,7 +4497,7 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
  * is only worth having if the third stays clearly under the first.
  */
 
-#include "app.h"
+#include "app/app.h"
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);

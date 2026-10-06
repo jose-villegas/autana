@@ -14,7 +14,7 @@
  * which is why autorun is opt-in.
  */
 
-#include "boot/selftest.h"
+#include "selftest/selftest.h"
 
 #include <stdio.h>
 

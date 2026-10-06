@@ -77,7 +77,7 @@ release; only this way *in* is compiled out. The self-test *runner* an app
 hosts (a button, its result line, the `selftest_run()` call) is narrower
 still: gated on `CONFIG_LAUNCHER_SELFTEST` specifically, inside the app's
 own file, because `selftest_run()` is not even a linkable symbol outside a
-SELFTEST build (`boot/selftest.c` is only added to `app_srcs` under
+SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
 `CONFIG_LAUNCHER_SELFTEST`; see `main/CMakeLists.txt`).
 
 ## A diagnostics build can be scoped
