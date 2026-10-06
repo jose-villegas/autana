@@ -2,7 +2,6 @@
 
 #include <assert.h>
 #include <stdalign.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -118,21 +117,6 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
     return failure(SCENE_OK, ASSET_OK, scene->id);
 }
 
-/* The clip's track `<node>/<part>`, which must be `width` wide. */
-static asset_status_t
-find_track(const anim_tracks_t* tracks, const char* node, const char* part, int width, anim_track_t* out) {
-    char name[ANIM_TRACK_NAME_MAX];
-    const int length = snprintf(name, sizeof name, "%s/%s", node, part);
-    if (length < 0 || (size_t)length >= sizeof name) {
-        return ASSET_ERR_FORMAT;
-    }
-    const asset_status_t status = anim_tracks_find(tracks, name, out);
-    if (status == ASSET_OK && out->width != width) {
-        return ASSET_ERR_FORMAT;
-    }
-    return status;
-}
-
 /* Points each camera that has a clip at its node's translation and rotation. */
 static scene_failure_t
 open_paths(scene_t* scene, const asset_pack_t* pack) {
@@ -143,16 +127,16 @@ open_paths(scene_t* scene, const asset_pack_t* pack) {
         }
         scene_camera_t* camera = &scene->cameras[i];
         anim_tracks_t tracks;
+        anim_node_tracks_t node;
         asset_status_t status = anim_tracks_from_pack(pack, c->clip, &tracks);
         if (status == ASSET_OK) {
-            status = find_track(&tracks, c->node, "translation", 3, &camera->path.translation);
-        }
-        if (status == ASSET_OK) {
-            status = find_track(&tracks, c->node, "rotation", 4, &camera->path.rotation);
+            status = anim_tracks_find_node(&tracks, c->node, &node);
         }
         if (status != ASSET_OK) {
             return failure(SCENE_ERR_ASSET, status, c->clip);
         }
+        camera->path.translation = node.translation;
+        camera->path.rotation = node.rotation;
         camera->path.clip = tracks.clip;
         camera->lens.path = &camera->path;
     }

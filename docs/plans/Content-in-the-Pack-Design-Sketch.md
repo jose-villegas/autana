@@ -175,31 +175,26 @@ nothing has mounted a bundle before it. Boot mounts its clip's bundle with
 first call.
 
 ```c
-/* boot_anim.h: the six tracks (camera and space: translation, rotation, scale) resolved once */
-typedef struct { anim_clip_t clip; anim_track_t t[6]; bool from_pack; } boot_anim_motion_t;
-void boot_anim_motion_load(void);   /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_bundle("boot_anim_motion"), "boot_anim_motion"); on any failure, log once and use the rest pose */
+/* boot_anim.h: nodes camera and space (translation, rotation, scale) resolved once */
+typedef struct { anim_clip_t clip; anim_node_tracks_t camera, space; bool from_pack; } boot_anim_motion_t;
+void boot_anim_motion_load(boot_anim_motion_t* out);      /* first thing in boot_anim_run(): anim_tracks_from_pack(asset_store_bundle("boot_anim_motion"), "boot_anim_motion"), anim_tracks_find_node() twice; on any failure, log why and use the rest pose */
+void boot_anim_motion_release(boot_anim_motion_t* motion); /* when boot is done; leaves the rest pose */
+/* the motion is passed to boot_anim_view() and boot_anim_draw_frame(): no module state */
 ```
 
 | Case | Behaviour |
 |---|---|
 | pack and clip fine | camera and space follow the clip, as now |
-| no `assets` partition (app-only flash, old table), bad pack, clip missing or malformed | one log line; camera and space hold a **rest pose**; the animation still draws, so boot is never blank |
+| no `assets` partition (app-only flash, old table), bad pack, clip missing or malformed | a log line saying why; camera and space hold a **rest pose**; the animation still draws, so boot is never blank |
 
 [A] The rest pose is an authored constant, not a copy of the clip's first
 key: a copy would be a second representation of the `.glb` and could drift,
 which is the thing being removed. A host test renders the fallback and checks
 the frame is not blank.
 
-**Risk to measure first, not assume.** The clip itself is cheap: about 3 KB of
-keys, sampled per frame from the mapped pack as today's const data is. The cost
-is opening the pack: `asset_pack_open()` computes a CRC-32 of every byte of it
-(all meshes, about 1.1 MB today, and growing with content) with a nibble table.
-The first scene load pays that today. Once boot is the first caller, boot pays
-it, once, before its first frame.
-
-**Bundles fix it (section 0).** Boot mounts only its clip's bundle, a few KB, and a
-scene's bundle is checked when that scene first loads. The boot ticket
-still measures first-frame time on the board (`autana status` and
+Boot mounts only its clip's bundle (section 0), so `asset_pack_open()` checks
+the clip's bytes, not the meshes; a scene's bundle is checked when that scene
+first loads. First-frame time is measured on the board (`autana status` and
 `autana buildid` around it).
 
 ## 6. Deletion (acceptance on every migration ticket: `git grep` clean)

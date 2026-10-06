@@ -30,7 +30,6 @@
 #include "anim/anim_transform.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
-#include "boot/boot_anim_tracks_generated.h"
 #include "gfx/gfx_font.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_project_x.h"
@@ -45,19 +44,35 @@
 #define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
 #define BOOT_ANIM_TQ  8                  /* t's own fixed point */
 
+/* How the camera and the space move: the boot clip's nodes "camera" and
+ * "space", pointing into its bundle, or the rest pose when the clip cannot be
+ * read. */
+typedef struct {
+    anim_clip_t clip;
+    anim_node_tracks_t camera;
+    anim_node_tracks_t space;
+    bool from_pack;
+} boot_anim_motion_t;
+
+/* Fills `out` from the boot clip's bundle, mounting it. On any failure it logs
+ * why and fills the rest pose, so the animation still draws. */
+void boot_anim_motion_load(boot_anim_motion_t* out);
+
+/* Drops the bundle boot_anim_motion_load() mounted, if it did, and leaves the
+ * rest pose in `motion`, which no longer points into the bundle. */
+void boot_anim_motion_release(boot_anim_motion_t* motion);
+
 typedef struct {
     transformf_t camera;
     transformf_t space;
 } boot_anim_timeline_state_t;
 
 static inline boot_anim_timeline_state_t
-boot_anim_timeline_sample(uint32_t now_ms) {
-    const float seconds = anim_clip_seconds(&boot_anim_clip, now_ms, ANIM_CLAMP);
+boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
+    const float seconds = anim_clip_seconds(&motion->clip, now_ms, ANIM_CLAMP);
     boot_anim_timeline_state_t st;
-    st.camera = anim_transform_sample(&boot_anim_camera_translation, &boot_anim_camera_rotation,
-                                      &boot_anim_camera_scale, seconds);
-    st.space =
-        anim_transform_sample(&boot_anim_space_translation, &boot_anim_space_rotation, &boot_anim_space_scale, seconds);
+    st.camera = anim_transform_sample(&motion->camera, seconds);
+    st.space = anim_transform_sample(&motion->space, seconds);
     return st;
 }
 
@@ -80,8 +95,8 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 typedef r3d_line_view_x_t boot_anim_view_t;
 
 static inline boot_anim_view_t
-boot_anim_view(int w, int h, uint32_t now_ms) {
-    boot_anim_timeline_state_t st = boot_anim_timeline_sample(now_ms);
+boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
+    boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
     const r3d_line_camera_t camera = {.pose = st.camera, .focal = BOOT_ANIM_CAMERA_FOCAL, .near_z = R3D_LINE_NEAR_Z};
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
@@ -672,7 +687,7 @@ boot_anim_finale_reach(uint32_t now_ms) {
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
 /* Host render tests call this directly and read the firmware framebuffer. */
-void boot_anim_draw_frame(uint32_t now_ms);
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture

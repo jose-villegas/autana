@@ -4,7 +4,7 @@ set(app_srcs
     "app/app_arena.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
-    "boot/boot_anim_tracks_generated.c"
+    "boot/boot_anim_motion.c"
     "selftest/post.c"
     "selftest/post_layout.c"
     "selftest/post_ui.c"

@@ -27,7 +27,7 @@ test_translation_and_scale_land_unchanged(void) {
     const anim_track_t m = constant(move, 3, 0);
     const anim_track_t r = constant(turn, 4, 1);
     const anim_track_t s = constant(size, 3, 0);
-    const transformf_t t = anim_transform_sample(&m, &r, &s, 0.0F);
+    const transformf_t t = anim_transform_sample(&(anim_node_tracks_t){m, r, s}, 0.0F);
 
     TEST_ASSERT_EQUAL_FLOAT(1.5F, t.position.x);
     TEST_ASSERT_EQUAL_FLOAT(-2.0F, t.position.y);
@@ -45,7 +45,7 @@ test_a_quarter_turn_about_y_takes_z_to_x_through_the_matrix(void) {
     const anim_track_t m = constant(origin, 3, 0);
     const anim_track_t r = constant(turn, 4, 1);
     const anim_track_t s = constant(unit, 3, 0);
-    transformf_t t = anim_transform_sample(&m, &r, &s, 0.0F);
+    transformf_t t = anim_transform_sample(&(anim_node_tracks_t){m, r, s}, 0.0F);
 
     const mat4f_t matrix = transformf_matrix(&t);
     const vec3f_t got = mat4f_apply(&matrix, (vec3f_t){0.0F, 0.0F, 1.0F});
@@ -62,7 +62,7 @@ test_a_sampled_quaternion_is_renormalized(void) {
     const anim_track_t r = constant(shrunk, 4, 1);
     const anim_track_t s = constant(unit, 3, 0);
 
-    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, anim_transform_sample(&m, &r, &s, 0.0F).rotation.w);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, anim_transform_sample(&(anim_node_tracks_t){m, r, s}, 0.0F).rotation.w);
 }
 
 static void
@@ -75,7 +75,7 @@ test_a_rotation_between_two_keys_is_the_halfway_turn(void) {
     const anim_track_t r = {times, turns, 2, 4, ANIM_LINEAR, 1};
     const anim_track_t s = constant(unit, 3, 0);
 
-    const transformf_t t = anim_transform_sample(&m, &r, &s, 0.5F);
+    const transformf_t t = anim_transform_sample(&(anim_node_tracks_t){m, r, s}, 0.5F);
     const vec3f_t z = quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
     TEST_ASSERT_FLOAT_WITHIN(1e-4F, 0.70710678F, z.x);
     TEST_ASSERT_FLOAT_WITHIN(1e-4F, 0.70710678F, z.z);
