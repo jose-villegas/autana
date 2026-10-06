@@ -17,6 +17,8 @@
 #include "asset/asset_store.h"
 #include "boot/boot_anim_tracks_generated.h"
 #include "test_alloc.h"
+#include "test_anim_tracks.h"
+#include "test_pack.h"
 
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
@@ -25,46 +27,16 @@
 /* Two tracks: "a/translation", linear, 3 wide, 2 keys; "lens/perspective/yfov",
  * step, 1 wide, 3 keys. Each array starts where the last ends. */
 enum {
-    ROW0 = 8,
-    ROW1 = 56,
+    ROW0 = TEST_TRACKS_HEADER_SIZE,
+    ROW1 = ROW0 + TEST_TRACK_ROW_SIZE,
     A_TIMES = 104,
     A_VALUES = 112,
     B_TIMES = 136,
     B_VALUES = 148,
     ENTRY_BYTES = 160,
-    ROW_SIZE = 48,
 };
 
 #define BOOT_CLIP "boot_anim_motion"
-
-static void
-put32(uint8_t* at, uint32_t value) {
-    for (int i = 0; i < 4; i++) {
-        at[i] = (uint8_t)(value >> (8 * i));
-    }
-}
-
-static void
-put16(uint8_t* at, uint32_t value) {
-    at[0] = (uint8_t)value;
-    at[1] = (uint8_t)(value >> 8);
-}
-
-static void
-put_floats(uint8_t* at, const float* values, int count) {
-    memcpy(at, values, (size_t)count * sizeof(float));
-}
-
-static void
-put_row(uint8_t* row, const char* name, uint32_t times, uint32_t values, uint32_t keys, uint8_t width,
-        anim_interp_t interp) {
-    strncpy((char*)row, name, ANIM_TRACK_NAME_MAX);
-    put32(row + 32, times);
-    put32(row + 36, values);
-    put16(row + 40, keys);
-    row[42] = width;
-    row[43] = (uint8_t)interp;
-}
 
 typedef struct {
     uint8_t* entry;
@@ -77,19 +49,29 @@ fixture(void) {
     f.entry = test_alloc_aligned(ENTRY_BYTES, 16, &f.raw);
     TEST_ASSERT_NOT_NULL(f.entry);
     memset(f.entry, 0, ENTRY_BYTES);
-    put16(f.entry, ANIM_TRACKS_VERSION);
-    put16(f.entry + 2, 2);
-    put32(f.entry + 4, 2000);
-    put_row(f.entry + ROW0, "a/translation", A_TIMES, A_VALUES, 2, 3, ANIM_LINEAR);
-    put_row(f.entry + ROW1, "lens/perspective/yfov", B_TIMES, B_VALUES, 3, 1, ANIM_STEP);
+    test_tracks_header(f.entry, 2, 2000);
+    test_track_row(f.entry, 0,
+                   &(test_track_t){.name = "a/translation",
+                                   .times = A_TIMES,
+                                   .values = A_VALUES,
+                                   .keys = 2,
+                                   .width = 3,
+                                   .interp = ANIM_LINEAR});
+    test_track_row(f.entry, 1,
+                   &(test_track_t){.name = "lens/perspective/yfov",
+                                   .times = B_TIMES,
+                                   .values = B_VALUES,
+                                   .keys = 3,
+                                   .width = 1,
+                                   .interp = ANIM_STEP});
     const float a_times[] = {0.0F, 2.0F};
     const float a_values[] = {0.0F, 0.0F, 0.0F, 4.0F, -2.0F, 8.0F};
     const float b_times[] = {0.0F, 1.0F, 1.5F};
     const float b_values[] = {0.5F, 0.7F, 0.9F};
-    put_floats(f.entry + A_TIMES, a_times, 2);
-    put_floats(f.entry + A_VALUES, a_values, 6);
-    put_floats(f.entry + B_TIMES, b_times, 3);
-    put_floats(f.entry + B_VALUES, b_values, 3);
+    test_pack_put_floats(f.entry + A_TIMES, a_times, 2);
+    test_pack_put_floats(f.entry + A_VALUES, a_values, 6);
+    test_pack_put_floats(f.entry + B_TIMES, b_times, 3);
+    test_pack_put_floats(f.entry + B_VALUES, b_values, 3);
     return f;
 }
 
@@ -158,9 +140,14 @@ test_a_track_of_more_than_255_keys_reports_them_all(void) {
     uint8_t* entry = test_alloc_aligned(BYTES, 16, &raw);
     TEST_ASSERT_NOT_NULL(entry);
     memset(entry, 0, BYTES);
-    put16(entry, ANIM_TRACKS_VERSION);
-    put16(entry + 2, 1);
-    put_row(entry + ROW0, "long/scale", TIMES_AT, VALUES_AT, KEYS, 1, ANIM_LINEAR);
+    test_tracks_header(entry, 1, 0);
+    test_track_row(entry, 0,
+                   &(test_track_t){.name = "long/scale",
+                                   .times = TIMES_AT,
+                                   .values = VALUES_AT,
+                                   .keys = KEYS,
+                                   .width = 1,
+                                   .interp = ANIM_LINEAR});
     anim_tracks_t tracks;
     anim_track_t track;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_open((asset_view_t){entry, BYTES}, &tracks));
@@ -170,7 +157,13 @@ test_a_track_of_more_than_255_keys_reports_them_all(void) {
     /* Arrays that hold 300 mod 256 keys: fine for the low byte, not for the count. */
     enum { SHORT = KEYS % 256, SHORT_VALUES_AT = TIMES_AT + (SHORT * 4), SHORT_BYTES = SHORT_VALUES_AT + (SHORT * 4) };
 
-    put_row(entry + ROW0, "long/scale", TIMES_AT, SHORT_VALUES_AT, KEYS, 1, ANIM_LINEAR);
+    test_track_row(entry, 0,
+                   &(test_track_t){.name = "long/scale",
+                                   .times = TIMES_AT,
+                                   .values = SHORT_VALUES_AT,
+                                   .keys = KEYS,
+                                   .width = 1,
+                                   .interp = ANIM_LINEAR});
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, anim_tracks_open((asset_view_t){entry, SHORT_BYTES}, &tracks));
     test_free_aligned(raw);
 }
@@ -180,7 +173,7 @@ test_an_array_past_the_end_is_out_of_bounds(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES - 4, &tracks));
-    put16(f.entry + ROW0 + 40, 0xFFFF); /* keys enough to run far past the entry */
+    test_pack_put16(f.entry + ROW0 + 40, 0xFFFF); /* keys enough to run far past the entry */
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
     test_free_aligned(f.raw);
 }
@@ -200,7 +193,7 @@ static void
 test_times_that_alone_leave_the_entry_are_out_of_bounds(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
-    put32(f.entry + ROW0 + 32, ENTRY_BYTES - 4);
+    test_pack_put32(f.entry + ROW0 + 32, ENTRY_BYTES - 4);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
     test_free_aligned(f.raw);
 }
@@ -210,7 +203,7 @@ static void
 test_an_offset_that_wraps_round_is_out_of_bounds(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
-    put32(f.entry + ROW0 + 32, 0xFFFFFFFCU);
+    test_pack_put32(f.entry + ROW0 + 32, 0xFFFFFFFCU);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
     test_free_aligned(f.raw);
 }
@@ -219,9 +212,9 @@ static void
 test_misaligned_floats_or_floats_inside_the_table_are_out_of_bounds(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
-    put32(f.entry + ROW1 + 32, B_TIMES + 2);
+    test_pack_put32(f.entry + ROW1 + 32, B_TIMES + 2);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
-    put32(f.entry + ROW1 + 32, ROW1);
+    test_pack_put32(f.entry + ROW1 + 32, ROW1);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_fixture(&f, ENTRY_BYTES, &tracks));
     test_free_aligned(f.raw);
 }
@@ -290,7 +283,7 @@ static void
 test_an_unknown_version_is_refused(void) {
     fixture_t f = fixture();
     anim_tracks_t tracks;
-    put16(f.entry, ANIM_TRACKS_VERSION + 1U);
+    test_pack_put16(f.entry, ANIM_TRACKS_VERSION + 1U);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, open_fixture(&f, ENTRY_BYTES, &tracks));
     test_free_aligned(f.raw);
 }
@@ -320,7 +313,7 @@ open_every_clip(const asset_pack_t* pack) {
         TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, tracks.clip.duration_ms, entry.name);
         for (int t = 0; t < tracks.count; t++) {
             anim_track_t track;
-            const char* name = (const char*)(tracks.base + ROW0 + ((size_t)t * ROW_SIZE));
+            const char* name = (const char*)(tracks.base + ROW0 + ((size_t)t * TEST_TRACK_ROW_SIZE));
             TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_find(&tracks, name, &track), name);
         }
         clips++;
@@ -393,7 +386,7 @@ static void
 check_reference_row(const anim_tracks_t* tracks, const uint8_t* row) {
     const int index = row[0] | (row[1] << 8);
     TEST_ASSERT_LESS_THAN_INT(tracks->count, index);
-    const char* name = (const char*)(tracks->base + ROW0 + ((size_t)index * ROW_SIZE));
+    const char* name = (const char*)(tracks->base + ROW0 + ((size_t)index * TEST_TRACK_ROW_SIZE));
     anim_track_t track;
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_find(tracks, name, &track), name);
     const float seconds = get_float(row + 4);
