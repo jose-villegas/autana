@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "util/memory.h"

@@ -30,15 +30,15 @@
 
 #include <stdio.h>
 
-#include "app.h"
-#include "boot/post_layout.h"
-#include "boot/post_ui.h"
+#include "app/app.h"
 #include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "input/imu.h"
+#include "selftest/post_layout.h"
+#include "selftest/post_ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
-#include "boot/selftest.h"
+#include "selftest/selftest.h"
 #endif
 #include "ui/toggles_screen.h"
 #include "ui/ui.h"

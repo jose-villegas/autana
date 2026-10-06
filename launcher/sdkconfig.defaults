@@ -8,7 +8,7 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 
 # Lets EXT_RAM_NOINIT_ATTR place a static in PSRAM that boot does not zero:
-# the shell's app arena (main/app_arena.h) is one, and refuses to build
+# the shell's app arena (main/app/app_arena.h) is one, and refuses to build
 # without this.
 CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY=y
 

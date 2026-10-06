@@ -16,7 +16,7 @@
 #
 # It runs only the PORTABLE suites. The hardware ones need real framebuffer
 # memory, DMA and I2C, so they live in the firmware and run at boot on the
-# device; see main/selftest.c. The suite sources are shared, so what passes
+# device; see main/selftest/selftest.c. The suite sources are shared, so what passes
 # here is the same set of assertions the board makes.
 #
 # Default output is the verdict and test count. A passing run can emit
@@ -115,8 +115,8 @@ $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
-$MAIN_DIR/app_arena.c
-$MAIN_DIR/app_registry.c
+$MAIN_DIR/app/app_arena.c
+$MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
@@ -128,7 +128,7 @@ $MAIN_DIR/input/tilt.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim_tracks_generated.c
-$MAIN_DIR/boot/post_layout.c
+$MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/util/job.c
 $MAIN_DIR/util/memory.c
 $MAIN_DIR/util/settings_policy.c

@@ -41,7 +41,7 @@ independent throughput.
 | BOOT button | - | | active low, bounces; also the flashing button |
 | Temperature sensor | on-die | ✓ | |
 
-POST (`launcher/main/boot/post.c`) also checks the MAC/eFuse and the I2C bus
+POST (`launcher/main/selftest/post.c`) also checks the MAC/eFuse and the I2C bus
 itself. It raises the amp GPIO before probing the codec, which does not answer
 without it (`board_audio_amp_enable()`).
 
@@ -66,7 +66,7 @@ driver, and do not add the gap yourself.
 In full-framebuffer mode the framebuffer is in PSRAM; band and indexed modes
 free it. The band ring aliases the internal DMA bounce slots. See
 [Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for presentation.
-The app arena (`launcher/main/app_arena.h`) uses explicit external-memory
+The app arena (`launcher/main/app/app_arena.h`) uses explicit external-memory
 placement, so its reservation reduces the PSRAM heap before apps allocate.
 
 `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` makes ordinary allocations up to

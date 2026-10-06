@@ -6,7 +6,7 @@
 
 #include "ui/ui_launcher.h"
 
-#include "app.h"
+#include "app/app.h"
 #include "ui/ui.h"
 #include "ui/ui_scroll.h"
 

@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/ui.h"

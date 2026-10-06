@@ -1,7 +1,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "app_arena.h"
+#include "app/app_arena.h"
 
 #ifdef DEVICE_BUILD
 void shell_test_fixture(void);
