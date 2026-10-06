@@ -13,9 +13,10 @@ from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
-from tests.anim_probe import write_camera_clip
+from anim_probe import write_camera_clip  # noqa: E402
 
 try:
     import numpy as np

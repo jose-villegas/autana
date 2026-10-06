@@ -11,8 +11,10 @@
  * from --from (0) to --until (the clip's duration). With --poses it prints the
  * poses file r3d's triangle_sizes reads, for the camera node NODE: its
  * translation as the eye, the way its rotation turns glTF's -Z as the
- * forward, over the lens and size given, from 0 and looping. --poses comes
- * last.
+ * forward, over the lens and size given, from 0 and looping, so --from and
+ * --clamp are refused with it. --poses comes last. --every 0 is refused.
+ * The clock counts in 64 bits, so a step past an --until near the u32
+ * maximum ends the run instead of wrapping to 0.
  */
 #include <inttypes.h>
 #include <stdbool.h>
@@ -58,16 +60,13 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
     if (!find_track(tracks, node, "translation", &move) || !find_track(tracks, node, "rotation", &turn)) {
         return 2;
     }
-    if (at->every_ms == 0) {
-        return 2;
-    }
     printf("size %d %d\nlens %s %s\n", atoi(pose_args[1]), atoi(pose_args[2]), pose_args[3], pose_args[4]);
     const float ahead[3] = {0.0F, 0.0F, -1.0F};
-    for (uint32_t t = 0; t < at->until_ms; t += at->every_ms) {
+    for (uint64_t t = 0; t < at->until_ms; t += at->every_ms) {
         float eye[ANIM_WIDTH_MAX];
         float q[ANIM_WIDTH_MAX];
         float forward[3];
-        const float seconds = anim_clip_seconds(&tracks->clip, t, ANIM_LOOP);
+        const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, ANIM_LOOP);
         anim_track_sample(&move, seconds, eye);
         anim_track_sample(&turn, seconds, q);
         anim_quat_rotate(q, ahead, forward);
@@ -79,19 +78,15 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
 
 static int
 print_tracks(const anim_tracks_t* tracks, const sampling_t* at) {
-    if (at->every_ms == 0) {
-        return 2;
-    }
-    const uint32_t until_ms = !at->until_given && at->from_ms > at->until_ms ? at->from_ms : at->until_ms;
-    for (uint32_t t = at->from_ms; t < until_ms; t += at->every_ms) {
-        const float seconds = anim_clip_seconds(&tracks->clip, t, at->wrap);
+    for (uint64_t t = at->from_ms; t < at->until_ms; t += at->every_ms) {
+        const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, at->wrap);
         for (int i = 0; i < tracks->count; i++) {
             const char* name;
             anim_track_t track;
             (void)anim_tracks_at(tracks, i, &name, &track);
             float v[ANIM_WIDTH_MAX];
             anim_track_sample(&track, seconds, v);
-            printf("%" PRIu32 " %s", t, name);
+            printf("%" PRIu64 " %s", t, name);
             for (int k = 0; k < track.width; k++) {
                 printf(" %.9g", (double)v[k]);
             }
@@ -152,8 +147,8 @@ main(int argc, char** argv) {
             return usage();
         }
     }
-    /* Poses always start at 0 and loop; a --from or --clamp would be ignored, so it is refused. */
-    if (pack_path == NULL || clip == NULL || (pose_args != NULL && (at.from_ms != 0 || at.wrap == ANIM_CLAMP))) {
+    if (pack_path == NULL || clip == NULL || at.every_ms == 0
+        || (pose_args != NULL && (at.from_ms != 0 || at.wrap == ANIM_CLAMP))) {
         return usage();
     }
     return sample(pack_path, clip, pose_args, &at);

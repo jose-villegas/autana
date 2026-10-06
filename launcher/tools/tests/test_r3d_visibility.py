@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 try:
     import numpy as np
@@ -21,8 +22,7 @@ try:
     from r3d.poses import camera_rays
 except ImportError:
     np = None
-from tests.anim_probe import write_camera_clip  # noqa: E402
-from tests.test_track_host import has_compiler  # noqa: E402
+from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 EYE = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
 

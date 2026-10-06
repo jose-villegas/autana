@@ -22,6 +22,7 @@ one an app ships.
 import argparse
 import math
 import pathlib
+import shutil
 import struct
 import sys
 
@@ -92,6 +93,19 @@ def probe_glb(reordered=False):
     cameras = [{"name": "lens", "type": "perspective", "perspective": {"yfov": 0.6, "znear": 0.1}}]
     return gltf_write.build_glb([{"name": n} for n in order],
                                 [{"name": "clip", "channels": probe_channels(index)}], cameras=cameras)
+
+
+def has_compiler():
+    """Whether anim/track_host.py can build here: sh and find_cc.sh's compiler."""
+    from anim import track_host
+
+    if not shutil.which("sh"):
+        return False
+    try:
+        track_host.compiler()
+    except track_host.TrackHostError:
+        return False
+    return True
 
 
 def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=()):

@@ -19,9 +19,8 @@ sys.path.insert(0, str(TOOLS / "tests"))
 
 import bake_tracks  # noqa: E402
 from anim import track_host, tracks_asset  # noqa: E402
-from anim_probe import channel, probe_glb  # noqa: E402
+from anim_probe import channel, has_compiler, probe_glb  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
-from tests.test_track_host import has_compiler  # noqa: E402
 
 TOLERANCE = 2e-5
 EVERY_MS = 37

@@ -8,6 +8,7 @@ import io
 import math
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -16,20 +17,10 @@ from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "tests"))
 
 from anim import track_host  # noqa: E402
-from tests.anim_probe import write_camera_clip  # noqa: E402
-
-
-def has_compiler():
-    """Whether track_host can be built here: sh and find_cc.sh's compiler."""
-    if not shutil.which("sh"):
-        return False
-    try:
-        track_host.compiler()
-    except track_host.TrackHostError:
-        return False
-    return True
+from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 
 def read_poses(text):
@@ -67,10 +58,35 @@ class TrackHostTests(unittest.TestCase):
             for got, want in zip(pose[3:], (-math.sin(angle), 0.0, -math.cos(angle))):
                 self.assertAlmostEqual(got, want, places=5, msg=f"forward at {degrees} degrees")
 
-    def test_poses_refuse_a_start_or_a_clamp_they_would_ignore(self):
-        for flag in (["--from", 250], ["--clamp"]):
-            with self.assertRaisesRegex(track_host.TrackHostError, "usage"):
-                track_host.sample(self.clip, [*flag, "--poses", "camera", 8, 6, 0.5, 1.0])
+    def host(self, *args):
+        """track_host over the walk clip's pack, bounded in time: a run that
+        never ends fails the test instead of hanging the suite."""
+        return subprocess.run([str(track_host.program()), "--pack", str(self.pack()), "--clip", "walk", *map(str, args)],
+                              capture_output=True, text=True, timeout=60)
+
+    def test_poses_refuse_a_start_or_a_clamp_they_would_ignore_and_no_mode_takes_a_zero_step(self):
+        for args in (["--from", 250, "--poses", "camera", 8, 6, 0.5, 1.0], ["--clamp", "--poses", "camera", 8, 6, 0.5, 1.0],
+                     ["--every", 0, "--poses", "camera", 8, 6, 0.5, 1.0], ["--every", 0]):
+            done = self.host(*args)
+            self.assertEqual(done.returncode, 2, args)
+            self.assertIn("usage", done.stderr, args)
+
+    def test_a_step_past_the_end_of_the_u32_clock_ends_the_run(self):
+        top = 0xFFFFFFFF
+        for args, lines in ((["--every", 1 << 30, "--until", top, "--poses", "camera", 8, 6, 0.5, 1.0], 2 + 4),
+                            (["--from", top - 300, "--every", 200, "--until", top], 2 * 2)):
+            done = self.host(*args)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(len(done.stdout.splitlines()), lines, args)
+
+    def test_poses_past_the_clip_s_end_loop_back_to_its_start(self):
+        _, poses = read_poses(self.host("--every", 500, "--until", 2000, "--poses", "camera", 8, 6, 0.5, 1.0).stdout)
+        self.assertEqual([round(pose[0], 6) for pose in poses], [0.0, 1.0, 0.0, 1.0])
+
+    def test_a_header_listing_the_compiler_refuses_is_an_error(self):
+        with mock.patch.object(track_host, "FLAGS", (*track_host.FLAGS, "-include", str(self.dir / "missing.h"))), \
+                self.assertRaisesRegex(track_host.TrackHostError, "listing track_host's headers"):
+            track_host.inputs(track_host.compiler())
 
     def test_runs_started_together_on_a_cold_cache_all_succeed_and_leave_one_program(self):
         results, errors = [], []
@@ -113,7 +129,6 @@ class TrackHostTests(unittest.TestCase):
         inputs = track_host.inputs(cc)
         names = {path.name for path in inputs}
         self.assertLessEqual({path.name for path in track_host.SOURCES}, names)
-        # Reached only through other headers: a hand-kept list would miss them.
         self.assertLessEqual({"anim_tracks.h", "asset_bytes.h", "quatf.h", "vec3f.h"}, names)
         before = track_host.build_key(cc)
         header = next(path for path in inputs if path.name == "quatf.h")
@@ -127,10 +142,18 @@ class TrackHostTests(unittest.TestCase):
             self.assertNotEqual(track_host.build_key(cc + " "), before, "the compiler is part of the key")
 
     def test_a_failed_build_raises_with_the_compiler_s_words_and_leaves_nothing(self):
-        with mock.patch.object(track_host, "FLAGS", (*track_host.FLAGS, "-include", str(self.dir / "missing.h"))), \
+        broken = self.dir / "track_host.c"
+        broken.write_bytes(track_host.SOURCES[0].read_bytes() + b"\nint broken(void) { return }\n")
+        with mock.patch.object(track_host, "SOURCES", (broken, *track_host.SOURCES[1:])), \
                 self.assertRaisesRegex(track_host.TrackHostError, "building track_host"):
             track_host.program()
         self.assertEqual(list(self.build.iterdir()), [])
+
+    def test_a_file_the_flags_pull_in_is_in_the_key(self):
+        extra = self.dir / "extra.h"
+        extra.write_text("#define TRACK_HOST_EXTRA 1\n")
+        with mock.patch.object(track_host, "FLAGS", (*track_host.FLAGS, "-include", str(extra))):
+            self.assertIn(extra.resolve(), track_host.inputs(track_host.compiler()))
 
     def pack(self):
         pack = self.dir / "walk.apak"

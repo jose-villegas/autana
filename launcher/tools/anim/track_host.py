@@ -58,9 +58,15 @@ def compiler():
     return found.stdout.strip()
 
 
+def compile_args(cc):
+    """The compile, without its output: what both the build and the key's
+    file list run, so the key always sees the files the build reads."""
+    return [cc, *FLAGS, "-I", str(MAIN), *map(str, SOURCES)]
+
+
 def inputs(cc):
     """Every file the compiler reads to build the program, sources first."""
-    listed = subprocess.run([cc, "-MM", "-MT", "x", "-I", str(MAIN), *map(str, SOURCES)], capture_output=True, text=True)
+    listed = subprocess.run([*compile_args(cc), "-MM", "-MT", "x"], capture_output=True, text=True)
     if listed.returncode != 0:
         raise TrackHostError(f"listing track_host's headers with {cc} failed:\n{listed.stderr}")
     files = []
@@ -91,8 +97,7 @@ def program():
     handle, scratch = tempfile.mkstemp(prefix=f"{target.stem}.", suffix=f".tmp{EXE}", dir=BUILD)
     os.close(handle)
     scratch = pathlib.Path(scratch)
-    built = subprocess.run([cc, *FLAGS, "-I", str(MAIN), *map(str, SOURCES), "-lm", "-o", str(scratch)],
-                           capture_output=True, text=True)
+    built = subprocess.run([*compile_args(cc), "-lm", "-o", str(scratch)], capture_output=True, text=True)
     if built.returncode != 0:
         scratch.unlink(missing_ok=True)
         raise TrackHostError(f"building track_host with {cc} failed:\n{built.stderr}")
