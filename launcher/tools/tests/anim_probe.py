@@ -14,9 +14,12 @@ read back from the entry by tracks_asset.decode(). Little-endian:
 
 `exact` marks a sample the C sampler must equal bit for bit: one that copies
 a key (at or past either end, a step, a single key, or on a key time of a
-track that is not a quaternion). The rest are float arithmetic against Python's double, so
-they hold to a tolerance. The scene is invented here, so nothing depends on
-one an app ships.
+track that is not a quaternion). The rest are float arithmetic against
+Python's double, so they hold to a tolerance. The scene is invented here, so
+nothing depends on one an app ships.
+
+It also holds what the tests that run track_host share: whether it can be
+built here, and a camera clip written beside its .glb.
 """
 
 import argparse
@@ -29,7 +32,7 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-from anim import tracks_asset  # noqa: E402
+from anim import track_host, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
@@ -97,8 +100,6 @@ def probe_glb(reordered=False):
 
 def has_compiler():
     """Whether anim/track_host.py can build here: sh and find_cc.sh's compiler."""
-    from anim import track_host
-
     if not shutil.which("sh"):
         return False
     try:

@@ -78,6 +78,8 @@ class TrackHostTests(unittest.TestCase):
             done = self.host(*args)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual(len(done.stdout.splitlines()), lines, args)
+        times = sorted({int(line.split()[0]) for line in done.stdout.splitlines()})
+        self.assertEqual(times, [top - 300, top - 100])
 
     def test_poses_past_the_clip_s_end_loop_back_to_its_start(self):
         _, poses = read_poses(self.host("--every", 500, "--until", 2000, "--poses", "camera", 8, 6, 0.5, 1.0).stdout)
@@ -148,6 +150,12 @@ class TrackHostTests(unittest.TestCase):
                 self.assertRaisesRegex(track_host.TrackHostError, "building track_host"):
             track_host.program()
         self.assertEqual(list(self.build.iterdir()), [])
+
+    def test_the_build_compiles_with_the_flags(self):
+        # Preprocesses cleanly, so the header listing passes; only a build that applies it fails to link.
+        with mock.patch.object(track_host, "FLAGS", (*track_host.FLAGS, "-Dmain=track_host_no_main")), \
+                self.assertRaisesRegex(track_host.TrackHostError, "building track_host"):
+            track_host.program()
 
     def test_a_file_the_flags_pull_in_is_in_the_key(self):
         extra = self.dir / "extra.h"
