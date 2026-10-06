@@ -4,6 +4,7 @@
 #include "asset/asset_store_backend.h"
 #include "esp_log.h"
 #include "esp_partition.h"
+#include "util/memory.h"
 
 /* The first of the data subtypes ESP-IDF leaves for an application. */
 #define ASSET_PARTITION_SUBTYPE 0x40
@@ -11,10 +12,9 @@
 
 static const char* TAG = "asset";
 
-/* The partition and its directory, found and mapped once and kept for good. */
+/* The partition and its directory, found and read once and kept for good. */
 static const esp_partition_t* part;
 static asset_directory_t directory;
-static esp_partition_mmap_handle_t directory_mapping;
 static asset_status_t directory_status = ASSET_ERR_NO_PACK;
 static bool tried;
 
@@ -25,7 +25,10 @@ map_bytes(size_t offset, size_t bytes, esp_partition_mmap_handle_t* handle) {
     return err == ESP_OK ? mapped : NULL;
 }
 
-/* The directory's size is in its header, so only the directory is mapped. */
+/* The directory is read into RAM rather than mapped: it shares its flash page
+ * with the first bundles, and QEMU drops every mapping of a page when any one
+ * of them is unmapped, so a mapped directory goes blank there once such a
+ * bundle is released. A copy is a few bytes per bundle and holds no MMU page. */
 static asset_status_t
 open_directory(void) {
     part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, (esp_partition_subtype_t)ASSET_PARTITION_SUBTYPE,
@@ -33,23 +36,24 @@ open_directory(void) {
     if (part == NULL) {
         return ASSET_ERR_NO_PACK;
     }
-    esp_partition_mmap_handle_t handle;
-    const void* head = map_bytes(0, ASSET_DIRECTORY_HEADER_SIZE, &handle);
-    if (head == NULL) {
+    uint8_t head[ASSET_DIRECTORY_HEADER_SIZE];
+    if (esp_partition_read(part, 0, head, sizeof head) != ESP_OK) {
         return ASSET_ERR_NO_PACK;
     }
-    const uint32_t size = asset_directory_size(head, ASSET_DIRECTORY_HEADER_SIZE);
-    esp_partition_munmap(handle);
+    const uint32_t size = asset_directory_size(head, sizeof head);
     if (size == 0 || size > part->size) {
         return size == 0 ? ASSET_ERR_MAGIC : ASSET_ERR_TRUNCATED;
     }
-    const void* mapped = map_bytes(0, size, &directory_mapping);
-    if (mapped == NULL) {
+    uint8_t* copy = memory_alloc(size, MEMORY_INTERNAL);
+    if (copy == NULL) {
         return ASSET_ERR_NO_PACK;
     }
-    const asset_status_t opened = asset_directory_open(&directory, mapped, size, (uint32_t)part->size);
+    asset_status_t opened = ASSET_ERR_NO_PACK;
+    if (esp_partition_read(part, 0, copy, size) == ESP_OK) {
+        opened = asset_directory_open(&directory, copy, size, (uint32_t)part->size);
+    }
     if (opened != ASSET_OK) {
-        esp_partition_munmap(directory_mapping);
+        memory_free(copy);
     }
     return opened;
 }
