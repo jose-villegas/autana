@@ -444,7 +444,7 @@ test_band_extent_false_when_nothing_is_dirty(void) {
 }
 
 /* An odd-edged mark rounds outward to even, the same rule gfx.c's own
- * even_floor()/even_ceil() apply to a real panel window. */
+ * mathi_even_floor()/mathi_even_ceil() apply to a real panel window. */
 static void
 test_band_extent_returns_the_marked_x_range_rounded_even(void) {
     fixture();

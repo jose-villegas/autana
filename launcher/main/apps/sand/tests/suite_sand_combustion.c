@@ -29,7 +29,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 enum { GAS_RISE_TRIALS = 64, GAS_RISE_STEPS = 8, GAS_RISE_W = 64, GAS_RISE_H = 64 };
 
