@@ -130,8 +130,11 @@ the app.
 | `factory` (the app) | `0x10000` | 8 MB |
 | `assets` | `0x810000` | `0x7F0000` |
 
-On the first mount the store finds the partition and maps its directory, kept
-for good. Each bundle is then mapped alone from its slot. Reads of a mapped
+On the first mount the store finds the partition and reads its directory into
+RAM, kept for good. Each bundle is then mapped alone from its slot. The
+directory is a copy, not a mapping, because it shares its 64 KB flash page with
+the first bundles, and QEMU drops every mapping of a page when one of them is
+unmapped. Reads of a mapped
 bundle go through the flash cache as the app's own const data does, so an entry
 costs no RAM and no copy. When the partition table is older than the firmware,
 the directory is missing or a check fails, the log says why and the content

@@ -34,7 +34,7 @@ typedef struct {
 
 /* The size of the directory (header and rows) from at least
  * ASSET_DIRECTORY_HEADER_SIZE bytes at `head`; 0 when they are not a
- * directory's. How much to map before opening it. */
+ * directory's. How much to read before opening it. */
 uint32_t asset_directory_size(const void* head, size_t available);
 
 /* Checks the header, the checksum and every row: inside `region` bytes, on a
