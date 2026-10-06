@@ -18,7 +18,7 @@ class FindPythonTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.shell = device.git_bash() if os.name == "nt" else "sh"
+            cls.shell = device.git_bash() if os.name == "nt" else shutil.which("sh")
         except RuntimeError as error:
             raise unittest.SkipTest(str(error))
         cls.temp = tempfile.TemporaryDirectory()
