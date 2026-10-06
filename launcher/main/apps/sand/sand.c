@@ -246,6 +246,11 @@ sand_enable_sleeping(sand_t* s, uint8_t* blocks) {
 }
 
 size_t
+sand_sleep_block_bytes(int w, int h) {
+    return (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+}
+
+size_t
 sand_step_stamp_bytes(int w, int h) {
     return (size_t)h * sand_stamp_stride(w);
 }
@@ -261,8 +266,7 @@ sand_enable_step_stamps(sand_t* s, uint8_t* bits) {
 size_t
 sand_lane_scratch_bytes(int w, int h) {
     const size_t rows = (size_t)h;
-    const size_t blocks =
-        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const size_t blocks = sand_sleep_block_bytes(w, h);
 
     return SAND_LANE_COUNT * (2 * rows * sizeof(uint16_t) + blocks + rows + SAND_LANE_DEFER_BYTES);
 }

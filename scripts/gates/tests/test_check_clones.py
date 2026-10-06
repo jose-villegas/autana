@@ -140,23 +140,28 @@ class CloneTests(unittest.TestCase):
                 "fragment": fragment, "format": "c", "tokens": 90}
 
     def test_added_clone_fails_when_another_is_removed(self):
-        base = [self.pair()]
-        head = [self.pair("c.c", "d.c")]
+        base = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
+        head = self.scan({"launcher/main/c.c": BLOCK, "launcher/main/d.c": BLOCK}, 80)
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             self.assertEqual(gate.check_pairs(head, base), 1)
-        self.assertIn("c.c:1-12 ~ d.c:1-12", output.getvalue())
+        self.assertIn("launcher/main/c.c:", output.getvalue())
+        self.assertIn("launcher/main/d.c:", output.getvalue())
 
     def test_shortened_existing_clone_passes(self):
-        shorter = self.pair(fragment="\n".join(BLOCK.splitlines()[2:-3]))
+        base = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
+        shortened = BLOCK.replace("    return result > 5 ? result : input;", "    return result;")
+        head = self.scan({"launcher/main/a.c": shortened, "launcher/main/b.c": shortened}, 80)
+        self.assertTrue(head)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(gate.check_pairs([shorter], [self.pair()]), 0)
+            self.assertEqual(gate.check_pairs(head, base), 0)
 
     def test_extended_existing_clone_fails(self):
-        extended = self.pair(fragment=BLOCK + "return another(input);")
-        extended["tokens"] += 10
+        base = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
+        extended = BLOCK.replace("    return result", "    result += input * 7;\n    return result")
+        head = self.scan({"launcher/main/a.c": extended, "launcher/main/b.c": extended}, 80)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(gate.check_pairs([extended], [self.pair()]), 1)
+            self.assertEqual(gate.check_pairs(head, base), 1)
 
     def test_extraction_rebounds_existing_clone(self):
         source = BLOCK.replace("    return result", "    for (int extra = 0; extra < 50; extra++) {\n        result += extra * input;\n        result ^= input + extra;\n    }\n    return result")
@@ -187,6 +192,25 @@ class CloneTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gate.check_pairs(head, base), 1)
 
+    def test_new_copy_cannot_spend_an_unrelated_shrink_in_the_same_pair(self):
+        extra = "int another(int value) {\n" + "    value += 3; value *= 7; value ^= 11;\n" * 12 + "    return value;\n}\n"
+        separators = {"launcher/main/a.c": "int unique_a(void) { switch (1) { case 1: return 2; } return 3; }\n",
+                      "launcher/main/b.c": "void unique_b(void) { while (1) { continue; } }\n"}
+        base = self.scan({name: BLOCK + separator + extra
+                          for name, separator in separators.items()}, 80)
+        shortened = extra.replace("    value += 3; value *= 7; value ^= 11;\n" * 12,
+                                  "    value += 3; value *= 7; value ^= 11;\n" * 5)
+        new_copy = "int copied(int value) {\n" + "    if (value > 3) { value /= 7; } else { value -= 11; }\n" * 4 + "    return value;\n}\n"
+        head = self.scan({name: BLOCK + separator + shortened + separator + new_copy
+                          for name, separator in separators.items()}, 80)
+        names = ("launcher/main/a.c", "launcher/main/b.c")
+        base = [p for p in base if gate.pair_key(p) == names]
+        head = [p for p in head if gate.pair_key(p) == names]
+        self.assertGreaterEqual(len(head), 3)
+        self.assertLessEqual(sum(p["tokens"] for p in head), sum(p["tokens"] for p in base))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base), 1)
+
     def test_literal_only_table_rows_are_ignored(self):
         rows = "    {0xAB, 1.5e-2f, 42UL, 'x', \"identifier\"}, // label\n" * 12
         pairs = self.scan({"launcher/main/a.c": rows,
@@ -203,9 +227,9 @@ class CloneTests(unittest.TestCase):
         self.assertEqual(gate.filter_pairs([self.pair("a.c", "a.c")]), [])
 
     def test_untouched_existing_clone_passes(self):
-        pair = self.pair()
+        pairs = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(gate.check_pairs([pair], [pair]), 0)
+            self.assertEqual(gate.check_pairs(pairs, pairs), 0)
 
     def test_key_ignores_locations_file_order_and_whitespace(self):
         base = self.pair()

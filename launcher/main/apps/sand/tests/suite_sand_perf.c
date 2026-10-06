@@ -36,6 +36,7 @@
 #include "input/tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
                        * filter shape rather than a straight line */
 #include "apps/sand/material_palette.h"
+#include "apps/sand/row_runs.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
@@ -249,7 +250,6 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
-#include "apps/sand/row_runs.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
@@ -675,12 +675,9 @@ static quality_bench_t
 time_two_core_quality_scene(const quality_grid_t* quality, quality_scene_fn build, bool two_core) {
     const int w = GFX_WIDTH / quality->cell;
     const int h = GFX_HEIGHT / quality->cell;
-    const size_t block_count =
-        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
-    uint8_t* big = malloc((size_t)w * (size_t)h);
-    TEST_ASSERT_NOT_NULL(big);
-    uint8_t* blocks = malloc(block_count);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, w, h);
 
     uint8_t* stamps = malloc(sand_step_stamp_bytes(w, h));
     TEST_ASSERT_NOT_NULL(stamps);
@@ -943,8 +940,7 @@ typedef struct {
 
 static void
 sweep_board_open(sweep_board_t* b, int w, int h) {
-    const size_t blocks =
-        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const size_t blocks = sand_sleep_block_bytes(w, h);
 
     b->cells = malloc((size_t)w * (size_t)h);
     b->blocks = malloc(blocks);
@@ -1568,13 +1564,7 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 20;
-    const two_core_scope_t core = two_core_scope_begin(true);
-    const int64_t start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-    const int64_t per_step = (timing_now_us() - start) / steps;
-    two_core_scope_end(core);
+    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
 
     log_step_time("growing plant bed", per_step);
 
@@ -1603,13 +1593,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 20;
-    const two_core_scope_t core = two_core_scope_begin(true);
-    const int64_t start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-    const int64_t per_step = (timing_now_us() - start) / steps;
-    two_core_scope_end(core);
+    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
 
     log_step_time("campfire on a sand bed", per_step);
 
@@ -1871,11 +1855,6 @@ log_mixed_scene_hashes(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-    if (big == NULL || blocks == NULL) {
-        free(big);
-        free(blocks);
-        return;
-    }
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_mixed_gravity_flip_scene(real, big, blocks);
@@ -2865,13 +2844,7 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 200;
-    const two_core_scope_t core = two_core_scope_begin(true);
-    const int64_t start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-    const int64_t per_step = (timing_now_us() - start) / steps;
-    two_core_scope_end(core);
+    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
 
     log_step_time("settled plant garden", per_step);
 
@@ -2902,13 +2875,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
     }
 
     const int steps = 200;
-    const two_core_scope_t core = two_core_scope_begin(true);
-    const int64_t start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-    const int64_t per_step = (timing_now_us() - start) / steps;
-    two_core_scope_end(core);
+    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
 
     log_step_time("finished tree", per_step);
 
@@ -3150,15 +3117,6 @@ mirror_app_sand_marking(const uint8_t* cells, int w, int h, uint8_t* dirty_rows,
     }
 }
 
-static void
-seed_row_runs_full_width_for_gfx_test(uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n, int w, int h) {
-    for (int i = 0; i < h; i++) {
-        row_x0[i * ROW_MAX_RUNS] = 0;
-        row_x1[i * ROW_MAX_RUNS] = (uint16_t)w;
-        row_n[i] = 1;
-    }
-}
-
 /* The settle frames are whole frames, so gfx's dirty state and row_runs'
  * "previous" reach what a running app sees before the timed window starts,
  * instead of measuring an inflated first frame.
@@ -3216,6 +3174,17 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
     return present_us / measured_steps;
 }
 
+#endif /* DEVICE_BUILD */
+
+static void
+seed_row_runs_full_width_for_gfx_test(uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n, int w, int h) {
+    for (int i = 0; i < h; i++) {
+        row_x0[i * ROW_MAX_RUNS] = 0;
+        row_x1[i * ROW_MAX_RUNS] = (uint16_t)w;
+        row_n[i] = 1;
+    }
+}
+
 /* DENSE, CONTIGUOUS shape. Checkerboard exceeds ROW_MAX_RUNS (2).
  * row_runs_find() fails, row_runs_span_fallback() reports wide span.
  * gfx_present() handles. Scene shared with
@@ -3240,9 +3209,9 @@ build_falling_sand_present_scene(sand_t* real, uint8_t* big, uint8_t* dirty_rows
 
 static void
 test_present_cost_against_a_falling_sand_scene(void) {
-    uint8_t* big;
-    uint8_t* dirty_rows;
-    sand_test_grid_buffers_open(&big, &dirty_rows, REAL_W, REAL_H);
+    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
+    uint8_t* dirty_rows = malloc(REAL_H);
+    TEST_ASSERT_NOT_NULL(big);
     uint16_t* row_x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint16_t* row_x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint8_t* row_n = malloc(REAL_H);
@@ -3254,7 +3223,9 @@ test_present_cost_against_a_falling_sand_scene(void) {
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_falling_sand_present_scene(real, big, dirty_rows, row_x0, row_x1, row_n);
+    TEST_ASSERT_EQUAL_UINT8(1, dirty_rows[REAL_H / 2 - 1]);
 
+#ifdef DEVICE_BUILD
     int full_bands = 0, gathered = 0, partial_bands = 0;
     const int measured_steps = 20;
     const int64_t mean_us =
@@ -3268,11 +3239,14 @@ test_present_cost_against_a_falling_sand_scene(void) {
              "strip-sends)",
              REAL_W, REAL_H, (long long)mean_us, measured_steps, full_bands, gathered, partial_bands);
 
+#endif
+
     free(big);
     free(dirty_rows);
     free(row_x0);
     free(row_x1);
     free(row_n);
+#ifdef DEVICE_BUILD
 
     /* The scene owns its dirty-row buffer, which a bookkeeping fixture would
      * replace, leaving the present nothing to send and this row timing an
@@ -3285,6 +3259,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
      * movable thing is HOW MANY strips get sent, shown by the strip-send
      * counts beside the timing. */
     perf_target("present: falling sand", mean_us, 5810, 6690);
+#endif
     free(real);
 }
 
@@ -3293,9 +3268,9 @@ test_present_cost_against_a_falling_sand_scene(void) {
  * Missing the real pixel writes - a LOWER BOUND only. */
 static void
 test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
-    uint8_t* big;
-    uint8_t* dirty_rows;
-    sand_test_grid_buffers_open(&big, &dirty_rows, REAL_W, REAL_H);
+    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
+    uint8_t* dirty_rows = malloc(REAL_H);
+    TEST_ASSERT_NOT_NULL(big);
     uint16_t* row_x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint16_t* row_x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint8_t* row_n = malloc(REAL_H);
@@ -3307,18 +3282,23 @@ test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
     build_falling_sand_present_scene(real, big, dirty_rows, row_x0, row_x1, row_n);
+    TEST_ASSERT_EQUAL_UINT8(1, dirty_rows[REAL_H / 2 - 1]);
 
+#ifdef DEVICE_BUILD
     int full_bands = 0, gathered = 0, partial_bands = 0;
     int64_t sim_us = 0, mark_us = 0, present_us = 0;
     const int measured_steps = 20;
     run_present_against_scene(real, big, REAL_W, REAL_H, dirty_rows, row_x0, row_x1, row_n, 0, 1, 0, 5, measured_steps,
                               &full_bands, &gathered, &partial_bands, &sim_us, &mark_us, &present_us);
 
+#endif
+
     free(big);
     free(dirty_rows);
     free(row_x0);
     free(row_x1);
     free(row_n);
+#ifdef DEVICE_BUILD
 
     const int64_t total_us = sim_us + mark_us + present_us;
     const int present_pct = total_us > 0 ? (int)((present_us * 100) / total_us) : 0;
@@ -3331,9 +3311,11 @@ test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
              "frame time, falling sand checkerboard: present is %d%% of "
              "the total",
              present_pct);
+#endif
     free(real);
 }
 
+#ifdef DEVICE_BUILD
 static void
 test_present_cost_against_the_lava_stress_scene(void) {
     uint8_t* big;
@@ -3650,8 +3632,6 @@ measure_row_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int
     uint16_t* row_x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint16_t* row_x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint8_t* row_n = malloc(REAL_H);
-    TEST_ASSERT_NOT_NULL(row_big);
-    TEST_ASSERT_NOT_NULL(row_blocks);
     TEST_ASSERT_NOT_NULL(row_dirty);
     TEST_ASSERT_NOT_NULL(row_x0);
     TEST_ASSERT_NOT_NULL(row_x1);
@@ -3689,8 +3669,6 @@ measure_span_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, in
     uint16_t* span_x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint16_t* span_x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
     uint8_t* span_n = malloc(REAL_H);
-    TEST_ASSERT_NOT_NULL(span_big);
-    TEST_ASSERT_NOT_NULL(span_blocks);
     TEST_ASSERT_NOT_NULL(span_dirty);
     TEST_ASSERT_NOT_NULL(span_dirty_x0);
     TEST_ASSERT_NOT_NULL(span_dirty_x1);
@@ -4386,6 +4364,8 @@ test_the_sand_app_can_still_allocate_everything_it_needs(void) {
 
 void
 run_sand_perf_suite(void) {
+    RUN_TEST(test_present_cost_against_a_falling_sand_scene);
+    RUN_TEST(test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene);
     RUN_TEST(test_acid_bubbles_do_not_favour_one_wall);
     RUN_TEST(test_acid_bubbles_still_fire_once_the_block_is_asleep);
     RUN_TEST(test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk);
@@ -4463,8 +4443,6 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget);
     RUN_TEST(test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget);
 
-    RUN_TEST(test_present_cost_against_a_falling_sand_scene);
-    RUN_TEST(test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene);
     RUN_TEST(test_present_cost_against_the_lava_stress_scene);
     RUN_TEST(test_present_cost_against_the_thermal_shock_scene);
     RUN_TEST(test_present_cost_against_a_landscape_gas_over_sand_pile);

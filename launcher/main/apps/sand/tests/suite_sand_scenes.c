@@ -868,8 +868,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
     uint8_t* blocks;
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     uint8_t* ever_cullet = malloc(EVER_CULLET_BYTES);
-    const bool have_all = (big != NULL && blocks != NULL && ever_cullet != NULL);
-    if (!have_all) {
+    if (ever_cullet == NULL) {
         free(big);
         free(blocks);
         free(ever_cullet);
@@ -1183,14 +1182,6 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-    const bool have_all = (big != NULL && blocks != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        TEST_FAIL_MESSAGE("need a grid and a block map for the boiler "
-                          "scene, and at least one of the two failed to "
-                          "allocate");
-    }
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 43u);
@@ -1817,14 +1808,6 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-    const bool have_all = (big != NULL && blocks != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        TEST_FAIL_MESSAGE("need a grid and a block map for the wet earth "
-                          "scene, and at least one of the two failed to "
-                          "allocate");
-    }
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 53u);
@@ -2364,8 +2347,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
     uint8_t* blocks;
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     impulse_t* impulses = malloc((size_t)GUNPOWDER_BASIN_IMPULSE_MAX * sizeof *impulses);
-    const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
-    if (!have_all) {
+    if (impulses == NULL) {
         free(big);
         free(blocks);
         free(impulses);
@@ -3356,7 +3338,7 @@ test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
     landscape_fixture(&s2, big, blocks, 29u);
     build_landscape_bed_scene(&s2);
 
-    const int asleep_before = (REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const int asleep_before = (int)sand_sleep_block_bytes(REAL_W, REAL_H);
 
     for (int i = 0; i < LANDSCAPE_PRIME_STEPS; i++) {
         landscape_water_pour(&s2, i);

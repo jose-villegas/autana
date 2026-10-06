@@ -109,10 +109,11 @@ Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper 
 `python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
 compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
 on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
-Extract a shared owner for each new file pair or increased token total.
-Each sorted file pair has its own budget: fragments may change shape while
-their total cloned tokens does not grow. Renames map to the base names;
-line shifts do not change a budget. Removing another file pair gives no headroom.
+Extract a shared owner for each new clone that exceeds its file pair's allowance.
+Each sorted file pair has its own budget: new fragments may use only the
+tokens of base fragments that vanished from HEAD; a surviving shrink gives no
+headroom. Renames map to the base names; line shifts do not change a budget.
+Removing another file pair gives no headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without

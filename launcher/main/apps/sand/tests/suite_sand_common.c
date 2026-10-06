@@ -443,9 +443,12 @@ collect_core1_lane(void) {
 void
 sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h) {
     *grid = malloc((size_t)w * (size_t)h);
-    *blocks = malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(*grid);
-    TEST_ASSERT_NOT_NULL(*blocks);
+    *blocks = malloc(sand_sleep_block_bytes(w, h));
+    if (*grid == NULL || *blocks == NULL) {
+        free(*grid);
+        free(*blocks);
+        TEST_FAIL_MESSAGE("grid or block map failed to allocate");
+    }
 }
 
 sand_t*
