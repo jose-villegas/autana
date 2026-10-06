@@ -27,7 +27,7 @@ and means something different by each:
 |---|---|
 | **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
 | **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
-| **boot** | what runs once before the loop exists and never again: `boot/` (the startup animation) and `selftest/` (the power-on self test and the on-board suite runner) |
+| **boot** | what runs once before the loop exists: `main.c`'s startup and the animation in `boot/`. The power-on self test and the suite runner in `selftest/` run then too, and an app may run either again later |
 
 The top-level folder `launcher/` is the whole firmware, not the home
 screen.
@@ -37,11 +37,12 @@ screen.
 ## Layers
 
 Each row may include anything in a row below it, and the root header
-`build_variant.h`, never a row
-above or a folder beside it in the same row. The top row is the two callers,
-and neither includes the other: `main.c` starts the board and calls
-`shell_run()`, and the apps. The shell reaches an app only through the
-callbacks `app/app.h` declares. Folders that touch hardware are marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
+`build_variant.h`, never a row above or a folder beside it in the same row.
+The top row is the two callers, and neither includes the other: `main.c`
+starts the board and calls `shell_run()`, and the apps. The shell reaches an
+app only through the callbacks `app/app.h` declares. Folders that touch
+hardware are marked. `ls launcher/main/<folder>` is the inventory; this is
+the shape.
 
 ```mermaid
 flowchart TB
@@ -54,7 +55,7 @@ flowchart TB
     subgraph R2["the runtime"]
         Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
     end
-    subgraph R3["before the loop"]
+    subgraph R3["boot and self test"]
         Boot["boot/<br/><i>the startup animation</i>"]
         Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end

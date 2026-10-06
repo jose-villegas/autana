@@ -35,13 +35,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from check_comment_length import EXCLUDED, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
-LOWER = ("launcher/main/app/", "launcher/main/boot/", "launcher/main/selftest/", "launcher/main/display/", "launcher/main/gfx/",
-         "launcher/main/input/", "launcher/main/render/", "launcher/main/ui/",
-         "launcher/main/util/", "launcher/main/anim/", "launcher/main/asset/", "launcher/main/console/", "launcher/test/")
+# Below the apps: all of launcher/main/ except apps/, and the test tree. A
+# new folder is checked from the day it exists.
+ENGINE = ("launcher/main/", "launcher/test/")
 APPS = "launcher/main/apps"
 
-# The file that starts the shell, which switches between apps without knowing one.
-SHELL = ("launcher/main/main.c",)
+
+def below_apps(rp):
+    return rp.startswith(ENGINE) and not rp.startswith(APPS + "/")
 
 # The diagnostics build is the variant behind build.diag, which every layer
 # may name; the app that happens to share the word is what this forbids.
@@ -70,14 +71,14 @@ def sources(root):
     for rp in tracked_files(root):
         if not rp.endswith((".c", ".h")) or rp.startswith(EXCLUDED):
             continue
-        if rp.startswith(LOWER) or rp in SHELL:
+        if below_apps(rp):
             yield rp
 
 
 def documents(root, names):
     own = ("docs/plans/",) + tuple(f"docs/{n}/" for n in names)
     for rp in tracked_files(root):
-        if rp.endswith(".md") and rp.startswith(("docs/",) + LOWER) and not rp.startswith(own):
+        if rp.endswith(".md") and (rp.startswith("docs/") or below_apps(rp)) and not rp.startswith(own):
             yield rp
 
 

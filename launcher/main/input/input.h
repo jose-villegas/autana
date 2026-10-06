@@ -1,7 +1,8 @@
 /*
- * input: touch, buttons and motion, read once a frame into input_t. It
- * lives below app/app.h so no input/ header includes upward. The shell's calls that fill it are in
- * input_shell.h.
+ * input: touch, buttons and motion. Touch and buttons arrive once a frame
+ * in input_t; motion is read through imu_read(). input_t lives below
+ * app/app.h so no input/ header includes upward. The shell's calls that
+ * fill it are in input_shell.h.
  */
 #pragma once
 

@@ -3,7 +3,7 @@
  * track sets an asset bundle carries. Nothing here knows what a track
  * drives.
  *
- * This header holds the folder's description only; include anim_track.h or
- * anim_tracks.h for the code.
+ * This header declares nothing; include the folder's other headers for
+ * the code.
  */
 #pragma once
