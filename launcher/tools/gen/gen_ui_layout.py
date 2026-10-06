@@ -2,7 +2,7 @@
 """Bake an authored screen layout into a fixed firmware table.
 
     python tools/gen/gen_ui_layout.py main/ui/<screen>_layout.json \\
-        main/ui/<screen>_layout_generated.h [--check]
+        main/ui/<screen>_layout_generated.h
 
 The JSON names its own screen and elements, so one generator serves every
 authored screen. Every C identifier in the output derives from `screen`.
@@ -153,15 +153,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--check", action="store_true", help="fail if the output file is stale")
     args = parser.parse_args()
     try:
         baked = generate(json.loads(args.source.read_text(encoding="utf-8")))
-        if args.check:
-            if args.output.read_text(encoding="utf-8") != baked:
-                parser.exit(1, f"{args.output} is stale; regenerate it\n")
-        else:
-            args.output.write_text(baked, encoding="utf-8", newline="\n")
+        args.output.write_text(baked, encoding="utf-8", newline="\n")
     except (OSError, json.JSONDecodeError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 
