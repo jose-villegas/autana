@@ -134,29 +134,29 @@ def main():
                     dest[dy * dest_w + dx] = v
 
     out = sys.stdout
-    out.write("/*" + "=" * 77 + "\n")
-    out.write(" * GENERATED FILE - do not edit.\n")
-    out.write(" *\n")
-    out.write(" *     python tools/gen_captured_slope.py <screenshot.png> > captured_slope_data.h\n")
-    out.write(" *\n")
     out.write(
-        " * A device screenshot of the reported slow scenario - a sand pile\n"
-        " * against a diagonal water surface - sampled at its native 4px-per-cell\n"
-        " * resolution (92x112) and upscaled 2x (nearest) to the perf suite's own\n"
-        " * 184x224 grid. Classified by colour: empty is near-black, water is\n"
+        "/*\n"
+        " * A test fixture: a device screenshot of the reported slow scenario - a\n"
+        " * sand pile against a diagonal water surface - sampled by\n"
+        " * tools/gen_captured_slope.py at its native 4px-per-cell resolution\n"
+        " * (92x112) and upscaled 2x (nearest) to the perf suite's own 184x224\n"
+        " * grid. Classified by colour: empty is near-black, water is\n"
         " * blue-dominant, sand is red-dominant - see gen_captured_slope.py for the\n"
-        " * exact thresholds. Water cells are filled to MASS_MAX.\n"
+        " * exact thresholds. Water cells are filled to MASS_MAX. The screenshot\n"
+        " * is not in the repository, so this table is the scene's source; a new\n"
+        " * scenario is a new capture.\n"
+        " */\n"
     )
-    out.write(" *" + "=" * 77 + "*/\n")
     out.write("#pragma once\n\n")
     out.write("#include <stdint.h>\n\n")
     out.write("#define CAPTURED_SLOPE_W %d\n" % dest_w)
     out.write("#define CAPTURED_SLOPE_H %d\n\n" % dest_h)
+    out.write("/* One row of the grid per line. */\n/* clang-format off */\n")
     out.write("static const uint8_t captured_slope_cells[CAPTURED_SLOPE_W * CAPTURED_SLOPE_H] = {\n")
     for y in range(dest_h):
         row = dest[y * dest_w : (y + 1) * dest_w]
         out.write("    " + ",".join(str(v) for v in row) + ",\n")
-    out.write("};\n")
+    out.write("};\n/* clang-format on */\n")
 
 
 if __name__ == "__main__":

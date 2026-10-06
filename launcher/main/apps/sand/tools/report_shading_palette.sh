@@ -5,13 +5,13 @@
 # both ways for a human to judge - see shading_palette.c's own top comment.
 #
 # Usage:
-#   main/apps/sand/tools/report_shading_palette.sh [results-dir] [header-path]
+#   main/apps/sand/tools/report_shading_palette.sh [header-path] [results-dir]
 #
-# Writes stats.txt, mapping.csv, palette_swatches.png, and per scene
-# scene_<name>.png (original | 256 | 16 dithered) and
-# scene_<name>_16_per_scene.png into results-dir (default: this tool's
-# build/ folder), and regenerates main/apps/sand/sand_palette256.h - the
-# device's own copy of the same palette. The sweep calls material_colours()
+# Regenerates header-path (default main/apps/sand/sand_palette256.h, the
+# device's own copy of the same palette) and writes stats.txt, mapping.csv,
+# palette_swatches.png, and per scene scene_<name>.png (original | 256 | 16
+# dithered) and scene_<name>_16_per_scene.png into results-dir (default:
+# this tool's build/ folder). The sweep calls material_colours()
 # a few billion times, so a run takes a minute or two.
 
 set -eu
@@ -22,7 +22,7 @@ MAIN_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 
 BUILD_DIR="$SCRIPT_DIR/build"
-RESULTS_DIR="${1:-$BUILD_DIR/shading_palette_results}"
+RESULTS_DIR="${2:-$BUILD_DIR/shading_palette_results}"
 
 # shellcheck source=../../../../tools/build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
@@ -58,4 +58,4 @@ OUT_BIN="$BUILD_DIR/shading_palette"
 
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
-"$OUT_BIN" "$RESULTS_DIR" minimax "${2:-$SAND_DIR/sand_palette256.h}"
+"$OUT_BIN" "$RESULTS_DIR" minimax "${1:-$SAND_DIR/sand_palette256.h}"

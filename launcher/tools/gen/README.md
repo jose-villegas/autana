@@ -16,7 +16,8 @@
 ## The rules every generator follows
 
 Apps keep their own generators in `apps/<name>/tools/`; the rules are the
-same. `grep -rl "GENERATED FILE" launcher/main` lists every output.
+same. `python scripts/gates/check_generated_files.py` lists every output and
+checks it.
 
 **The output is checked in, beside the code that reads it.** A build-time
 generator would put Python on the critical path of every clean build.
@@ -24,6 +25,10 @@ generator would put Python on the critical path of every clean build.
 **The output says so, and says how.** Its first line is a banner naming the
 exact command that regenerates it, where someone about to hand-edit it will
 see it first. Commit the raw output; never run the formatter over it.
+`scripts/gates/check_generated_files.py` reruns that command in CI and fails
+on any difference, so the command must name the file it writes and use only
+inputs in the repository - see
+[Generated-Files.md](../../../docs/tools/Generated-Files.md).
 
 **The generator validates itself before emitting anything.**
 `gen_zeta_curve.py` checks its zeta against known values and exits rather

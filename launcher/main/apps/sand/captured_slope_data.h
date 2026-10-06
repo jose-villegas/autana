@@ -1,15 +1,14 @@
-/*=============================================================================
- * GENERATED FILE - do not edit.
- *
- *     python tools/gen_captured_slope.py <screenshot.png> > captured_slope_data.h
- *
- * A device screenshot of the reported slow scenario - a sand pile
- * against a diagonal water surface - sampled at its native 4px-per-cell
- * resolution (92x112) and upscaled 2x (nearest) to the perf suite's own
- * 184x224 grid. Classified by colour: empty is near-black, water is
+/*
+ * A test fixture: a device screenshot of the reported slow scenario - a
+ * sand pile against a diagonal water surface - sampled by
+ * tools/gen_captured_slope.py at its native 4px-per-cell resolution
+ * (92x112) and upscaled 2x (nearest) to the perf suite's own 184x224
+ * grid. Classified by colour: empty is near-black, water is
  * blue-dominant, sand is red-dominant - see gen_captured_slope.py for the
- * exact thresholds. Water cells are filled to MASS_MAX.
- *=============================================================================*/
+ * exact thresholds. Water cells are filled to MASS_MAX. The screenshot
+ * is not in the repository, so this table is the scene's source; a new
+ * scenario is a new capture.
+ */
 #pragma once
 
 #include <stdint.h>
@@ -17,6 +16,8 @@
 #define CAPTURED_SLOPE_W 184
 #define CAPTURED_SLOPE_H 224
 
+/* One row of the grid per line. */
+/* clang-format off */
 static const uint8_t captured_slope_cells[CAPTURED_SLOPE_W * CAPTURED_SLOPE_H] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -243,3 +244,4 @@ static const uint8_t captured_slope_cells[CAPTURED_SLOPE_W * CAPTURED_SLOPE_H] =
     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
 };
+/* clang-format on */

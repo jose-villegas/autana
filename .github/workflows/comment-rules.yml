@@ -112,6 +112,13 @@ jobs:
       - name: check-math.mjs dependencies
         run: npm ci --prefix scripts/gates
 
+      # Every banner's command, rerun into a temporary folder; the
+      # generators need the Pillow and numpy installed above, and the sand
+      # palette's needs the runner's C compiler.
+      - name: Every generated file is what its banner's command makes
+        if: ${{ !cancelled() }}
+        run: python3 scripts/gates/check_generated_files.py
+
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
