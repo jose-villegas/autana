@@ -465,7 +465,7 @@ casts from points inside it. `path = { animation, node }` names the clip the
 camera flies: `animation` is its `NAME.anim.toml`
 ([Animation-Tracks.md](../Animation-Tracks.md)), relative to the scene file,
 and `node` the glTF node in it that is the camera. The clip's id is `NAME`, and
-it travels in the scene's bundle; `<node>/translation` must fit a track name's
+it travels in the scene's pack; `<node>/translation` must fit a track name's
 31 bytes. `background` (0xRRGGBB, default black) is the colour
 a pixel no mesh covers shows, on the panel and in the source reference. Without
 a path the camera sits at its transform, looking down its own -Z.
@@ -480,13 +480,13 @@ lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
 
 ## The scene entry
 
-`build_pack.py` bakes each scene file into a `SCNE` entry of its own bundle,
-named after the file: `NAME.scene.toml` is entry and bundle `NAME`, beside every
+`build_pack.py` bakes each scene file into a `SCNE` entry of its own pack,
+named after the file: `NAME.scene.toml` is entry and pack `NAME`, beside every
 mesh its renderers name and the clip its camera flies
 ([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
 reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
 mesh and the clip, and fails naming whichever is missing or malformed. A scene
-and its clip cannot share a stem ([assets/README.md](../assets/README.md#bundles)).
+and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
 
 An entity is each mesh renderer and the camera, in file order, found by name at
 run time. Its transform is baked as a 3x3 (rotation times scale) and a

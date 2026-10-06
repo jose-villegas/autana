@@ -447,7 +447,7 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
-# The asset bundles the suites read, one per root asset in the tree.
+# The asset packs the suites read, one per root asset in the tree.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR
 "$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" "$MAIN_DIR" > /dev/null

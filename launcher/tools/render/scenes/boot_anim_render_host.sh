@@ -31,7 +31,7 @@ middle|1500|368x448|nopin
 late|3000|368x448|nopin
 "
 
-# The camera and space come from the boot clip's bundle; AUTANA_ASSET_DIR set
+# The camera and space come from the boot clip's pack; AUTANA_ASSET_DIR set
 # to a folder without it renders the rest pose.
 scene_assets=main/boot
 

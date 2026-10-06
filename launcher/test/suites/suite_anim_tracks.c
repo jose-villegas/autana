@@ -1,7 +1,7 @@
 /*
  * Portable suite: anim/anim_tracks, the TRCK pack entry. On a host the clip
  * tools/tests/anim_probe.py packs (AUTANA_ANIM_PROBE) samples as the Python
- * sampler does; on both, the boot clip's shipped bundle opens.
+ * sampler does; on both, the boot clip's shipped pack opens.
  */
 
 #include <stdint.h>
@@ -469,12 +469,12 @@ test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error(void) 
 }
 
 static void
-test_every_clip_in_the_boot_clip_s_bundle_opens(void) {
-    const asset_pack_t* pack = asset_store_bundle(BOOT_CLIP);
-    TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the boot clip's bundle did not mount: see the log above");
+test_every_clip_in_the_boot_clip_s_pack_opens(void) {
+    const asset_pack_t* pack = asset_store_pack(BOOT_CLIP);
+    TEST_ASSERT_NOT_NULL_MESSAGE(pack, "the boot clip's pack did not mount: see the log above");
     const int clips = open_every_clip(pack);
     asset_store_release(BOOT_CLIP);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, clips, "the bundle holds no clip");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, clips, "the pack holds no clip");
 }
 
 #ifndef DEVICE_BUILD
@@ -578,7 +578,7 @@ suite_anim_tracks(void) {
     RUN_TEST(test_a_node_the_clip_does_not_scale_keeps_unit_scale);
     RUN_TEST(test_a_node_without_a_translation_or_a_rotation_is_not_found);
     RUN_TEST(test_a_part_of_the_wrong_width_or_an_unflagged_rotation_is_a_format_error);
-    RUN_TEST(test_every_clip_in_the_boot_clip_s_bundle_opens);
+    RUN_TEST(test_every_clip_in_the_boot_clip_s_pack_opens);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_the_probe_clip_samples_as_the_python_sampler);
     RUN_TEST(test_a_missing_clip_and_an_entry_of_another_type_are_told_apart);

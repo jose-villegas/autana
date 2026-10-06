@@ -1,3 +1,4 @@
+/* Authored layout validation, persistence and history tests. */
 #include "layout_document.h"
 
 #include <chrono>
@@ -8,9 +9,12 @@
 #include <string>
 #include <utility>
 
+#include <nlohmann/json.hpp>
+
+#include "editor/runtime.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
 
 namespace {
 
@@ -43,18 +47,6 @@ class TemporaryLayout {
         return path_;
     }
 
-    nlohmann::ordered_json
-    read() const {
-        std::ifstream stream(path_);
-        return nlohmann::ordered_json::parse(stream);
-    }
-
-    void
-    write(const nlohmann::ordered_json& source) const {
-        std::ofstream stream(path_, std::ios::trunc);
-        stream << source.dump(2) << '\n';
-    }
-
   private:
     std::filesystem::path path_;
 };
@@ -72,21 +64,14 @@ rect_of(LayoutDocument& document, LayoutOrientation orientation, const char* id)
     return document.layout(orientation).rects[document.element_index(id).value()];
 }
 
-std::string
-load_error(const TemporaryLayout& source) {
-    std::string error;
-    EXPECT_FALSE(LayoutDocument::load(source.path(), error));
-    return error;
-}
-
 TEST(LayoutDocument, LoadsScreenElementsAndBothOrientations) {
     const LayoutDocument document = load_layout();
 
     EXPECT_TRUE(document.validate().empty());
     EXPECT_EQ(document.screen(), "control_center");
     EXPECT_EQ(document.title(), "Control Center");
-    EXPECT_EQ(document.layout(LayoutOrientation::Landscape).canvas_width, 448);
-    EXPECT_EQ(document.layout(LayoutOrientation::Portrait).canvas_height, 448);
+    EXPECT_EQ(document.layout(LayoutOrientation::Landscape).canvas_width, editor_runtime_panel_height());
+    EXPECT_EQ(document.layout(LayoutOrientation::Portrait).canvas_height, editor_runtime_panel_height());
     ASSERT_EQ(document.elements().size(), document.layout(LayoutOrientation::Portrait).rects.size());
     EXPECT_EQ(document.elements().front().id, "wifi");
     EXPECT_EQ(document.elements().front().label, "Wi-Fi");
@@ -109,15 +94,16 @@ TEST(LayoutDocument, RejectsPanelOverlap) {
 
 TEST(LayoutDocument, RejectsUndersizedInteractiveTarget) {
     LayoutDocument document = load_layout();
-    rect_of(document, LayoutOrientation::Portrait, "volume").height = 55;
+    rect_of(document, LayoutOrientation::Portrait, "volume").height = editor_runtime_tap_min() - 1;
 
-    EXPECT_THAT(document.validate(), Contains("portrait: volume is smaller than 44px"));
+    EXPECT_THAT(document.validate(), Contains("portrait: volume is smaller than "
+                                              + std::to_string(editor_runtime_tap_min()) + "px tap target"));
 }
 
 TEST(LayoutDocument, AllowsUndersizedPassiveElement) {
     LayoutDocument document = load_layout();
 
-    EXPECT_LT(rect_of(document, LayoutOrientation::Portrait, "notifications_header").height, 56);
+    EXPECT_LT(rect_of(document, LayoutOrientation::Portrait, "notifications_header").height, editor_runtime_tap_min());
     EXPECT_TRUE(document.validate().empty());
 }
 
@@ -160,75 +146,47 @@ TEST(LayoutDocument, RefusesToSaveInvalidGeometry) {
 
     std::string error;
     EXPECT_FALSE(document.save(error));
-    EXPECT_THAT(error, HasSubstr("canvas must be 368 x 448"));
+    EXPECT_THAT(error, HasSubstr("canvas must be " + std::to_string(editor_runtime_panel_width()) + " x "
+                                 + std::to_string(editor_runtime_panel_height())));
 }
 
-TEST(LayoutDocument, RejectsUnexpectedFieldsAndOldSchema) {
-    TemporaryLayout source;
-    nlohmann::ordered_json json = source.read();
-    json["unexpected"] = true;
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("unexpected fields"));
-
-    json.erase("unexpected");
-    json["schema_version"] = 1;
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("schema_version"));
+TEST(LayoutDocument, RejectsSharedBadDocuments) {
+    std::size_t count = 0;
+    for (const auto& fixture : std::filesystem::directory_iterator(EDITOR_TEST_FIXTURE_DIR)) {
+        if (fixture.path().extension() != ".json") {
+            continue;
+        }
+        SCOPED_TRACE(fixture.path().filename().string());
+        const auto source = nlohmann::json::parse(read_bytes(fixture.path()));
+        TemporaryLayout document;
+        {
+            std::ofstream stream(document.path(), std::ios::binary | std::ios::trunc);
+            stream << source.at("document").dump();
+        }
+        std::string error;
+        EXPECT_FALSE(LayoutDocument::load(document.path(), error));
+        EXPECT_THAT(error, HasSubstr(source.at("error").get<std::string>()));
+        count++;
+    }
+    EXPECT_GT(count, 0u);
 }
 
-TEST(LayoutDocument, RejectsMalformedElements) {
-    TemporaryLayout source;
-    const nlohmann::ordered_json original = source.read();
-
-    nlohmann::ordered_json json = original;
-    json["elements"][0]["id"] = "Wi-Fi";
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("lower_snake_case"));
-
-    json = original;
-    json["elements"][1]["id"] = "wifi";
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("repeated"));
-
-    json = original;
-    json["elements"][0]["interactive"] = "yes";
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("true or false"));
-
-    json = original;
-    json["elements"] = nlohmann::ordered_json::array();
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("non-empty list"));
-
-    json = original;
-    json["screen"] = "Control Center";
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("screen must be"));
+TEST(LayoutDocument, RefusesWrongRectCount) {
+    LayoutDocument document = load_layout();
+    document.layout(LayoutOrientation::Portrait).rects.pop_back();
+    EXPECT_THAT(document.validate(), Contains("portrait: rects must contain exactly the declared element ids"));
 }
 
-TEST(LayoutDocument, RejectsMismatchedAndMalformedRectangles) {
-    TemporaryLayout source;
-    const nlohmann::ordered_json original = source.read();
-
-    nlohmann::ordered_json json = original;
-    json["orientations"]["portrait"]["rects"].erase("wifi");
-    json["orientations"]["portrait"]["rects"]["stray"] = {1, 2, 3, 4};
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("rects is missing wifi"));
-
-    json = original;
-    json["orientations"]["portrait"]["rects"]["wifi"] = {1, 2, 3};
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("rectangle must be"));
-
-    json["orientations"]["portrait"]["rects"]["wifi"] = {1, 2, "wide", 4};
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("components must be integers"));
-
-    json = original;
-    json["orientations"]["landscape"]["canvas"] = {448};
-    source.write(json);
-    EXPECT_THAT(load_error(source), HasSubstr("canvas must be"));
+TEST(LayoutDocument, BakesEditedGeometryAndRefusesInvalidGeometry) {
+    LayoutDocument document = load_layout();
+    rect_of(document, LayoutOrientation::Portrait, "wifi").x++;
+    const std::filesystem::path header_path = "custom folder/output.h";
+    const std::string baked = bake_header(document, header_path);
+    EXPECT_THAT(baked, HasSubstr("[CONTROL_CENTER_ELEMENT_WIFI] = {17,"));
+    EXPECT_THAT(baked, HasSubstr(document.path().generic_string()));
+    EXPECT_THAT(baked, HasSubstr("\"custom folder/output.h\""));
+    document.layout(LayoutOrientation::Portrait).rects.pop_back();
+    EXPECT_THROW(bake_header(document, header_path), std::runtime_error);
 }
 
 TEST(LayoutDocument, HistoryTracksGeometryAndSavedRevision) {

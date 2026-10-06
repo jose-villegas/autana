@@ -18,9 +18,9 @@ to the level editor already banked in that roadmap.
 | piece | where |
 |---|---|
 | authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
-| generator | `launcher/tools/gen/gen_ui_layout.py`, one for every screen; every C identifier derives from the JSON's `screen` |
+| generator | `bake_header()` in `editor/src/layout_document.cpp`, exposed by `editor_layout_bake`; every C identifier derives from the JSON's `screen` |
 | baked table | `<screen>_layout_generated.h`, the only form the device links |
-| document | `editor/src/layout_document.{h,cpp}`, one type for every screen, applying the generator's rules |
+| document | `editor/src/layout_document.{h,cpp}`, one type for every screen, owning the rules and header emission |
 | renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
 | shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
 
@@ -40,7 +40,7 @@ previewed.
 The render harness (`launcher/tools/render/`) compiles the firmware's
 host-portable C: `main/gfx/gfx.c` plus a scene such as `main/boot/boot_anim.c`,
 unmodified, and renders **a real frame by the real firmware code** on the
-host. Authored data reaches it as a baked header or an asset bundle built
+host. Authored data reaches it as a baked header or an asset pack built
 from its source, so a draft can be baked and rendered without touching the
 committed source.
 
@@ -49,7 +49,7 @@ it for a second. This plan is the third:
 
 | | authored data | generator | rendered by |
 |---|---|---|---|
-| boot animation | `boot_anim_motion.glb`, `boot_anim_timeline.json` | `tracks_asset.py` (a bundle), `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
+| boot animation | `boot_anim_motion.glb`, `boot_anim_timeline.json` | `tracks_asset.py` (a pack), `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
 | level editor | material blocks | bake to a header | real sand code on host |
 | **UI editor (this)** | **a screen's layout** | **bake to a header** | **real `gfx.c` + pure geometry on host** |
 

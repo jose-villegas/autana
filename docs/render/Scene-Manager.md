@@ -29,8 +29,8 @@ pack, so on the board they read flash in place and cost no RAM.
 
 | Call | Meaning |
 |---|---|
-| `scene_load(id, &why)` | mounts the [asset bundle](../assets/README.md#the-store) `id` and loads its scene entry `id`, every mesh it names and its camera's clip, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, with the entry's id and the pack's status |
-| `scene_unload(scene)` | frees it and releases its bundle; its camera, if active, is deactivated |
+| `scene_load(id, &why)` | mounts the [asset pack](../assets/README.md#the-store) `id` and loads its scene entry `id`, every mesh it names and its camera's clip, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, with the entry's id and the pack's status |
+| `scene_unload(scene)` | frees it and releases its pack; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
 | `scene_camera_lens(scene, camera)` | a camera's lens and path (NULL: the first), to sample without drawing |
@@ -85,7 +85,7 @@ sooner.
 
 Scenes are not taken from the app arena: it gives memory back only in the
 reverse order it was taken, and scenes unload in any order. A scene is opened
-from an `asset_pack_t`: `scene_load()` mounts the scene's bundle, and
+from an `asset_pack_t`: `scene_load()` mounts the scene's pack, and
 `scene_load_from()` takes the pack, so a test can load from one it builds. The
 pack outlives the scene, which reads its entry, meshes and clip in place.
 

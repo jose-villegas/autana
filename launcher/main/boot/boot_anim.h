@@ -45,7 +45,7 @@
 #define BOOT_ANIM_TQ  8                  /* t's own fixed point */
 
 /* How the camera and the space move: the boot clip's nodes "camera" and
- * "space", pointing into its bundle, or the rest pose when the clip cannot be
+ * "space", pointing into its pack, or the rest pose when the clip cannot be
  * read. */
 typedef struct {
     anim_clip_t clip;
@@ -54,12 +54,12 @@ typedef struct {
     bool from_pack;
 } boot_anim_motion_t;
 
-/* Fills `out` from the boot clip's bundle, mounting it. On any failure it logs
+/* Fills `out` from the boot clip's pack, mounting it. On any failure it logs
  * why and fills the rest pose, so the animation still draws. */
 void boot_anim_motion_load(boot_anim_motion_t* out);
 
-/* Drops the bundle boot_anim_motion_load() mounted, if it did, and leaves the
- * rest pose in `motion`, which no longer points into the bundle. */
+/* Drops the pack boot_anim_motion_load() mounted, if it did, and leaves the
+ * rest pose in `motion`, which no longer points into the pack. */
 void boot_anim_motion_release(boot_anim_motion_t* motion);
 
 typedef struct {

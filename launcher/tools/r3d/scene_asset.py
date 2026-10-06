@@ -5,7 +5,7 @@ on the host; main/scene/scene_asset.c is the firmware's.
 Each object that is a mesh renderer or the camera is an entity, in file
 order, found by name at run time. A renderer names its mesh by pack id and
 the camera its path by clip id (the stem of the .anim.toml the scene names)
-and node, all opened from the scene's bundle at scene_load(). Lights, the
+and node, all opened from the scene's pack at scene_load(). Lights, the
 camera region and the tone map are bake settings and stay offline. A
 transform is baked as a 3x3 (rotation times scale) and a position, so the
 device does no trigonometry. The layout is in docs/render/Scene-Files.md,
@@ -38,7 +38,7 @@ class SceneError(ValueError):
 
 
 def scene_id(path):
-    """The pack id of a .scene.toml, and the name of its bundle: its stem."""
+    """The pack id of a .scene.toml, and the name of its pack: its stem."""
     return pathlib.Path(path).name.removesuffix(SUFFIX)
 
 
