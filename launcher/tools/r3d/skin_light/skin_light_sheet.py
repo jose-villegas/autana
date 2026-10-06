@@ -1,13 +1,15 @@
 """Draw skin_light_bench's sheet frame: the mesh lit by every variant, and
 beside each its error against the reference.
 
-    python tools/r3d/skin_light/skin_light_sheet.py ASSET.glb SHEET.bin OUT.png
+    python tools/r3d/skin_light/skin_light_sheet.py ASSET.glb BENCH_DIR OUT.png [--sheet CLIP[:PHASE]]
 
-Run from launcher/. Needs Pillow. SHEET.bin is the bench's native RGB565
-colour of every vertex, one run per lit variant in the bench's order; the
-pose is skin_light_data.py's sheet frame.
+Run from launcher/. Needs Pillow. BENCH_DIR holds the bench's sheet.bin, the
+native RGB565 colour of every vertex, one run per lit variant, and
+sheet.txt, their labels; --sheet must name the frame the data was written
+with.
 """
 
+import argparse
 import pathlib
 import struct
 import sys
@@ -19,12 +21,6 @@ from r3d import gltf_preview, gltf_skin  # noqa: E402
 from r3d.skin_light import skin_light_data  # noqa: E402
 from device.gfx_color import expand  # noqa: E402
 
-# skin_light_bench.c's VARIANTS after the skin-only row, as the sheet labels them.
-LABELS = (
-    "Reference", "Direct, float", "Direct, int8",
-    "8x8 nearest", "16x16 nearest", "32x32 nearest",
-    "8x8 bilinear", "16x16 bilinear", "32x32 bilinear",
-)
 COLUMNS = 3
 TILE = (300, 240)
 VIEW = (30.0, 14.0)
@@ -48,16 +44,16 @@ def label(tile, text):
     return tile
 
 
-def sheet(asset, colours):
-    clip, time = skin_light_data.sheet_frame(asset)
+def sheet(asset, labels, colours, spec):
+    clip, time = skin_light_data.sheet_frame(asset, spec)
     positions, _ = asset.skin(asset.sample(clip, time))
     centre, radius = gltf_preview.bounds(positions)
     camera = gltf_preview.Camera(centre, radius * 0.62, *VIEW, TILE[0] * gltf_preview.SUPERSAMPLE,
                                  TILE[1] * gltf_preview.SUPERSAMPLE)
     reference = colours[0]
-    rows = (len(LABELS) + COLUMNS - 1) // COLUMNS
+    rows = (len(labels) + COLUMNS - 1) // COLUMNS
     out = Image.new("RGB", (TILE[0] * COLUMNS * 2, TILE[1] * rows + LEGEND), (255, 255, 255))
-    for index, (name, lit) in enumerate(zip(LABELS, colours)):
+    for index, (name, lit) in enumerate(zip(labels, colours)):
         x, y = (index % COLUMNS) * 2 * TILE[0], (index // COLUMNS) * TILE[1]
         out.paste(label(gltf_preview.render(asset, camera, positions, TILE, lit), name), (x, y))
         errors = [heat(max(abs(a - b) for a, b in zip(got, want))) for got, want in zip(lit, reference)]
@@ -76,16 +72,21 @@ def legend(image, top):
 
 
 def main():
-    if len(sys.argv) != 4:
-        sys.exit(__doc__)
-    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_glb(sys.argv[1]))
-    raw = pathlib.Path(sys.argv[2]).read_bytes()
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("asset")
+    parser.add_argument("bench", type=pathlib.Path)
+    parser.add_argument("out")
+    skin_light_data.sheet_argument(parser)
+    args = parser.parse_args()
+    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_glb(args.asset))
+    labels = (args.bench / "sheet.txt").read_text(encoding="utf-8").splitlines()
+    raw = (args.bench / "sheet.bin").read_bytes()
     count = len(asset.positions)
     values = struct.unpack(f"<{len(raw) // 2}H", raw)
-    if len(values) != count * len(LABELS):
-        sys.exit(f"{sys.argv[2]}: expected {len(LABELS)} runs of {count} colours")
-    colours = [[unpack(v) for v in values[i * count:(i + 1) * count]] for i in range(len(LABELS))]
-    sheet(asset, colours).save(sys.argv[3], optimize=True)
+    if len(values) != count * len(labels):
+        sys.exit(f"{args.bench}: expected {len(labels)} runs of {count} colours")
+    colours = [[unpack(v) for v in values[i * count:(i + 1) * count]] for i in range(len(labels))]
+    sheet(asset, labels, colours, args.sheet).save(args.out, optimize=True)
 
 
 if __name__ == "__main__":

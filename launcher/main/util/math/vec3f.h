@@ -5,7 +5,6 @@
  */
 #pragma once
 
-#include <math.h>
 #include <stdint.h>
 
 #include "util/math/mathf.h"
@@ -19,8 +18,8 @@ MATH_DEFINE_VEC_SWIZZLE(vec3f, vec2f, float)
 /* The octahedral map (Cigolle et al. 2014): the point of the square [-1, 1]^2
  * that the direction `n` lands on when projected onto the octahedron
  * |x| + |y| + |z| = 1, its z < 0 half folded out over the diagonals. Any length
- * but zero gives the same point, so a skinned normal needs no renormalising;
- * one divide. */
+ * but zero gives the same point, so the input need not be normalized; one
+ * divide. */
 static inline vec2f_t
 vec3f_octahedral(vec3f_t n) {
     const float inv = 1.0F / (fabsf(n.x) + fabsf(n.y) + fabsf(n.z));

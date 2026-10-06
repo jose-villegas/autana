@@ -5,11 +5,12 @@
 # the sheet beside it.
 #
 # Usage:
-#   launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb
+#   launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb [CLIP[:PHASE]]
 #
-#   ASSET.glb   a skinned glTF with normals and animations; the document's
-#               numbers come from a glTF export of
-#               main/apps/render_lab/assets/capybara.blend
+#   ASSET.glb      a skinned glTF with normals and animations; the document's
+#                  numbers come from a glTF export of
+#                  main/apps/render_lab/assets/capybara.blend, drawn at gallop
+#   CLIP[:PHASE]   the frame the sheet draws (skin_light_data.py's --sheet)
 
 set -eu
 
@@ -18,8 +19,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$LAUNCHER_DIR/.." && pwd)
 
-[ $# -eq 1 ] && [ -f "$1" ] || { echo "usage: $0 ASSET.glb" >&2; exit 2; }
+[ $# -ge 1 ] && [ $# -le 2 ] && [ -f "$1" ] || { echo "usage: $0 ASSET.glb [CLIP[:PHASE]]" >&2; exit 2; }
 asset=$1
+sheet=${2:-}
 
 # shellcheck source=../../build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
@@ -37,9 +39,10 @@ OUT_BIN="$BUILD_DIR/skin_light_bench"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
 cd "$LAUNCHER_DIR"
-"$PYTHON" tools/r3d/skin_light/skin_light_data.py "$asset" "$BUILD_DIR/data.bin"
-"$OUT_BIN" "$BUILD_DIR/data.bin" "$BUILD_DIR/tables"
-mv "$BUILD_DIR/tables/sheet.bin" "$BUILD_DIR/sheet.bin"
-"$PYTHON" tools/r3d/skin_light/skin_light_sheet.py "$asset" "$BUILD_DIR/sheet.bin" \
-    "$ROOT_DIR/docs/render/images/skin-light-sheet.png"
+"$PYTHON" tools/r3d/skin_light/skin_light_data.py "$asset" "$BUILD_DIR/data.bin" ${sheet:+--sheet "$sheet"}
+"$OUT_BIN" "$BUILD_DIR/data.bin" "$BUILD_DIR"
+# The tables directory holds only the generated tables generated_blocks.py splices.
+mv "$BUILD_DIR"/skin-light-*.md "$BUILD_DIR/tables/"
+"$PYTHON" tools/r3d/skin_light/skin_light_sheet.py "$asset" "$BUILD_DIR" \
+    "$ROOT_DIR/docs/render/images/skin-light-sheet.png" ${sheet:+--sheet "$sheet"}
 "$PYTHON" tools/render/generated_blocks.py --root "$ROOT_DIR" --tables "$BUILD_DIR/tables"

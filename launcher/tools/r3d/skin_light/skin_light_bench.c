@@ -6,13 +6,14 @@
  *
  * DATA.bin is skin_light_data.py's output. Every variant lights every vertex
  * of every frame. OUT_DIR receives three Markdown tables (cost, table build,
- * quality against the reference) and sheet.bin, the native RGB565 colour of
- * every vertex of the sheet frame under four lights, one run of vertices per
- * lit variant in the order of VARIANTS.
+ * quality against the reference), sheet.bin, the native RGB565 colour of
+ * every vertex of the sheet frame under SHEET_LIGHTS lights, one run of
+ * vertices per lit variant in the order of VARIANTS, and sheet.txt, those
+ * variants' short labels, one per line.
  *
  * Every variant skins the normal with the rotation part of the blended joint
  * matrices and ends in the same integer stage (light byte times colour byte,
- * packed to RGB565), so only the light bytes differ. The FP_OPS rows are the
+ * packed to RGB565), so only the light bytes differ. The `ops_t` constants are the
  * float operations each kernel below performs per vertex, counted by hand
  * from its code: `other` is compares, absolute values, sign copies and
  * conversions between float and integer; `int mul` is integer multiplies
@@ -29,10 +30,13 @@
 #include "gfx/gfx_color.h"
 #include "util/math/vec3f.h"
 
-#define MAX_JOINTS 64
-#define MAX_LIGHTS 4
-#define RUNS       15
-#define LUT_MAX    32
+#define MAX_JOINTS   64
+#define MAX_LIGHTS   8
+#define SHEET_LIGHTS 4
+#define RUNS         15
+#define LUT_MAX      32
+/* A larger mesh the table's build is also spread over. */
+#define LARGE_MESH   1500
 
 typedef struct {
     vec3f_t normal;
@@ -52,21 +56,21 @@ typedef struct {
     rotation_t* rotation; /* frames * joints */
 } data_t;
 
-/* Object-space lights: a warm key, a cool fill, a rim and a ground bounce.
- * Colours are 0..1; the sum can pass 1 and clamps. */
+/* Object-space lights: a warm key, a cool fill, a rim and a ground bounce,
+ * then four dim accents. Colours are 0..1; the sum can pass 1 and clamps. */
 typedef struct {
     vec3f_t dir;
     vec3f_t colour;
 } light_t;
 
 static const light_t LIGHTS[MAX_LIGHTS] = {
-    {{0.45F, 0.80F, 0.40F}, {0.80F, 0.72F, 0.60F}},
-    {{-0.70F, 0.35F, 0.30F}, {0.25F, 0.32F, 0.45F}},
-    {{0.10F, 0.40F, -0.90F}, {0.35F, 0.35F, 0.30F}},
-    {{0.00F, -1.00F, 0.15F}, {0.20F, 0.16F, 0.10F}},
+    {{0.45F, 0.80F, 0.40F}, {0.80F, 0.72F, 0.60F}},   {{-0.70F, 0.35F, 0.30F}, {0.25F, 0.32F, 0.45F}},
+    {{0.10F, 0.40F, -0.90F}, {0.35F, 0.35F, 0.30F}},  {{0.00F, -1.00F, 0.15F}, {0.20F, 0.16F, 0.10F}},
+    {{0.80F, -0.20F, -0.55F}, {0.12F, 0.10F, 0.14F}}, {{-0.30F, 0.90F, -0.30F}, {0.10F, 0.12F, 0.10F}},
+    {{-0.50F, -0.40F, 0.75F}, {0.08F, 0.10F, 0.12F}}, {{0.20F, 0.10F, 0.97F}, {0.10F, 0.09F, 0.08F}},
 };
 static const vec3f_t AMBIENT = {0.22F, 0.22F, 0.25F};
-static const unsigned LIGHT_COUNTS[] = {1, 2, 4};
+static const unsigned LIGHT_COUNTS[] = {1, 2, 4, 8};
 #define LIGHT_COUNT_N (sizeof(LIGHT_COUNTS) / sizeof(LIGHT_COUNTS[0]))
 
 /* A frame's lights as the kernels take them: unit directions (divided by 127
@@ -90,21 +94,22 @@ lights_prepare(unsigned count, float dir_scale) {
     return l;
 }
 
-/* ---- Kernels ------------------------------------------------------------ */
-
 typedef struct {
     unsigned mul, add, div, sqrt, other, imul;
 } ops_t;
 
-/* Blend the four joints' rotations by weight (36 mul, 27 add) and apply the
- * result to the normal (9 mul, 6 add). A position skin blends the same
+/* Blend the four joints' rotations by weight (36 mul, 27 add: the first
+ * joint seeds the sum) and apply the result to the normal (9 mul, 6 add). A position skin blends the same
  * matrices, so the blend is shared with it in a real path. */
 static const ops_t OPS_SKIN = {45, 33, 0, 0, 0, 0};
 
 static inline vec3f_t
 skin(const rotation_t* frame, const vertex_t* v, vec3f_t n) {
-    vec3f_t r0 = {0}, r1 = {0}, r2 = {0};
-    for (int k = 0; k < 4; k++) {
+    const rotation_t* first = &frame[v->joint[0]];
+    vec3f_t r0 = vec3f_scale(first->row[0], v->weight[0]);
+    vec3f_t r1 = vec3f_scale(first->row[1], v->weight[0]);
+    vec3f_t r2 = vec3f_scale(first->row[2], v->weight[0]);
+    for (int k = 1; k < 4; k++) {
         const rotation_t* m = &frame[v->joint[k]];
         const float w = v->weight[k];
         r0 = vec3f_add(r0, vec3f_scale(m->row[0], w));
@@ -125,7 +130,8 @@ to_byte(float x) {
 }
 
 /* Per light: N.L (3 mul, 2 add), the facing test (1 other), colour times N.L
- * added in (3 mul, 3 add); then three clamps and three conversions. */
+ * added in (3 mul, 3 add), counted as if every light faces the normal; then
+ * three clamps and three conversions. */
 static const ops_t OPS_LIGHT_BASE = {0, 0, 0, 0, 6, 0};
 static const ops_t OPS_PER_LIGHT = {6, 5, 0, 0, 1, 0};
 
@@ -152,19 +158,20 @@ static const ops_t OPS_RENORMALISE = {6, 2, 1, 1, 0, 0};
  * copies (2 mul, 4 add, 1 div, 8 other).
  *
  * Nearest: then the cell, 2 add, 2 mul, 2 conversions; the row offset is a
- * shift. */
+ * shift (power-of-two sizes). */
 static const ops_t OPS_NEAREST = {2 + 2, 4 + 2, 1, 0, 8 + 2, 0};
 
 /* Bilinear: then per axis a multiply-add to the cell-centre grid, a clamp
  * (2 compares), the cell and its fraction (2 conversions, a subtract) and the
  * fraction's 8-bit weight (a multiply, a conversion); then per channel three
- * integer lerps of two multiplies each. */
+ * integer lerps of two multiplies each. Row offsets are shifts. */
 static const ops_t OPS_BILINEAR = {2 + 4, 4 + 4, 1, 0, 8 + 10, 18};
 
 typedef struct {
-    unsigned size;
-    float half;    /* nearest index scale: just under size / 2, so u = 1 lands in the last cell */
-    float centres; /* bilinear: size / 2, the cell-centre grid's scale */
+    unsigned size, shift; /* size = 1 << shift */
+    float half;           /* nearest index scale: just under size / 2, so u = 1 lands in the last cell */
+    float centres, bias;  /* bilinear: the cell-centre grid is u * centres + bias */
+    float last;           /* bilinear: the last cell's centre on that grid */
     vec3f_t dir[LUT_MAX * LUT_MAX];
     uint8_t rgb[LUT_MAX * LUT_MAX][4];
 } lut_t;
@@ -172,8 +179,14 @@ typedef struct {
 static void
 lut_init(lut_t* t, unsigned size) {
     t->size = size;
+    t->shift = 0;
+    while ((1u << t->shift) < size) {
+        t->shift++;
+    }
     t->half = 0.5F * (float)size * 0.99999F;
     t->centres = 0.5F * (float)size;
+    t->bias = t->centres - 0.5F;
+    t->last = (float)(size - 1);
     for (unsigned j = 0; j < size; j++) {
         for (unsigned i = 0; i < size; i++) {
             const vec2f_t p = {((float)i + 0.5F) * 2.0F / (float)size - 1.0F,
@@ -197,17 +210,16 @@ lut_lookup(const lut_t* t, vec3f_t n) {
     const vec2f_t p = vec3f_octahedral(n);
     const unsigned i = (unsigned)((p.x + 1.0F) * t->half);
     const unsigned j = (unsigned)((p.y + 1.0F) * t->half);
-    return t->rgb[j * t->size + i];
+    return t->rgb[(j << t->shift) + i];
 }
 
 /* The cell below `u` on the cell-centre grid, clamped so the cell above
  * exists, and the 8-bit weight of the cell above. */
 static inline unsigned
 lut_axis(const lut_t* t, float u, unsigned* weight) {
-    float x = u * t->centres + (t->centres - 0.5F);
-    const float last = (float)(t->size - 1);
+    float x = u * t->centres + t->bias;
     x = x < 0.0F ? 0.0F : x;
-    x = x > last ? last : x;
+    x = x > t->last ? t->last : x;
     unsigned i = (unsigned)x;
     i = i > t->size - 2 ? t->size - 2 : i;
     *weight = (unsigned)((x - (float)i) * 256.0F);
@@ -222,9 +234,9 @@ lut_bilinear(const lut_t* t, vec3f_t n, uint8_t out[3]) {
     unsigned wx, wy;
     const unsigned i = lut_axis(t, p.x, &wx);
     const unsigned j = lut_axis(t, p.y, &wy);
-    const uint8_t* a = t->rgb[j * t->size + i];
+    const uint8_t* a = t->rgb[(j << t->shift) + i];
     const uint8_t* b = a + 4;
-    const uint8_t* c = t->rgb[(j + 1) * t->size + i];
+    const uint8_t* c = a + 4 * t->size;
     const uint8_t* d = c + 4;
     for (int k = 0; k < 3; k++) {
         const unsigned top = a[k] * (256 - wx) + b[k] * wx;
@@ -233,27 +245,26 @@ lut_bilinear(const lut_t* t, vec3f_t n, uint8_t out[3]) {
     }
 }
 
-/* ---- Variants ----------------------------------------------------------- */
-
 typedef enum { K_SKIN, K_REFERENCE, K_DIRECT, K_DIRECT8, K_LUT, K_LUT_BILINEAR } kind_t;
 
 typedef struct {
     const char* name;
+    const char* label; /* the sheet's */
     kind_t kind;
     unsigned lut;
 } variant_t;
 
 static const variant_t VARIANTS[] = {
-    {"Skin only (shared)", K_SKIN, 0},
-    {"Reference: float normal, renormalised", K_REFERENCE, 0},
-    {"Direct: float normal", K_DIRECT, 0},
-    {"Direct: int8 normal", K_DIRECT8, 0},
-    {"Table 8x8 nearest: int8 normal", K_LUT, 8},
-    {"Table 16x16 nearest: int8 normal", K_LUT, 16},
-    {"Table 32x32 nearest: int8 normal", K_LUT, 32},
-    {"Table 8x8 bilinear: int8 normal", K_LUT_BILINEAR, 8},
-    {"Table 16x16 bilinear: int8 normal", K_LUT_BILINEAR, 16},
-    {"Table 32x32 bilinear: int8 normal", K_LUT_BILINEAR, 32},
+    {"Skin only (shared)", "", K_SKIN, 0},
+    {"Reference: float normal, renormalised", "Reference", K_REFERENCE, 0},
+    {"Direct: float normal", "Direct, float", K_DIRECT, 0},
+    {"Direct: int8 normal", "Direct, int8", K_DIRECT8, 0},
+    {"Table 8x8 nearest: int8 normal", "8x8 nearest", K_LUT, 8},
+    {"Table 16x16 nearest: int8 normal", "16x16 nearest", K_LUT, 16},
+    {"Table 32x32 nearest: int8 normal", "32x32 nearest", K_LUT, 32},
+    {"Table 8x8 bilinear: int8 normal", "8x8 bilinear", K_LUT_BILINEAR, 8},
+    {"Table 16x16 bilinear: int8 normal", "16x16 bilinear", K_LUT_BILINEAR, 16},
+    {"Table 32x32 bilinear: int8 normal", "32x32 bilinear", K_LUT_BILINEAR, 32},
 };
 #define VARIANT_N (sizeof(VARIANTS) / sizeof(VARIANTS[0]))
 
@@ -347,7 +358,9 @@ typedef struct {
 } result_t;
 
 /* Runs one variant at one light count over every frame RUNS times; keeps the
- * light bytes of every vertex of every frame in `out`. */
+ * light bytes of every vertex of every frame in `out`. The lights do not move,
+ * so one build serves every frame; the builds a real frame loop would do are
+ * timed back to back, one per frame. */
 static result_t
 measure(const data_t* d, const variant_t* v, unsigned lights, uint8_t (*out)[3]) {
     const lights_t lf = lights_prepare(lights, 1.0F);
@@ -358,19 +371,16 @@ measure(const data_t* d, const variant_t* v, unsigned lights, uint8_t (*out)[3])
     }
     double vertex[RUNS], build[RUNS];
     for (unsigned run = 0; run < RUNS; run++) {
-        double tv = 0.0, tb = 0.0;
-        for (unsigned f = 0; f < d->frames; f++) {
-            double t0 = now_ns();
-            if (is_lut(v->kind)) {
-                lut_build(&lut, &lf);
-            }
-            const double t1 = now_ns();
-            run_frame(d, v, f, &lf, &l8, &lut, &out[(size_t)f * d->vertices]);
-            tv += now_ns() - t1;
-            tb += t1 - t0;
+        const double t0 = now_ns();
+        for (unsigned f = 0; is_lut(v->kind) && f < d->frames; f++) {
+            lut_build(&lut, &lf);
         }
-        vertex[run] = tv / ((double)d->frames * d->vertices);
-        build[run] = tb / d->frames;
+        const double t1 = now_ns();
+        for (unsigned f = 0; f < d->frames; f++) {
+            run_frame(d, v, f, &lf, &l8, &lut, &out[(size_t)f * d->vertices]);
+        }
+        vertex[run] = (now_ns() - t1) / ((double)d->frames * d->vertices);
+        build[run] = (t1 - t0) / d->frames;
     }
     result_t r = {0};
     r.vertex_ns = median(vertex, RUNS);
@@ -408,8 +418,6 @@ score(const data_t* d, uint8_t (*got)[3], uint8_t (*ref)[3], result_t* r) {
     r->rgb_mean = rgb_sum / (3.0 * (double)n);
     r->rgb_changed = 100.0 * (double)changed / (double)n;
 }
-
-/* ---- Input -------------------------------------------------------------- */
 
 static int
 load(const char* path, data_t* d) {
@@ -459,8 +467,6 @@ load(const char* path, data_t* d) {
     return ok;
 }
 
-/* ---- Output ------------------------------------------------------------- */
-
 static FILE*
 open_out(const char* dir, const char* name, const char* mode) {
     char path[1024];
@@ -492,27 +498,37 @@ main(int argc, char** argv) {
     const size_t n = (size_t)d.frames * d.vertices;
     uint8_t(*ref)[3] = malloc(n * 3);
     uint8_t(*got)[3] = malloc(n * 3);
-    uint16_t* sheet = malloc((VARIANT_N - 1) * d.vertices * sizeof(uint16_t));
+    uint16_t* sheet = malloc(VARIANT_N * d.vertices * sizeof(uint16_t));
     static result_t results[VARIANT_N][LIGHT_COUNT_N];
+    unsigned reference = 0;
+    while (VARIANTS[reference].kind != K_REFERENCE) {
+        reference++;
+    }
 
+    FILE* labels = open_out(argv[2], "sheet.txt", "w");
+    unsigned sheet_runs = 0;
     for (unsigned li = 0; li < LIGHT_COUNT_N; li++) {
-        results[1][li] = measure(&d, &VARIANTS[1], LIGHT_COUNTS[li], ref);
+        results[reference][li] = measure(&d, &VARIANTS[reference], LIGHT_COUNTS[li], ref);
         for (unsigned vi = 0; vi < VARIANT_N; vi++) {
-            if (vi != 1) {
+            if (vi != reference) {
                 results[vi][li] = measure(&d, &VARIANTS[vi], LIGHT_COUNTS[li], got);
             }
-            uint8_t(*mine)[3] = vi == 1 ? ref : got;
-            if (vi != 0) {
-                score(&d, mine, ref, &results[vi][li]);
+            if (VARIANTS[vi].kind == K_SKIN) {
+                continue;
             }
-            if (vi != 0 && LIGHT_COUNTS[li] == MAX_LIGHTS) {
+            uint8_t(*mine)[3] = vi == reference ? ref : got;
+            score(&d, mine, ref, &results[vi][li]);
+            if (LIGHT_COUNTS[li] == SHEET_LIGHTS) {
                 for (unsigned i = 0; i < d.vertices; i++) {
-                    sheet[(vi - 1) * d.vertices + i] =
+                    sheet[sheet_runs * d.vertices + i] =
                         shade(d.vertex[i].colour, mine[(size_t)d.sheet_frame * d.vertices + i]);
                 }
+                fprintf(labels, "%s\n", VARIANTS[vi].label);
+                sheet_runs++;
             }
         }
     }
+    fclose(labels);
 
     FILE* f = open_out(argv[2], "skin-light-cost.md", "w");
     fprintf(f, "%u vertices x %u frames, median of %u runs; host compiler " __VERSION__ ".\n\n", d.vertices, d.frames,
@@ -525,7 +541,11 @@ main(int argc, char** argv) {
             if (any && li > 0) {
                 continue;
             }
-            fprintf(f, "| %s | %s |", VARIANTS[vi].name, any ? "any" : (const char*[]){"1", "2", "4"}[li]);
+            if (any) {
+                fprintf(f, "| %s | any |", VARIANTS[vi].name);
+            } else {
+                fprintf(f, "| %s | %u |", VARIANTS[vi].name, LIGHT_COUNTS[li]);
+            }
             ops_cell(f, variant_ops(&VARIANTS[vi], LIGHT_COUNTS[li]));
             fprintf(f, " %.1f |\n", results[vi][li].vertex_ns);
         }
@@ -536,8 +556,8 @@ main(int argc, char** argv) {
     fprintf(f,
             "| Table | Cells | Bytes per object | Shared direction bytes | Lights | mul | add | div | sqrt | other | "
             "int mul "
-            "| Build us/frame | Build ns/vertex, %u vertices | Build ns/vertex, 1500 vertices |\n",
-            d.vertices);
+            "| Build us/frame | Build ns/vertex, %u vertices | Build ns/vertex, %u vertices |\n",
+            d.vertices, LARGE_MESH);
     fprintf(f, "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n");
     for (unsigned vi = 0; vi < VARIANT_N; vi++) {
         if (VARIANTS[vi].kind != K_LUT) {
@@ -550,7 +570,7 @@ main(int argc, char** argv) {
                     cells * 12, LIGHT_COUNTS[li]);
             const ops_t o = ops_add(OPS_LIGHT_BASE, OPS_PER_LIGHT, LIGHT_COUNTS[li]);
             ops_cell(f, (ops_t){o.mul * cells, o.add * cells, 0, 0, o.other * cells, 0});
-            fprintf(f, " %.2f | %.1f | %.1f |\n", b / 1000.0, b / d.vertices, b / 1500.0);
+            fprintf(f, " %.2f | %.1f | %.1f |\n", b / 1000.0, b / d.vertices, b / LARGE_MESH);
         }
     }
     fclose(f);
@@ -559,8 +579,8 @@ main(int argc, char** argv) {
     fprintf(f, "| Variant | Lights | Light byte max | Light byte mean | RGB565 max step | RGB565 mean step "
                "| Vertices changed |\n");
     fprintf(f, "|---|---:|---:|---:|---:|---:|---:|\n");
-    for (unsigned vi = 2; vi < VARIANT_N; vi++) {
-        for (unsigned li = 0; li < LIGHT_COUNT_N; li++) {
+    for (unsigned vi = 0; vi < VARIANT_N; vi++) {
+        for (unsigned li = 0; li < LIGHT_COUNT_N && VARIANTS[vi].kind != K_SKIN && vi != reference; li++) {
             const result_t* r = &results[vi][li];
             fprintf(f, "| %s | %u | %.0f | %.2f | %.0f | %.3f | %.1f%% |\n", VARIANTS[vi].name, LIGHT_COUNTS[li],
                     r->light_max, r->light_mean, r->rgb_max, r->rgb_mean, r->rgb_changed);
@@ -569,7 +589,7 @@ main(int argc, char** argv) {
     fclose(f);
 
     f = open_out(argv[2], "sheet.bin", "wb");
-    fwrite(sheet, sizeof(uint16_t), (VARIANT_N - 1) * d.vertices, f);
+    fwrite(sheet, sizeof(uint16_t), (size_t)sheet_runs * d.vertices, f);
     fclose(f);
     printf("wrote %s\n", argv[2]);
     return 0;
