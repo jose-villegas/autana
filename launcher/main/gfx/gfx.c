@@ -13,7 +13,7 @@
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 #include "util/runtime/tune.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -887,8 +887,8 @@ plot(int x, int y, gfx_color_t color, unsigned flags) {
 /* Bresenham, treats both axes alike, no case analysis. */
 static void
 walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    const int dx = im_abs(x1 - x0);
-    const int dy = -im_abs(y1 - y0);
+    const int dx = mathi_abs(x1 - x0);
+    const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
     const int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
@@ -923,8 +923,8 @@ draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
         return;
     }
 
-    int bx0 = im_min(x0, x1), bx1 = im_max(x0, x1) + 1;
-    int by0 = im_min(y0, y1), by1 = im_max(y0, y1) + 1;
+    int bx0 = mathi_min(x0, x1), bx1 = mathi_max(x0, x1) + 1;
+    int by0 = mathi_min(y0, y1), by1 = mathi_max(y0, y1) + 1;
 
     if (bx0 < clip.x0) {
         bx0 = clip.x0;
@@ -1730,10 +1730,10 @@ note_send_failure(esp_err_t err) {
 static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
-    x0 = even_floor(x0);
-    y0 = even_floor(y0);
-    x1 = even_ceil(x1);
-    y1 = even_ceil(y1);
+    x0 = mathi_even_floor(x0);
+    y0 = mathi_even_floor(y0);
+    x1 = mathi_even_ceil(x1);
+    y1 = mathi_even_ceil(y1);
     const int w = x1 - x0;
     const int h = y1 - y0;
 
@@ -1957,8 +1957,8 @@ send_partial_band(int y0, int y1, int* queued) {
         return false;
     }
 #endif
-    y0 = even_floor(y0);
-    y1 = even_ceil(y1);
+    y0 = mathi_even_floor(y0);
+    y1 = mathi_even_ceil(y1);
     if (send_fb_rows(y0, y1)) {
         (*queued)++;
     }

@@ -41,7 +41,7 @@
 #include "apps/sand/tests/suite_sand_common.h"
 #include "apps/sand/tests/suite_sand_scenes.h"
 #include "util/runtime/frame_watch.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define REAL_BLOCK_COLS ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define REAL_BLOCK_ROWS ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
@@ -1674,7 +1674,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
- * equalise_gas() takes its spread direction from ring_dir(i_stable + 2), and
+ * equalise_gas() takes its spread direction from ring_dir(stable_index + 2), and
  * gas_run_t's carry runs only on an axis-aligned ray. Packed bounds the worst case
  * and is the only shape that fires the row skip; the half-screen scene below
  * is the realistic counterpart, and the pair is the point. */

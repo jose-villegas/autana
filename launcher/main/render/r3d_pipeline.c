@@ -9,7 +9,7 @@
 
 #include "render/code_layout.h"
 #include "render/viewport.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 static void
 set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
@@ -288,8 +288,8 @@ draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* cl
                      int count, int height) {
     for (int i = 0; i < count; i++) {
         const r3d_pipeline_rows_t* r = &rows[clusters[i]];
-        const int first = im_clamp(r->unbounded ? 0 : (int)r->y0, 0, height - 1);
-        const int last = im_clamp(r->unbounded ? height - 1 : (int)r->y1, 0, height - 1);
+        const int first = mathi_clamp(r->unbounded ? 0 : (int)r->y0, 0, height - 1);
+        const int last = mathi_clamp(r->unbounded ? height - 1 : (int)r->y1, 0, height - 1);
         const int cost = mesh->clusters[clusters[i]].triangle_count;
         const int bucket_first = first * DRAW_SPLIT_BUCKETS / height;
         const int bucket_last = last * DRAW_SPLIT_BUCKETS / height;
@@ -315,7 +315,7 @@ draw_split_row(const int* weight, int height) {
         current += weight[bucket];
         prefix += current;
         if (2 * prefix >= total) {
-            return im_clamp((2 * bucket + 1) * height / (2 * DRAW_SPLIT_BUCKETS), 1, height - 1);
+            return mathi_clamp((2 * bucket + 1) * height / (2 * DRAW_SPLIT_BUCKETS), 1, height - 1);
         }
     }
     return height / 2;

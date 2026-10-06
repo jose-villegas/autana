@@ -15,7 +15,7 @@
 #include <stdint.h>
 
 #include "util/scalar/fixed.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 #include "util/scalar/trig.h"
 
 #define MATHX_SHIFT 16
@@ -63,7 +63,7 @@ mathx_sqrt(int32_t v) {
     if (v <= 0) {
         return 0;
     }
-    return (int32_t)im_isqrt64((uint64_t)v << MATHX_SHIFT);
+    return (int32_t)mathi_isqrt64((uint64_t)v << MATHX_SHIFT);
 }
 
 static inline int32_t

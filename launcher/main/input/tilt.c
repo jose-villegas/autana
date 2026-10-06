@@ -1,6 +1,6 @@
 #include "input/tilt.h"
 
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define Q 256 /* fixed-point scale for the stored vector */
 
@@ -58,9 +58,9 @@ approach(int32_t current_q8, int target, int tau_ms, uint32_t dt_ms) {
 static int
 shake_from_sample(const tilt_t* t, int gx, int gy, int gz) {
     const int64_t mag2 = (int64_t)gx * gx + (int64_t)gy * gy + (int64_t)gz * gz;
-    const int32_t mag = (int32_t)im_isqrt64((uint64_t)mag2);
+    const int32_t mag = (int32_t)mathi_isqrt64((uint64_t)mag2);
 
-    const int32_t departure = im_abs(mag - t->counts_per_g);
+    const int32_t departure = mathi_abs(mag - t->counts_per_g);
 
     const int32_t full = (t->counts_per_g * TILT_SHAKE_FULL_PCT) / 100;
     const int32_t level = (int32_t)(((int64_t)departure * 255) / full);
@@ -156,7 +156,7 @@ tilt_strength(const tilt_t* t) {
         return 0;
     }
 
-    const int mag = im_len(t->gx_q8 / Q, t->gy_q8 / Q);
+    const int mag = mathi_len(t->gx_q8 / Q, t->gy_q8 / Q);
     const int scaled = (int)(((int64_t)mag * 256) / t->counts_per_g);
 
     return scaled > 256 ? 256 : scaled;

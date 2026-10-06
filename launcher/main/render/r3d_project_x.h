@@ -9,7 +9,7 @@
  * Camera-space points are int32 in 1/512 of a meter, the resolution a pixel
  * needs and one a 32-bit product with a Q9 focal length cannot overflow at.
  * The view's matrix entries are Q9 too, so mat4x_apply() of a Q16.16 point
- * (util/math/mathx.h) lands in that space with no further shift. Header-only,
+ * (util/scalar/mathx.h) lands in that space with no further shift. Header-only,
  * static inline and ESP-IDF-free.
  */
 #pragma once

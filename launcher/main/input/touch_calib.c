@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define ONE 65536.0f
 
@@ -37,6 +37,6 @@ void
 touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y) {
     const int64_t rx = *x;
     const int64_t ry = *y;
-    *x = im_clamp(round_fixed(calib->xx * rx + calib->xy * ry + calib->x0), 0, w - 1);
-    *y = im_clamp(round_fixed(calib->yx * rx + calib->yy * ry + calib->y0), 0, h - 1);
+    *x = mathi_clamp(round_fixed(calib->xx * rx + calib->xy * ry + calib->x0), 0, w - 1);
+    *y = mathi_clamp(round_fixed(calib->yx * rx + calib->yy * ry + calib->y0), 0, h - 1);
 }

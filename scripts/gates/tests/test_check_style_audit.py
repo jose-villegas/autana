@@ -301,7 +301,7 @@ class StyleAuditTest(unittest.TestCase):
             self.util_tree(root)
             gate_tree.write(root, "launcher/main/util/runtime/job.c",
                             "".join(f'#include "util/{sub}/{sub}.h"\n' for sub in self.PURE_UTIL))
-            gate_tree.write(root, "launcher/main/util/math/mathx.h", '#include "util/scalar/scalar.h"\n')
+            gate_tree.write(root, "launcher/main/util/math/vec3x.h", '#include "util/scalar/scalar.h"\n')
             gate_tree.write(root, "launcher/main/util/scalar/fixed.h", '#include "util/math/math.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")

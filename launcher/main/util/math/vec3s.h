@@ -7,9 +7,9 @@
 
 #include <stdint.h>
 
-#include "util/math/maths.h"
 #include "util/math/vec2s.h"
 #include "util/math/vec3_template.h"
+#include "util/scalar/maths.h"
 
 MATH_DEFINE_VEC3(vec3s, int16_t, int64_t, maths)
 MATH_DEFINE_VEC_SWIZZLE(vec3s, vec2s, int16_t)

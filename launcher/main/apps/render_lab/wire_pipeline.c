@@ -45,7 +45,7 @@ wire_project_edges(const wire_mesh_t* mesh, const r3d_line_view_t* view, int scr
         }
 
         gfx_box_extend(&frame->bbox,
-                       (gfx_box_t){im_min(ax, bx), im_min(ay, by), im_max(ax, bx) + 1, im_max(ay, by) + 1});
+                       (gfx_box_t){mathi_min(ax, bx), mathi_min(ay, by), mathi_max(ax, bx) + 1, mathi_max(ay, by) + 1});
 
         wire_segment_t* segment = &frame->segments[frame->segment_count++];
         segment->x0 = (int16_t)ax;

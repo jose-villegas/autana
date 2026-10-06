@@ -41,7 +41,7 @@
 #include "material_palette.h"
 #include "sand.h"
 #include "sand_paint_row.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -384,7 +384,7 @@ plant_canopy(sand_t* s, int cx, int top, int ground) {
             if (dx * dx + dy * dy > 24 * 24) {
                 continue;
             }
-            const bool branch = ((dx + dy) & 3) == 0 && im_abs(dx) < 16;
+            const bool branch = ((dx + dy) & 3) == 0 && mathi_abs(dx) < 16;
             set_v(s, cx + dx, top + dy, branch ? CELL_MAKE(MAT_WOOD, 0) : MATX(MATX_LEAF));
         }
     }
@@ -488,10 +488,10 @@ paint_begin(uint32_t time_ms) {
     material_wood_leaf_top5(gx, gy, &last_down, leaf_top5);
     leaf_time_ms = time_ms;
 
-    const int ax = im_abs(gx), ay = im_abs(gy);
+    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
     depth_vertical_dominant = ay >= ax;
     const unsigned dom = depth_vertical_dominant ? (unsigned)ay : (unsigned)ax;
-    depth_scale_q8 = dom != 0u ? (256u * (unsigned)im_len(gx, gy)) / dom : 256u;
+    depth_scale_q8 = dom != 0u ? (256u * (unsigned)mathi_len(gx, gy)) / dom : 256u;
     depth_ax = (unsigned)ax;
     depth_ay = (unsigned)ay;
     depth_v_reverse = gy < 0;

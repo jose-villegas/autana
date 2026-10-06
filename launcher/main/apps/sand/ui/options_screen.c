@@ -9,7 +9,7 @@
 
 #include "apps/sand/icons_dither.h"
 #include "sand_theme.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define COLUMN_W_MAX    400
 #define HEADER_H        36
@@ -96,7 +96,7 @@ layout_tiles(int x, int w, int y, options_screen_layout_t* out) {
 
 void
 options_screen_layout(int screen_w, int screen_h, options_screen_layout_t* out) {
-    const int w = im_min(screen_w - 2 * UI_MARGIN, COLUMN_W_MAX);
+    const int w = mathi_min(screen_w - 2 * UI_MARGIN, COLUMN_W_MAX);
     const int x = (screen_w - w) / 2;
 
     /* The header is the one row a short canvas can spare: every other row is

@@ -28,7 +28,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* The brush and the setter must agree about what a cell implies:
  * sand_set() and try_spawn_one() each carry their own copy of the

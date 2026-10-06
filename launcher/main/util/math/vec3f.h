@@ -7,9 +7,9 @@
 
 #include <stdint.h>
 
-#include "util/math/mathf.h"
 #include "util/math/vec2f.h"
 #include "util/math/vec3_template.h"
+#include "util/scalar/mathf.h"
 
 MATH_DEFINE_VEC3(vec3f, float, float, mathf)
 MATH_DEFINE_VEC3_NORMALIZE(vec3f, float, mathf)

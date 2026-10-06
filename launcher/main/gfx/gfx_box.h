@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 typedef struct {
     int x0, y0, x1, y1;
@@ -23,10 +23,10 @@ gfx_box_extend(gfx_box_t* box, gfx_box_t addition) {
     if (gfx_box_is_empty(addition)) {
         return;
     }
-    box->x0 = im_min(box->x0, addition.x0);
-    box->y0 = im_min(box->y0, addition.y0);
-    box->x1 = im_max(box->x1, addition.x1);
-    box->y1 = im_max(box->y1, addition.y1);
+    box->x0 = mathi_min(box->x0, addition.x0);
+    box->y0 = mathi_min(box->y0, addition.y0);
+    box->x1 = mathi_max(box->x1, addition.x1);
+    box->y1 = mathi_max(box->y1, addition.y1);
 }
 
 /* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */

@@ -33,7 +33,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* See reaction_t.roots and docs/sand/Sand-Simulation.md's tree-feeding
  * section. */
@@ -257,7 +257,7 @@ note_root_position(root_reach_t* r, int x, int y, int cx, int collar_y) {
     if (depth > r->max_depth) {
         r->max_depth = depth;
     }
-    const int hw = im_abs(x - cx);
+    const int hw = mathi_abs(x - cx);
     if (hw > r->max_half_width) {
         r->max_half_width = hw;
     }

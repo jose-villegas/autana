@@ -30,6 +30,11 @@ mathf_four(void) {
 }
 
 static inline float
+mathf_clamp(float v, float lo, float hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+static inline float
 mathf_add(float a, float b) {
     return a + b;
 }

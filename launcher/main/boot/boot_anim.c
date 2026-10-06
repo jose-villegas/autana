@@ -38,7 +38,7 @@
 #include "util/build/build_variant.h"
 #include "util/runtime/timing.h"
 #include "util/scalar/fixed.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */
@@ -415,7 +415,7 @@ static void
 draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joined) {
     /* Offsets spread to thicken curve centrally. */
     const int half = width / 2;
-    const bool shallow = im_abs(x1 - x0) > im_abs(y1 - y0);
+    const bool shallow = mathi_abs(x1 - x0) > mathi_abs(y1 - y0);
 
     for (int i = 0; i < width; i++) {
         const int off = i - half;
