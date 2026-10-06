@@ -38,7 +38,7 @@ $SAND_DIR/sand_gas.c
 $SAND_DIR/sand_reactions.c
 $SAND_DIR/sand_plants.c
 $MAIN_DIR/input/tilt.c
-$MAIN_DIR/util/job.c
+$MAIN_DIR/util/runtime/job.c
 $SCRIPT_DIR/web_sand.c
 "
 
