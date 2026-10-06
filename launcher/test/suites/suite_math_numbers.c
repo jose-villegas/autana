@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "suites.h"
+#include "transform_cache.h"
 #include "unity.h"
 
 #include "util/math/transformf.h"
@@ -140,17 +141,8 @@ static void
 test_fixed_transform_builds_once_and_rebuilds_after_each_setter(void) {
     transformx_t t = TRANSFORMX_IDENTITY;
     TEST_ASSERT_FALSE(rebuilds_x(&t));
-    TEST_ASSERT_FALSE(rebuilds_x(&t));
-    transformx_set_position(&t, to_x(1.0F, 0.0F, 0.0F));
-    TEST_ASSERT_TRUE(rebuilds_x(&t));
-    transformx_set_rotation(&t, quatx_identity());
-    TEST_ASSERT_TRUE(rebuilds_x(&t));
-    transformx_set_scale(&t, to_x(2.0F, 2.0F, 2.0F));
-    TEST_ASSERT_TRUE(rebuilds_x(&t));
-    transformx_translate(&t, to_x(1.0F, 0.0F, 0.0F));
-    TEST_ASSERT_TRUE(rebuilds_x(&t));
-    transformx_rotate(&t, quatx_from_axis_angle(to_x(0.0F, 1.0F, 0.0F), MATHX_ONE / 4));
-    TEST_ASSERT_TRUE(rebuilds_x(&t));
+    ASSERT_TRANSFORM_SETTERS(transformx, t, to_x, quatx_from_axis_angle(to_x(0.0F, 1.0F, 0.0F), MATHX_ONE / 4),
+                             rebuilds_x);
 
     transformx_t zero = {0};
     TEST_ASSERT_FALSE(zero.cached);
@@ -185,6 +177,7 @@ test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_div(-MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(0, mathx_div(0, 0));
+    TEST_ASSERT_EQUAL_INT32(-65536, fx_div_round(INT32_MAX, 1, MATHX_SHIFT));
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(INT32_MAX, 1));
     TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE / 2, mathx_div(3 * MATHX_ONE, 2 * MATHX_ONE));
     TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE, mathx_sqrt(9 * MATHX_ONE));

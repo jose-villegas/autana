@@ -20,17 +20,24 @@
 #include "esp_log.h"
 
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/sponza_flythrough.h"
+#include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
-#include "util/job.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "scene/scene.h"
+#include "util/runtime/job.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* TAG = "sponza_perf";
+
+/* The scene, loaded for the suite, its pack, and one mesh for each bake. */
+static scene_t* sponza;
+static const asset_pack_t* pack;
+static const r3d_scene_camera_t* flythrough;
+static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
@@ -67,6 +74,9 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u",
+             (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
+             (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
 }
 
 static void
@@ -77,7 +87,7 @@ bench_close(bench_t* b) {
 
 static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
-    const camera_t camera = sponza_camera_at(t_ms);
+    const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
     r3d_lens_t lens;
     r3d_lens_init(&lens, &camera, mesh->position_scale, (viewport_t){render_width(), render_height(), 0});
     return lens;
@@ -144,17 +154,15 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)together_bottom.us, (long long)wall);
 }
 
-#define MESH_COUNT 5
-static r3d_lit_mesh_t meshes[MESH_COUNT];
-static const char* const MESH_IDS[MESH_COUNT] = {"sponza", "sponza_lite", "sponza_flat", "sponza_fitted",
-                                                 "sponza_fitted_full"};
-static const char* const MESH_LABELS[MESH_COUNT] = {"sponza", "lite", "flat", "fitted", "fitted-full"};
-
 static void
 open_the_meshes(void) {
-    for (int i = 0; i < MESH_COUNT; i++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(asset_store_pack(), MESH_IDS[i], &meshes[i]),
-                                      MESH_IDS[i]);
+    TEST_ASSERT_NOT_NULL_MESSAGE(sponza, "scene sponza did not load: see the log above");
+    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+        const scene_entity_t bake = scene_find(sponza, sponza_bakes[i]);
+        TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, sponza_bakes[i]);
+        const char* mesh = scene_entity_mesh_id(sponza, bake);
+        TEST_ASSERT_NOT_NULL_MESSAGE(mesh, sponza_bakes[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, mesh, &meshes[i]), mesh);
     }
 }
 
@@ -162,7 +170,7 @@ void
 test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
     bench_t b;
-    const r3d_instance_t atrium = {&meshes[0], NULL};
+    const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
     bench_open(&b, &atrium);
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
@@ -200,12 +208,12 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
     bench_open(&b, instance);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
-    const uint32_t period = sponza_flythrough_period_ms();
+    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
     int64_t frame_sum = 0;
     int64_t worst = 0;
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
-        const camera_t camera = sponza_camera_at(t_ms);
+        const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
         raster_upscale(&b.raster);
@@ -223,18 +231,38 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
 
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
+    /* Cache configuration trades internal RAM for speed, so a frame-cost
+     * capture carries what it left. */
+    ESP_LOGI(TAG, "internal heap: free %u largest %u", (unsigned)memory_free_bytes(MEMORY_INTERNAL),
+             (unsigned)memory_largest_block(MEMORY_INTERNAL));
     open_the_meshes();
-    for (int i = 0; i < MESH_COUNT; i++) {
+    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
-        report_frame_cost(MESH_LABELS[i], &instance);
+        report_frame_cost(sponza_bakes[i], &instance);
     }
     TEST_PASS();
 }
 
 void
 run_sponza_perf_suite(void) {
+    scene_failure_t why;
+    sponza = scene_load(SPONZA_SCENE, &why);
+    if (sponza == NULL) {
+        ESP_LOGE(TAG, "scene sponza: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
+                 why.what);
+    } else {
+        pack = asset_store_pack(SPONZA_SCENE);
+        flythrough = scene_camera_lens(sponza, NULL);
+    }
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
+    if (pack != NULL) {
+        asset_store_release(SPONZA_SCENE);
+    }
+    scene_unload(sponza);
+    sponza = NULL;
+    pack = NULL;
+    flythrough = NULL;
 }
 
 #else /* !DEVICE_BUILD */

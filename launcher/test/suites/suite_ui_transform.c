@@ -16,6 +16,7 @@
 
 #include <stdbool.h>
 
+#include "icon_walk.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -195,19 +196,6 @@ static const uint8_t icon_l_rows[4] = {
     0xE0, /* 1110: cols 0,1,2 */
 };
 
-typedef struct {
-    icon_rect_t runs[4];
-    int count;
-} icon_collect_t;
-
-static void
-icon_collect_emit(void* ctx, int x, int y, int w, int h) {
-    icon_collect_t* ic = ctx;
-    TEST_ASSERT_TRUE(ic->count < 4);
-    ic->runs[ic->count] = (icon_rect_t){x, y, w, h};
-    ic->count++;
-}
-
 /* box = (10, 20, 4, 4), fixed across every quarter below. Expected physical
  * rects were mapped BY HAND, corner to corner, from
  * ui_transform_quarter_turn()'s own matrices (see that function's
@@ -218,16 +206,17 @@ static void
 assert_icon_blocks_at_quarter(int quarter, const icon_rect_t* expected, const char* msg) {
     const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
     const mu_Rect box = {10, 20, 4, 4};
-    icon_collect_t ic = {.count = 0};
+    icon_rect_t runs[4];
+    icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
 
-    ui_transform_icon_blocks(t, icon_l_rows, 4, 4, 1, box, icon_collect_emit, &ic);
+    ui_transform_icon_blocks(t, icon_l_rows, 4, 4, 1, box, icon_test_collect, &ic);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, ic.count, msg);
     for (int i = 0; i < 4; i++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].x, ic.runs[i].x, msg);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].y, ic.runs[i].y, msg);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].w, ic.runs[i].w, msg);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].h, ic.runs[i].h, msg);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].x, ic.blocks[i].x, msg);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].y, ic.blocks[i].y, msg);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].w, ic.blocks[i].w, msg);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].h, ic.blocks[i].h, msg);
     }
 }
 
@@ -293,17 +282,18 @@ test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
 
     for (int quarter = 0; quarter < 4; quarter++) {
         const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
-        icon_collect_t ic = {.count = 0};
-        ui_transform_icon_blocks(t, icon_l_rows, 4, 4, 1, box, icon_collect_emit, &ic);
+        icon_rect_t runs[4];
+        icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
+        ui_transform_icon_blocks(t, icon_l_rows, 4, 4, 1, box, icon_test_collect, &ic);
 
         TEST_ASSERT_EQUAL_INT(4, ic.count);
         for (int i = 0; i < 4; i++) {
             const mu_Rect truth =
                 ui_transform_rect(t, (mu_Rect){box.x + local[i].x, box.y + local[i].y, local[i].w, local[i].h});
-            TEST_ASSERT_EQUAL_INT(truth.x, ic.runs[i].x);
-            TEST_ASSERT_EQUAL_INT(truth.y, ic.runs[i].y);
-            TEST_ASSERT_EQUAL_INT(truth.w, ic.runs[i].w);
-            TEST_ASSERT_EQUAL_INT(truth.h, ic.runs[i].h);
+            TEST_ASSERT_EQUAL_INT(truth.x, ic.blocks[i].x);
+            TEST_ASSERT_EQUAL_INT(truth.y, ic.blocks[i].y);
+            TEST_ASSERT_EQUAL_INT(truth.w, ic.blocks[i].w);
+            TEST_ASSERT_EQUAL_INT(truth.h, ic.blocks[i].h);
         }
     }
 }

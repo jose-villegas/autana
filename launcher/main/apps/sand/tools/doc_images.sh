@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # The sand app's images for docs/images/, made by
 # launcher/tools/render/render_doc_images.sh.
@@ -10,7 +10,8 @@
 # Run from the repository root with $PYTHON set to a Python that has Pillow;
 # ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
 
-set -eu
+set -Eeuo pipefail
+trap 'echo "$0: failed (exit $?): $BASH_COMMAND" >&2' ERR
 
 OUT=$1/overview
 W=$2

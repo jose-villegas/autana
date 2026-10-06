@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #include "material_palette.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* Unlike the two-walk design's own ceiling (34, raised above
  * MATERIAL_LIQUID_DEPTH_BAND's 24), this walk needs no raise: that design's
@@ -78,11 +78,11 @@ sand_paint_depth_count(uint8_t* top_row, bool vertical_dominant, bool same_mater
 static inline __attribute__((always_inline)) bool
 sand_paint_clip_send(int send_x0, int send_x1, int wx0, int wx1, bool indexed, int changed_x0, int changed_x1,
                      int* out_x0, int* out_x1) {
-    int sx0 = im_max(send_x0, wx0);
-    int sx1 = im_min(send_x1, wx1);
+    int sx0 = mathi_max(send_x0, wx0);
+    int sx1 = mathi_min(send_x1, wx1);
     if (indexed) {
-        sx0 = im_max(sx0, changed_x0);
-        sx1 = im_min(sx1, changed_x1);
+        sx0 = mathi_max(sx0, changed_x0);
+        sx1 = mathi_min(sx1, changed_x1);
     }
     *out_x0 = sx0;
     *out_x1 = sx1;

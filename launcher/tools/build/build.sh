@@ -8,7 +8,7 @@
 #
 # Usage:
 #   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
-#                        [--verbose] [IDF_EXPORT]
+#                        [--layout-seed N] [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -30,6 +30,9 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
+#   --layout-seed N  pad every source's code and rodata by sizes seed N picks
+#               (tools/build/layout_pad.py), to sample the cache layouts a
+#               timing could have landed on. 0, the default, is the plain build.
 #   IDF_EXPORT  path to ESP-IDF's export script: export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
@@ -66,6 +69,7 @@ PERF_SCOPE=0
 AUTORUN=0
 VERBOSE=0
 IDF_EXPORT_ARG=""
+LAYOUT_SEED=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -73,6 +77,9 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
+        --layout-seed)
+            [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; exit 2; }
+            LAYOUT_SEED=$2; shift 2 ;;
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# the cost of the way in/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
@@ -126,7 +133,7 @@ quiet_finish() {
     if [ "$status" -ne 0 ]; then
         echo
         echo "=== FAILED (exit $status) ==="
-        read -r -p "Press Enter to close..." _ || true
+        if [ -t 0 ]; then read -r -p "Press Enter to close..." _ || true; fi
     fi
     exit "$status"
 }
@@ -139,6 +146,7 @@ fi
 if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
 fi
+VARIANT_OPTIONS="$VARIANT_OPTIONS --layout-seed $LAYOUT_SEED"
 # shellcheck disable=SC2086
 quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 

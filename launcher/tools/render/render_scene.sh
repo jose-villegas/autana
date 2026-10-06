@@ -28,6 +28,12 @@
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
+#   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
+#                   the scene reads as packs: build_pack.py writes them to
+#                   assets/ in the output folder, the store's sources join the
+#                   build, and that folder is built in as the default, so a
+#                   revision comparison running each build alone finds its
+#                   own; AUTANA_ASSET_DIR still overrides it per run.
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
@@ -47,16 +53,6 @@
 #
 # POSIX sh, like the rest of this directory.
 
-# Git Bash hands the compiler and this script MSYS paths (/c/...), which the
-# Windows python below cannot open. cygpath exists only there, which is also
-# the only place the conversion is needed.
-render_scene_to_native() {
-    if command -v cygpath > /dev/null 2>&1; then
-        cygpath -w "$1"
-    else
-        printf '%s' "$1"
-    fi
-}
 
 # Empty where the platform has neither, which turns the pinned-hash check
 # into a notice rather than a silent pass, see render_scene_run() below.
@@ -79,6 +75,30 @@ render_scene_run() {
     render_scene_render
 }
 
+# The packs of scene_assets' roots, and what the build needs to read them.
+render_scene_packs() {
+    for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
+        _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
+    done
+    # shellcheck source=../../../scripts/lib/python.sh
+    . "$_rs_launcher/../scripts/lib/python.sh"
+    . "$_rs_launcher/../scripts/lib/native_path.sh"
+    _rs_python=$(find_python) || return 1
+    _rs_assets="$scene_out_dir/assets"
+    set --
+    for _rs_folder in $scene_assets; do
+        set -- "$@" "$(to_native "$_rs_launcher/$_rs_folder")"
+    done
+    "$_rs_python" "$(to_native "$_rs_tools/r3d/build_pack.py")" \
+        -o "$(to_native "$_rs_assets")" "$@" > /dev/null || return 1
+    if [ -z "$(find "$_rs_assets" -name '*.apak' | head -n 1)" ]; then
+        echo "ERROR: scene_assets ($scene_assets) holds no asset roots, so the scene has nothing to read" >&2
+        return 1
+    fi
+    _rs_assets=$(printf '%s\n' "$_rs_assets" | to_native)
+    _rs_asset_flags="-DASSET_DIR_DEFAULT_PATH=\"$_rs_assets\""
+}
+
 # Everything before the first render: the declarations checked, the options
 # read, the binary compiled to $_rs_bin. Also what a harness self-check calls
 # to build a fixture scene it then runs by hand.
@@ -91,6 +111,7 @@ render_scene_build() {
         fi
     done
     : "${scene_includes:=}"
+    : "${scene_assets:=}"
     : "${scene_defines:=}"
     : "${scene_pin:=1}"
 
@@ -164,6 +185,10 @@ render_scene_build() {
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
+    _rs_asset_flags=
+    if [ -n "$scene_assets" ]; then
+        render_scene_packs || return 1
+    fi
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and
     # would otherwise discard libm before seeing who needed it. The scroll
@@ -175,7 +200,7 @@ render_scene_build() {
     # render_watch.c.
     # shellcheck disable=SC2086
     "$_rs_cc" -std=c11 -Wall -Wextra -ffp-contract=off -Wno-unused-parameter -Wno-unused-function \
-        -Wno-unused-variable -O1 -g $_rs_flags $scene_defines $_rs_files -o "$_rs_bin" \
+        -Wno-unused-variable -O1 -g $_rs_flags $scene_defines $_rs_asset_flags $_rs_files -o "$_rs_bin" \
         -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm || return 1
 }
 
@@ -277,8 +302,9 @@ render_scene_render() {
     # Neither is a dependency, and nothing here installs one.
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
+    . "$_rs_launcher/../scripts/lib/native_path.sh"
     if _rs_python=$(find_python 2> /dev/null); then
-        "$_rs_python" "$(render_scene_to_native "$_rs_tools/render/render_png.py")" \
-            "$(render_scene_to_native "$scene_out_dir")" || return 1
+        "$_rs_python" "$(to_native "$_rs_tools/render/render_png.py")" \
+            "$(to_native "$scene_out_dir")" || return 1
     fi
 }

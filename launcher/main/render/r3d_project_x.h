@@ -1,14 +1,15 @@
 /*
  * r3d_project_x: r3d_project.h's line projection in Q16.16 integers, for a
  * caller that projects thousands of independent points a frame and wants the
- * integer unit's speed: no float conversion, no soft divide, a 32-bit
- * hardware divide per point. The view is built once a frame from a float
- * r3d_line_view_t, so the camera maths stays float.
+ * integer unit's speed: the per-point path has no float conversion or
+ * software divide, using a 32-bit hardware divide per point. The view is
+ * built once a frame from a float r3d_line_view_t, so the camera maths
+ * stays float.
  *
  * Camera-space points are int32 in 1/512 of a meter, the resolution a pixel
  * needs and one a 32-bit product with a Q9 focal length cannot overflow at.
  * The view's matrix entries are Q9 too, so mat4x_apply() of a Q16.16 point
- * (util/math/mathx.h) lands in that space with no further shift. Header-only,
+ * (util/scalar/mathx.h) lands in that space with no further shift. Header-only,
  * static inline and ESP-IDF-free.
  */
 #pragma once

@@ -11,7 +11,7 @@ home when the app exits. Each frame has one owner per step:
 
 | Step | Owner | Job |
 |---|---|---|
-| Read touch and motion | shell (`main.c`) | Make one `input_t` for the frame. |
+| Read touch and motion | shell (`shell/`) | Make one `input_t` for the frame. |
 | Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
@@ -25,9 +25,9 @@ and means something different by each:
 
 | | |
 |---|---|
-| **shell** | the frame loop and the app switching: `main.c`, whose log tag is literally `shell` |
+| **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
 | **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
-| **boot** | what runs once before the loop exists and never again: `boot/` |
+| **boot** | what runs once before the loop exists: `main.c`'s startup and the animation in `boot/`. The power-on self test and the suite runner in `selftest/` run then too, and an app may run either again later |
 
 The top-level folder `launcher/` is the whole firmware, not the home
 screen.
@@ -36,58 +36,77 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and the root headers
-(`app.h`, `app_arena.h`, `build_variant.h`), never a row
-above or a folder beside it in the same row. The top row is the two callers,
-and neither includes the other: the shell reaches an app only through the
-callbacks `app.h` declares. Folders that touch hardware are
-marked. `ls launcher/main/<folder>` is the inventory; this is the shape.
+Each row may include anything in a row below it, never a row above or a
+folder beside it in the same row. The top row is the two callers, and
+neither includes the other: `main.c` starts the board and calls
+`shell_run()`, and the apps. The shell reaches an app only through the
+callbacks `app/app.h` declares. Folders that touch hardware are marked.
+`ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
-    classDef contract fill:#f4f1e8,stroke:#333,stroke-width:1px,color:#111
 
     subgraph R1["callers"]
         Apps["apps/<br/><i>one folder per app</i>"]
-        Main["main.c<br/><i>the frame loop, app switching</i>"]
+        Main["main.c<br/><i>boot order, then shell_run()</i>"]
     end
-    subgraph R3["before the loop"]
-        Boot["boot/<br/><i>POST, self-test, boot animation</i>"]:::hw
+    subgraph R2["the runtime"]
+        Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
+    end
+    subgraph R3["boot and self test"]
+        Boot["boot/<br/><i>the startup animation</i>"]
+        Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end
     subgraph R4["services"]
         Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
-    subgraph R5["the shell's panel"]
-        Display["display/<br/><i>orientation, panel clock, panel start</i>"]:::hw
+    subgraph R5["the app contract"]
+        App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
     end
-    subgraph R6["devices and drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
-        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    subgraph R6["panel and sensors"]
+        Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R7["animation and content"]
+    subgraph R7["drawing"]
+        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
+        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    end
+    subgraph R8["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
+    end
+    subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R8["utilities"]
-        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
+    subgraph R10["chip services"]
+        Runtime["util/runtime/<br/><i>time, memory, settings, jobs, frame cost, tunables, build id</i>"]:::hw
     end
-    subgraph R9["board"]
+    subgraph R11["pure code"]
+        UtilMath["util/math/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
+        Motion["util/motion/<br/><i>tween, easing, springs</i>"]
+        Encode["util/encode/<br/><i>JSON splice, BMP and base64</i>"]
+    end
+    subgraph R12["scalars and the build"]
+        Scalar["util/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
+        Build["util/build/<br/><i>which build variant this is</i>"]
+    end
+    subgraph R13["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9
-    Contract(["app.h: the shell/app contract"]):::contract
-    Main -.->|"calls through app.h"| Apps
-    Contract -.->|"includes input/input.h"| Input
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
+    Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
+- **util/ is two kinds of code.** `util/runtime/` holds the services that
+  reach the chip, each with a host half; the other util/ subfolders never
+  touch the chip and never include `util/runtime/`. Each subfolder has its
+  own row above.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path).
@@ -95,21 +114,23 @@ flowchart TB
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every
   folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
-- **The shell names no vendor firmware.** `main.c` reaches the chip's vendor
-  code only through modules that own it: `input/input_shell.h` (`input_start`,
-  `input_poll`), `display/display_shell.h` (`display_start`,
-  `display_sample_orientation`), `display/display.h` (the system panel clock)
-  and `util/{timing,settings,memory}.h`; it calls this firmware's own drivers
+- **The shell names no vendor firmware.** `main.c` and `shell/` reach the
+  chip's vendor code only through modules that own it:
+  `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
+  `display/display_shell.h` (`display_start`, `display_sample_orientation`),
+  `display/display.h` (the system panel clock) and
+  `util/runtime/{timing,settings,memory}.h`; they call this firmware's own
+  drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
   so the files a host builds stay pure.
-  `scripts/gates/check_shell_firmware.py` fails `main.c` on any ESP-IDF,
-  FreeRTOS, NVS or BSP include or call, logging (`esp_log.h`,
-  `ESP_LOG[A-Z]`) excepted.
+  `scripts/gates/check_shell_firmware.py` fails `main.c` and any file
+  under `shell/` on an ESP-IDF, FreeRTOS, NVS or BSP include or call,
+  logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
 - **The vendor timer and heap have one owner each.** Code above the drivers
-  reads time with `timing_now_us()` (`util/timing.h`, inlined to the
+  reads time with `timing_now_us()` (`util/runtime/timing.h`, inlined to the
   hardware timer's own call) and places or measures memory by kind with
-  `util/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
+  `util/runtime/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
   `MEMORY_PSRAM`), whose header says which heap is beneath it on each
   platform. In the firmware, its suites and its tools the same gate fails
   any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
@@ -117,8 +138,9 @@ flowchart TB
   `suites/` (the host heap model, the stubs, and the harness both platforms
   build) is not checked.
 - **Generated sources are checked in** beside the code that uses them, each
-  with a banner naming its regenerate command; `grep -rl "GENERATED FILE"`
-  lists them, and the rules they follow are in
+  with a banner naming its regenerate command, which
+  [a gate](tools/Generated-Files.md) reruns to prove the file current; the
+  rules they follow are in
   [tools/gen/README.md](../launcher/tools/gen/README.md).
 
 ---
@@ -128,7 +150,7 @@ flowchart TB
 ### 1. There is exactly one framebuffer
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
-(`MEMORY_PSRAM` in `util/memory.h`), so it does not count against the
+(`MEMORY_PSRAM` in `util/runtime/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
 is room in PSRAM for a second one and no time for it: a per-frame catch-up
 copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
@@ -175,24 +197,33 @@ become a goal.
 
 ## Startup
 
-`app_boot_init()` in `main.c` runs a fixed order before the loop, and the
-order is most of the point:
+`app_main()` in `main.c` runs a fixed order, then hands over to the loop, and
+the order is most of the point:
 
 ```
+shell_init()                the shell's own state, which the self-tests
+                            step before the loop runs
 post_run_before_display()   the SD card, on its own SDMMC bus
-display_start()             panel up, framebuffer allocated; on failure the
-                            shell logs and sleeps in a loop, never returns
+display_start()             panel up, framebuffer allocated; on failure
+                            main.c logs and sleeps in a loop, never returns
 display_load_panel_clock()  the saved panel clock, applied
 post_run_after_display()    the rest of the health check
                             -> a failure holds the screen for 8 s
 selftest_run()              SELFTEST builds with autorun only
+shell_check_console_prefixes()
+                            development builds stop here on two console
+                            prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
-boot_anim_run()             the startup animation, 5.5 s
+boot_anim_run()             the startup animation, 5.5 s; it mounts the
+                            first pack (its clip's), which first reads
+                            the asset directory; with no pack it holds a
+                            rest pose
 gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no
                             sensor: the display stays upright
 console_start()             development builds only
+shell_run()                 the frame loop, which never returns
 ```
 
 The health checks come first, so a faulty board says so before it does
@@ -201,7 +232,8 @@ there is nothing for a tap to reach.
 
 The launcher is built before the animation because the animation ends *in*
 it: for its last 700 ms each frame starts from the home screen, painted by
-the shell through `boot_anim_set_ending_backdrop()`, and the photograph
+the shell (`shell_paint_home_under_boot()`) through
+`boot_anim_set_ending_backdrop()`, and the photograph
 dithers away over it. `boot/` takes a painter rather than calling the
 launcher because it knows nothing above itself. What the animation draws is
 described in `boot/boot_anim.h`.
@@ -248,6 +280,29 @@ active the shell draws it in the same overlap window and upscales it into the
 framebuffer before `frame()`, whether or not the app has an `update()`
 ([Scene-Manager.md](render/Scene-Manager.md#each-frame)).
 
+### Engine systems
+
+Engine machinery the loop drives every pass is a **system**: a
+`shell_system_t` (`shell/shell_system.h`) of phase callbacks, registered with
+`SHELL_SYSTEM_REGISTER()` the way an app is. The loop never names a system;
+it calls each phase over all of them, lowest `order` first, and skips a
+system whose callback for that phase is NULL.
+
+| Phase | When the loop calls it |
+|---|---|
+| `update(dt_ms)` | after the app's `update()`, while the last frame is still being sent; touches no framebuffer |
+| `compose(dt_ms)` | once the send is done, before the app's `frame()` draws over it |
+| `app_exit()` | right after the app's `exit()` |
+| `overlaps_present()` | a query, not a phase: true makes the app's frame present a pass late, so `update` has a send to overlap |
+
+`update` and `compose` run only on a pass that overlaps the present: the app
+has an `update()`, or a system's `overlaps_present()` says so. Every `order`
+is a `SHELL_ORDER_*` constant in that one header, so a new system is placed
+against the others rather than guessed; ties run by name. A system's own
+folder sits below the shell and cannot include its header, so it is
+registered from a file in `shell/`: `shell/scene_system.c` registers the scene
+manager at `SHELL_ORDER_SCENE`.
+
 ### Full redraw
 
 `gfx_request_full_redraw()` marks everything dirty and latches a pending
@@ -264,13 +319,13 @@ pass. The app's side is in
 
 A frame that allocates, frees or logs every time it runs pays for it every
 frame. A development build watches for that at runtime
-(`util/frame_watch.h`); release compiles none of it.
+(`util/runtime/frame_watch.h`); release compiles none of it.
 
 | | |
 |---|---|
 | The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing (a frozen device, which still answers the console) joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
-| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
+| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/runtime/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
 | Counts | `autana debug framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 
@@ -302,7 +357,7 @@ the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 
 **App memory is lent, not owned.** The shell holds one static block in
-PSRAM, the app arena (`APP_ARENA_BYTES`, `app_arena.h`), and empties it
+PSRAM, the app arena (`APP_ARENA_BYTES`, `app/app_arena.h`), and empties it
 right after every app's `exit()`; an app takes bulk buffers from it and
 never frees them. Re-entry cannot fail to heap fragmentation, since every
 visit gets the same block, and taking from it is no dynamic-memory call
@@ -375,7 +430,8 @@ blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
 underneath**: when the panel opens, and again whenever the backdrop itself
 is redrawn (a full-redraw request, a turn). The shell's own Control Center is
-the reference implementation: `paint_control_center_backdrop()` in `main.c`.
+the reference implementation: `paint_control_center_backdrop()` in
+`shell/shell_apps.c`.
 `suite_gfx_color.c` pins the arithmetic; the recipe for an app is in
 [Building-a-Screen.md](Building-a-Screen.md#a-panel-over-a-paused-app).
 

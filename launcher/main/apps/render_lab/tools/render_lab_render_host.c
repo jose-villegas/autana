@@ -16,13 +16,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "app.h"
+#include "app/app.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/tune.h"
+#include "util/runtime/tune.h"
 
 /* The band ring keeps no retained frame for render_host.c to read back, so
  * setup() asks for the full-framebuffer layout. */

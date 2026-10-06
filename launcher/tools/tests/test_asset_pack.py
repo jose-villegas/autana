@@ -1,8 +1,10 @@
-"""The asset pack writer (asset/asset_pack.py), the pack builder and the meshes
-in the tree: what the firmware's asset_pack.c reads. The C side has its own
-suite, suite_asset_pack.c; this one proves what the tools write is what that
-reads."""
+"""The asset pack and pack directory writer (asset/asset_pack.py), the
+pack builder and the meshes in the tree: what the firmware's asset_pack.c
+and asset_directory.c read. The C side has its own suite, suite_asset_pack.c;
+this one proves what the tools write is what that reads."""
 
+import contextlib
+import io
 import pathlib
 import struct
 import sys
@@ -11,16 +13,15 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from anim import tracks_asset  # noqa: E402
 from asset import asset_pack  # noqa: E402
-from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
-from r3d import build_pack  # noqa: E402
-from r3d.import_settings import SettingsError, load_scene  # noqa: E402
-from r3d.scene_table import mesh_ids  # noqa: E402
+from asset.asset_pack import PackError, build_directory, build_pack as make_pack, parse_directory, parse_pack  # noqa: E402
+from r3d import build_pack, scene_asset  # noqa: E402
+from r3d.import_settings import SettingsError  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
-SOURCE = ('[source]\nurl = "https://example.invalid/m.zip"\nsha256 = "00"\npath = "m.obj"\ncache = "m"\n'
-          'credit = "A model."\n')
+SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 
 
 def seal(pack):
@@ -109,6 +110,66 @@ class RejectionTests(unittest.TestCase):
             parse_pack(seal(bytes(crooked)))
 
 
+class DirectoryTests(unittest.TestCase):
+    def image(self):
+        return build_directory([("one", make_pack([("a", LIT_MESH, b"1")])), ("two", make_pack([("b", LIT_MESH, b"22" * 3000)]))])
+
+    @staticmethod
+    def row(index):
+        return asset_pack.DIRECTORY_HEADER.size + asset_pack.DIRECTORY_ROW.size * index
+
+    def reseal(self, image):
+        """`image` with its directory CRC-32 recomputed after an edit to a row."""
+        count = struct.unpack_from("<I", image, 12)[0]
+        struct.pack_into("<I", image, 4, asset_pack.zlib.crc32(bytes(image[8:self.row(count)])))
+        return bytes(image)
+
+    def test_each_pack_parses_back_on_its_own_sector(self):
+        image = self.image()
+        packs = parse_directory(image)
+        self.assertEqual(list(packs), ["one", "two"])
+        self.assertEqual(parse_pack(packs["one"]), {"a": (LIT_MESH, b"1")})
+        self.assertEqual(parse_pack(packs["two"]), {"b": (LIT_MESH, b"22" * 3000)})
+        for index in range(2):
+            _, offset, _ = asset_pack.DIRECTORY_ROW.unpack_from(image, self.row(index))
+            self.assertEqual(offset % asset_pack.SECTOR, 0)
+
+    def test_the_same_packs_make_the_same_image(self):
+        self.assertEqual(self.image(), self.image())
+
+    def test_a_pack_name_that_is_empty_too_long_or_repeated_is_refused(self):
+        pack = make_pack([])
+        for packs in ([("", pack)], [("x" * 32, pack)], [("a", pack), ("a", pack)]):
+            with self.assertRaises(PackError):
+                build_directory(packs)
+
+    def test_a_bad_magic_version_or_checksum_is_refused(self):
+        for at, value, pattern in ((0, b"NOPE", "magic"), (8, struct.pack("<I", 2), "version"), (20, b"x", "CRC")):
+            image = bytearray(self.image())
+            image[at:at + len(value)] = value
+            with self.assertRaisesRegex(PackError, pattern):
+                parse_directory(bytes(image))
+
+    def test_a_row_out_of_range_misaligned_or_repeated_is_refused_even_with_a_good_checksum(self):
+        base = self.image()
+        cases = ((self.row(1) + 32, asset_pack.SECTOR, "overlaps"),                     # over the first pack
+                 (self.row(1) + 36, len(base), "outside"),                      # ends past the image
+                 (self.row(1) + 32, asset_pack.SECTOR * 2 + 16, "sector"),
+                 (self.row(0) + 32, 0, "outside"))                              # over the directory itself
+        for at, value, pattern in cases:
+            image = bytearray(base)
+            struct.pack_into("<I", image, at, value)
+            with self.assertRaisesRegex(PackError, pattern):
+                parse_directory(self.reseal(image))
+        repeated = bytearray(base)
+        repeated[self.row(1):self.row(1) + 3] = b"one"
+        with self.assertRaisesRegex(PackError, "repeated"):
+            parse_directory(self.reseal(repeated))
+        repeated[self.row(1):self.row(1) + 32] = b"n" * 32
+        with self.assertRaisesRegex(PackError, "fills"):
+            parse_directory(self.reseal(repeated))
+
+
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -119,15 +180,63 @@ def import_file(directory, name, mesh):
     return write(pathlib.Path(directory) / name, SOURCE + f'[output]\ndirectory = "."\nname = "{mesh}"\n')
 
 
+def variants_file(directory, name, *variants):
+    rows = "".join(f'[[variants]]\nname = "{variant}"\n' for variant in variants)
+    return write(pathlib.Path(directory) / name, SOURCE + '[output]\ndirectory = "."\n' + rows)
+
+
+def scene_file(directory, name, *placed):
+    """A scene placing each (import file, variant) once."""
+    objects = "".join(f'[[objects]]\nname = "o{index}"\n[objects.mesh_renderer]\nmesh = "{mesh}"\nvariant = "{variant}"\n'
+                      for index, (mesh, variant) in enumerate(placed))
+    return write(pathlib.Path(directory) / name, objects)
+
+
+def contents(packs):
+    return {root: {name: data for name, (_, data) in parse_pack(pack).items()} for root, pack in packs.items()}
+
+
 class BuilderTests(unittest.TestCase):
-    def test_the_pack_holds_every_mesh_the_files_name_by_its_name(self):
+    def test_each_free_import_is_a_pack_named_after_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             for folder, mesh, data in (("a", "one", b"1"), ("a2", "two", b"22"), ("b", "three", b"333")):
                 import_file(root / folder, f"{mesh}.import.toml", mesh)
                 (root / folder / f"{mesh}.mesh").write_bytes(data)
-            entries = parse_pack(build_pack.pack_bytes([root]))
-        self.assertEqual({name: data for name, (_, data) in entries.items()}, {"one": b"1", "two": b"22", "three": b"333"})
+            packs = build_pack.pack_bytes([root])
+        self.assertEqual(contents(packs), {"one": {"one": b"1"}, "two": {"two": b"22"}, "three": {"three": b"333"}})
+
+    def test_a_scene_is_a_pack_of_its_entry_and_every_mesh_it_places_and_its_imports_make_none(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            variants_file(root, "chair.import.toml", "chair")
+            variants_file(root, "table.import.toml", "table")
+            variants_file(root, "free.import.toml", "lamp")
+            scene_file(root, "room.scene.toml", ("chair.import.toml", "chair"), ("table.import.toml", "table"))
+            for mesh in ("chair", "table", "lamp"):
+                (root / f"{mesh}.mesh").write_bytes(mesh.encode())
+            packs = build_pack.pack_bytes([root])
+            room = scene_asset.bake(root / "room.scene.toml")
+        self.assertEqual(contents(packs), {"room": {"room": room, "chair": b"chair", "table": b"table"},
+                                           "free": {"lamp": b"lamp"}})
+
+    def test_a_mesh_two_roots_name_is_refused_naming_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            variants_file(root, "kit.import.toml", "chair")
+            scene_file(root, "room.scene.toml", ("kit.import.toml", "chair"))
+            scene_file(root, "hall.scene.toml", ("kit.import.toml", "chair"))
+            (root / "chair.mesh").write_bytes(b"c")
+            with self.assertRaisesRegex(SettingsError, "'chair' is named by packs"):
+                build_pack.pack_bytes([root])
+
+    def test_two_roots_with_one_name_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            import_file(root / "a", "same.import.toml", "one")
+            import_file(root / "b", "same.import.toml", "two")
+            with self.assertRaisesRegex(SettingsError, "pack named 'same'"):
+                build_pack.pack_bytes([root])
 
     def test_a_replaced_mesh_comes_from_its_own_file_and_must_exist(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -135,8 +244,8 @@ class BuilderTests(unittest.TestCase):
             import_file(root / "a", "a.import.toml", "one")
             (root / "a" / "one.mesh").write_bytes(b"1")
             (root / "scratch.mesh").write_bytes(b"9")
-            entries = parse_pack(build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"]))
-            self.assertEqual({name: data for name, (_, data) in entries.items()}, {"one": b"9"})
+            packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"])
+            self.assertEqual(contents(packs), {"a": {"one": b"9"}})
             with self.assertRaisesRegex(SettingsError, "no such mesh"):
                 build_pack.pack_bytes([root / "a"], ["other=x.mesh"])
 
@@ -146,34 +255,57 @@ class BuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(SettingsError, "mesh_import.py"):
                 build_pack.pack_bytes([directory])
 
-    def test_two_import_files_writing_one_name_are_refused(self):
+    def test_the_command_writes_each_pack_and_the_image_and_drops_stale_packs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            import_file(root / "a", "a.import.toml", "same")
-            import_file(root / "b", "b.import.toml", "same")
-            (root / "a" / "same.mesh").write_bytes(b"1")
-            (root / "b" / "same.mesh").write_bytes(b"2")
-            with self.assertRaisesRegex(SettingsError, "same"):
-                build_pack.pack_bytes([root])
+            for mesh in ("one", "two"):
+                import_file(root / "src", f"{mesh}.import.toml", mesh)
+                (root / "src" / f"{mesh}.mesh").write_bytes(mesh.encode())
+            out = root / "out"
+            out.mkdir()
+            (out / "gone.apak").write_bytes(b"old")
+            with contextlib.redirect_stdout(io.StringIO()):
+                build_pack.main(["-o", str(out), "--image", str(root / "assets.bin"), str(root / "src")])
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["one.apak", "two.apak"])
+            image = parse_directory((root / "assets.bin").read_bytes())
+            self.assertEqual({name: (out / f"{name}.apak").read_bytes() for name in image}, image)
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                build_pack.main(["--pack-of", "two", str(root / "src")])
+            self.assertEqual(printed.getvalue().strip(), "two")
 
 
 class TreeTests(unittest.TestCase):
-    def test_the_meshes_in_the_tree_pack_and_parse(self):
-        names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
-        self.assertTrue(names)
-        for kind, _ in names.values():
-            self.assertEqual(kind, LIT_MESH)
+    def test_the_packs_in_the_tree_pack_and_parse(self):
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
+        self.assertTrue(packs)
+        parse_directory(build_directory(sorted(packs.items())))
+        kinds = {kind for pack in packs.values() for kind, _ in parse_pack(pack).values()}
+        self.assertIn(LIT_MESH, kinds)
 
-    def test_every_mesh_a_scene_table_names_is_in_the_committed_pack(self):
-        names = parse_pack(build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
+    def test_each_scene_s_pack_holds_its_entry_every_mesh_it_names_and_its_camera_s_tracks(self):
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
         scenes = sorted((REPO / "launcher" / "main").rglob("*.scene.toml"))
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
-            ids = mesh_ids(load_scene(path))
-            self.assertTrue(ids, f"{path.name} names no mesh")
-            for mesh in ids:
-                self.assertIn(mesh, names, f"{path.name} names mesh {mesh!r}, which no baked mesh in the tree provides")
-                self.assertEqual(names[mesh][0], LIT_MESH)
+            name = scene_asset.scene_id(path)
+            self.assertIn(name, packs, f"{path.name} makes no pack")
+            entries = parse_pack(packs[name])
+            self.assertEqual(entries[name][0], scene_asset.TYPE)
+            scene = scene_asset.decode(entries[name][1])
+            self.assertTrue(scene["renderers"], f"{path.name} names no mesh")
+            for renderer in scene["renderers"]:
+                mesh = renderer["mesh"]
+                self.assertIn(mesh, entries, f"{path.name} names mesh {mesh!r}, which its pack does not hold")
+                self.assertEqual(entries[mesh][0], LIT_MESH)
+            for camera in scene["cameras"]:
+                if not camera["clip"]:
+                    continue
+                kind, clip = entries[camera["clip"]]
+                self.assertEqual(kind, tracks_asset.TYPE)
+                tracks = {track["name"] for track in tracks_asset.decode(clip)[0]}
+                for part in ("translation", "rotation"):
+                    self.assertIn(f"{camera['node']}/{part}", tracks, f"{path.name}: clip {camera['clip']!r}")
 
 
 if __name__ == "__main__":

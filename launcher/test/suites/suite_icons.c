@@ -25,43 +25,23 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "icon_walk.h"
 #include "suites.h"
 #include "unity.h"
 
 #include "gfx/icon.h"
 #include "gfx/icons_system.h"
 
-static bool
-baked_bit(const icon_t* icon, int x, int y) {
-    const uint8_t byte = icon_system_rows[icon->offset + (unsigned)y * icon->stride + (unsigned)(x / 8)];
-    return (byte & (0x80 >> (x % 8))) != 0;
-}
-
 /* check's own baked run count (icon_system_table[ICON_SYSTEM_CHECK].blocks),
  * big enough buffer for it at any box size, since a run's count is
  * scale-invariant (icon_walk_blocks' own comment). */
 #define CHECK_TEST_MAX_BLOCKS 16
 
-typedef struct {
-    icon_rect_t* blocks;
-    int count;
-    int cap;
-} collect_ctx_t;
-
-static void
-collect_emit(void* ctx, int x, int y, int w, int h) {
-    collect_ctx_t* cc = ctx;
-    TEST_ASSERT_TRUE_MESSAGE(cc->count < cc->cap,
-                             "icon_walk_blocks emitted more runs than the test's own buffer expects");
-    cc->blocks[cc->count] = (icon_rect_t){x, y, w, h};
-    cc->count++;
-}
-
 static int
 blocks_at(int w, int h, icon_rect_t* out) {
     const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
-    collect_ctx_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
-    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, w, h, collect_emit, &cc);
+    icon_test_collect_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
+    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, w, h, icon_test_collect, &cc);
     return cc.count;
 }
 
@@ -77,16 +57,6 @@ assert_all_inside_box(int w, int h) {
         TEST_ASSERT_TRUE_MESSAGE(blocks[i].x + blocks[i].w <= w && blocks[i].y + blocks[i].h <= h,
                                  "a block's far edge fell outside the (0,0,w,h) box");
     }
-}
-
-static void
-test_18px_badge_fits_inside_its_box(void) {
-    assert_all_inside_box(18, 18);
-}
-
-static void
-test_64px_checkbox_fits_inside_its_box(void) {
-    assert_all_inside_box(64, 64);
 }
 
 /* Sweeps every size from the module's floor (16px) up past both real call
@@ -176,7 +146,7 @@ test_check_matches_the_artwork_it_replaced(void) {
         const char* row = check_expected_rows[y];
         for (int x = 0; x < 16; x++) {
             const bool want = row[x] == 'X';
-            const bool got = baked_bit(icon, x, y);
+            const bool got = icon_test_bit(icon_system_rows, icon, x, y);
             TEST_ASSERT_EQUAL_INT_MESSAGE(want, got,
                                           "the baked check mark diverges from the bitmap it replaced - "
                                           "see the message above for which row/col "
@@ -211,31 +181,6 @@ test_bitmap_is_neither_empty_nor_full(void) {
                              "something unrecognisable");
 }
 
-/* Every row of the artwork has at most two separate runs (the three rows
- * where both limbs are visible at once) and icon_system_table's own
- * `blocks` field for ICON_SYSTEM_CHECK is exactly the sum of every row's
- * run count, the worst case this icon actually needs, not a round number
- * picked for headroom. */
-static void
-test_blocks_matches_the_artworks_actual_run_count(void) {
-    int total_runs = 0;
-    for (int y = 0; y < 16; y++) {
-        const char* row = check_expected_rows[y];
-        bool in_run = false;
-        for (int x = 0; x < 16; x++) {
-            const bool set = row[x] == 'X';
-            if (set && !in_run) {
-                total_runs++;
-            }
-            in_run = set;
-        }
-    }
-    const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
-    TEST_ASSERT_EQUAL_INT_MESSAGE(icon->blocks, total_runs,
-                                  "icon_system_table[ICON_SYSTEM_CHECK].blocks must equal the "
-                                  "artwork's actual total run count");
-}
-
 /* The stroke is 2-3 native px through the body. Exactly one run is allowed
  * to be thinner than that: the long limb's free-end taper, a single pixel;
  * every other run must meet the 2px floor, or the mark reads as scattered
@@ -266,15 +211,12 @@ test_stroke_is_at_least_2px_native_except_the_one_tapered_tip(void) {
 
 void
 run_icons_suite(void) {
-    RUN_TEST(test_18px_badge_fits_inside_its_box);
-    RUN_TEST(test_64px_checkbox_fits_inside_its_box);
     RUN_TEST(test_fits_inside_its_box_across_the_supported_range);
     RUN_TEST(test_centred_at_18px);
     RUN_TEST(test_centred_at_64px);
     RUN_TEST(test_centred_at_32px);
     RUN_TEST(test_check_matches_the_artwork_it_replaced);
     RUN_TEST(test_bitmap_is_neither_empty_nor_full);
-    RUN_TEST(test_blocks_matches_the_artworks_actual_run_count);
     RUN_TEST(test_stroke_is_at_least_2px_native_except_the_one_tapered_tip);
 }
 

@@ -1,8 +1,10 @@
 /*
  * The triangle_sizes tool: a lit mesh's triangles by the pixel centres they
- * cover at each pose of a poses file or standard input, and each pose's rendered frame kept
+ * cover at each pose of a poses file or standard input, the boxes of the
+ * triangles its draw hands the rasterizer, and each pose's rendered frame kept
  * or compared. The mesh is read from an asset pack, named on the command line
- * by report_triangle_sizes.sh.
+ * by report_triangle_sizes.sh, which builds r3d_pipeline.c to call the two
+ * functions below in place of r3d_span's own.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -11,6 +13,7 @@
 #include <string.h>
 
 #include "asset/asset_file.h"
+#include "gfx/gfx_color.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"
@@ -19,6 +22,27 @@ typedef struct {
     int width, height;
     size_t pixels;
 } frame_size_t;
+
+static r3d_boxes_t boxes;
+
+void sizes_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                         const r3d_span_vertex_t* c);
+void sizes_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                               const r3d_span_vertex_t* c, uint16_t color);
+
+void
+sizes_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                    const r3d_span_vertex_t* c) {
+    r3d_boxes_count(&boxes, target, a, b, c, false);
+    r3d_span_triangle(target, a, b, c);
+}
+
+void
+sizes_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                          const r3d_span_vertex_t* c, uint16_t color) {
+    r3d_boxes_count(&boxes, target, a, b, c, true);
+    r3d_span_triangle_solid(target, a, b, c, color);
+}
 
 static void*
 checked_malloc(size_t bytes) {
@@ -32,11 +56,11 @@ checked_malloc(size_t bytes) {
 
 static int
 channel_gap(uint16_t a, uint16_t b) {
-    const unsigned na = (unsigned)((a >> 8) | (a << 8)) & 0xFFFFU;
-    const unsigned nb = (unsigned)((b >> 8) | (b << 8)) & 0xFFFFU;
-    const int dr = abs((int)(na >> 11) - (int)(nb >> 11)) * 8;
-    const int dg = abs((int)((na >> 5) & 63U) - (int)((nb >> 5) & 63U)) * 4;
-    const int db = abs((int)(na & 31U) - (int)(nb & 31U)) * 8;
+    const uint16_t na = gfx_color_swap(a);
+    const uint16_t nb = gfx_color_swap(b);
+    const int dr = abs((int)gfx_rgb565_r5(na) - (int)gfx_rgb565_r5(nb)) * 8;
+    const int dg = abs((int)gfx_rgb565_g6(na) - (int)gfx_rgb565_g6(nb)) * 4;
+    const int db = abs((int)gfx_rgb565_b5(na) - (int)gfx_rgb565_b5(nb)) * 8;
     return dr > dg ? (dr > db ? dr : db) : (dg > db ? dg : db);
 }
 
@@ -189,6 +213,8 @@ main(int argc, char** argv) {
         }
     }
     print_sizes(-1, &total);
+    (void)printf("\nTriangles the draw hands the rasterizer, over every pose, by bounding box in pixel centres:\n\n");
+    r3d_boxes_print(stdout, &boxes);
     free(poses);
     free(b.visible);
     free(b.rows);

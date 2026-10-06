@@ -26,7 +26,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 /*
  * 2D block locality
@@ -744,6 +744,45 @@ test_a_lagging_grain_is_not_left_asleep(void) {
     }
 }
 
+/* Soaking, spreading and drying only retone soil, which nothing the gravity
+ * sweep or cross-flow reads depends on, so a damp bed at rest must stay
+ * asleep while its moisture moves. A wake there keeps every block over a
+ * drying bank in the sweep for as long as it dries. */
+static void
+test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
+    loc_fixture();
+    sand_set_soak(&fx.loc, SAND_SOAK_PER_MATERIAL);
+    const reaction_t* const dirt = &reactions[MAT_DIRT];
+    for (int y = LOC_H - 6; y < LOC_H; y++) {
+        for (int x = 0; x < LOC_W; x++) {
+            const uint8_t m = (x % 4 == 0) ? SOIL_MOISTURE_MAX : 0;
+            sand_set(&fx.loc, x, y, soil_cell(CELL_MAKE(MAT_DIRT, 0), 0, m, dirt));
+        }
+    }
+    int moist_before = 0;
+    for (int y = 0; y < LOC_H; y++) {
+        for (int x = 0; x < LOC_W; x++) {
+            moist_before += moisture_of(fx.loc.cells[(y * LOC_W) + x], dirt);
+        }
+    }
+    for (int i = 0; i < 40; i++) {
+        sand_step(&fx.loc, 0, 1, 0);
+    }
+    int moist_after = 0;
+    int changed = 0;
+    for (int y = 0; y < LOC_H; y++) {
+        for (int x = 0; x < LOC_W; x++) {
+            moist_after += moisture_of(fx.loc.cells[(y * LOC_W) + x], dirt);
+        }
+    }
+    changed = moist_after != moist_before;
+    const int awake = count_awake_blocks(&fx.loc);
+
+    loc_free();
+    TEST_ASSERT_TRUE_MESSAGE(changed, "setup: the bed must actually dry or spread, or this proves nothing");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, "moisture moving through a bed at rest must not wake its blocks");
+}
+
 void
 run_sand_locality_suite(void) {
     RUN_TEST(test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other);
@@ -761,6 +800,7 @@ run_sand_locality_suite(void) {
     RUN_TEST(test_scatter_spreads_a_falling_stream);
     RUN_TEST(test_scatter_conserves_grains);
     RUN_TEST(test_a_lagging_grain_is_not_left_asleep);
+    RUN_TEST(test_moisture_moving_through_a_resting_bed_does_not_wake_it);
 }
 
 SUITE_REGISTER(run_sand_locality_suite);

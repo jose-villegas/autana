@@ -21,6 +21,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
+from fake_serial import FakeConnection
 import fake_flash  # noqa: E402
 import device_lock
 import device_hook
@@ -68,6 +69,24 @@ class InterpreterTests(unittest.TestCase):
             status = device.rerun_under_idf_python(["status"])
         self.assertIsNone(status)
         call.assert_not_called()
+
+
+class OpenSerialTests(unittest.TestCase):
+    """A board that stops reading its console (a half-written image, a
+    wedged app) must fail the command, not hold the lock forever: pyserial
+    with no write timeout blocks in the OS write with no limit."""
+
+    def opened(self):
+        serial = mock.MagicMock()
+        with mock.patch.dict(sys.modules, {"serial": serial}),                 mock.patch.object(device, "locked_port", return_value="COM5"):
+            device.open_serial()
+        return serial.Serial.return_value
+
+    def test_writes_are_bounded_like_reads(self):
+        connection = self.opened()
+        self.assertIsInstance(connection.write_timeout, (int, float))
+        self.assertGreater(connection.write_timeout, 0)
+        connection.open.assert_called_once_with()
 
 
 class HookIsolationTests(unittest.TestCase):
@@ -164,33 +183,6 @@ class PortWaitTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "re-enumerating after reset"):
             device.open_when_free(0, self.opener(1), self.sleep,
                                   lambda: self.clock[0], "re-enumerating after reset")
-
-
-class FakeConnection:
-    def __init__(self, chunks):
-        self.chunks = list(chunks)
-        self.writes = []
-
-    def read(self, unused_size):
-        return self.chunks.pop(0) if self.chunks else b""
-
-    def write(self, data):
-        self.writes.append(data)
-
-    def close(self):
-        pass
-
-    def flush(self):
-        pass
-
-    def reset_input_buffer(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, unused_type, unused_value, unused_traceback):
-        pass
 
 
 class AnswersNoQuery(FakeConnection):
@@ -1000,6 +992,11 @@ class FlashCommandLineTests(unittest.TestCase):
                                "--worktree", "C:/wt", "--perf-scope"])
         self.assertEqual(calls, [["--perf-scope"]])
 
+    def test_layout_seed_becomes_an_extra_flag(self):
+        calls = self.run_main(["--owner", "a", "flash", "--variant", "diag",
+                               "--worktree", "C:/wt", "--layout-seed", "7"])
+        self.assertEqual(calls, [["--layout-seed", "7"]])
+
     def test_no_perf_scope_flag_passes_nothing_extra(self):
         calls = self.run_main(["--owner", "a", "flash", "--variant", "dev", "--worktree", "C:/wt"])
         self.assertEqual(calls, [[]])
@@ -1158,7 +1155,7 @@ class TestFilterRunTests(unittest.TestCase):
         chunks = [b"\nRUNSUITE_COMPLETE name=sand fire found=0\n"]
         _, error, _, _ = self.run_filtered(chunks, ["fire"])
         self.assertIsInstance(error, device.TestFilterError)
-        self.assertRegex(str(error), "predates --test")
+        self.assertRegex(str(error), "^this image predates --test")
 
     def test_a_filtered_run_with_no_completion_line_is_a_filter_error(self):
         # An image that predates the filter drops a long request whole.
@@ -1200,7 +1197,8 @@ class BatchTests(unittest.TestCase):
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
                   expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
-                  test_filter=None, filter_error_run=None, error_class=None):
+                  test_filter=None, filter_error_run=None, error_class=None,
+                  layout_seed=0):
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
                  "suite_args": []}
 
@@ -1251,7 +1249,7 @@ class BatchTests(unittest.TestCase):
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path,
                              expect_build_id=expect_build_id, flash=flash,
-                             test_filter=test_filter)
+                             test_filter=test_filter, layout_seed=layout_seed)
             store = mock.Mock()
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \
@@ -1375,6 +1373,10 @@ class BatchTests(unittest.TestCase):
         _, calls, _, _ = self.run_batch(runs=1, flash=False)
         self.assertIsNone(calls["run_suite"][0][4])
 
+    def test_layout_seed_without_flash_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "--layout-seed.*--flash"):
+            self.run_batch(flash=False, layout_seed=3)
+
     def test_perf_scope_without_flash_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "--perf-scope.*--flash"):
             self.run_batch(flash=False, perf_scope=True)
@@ -1425,6 +1427,10 @@ class BatchTests(unittest.TestCase):
     def test_perf_scope_is_passed_to_the_build(self):
         _, calls, _, _ = self.run_batch(perf_scope=True)
         self.assertEqual(calls["build"], [["--perf-scope"]])
+
+    def test_layout_seed_is_passed_to_the_build(self):
+        _, calls, _, _ = self.run_batch(layout_seed=3)
+        self.assertEqual(calls["build"], [["--layout-seed", "3"]])
 
     def test_out_is_used_for_one_suite_one_run(self):
         _, calls, _, _ = self.run_batch(suites=("run_sand_perf_suite",), runs=1, out=True)
@@ -1511,7 +1517,7 @@ class DecodeCrashAddressesTests(unittest.TestCase):
             self.assertEqual(device.decode_crash_addresses(data, Path("x.elf")), [])
 
 
-FRAME_WATCH_SOURCE = Path(__file__).resolve().parents[3] / "launcher" / "main" / "util" / "frame_watch.c"
+FRAME_WATCH_SOURCE = Path(__file__).resolve().parents[3] / "launcher" / "main" / "util" / "runtime" / "frame_watch.c"
 
 
 class FrameWatchLineTests(unittest.TestCase):
@@ -1680,9 +1686,69 @@ class CaptureAfterResetTests(unittest.TestCase):
             unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.1)
         self.assertEqual(reason, "complete")
 
+class WaitForPortTests(unittest.TestCase):
+    """A reset takes the board's port off USB for seconds; it returns by the
+    board's serial number, possibly under another name."""
+
+    def setUp(self):
+        self.clock = [0.0]
+        self.listing = []
+
+    def sleep(self, seconds):
+        self.clock[0] += seconds
+
+    def boards(self):
+        return [device.Board(BOARD, name) for name in self.listing
+                if self.clock[0] >= self.appears_at]
+
+    def wait(self, seconds=20, probe=lambda port: None):
+        with mock.patch.object(device, "plugged_boards", self.boards):
+            return device.wait_for_port(BOARD, seconds, probe, self.sleep,
+                                        lambda: self.clock[0])
+
+    def test_a_port_that_appears_after_a_delay_is_returned_under_its_new_name(self):
+        self.appears_at = 6.0
+        self.listing = ["/dev/ttyACM1"]
+        self.assertEqual(self.wait(), "/dev/ttyACM1")
+        self.assertGreaterEqual(self.clock[0], 6.0)
+
+    def test_a_port_that_never_appears_times_out_cleanly(self):
+        self.appears_at = 1e9
+        self.listing = ["COM5"]
+        with self.assertRaisesRegex(device.PortUnavailable, "did not reappear within 20s"):
+            self.wait()
+        self.assertLess(self.clock[0], 21)
+
+    def test_a_listed_port_that_cannot_be_opened_yet_is_waited_out(self):
+        self.appears_at = 0.0
+        self.listing = ["COM5"]
+        opens = []
+
+        def probe(port):
+            opens.append(port)
+            if len(opens) < 4:
+                raise FileNotFoundError(2, "gone")
+
+        self.assertEqual(self.wait(probe=probe), "COM5")
+        self.assertEqual(len(opens), 4)
+
+    def test_the_liveness_check_runs_on_every_miss(self):
+        self.appears_at = 1e9
+        checks = []
+        with mock.patch.object(device, "plugged_boards", self.boards):
+            with self.assertRaises(device.PortUnavailable):
+                device.wait_for_port(BOARD, 2, lambda port: None, self.sleep,
+                                     lambda: self.clock[0], lambda: checks.append(1))
+        self.assertGreater(len(checks), 1)
+
+
 class ResetTests(unittest.TestCase):
     def after_argument(self, *args, **keywords):
+        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
+        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
         with mock.patch.object(device, "locked_port", return_value="COM5"), \
+             mock.patch.object(device, "require_live_lock"), \
+             mock.patch.object(device, "wait_for_port", return_value="COM5"), \
              mock.patch.object(device, "python_with_pyserial", return_value="python"), \
              mock.patch.object(device.subprocess, "run") as run:
             device.reset(*args, **keywords)
@@ -1694,6 +1760,45 @@ class ResetTests(unittest.TestCase):
 
     def test_restarts_through_the_watchdog_when_asked(self):
         self.assertEqual(self.after_argument(after="watchdog_reset"), "watchdog_reset")
+
+
+class ResetRetryTests(unittest.TestCase):
+    """esptool loses the port mid-connect while the board re-enumerates."""
+
+    def run_reset(self, outcomes):
+        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
+        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
+        calls = []
+
+        def fake_run(command, check):
+            calls.append(command)
+            outcome = outcomes[len(calls) - 1]
+            if outcome:
+                raise subprocess.CalledProcessError(1, command)
+
+        with mock.patch.object(device, "locked_port", return_value="COM5"), \
+             mock.patch.object(device, "require_live_lock"), \
+             mock.patch.object(device, "wait_for_port", return_value="COM5") as wait, \
+             mock.patch.object(device, "python_with_pyserial", return_value="python"), \
+             mock.patch.object(device.subprocess, "run", side_effect=fake_run):
+            try:
+                device.reset()
+            finally:
+                self.waits = wait.call_count
+        return calls
+
+    def test_a_serial_exception_on_the_first_attempt_is_retried_after_waiting_again(self):
+        calls = self.run_reset([True, False])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.waits, 2)
+
+    def test_two_failures_stop_with_the_error_and_no_third_attempt(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_reset([True, True, False])
+        self.assertEqual(self.waits, 2)
+
+    def test_a_clean_first_attempt_runs_esptool_once(self):
+        self.assertEqual(len(self.run_reset([False])), 1)
 
 
 class ListenElfResolutionTests(unittest.TestCase):
@@ -2124,6 +2229,55 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 code = device.selftest(args, store, BOARD)
         self.assertEqual(code, 1)
+
+
+class TouchPointTests(unittest.TestCase):
+    """The default screenshot's pixels in the panel's own frame, which
+    TAP, PRESS and DRAG take."""
+
+    @staticmethod
+    def coordinate_png(width, height):
+        """Each pixel's red and green are its own x and y."""
+        import screenshot as screenshot_tool
+        raw = b"".join(b"\0" + b"".join(bytes((x, y, 0)) for x in range(width)) for y in range(height))
+        return (b"\x89PNG\r\n\x1a\n"
+                + screenshot_tool._png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                + screenshot_tool._png_chunk(b"IDAT", zlib.compress(raw))
+                + screenshot_tool._png_chunk(b"IEND", b""))
+
+    @staticmethod
+    def pixels(png):
+        width, height = struct.unpack_from(">II", png, 16)
+        pos, compressed = 8, bytearray()
+        while pos < len(png):
+            length, = struct.unpack_from(">I", png, pos)
+            if png[pos + 4:pos + 8] == b"IDAT":
+                compressed += png[pos + 8:pos + 8 + length]
+            pos += length + 12
+        raw = zlib.decompress(compressed)
+        stride = 1 + width * 3
+        return {(x, y): tuple(raw[y * stride + 1 + x * 3:y * stride + 3 + x * 3])
+                for y in range(height) for x in range(width)}
+
+    def test_panel_point_finds_the_pixel_turn_png_moved_for_every_quarter(self):
+        import screenshot as screenshot_tool
+        width, height = 3, 5
+        for quarter in range(4):
+            turned = self.pixels(screenshot_tool.turn_png(self.coordinate_png(width, height), quarter))
+            for (x, y), source in turned.items():
+                self.assertEqual(screenshot_tool.panel_point(x, y, quarter, width, height), source,
+                                 f"quarter {quarter} at ({x}, {y})")
+
+    def test_maps_the_default_screenshot_to_the_panel(self):
+        self.assertEqual(device.touch_point(0, 0), (367, 0))
+        self.assertEqual(device.touch_point(447, 367), (0, 447))
+        # render_lab's NEXT SCENE with the board landscape, tapped on the board.
+        self.assertEqual(device.touch_point(222, 246), (121, 222))
+
+    def test_rejects_a_point_outside_the_default_screenshot(self):
+        for x, y in ((448, 0), (0, 368), (-1, 10), (10, -1)):
+            with self.assertRaises(ValueError):
+                device.touch_point(x, y)
 
 
 class ScreenshotCommandTests(unittest.TestCase):

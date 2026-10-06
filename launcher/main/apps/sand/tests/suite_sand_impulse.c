@@ -28,7 +28,7 @@
 #include "apps/sand/sand_controls.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 /*
  * explosions
@@ -2312,8 +2312,8 @@ ricochet_nearest_candidate(const ricochet_tracker_t* tr, int n_cand, const ricoc
         if (tr->cand_used[ci]) {
             continue;
         }
-        const int dx = im_abs(tr->cand_x[ci] - li->x);
-        const int dy = im_abs(tr->cand_y[ci] - li->y);
+        const int dx = mathi_abs(tr->cand_x[ci] - li->x);
+        const int dy = mathi_abs(tr->cand_y[ci] - li->y);
         if (dx > RICOCHET_MATCH_RADIUS || dy > RICOCHET_MATCH_RADIUS) {
             continue;
         }

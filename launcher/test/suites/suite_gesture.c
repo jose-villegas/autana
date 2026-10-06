@@ -1,20 +1,8 @@
 /*
- * Specification for the home gesture: a swipe from whichever screen edge is
- * currently carrying it, toward the centre, which is how an app is closed.
- * Which edge that is depends on the shell's orientation (see main.c's
- * exit_edge_for_quarter()); this module only judges a swipe against
- * whichever edge it is told, one of the four in gesture_edge_t.
- *
- * This has to be forgiving enough to trigger reliably with a fingertip, and
- * strict enough that it never fires while an app is being used normally. Those
- * pull in opposite directions, so the boundaries are worth pinning down.
- *
- * The bulk of the boundary and false-positive coverage lives on the bottom
- * edge, since that logic is shared (just relabelled per edge) with top/
- * left/right; see gesture.c. The other three edges each get a smaller,
- * edge-specific set: one trigger, one wrong-direction, one too-short, one
- * wrong-start-zone, enough to prove the axis and sign are right for that
- * edge without re-deriving every boundary already covered for bottom.
+ * The home gesture: a swipe from the edge it is told (gesture_edge_t, picked
+ * by shell_exit_edge_for_quarter()) toward the centre. It must trigger with a
+ * fingertip yet never fire in normal use. Boundaries are pinned on the bottom
+ * edge, whose logic the others share; the others prove axis and sign.
  */
 
 #include "input/gesture.h"

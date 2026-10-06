@@ -11,9 +11,9 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "boot/post_layout.h"
 #include "display/display.h"
 #include "gfx/gfx_font_roles.h"
+#include "selftest/post_layout.h"
 
 /* The panel, and the panel turned on its side. The logical canvas the report
  * lays out in is one or the other, never anything between. */

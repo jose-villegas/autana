@@ -4,10 +4,10 @@
 #include "input/touch_inject_fsm.h"
 #include "input/touch_point.h"
 
-#include "build_variant.h"
-#include "util/memory.h"
-#include "util/timing.h"
-#include "util/tune.h"
+#include "util/build/build_variant.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
+#include "util/runtime/tune.h"
 
 #include "bsp/esp-bsp.h"
 #include "bsp/touch.h"

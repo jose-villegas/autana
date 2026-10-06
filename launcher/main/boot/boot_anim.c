@@ -32,13 +32,13 @@
 #include <string.h>
 
 #include "boot/boot_anim_image.h"
-#include "build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_font_roles.h"
-#include "util/fixed.h"
-#include "util/intmath.h"
-#include "util/timing.h"
+#include "util/build/build_variant.h"
+#include "util/runtime/timing.h"
+#include "util/scalar/fixed.h"
+#include "util/scalar/mathi.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */
@@ -294,7 +294,7 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
     const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
     const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
     const gfx_color_t c =
-        lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
+        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
     draw_grid_circle(d, &plane, c, steps, view);
     return tiny;
 }
@@ -415,7 +415,7 @@ static void
 draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joined) {
     /* Offsets spread to thicken curve centrally. */
     const int half = width / 2;
-    const bool shallow = im_abs(x1 - x0) > im_abs(y1 - y0);
+    const bool shallow = mathi_abs(x1 - x0) > mathi_abs(y1 - y0);
 
     for (int i = 0; i < width; i++) {
         const int off = i - half;
@@ -468,7 +468,7 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
             continue;
         }
 
-        draw_head(x, y, boot_anim_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
+        draw_head(x, y, gfx_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
     }
 }
 
@@ -564,7 +564,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         }
 
         const boot_anim_stroke_t s = boot_anim_stroke(a0 + ((a1 - a0) >> 1), colour);
-        gfx_color_t span_c = gfx_rgb(boot_anim_hue_rgb(s.hue));
+        gfx_color_t span_c = gfx_rgb(gfx_hue_rgb(s.hue));
         span_c = gfx_color_mix(span_c, COL_WHITE, s.bloom);
         span_c = gfx_color_mix(COL_BG, span_c, scale8(s.glow, ink));
 
@@ -685,12 +685,12 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 }
 
 void
-boot_anim_draw_frame(uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     const uint8_t reveal = boot_anim_image_reveal(now_ms);
     const uint8_t scene = boot_anim_scene_reach(now_ms);
 
-    const boot_anim_view_t view = boot_anim_view(GFX_WIDTH, GFX_HEIGHT, now_ms);
+    const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
@@ -731,6 +731,8 @@ report_fps_windowed(int64_t now_us, uint32_t now_ms, int64_t* window_start, uint
 #ifdef ESP_PLATFORM
 void
 boot_anim_run(void) {
+    boot_anim_motion_t motion;
+    boot_anim_motion_load(&motion);
     const int64_t started_us = timing_now_us();
     uint32_t frames = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -746,7 +748,7 @@ boot_anim_run(void) {
             break;
         }
 
-        boot_anim_draw_frame(now_ms);
+        boot_anim_draw_frame(&motion, now_ms);
         gfx_present();
         frames++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -757,6 +759,9 @@ boot_anim_run(void) {
          * idle task feeds the watchdog. */
         vTaskDelay(1);
     }
+    /* Boot plays once and nothing else reads its clip: releasing gives back the
+     * pack and its mount slot. */
+    boot_anim_motion_release(&motion);
 
     /* Checked only on the board; not on host. */
     ESP_LOGI(TAG, "%u frames in %d ms (%.1f fps)", (unsigned)frames, BOOT_ANIM_MS,

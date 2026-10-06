@@ -17,6 +17,8 @@
 
 #ifdef DEVICE_BUILD
 
+#include "perf_stats.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -29,7 +31,7 @@
 #include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 /* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */
@@ -60,39 +62,8 @@ static const char* TAG = "cube_band_perf";
 static int32_t* samples;
 static int sample_count;
 
-static int
-cmp_i32(const void* a, const void* b) {
-    const int32_t va = *(const int32_t*)a;
-    const int32_t vb = *(const int32_t*)b;
-    return (va > vb) - (va < vb);
-}
-
-typedef struct {
-    int64_t min, max, avg, med;
-} stats_t;
-
-static stats_t
-compute_stats(int n) {
-    stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0};
-    int64_t sum = 0;
-
-    for (int i = 0; i < n; i++) {
-        if (samples[i] < s.min) {
-            s.min = samples[i];
-        }
-        if (samples[i] > s.max) {
-            s.max = samples[i];
-        }
-        sum += samples[i];
-    }
-    s.avg = sum / n;
-    qsort(samples, n, sizeof(int32_t), cmp_i32);
-    s.med = samples[n / 2];
-    return s;
-}
-
 static void
-log_stats(const char* label, stats_t s) {
+log_stats(const char* label, perf_stats_t s) {
     ESP_LOGI(TAG, "%-8s min=%lldus max=%lldus avg=%lldus med=%lldus (%.1f/%.1f fps avg/med)", label, (long long)s.min,
              (long long)s.max, (long long)s.avg, (long long)s.med, 1000000.0 / (double)s.avg,
              1000000.0 / (double)s.med);
@@ -104,7 +75,7 @@ log_stats(const char* label, stats_t s) {
  * floor catches "rendered impossibly fast to be real" the way a bare
  * touched>0 check would still miss a bug that only fires most frames. */
 static void
-assert_band_frame_did_real_work(stats_t frame, int touched, int64_t raster_us) {
+assert_band_frame_did_real_work(perf_stats_t frame, int touched, int64_t raster_us) {
     /* Total bytes across the whole capture, not a per-frame average: a
      * per-frame average this small can truncate to 0 as an integer even
      * when touched is genuinely nonzero, which would fail this for the
@@ -124,7 +95,7 @@ assert_band_frame_did_real_work(stats_t frame, int touched, int64_t raster_us) {
 
 /* Runs one variant for `duration_ms`, timing whichever frame path
  * `run_frame` performs - either the band loop or the full-fb path, both
- * called with dt_ms clamped the same way main.c's own loop clamps it. */
+ * called with dt_ms clamped the same way the shell's own loop clamps it. */
 static void
 capture(void (*run_frame)(uint32_t dt_ms), int64_t duration_ms) {
     sample_count = 0;
@@ -259,7 +230,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no full-fb frames captured");
     const int full_fb_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
-    const stats_t full_fb_stats = compute_stats(full_fb_n);
+    const perf_stats_t full_fb_stats = perf_stats_compute(samples, full_fb_n);
 
     render_lab_band_mode = true;
     replay_us_accum = 0;
@@ -273,7 +244,7 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
     render_lab_exit();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sample_count, "no band-mode frames captured");
     const int band_n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
-    const stats_t band_stats = compute_stats(band_n);
+    const perf_stats_t band_stats = perf_stats_compute(samples, band_n);
     const double band_bytes_per_frame =
         (double)touched_band_count * GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t) / sample_count;
 
@@ -319,8 +290,8 @@ test_cube_band_mode_against_full_fb_on_the_same_scene(void) {
 
 typedef struct {
     const char* label;
-    stats_t frame;
-    int frame_count; /* the real, uncapped sample_count - compute_stats()'s own
+    perf_stats_t frame;
+    int frame_count; /* the real, uncapped sample_count - perf_stats_compute()'s own
                        * n is capped to MAX_SAMPLES for the ring buffer, which
                        * would badly inflate a per-frame total divided by it at
                        * the frame rates an all-skip band bug runs at */
@@ -363,7 +334,7 @@ run_arm(const char* label, bool band_mode, int quarter, bool fps_on) {
                              : 0,
     };
     const int n = (sample_count < MAX_SAMPLES) ? sample_count : MAX_SAMPLES;
-    r.frame = compute_stats(n);
+    r.frame = perf_stats_compute(samples, n);
     return r;
 }
 

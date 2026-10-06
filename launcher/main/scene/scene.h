@@ -13,8 +13,9 @@
  * renderers of its own scene. Scenes belong to the app running when they were
  * loaded: the shell unloads whatever is left when it exits.
  *
- * The table a scene is loaded from (scene_def_t) is generated const data,
- * registered by name; docs/render/Scene-Manager.md says how a frame goes.
+ * A scene is loaded from its pack entry (SCNE), baked from its scene file,
+ * and keeps a view of it: the pack must outlive the scene.
+ * docs/render/Scene-Manager.md says how a frame goes.
  */
 #pragma once
 
@@ -36,59 +37,43 @@ typedef uint16_t scene_entity_t;
 /* Where an entity stands: the placement the raster reads. */
 typedef r3d_placement_t scene_transform_t;
 
-typedef struct {
-    scene_entity_t entity;
-    const char* asset; /* the lit mesh's id in the asset pack */
-} scene_renderer_def_t;
-
-typedef struct {
-    scene_entity_t entity;
-    r3d_scene_camera_t lens; /* its placement NULL: a scene points it at the entity's transform */
-    uint32_t clear_rgb;      /* 0xRRGGBB: what no mesh covers, 0 black */
-} scene_camera_def_t;
-
-/* What scene_load() instantiates: array lengths and contents, all const. */
-typedef struct {
-    const char* name;
-    uint16_t entity_count, renderer_count, camera_count;
-    const char* const* entity_names;       /* entity_count */
-    const scene_transform_t* transforms;   /* entity_count */
-    const scene_renderer_def_t* renderers; /* renderer_count */
-    const scene_camera_def_t* cameras;     /* camera_count */
-} scene_def_t;
-
-/* Makes a def loadable by name; runs before main(), like APP_REGISTER(). */
-void scene_register(const scene_def_t* def);
-#define SCENE_REGISTER(def)                                                                                            \
-    __attribute__((constructor)) static void def##_register(void) { scene_register(&(def)); }
-
 typedef enum {
     SCENE_OK = 0,
-    SCENE_ERR_UNKNOWN, /* no scene has that name */
+    SCENE_ERR_UNKNOWN, /* the pack holds no scene of that id */
     SCENE_ERR_FULL,    /* as many scenes are loaded as the manager holds */
     SCENE_ERR_MEMORY,  /* the scene's block could not be allocated */
-    SCENE_ERR_ASSET,   /* a mesh did not open: `asset` says why */
+    SCENE_ERR_ASSET,   /* no pack, or its entry, a mesh or its clip did not open: `asset` says why */
 } scene_status_t;
 
-/* What a load reports: its status, the pack's status when a mesh failed, and
- * the scene or mesh id it was about. */
+/* What a load reports: its status, the pack's status when an entry failed,
+ * and the id of the scene, mesh or clip it was about. A copy, since a failed
+ * load releases the pack the id came from. */
 typedef struct {
     scene_status_t status;
     asset_status_t asset;
-    const char* what;
+    char what[ASSET_NAME_MAX];
 } scene_failure_t;
 
-/* Loads the scene `name` beside any already loaded, its meshes opened from
- * `pack` or the build's asset pack. NULL on failure, and `why`, which may be
- * NULL, says why; a success sets it to SCENE_OK. */
-scene_t* scene_load(const char* name, scene_failure_t* why);
-scene_t* scene_load_from(const asset_pack_t* pack, const char* name, scene_failure_t* why);
+/* Loads the scene `id` beside any already loaded: its entry, every mesh it
+ * names and its camera's clip, from `pack`, or for scene_load() from the
+ * asset pack `id`, held until the scene unloads. NULL on failure, and
+ * `why`, which may be NULL, says why; a success sets it to SCENE_OK. */
+scene_t* scene_load(const char* id, scene_failure_t* why);
+scene_t* scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why);
 
 /* Frees the scene. If its camera was the active one, nothing is drawn. */
 void scene_unload(scene_t* scene);
 
-/* The entity named `name`, or SCENE_ENTITY_NONE. */
+/* The entity named `name`, or SCENE_ENTITY_NONE. The way to an entity: look
+ * it up once, when the scene loads, and keep it. */
 scene_entity_t scene_find(const scene_t* scene, const char* name);
+
+/* The pack id of the mesh the entity draws, or NULL when it draws none. */
+const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
+
+/* The lens and path of the scene's camera `camera` (NULL: its first), to
+ * sample without drawing; NULL when the scene has no such camera. */
+const r3d_scene_camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
 
 const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
 void scene_entity_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
@@ -109,7 +94,7 @@ void scene_deactivate(void);
 void scene_set_paused(bool paused);
 
 /* Settings of the active camera. The scale is the share of the destination's
- * size it renders at, upscaled on the way out; the camera's def holds its clear colour. */
+ * size it renders at, upscaled on the way out; the scene file gives its clear colour. */
 void scene_set_render_scale(int percent);
 
 /* What the last draw kept after culling. */

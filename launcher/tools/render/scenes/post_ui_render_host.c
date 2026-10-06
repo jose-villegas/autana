@@ -18,10 +18,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "boot/post.h"
-#include "boot/post_layout.h"
-#include "boot/post_ui.h"
 #include "render_host.h"
+#include "selftest/post.h"
+#include "selftest/post_layout.h"
+#include "selftest/post_ui.h"
 
 /* FIXTURE, not a measurement: sample strings shaped like the ones post.c's
  * format strings produce, so the rendered screen has realistic line lengths

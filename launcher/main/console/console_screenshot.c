@@ -1,11 +1,8 @@
 /*
- * console_screenshot (SCREENSHOT): prints the frame gfx holds
- * (gfx_read_panel_row()) as base64 between marker lines that
- * tools/device/screenshot.py reads back out of the console stream idf_monitor
- * already uses. The verb itself only sets a latch; console_screenshot_dump()
- * does the actual streaming, called from main.c's frame loop; see
- * console.c's own top comment for why nothing here may draw on this task.
- * Development builds only; see console.h.
+ * console_screenshot (SCREENSHOT): prints the frame gfx holds as base64
+ * between markers tools/device/screenshot.py reads from the console. The verb
+ * only sets a latch, since this task may not draw (console.c); the shell
+ * frame loop streams it with console_screenshot_dump(). Development only.
  */
 #include "console/console_screenshot.h"
 #include "console/console.h"
@@ -13,10 +10,10 @@
 #include "console/console_verbs.h"
 
 #include "console/device_state.h"
-#include "util/frame_watch.h"
-#include "util/json_splice.h"
-#include "util/memory.h"
-#include "util/screenshot.h"
+#include "util/encode/json_splice.h"
+#include "util/encode/screenshot.h"
+#include "util/runtime/frame_watch.h"
+#include "util/runtime/memory.h"
 
 #include "esp_log.h"
 

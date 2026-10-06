@@ -7,7 +7,7 @@
  * never on which half of a split traced it - checked by rendering a range
  * whole and split at every row-aligned point, including both degenerate
  * splits, and comparing the framebuffers byte for byte. A core-1 job runs
- * inline on a host (util/job.h), so this exercises the same split the real
+ * inline on a host (util/runtime/job.h), so this exercises the same split the real
  * dispatch takes, not a stand-in for it.
  */
 

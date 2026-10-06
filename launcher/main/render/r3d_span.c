@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "render/code_layout.h"
+#include "util/scalar/mathf.h"
+#include "util/scalar/mathi.h"
+
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
  * sliver's depth step can reach 2^22; with that bound and at most a screen of
@@ -26,19 +30,9 @@ typedef struct {
     bool in_range; /* every plane stays inside its range across the whole box */
 } gradients_t;
 
-static inline float
-clampf(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
 static inline int32_t
 to_step(float step) {
-    return (int32_t)clampf(step, -STEP_MAX, STEP_MAX);
-}
-
-static inline int32_t
-clamp_value(int32_t v, int32_t max) {
-    return v < 0 ? 0 : (v > max ? max : v);
+    return (int32_t)mathf_clamp(step, -STEP_MAX, STEP_MAX);
 }
 
 static inline float
@@ -79,7 +73,7 @@ gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out
     const float ddy = (d2 * p->e1x - d1 * p->e2x) * p->inv;
     out->dx[k] = to_step(ddx);
     out->dy[k] = to_step(ddy);
-    out->base[k] = (int32_t)clampf(va + (ddx * p->ox) + (ddy * p->oy), -2.0e9F, 2.0e9F);
+    out->base[k] = (int32_t)mathf_clamp(va + (ddx * p->ox) + (ddy * p->oy), -2.0e9F, 2.0e9F);
 }
 
 /* The colour planes, left until the depth plane has shown the triangle is
@@ -104,11 +98,11 @@ span_step(const gradients_t* g, const int32_t row[ATTRIBUTES], int k, int offset
         *value = row[k] + (g->dx[k] * offset);
         return;
     }
-    const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
+    const int32_t start = mathi_clamp(row[k] + (g->dx[k] * offset), 0, value_max[k]);
     const int32_t end = start + (g->dx[k] * count);
     *value = start;
     if (count > 0 && (end < 0 || end > value_max[k])) {
-        *step = (clamp_value(end, value_max[k]) - start) / count;
+        *step = (mathi_clamp(end, 0, value_max[k]) - start) / count;
     }
 }
 
@@ -178,11 +172,6 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
         z += dz;
     }
 }
-
-/* Small enough that a gradient across it is invisible: one colour, one
- * depth. Its coverage is still decided by the same edges. */
-#define FLAT_MAX_ROWS  2
-#define FLAT_MAX_WIDTH (3 * R3D_SUBPIXEL)
 
 /* A triangle whose bounding box holds at most this many pixel centres a
  * side has each centre tested against its edges instead of walked. */
@@ -272,7 +261,7 @@ step_edge(edge_t* e) {
     }
 }
 
-static void
+static RENDER_ENTRY_OFFSET(6) void
 walk_rows(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
           edge_t* right) {
     for (int y = y0; y < y1; y++) {
@@ -324,18 +313,13 @@ sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_
     return odd;
 }
 
-static inline int
-clampi(int v, int lo, int hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
 static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const float third = 1.0F / 3.0F;
-    f->flat_z = (uint16_t)(clampf((a->z + b->z + c->z) * third, 0.0F, 1.0F) * 65535.0F);
-    f->flat_color = r3d_span_pack((int32_t)(clampf((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
-                                  (int32_t)(clampf((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
-                                  (int32_t)(clampf((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
+    f->flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * 65535.0F);
+    f->flat_color = r3d_span_pack((int32_t)(mathf_clamp((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
+                                  (int32_t)(mathf_clamp((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
+                                  (int32_t)(mathf_clamp((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
 }
 
 static inline int32_t
@@ -415,7 +399,7 @@ r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_sp
     return low >= 0 && high <= max;
 }
 
-bool
+RENDER_ENTRY_OFFSET(8) bool
 r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box) {
     for (int y = box.y0; y < box.y1; y++) {
         const uint16_t* depth = target->depth + ((y - target->row0) * target->width);
@@ -472,7 +456,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     return true;
 }
 
-static void
+static RENDER_ENTRY_OFFSET(14) void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_vertex_t* v0 = a;
@@ -483,8 +467,8 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     /* The whole triangle's rows, not the window's, decide its path, so any
      * window of rows draws exactly those rows of the whole. */
     const int rows = r3d_span_first_centre(v2->y) - r3d_span_first_centre(v0->y);
-    const int y_first = clampi(r3d_span_first_centre(v0->y), target->row0, target->row1);
-    const int y_end = clampi(r3d_span_first_centre(v2->y), target->row0, target->row1);
+    const int y_first = mathi_clamp(r3d_span_first_centre(v0->y), target->row0, target->row1);
+    const int y_end = mathi_clamp(r3d_span_first_centre(v2->y), target->row0, target->row1);
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
     const int x_first = r3d_span_first_centre(lo_x);
@@ -494,8 +478,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (box.y0 >= box.y1 || box.x0 >= box.x1) {
         return; /* no pixel centre inside this window */
     }
-    /* Twice the signed area of a-b-c; each product is under 2^30. */
-    const int32_t area2 = ((b->x - a->x) * (c->y - a->y)) - ((b->y - a->y) * (c->x - a->x));
+    const int32_t area2 = r3d_span_area2(a, b, c);
     if (area2 == 0) {
         return;
     }
@@ -504,10 +487,10 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
-    fill_t f = {rows <= FLAT_MAX_ROWS && hi_x - lo_x <= FLAT_MAX_WIDTH, face, 0, 0, NULL};
+    fill_t f = {rows <= R3D_SPAN_FLAT_MAX_ROWS && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
+    const int y_anchor = mathi_clamp(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
     gradients_t g = {0};
     int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
@@ -519,7 +502,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     }
     /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
     const walk_t w = {
-        v0, v1, v2, y_first, clampi(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
+        v0, v1, v2, y_first, mathi_clamp(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
     walk(target, &f, row, &w);
 }
 

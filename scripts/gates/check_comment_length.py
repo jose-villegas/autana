@@ -32,194 +32,22 @@ Options:
 """
 
 import os
+import pathlib
 import re
 import subprocess
 import sys
 
-# Vendored upstream (microui) and machine-written headers: neither
-# is ours to rewrite, and the generators' banner comments would dominate the
-# report.
-EXCLUDED = (
-    "launcher/components/",
-    "launcher/test/framework/",
-    "launcher/main/boot/boot_anim_curve.h",
-    "launcher/main/boot/boot_anim_image.h",
-    "launcher/main/boot/boot_anim_timeline.h",
-    "launcher/main/gfx/gfx_palette_standard_generated.h",
-    "launcher/main/apps/sand/sand_palette256.h",
-    "launcher/main/apps/sand/captured_slope_data.h",
-)
 
-
-# A drawn rule's run: 3+ of `=`, `_`, `#` or `-`; this tree's own
-# "/* --- title ---- */" padding is exactly 3 dashes, but `*` alone needs
-# 4+, since a bare "***" is style(9) emphasis, not decoration.
-RULE_RUN = r"(?:[=_#\-]{3,}|[=*_#\-]{4,})"
-
-
-class Comment:
-    def __init__(self, path, line, kind, start=0, end=0):
-        self.path = path
-        self.line = line
-        self.kind = kind  # "block" or "line"
-        self.raw_lines = []
-        self.spans = [(start, end)]
-        self.first = False
-
-    @property
-    def text(self):
-        """The comment's prose: decoration stripped, paragraphs rejoined."""
-        stripped = []
-        for raw in self.raw_lines:
-            s = raw.strip()
-            if self.kind == "line":
-                s = re.sub(r"^//+", "", s)
-            else:
-                s = re.sub(r"^/\*+", "", s)
-                s = re.sub(r"\*+/$", "", s)
-                s = re.sub(r"^\*+", "", s)
-            stripped.append(s.strip())
-        return " ".join(p for p in stripped if p)
-
-    @property
-    def length(self):
-        return len(self.text)
-
-    @property
-    def lines(self):
-        """How tall the comment is. A file header is judged on this rather
-        than on character count, since it describes a whole module and the
-        character rule is aimed at comments beside code."""
-        return len(self.raw_lines)
-
-    @property
-    def line_range(self):
-        return range(self.line, self.line + len(self.raw_lines))
-
-    @property
-    def has_rule(self):
-        """Opens with a drawn rule (`/*====`, `//----`) or draws one on the
-        same line as its own text: `/* --- title ---- */`. Decoration this
-        tree does not use; scripts/gates/strip_comment_rules.py finds any that
-        returns."""
-        first = self.raw_lines[0].strip()
-        if re.match(r"^/\*\s?[=*\-_#]{4,}", first) or re.match(r"^//\s*[=*\-_#]{4,}", first):
-            return True
-        body = first[2:]
-        if body.endswith("*/"):
-            body = body[:-2]
-        body = body.strip()
-        return bool(re.match("^" + RULE_RUN + r"\s", body) or re.search(r"\s" + RULE_RUN + "$", body))
-
-    @property
-    def is_banner(self):
-        """The file's header: its first comment, wherever it sits.
-
-        Only meaningful when the whole file was scanned. An edit fragment has
-        a first comment too, and it is rarely the file's; code holding a
-        fragment has to find the header on disk.
-        """
-        return self.first
-
-
-def scan(path, source):
-    """Yield every comment in `source`, skipping string and char literals."""
-    comments = []
-    i, n = 0, len(source)
-    line = 1
-    while i < n:
-        c = source[i]
-        if c == "\n":
-            line += 1
-            i += 1
-        elif c in "\"'":
-            quote = c
-            i += 1
-            while i < n and source[i] != quote:
-                if source[i] == "\\":
-                    i += 1
-                elif source[i] == "\n":
-                    line += 1
-                i += 1
-            i += 1
-        elif source.startswith("/*", i):
-            start_of_line = source.rfind("\n", 0, i) + 1
-            own_line = source[start_of_line:i].strip() == ""
-            end = source.find("*/", i + 2)
-            end = n if end < 0 else end + 2
-            prev = comments[-1] if comments else None
-            mergeable = (
-                own_line
-                and prev is not None
-                and prev.kind == "block"
-                and prev.own_line
-                and prev.line + len(prev.raw_lines) == line
-            )
-            if mergeable:
-                prev.raw_lines += source[i:end].split("\n")
-                prev.spans.append((i, end))
-            else:
-                com = Comment(path, line, "block", i, end)
-                com.own_line = own_line
-                com.raw_lines = source[i:end].split("\n")
-                comments.append(com)
-            line += source.count("\n", i, end)
-            i = end
-        elif source.startswith("//", i):
-            start_of_line = source.rfind("\n", 0, i) + 1
-            own_line = source[start_of_line:i].strip() == ""
-            end = source.find("\n", i)
-            end = n if end < 0 else end
-            prev = comments[-1] if comments else None
-            mergeable = (
-                own_line
-                and prev is not None
-                and prev.kind == "line"
-                and prev.own_line
-                and prev.line + len(prev.raw_lines) == line
-            )
-            if mergeable:
-                prev.raw_lines.append(source[i:end])
-                prev.spans.append((i, end))
-            else:
-                com = Comment(path, line, "line", i, end)
-                com.own_line = own_line
-                com.raw_lines = [source[i:end]]
-                comments.append(com)
-            i = end
-        else:
-            i += 1
-    if comments:
-        comments[0].first = True
-    return comments
+from c_comments import EXCLUDED, RULE_RUN, blank_comments, file_header, scan, sources
 
 
 def tracked_sources():
-    out = subprocess.run(
-        ["git", "ls-files", "*.c", "*.h", "*.cpp", "*.hpp"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return [p for p in out.splitlines() if p]
-
+    return [p.as_posix() for p in sources(".", tracked=True,
+            extensions=(".c", ".h", ".cpp", ".hpp"), excluded=False)]
 
 def code_only(source):
-    """The source with every comment replaced by a space, whitespace flattened.
-
-    Two files that agree here differ in nothing but comments and layout, which
-    is what makes a bulk comment rewrite reviewable at all: the diff is large
-    by nature, so the guarantee has to come from a check rather than a read.
-    """
-    out, at = [], 0
-    for com in scan("", source):
-        for start, end in com.spans:
-            out.append(source[at:start])
-            out.append(" ")
-            at = end
-    out.append(source[at:])
-    return re.sub(r"\s+", " ", "".join(out)).strip()
-
+    """Code with comments blanked and whitespace flattened for comment-only diffs."""
+    return re.sub(r"\s+", " ", blank_comments(source)).strip()
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""

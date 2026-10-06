@@ -101,14 +101,14 @@ runtime default floor move together; setting only one silently no-ops
 
 ## Found in passing: a latent truncation bug this plan would expose
 
-`main/boot/post.c:57`:
+`main/selftest/post.c:57`:
 
 ```c
 snprintf(r->detail, sizeof(r->detail), "%s", detail ? detail : "");
 ```
 
 `r->detail` is a 72-byte buffer. This compiles clean today because nothing
-inlines `report()` (`main/boot/post.c`) into its callers. Forcing the log
+inlines `report()` (`main/selftest/post.c`) into its callers. Forcing the log
 ceiling down in a scratch build shrank `report()` enough (by deleting its
 own `ESP_LOGI` call) that GCC inlined it into `check_sdcard_live()` and
 `post_rerun()`, at which point `-Werror=format-truncation` correctly flags

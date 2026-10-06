@@ -5,22 +5,26 @@ environment (tools/r3d/requirements.txt)."""
 
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 try:
     import numpy as np
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d import mesh_import
     from r3d.light import coincident_faces, visible_from_path
     from r3d.poses import camera_rays
 except ImportError:
     np = None
+
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 EYE = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
 
@@ -39,7 +43,7 @@ def scene(*cards):
         tris += [[len(positions) + i for i in face] for face in faces]
         positions += corners
     positions, tris = np.array(positions, dtype=float), np.array(tris)
-    return positions, tris, RayMeshIntersector(trimesh.Trimesh(positions, tris, process=False))
+    return positions, tris, soup.rays(soup.Soup(positions, tris))
 
 
 def visible(positions, tris, intersector, poses=(EYE,), size=(16, 12), lens=0.62, near=0.5, samples=2, margin=0, **options):
@@ -48,6 +52,7 @@ def visible(positions, tris, intersector, poses=(EYE,), size=(16, 12), lens=0.62
                              margin, **options)
 
 
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class CoincidentFaceTests(unittest.TestCase):
     def test_twins_need_the_other_winding_and_duplicates_share_a_group(self):
@@ -73,10 +78,12 @@ class CoincidentFaceTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FrustumTests(unittest.TestCase):
+    @needs_mitsuba
     def test_a_card_beside_the_view_is_dropped_and_one_inside_kept(self):
         positions, tris, intersector = scene(card([0, 0, 0], half=0.5), card([9.0, 0, 0], half=0.5))
         self.assertEqual(visible(positions, tris, intersector).tolist(), [True, True, False, False])
 
+    @needs_mitsuba
     def test_the_margin_reaches_a_card_just_outside_the_edge(self):
         # The view's right edge at depth 5 is x = 5 * lens * width / height; a card a little past it.
         width, height, lens = 16, 12, 0.62
@@ -99,23 +106,37 @@ class FrustumTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ImportWiringTests(unittest.TestCase):
     def test_the_import_step_calls_the_source_its_settings_name(self):
-        camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, path=SimpleNamespace(tracks="fly", node="camera"))
-        scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera), region=([0, 0, 0], [1, 1, 1]))
-        settings = SimpleNamespace(out_dir=pathlib.Path("out"))
+        camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, path=SimpleNamespace(animation=pathlib.Path("out") / "fly.anim.toml", clip="fly", node="camera"))
+        scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera), region=([0, 0, 0], [1, 1, 1]), path=pathlib.Path("out") / "hall.scene.toml")
         path = SimpleNamespace(source="camera_path", every_ms=100, size=(184, 224), samples=3, margin=8)
         region = SimpleNamespace(source="camera_region", rounds=4)
         poses = (184, 224, 0.62, 6.0, ["pose"])
         with mock.patch.object(mesh_import, "sample_camera_path", return_value=poses) as sampled, \
                 mock.patch.object(mesh_import, "visible_from_path", return_value="path") as by_path, \
                 mock.patch.object(mesh_import, "visible_from_region", return_value="region") as by_region:
-            self.assertEqual(mesh_import.visible_triangles(settings, path, scene_, "p", "t", "d", "i", "rng"), "path")
-            self.assertEqual(mesh_import.visible_triangles(settings, region, scene_, "p", "t", "d", "i", "rng"), "region")
-        sampled.assert_called_once_with(pathlib.Path("out") / "fly_tracks_generated.c", "fly", "camera", 100, 184, 224, 0.62, 6.0)
+            self.assertEqual(mesh_import.visible_triangles(path, scene_, "p", "t", "d", "i", "rng"), "path")
+            self.assertEqual(mesh_import.visible_triangles(region, scene_, "p", "t", "d", "i", "rng"), "region")
+        sampled.assert_called_once_with(pathlib.Path("out") / "fly.anim.toml", "camera", 100, 184, 224, 0.62, 6.0)
         # A square view as wide as the long side covers the panel either way up.
         by_path.assert_called_once_with("p", "t", "d", "i", ["pose"], 224, 224, 0.62 * 224 / 184, 6.0, 3, 8)
         by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1])
 
+    @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
+    def test_the_camera_path_is_the_scene_clip_sampled_at_the_step_s_size_and_lens(self):
+        with tempfile.TemporaryDirectory() as directory:
+            clip = write_camera_clip(directory, reach=2.0)
+            camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0,
+                                     path=SimpleNamespace(animation=clip, clip="fly", node="camera"))
+            scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera))
+            path = SimpleNamespace(every_ms=250, size=(184, 224))
+            width, height, lens, near, poses = mesh_import.camera_path_poses(scene_, path, either_way_up=False)
+        self.assertEqual((width, height, lens, near), (184, 224, 0.62, 6.0))
+        self.assertEqual(len(poses), 4)
+        for pose, x in zip(poses, (0.0, 0.5, 1.0, 1.5)):
+            np.testing.assert_allclose(pose, [x, 0, 0, 0, 0, -1], atol=1e-6)
 
+
+@needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class BetweenPoseTests(unittest.TestCase):
     def test_what_is_kept_covers_the_poses_between_the_samples(self):
@@ -131,7 +152,8 @@ class BetweenPoseTests(unittest.TestCase):
         for a, b in zip(samples, samples[1:]):
             pose = (np.array(a) + np.array(b)) / 2
             origin, direction = camera_rays(24, 18, 0.62, pose[:3], pose[3:], 1, 0)
-            hit = intersector.intersects_first(origin, direction)
+            found, _, tri = intersector.first_hits(origin, direction)
+            hit = np.where(found, tri, -1)
             drawn = hit[(hit >= 0)]
             drawn = drawn[(normal[drawn] * direction[hit >= 0]).sum(axis=1) < 0]
             self.assertTrue(kept[drawn].all(), f"a face drawn from {pose[:3]} was culled")

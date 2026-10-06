@@ -27,7 +27,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/intmath.h"
+#include "util/scalar/mathi.h"
 
 static void
 assert_looks_like(const char* rows[], int count, const char* why) {

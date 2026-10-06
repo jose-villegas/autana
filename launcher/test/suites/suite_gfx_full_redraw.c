@@ -89,7 +89,7 @@ test_the_request_latches_pending_for_exactly_one_pass(void) {
     request_full_redraw();
     TEST_ASSERT_TRUE(gfx_full_redraw_is_pending());
 
-    /* Stands in for main.c's apply_pending_full_redraw(): the shell reads
+    /* Stands in for shell_apps.c's apply_pending_full_redraw(): the shell reads
      * the flag once and clears it before the app's own frame() call. */
     gfx_full_redraw_unlatch();
     TEST_ASSERT_FALSE_MESSAGE(gfx_full_redraw_is_pending(), "consumed for the pass that follows the request");

@@ -14,42 +14,22 @@
 #include <string.h>
 
 #include "suites.h"
+#include "ui_budget.h"
 #include "unity.h"
 
-#include "app.h"
-#include "build_variant.h"
+#include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
+#include "util/build/build_variant.h"
 
 #include "apps/diagnostics/ui/toggles_screen.h"
-
-/* The header gives 64-bit hosts 9 KiB for rendering-growth checks; 32-bit
- * device/QEMU builds use 8 KiB. A future toggle still has this many bytes
- * of the selected MU_COMMANDLIST_SIZE left before this page reaches it. */
-#define COMMANDLIST_HEADROOM_BYTES 2048
-#define COMMANDLIST_BUDGET         (MU_COMMANDLIST_SIZE - COMMANDLIST_HEADROOM_BYTES)
 
 /* Landscape (448x368 logical): this project's shipping orientation. */
 static void
 fixture(void) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
-}
-
-static int
-end_and_measure(void) {
-    mu_end(ui_context());
-    return ui_context()->command_list.idx;
-}
-
-static void
-assert_budget(const char* screen_name, int used) {
-    char msg[96];
-    snprintf(msg, sizeof msg, "%s screen used %d of %d budget bytes (%d headroom)", screen_name, used,
-             COMMANDLIST_BUDGET, MU_COMMANDLIST_SIZE - used);
-    printf("%s\n", msg);
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(COMMANDLIST_BUDGET, used, msg);
 }
 
 static void
@@ -78,7 +58,7 @@ test_toggles_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     toggles_screen_draw(ui_context(), &state);
-    assert_budget("diagnostics developer toggles", end_and_measure());
+    ui_budget_assert("diagnostics developer toggles");
 }
 
 static bool

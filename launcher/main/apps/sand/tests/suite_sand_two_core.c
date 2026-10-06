@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/job.h"
+#include "util/runtime/job.h"
 
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"

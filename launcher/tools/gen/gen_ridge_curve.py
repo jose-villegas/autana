@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake Cerro Autana's ridge line into a table of heights.
 
-    python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h [--check]
+    python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h
 
 design/boot/ridge.png is the ridge of design/boot/boot.png drawn as a soft
 line on black, in the same 448x368 frame. The line is the authored source
@@ -17,8 +17,11 @@ import argparse
 import sys
 from pathlib import Path
 
-VIEW_W = 448
-VIEW_H = 368
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from panel_size import PANEL_WIDTH, PANEL_HEIGHT
+
+VIEW_W = PANEL_HEIGHT
+VIEW_H = PANEL_WIDTH
 Q_SHIFT = 4
 MAX_NEIGHBOUR_STEP_PX = 8
 VALUES_PER_LINE = 12
@@ -91,7 +94,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--check", action="store_true", help="fail if the output file is stale")
     args = parser.parse_args()
     try:
         from PIL import Image
@@ -99,11 +101,7 @@ def main():
         sys.exit("gen_ridge_curve.py: needs Pillow - pip install pillow")
     try:
         baked = generate(Image.open(args.source).convert("L"))
-        if args.check:
-            if args.output.read_text(encoding="utf-8") != baked:
-                parser.exit(1, f"{args.output} is stale; regenerate it\n")
-        else:
-            args.output.write_text(baked, encoding="utf-8", newline="\n")
+        args.output.write_text(baked, encoding="utf-8", newline="\n")
     except (OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 

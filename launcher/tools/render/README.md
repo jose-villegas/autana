@@ -17,6 +17,22 @@
 | [render_watch.c](render_watch.c) | Fails a scene whose frames keep allocating or printing. |
 | [render_watch.h](render_watch.h) | Frame watch declarations for the host renderer. |
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
+| [code_layout.py](code_layout.py) | Reports, writes, and checks each `RENDER_ENTRY_OFFSET` function and its machine loops within an instruction-cache line. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
-| [tests/](tests/) | The harness checking its own frame watch against a fixture scene. |
+| [tests/](tests/) | The harness checking its own frame watch against a fixture scene, and code_layout.py's own tests. |
+
+## Pinned code layout
+
+`code_layout.py` reads the Xtensa tools and instruction-cache line size from a
+firmware build. The diagnostics gate checks the address-independent rows in
+`launcher/main/render/code_layout.txt`:
+
+```sh
+python launcher/tools/render/code_layout.py --check launcher/build.diag
+python launcher/tools/render/code_layout.py --write launcher/build.diag
+```
+
+A changed layout is measured between revisions with the Sponza performance
+suite through `launcher/tools/perf/perf_compare.sh`. A slower layout is retuned
+with `RENDER_ENTRY_OFFSET` before the generated file is written.

@@ -21,27 +21,35 @@ checked, and compared with device captures.
 
 ## Images in these docs
 
-Every file under `docs/images/` is made by one script, from the
+The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. It makes the launcher's and the UI toolkit's images itself and runs each app's
 `tools/doc_images.sh` for the app's own:
 
 ```sh
-./launcher/tools/render/render_doc_images.sh           # rewrite the images
+./launcher/tools/render/render_doc_images.sh           # rewrite images and tables
 ./launcher/tools/render/render_doc_images.sh --check   # report which would change
 ```
 
-It needs a host C compiler, Python with Pillow and numpy, and ffmpeg 5.1 or newer.
+It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
+5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+
+```sh
+git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+```
+
 An app's `tools/doc_images.sh` may also need the packages in
 `launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
 SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
-`--check` renders into `launcher/tools/results/doc_images/out/`
+A render failure prints the failed command and the tails of its work logs,
+including logs inside bake directories.
+CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
 ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
 mentions; the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
-`docs/images/`, and opens one pull request when an image changed. It needs the
+`docs/`, and opens one pull request when an image or table changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull
 requests".
 
@@ -50,6 +58,79 @@ requests".
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
+
+Measured CPU tables are refreshed with the images. App scripts write Markdown
+to out/tables/NAME.md. The shared writer replaces the body between an HTML
+comment containing `generated: NAME sha256=HASH` and one containing
+`/generated: NAME`, preserving the document's other text and line endings.
+Names use lowercase letters, digits and hyphens and are unique
+across documents. The SHA-256 covers the body,
+including its boundary newlines, with CRLF normalized to LF.
+`scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
+fails on a body hash mismatch or malformed boundaries, without rendering.
+Change a measurement's source or generator and regenerate its block; a hash
+verifies recorded content, while the render check detects stale measurements.
+The image script rewrites blocks by default; --check reports
+changed doc-path#block-name and exits 1. The refresh PR includes changed tables
+and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
+the WSL CUDA environment; the board stage consumes a perf capture. Both use
+this writer.
+
+GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
+to its own `--check`. GPU `--check` verifies the saved full run and its source
+stamp without fitting again. `--smoke` writes only scratch data.
+The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
+runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
+It opens or updates "docs: refresh GPU-rendered images" on the separate
+`feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
+memory use. The stage-start guard checks WSL and Windows host available memory.
+[`process_budget.py`](../../launcher/tools/r3d/process_budget.py) owns the
+floors and worker estimates. Later admission projects each active worker's
+not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
+by CPU affinity. A task can run alone when the floors hold; additional
+workers need room for their reservations. Smaller eligible tasks can pass
+larger waiting tasks. Admission and worker peaks are logged. Failed
+memory queries pause admission and retry, with rate-limited warnings; an unbroken
+run of failures lasting `GPU_QUERY_FAILURE_SECONDS` fails the stage, and a missing
+`nvidia-smi` fails at once.
+
+```mermaid
+flowchart TD
+    Start[Stage-start memory guard] --> Queue[Queue both prepares]
+    Queue --> Admission{Live memory and core admission}
+    Admission --> Worker[Spawn worker]
+    Worker --> Kind{Task kind}
+    Kind -->|Prepare| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
+    Poses --> Ready[Variant inputs ready]
+    Ready --> Fits[Queue independent fits]
+    Fits --> Admission
+    Ready --> Bake[Queue bake with priority]
+    Bake --> Admission
+    Kind -->|Fit or bake| Ordered[Consume results in recipe order]
+    Ordered --> Measure[Queue measurement with priority]
+    Measure --> Admission
+    Kind -->|Measurement| Outputs[Ordered tables and sheets]
+```
+
+Sweep result records are the resume markers. A worker failure prints its
+traceback, kills the other workers and fails the stage. SIGTERM kills the
+workers too; workers die with their parent.
+
+Reference poses share the loaded source through copy-on-write, and every
+pose's rays are fixed, so a pose renders the same in any worker. A source with
+bounced light renders its poses in the main process, where Mitsuba's threads use
+every core. Standalone reference renders size their pool from available memory.
+An admitted prepare sizes its pool from its own admission estimate
+(`PREPARE_BYTES`, or `SMOKE_PREPARE_BYTES` for a smoke prepare). At pool
+creation, live WSL and cgroup memory also cap the worker count, using the
+memory floors while retaining at least one worker. The pool logs the chosen
+worker count, both capacities and the parent's resident size.
+`worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
+The PSS value sums each worker's maximum end-of-pose sample from Linux
+`smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares
+copy-on-write pages proportionally. Unavailable PSS samples report zero.
+Bake and visibility sampling are serial. Platforms without fork render
+poses serially.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
@@ -75,7 +156,7 @@ under whichever `tools/` folder owns the scene, which is gitignored.
 is not a perf oracle: an x86 laptop's timings say nothing about what the
 work costs on the chip, and even instruction counts only answer whether
 work was removed (see
-[`../notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md)).
+[`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off)).
 Time a change on the device, or under QEMU's `--icount` for counts.
 
 ## Declaring a scene
@@ -89,7 +170,10 @@ Two files, the same declare-then-source shape a report script uses:
 - **`<name>_render_host.sh`** declares `scene_name`, `scene_sources` and
   `scene_renders`, then sources `launcher/tools/render/render_scene.sh` and calls
   `render_scene_run "$@"`. Everything else (finding a compiler, building,
-  checking each image, converting to PNG) is that one procedure.
+  checking each image, converting to PNG) is that one procedure. A scene that
+  reads asset packs also declares `scene_assets`, the folders whose roots
+  `build_pack.py` writes as packs beside the renderer; a folder with no asset
+  roots fails the build.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -124,7 +208,8 @@ pressed/released edges rather than the scene restating them.
 
 An image comes out the way the board is READ at that quarter (448x368 for
 a landscape one) unless `--panel` asks for the framebuffer the way the
-panel holds it, 368x448. That second shape is what a device capture has.
+panel holds it, 368x448. render_diff compares in that second shape, and
+turns a device capture back to it first.
 
 A scene that leaves gfx in band mode is refused rather than rendered: the
 band ring retains no frame to read back, the same reason a device capture
@@ -254,7 +339,7 @@ and still; set the pose before comparing at a given quarter.
 ## Diffing against a capture
 
 ```sh
-autana screenshot --framebuffer -o shot.png                  # --dev build only
+autana screenshot -o shot.png                                # --dev build only
 ./launcher/tools/render/scenes/post_ui_render_host.sh -o /tmp/post
 ./launcher/tools/render/render_diff.sh shot.png /tmp/post/landscape-panel.bmp \
     --mask build_mark --mask home_hint --out /tmp/diff.png
@@ -265,11 +350,13 @@ with the differences in red and the masked regions in blue. Exit status is
 0 only when nothing differs. Either side may be a host render, a QEMU
 capture or a board capture.
 
-**Orientation is declared, never guessed.** The capture for this comparison
-uses `--framebuffer`, so it remains panel-native; its sidecar's
-`orientation_quarter` says which rotation the shell used and is reported,
-not applied. A render in the read orientation must say `--quarter-a` /
-`--quarter-b` or it is refused rather than turned on a guess.
+**Orientation is declared, never guessed.** A capture's sidecar records the
+turn its image was given (`image_turn_quarter`), and render_diff undoes it,
+so a default `autana screenshot`, a `--framebuffer` one and a QEMU capture
+all compare. The sidecar's `orientation_quarter` says which rotation the
+shell used and is reported, not applied. A render in the read orientation
+must say `--quarter-a` / `--quarter-b` or it is refused rather than turned
+on a guess.
 
 **Masks cover what the shell draws and a scene does not**: the development
 build's corner mark, the swipe-home strip. They are declared per quarter in
@@ -310,7 +397,7 @@ The renderer arguments are split on spaces and never expanded as patterns.
 `--reference SCENE.scene.toml --poses FILE` (with one `A` and a `--render`) scores
 a whole camera path against the scene's source model instead of a second
 revision: `reference_render.py` draws the poses, `FILE` sampled at the renderer's
-`--dt` by `tools/anim/sample_tracks.sh --every`, once per scene, poses and
+`--dt` by `tools/anim/track_host.py --every`, once per scene, poses and
 `--samples`, and the render's frames are scored against them. It writes
 `<label>.mp4` (reference, render, error heatmap, edge pixels) at `--fps`
 30, 40, 60 or 80, and one reference line per frame in `summary.txt`. The
@@ -326,5 +413,5 @@ The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).
   borrows its image from.
 - [`../Building-a-Screen.md`](../Building-a-Screen.md): building the screen
   a scene renders.
-- [`../notes/Optimization-Playbook.md`](../notes/Optimization-Playbook.md):
+- [`../notes/Debugging.md`](../notes/Debugging.md#performance-seems-off):
   why a host timing is not a cost.

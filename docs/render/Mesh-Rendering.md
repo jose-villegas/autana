@@ -110,7 +110,7 @@ panel's size quarters the pixels and halves the rows and spans.
 
 The work before the framebuffer runs in the app's `update()`, overlapped
 with sending the previous frame. Each stage is split between the two cores,
-core 1's half dispatched through `util/job.h`. It runs inline when core 1
+core 1's half dispatched through `util/runtime/job.h`. It runs inline when core 1
 is busy, and always on a host.
 
 ```mermaid

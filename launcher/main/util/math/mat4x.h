@@ -5,8 +5,8 @@
 #pragma once
 
 #include "util/math/mat4_template.h"
-#include "util/math/mathx.h"
 #include "util/math/quatx.h"
 #include "util/math/vec3x.h"
+#include "util/scalar/mathx.h"
 
 MATH_DEFINE_MAT4(mat4x, vec3x, quatx, int32_t, mathx)

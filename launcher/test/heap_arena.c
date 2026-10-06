@@ -40,7 +40,7 @@
 
 #include "heap_arena.h"
 
-#include "app_arena.h"
+#include "app/app_arena.h"
 
 #include "stubs/esp_heap_caps.h"
 

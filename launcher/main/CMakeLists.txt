@@ -1,13 +1,13 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
-    "app_arena.c"
-    "app_registry.c"
+    "app/app_arena.c"
+    "app/app_registry.c"
     "boot/boot_anim.c"
-    "boot/boot_anim_tracks_generated.c"
-    "boot/post.c"
-    "boot/post_layout.c"
-    "boot/post_ui.c"
+    "boot/boot_anim_motion.c"
+    "selftest/post.c"
+    "selftest/post_layout.c"
+    "selftest/post_ui.c"
     "display/display.c"
     "display/display_device.c"
     "display/panel_clock.c"
@@ -37,7 +37,10 @@ set(app_srcs
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "anim/anim_track.c"
+    "anim/anim_tracks.c"
     "asset/asset_pack.c"
+    "asset/asset_directory.c"
+    "asset/asset_store.c"
     "asset/asset_store_flash.c"
     "render/raster.c"
     "render/r3d_lit_mesh.c"
@@ -46,17 +49,22 @@ set(app_srcs
     "render/r3d_span.c"
     "render/r3d_scene.c"
     "scene/scene.c"
+    "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "util/frame_cost.c"
-    "util/frame_watch.c"
-    "util/build_id.c"
-    "util/job.c"
-    "util/memory.c"
-    "util/settings_device.c"
-    "util/settings_policy.c"
-    "util/timing_device.c"
-    "util/tune.c"
+    "shell/scene_system.c"
+    "shell/shell.c"
+    "shell/shell_apps.c"
+    "shell/shell_system.c"
+    "util/runtime/frame_cost.c"
+    "util/runtime/frame_watch.c"
+    "util/runtime/build_id.c"
+    "util/runtime/job.c"
+    "util/runtime/memory.c"
+    "util/runtime/settings_device.c"
+    "util/runtime/settings_policy.c"
+    "util/runtime/timing_device.c"
+    "util/runtime/tune.c"
 )
 
 function(launcher_glob output pattern)
@@ -215,7 +223,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     endif()
 
     list(APPEND app_srcs
-        "boot/selftest.c"
+        "selftest/selftest.c"
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
@@ -234,6 +242,50 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
+# The software rasteriser's per-pixel loops run from flash through the
+# instruction cache, so where each function starts inside a cache line moves
+# the frame time by a fraction of a percent whenever unrelated code ahead of
+# it in the link grows or shrinks. Starting every render function on a cache
+# line makes its timing independent of link order.
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    launcher_glob(render_srcs "${CMAKE_CURRENT_LIST_DIR}/render/*.c")
+    set_source_files_properties(${render_srcs} PROPERTIES
+        COMPILE_OPTIONS "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
+endif()
+
+# LAUNCHER_LAYOUT_SEED > 0 pads every source of this component by a size its
+# seed picks (tools/build/layout_pad.py), up to one cache way less a line each
+# for code and flash rodata, to sample the layouts a timing could have landed
+# on. Seed 0 changes nothing.
+if(NOT CMAKE_SCRIPT_MODE_FILE AND LAUNCHER_LAYOUT_SEED)
+    idf_build_get_property(layout_python PYTHON)
+    set(layout_sources "")
+    foreach(src IN LISTS app_srcs)
+        get_filename_component(src "${src}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+        file(RELATIVE_PATH src "${CMAKE_CURRENT_LIST_DIR}" "${src}")
+        list(APPEND layout_sources "${src}")
+    endforeach()
+    set(layout_tools "${CMAKE_CURRENT_LIST_DIR}/../tools/build")
+    set(text_line ${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE})
+    set(rodata_line ${CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE})
+    math(EXPR text_way "${CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE} / ${CONFIG_ESP32S3_ICACHE_ASSOCIATED_WAYS}")
+    math(EXPR rodata_way "${CONFIG_ESP32S3_DATA_CACHE_SIZE} / ${CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS}")
+    execute_process(
+        COMMAND ${layout_python} "${layout_tools}/layout_pad.py" "${LAUNCHER_LAYOUT_SEED}"
+                ${text_line} ${text_way} ${rodata_line} ${rodata_way} ${layout_sources}
+        OUTPUT_VARIABLE layout_pads
+        COMMAND_ERROR_IS_FATAL ANY)
+    foreach(row IN LISTS layout_pads)
+        string(REPLACE "," ";" row "${row}")
+        list(GET row 0 src)
+        list(GET row 1 text_pad)
+        list(GET row 2 rodata_pad)
+        set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/${src}" APPEND PROPERTY COMPILE_OPTIONS
+            "-include;${layout_tools}/layout_pad.h;-DLAYOUT_PAD_TEXT=${text_pad};-DLAYOUT_PAD_RODATA=${rodata_pad};-DLAYOUT_PAD_TEXT_ALIGN=${text_line};-DLAYOUT_PAD_RODATA_ALIGN=${rodata_line}")
+    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${layout_tools}/layout_pad.py")
+endif()
+
 set(app_private_include_dirs "")
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_private_include_dirs "../test")
@@ -243,6 +295,7 @@ idf_component_register(
     SRCS ${app_srcs}
     INCLUDE_DIRS "."
     PRIV_INCLUDE_DIRS ${app_private_include_dirs}
+    LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
     # Required by self-registration, and easy to get wrong.
@@ -269,30 +322,36 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
-    # The asset pack is a build product: every baked mesh the import and scene
-    # files name, packed into one image that flashes to the "assets" partition
-    # with the app. `idf.py assets-flash` writes just that region.
+    # The asset packs are build products: one per root asset (a scene, a free
+    # import, a free .anim.toml), written to assets/ and, under a pack
+    # directory, into one image that flashes to the "assets" partition with the
+    # app. build_pack.py searches all of main/, so its inputs are globbed there
+    # too: a clip's .glb counts. `idf.py assets-flash` writes just that region.
     idf_build_get_property(python PYTHON)
-    set(asset_pack "${CMAKE_BINARY_DIR}/assets.bin")
+    set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
+    set(asset_packs "${CMAKE_BINARY_DIR}/assets")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
-    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/apps/*.mesh")
-    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/apps/*.toml")
+    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/*.mesh")
+    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/*.toml")
+    launcher_glob(asset_sources "${CMAKE_CURRENT_LIST_DIR}/*.glb")
     add_custom_command(
-        OUTPUT "${asset_pack}"
-        COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_pack}" "${CMAKE_CURRENT_LIST_DIR}"
-        DEPENDS ${asset_inputs} ${asset_settings} "${asset_tools}/r3d/build_pack.py"
+        OUTPUT "${asset_image}"
+        COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
+                "${CMAKE_CURRENT_LIST_DIR}"
+        DEPENDS ${asset_inputs} ${asset_settings} ${asset_sources} "${asset_tools}/r3d/build_pack.py"
                 "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
-                "${asset_tools}/asset/asset_pack.py"
-        COMMENT "Packing the asset pack"
+                "${asset_tools}/asset/asset_pack.py" "${asset_tools}/anim/tracks_asset.py"
+                "${asset_tools}/gltf/gltf_read.py"
+        COMMENT "Writing the asset packs"
         VERBATIM)
-    add_custom_target(asset_pack_image ALL DEPENDS "${asset_pack}")
-    esptool_py_flash_to_partition(flash "assets" "${asset_pack}")
+    add_custom_target(asset_pack_image ALL DEPENDS "${asset_image}")
+    esptool_py_flash_to_partition(flash "assets" "${asset_image}")
     add_dependencies(flash asset_pack_image)
     partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")
     idf_component_get_property(flash_main_args esptool_py FLASH_ARGS)
     idf_component_get_property(flash_sub_args esptool_py FLASH_SUB_ARGS)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
-    esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_pack}")
+    esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
     add_dependencies(assets-flash asset_pack_image)
 endif()
 

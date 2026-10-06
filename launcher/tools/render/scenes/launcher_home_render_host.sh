@@ -18,7 +18,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=launcher_home
 scene_sources="
-main/app_registry.c
+main/app/app_registry.c
 main/gfx/gfx.c
 main/ui/ui.c
 main/ui/ui_bridge.c
@@ -31,7 +31,7 @@ main/ui/ui_pointer.c
 main/ui/ui_snap.c
 main/ui/ui_ridge.c
 main/ui/ui_scroll.c
-main/util/tune.c
+main/util/runtime/tune.c
 components/microui/src/microui.c
 tools/render/scenes/launcher_home_render_host.c
 "

@@ -22,13 +22,14 @@ try:
 except ImportError:
     np = None
 
+from tests.r3d_env import needs_mitsuba  # noqa: E402
+
 try:
-    import trimesh
-    from trimesh.ray.ray_pyembree import RayMeshIntersector
+    from tests import soup
 
     from r3d.light import visible_from_path
 except ImportError:
-    trimesh = None
+    soup = None
 
 try:
     import nvdiffrast.torch  # noqa: F401
@@ -75,7 +76,7 @@ class AppearanceMeshTests(unittest.TestCase):
         try:
             from r3d.reference_render import camera_rays
         except ImportError:
-            self.skipTest("reference_render.py needs trimesh and embreex")
+            self.skipTest("reference_render.py needs the r3d environment")
         width, height, lens, near = 184, 224, 0.62, 6.0
         eye, forward = np.array([10.0, 20.0, -5.0]), np.array([0.3, -0.2, 1.0])
         matrix = projection(eye, forward, width, height, lens, near)
@@ -200,7 +201,8 @@ class RefineTests(unittest.TestCase):
         self.assertTrue(added and all(v[0] > 0 or v[1] > 0 for v in added), "the split is not on the worst triangle")
 
 
-@unittest.skipIf(np is None or trimesh is None, "the r3d environment is not installed")
+@needs_mitsuba
+@unittest.skipIf(np is None or soup is None, "the r3d environment is not installed")
 class PathVisibilityTests(unittest.TestCase):
     def test_a_pose_keeps_what_it_sees_and_passes_through_culled_faces(self):
         # z = 0 card facing the eye; z = -1 card hidden behind it; z = 6 card behind the eye;
@@ -213,7 +215,7 @@ class PathVisibilityTests(unittest.TestCase):
             faces = [[0, 1, 2], [0, 2, 3]]
             tris += [[base + (f[0]), base + f[2], base + f[1]] if away else [base + i for i in f] for f in faces]
         positions, tris = np.array(positions, dtype=float), np.array(tris)
-        intersector = RayMeshIntersector(trimesh.Trimesh(positions, tris, process=False))
+        intersector = soup.rays(soup.Soup(positions, tris))
         poses = [np.array([0.0, 0.0, 5.0, 0.0, 0.0, -1.0])]
         seen = visible_from_path(positions, tris, np.zeros(len(tris), dtype=bool), intersector, poses, 16, 12, 0.62, 0.5, 2, 0)
         self.assertEqual(seen.tolist(), [True, True, False, False, False, False, False, False])
@@ -232,7 +234,7 @@ class PathVisibilityTests(unittest.TestCase):
             for f in ([0, 1, 2], [0, 2, 3]):
                 tris.append([base + f[0], base + f[2], base + f[1]] if away else [base + i for i in f])
         positions, tris = np.array(positions, dtype=float), np.array(tris)
-        return positions, tris, RayMeshIntersector(trimesh.Trimesh(positions, tris, process=False))
+        return positions, tris, soup.rays(soup.Soup(positions, tris))
 
     def test_a_wall_seen_through_its_back_face_keeps_its_front_twin(self):
         positions, tris, intersector = self.cards([(0.0, True), (0.0, False), (-1.0, False)])

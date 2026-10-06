@@ -24,7 +24,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, scan  # noqa: E402
+from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -101,9 +101,9 @@ def _doc_walk(root):
 
 
 def _c_walk(root):
-    """First-party .c/.h files: vendored trees and GENERATED FILE headers
-    keep their upstream or generator-owned form, the same exemption
-    check-format.sh and check_comment_length.py give them."""
+    """First-party .c/.h files: vendored trees and generated files keep
+    their upstream or generator-owned form, the same exemption
+    check-format.sh and check_comment_length.py's EXCLUDED give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
         if any(rel.startswith(e) for e in EXCLUDED):
@@ -111,10 +111,7 @@ def _c_walk(root):
         path = root / rel
         if not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if "GENERATED FILE" in "\n".join(text.splitlines()[:5]):
-            continue
-        yield path, text
+        yield path, path.read_text(encoding="utf-8", errors="replace")
 
 
 def _text_walk(root):
@@ -294,13 +291,23 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_TIER below;
-# two folders can share a tier). app.h is outside LAYER_TIER, so its
-# include of input/ is never checked; a system header such as
-# "driver/temperature_sensor.h" never resolves to a layer.
+# two folders can share a tier). A "<folder>/<sub>" key tiers that subfolder
+# on its own; once one subfolder of a folder is keyed, every subfolder must
+# be, and the folder itself holds only its <folder>.h. A system header such
+# as "driver/temperature_sensor.h" never resolves to a layer.
 
-LAYER_TIER = {"apps": 0, "boot": 1, "ui": 2, "console": 2, "scene": 2, "display": 3, "gfx": 4, "render": 4,
-             "input": 4, "anim": 5, "asset": 5, "util": 6, "board": 7}
-LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
+LAYER_TIER = {"apps": 0, "shell": 1, "boot": 2, "selftest": 2, "ui": 3, "console": 3, "scene": 3, "app": 4,
+             "display": 5, "input": 5, "gfx": 6, "render": 6, "anim": 7, "asset": 8,
+             "util": 9, "util/runtime": 9, "util/math": 10, "util/motion": 10, "util/encode": 10,
+             "util/scalar": 11, "util/build": 11, "board": 12}
+LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps" and "/" not in layer)
+
+
+def layer_of(parts):
+    """The LAYER_TIER key a path under launcher/main/ belongs to: its
+    "<folder>/<sub>" key when there is one, else its top folder."""
+    nested = "/".join(parts[:2])
+    return nested if len(parts) > 2 and nested in LAYER_TIER else parts[0]
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}
 
@@ -313,6 +320,15 @@ def _layer_dirs_match(root):
     this check's business."""
     main_dir = pathlib.Path(root) / "launcher/main"
     found = {d.name for d in main_dir.iterdir() if d.is_dir()}
+    split = {key.split("/")[0] for key in LAYER_TIER if "/" in key}
+    found |= {f"{d.parent.name}/{d.name}" for top in split for d in (main_dir / top).glob("*/") if d.is_dir()}
+    loose = sorted(f"{top}/{p.name}" for top in split if (main_dir / top).is_dir()
+                   for p in (main_dir / top).iterdir()
+                   if p.is_file() and p.name != f"{top}.h" and not p.name.startswith("."))
+    if loose:
+        raise ValueError(
+            f"launcher/main has file(s) {loose} loose in a folder whose subfolders are tiered - "
+            "move each into the subfolder it belongs to (check_style_audit.py LAYER_TIER).")
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(
@@ -332,7 +348,7 @@ def rule_include_direction(root, path, text):
     if not parts or parts[0] == "apps" or parts[0] not in LAYER_TIER:
         return
     _layer_dirs_match(root)
-    source_layer = parts[0]
+    source_layer = layer_of(parts)
     source_tier = LAYER_TIER[source_layer]
     source_base = (rel_to_main.parent / rel_to_main.stem).as_posix()
     for number, line in enumerate(text.splitlines(), 1):
@@ -347,7 +363,7 @@ def rule_include_direction(root, path, text):
             target_rel = resolved.relative_to(main_dir.resolve())
         except ValueError:
             continue
-        target_layer = target_rel.parts[0] if target_rel.parts else None
+        target_layer = layer_of(target_rel.parts) if target_rel.parts else None
         if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
         if LAYER_TIER[target_layer] > source_tier:
@@ -626,33 +642,6 @@ def rule_drawn_comment(root, path, text, comments):
 LABEL = re.compile(r"^[A-Z][a-z]+(?:\s[A-Za-z][a-z]*){0,4}$")
 
 
-def _blank_comments_and_strings(text, comments):
-    """`text` with every comment span (from `comments`) and every string/
-    char literal blanked to spaces, newlines and length preserved, so a
-    brace inside either can never affect the count below."""
-    out = list(text)
-    for c in comments:
-        for start, end in c.spans:
-            for i in range(start, end):
-                if out[i] != "\n":
-                    out[i] = " "
-    i, n = 0, len(out)
-    while i < n:
-        ch = out[i]
-        if ch in "\"'":
-            quote, j = ch, i + 1
-            while j < n and out[j] != quote:
-                j += 2 if out[j] == "\\" and j + 1 < n else 1
-            j = min(j + 1, n)
-            for k in range(i, j):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j
-            continue
-        i += 1
-    return "".join(out)
-
-
 def _function_body_comments(text, comments):
     """The subset of `comments` sitting inside a real function body: a '{'
     at brace-depth 0 opens one only when the character before it is ')',
@@ -660,7 +649,7 @@ def _function_body_comments(text, comments):
     those follow '=' or a bare type keyword. Everything nested inside that
     frame (if/for/switch blocks, compound literals) inherits its state,
     counted in the one loop below."""
-    blanked = _blank_comments_and_strings(text, comments)
+    blanked = blank_comments(text, mode="code")
     spans = {start: c for c in comments for start, _ in c.spans}
     inside = {}
     depth_is_fn, last_nonspace = [], ""
@@ -682,7 +671,7 @@ def rule_undef_placement(root, path, text):
     if not relpath(root, path).startswith("launcher/main/"):
         return
     comments = scan(relpath(root, path), text)
-    code = _blank_comments_and_strings(text, comments)
+    code = blank_comments(text, mode="code")
     stack = []
     for number, line in enumerate(code.splitlines(), 1):
         directive = re.match(r"\s*#\s*(if|ifdef|ifndef|else|elif|endif|undef)\b(.*)", line)

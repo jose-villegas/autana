@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Proves the clock read and the heap calls in util/timing.h and util/memory.h
+# Proves the clock read and the heap calls in util/runtime/timing.h and util/runtime/memory.h
 # vanish into their callers, built as the board builds them (ESP_PLATFORM,
 # the IDF headers stood in for by stubs/) and as a host render does (the C
 # library's heap): a caller's object names the underlying calls itself and
@@ -29,8 +29,8 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cat >"$work/caller.c" <<'SRC'
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 void* hold;
 long long now;
@@ -44,9 +44,10 @@ caller(void) {
 SRC
 
 status=0
-# platform|extra flags|what the caller must call itself
+# platform|extra flags|what the caller must call itself, as EREs (MinGW's
+# timespec_get is a macro for _timespec64_get)
 for build in "board|-DESP_PLATFORM|esp_timer_get_time heap_caps_malloc heap_caps_free" \
-    "render||timespec_get malloc free"; do
+    "render||timespec(64)?_get malloc free"; do
     name=${build%%|*}
     rest=${build#*|}
     defines=${rest%%|*}
@@ -62,8 +63,9 @@ for build in "board|-DESP_PLATFORM|esp_timer_get_time heap_caps_malloc heap_caps
                 status=1
             fi
         done
-        if printf '%s\n' "$symbols" | grep -Eq "^[0-9a-f]+ [tT] "; then
-            for wrapper in $(printf '%s\n' "$symbols" | awk '$2 ~ /^[tT]$/ && $3 != "caller" { print $3 }'); do
+        # A leading dot is a section symbol (MinGW's nm lists .text), not code.
+        if printf '%s\n' "$symbols" | grep -Eq "^[0-9a-f]+ [tT] [^.]"; then
+            for wrapper in $(printf '%s\n' "$symbols" | awk '$2 ~ /^[tT]$/ && $3 != "caller" && $3 !~ /^\./ { print $3 }'); do
                 echo "  FAIL $name $opt: $wrapper is a function of its own, not inlined"
                 status=1
             done

@@ -83,8 +83,8 @@ cost of reformatting files you did not touch.
 
 Three places, one file list. `scripts/gates/format-file-list.sh` defines which
 files the rules apply to: vendored trees by path, generated files by the
-`GENERATED FILE` marker they carry; so the hook and CI cannot disagree about
-what is in scope.
+banner they carry ([Generated-Files.md](tools/Generated-Files.md)); so the
+hook and CI cannot disagree about what is in scope.
 
 ```sh
 scripts/install-git-hooks.sh          # opt in to the pre-commit hook
@@ -99,6 +99,28 @@ is not cloned, and it never sees a merge or a commit made by CI. The workflow
 is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
+
+### Token clones
+
+`python scripts/gates/check_clones.py` rejects new clone pairs in HEAD
+compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
+on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
+Extract a shared owner for each new pair; removing another pair gives no
+headroom. Pair keys combine sorted file names with the whitespace-normalised
+source fragment, so line shifts do not make an existing pair new.
+
+Use `--report` to list every pair with file and line ranges, including both
+sides of each new pair. `--min-tokens N` reports a different threshold without
+checking new pairs; the gate's `MIN_TOKENS` defines the enforced threshold.
+
+The gate scans tracked C, C++ and Python under `launcher/`, `scripts/` and
+`editor/`. Vendored component and test-framework directories, generated-banner
+files and fixture-data directories are excluded by rule. Comments and
+whitespace are ignored; identifier names and literal values are abstracted
+for detection. Literal-only fragments and same-file, same-range self-matches
+are excluded. Short helpers below the threshold are missed; longer helpers
+and repeated test setup are detected, so a reported pair needs review before
+extraction. The Linux comment-rules workflow runs the gate.
 
 ## Judgment rules
 
@@ -137,6 +159,11 @@ shorter prose.
 
 Keep a comment accurate or delete it; an outdated one is worse than none.
 Update it in the same edit that changes the code it describes.
+
+Every module of the firmware opens with a header: one sentence, in its .h or
+its .c, saying what it is (`name: ...`). A suite's test names say what it
+proves, so a suite needs none. `scripts/gates/check_file_headers.py` fails a
+module without one, and CI runs it.
 
 Shape follows OpenBSD `style(9)`: a one-line `/* ... */`, a `VERY important`
 one-liner in a three-line block, or real sentences filled like a paragraph.

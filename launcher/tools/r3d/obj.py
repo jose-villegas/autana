@@ -2,8 +2,7 @@
 
 import os
 
-import numpy as np
-from PIL import Image
+TEXTURE_KEYS = ("map_Kd", "map_d")
 
 
 def load_mtl(path):
@@ -19,12 +18,14 @@ def load_mtl(path):
                 materials[name] = {"Kd": (1.0, 1.0, 1.0)}
             elif name and parts[0] == "Kd":
                 materials[name]["Kd"] = tuple(float(v) for v in parts[1:4])
-            elif name and parts[0] in ("map_Kd", "map_d"):
+            elif name and parts[0] in TEXTURE_KEYS:
                 materials[name][parts[0]] = parts[1].replace("\\", "/")
     return materials
 
 
 def load_obj(path):
+    import numpy as np
+
     positions, uvs = [], []
     tri_v, tri_t, tri_m = [], [], []
     material_names = []
@@ -65,14 +66,19 @@ def load_obj(path):
 class Texture:
     """A linear-light mip chain, sampled bilinearly with wrap-around."""
 
-    def __init__(self, path, alpha_path=None):
+    def __init__(self, path, alpha_path=None, dtype=None):
+        """`dtype` float32 halves a large scene's footprint where only level 0 is read; the bake keeps float64."""
+        import numpy as np
+        from PIL import Image
+
+        dtype = np.float64 if dtype is None else dtype
         image = Image.open(path).convert("RGBA")
-        rgba = np.asarray(image, dtype=np.float64) / 255.0
+        rgba = np.asarray(image, dtype=dtype) / 255.0
         rgb = rgba[..., :3] ** 2.2
         alpha = rgba[..., 3:4]
         if alpha_path is not None:
             mask = Image.open(alpha_path).convert("L").resize(image.size)
-            alpha = np.asarray(mask, dtype=np.float64)[..., None] / 255.0
+            alpha = np.asarray(mask, dtype=dtype)[..., None] / 255.0
         level = np.concatenate([rgb, alpha], axis=2)
         self.levels = [level]
         while min(level.shape[0], level.shape[1]) > 1:
@@ -87,6 +93,8 @@ class Texture:
 
     def sample(self, uv, lod):
         """uv (n,2), lod (n,) in mip levels; returns (n,4) linear RGBA."""
+        import numpy as np
+
         out = np.zeros((len(uv), 4))
         lod = np.clip(np.round(lod).astype(np.int64), 0, len(self.levels) - 1)
         for level_index in np.unique(lod):
@@ -107,13 +115,13 @@ class Texture:
         return out
 
 
-def load_textures(root, materials, names):
+def load_textures(root, materials, names, dtype=None):
     textures = []
     for name in names:
         m = materials.get(name, {})
         if "map_Kd" in m:
             alpha = os.path.join(root, m["map_d"]) if "map_d" in m else None
-            textures.append(Texture(os.path.join(root, m["map_Kd"]), alpha))
+            textures.append(Texture(os.path.join(root, m["map_Kd"]), alpha, dtype))
         else:
             textures.append(None)
     return textures

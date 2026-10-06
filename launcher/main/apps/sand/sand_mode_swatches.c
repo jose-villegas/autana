@@ -60,26 +60,10 @@ build_256(const gfx_color_t* lut256, int lut_size, int ui_entries, sand_mode_swa
     out->rows = SAND_SWATCH_ROWS;
 }
 
-/* Fully saturated, full value: hue 0-1535 in six 256-step sextants. */
-static uint32_t
-hue_rgb(int hue) {
-    const int sextant = hue / 256;
-    const uint32_t up = (uint32_t)(hue % 256);
-    const uint32_t down = 255 - up;
-    switch (sextant) {
-        case 0: return 0xFF0000u | (up << 8);
-        case 1: return (down << 16) | 0x00FF00u;
-        case 2: return 0x00FF00u | up;
-        case 3: return (down << 8) | 0x0000FFu;
-        case 4: return (up << 16) | 0x0000FFu;
-        default: return 0xFF0000u | down;
-    }
-}
-
 static void
 build_full(sand_mode_swatch_t* out) {
     for (int i = 0; i < SAND_SWATCH_FULL_BANDS; i++) {
-        out->rgb[i] = hue_rgb(i * 1536 / SAND_SWATCH_FULL_BANDS);
+        out->rgb[i] = gfx_hue_rgb(i * GFX_HUE_TURN / SAND_SWATCH_FULL_BANDS);
     }
     out->cols = SAND_SWATCH_FULL_BANDS;
     out->rows = 1;

@@ -18,7 +18,7 @@
  *   Q8     a height t. 256 is 1.0, and 126 * 256 still fits an int16.
  *   Q16.16 metres, where a point enters the view matrix; camera space is 1/512
  *          m (R3D_X_UNIT_ONE).
- *   Q15    sines and cosines from util/trig.h, used by the title's
+ *   Q15    sines and cosines from util/scalar/trig.h, used by the title's
  *          wobble/wave and the floor ripple, not by the camera.
  */
 #pragma once
@@ -30,20 +30,38 @@
 #include "anim/anim_transform.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
-#include "boot/boot_anim_tracks_generated.h"
+#include "gfx/gfx_color.h"
 #include "gfx/gfx_font.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_project_x.h"
-#include "util/intmath.h"
 #include "util/math/transformf.h"
 #include "util/math/vec2i.h"
 #include "util/math/vec3f.h"
-#include "util/trig.h"
-#include "util/tween.h"
+#include "util/motion/tween.h"
+#include "util/scalar/mathi.h"
+#include "util/scalar/trig.h"
 
 #define BOOT_ANIM_Q   12
 #define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
 #define BOOT_ANIM_TQ  8                  /* t's own fixed point */
+
+/* How the camera and the space move: the boot clip's nodes "camera" and
+ * "space", pointing into its pack, or the rest pose when the clip cannot be
+ * read. */
+typedef struct {
+    anim_clip_t clip;
+    anim_node_tracks_t camera;
+    anim_node_tracks_t space;
+    bool from_pack;
+} boot_anim_motion_t;
+
+/* Fills `out` from the boot clip's pack, mounting it. On any failure it logs
+ * why and fills the rest pose, so the animation still draws. */
+void boot_anim_motion_load(boot_anim_motion_t* out);
+
+/* Drops the pack boot_anim_motion_load() mounted, if it did, and leaves the
+ * rest pose in `motion`, which no longer points into the pack. */
+void boot_anim_motion_release(boot_anim_motion_t* motion);
 
 typedef struct {
     transformf_t camera;
@@ -51,13 +69,11 @@ typedef struct {
 } boot_anim_timeline_state_t;
 
 static inline boot_anim_timeline_state_t
-boot_anim_timeline_sample(uint32_t now_ms) {
-    const float seconds = anim_clip_seconds(&boot_anim_clip, now_ms, ANIM_CLAMP);
+boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
+    const float seconds = anim_clip_seconds(&motion->clip, now_ms, ANIM_CLAMP);
     boot_anim_timeline_state_t st;
-    st.camera = anim_transform_sample(&boot_anim_camera_translation, &boot_anim_camera_rotation,
-                                      &boot_anim_camera_scale, seconds);
-    st.space =
-        anim_transform_sample(&boot_anim_space_translation, &boot_anim_space_rotation, &boot_anim_space_scale, seconds);
+    st.camera = anim_transform_sample(&motion->camera, seconds);
+    st.space = anim_transform_sample(&motion->space, seconds);
     return st;
 }
 
@@ -80,8 +96,8 @@ boot_anim_timeline_sample(uint32_t now_ms) {
 typedef r3d_line_view_x_t boot_anim_view_t;
 
 static inline boot_anim_view_t
-boot_anim_view(int w, int h, uint32_t now_ms) {
-    boot_anim_timeline_state_t st = boot_anim_timeline_sample(now_ms);
+boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
+    boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
     const r3d_line_camera_t camera = {.pose = st.camera, .focal = BOOT_ANIM_CAMERA_FOCAL, .near_z = R3D_LINE_NEAR_Z};
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
@@ -228,7 +244,7 @@ typedef struct {
  * normalization (shift vs divide). */
 static inline boot_anim_pt_t
 boot_anim_spline(boot_anim_pt_t c0, boot_anim_pt_t c1, boot_anim_pt_t c2, int32_t t_q12) {
-    /* 32-bit throughout, deliberately not util/fixed.h's widening helpers:
+    /* 32-bit throughout, deliberately not util/scalar/fixed.h's widening helpers:
      * the operands are sized so the product cannot overflow an int32, on a
      * path that runs several thousand times a frame. */
     const int32_t u = BOOT_ANIM_ONE - t_q12;
@@ -275,7 +291,7 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
     if (a.z <= view->near_z || c.z <= view->near_z) {
         return false;
     }
-    const int64_t m = (int64_t)im_abs(a.x - c.x) + im_abs(a.y - c.y);
+    const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
     if (view->focal == 0) {
         return m * view->scale < (int64_t)px * R3D_X_UNIT_ONE;
     }
@@ -503,37 +519,12 @@ boot_anim_title_shadow_offset(int dx, int dy, int* panel_dx, int* panel_dy) {
     *panel_dy = dx;
 }
 
-/* A hue wheel lets height read as colour against the AMOLED's true black.
- * Brightness and desaturation remain separate mixing amounts. */
-
-/* A whole turn: six sectors of 256, so the sector is a shift and the ramp
- * within one is a byte. */
-#define BOOT_ANIM_HUE_TURN 1536
-
-/* 0xRRGGBB at full saturation and full brightness. */
-static inline uint32_t
-boot_anim_hue_rgb(int hue) {
-    hue %= BOOT_ANIM_HUE_TURN;
-    if (hue < 0) {
-        hue += BOOT_ANIM_HUE_TURN;
-    }
-
-    const uint32_t ramp = (uint32_t)(hue & 0xFF); /* rising edge, 0..255 */
-    const uint32_t fall = 255u - ramp;
-
-    switch (hue >> 8) {
-        case 0: return (0xFFu << 16) | (ramp << 8); /* red     -> yellow  */
-        case 1: return (fall << 16) | (0xFFu << 8); /* yellow  -> green   */
-        case 2: return (0xFFu << 8) | ramp;         /* green   -> cyan    */
-        case 3: return (fall << 8) | 0xFFu;         /* cyan    -> blue    */
-        case 4: return (ramp << 16) | 0xFFu;        /* blue    -> magenta */
-        default: return (0xFFu << 16) | fall;       /* magenta -> red     */
-    }
-}
-
+/* A hue wheel (gfx_hue_rgb()) lets height read as colour against the
+ * AMOLED's true black. Brightness and desaturation remain separate mixing
+ * amounts. */
 static inline int
 boot_anim_grid_hue(uint32_t now_ms, int ring) {
-    const uint32_t turn = (now_ms % BOOT_ANIM_GRID_HUE_MS) * BOOT_ANIM_HUE_TURN / BOOT_ANIM_GRID_HUE_MS;
+    const uint32_t turn = (now_ms % BOOT_ANIM_GRID_HUE_MS) * GFX_HUE_TURN / BOOT_ANIM_GRID_HUE_MS;
     return (int)turn + ring * BOOT_ANIM_GRID_HUE_SPREAD;
 }
 
@@ -609,11 +600,11 @@ boot_anim_trail_pos(int32_t pen_q12, int k) {
 /* The wheel position pen `k` carries, spread evenly round it. */
 static inline int
 boot_anim_trail_hue(int k) {
-    return k * (BOOT_ANIM_HUE_TURN / BOOT_ANIM_TRAILS);
+    return k * (GFX_HUE_TURN / BOOT_ANIM_TRAILS);
 }
 
 typedef struct {
-    int hue;       /* wheel position; boot_anim_hue_rgb() wraps it */
+    int hue;       /* wheel position; gfx_hue_rgb() wraps it */
     uint8_t bloom; /* mix that far toward white                    */
     uint8_t glow;  /* mix that far up from the background          */
     uint8_t width; /* pixels across                                */
@@ -672,7 +663,7 @@ boot_anim_finale_reach(uint32_t now_ms) {
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
 /* Host render tests call this directly and read the firmware framebuffer. */
-void boot_anim_draw_frame(uint32_t now_ms);
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture

@@ -1,3 +1,7 @@
+/*
+ * sand_limits: the largest grid and block table any cell size can ask for,
+ * so buffers are sized once for the smallest cell.
+ */
 #pragma once
 
 #include "gfx/gfx.h"

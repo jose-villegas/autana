@@ -437,7 +437,7 @@ which tier your code is in. They differ by orders of magnitude.
 
 **This is why `reaction_t` is a second table.** `material_t` is read
 several times per cell per step from the hot tier, and its own comment
-explains why keeping the row inside a 32-byte cache line matters. Every
+explains why keeping the stride small matters. Every
 field of `reaction_t`, however many there are today, is read only by the
 cold pass. Fattening the hot table's stride to carry any of them would
 cost every step that never touches fire at all; the price of the split
@@ -459,8 +459,8 @@ the second inlined copy (see the comment at that call site in
 `sand_gas.c`);
 `suite_sand_perf.c` records a measured 26% regression as precedent for
 sharing a hot per-call function across a translation-unit boundary the
-wrong way. Flash is a cache-constrained resource here (32 KB
-code/constant cache, `Sand-Simulation.md`), and a function's compiled
+wrong way. Flash instructions use the instruction cache; flash constants
+use the separate data cache (see [Cache is carved from the same pool](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)). A function's compiled
 size at each call site is part of that budget, not just its execution
 time; measure whether a second site is hot enough to need its own
 inlined copy before giving it one.
@@ -476,7 +476,7 @@ numbers in about five minutes. This is the highest-leverage habit in this
 document.
 
 ```bash
-gcc -std=c11 -O1 -I launcher/main -o probe.exe probe.c launcher/main/apps/sand/sand.c launcher/main/apps/sand/sand_liquid.c launcher/main/apps/sand/sand_gas.c launcher/main/apps/sand/sand_reactions.c launcher/main/apps/sand/sand_plants.c launcher/main/apps/sand/sand_impulse.c launcher/main/apps/sand/material.c launcher/main/apps/sand/row_runs.c launcher/main/apps/sand/sand_chunk_sched.c launcher/main/util/job.c
+gcc -std=c11 -O1 -I launcher/main -o probe.exe probe.c launcher/main/apps/sand/sand.c launcher/main/apps/sand/sand_liquid.c launcher/main/apps/sand/sand_gas.c launcher/main/apps/sand/sand_reactions.c launcher/main/apps/sand/sand_plants.c launcher/main/apps/sand/sand_impulse.c launcher/main/apps/sand/material.c launcher/main/apps/sand/row_runs.c launcher/main/apps/sand/sand_chunk_sched.c launcher/main/util/runtime/job.c
 ```
 
 Your probe.c needs only `#include "apps/sand/sand.h"`, a grid, and a

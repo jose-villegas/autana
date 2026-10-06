@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include "ui/ui.h"
+#include "util/scalar/mathi.h"
 
 ui_scroll_view_config_t
 ui_scroll_view_default(void) {
@@ -16,20 +17,12 @@ ui_scroll_view_default(void) {
 #define UI_SCROLL_MOMENTUM_STOP_PX_PER_MS 0.002f
 
 /* One in-flight coast at a time, matching the shell's own one-window-at-a-
- * time model (main.c: one app, one screen, drawn once per frame). Keyed by
+ * time model (one app, one screen, drawn once per frame). Keyed by
  * container identity so switching screens (a different mu_Container*)
  * starts clean rather than inheriting a stale velocity. */
 static const mu_Container* momentum_cnt;
 static float momentum_v; /* px/ms, vertical only; see ui_scroll.h */
 static int momentum_prev_scroll_y;
-
-static int
-clamp_int(int v, int lo, int hi) {
-    if (v < lo) {
-        return lo;
-    }
-    return (v > hi) ? hi : v;
-}
 
 /* Same bound the scrollbar() macro (microui.c) clamps to: content_size and
  * body are last frame's, the same one-frame lag that macro already accepts. */
@@ -63,7 +56,7 @@ step_momentum(mu_Context* ctx, mu_Container* cnt, uint32_t dt_ms, uint32_t tau_m
         const float decay = expf(-dt / tau);
         const float distance = momentum_v * tau * (1.0f - decay);
         const int max_scroll = max_scroll_y(ctx, cnt);
-        cnt->scroll.y = clamp_int(cnt->scroll.y + lroundf(distance), 0, max_scroll);
+        cnt->scroll.y = mathi_clamp(cnt->scroll.y + lroundf(distance), 0, max_scroll);
         momentum_v *= decay;
         if (cnt->scroll.y == 0 || cnt->scroll.y == max_scroll
             || fabsf(momentum_v) < UI_SCROLL_MOMENTUM_STOP_PX_PER_MS) {

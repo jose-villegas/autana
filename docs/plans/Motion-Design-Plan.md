@@ -15,9 +15,9 @@ change as little of the screen as possible per frame.
 
 | Fact | Value | Source |
 |---|---|---|
-| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | `docs/notes/Display-and-Rendering.md` |
-| Fixed cost per panel transaction | about 118 us | same |
-| Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | same |
+| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | device present tests in `launcher/test/suites/suite_gfx.c` |
+| Fixed cost per panel transaction | about 118 us | device tests in `launcher/test/suites/suite_gfx.c` |
+| Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | `docs/notes/Display-and-Rendering.md` |
 | PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | `docs/plans/Autana-Rendering-Roadmap.md` |
 | Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/Gfx-and-Presentation.md` |
 | Launcher frame today | about 24.5 ms, presented synchronously (*est* 14 ms draw + 10 ms send) | measured with injected taps |
@@ -25,10 +25,10 @@ change as little of the screen as possible per frame.
 
 What already exists:
 
-- `util/tween.h`: progress is a byte (0-255). Over 448 px that is about
+- `util/motion/tween.h`: progress is a byte (0-255). Over 448 px that is about
   1.75 px per step, so an eased end visibly stair-steps. Spatial motion
   needs Q16 progress.
-- `util/spring_line.h`: integer springs on a fixed 4 ms tick that come to
+- `util/motion/spring_line.h`: integer springs on a fixed 4 ms tick that come to
   rest by themselves.
 - `ui/ui_transform.h`: axis-aligned translate and scale. Text turns only in
   quarter turns and scales only by whole numbers.
@@ -41,7 +41,7 @@ What already exists:
 
 | # | Piece | Approach | Cost (*est*) | Verdict |
 |---|---|---|---|---|
-| 1 | Motion module in `util/`, host-tested, time passed in | Critically damped half-life spring that keeps its velocity when the target changes, for anything the finger drives or can interrupt; 33-entry Q16 easing tables baked from Material 3's emphasized curves for fixed transitions; always sample by elapsed time | A few operations per animated value | Build first |
+| 1 | Motion module in `util/motion/`, host-tested, time passed in | Critically damped half-life spring that keeps its velocity when the target changes, for anything the finger drives or can interrupt; 33-entry Q16 easing tables baked from Material 3's emphasized curves for fixed transitions; always sample by elapsed time | A few operations per animated value | Build first |
 | 2 | Control Center slide | An opaque sheet follows the finger on the edge swipe, then springs open or closed from the release velocity; the launcher behind it freezes (ridge motion paused); one full-frame send at the end heals the 80 MHz partial-update corruption | Portrait about half a present per frame (5 ms); landscape about a full send | Build second, and measure both orientations: that number sets the budget for everything after |
 | 3 | Cached blurred backdrop | On open: downsample the framebuffer 4x, three box-blur passes (within about 3% of a Gaussian), bake in the tint, keep it; upsample with ordered dither when drawn; the scrim gets much lighter than 230 | 20 KB PSRAM; one hitch of about 20 ms (8 ms downsample read, 1.5 ms blur, 8-12 ms upsample) that can be spread over the first slide frames; nothing per frame while static | Fit |
 | 4 | App open | Container transform: grow the row's own card or colour to full screen, then cut to the app's first full redraw; also hides the app's start-up time | Fills only, dirty area = the card; 3-10 ms present | Fit |

@@ -34,7 +34,7 @@
 # --reference SCENE.scene.toml --poses FILE --render LABEL "ARGS" compares
 # <A> against the scene's source reference instead of a <B>: the reference
 # frames come from r3d/reference_render.py at the poses in FILE, the camera
-# path sampled at the renderer's --dt (tools/anim/sample_tracks.sh --every DT),
+# path sampled at the renderer's --dt (tools/anim/track_host.py --every DT),
 # and are cached under r3d/.cache/reference by a hash of the scene, its import
 # files (which pin the source model's sha256), the r3d sources, the poses and N
 # (--samples N is the supersampling, default 4). It
@@ -63,20 +63,9 @@ usage() {
 # shellcheck source=../../../scripts/lib/python.sh
 . "$TOOLS_DIR/../../../scripts/lib/python.sh"
 
-if ! PYTHON=$(command -v python3 || command -v python); then
-    echo "No Python found; render_compare.py needs one (Pillow and numpy)." >&2
-    exit 1
-fi
+PYTHON=$(find_python PIL numpy) || exit 1
 
-# Git Bash hands this script MSYS paths (/c/...), which the Windows python
-# cannot open; cygpath exists only there.
-to_native() {
-    if command -v cygpath > /dev/null 2>&1; then
-        cygpath -w "$1"
-    else
-        printf '%s\n' "$1"
-    fi
-}
+. "$TOOLS_DIR/../../../scripts/lib/native_path.sh"
 
 script=""
 out=""
@@ -95,14 +84,12 @@ rev_b=""
 work=$(mktemp -d)
 renders="$work/renders.tsv"
 : > "$renders"
-created="$work/worktrees.txt"
-: > "$created"
+# shellcheck source=../revision_worktree.sh
+. "$TOOLS_DIR/../revision_worktree.sh"
+revision_worktree_setup "$REPO_DIR" "$work"
 
 cleanup() {
-    while IFS= read -r tree; do
-        [ -n "$tree" ] || continue
-        git -C "$REPO_DIR" worktree remove --force "$tree" > /dev/null 2>&1 || true
-    done < "$created"
+    revision_worktree_cleanup
     rm -rf "$work"
 }
 trap cleanup EXIT
@@ -169,18 +156,7 @@ short_name() {
 
 # Prints the checkout directory for a revision or directory.
 checkout() {
-    if [ -d "$1" ]; then
-        (CDPATH= cd -- "$1" && pwd)
-        return
-    fi
-    git -C "$REPO_DIR" rev-parse --verify --quiet "$1^{commit}" > /dev/null || {
-        echo "not a revision or directory: $1" >&2
-        return 1
-    }
-    tree="$work/tree_$2"
-    git -C "$REPO_DIR" worktree add --detach "$tree" "$1" > /dev/null 2>&1 || return 1
-    echo "$tree" >> "$created"
-    echo "$tree"
+    revision_worktree_checkout "$1" "$2"
 }
 
 # Runs the scene script at a checkout, or builds its renderer and runs that

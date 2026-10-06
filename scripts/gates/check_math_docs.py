@@ -127,12 +127,12 @@ def check(root):
         functions[family] |= own
         body = section(page, family)
         if not body:
-            problems.append("%s has no `### %s` section" % (PAGE, family))
+            problems.append("%s has no `### %s` section" % (PAGE.as_posix(), family))
             continue
         wanted = ["P_%s(" % name for name in sorted(functions[family])] + sorted(patterns[family])
         for entry in wanted:
             if entry not in body:
-                problems.append("%s: the %s section lacks `%s`" % (PAGE, family, entry))
+                problems.append("%s: the %s section lacks `%s`" % (PAGE.as_posix(), family, entry))
     family_functions = set().union(*functions.values())
 
     defined = set()
@@ -145,16 +145,16 @@ def check(root):
             continue
         for prefix in DEFINE_CALL.findall(text):
             if "`%s`" % prefix not in page:
-                problems.append("%s: the page does not name the type `%s`" % (PAGE, prefix))
+                problems.append("%s: the page does not name the type `%s`" % (PAGE.as_posix(), prefix))
         for name in HAND_WRITTEN.findall(text) + IDENTITY.findall(text):
             if name not in page:
-                problems.append("%s: the page does not name %s (%s)" % (PAGE, name, header.name))
+                problems.append("%s: the page does not name %s (%s)" % (PAGE.as_posix(), name, header.name))
 
     valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
     for name in sorted(set(PAGE_CALL.findall(FENCE.sub("", page)))):
         if name not in valid:
-            problems.append("%s names %s(, which no header defines" % (PAGE, name))
+            problems.append("%s names %s(, which no header defines" % (PAGE.as_posix(), name))
     return problems
 
 

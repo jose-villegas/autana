@@ -7,7 +7,7 @@ simplification, Hasselgren et al. 2021).
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot]
 
 --start is a baked smooth mesh, usually the simplifier's output at the
-triangle budget. Each --poses file (tools/anim/sample_tracks.sh) pairs with
+triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
 the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
@@ -437,7 +437,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
     parser.add_argument("--start", required=True, help="a smooth NAME.mesh to start from")
-    parser.add_argument("--poses", action="append", required=True, help="a sample_tracks.sh poses file")
+    parser.add_argument("--poses", action="append", required=True, help="a track_host.py poses file")
     parser.add_argument("--reference", action="append", required=True, help="reference_render.py output for the poses")
     parser.add_argument("--out", required=True)
     parser.add_argument("--per-shot", action="store_true", help="one mesh per --poses file")

@@ -45,7 +45,7 @@ ULTRA's 41,216-byte grid is the largest single allocation the sand app
 makes.
 
 The 322 KiB framebuffer lives entirely in PSRAM (`MEMORY_PSRAM`,
-`util/memory.h`), so it does not compete with the sand grid, or anything else,
+`util/runtime/memory.h`), so it does not compete with the sand grid, or anything else,
 for internal SRAM.
 
 The encoding stays one byte: a second byte at ULTRA would fit the internal
@@ -141,7 +141,7 @@ tilt):
 | Mechanism | Rule | What a liquid does instead |
 |---|---|---|
 | **Angle of repose** | A grain on a slope stays put until the slope exceeds the friction angle: `descent > mu * lateral`, the same test as a block on an incline. `mu` is `repose / 10`; sand's `repose = 7` is ~35 degrees. | `repose = 0` means no angle of repose exists at all; it slides sideways however level the surface is, which is what makes it a liquid. |
-| **Burial** | A grain counts how many grains are stacked directly against gravity above it, and each one halves its chance of sliding (`SAND_SLIP_CHANCE = 96` in 256, halving per grain, capped hard past `SAND_LOAD_CAP = 5`). | `slip = 255` means load never holds it at all: water at the bottom of a pool flows exactly as freely as water at the top. |
+| **Burial** | A grain counts how many grains are stacked directly against gravity above it, and each one halves its chance of sliding (sand's material-table `slip` field is 96 in 256, halving per grain, capped hard past `SAND_LOAD_CAP = 5`). | `slip = 255` means load never holds it at all: water at the bottom of a pool flows exactly as freely as water at the top. |
 
 **Gravity's direction is dithered, not snapped to nearest-of-eight.**
 Snapping makes a slow tilt arrive in 45-degree jerks. Instead, each step
@@ -1126,13 +1126,13 @@ every step" and the numbers above:
   the difference between a settled screen of sand costing 17 us and
   costing 5.5 ms.
 
-`materials[]` is `const` data in flash, read through this chip's 32 KB
-data cache, separate from the instruction cache the sweep's own code runs
+`materials[]` is `const` data in flash, read through the data cache configured
+in `launcher/sdkconfig.defaults`, separate from the instruction cache the sweep's own code runs
 from, so the two do not evict each other. A cache miss on
 a cold line is still a real cost inside the tightest loop in the project,
 which is what the bitmask above avoids paying per cell. See
-[Optimization-Playbook.md](../notes/Optimization-Playbook.md#know-what-kind-of-memory-you-actually-have)
-for the cache sizes and the general lesson.
+[Board-and-Memory.md](../notes/Board-and-Memory.md#cache-is-carved-from-the-same-pool)
+for cache configuration and memory placement.
 
 ## Two cores: chunk-parallel passes, and what stays serial
 
@@ -1542,7 +1542,7 @@ decay, mobility and walk draws, while `s->rng_hashed` is armed. That is
 true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
 Armed, it hashes `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
-through `rng_hash()` (`util/rng.h`); disarmed, it is `rng_next(&s->rng)`
+through `rng_hash()` (`util/scalar/rng.h`); disarmed, it is `rng_next(&s->rng)`
 unchanged, so reactions and every serial gas step retain sequential draws,
 and the whole step with the switch off is unchanged.
 
@@ -1559,11 +1559,12 @@ behaviour loss rather than a race on that queue.
 
 ### Scheduling: below present, not around it
 
-The core-1 task (`util/job.c`, shared by every engine client, not owned
+The core-1 task (`util/runtime/job.c`, shared by every engine client, not owned
 by this app) runs at priority 3, below gfx's present task at 5, not in a
 window carved out before or after present, because `sand_step()` can run
-while a previous frame is still presenting (`main.c`'s `step_app()`) and
-present's own timing must never move for anything sand does.
+while a previous frame is still presenting (`shell/shell_apps.c`'s
+`step_running_app()`) and present's own timing must never move for anything
+sand does.
 
 A lower-priority task only gets the CPU while present is blocked on its
 own strip-sent semaphore, which is most of a present since the transfer
@@ -1578,7 +1579,7 @@ chain has no timeout anywhere in it either, and has always been one
 wedged strip-sent interrupt away from hanging the whole frame loop. A
 second task on core 1 must not risk exposing that same latent assumption.
 
-`job_wait()` (`util/job.h`) takes a timeout instead: every sand call
+`job_wait()` (`util/runtime/job.h`) takes a timeout instead: every sand call
 site here passes 100 ms, far above any dispatch this file makes. A
 timeout that fires falls back to inline dispatch only for as long as the
 stuck job still holds the worker: the flag it leaves set routes every

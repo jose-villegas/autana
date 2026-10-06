@@ -2,13 +2,14 @@
 #
 # Build and run triangle_sizes: how many of a lit mesh's drawn triangles
 # cover 0, 1, 2-4 or more pixel centres at each pose of a poses file (the
-# format is in triangle_sizes.h).
+# format is in triangle_sizes.h), and the bounding boxes of the triangles
+# the draw hands the rasterizer, by shading mode.
 #
 # Usage:
 #   launcher/tools/r3d/report_triangle_sizes.sh --mesh NAME POSES|- [--write DIR | --against DIR]
 #
-#   --mesh NAME             the baked mesh: its asset id in the pack, which is built from the baked meshes
-#                           in the tree, or is the file AUTANA_ASSET_PACK names
+#   --mesh NAME             the baked mesh: its asset id, read from the pack that holds it, in a folder
+#                           written from the baked meshes in the tree, or the one AUTANA_ASSET_DIR names
 #   POSES                   the poses file: size, lens and one line per pose; - reads standard input
 #   --write DIR             also keep each pose's frame in DIR
 #   --against DIR           also compare each pose's frame with the one kept in DIR, pixel by pixel
@@ -29,7 +30,7 @@ usage() {
 mesh_name=$2
 poses=$3
 shift 3
-pack=${AUTANA_ASSET_PACK:-}
+asset_dir=${AUTANA_ASSET_DIR:-}
 [ "$poses" = - ] || [ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
 mode=""
 dir=""
@@ -50,25 +51,34 @@ BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/triangle_sizes"
 # The same flags as run_tests.sh; -O2 because it draws every pose.
-"$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 \
+CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
+# The pipeline hands its triangles to the tool, which counts their boxes
+# and passes them on to r3d_span's own functions.
+# shellcheck disable=SC2086 # CFLAGS is a list of flags
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" \
+    -Dr3d_span_triangle=sizes_span_triangle -Dr3d_span_triangle_solid=sizes_span_triangle_solid \
+    -c "$MAIN_DIR/render/r3d_pipeline.c" -o "$BUILD_DIR/r3d_pipeline_counted.o"
+# shellcheck disable=SC2086
+"$CC_BIN" $CFLAGS \
     -I "$MAIN_DIR" -I "$SCRIPT_DIR" \
     "$SCRIPT_DIR/triangle_sizes_main.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \
     "$MAIN_DIR/asset/asset_pack.c" \
     "$MAIN_DIR/asset/asset_file.c" \
     "$MAIN_DIR/render/r3d_lit_mesh.c" \
-    "$MAIN_DIR/render/r3d_pipeline.c" \
+    "$BUILD_DIR/r3d_pipeline_counted.o" \
     "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
-if [ -z "$pack" ]; then
-    # shellcheck source=../../../scripts/lib/python.sh
-    . "$LAUNCHER_DIR/../scripts/lib/python.sh"
-    PYTHON=$(find_python) || exit 1
-    pack="$BUILD_DIR/assets.bin"
-    "$PYTHON" "$SCRIPT_DIR/build_pack.py" -o "$pack" "$MAIN_DIR" > /dev/null
+# shellcheck source=../../../scripts/lib/python.sh
+. "$LAUNCHER_DIR/../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
+if [ -z "$asset_dir" ]; then
+    asset_dir="$BUILD_DIR/assets"
+    "$PYTHON" "$SCRIPT_DIR/build_pack.py" -o "$asset_dir" "$MAIN_DIR" > /dev/null
 fi
+pack="$asset_dir/$("$PYTHON" "$SCRIPT_DIR/build_pack.py" --pack-of "$mesh_name" "$MAIN_DIR").apak"
 
 if [ -n "$mode" ]; then
     mkdir -p "$dir"

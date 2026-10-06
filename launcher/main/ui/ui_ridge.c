@@ -14,10 +14,11 @@
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
-#include "util/frame_cost.h"
-#include "util/memory.h"
-#include "util/spring_line.h"
-#include "util/tune.h"
+#include "util/motion/spring_line.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/tune.h"
+#include "util/scalar/mathi.h"
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
@@ -135,11 +136,6 @@ typedef struct {
 
 static ridge_t* ridge;
 static bool allocation_tried;
-
-static inline __attribute__((always_inline)) int
-clamp_int(int value, int lo, int hi) {
-    return value < lo ? lo : value > hi ? hi : value;
-}
 
 static int
 round_q4(int value) {
@@ -638,7 +634,7 @@ repaint_row_strip(int y, int lo, int hi) {
 static void
 repaint_strip(int strip, int lo, int hi) {
     lo = lo < 0 ? 0 : lo;
-    hi = clamp_int(hi, lo, ridge->by_column ? GFX_HEIGHT : GFX_WIDTH);
+    hi = mathi_clamp(hi, lo, ridge->by_column ? GFX_HEIGHT : GFX_WIDTH);
     if (lo >= hi) {
         return;
     }
@@ -766,8 +762,8 @@ column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
     if (was != now) {
         extend_repaint_range(was, now, &first, &last);
     }
-    *lo = (int16_t)clamp_int(first, 0, GFX_HEIGHT);
-    *hi = (int16_t)clamp_int(last, 0, GFX_HEIGHT);
+    *lo = (int16_t)mathi_clamp(first, 0, GFX_HEIGHT);
+    *hi = (int16_t)mathi_clamp(last, 0, GFX_HEIGHT);
     ridge->shown[layer][x] = (int16_t)now;
 }
 
@@ -848,8 +844,8 @@ edge_swept_columns(int edge, int y, int64_t was_offset, int64_t now_offset, int*
     int64_t hi = a > b ? a : b;
     lo = lo < -2 * 65536 ? -2 * 65536 : lo;
     hi = hi > (int64_t)(GFX_WIDTH + 2) * 65536 ? (int64_t)(GFX_WIDTH + 2) * 65536 : hi;
-    *x0 = clamp_int((int)(lo >> 16) - 1, 0, GFX_WIDTH);
-    *x1 = clamp_int((int)((hi + 65535) >> 16) + 2, 0, GFX_WIDTH);
+    *x0 = mathi_clamp((int)(lo >> 16) - 1, 0, GFX_WIDTH);
+    *x1 = mathi_clamp((int)((hi + 65535) >> 16) + 2, 0, GFX_WIDTH);
 }
 
 /* Only the front layer shows the gradient, so a swept pixel it does not

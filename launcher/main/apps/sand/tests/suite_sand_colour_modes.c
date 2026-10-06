@@ -31,8 +31,8 @@
 #include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* const TAG = "device_tests";
 
