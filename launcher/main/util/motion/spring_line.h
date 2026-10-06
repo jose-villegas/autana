@@ -23,6 +23,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "util/scalar/intmath.h"
+
 #define SPRING_LINE_ONE           (1 << 16)
 
 /* One tick of simulated time. A wave crosses at most one column per tick,
@@ -135,11 +137,6 @@ spring_line_nudge(spring_line_t* line, int x, int half_width, int32_t offset) {
     spring_line_add_bump(line, line->offset, x, half_width, offset);
 }
 
-static inline int32_t
-spring_line_clamp(int32_t value, int32_t limit) {
-    return value < -limit ? -limit : (value > limit ? limit : value);
-}
-
 static inline bool
 spring_line_quiet(const spring_line_t* line, int x) {
     const int32_t away = line->offset[x] < 0 ? -line->offset[x] : line->offset[x];
@@ -190,7 +187,8 @@ spring_line_tick(spring_line_t* line) {
     }
 
     for (int x = lo; x < hi; x++) {
-        line->offset[x] = spring_line_clamp(line->offset[x] + line->velocity[x], SPRING_LINE_MAX_OFFSET);
+        line->offset[x] =
+            im_clamp(line->offset[x] + line->velocity[x], -SPRING_LINE_MAX_OFFSET, SPRING_LINE_MAX_OFFSET);
     }
     spring_line_trim(line);
 }

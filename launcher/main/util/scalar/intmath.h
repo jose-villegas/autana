@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <stdint.h>
+
 /* Not named `abs`/`sign`: those collide with <stdlib.h>. */
 
 static inline int
@@ -54,4 +56,29 @@ even_floor(int v) {
 static inline int
 even_ceil(int v) {
     return (v + 1) & ~1;
+}
+
+static inline __attribute__((always_inline)) int
+im_clamp(int value, int lo, int hi) {
+    return value < lo ? lo : (value > hi ? hi : value);
+}
+
+/* Floor of the square root over the whole uint64_t range. */
+static inline uint32_t
+im_isqrt64(uint64_t value) {
+    uint64_t root = 0;
+    uint64_t bit = (uint64_t)1 << 62;
+    while (bit > value) {
+        bit >>= 2;
+    }
+    while (bit != 0) {
+        if (value >= root + bit) {
+            value -= root + bit;
+            root = (root >> 1) + bit;
+        } else {
+            root >>= 1;
+        }
+        bit >>= 2;
+    }
+    return (uint32_t)root;
 }

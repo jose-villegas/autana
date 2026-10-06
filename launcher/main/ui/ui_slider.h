@@ -16,13 +16,7 @@
 
 #include "microui.h"
 
-/* Round a/b to the nearest integer, ties away from zero. `a` and `b` are
- * both assumed non-negative here: every call site below only ever divides
- * a pixel offset or a value span, neither of which goes negative. */
-static inline int
-ui_slider_round_div(int a, int b) {
-    return (b > 0) ? (a + b / 2) / b : 0;
-}
+#include "util/scalar/fixed.h"
 
 /* How far the knob can travel: never the track's own width, or the knob
  * would hang half outside the track at lo and hi. Clamped so a knob wider
@@ -48,7 +42,7 @@ ui_slider_knob_rect(mu_Rect track, int lo, int hi, int value, int knob_w) {
     const int travel = ui_slider_travel(track, knob_w);
     const int range = hi - lo;
     const int v = mu_clamp(value, lo, hi);
-    const int x = (range > 0) ? track.x + ui_slider_round_div((v - lo) * travel, range) : track.x;
+    const int x = (range > 0) ? track.x + fx_div_round((v - lo) * travel, range, 0) : track.x;
     return (mu_Rect){x, track.y, w, track.h};
 }
 
@@ -85,7 +79,7 @@ ui_slider_value_at_x(mu_Rect track, int lo, int hi, int knob_w, int step, int x)
     const int travel = ui_slider_travel(track, knob_w);
     const int w = ui_slider_knob_w(track, knob_w);
     const int off = mu_clamp(x - track.x - w / 2, 0, mu_max(travel, 0));
-    const int raw = (travel > 0) ? lo + ui_slider_round_div(off * range, travel) : lo;
-    const int steps = ui_slider_round_div((raw - lo), s);
+    const int raw = (travel > 0) ? lo + fx_div_round(off * range, travel, 0) : lo;
+    const int steps = fx_div_round(raw - lo, s, 0);
     return mu_clamp(lo + steps * s, lo, hi);
 }

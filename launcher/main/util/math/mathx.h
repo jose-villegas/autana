@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include "util/scalar/fixed.h"
+#include "util/scalar/intmath.h"
 #include "util/scalar/trig.h"
 
 #define MATHX_SHIFT 16
@@ -53,10 +54,7 @@ mathx_div(int32_t num, int32_t den) {
     if (den == 0) {
         return num > 0 ? INT32_MAX : (num < 0 ? INT32_MIN : 0);
     }
-    const int64_t n = (int64_t)num * MATHX_ONE;
-    const int64_t d = den < 0 ? -(int64_t)den : (int64_t)den;
-    const int64_t q = ((n < 0 ? -n : n) + (d / 2)) / d;
-    return mathx_saturate(((n < 0) != (den < 0)) ? -q : q);
+    return mathx_saturate(fx_div_round_wide(num, den, MATHX_SHIFT));
 }
 
 /* The square root of a non-negative value; a negative one gives 0. */
@@ -65,14 +63,7 @@ mathx_sqrt(int32_t v) {
     if (v <= 0) {
         return 0;
     }
-    const uint64_t n = (uint64_t)v << MATHX_SHIFT;
-    uint64_t root = 0;
-    for (uint64_t bit = (uint64_t)1 << 24; bit != 0; bit >>= 1) {
-        if ((root + bit) * (root + bit) <= n) {
-            root += bit;
-        }
-    }
-    return (int32_t)root;
+    return (int32_t)im_isqrt64((uint64_t)v << MATHX_SHIFT);
 }
 
 static inline int32_t

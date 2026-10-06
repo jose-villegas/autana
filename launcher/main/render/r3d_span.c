@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "render/code_layout.h"
+#include "util/scalar/intmath.h"
 
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
@@ -36,11 +37,6 @@ clampf(float v, float lo, float hi) {
 static inline int32_t
 to_step(float step) {
     return (int32_t)clampf(step, -STEP_MAX, STEP_MAX);
-}
-
-static inline int32_t
-clamp_value(int32_t v, int32_t max) {
-    return v < 0 ? 0 : (v > max ? max : v);
 }
 
 static inline float
@@ -106,11 +102,11 @@ span_step(const gradients_t* g, const int32_t row[ATTRIBUTES], int k, int offset
         *value = row[k] + (g->dx[k] * offset);
         return;
     }
-    const int32_t start = clamp_value(row[k] + (g->dx[k] * offset), value_max[k]);
+    const int32_t start = im_clamp(row[k] + (g->dx[k] * offset), 0, value_max[k]);
     const int32_t end = start + (g->dx[k] * count);
     *value = start;
     if (count > 0 && (end < 0 || end > value_max[k])) {
-        *step = (clamp_value(end, value_max[k]) - start) / count;
+        *step = (im_clamp(end, 0, value_max[k]) - start) / count;
     }
 }
 
@@ -321,11 +317,6 @@ sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_
     return odd;
 }
 
-static inline int
-clampi(int v, int lo, int hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
 static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const float third = 1.0F / 3.0F;
@@ -480,8 +471,8 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     /* The whole triangle's rows, not the window's, decide its path, so any
      * window of rows draws exactly those rows of the whole. */
     const int rows = r3d_span_first_centre(v2->y) - r3d_span_first_centre(v0->y);
-    const int y_first = clampi(r3d_span_first_centre(v0->y), target->row0, target->row1);
-    const int y_end = clampi(r3d_span_first_centre(v2->y), target->row0, target->row1);
+    const int y_first = im_clamp(r3d_span_first_centre(v0->y), target->row0, target->row1);
+    const int y_end = im_clamp(r3d_span_first_centre(v2->y), target->row0, target->row1);
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
     const int x_first = r3d_span_first_centre(lo_x);
@@ -503,7 +494,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     fill_t f = {rows <= R3D_SPAN_FLAT_MAX_ROWS && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = clampi(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
+    const int y_anchor = im_clamp(r3d_span_first_centre(v0->y), -1, target->row1 + 1);
     gradients_t g = {0};
     int32_t row[ATTRIBUTES] = {0};
     f.g = &g;
@@ -515,7 +506,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     }
     /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
     const walk_t w = {
-        v0, v1, v2, y_first, clampi(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
+        v0, v1, v2, y_first, im_clamp(r3d_span_first_centre(v1->y), y_first, y_end), y_end, (area2 > 0) != odd};
     walk(target, &f, row, &w);
 }
 
