@@ -1,6 +1,6 @@
 /* timing_device: timing.h's pause, over the scheduler. */
 
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

@@ -1,6 +1,6 @@
 /* memory: memory.h's size queries, over the board's heap or its host model. */
 
-#include "util/memory.h"
+#include "util/runtime/memory.h"
 
 size_t
 memory_free_bytes(memory_kind_t kind) {

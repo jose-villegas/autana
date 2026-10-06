@@ -22,8 +22,8 @@ scene_sources="
 main/app/app_arena.c
 main/app/app_registry.c
 main/gfx/gfx.c
-main/util/tune.c
-main/util/job.c
+main/util/runtime/tune.c
+main/util/runtime/job.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/r3d_pipeline.c

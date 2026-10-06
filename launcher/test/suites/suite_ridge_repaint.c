@@ -13,8 +13,8 @@
 #include "gfx/gfx_test.h"
 #include "ridge_arms.h"
 #include "ui/ui_ridge.h"
-#include "util/memory.h"
-#include "util/tune.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/tune.h"
 
 #define FB_PIXELS          ((size_t)GFX_WIDTH * GFX_HEIGHT)
 #define FB_BYTES           (FB_PIXELS * sizeof(gfx_color_t))

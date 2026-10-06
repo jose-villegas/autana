@@ -27,9 +27,9 @@
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "scene/scene.h"
-#include "util/job.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/job.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* TAG = "sponza_perf";
 

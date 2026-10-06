@@ -14,7 +14,7 @@
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
-#include "util/frame_cost.h"
+#include "util/runtime/frame_cost.h"
 
 #define LAUNCHER_HEAL_ROWS 32
 

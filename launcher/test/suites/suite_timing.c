@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 /* Far more than a microsecond's work on either platform, so a stuck clock
  * fails here rather than hanging the run. */

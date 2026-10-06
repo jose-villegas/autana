@@ -1,11 +1,11 @@
 /* settings_device: settings.h over the non-volatile storage library. */
 
-#include "util/settings.h"
+#include "util/runtime/settings.h"
 
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "util/settings_policy.h"
+#include "util/runtime/settings_policy.h"
 
 static const char TAG[] = "settings";
 

@@ -1543,7 +1543,7 @@ class DecodeCrashAddressesTests(unittest.TestCase):
             self.assertEqual(device.decode_crash_addresses(data, Path("x.elf")), [])
 
 
-FRAME_WATCH_SOURCE = Path(__file__).resolve().parents[3] / "launcher" / "main" / "util" / "frame_watch.c"
+FRAME_WATCH_SOURCE = Path(__file__).resolve().parents[3] / "launcher" / "main" / "util" / "runtime" / "frame_watch.c"
 
 
 class FrameWatchLineTests(unittest.TestCase):

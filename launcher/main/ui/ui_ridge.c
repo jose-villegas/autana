@@ -14,10 +14,10 @@
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
-#include "util/frame_cost.h"
-#include "util/memory.h"
-#include "util/spring_line.h"
-#include "util/tune.h"
+#include "util/motion/spring_line.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/tune.h"
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);

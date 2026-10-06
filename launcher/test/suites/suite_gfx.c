@@ -38,8 +38,8 @@
 #include "gfx/gfx_test.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
-#include "util/memory.h"
-#include "util/timing.h"
+#include "util/runtime/memory.h"
+#include "util/runtime/timing.h"
 
 static const char* TAG = "device_tests";
 

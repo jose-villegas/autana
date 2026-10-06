@@ -1,5 +1,5 @@
 /*
- * Portable suite: util/fixed.h, shift-based fixed-point arithmetic.
+ * Portable suite: util/scalar/fixed.h, shift-based fixed-point arithmetic.
  *
  * The whole reason this header exists is a widening cast (int64_t) that must
  * never be dropped, and a floor-vs-round distinction that must never be
@@ -16,7 +16,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/fixed.h"
+#include "util/scalar/fixed.h"
 
 /* fx_mul_floor() against a hand-written ((int64_t)a * b) >> shift */
 

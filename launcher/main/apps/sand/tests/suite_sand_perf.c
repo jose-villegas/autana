@@ -40,8 +40,8 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "apps/sand/tests/suite_sand_scenes.h"
-#include "util/frame_watch.h"
-#include "util/intmath.h"
+#include "util/runtime/frame_watch.h"
+#include "util/scalar/intmath.h"
 
 #define REAL_BLOCK_COLS ((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
 #define REAL_BLOCK_ROWS ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
@@ -258,8 +258,8 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "util/frame_cost.h"
-#include "util/timing.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/timing.h"
 #include "xtensa/xt_perf_consts.h"
 #include "xtensa_perfmon_access.h"
 

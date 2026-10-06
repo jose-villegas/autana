@@ -33,7 +33,7 @@
 #include "boot/boot_anim.h"
 #include "boot/boot_anim_timeline.h"
 #include "gfx/gfx.h"
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 /* boot_anim.c's own draw_* functions, exposed specifically for this suite;
  * see boot_anim.c's own comment above draw_floor() for why they are

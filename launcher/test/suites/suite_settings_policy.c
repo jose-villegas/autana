@@ -9,7 +9,7 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
-#include "util/settings_policy.h"
+#include "util/runtime/settings_policy.h"
 
 #define FULL   7
 #define FORMAT 8

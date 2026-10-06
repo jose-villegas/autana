@@ -7,7 +7,7 @@
 #include "console/console_perf_parse.h"
 #include "console/console_verbs.h"
 
-#include "util/frame_cost.h"
+#include "util/runtime/frame_cost.h"
 
 static const char*
 event_at(int index) {

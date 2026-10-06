@@ -29,7 +29,7 @@
 #include "gfx/gfx_band_run.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/timing.h"
+#include "util/runtime/timing.h"
 
 /* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */

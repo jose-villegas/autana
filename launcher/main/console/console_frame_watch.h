@@ -1,6 +1,6 @@
 /*
  * console_frame_watch (FRAMEWATCH): the frame watch's counts and repeating
- * sites (util/frame_watch.h) as one `FRAMEWATCH <json>` line. The verb only
+ * sites (util/runtime/frame_watch.h) as one `FRAMEWATCH <json>` line. The verb only
  * sets a latch; the frame loop answers, since the counts are its own.
  * Development builds only; see console.h.
  */

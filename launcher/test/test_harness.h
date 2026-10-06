@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "util/frame_watch.h"
+#include "util/runtime/frame_watch.h"
 
 /* What one test body left behind. The body runs a second time when the
  * heap dropped, and leaked_* is what that second run lost. */

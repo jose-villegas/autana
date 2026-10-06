@@ -23,10 +23,10 @@
 #include "shell/shell_apps.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "util/build_id.h"
-#include "util/frame_cost.h"
-#include "util/frame_watch.h"
-#include "util/timing.h"
+#include "util/runtime/build_id.h"
+#include "util/runtime/frame_cost.h"
+#include "util/runtime/frame_watch.h"
+#include "util/runtime/timing.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"

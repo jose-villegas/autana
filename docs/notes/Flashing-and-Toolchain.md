@@ -118,7 +118,7 @@ invalidates configuration older than its fragments; use `autana build` for
 the variant you need.
 
 The frame loop in `launcher/main/shell/shell.c` calls `timing_yield()`, which uses `vTaskDelay(1)` in
-`launcher/main/util/timing_device.c`. `CONFIG_FREERTOS_HZ` sets the tick.
+`launcher/main/util/runtime/timing_device.c`. `CONFIG_FREERTOS_HZ` sets the tick.
 Frame rate includes scheduler quantisation; compare device microseconds of
 work when assessing small changes.
 
@@ -128,7 +128,7 @@ work when assessing small changes.
 the caller's disassembly with the toolchain's objdump; a separate function
 symbol alone does not tell whether every call site was inlined. Check for
 remaining calls and register spills. `always_inline`, used by
-`launcher/main/util/memory.h` and `launcher/main/util/timing.h`, also needs
+`launcher/main/util/runtime/memory.h` and `launcher/main/util/runtime/timing.h`, also needs
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 

@@ -36,13 +36,12 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, and the root header
-`build_variant.h`, never a row above or a folder beside it in the same row.
-The top row is the two callers, and neither includes the other: `main.c`
-starts the board and calls `shell_run()`, and the apps. The shell reaches an
-app only through the callbacks `app/app.h` declares. Folders that touch
-hardware are marked. `ls launcher/main/<folder>` is the inventory; this is
-the shape.
+Each row may include anything in a row below it, never a row above or a
+folder beside it in the same row. The top row is the two callers, and
+neither includes the other: `main.c` starts the board and calls
+`shell_run()`, and the apps. The shell reaches an app only through the
+callbacks `app/app.h` declares. Folders that touch hardware are marked.
+`ls launcher/main/<folder>` is the inventory; this is the shape.
 
 ```mermaid
 flowchart TB
@@ -81,20 +80,33 @@ flowchart TB
     subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R10["utilities"]
-        Util["util/<br/><i>fixed point, float and fixed maths, tween, jobs, tunables, time, settings, memory</i>"]
+    subgraph R10["chip services"]
+        Runtime["util/runtime/<br/><i>time, memory, settings, jobs, frame cost, tunables, build id</i>"]:::hw
     end
-    subgraph R11["board"]
+    subgraph R11["pure code"]
+        UtilMath["util/math/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
+        Motion["util/motion/<br/><i>tween, easing, springs</i>"]
+        Encode["util/encode/<br/><i>JSON splice, BMP and base64</i>"]
+    end
+    subgraph R12["scalars and the build"]
+        Scalar["util/scalar/<br/><i>fixed point, integer maths, trig tables, random numbers</i>"]
+        Build["util/build/<br/><i>which build variant this is</i>"]
+    end
+    subgraph R13["board"]
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
+- **util/ is two kinds of code.** `util/runtime/` holds the services that
+  reach the chip, each with a host half; the other util/ subfolders never
+  touch the chip and never include `util/runtime/`. Each subfolder has its
+  own row above.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path).
@@ -107,7 +119,8 @@ flowchart TB
   `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
   `display/display_shell.h` (`display_start`, `display_sample_orientation`),
   `display/display.h` (the system panel clock) and
-  `util/{timing,settings,memory}.h`; they call this firmware's own drivers
+  `util/runtime/{timing,settings,memory}.h`; they call this firmware's own
+  drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
   so the files a host builds stay pure.
@@ -115,9 +128,9 @@ flowchart TB
   under `shell/` on an ESP-IDF, FreeRTOS, NVS or BSP include or call,
   logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
 - **The vendor timer and heap have one owner each.** Code above the drivers
-  reads time with `timing_now_us()` (`util/timing.h`, inlined to the
+  reads time with `timing_now_us()` (`util/runtime/timing.h`, inlined to the
   hardware timer's own call) and places or measures memory by kind with
-  `util/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
+  `util/runtime/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
   `MEMORY_PSRAM`), whose header says which heap is beneath it on each
   platform. In the firmware, its suites and its tools the same gate fails
   any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
@@ -136,7 +149,7 @@ flowchart TB
 ### 1. There is exactly one framebuffer
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
-(`MEMORY_PSRAM` in `util/memory.h`), so it does not count against the
+(`MEMORY_PSRAM` in `util/runtime/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
 is room in PSRAM for a second one and no time for it: a per-frame catch-up
 copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
@@ -302,13 +315,13 @@ pass. The app's side is in
 
 A frame that allocates, frees or logs every time it runs pays for it every
 frame. A development build watches for that at runtime
-(`util/frame_watch.h`); release compiles none of it.
+(`util/runtime/frame_watch.h`); release compiles none of it.
 
 | | |
 |---|---|
 | The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing (a frozen device, which still answers the console) joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
-| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
+| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/runtime/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
 | Counts | `autana debug framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 

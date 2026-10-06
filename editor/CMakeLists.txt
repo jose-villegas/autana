@@ -54,7 +54,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
     ${LAUNCHER_DIR}/main/ui/ui_widgets.c
-    ${LAUNCHER_DIR}/main/util/tune.c
+    ${LAUNCHER_DIR}/main/util/runtime/tune.c
     ${LAUNCHER_DIR}/components/microui/src/microui.c
 )
 target_include_directories(editor_runtime

@@ -18,7 +18,7 @@
  *   Q8     a height t. 256 is 1.0, and 126 * 256 still fits an int16.
  *   Q16.16 metres, where a point enters the view matrix; camera space is 1/512
  *          m (R3D_X_UNIT_ONE).
- *   Q15    sines and cosines from util/trig.h, used by the title's
+ *   Q15    sines and cosines from util/scalar/trig.h, used by the title's
  *          wobble/wave and the floor ripple, not by the camera.
  */
 #pragma once
@@ -34,12 +34,12 @@
 #include "gfx/gfx_font.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_project_x.h"
-#include "util/intmath.h"
 #include "util/math/transformf.h"
 #include "util/math/vec2i.h"
 #include "util/math/vec3f.h"
-#include "util/trig.h"
-#include "util/tween.h"
+#include "util/motion/tween.h"
+#include "util/scalar/intmath.h"
+#include "util/scalar/trig.h"
 
 #define BOOT_ANIM_Q   12
 #define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
@@ -228,7 +228,7 @@ typedef struct {
  * normalization (shift vs divide). */
 static inline boot_anim_pt_t
 boot_anim_spline(boot_anim_pt_t c0, boot_anim_pt_t c1, boot_anim_pt_t c2, int32_t t_q12) {
-    /* 32-bit throughout, deliberately not util/fixed.h's widening helpers:
+    /* 32-bit throughout, deliberately not util/scalar/fixed.h's widening helpers:
      * the operands are sized so the product cannot overflow an int32, on a
      * path that runs several thousand times a frame. */
     const int32_t u = BOOT_ANIM_ONE - t_q12;
