@@ -153,6 +153,8 @@ bake_and_render() {
 # committed scene without its occlusion and its [indirect] table, which the
 # scene sets for its own renders. Everything else here uses the committed look.
 run "$R3D_PYTHON" "$M/tools/physical_scene.py" "$M/meshes/sponza.scene.toml" "$W/physical.scene.toml"
+# Scratch scenes sit one folder below $W, so the scene's ../assets paths land here.
+run ln -sfn "$PWD/$M/assets" "$W/assets"
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene's `[bake].indirect` out; the table goes before the first object.
 variant_bake() {
