@@ -34,6 +34,7 @@ typedef uint16_t gfx_color_t;
 #define GFX_LERP_RGB888_CH(lo, hi, shift, t, n)                                                                        \
     ((((((lo) >> (shift)) & 0xFF) * ((n) - (t)) + (((hi) >> (shift)) & 0xFF) * (t)) / (n)) & 0xFF)
 
+/* Interpolate three RGB888 channels as a constant expression. */                                                      \
 #define GFX_LERP_RGB888(lo, hi, t, n)                                                                                  \
     ((GFX_LERP_RGB888_CH(lo, hi, 16, t, n) << 16) | (GFX_LERP_RGB888_CH(lo, hi, 8, t, n) << 8)                         \
      | GFX_LERP_RGB888_CH(lo, hi, 0, t, n))
@@ -51,11 +52,13 @@ gfx_rgb565_r5(uint16_t native) {
     return (native >> 11) & 0x1Fu;
 }
 
+/* Extract the six-bit green channel from native RGB565. */
 static inline unsigned
 gfx_rgb565_g6(uint16_t native) {
     return (native >> 5) & 0x3Fu;
 }
 
+/* Extract the five-bit blue channel from native RGB565. */
 static inline unsigned
 gfx_rgb565_b5(uint16_t native) {
     return native & 0x1Fu;
@@ -136,6 +139,7 @@ gfx_color_rgb888(gfx_color_t c) {
     return ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | b8;
 }
 
+/* Blend packed panel colours with rounded RGB565 channels and t in 0..255. */
 static inline gfx_color_t
 gfx_color_mix(gfx_color_t a, gfx_color_t b, uint8_t t) {
     const uint16_t na = gfx_color_swap(a);

@@ -9,6 +9,7 @@
 
 #include "util/math/vec_swizzle_template.h"
 
+/* Instantiate two-component vector arithmetic for one scalar type. */                                                 \
 #define MATH_DEFINE_VEC2(P, T, W, OPS)                                                                                 \
                                                                                                                        \
     typedef struct {                                                                                                   \

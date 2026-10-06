@@ -43,6 +43,7 @@ typedef struct {
     int y0, y1;
 } gfx_heal_strip_t;
 
+/* Clear pending healing and restart the lattice and rolling sweep. */
 static inline void
 gfx_heal_reset(gfx_heal_t* h) {
     h->pending = 0;
@@ -80,6 +81,7 @@ gfx_heal_queue_rolling(gfx_heal_t* h, int rows) {
     h->rolling_row = end % GFX_HEAL_SCREEN_ROWS;
 }
 
+/* Whether any screen units are queued for healing. */
 static inline bool
 gfx_heal_pending(const gfx_heal_t* h) {
     return h->pending != 0;

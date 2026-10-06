@@ -66,6 +66,7 @@ typedef struct {
     int ever_repeating;
 } frame_watch_t;
 
+/* Clear the watch and begin its warm-up interval. */
 static inline void
 frame_watch_reset(frame_watch_t* w) {
     *w = (frame_watch_t){.warmup_left = FRAME_WATCH_WARMUP};
@@ -80,6 +81,7 @@ frame_watch_settle(frame_watch_t* w) {
     w->warmup_left = FRAME_WATCH_WARMUP;
 }
 
+/* Return the console label for an event kind, or ? when unknown. */
 static inline const char*
 frame_watch_kind_name(frame_watch_kind_t kind) {
     switch (kind) {
@@ -91,6 +93,7 @@ frame_watch_kind_name(frame_watch_kind_t kind) {
     return "?";
 }
 
+/* Count the frames containing a site within the tracked window. */
 static inline int
 frame_watch_frames_seen(const frame_watch_site_t* s) {
     return __builtin_popcount(s->seen);
@@ -160,11 +163,13 @@ typedef struct {
     uint32_t dropped;
 } frame_watch_verdict_t;
 
+/* Snapshot frame count, repeating sites, and dropped events. */
 static inline frame_watch_verdict_t
 frame_watch_verdict(const frame_watch_t* w) {
     return (frame_watch_verdict_t){.frames = w->frames, .repeating = w->ever_repeating, .dropped = w->dropped};
 }
 
+/* Whether a verdict has neither repeating sites nor dropped events. */
 static inline bool
 frame_watch_verdict_clean(frame_watch_verdict_t v) {
     return v.repeating == 0 && v.dropped == 0;
@@ -253,11 +258,13 @@ void frame_watch_presented(void);
  * What is still pending, overflow included, falls in the new warm-up. */
 void frame_watch_restart(void);
 
+/* Format the shared watch state as bounded JSON for a host capture. */
 int frame_watch_json(char* out, size_t out_size);
 
 /* A self-test's watch: begin starts from nothing; end returns what the test
  * left judged and settles, so the shell's next frames warm up again. */
 void frame_watch_test_begin(void);
+/* Return the self-test verdict and settle the shared watch for subsequent frames. */
 frame_watch_verdict_t frame_watch_test_end(void);
 #else
 static inline void

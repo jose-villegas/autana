@@ -35,6 +35,7 @@ typedef enum {
     MEMORY_PSRAM,    /* external RAM: large and slow */
 } memory_kind_t;
 
+/* Return the free bytes available in the requested heap kind. */
 size_t memory_free_bytes(memory_kind_t kind);
 
 /* The largest single block an allocation of this kind could still get: free
@@ -48,6 +49,7 @@ size_t memory_total_bytes(memory_kind_t kind);
 void memory_dump(memory_kind_t kind);
 
 #if MEMORY_HEAP_CAPS
+/* Map a buffer purpose to the heap capabilities required by the allocator. */
 static inline __attribute__((always_inline)) uint32_t
 memory_caps(memory_kind_t kind) {
     switch (kind) {

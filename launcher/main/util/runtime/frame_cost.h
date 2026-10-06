@@ -176,6 +176,7 @@ frame_cost_apply_pending(frame_cost_t* cost, bool owner, int* event_index) {
     return true;
 }
 
+/* Whether a stage name matches the armed counter stage. */
 static inline bool
 frame_cost_is_armed(const frame_cost_t* cost, const char* name) {
     if (cost->armed_name <= 0) {
@@ -210,6 +211,7 @@ frame_cost_enter_counted(frame_cost_t* cost, int64_t now_us, uint32_t cycles, ui
     return mark;
 }
 
+/* Enter a timing bracket without hardware counter samples. */
 static inline int
 frame_cost_enter(frame_cost_t* cost, int64_t now_us) {
     return frame_cost_enter_counted(cost, now_us, 0, 0);
@@ -266,6 +268,7 @@ frame_cost_leave_counted(frame_cost_t* cost, int mark, const char* name, int64_t
     return elapsed;
 }
 
+/* Charge exclusive time and close a bracket without hardware counter samples. */
 static inline void
 frame_cost_leave(frame_cost_t* cost, int mark, const char* name, int64_t now_us) {
     (void)frame_cost_leave_counted(cost, mark, name, now_us, 0, 0);
@@ -375,16 +378,21 @@ frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_siz
 #endif
 
 #if FRAME_COST_ENABLED
+/* Begin a bracket on the shared timer and return its nesting mark. */
 int frame_cost_begin(void);
+/* Charge a shared bracket its exclusive cost and return elapsed microseconds. */
 int64_t frame_cost_end(int mark, const char* name);
+/* Format and consume shared stage timings for the given frame count. */
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
 
+/* Format and consume the shared hardware counter report. */
 int frame_cost_take_counts(char* out, size_t out_size);
 
 /* The shared instance's name index, -1 for a name never bracketed. A posted
  * arm is applied by the frame task at its next outermost bracket; -1 as the
  * name disarms. */
 int frame_cost_shared_name_index(const char* name);
+/* Post the counter stage and event for the frame task to apply. */
 void frame_cost_shared_post_arm(int name_index, int event_index);
 
 /* True while nothing is armed or waiting: the counters are free for a
@@ -397,15 +405,21 @@ typedef struct {
     uint16_t mask;
 } frame_cost_event_t;
 
+/* Find a hardware event by name, returning -1 when unknown. */
 int frame_cost_event_index(const char* name);
+/* Return the hardware event descriptor at an index, NULL outside the table. */
 const frame_cost_event_t* frame_cost_event_at(int index);
+/* Return the number of hardware event descriptors. */
 int frame_cost_event_count(void);
 
 /* The names seen so far, for a console listing; NULL past the last. */
 const char* frame_cost_name_at(int index);
+/* Return how many shared stage names could not fit in the registry. */
 int frame_cost_names_dropped(void);
 
+/* Begin a named local timing bracket when instrumentation is enabled. */
 #define FRAME_COST_BEGIN(mark) const int mark = frame_cost_begin()
+/* Charge a timing bracket to a constant name when instrumentation is enabled. */                                      \
 #define FRAME_COST_END(mark, name)                                                                                     \
     do {                                                                                                               \
         _Static_assert(sizeof(name) - 1 <= FRAME_COST_NAME_MAX, name " is too long a frame_cost name");                \

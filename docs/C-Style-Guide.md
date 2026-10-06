@@ -100,6 +100,14 @@ is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
 
+### Shared helpers
+
+Consult the [shared-helper catalogue](Shared-Helpers.md) before writing an
+operation. Its generated table names the owner and quotes the declaration's
+own comment or docstring. Extend the existing owner when it fits.
+`python launcher/tools/gen/shared_helpers.py --check` rejects missing
+descriptions and a stale table; omit `--check` to regenerate it.
+
 ### Token clones
 
 `python scripts/gates/check_clones.py` rejects new clone pairs in HEAD

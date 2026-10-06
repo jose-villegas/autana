@@ -9,6 +9,7 @@
 | [gen_icons.py](gen_icons.py) | Bakes icon artwork and metadata into C headers. |
 | [gen_ridge_curve.py](gen_ridge_curve.py) | Bakes a ridge line from the source image. |
 | [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
+| [shared_helpers.py](shared_helpers.py) | Writes the shared-helper catalogue from header comments and Python docstrings. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
 | [gfx_palette_gen.c](gfx_palette_gen.c) | Portable palette table calculations shared by host tools and tests. |
 | [gfx_palette_gen.h](gfx_palette_gen.h) | OKLab colour space and palette table calculations for host generators. |

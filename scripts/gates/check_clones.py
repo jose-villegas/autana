@@ -20,6 +20,7 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
+from c_comments import blank_comments
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
@@ -165,7 +166,10 @@ def describe(pair):
 
 def pair_key(pair):
     names = tuple(sorted(pair[side]["name"] for side in ("firstFile", "secondFile")))
-    return names, " ".join(pair["fragment"].split())
+    fragment = pair["fragment"]
+    if pair["format"] != "python":
+        fragment = blank_comments(fragment)
+    return names, " ".join(fragment.split())
 
 
 def check_pairs(pairs, base_pairs):

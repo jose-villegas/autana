@@ -4,6 +4,7 @@ import re
 
 
 def to_native(path):
+    """Convert Git Bash drive paths to native Windows paths; other paths pass through."""
     match = re.match(r'^/([A-Za-z])/(.*)$', path)
     if match and os.name == 'nt':
         return f'{match.group(1)}:/{match.group(2)}'

@@ -10,6 +10,7 @@
 
 #include "util/math/vec_swizzle_template.h"
 
+/* Instantiate three-component vector arithmetic for one scalar type. */                                               \
 #define MATH_DEFINE_VEC3(P, T, W, OPS)                                                                                 \
                                                                                                                        \
     typedef struct {                                                                                                   \
@@ -49,6 +50,7 @@
     /* P_c1c2c3(v) = (v.c1, v.c2, v.c3), each c one of x, y, z. */                                                     \
     MATH_DEFINE_SWIZZLE3(P, P, 3)
 
+/* Instantiate vector normalization and length for one scalar type. */                                                 \
 #define MATH_DEFINE_VEC3_NORMALIZE(P, T, OPS)                                                                          \
     /* normalize = a * (1 / sqrt(dot(a, a))). Precondition: `a` is not the zero vector. */                             \
     static inline P##_t P##_normalize(P##_t a) {                                                                       \

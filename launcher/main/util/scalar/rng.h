@@ -39,6 +39,7 @@ rng_seed(rng_t* r, uint32_t seed) {
     r->state = seed != 0 ? seed : 0x9E3779B9u;
 }
 
+/* Advance xorshift32 state and return the next nonzero word. */
 static inline uint32_t
 rng_next(rng_t* r) {
     uint32_t x = r->state;
@@ -98,6 +99,7 @@ rng_avalanche32(uint32_t x) {
     return x;
 }
 
+/* Hash a seed and three coordinates without consuming generator state. */
 static inline uint32_t
 rng_hash(uint32_t seed, uint32_t a, uint32_t b, uint32_t c) {
     uint32_t h = rng_avalanche32(seed ^ 0x9E3779B9u);

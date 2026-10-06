@@ -27,6 +27,7 @@ class ProfileError(Exception):
 
 
 def available(profile_dir=None):
+    """Return the sorted profile names available in the profile directory."""
     d = profile_dir or PROFILE_DIR
     if not os.path.isdir(d):
         return []

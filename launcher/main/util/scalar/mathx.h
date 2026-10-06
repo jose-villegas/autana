@@ -21,6 +21,7 @@
 #define MATHX_SHIFT 16
 #define MATHX_ONE   (1 << MATHX_SHIFT)
 
+/* Clamp an int64 value to the int32 range. */
 static inline int32_t
 mathx_saturate(int64_t v) {
     if (v > INT32_MAX) {
@@ -29,26 +30,31 @@ mathx_saturate(int64_t v) {
     return v < INT32_MIN ? INT32_MIN : (int32_t)v;
 }
 
+/* Add scalar values with saturation to Q16.16. */
 static inline int32_t
 mathx_add(int32_t a, int32_t b) {
     return mathx_saturate((int64_t)a + b);
 }
 
+/* Subtract scalar values with saturation to Q16.16. */
 static inline int32_t
 mathx_sub(int32_t a, int32_t b) {
     return mathx_saturate((int64_t)a - b);
 }
 
+/* Negate scalar values with saturation to Q16.16. */
 static inline int32_t
 mathx_neg(int32_t a) {
     return mathx_saturate(-(int64_t)a);
 }
 
+/* Multiply scalar values with saturation to Q16.16, rounded to nearest with ties away from zero. */
 static inline int32_t
 mathx_mul(int32_t a, int32_t b) {
     return mathx_saturate(fx_round_shift((int64_t)a * b, MATHX_SHIFT));
 }
 
+/* Divide Q16.16 values with rounding and saturation; zero denominators saturate by numerator sign. */
 static inline int32_t
 mathx_div(int32_t num, int32_t den) {
     if (den == 0) {
@@ -66,11 +72,13 @@ mathx_sqrt(int32_t v) {
     return (int32_t)mathi_isqrt64((uint64_t)v << MATHX_SHIFT);
 }
 
+/* Return Q16.16 sine for an angle measured in Q16.16 turns. */
 static inline int32_t
 mathx_sin_turns(int32_t turns) {
     return trig_sin((uint16_t)turns) * 2;
 }
 
+/* Return Q16.16 cosine for an angle measured in Q16.16 turns. */
 static inline int32_t
 mathx_cos_turns(int32_t turns) {
     return trig_cos((uint16_t)turns) * 2;
@@ -87,6 +95,7 @@ mathx_dot2c(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t c) {
                      + (uint32_t)c);
 }
 
+/* Sum three floored Q16.16 products and an offset with wrapping int32 arithmetic. */
 static inline int32_t
 mathx_dot3c(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, int32_t b2, int32_t c) {
     return (int32_t)((uint32_t)fx_mul_floor(a0, b0, MATHX_SHIFT) + (uint32_t)fx_mul_floor(a1, b1, MATHX_SHIFT)
@@ -104,41 +113,49 @@ mathx_dot3_narrow(int32_t a0, int32_t b0, int32_t a1, int32_t b1, int32_t a2, in
     return (int32_t)sum >> shift;
 }
 
+/* Return zero in the scalar type's own units. */
 static inline int32_t
 mathx_zero(void) {
     return 0;
 }
 
+/* Return one in the scalar type's own units. */
 static inline int32_t
 mathx_one(void) {
     return MATHX_ONE;
 }
 
+/* Return two in the scalar type's own units. */
 static inline int32_t
 mathx_two(void) {
     return 2 * MATHX_ONE;
 }
 
+/* Return four in the scalar type's own units. */
 static inline int32_t
 mathx_four(void) {
     return 4 * MATHX_ONE;
 }
 
+/* Return Q16.16 sine of half an angle measured in turns. */
 static inline int32_t
 mathx_half_sin(int32_t turns) {
     return mathx_sin_turns(turns / 2);
 }
 
+/* Return Q16.16 cosine of half an angle measured in turns. */
 static inline int32_t
 mathx_half_cos(int32_t turns) {
     return mathx_cos_turns(turns / 2);
 }
 
+/* Add Q16.16 dot-product terms with saturation. */
 static inline int32_t
 mathx_wadd(int32_t a, int32_t b) {
     return mathx_add(a, b);
 }
 
+/* Multiply Q16.16 dot-product terms with saturation. */
 static inline int32_t
 mathx_wmul(int32_t a, int32_t b) {
     return mathx_mul(a, b);

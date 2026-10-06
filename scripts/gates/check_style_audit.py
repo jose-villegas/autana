@@ -32,6 +32,9 @@ from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from generated_blocks import MARKER as GENERATED_MARKER  # noqa: E402
+
 ERROR, WARN = "ERROR", "WARN"
 
 BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".otf", ".ttf",
@@ -475,7 +478,7 @@ def rule_shell_compound_status(root, path, text):
 def rule_stray_html_comment(root, path, raw_lines):
     blanked = "\n".join(blank_fences(raw_lines))
     for m in HTML_COMMENT.finditer(blanked):
-        if KNOWN_MARKERS.search(m.group(0)):
+        if KNOWN_MARKERS.search(m.group(0)) or GENERATED_MARKER.fullmatch(m.group(0)):
             continue
         line = blanked.count("\n", 0, m.start()) + 1
         yield line, f"{m.group(0)[:60]} renders as nothing - delete it or say it in the text"

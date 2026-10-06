@@ -63,6 +63,9 @@ jobs:
       - name: Generated document bodies match their recorded hashes
         run: python3 scripts/gates/check_doc_generated.py
 
+      - name: Shared helpers have descriptions and their catalogue matches source
+        run: python3 launcher/tools/gen/shared_helpers.py --check
+
       - name: Documentation constants match source
         run: python3 scripts/gates/check_doc_constants.py
 
