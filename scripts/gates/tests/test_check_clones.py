@@ -1,8 +1,10 @@
-"""Regression tests against the pinned clone engine and its ratchet."""
+"""Regression tests against the pinned clone engine and its new-pair gate."""
 import contextlib
 import importlib.util
 import io
 import os
+import shutil
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -35,6 +37,11 @@ BLOCK = """int alpha(int input) {
 """
 
 
+READY = shutil.which("node") is not None and gate.ENGINE.is_file()
+SKIP_REASON = "Install Node.js and run npm ci --prefix scripts/gates"
+
+
+@unittest.skipUnless(READY or os.environ.get("CI"), SKIP_REASON)
 class CloneTests(unittest.TestCase):
     def scan(self, files, minimum=30):
         with tempfile.TemporaryDirectory() as folder:
@@ -93,35 +100,86 @@ class CloneTests(unittest.TestCase):
             with mock.patch.object(gate, "tracked_files", return_value=()):
                 self.assertEqual(gate.source_files(root), [])
 
-    def test_ratchet_rise(self):
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(gate.ratchet(3, 2), 1)
+    def pair(self, first="a.c", second="b.c", fragment=BLOCK):
+        return {"firstFile": {"name": first, "start": 1, "end": 12},
+                "secondFile": {"name": second, "start": 1, "end": 12},
+                "fragment": fragment, "format": "c", "tokens": 90}
 
-    def test_ratchet_fall(self):
+    def test_added_clone_fails_when_another_is_removed(self):
+        base = [self.pair()]
+        head = [self.pair("c.c", "d.c")]
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            self.assertEqual(gate.ratchet(1, 2), 0)
-        self.assertIn("Lower", output.getvalue())
+            self.assertEqual(gate.check_pairs(head, base), 1)
+        self.assertIn("c.c:1-12 ~ d.c:1-12", output.getvalue())
 
-    def test_changed_filters_report_not_count(self):
-        pair = {"firstFile": {"name": "a.c", "start": 1, "end": 12},
-                "secondFile": {"name": "b.c", "start": 1, "end": 12}, "tokens": 90}
+    def test_literal_only_table_rows_are_ignored(self):
+        rows = "    {0xAB, 1.5e-2f, 42UL, 'x', \"identifier\"}, // label\n" * 12
+        pairs = self.scan({"launcher/main/a.c": rows,
+                           "launcher/main/b.c": rows}, 80)
+        self.assertEqual(pairs, [])
+
+    def test_self_match_is_ignored(self):
+        self.assertEqual(gate.filter_pairs([self.pair("a.c", "a.c")]), [])
+
+    def test_untouched_existing_clone_passes(self):
+        pair = self.pair()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs([pair], [pair]), 0)
+
+    def test_key_ignores_locations_file_order_and_whitespace(self):
+        base = self.pair()
+        head = self.pair("b.c", "a.c", BLOCK.replace("    ", "\t"))
+        head["firstFile"]["start"] = 20
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs([head], [base]), 0)
+
+    def test_same_file_distinct_ranges_are_kept(self):
+        pair = self.pair("a.c", "a.c")
+        pair["secondFile"]["start"] = 20
+        self.assertEqual(gate.filter_pairs([pair]), [pair])
+
+    def test_fragment_edit_is_new(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs([self.pair(fragment=BLOCK.replace("alpha", "beta"))],
+                                             [self.pair()]), 1)
+
+    def test_committed_scan_ignores_worktree_edits(self):
         with tempfile.TemporaryDirectory() as folder:
-            baseline = Path(folder) / "baseline.txt"
-            baseline.write_text("0", encoding="utf-8")
-            output = io.StringIO()
-            with mock.patch.object(gate, "scan", return_value=[pair]), mock.patch.object(gate, "BASELINE", baseline), \
-                    mock.patch.object(gate.subprocess, "run", return_value=mock.Mock(stdout="unrelated.py\n")), \
-                    contextlib.redirect_stdout(output):
-                self.assertEqual(gate.main(["--changed", "main"]), 1)
-            self.assertNotIn("a.c:1-12", output.getvalue())
-            self.assertIn("1 clone pairs", output.getvalue())
+            root = Path(folder)
+            def git(*args):
+                return subprocess.run(["git", *args], cwd=root, check=True,
+                                      capture_output=True, text=True).stdout.strip()
+            git("init", "-b", "main")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            for name in ("a.c", "b.c"):
+                target = root / "launcher/main" / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(BLOCK, encoding="utf-8")
+            git("add", ".")
+            git("commit", "-m", "test: base")
+            base = git("rev-parse", "HEAD")
+            git("update-ref", "refs/remotes/origin/main", base)
+            git("checkout", "-b", "feature/test")
+            (root / "launcher/main/a.c").write_text("int single;", encoding="utf-8")
+            git("add", ".")
+            git("commit", "-m", "test: remove clone")
+            self.assertEqual(gate.comparison_base(root), base)
+            self.assertTrue(gate.scan(root, 80, revision=base))
+            self.assertEqual(gate.scan(root, 80, revision="HEAD"), [])
+            (root / "launcher/main/a.c").write_text(BLOCK, encoding="utf-8")
+            self.assertEqual(gate.scan(root, 80, revision="HEAD"), [])
+            git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
+            self.assertEqual(gate.comparison_base(root), base)
 
-    def test_changed_checks_both_sides(self):
-        pair = {"firstFile": {"name": "a"}, "secondFile": {"name": "b"}}
-        self.assertTrue(gate.touching(pair, {"a"}))
-        self.assertTrue(gate.touching(pair, {"b"}))
-        self.assertFalse(gate.touching(pair, {"c"}))
+    def test_missing_node_message(self):
+        with mock.patch.object(gate.shutil, "which", return_value=None):
+            self.assertIn("Node.js is missing", gate.dependency_problem())
+
+    def test_missing_engine_message(self):
+        with mock.patch.object(gate, "ENGINE", Path("missing-engine.js")):
+            self.assertIn("npm ci --prefix scripts/gates", gate.dependency_problem())
 
 
 if __name__ == "__main__":

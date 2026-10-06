@@ -112,7 +112,7 @@ jobs:
       - name: Node gate dependencies
         run: npm ci --prefix scripts/gates
 
-      - name: Token clones stay within the committed ratchet
+      - name: No new token clone pairs
         run: python3 scripts/gates/check_clones.py
 
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,

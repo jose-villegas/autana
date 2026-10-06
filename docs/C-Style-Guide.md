@@ -102,24 +102,25 @@ a surprise six months later.
 
 ### Token clones
 
-`python scripts/gates/check_clones.py` checks the whole-tree clone count
-against `scripts/gates/clones_baseline.txt`. Install its pinned jscpd engine
-with `npm ci --prefix scripts/gates`. A rise fails: extract a shared owner.
-When the count falls, lower the baseline in the same PR; do not raise it to
-accept a new copy.
+`python scripts/gates/check_clones.py` rejects new clone pairs in HEAD
+compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
+on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
+Extract a shared owner for each new pair; removing another pair gives no
+headroom. Pair keys combine sorted file names with the whitespace-normalised
+source fragment, so line shifts do not make an existing pair new.
 
-Use `--report` to list every pair with file and line ranges, or
-`--changed origin/main` to list pairs touching changed files. Both still
-check the whole tree. `--min-tokens N` measures a different threshold without
-checking the ratchet; the gate's `MIN_TOKENS` defines the enforced threshold.
+Use `--report` to list every pair with file and line ranges, including both
+sides of each new pair. `--min-tokens N` reports a different threshold without
+checking new pairs; the gate's `MIN_TOKENS` defines the enforced threshold.
 
 The gate scans tracked C, C++ and Python under `launcher/`, `scripts/` and
 `editor/`. Vendored component and test-framework directories, generated-banner
 files and fixture-data directories are excluded by rule. Comments and
-whitespace are ignored; identifier names and literal values are abstracted.
-Short helpers below the threshold are missed. Repeated tables and test setup
-remain in the count, so a reported pair needs review before extraction.
-The Linux comment-rules workflow runs the gate.
+whitespace are ignored; identifier names and literal values are abstracted
+for detection. Literal-only fragments and same-file, same-range self-matches
+are excluded. Short helpers below the threshold are missed; longer helpers
+and repeated test setup are detected, so a reported pair needs review before
+extraction. The Linux comment-rules workflow runs the gate.
 
 ## Judgment rules
 
