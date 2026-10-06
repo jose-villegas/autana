@@ -124,7 +124,7 @@ reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, 
 }
 
 /* A second, independent extraction of the same geometry, built on
- * baked_bit()/icon_system_table lookups rather than on icon_walk_blocks()
+ * icon_test_bit()/icon_system_table lookups rather than on icon_walk_blocks()
  * or its internals, so agreement with the streaming walker below proves
  * the reshape into a callback changed no geometry, not merely that the
  * walker agrees with itself. */
