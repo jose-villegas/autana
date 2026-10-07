@@ -29,12 +29,13 @@ gfx_box_extend(gfx_box_t* box, gfx_box_t addition) {
     box->y1 = mathi_max(box->y1, addition.y1);
 }
 
-static inline void
-gfx_box_clip_rect(const gfx_box_t* clip, int* x0, int* y0, int* x1, int* y1) {
-    *x0 = mathi_max(*x0, clip->x0);
-    *x1 = mathi_min(*x1, clip->x1);
-    *y0 = mathi_max(*y0, clip->y0);
-    *y1 = mathi_min(*y1, clip->y1);
+static inline gfx_box_t
+gfx_box_intersect(gfx_box_t a, gfx_box_t b) {
+    a.x0 = mathi_max(a.x0, b.x0);
+    a.x1 = mathi_min(a.x1, b.x1);
+    a.y0 = mathi_max(a.y0, b.y0);
+    a.y1 = mathi_min(a.y1, b.y1);
+    return a;
 }
 
 /* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */

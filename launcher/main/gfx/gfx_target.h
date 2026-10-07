@@ -27,35 +27,15 @@ typedef struct {
     int stride; /* pixels per row */
 } gfx_target_t;
 
-/* The absolute row range [y0, y1) intersected with `clip`'s and the
- * target's own row range, never wider than either. Callers that already
- * have an x range apply their own clip.x0/x1 separately; only y depends on
- * the target. */
-static inline void
-gfx_target_clip_y(gfx_target_t target, int clip_y0, int clip_y1, int* y0, int* y1) {
-    if (*y0 < clip_y0) {
-        *y0 = clip_y0;
-    }
-    if (*y1 > clip_y1) {
-        *y1 = clip_y1;
-    }
-    if (*y0 < target.y0) {
-        *y0 = target.y0;
-    }
-    if (*y1 > target.y0 + target.height) {
-        *y1 = target.y0 + target.height;
-    }
-}
-
-static inline void
-gfx_target_clip_rect(gfx_target_t target, gfx_box_t clip, int* x0, int* y0, int* x1, int* y1) {
+static inline gfx_box_t
+gfx_target_clip_rect(gfx_target_t target, gfx_box_t clip, gfx_box_t rect) {
     clip.y0 = mathi_max(clip.y0, target.y0);
     clip.y1 = mathi_min(clip.y1, target.y0 + target.height);
-    gfx_box_clip_rect(&clip, x0, y0, x1, y1);
+    return gfx_box_intersect(rect, clip);
 }
 
 /* The row pointer for absolute row `y`, once it is known to lie inside
- * [target.y0, target.y0 + target.height): gfx_target_clip_y() above is
+ * [target.y0, target.y0 + target.height): gfx_target_clip_rect() is
  * what a caller uses to know that. */
 static inline gfx_color_t*
 gfx_target_row(gfx_target_t target, int y) {
@@ -82,19 +62,18 @@ gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
 static inline void
 gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int x, int y, int w,
                      int h, gfx_color_t color, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
-    int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
+    const gfx_box_t rect =
+        gfx_target_clip_rect(target, (gfx_box_t){clip_x0, clip_y0, clip_x1, clip_y1}, (gfx_box_t){x, y, x + w, y + h});
 
-    gfx_target_clip_rect(target, (gfx_box_t){clip_x0, clip_y0, clip_x1, clip_y1}, &x0, &y0, &x1, &y1);
-
-    for (int row = y0; row < y1; row++) {
-        gfx_color_t* dst = gfx_target_row(target, row) + x0;
-        for (int col = x0; col < x1; col++) {
+    for (int row = rect.y0; row < rect.y1; row++) {
+        gfx_color_t* dst = gfx_target_row(target, row) + rect.x0;
+        for (int col = rect.x0; col < rect.x1; col++) {
             *dst++ = color;
         }
     }
 
-    *out_x0 = x0;
-    *out_y0 = y0;
-    *out_x1 = x1;
-    *out_y1 = y1;
+    *out_x0 = rect.x0;
+    *out_y0 = rect.y0;
+    *out_x1 = rect.x1;
+    *out_y1 = rect.y1;
 }
