@@ -1677,7 +1677,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, gfx_attachment_bytes(sizeof(uint16_t), (int)raster_culled_length(&raster), 1)},
+        {(const char*)b.culled, r3d_pipeline_culled_bytes(&raster)},
         {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
         {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
@@ -1695,6 +1695,10 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)total);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
+    /* The census list holds every instance's slot and takes whole cache ways,
+     * so the parts after it keep the cache sets they have without it. */
+    TEST_ASSERT_TRUE(r3d_pipeline_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % R3D_PIPELINE_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
     TEST_ASSERT_TRUE(b.culled == r3d_pipeline_carve(&raster).culled);

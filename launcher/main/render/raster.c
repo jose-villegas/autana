@@ -173,8 +173,7 @@ raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
     const gfx_render_target_t picture = raster_picture(raster);
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
-           + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster))
-           + gfx_attachment_bytes(sizeof(uint16_t), (int)raster_culled_length(raster), 1)
+           + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
            + gfx_render_target_bytes(&picture)
            + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
