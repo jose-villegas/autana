@@ -359,6 +359,13 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(sorted(f.path for f in findings),
                          ["launcher/main/apps/lab/tools/export_otter_glb.py", "scripts/otter_bake.sh"])
 
+    def test_a_model_outside_the_apps_names_tools_too(self):
+        findings = self.audit("MODEL-NAMED-TOOL", {
+            "launcher/demo/otter/otter.glb": "model",
+            "launcher/tools/r3d/otter_lighting.py": "pass\n",
+        })
+        self.assertEqual([f.path for f in findings], ["launcher/tools/r3d/otter_lighting.py"])
+
     def test_app_runtime_code_and_generic_tools_may_name_or_skip_models(self):
         findings = self.audit("MODEL-NAMED-TOOL", {
             "launcher/main/apps/lab/assets/otter.glb": "model",
