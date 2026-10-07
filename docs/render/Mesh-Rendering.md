@@ -259,10 +259,21 @@ The motion view along a flythrough, red for x and green for y:
   `raster_motion_attachment()`, and calls `raster_motion_forget()` after a
   cut. The render context attaches it while the attachment view shows it.
 
-Removing motion is deleting `raster_motion.{c,h}` and
-`suite_raster_motion.c`, and the lines that name it: the render context's
-attachment list, the frame-cost test that attaches it, and one line each in
-`CMakeLists.txt`, `run_tests.sh` and the render harness's source list.
+Motion stays only while an experiment shows a gain. Nothing outside these
+places names it, and the attachment seam does not change when it goes:
+
+| Remove | What |
+|---|---|
+| `render/raster_motion.{c,h}`, `test/suites/suite_raster_motion.c`, `docs/images/render/sponza-motion-vectors.gif` | the files |
+| `render/context/render_context.c` | the include, `attach_motion()` and its state, its call, and the free in `render_context_release()` |
+| `apps/render_lab/tests/suite_sponza_perf.c` | `test_sponza_frame_cost_with_motion` |
+| `CMakeLists.txt`, `test/run_tests.sh`, `render_lab_render_host.sh` | one source line each |
+| `render_lab_render_host.c`, `tests/test_render_views.py` | the `motion` view name and its error text |
+| `doc_images.sh`, render_lab `tools/README.md` | the GIF's line and row |
+| this page | the `raster_motion.h` file row, this section, the motion note under the views |
+
+With no further attachment left, `RASTER_SHOW_ATTACHMENT` shows nothing
+and the render_lab view tunable can end at `RASTER_SHOW_DEPTH_TILES`.
 
 ## Coverage and small triangles
 
