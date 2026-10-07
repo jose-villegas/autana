@@ -97,11 +97,12 @@ static void
 clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    gfx_color_t* color = gfx_render_target_color(&b.picture, 0);
     for (size_t i = 0; i < pixels; i++) {
-        b.color[i] = raster->clear;
+        color[i] = raster->clear;
     }
-    memset(b.depth, 0, pixels * sizeof(*b.depth));
-    const r3d_span_target_t target = {b.color, b.depth, raster->width, 0, raster->height};
+    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
+    const r3d_span_target_t target = {b.picture, NULL, 0};
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.visible, visible, b.cs, b.rows, &target);
 }
 
@@ -117,11 +118,11 @@ static half_job_t core1_result;
 static void
 draw_half(half_job_t* j) {
     const raster_t* f = j->raster;
-    const size_t offset = (size_t)j->row0 * (size_t)f->width;
     const int64_t start = timing_now_us();
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(f);
-    memset(b.depth + offset, 0, (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.color + offset, b.depth + offset, f->width, j->row0, j->row1};
+    const r3d_span_target_t target = {gfx_render_target_window(&b.picture, j->row0, j->row1), NULL, 0};
+    memset(gfx_render_target_depth(&target.rows, j->row0), 0,
+           (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
     r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.visible, j->visible, b.cs, b.rows, &target);
     j->us = timing_now_us() - start;
 }

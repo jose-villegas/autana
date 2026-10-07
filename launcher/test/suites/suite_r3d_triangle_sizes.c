@@ -158,8 +158,8 @@ at(float x, float y) {
 static void
 test_a_triangle_counts_by_its_whole_box_and_shading_mode(void) {
     /* Counting reads no pixel, so the targets need none. */
-    const r3d_span_target_t whole = {NULL, NULL, 16, 0, 16};
-    const r3d_span_target_t top_rows = {NULL, NULL, 16, 0, 2};
+    const r3d_span_target_t whole = r3d_span_target(NULL, NULL, 16, 0, 16);
+    const r3d_span_target_t top_rows = r3d_span_target(NULL, NULL, 16, 0, 2);
     r3d_boxes_t* b = calloc(1, sizeof(*b));
     TEST_ASSERT_NOT_NULL(b);
     /* Centres 1..3 across and 1..4 down: a 3 x 4 box. */
@@ -177,7 +177,7 @@ test_a_triangle_counts_by_its_whole_box_and_shading_mode(void) {
     r3d_boxes_count(b, &whole, &big[0], &big[1], &big[2], false);
     TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_SMOOTH][R3D_BOXES_SIDES - 1][R3D_BOXES_SIDES - 1]);
     /* Below the target's rows, and a line with no area. */
-    const r3d_span_target_t bottom_rows = {NULL, NULL, 16, 14, 16};
+    const r3d_span_target_t bottom_rows = r3d_span_target(NULL, NULL, 16, 14, 16);
     r3d_boxes_count(b, &bottom_rows, &tall[0], &tall[1], &tall[2], false);
     const r3d_span_vertex_t line[3] = {at(1.2f, 1.2f), at(3.2f, 3.2f), at(5.2f, 5.2f)};
     r3d_boxes_count(b, &whole, &line[0], &line[1], &line[2], false);

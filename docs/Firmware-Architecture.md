@@ -70,9 +70,11 @@ flowchart TB
         Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R7["drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
+    subgraph R7["rendering"]
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    end
+    subgraph R7b["drawing"]
+        Gfx["gfx/<br/><i>the one framebuffer, render targets</i>"]:::hw
     end
     subgraph R8["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
@@ -96,7 +98,7 @@ flowchart TB
         Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
@@ -109,7 +111,9 @@ flowchart TB
   own row above.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
-  [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path).
+  [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
+  above gfx/ because it draws into gfx's
+  [render targets](Gfx-and-Presentation.md#render-targets).
 - **Drivers are split from the logic they feed.** `touch.c`, `buttons.c`
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every

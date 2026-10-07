@@ -101,13 +101,27 @@ show_tiles(const picture_t* f, const depth_range_t* range) {
     }
 }
 
+/* The first further attachment that has a view of its own paints it. */
+static void
+show_attachment(const raster_t* raster, const gfx_render_target_t* picture, int k) {
+    const raster_attachment_t* a = k < raster->attachment_count ? raster->attachments[k] : NULL;
+    if (a != NULL && a->show != NULL) {
+        a->show(a, raster, picture, GFX_ATTACHMENT_FURTHER + k);
+    }
+}
+
 void
 raster_show(const raster_t* raster, raster_show_t mode) {
     if (mode == RASTER_SHOW_SHADED) {
         return;
     }
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    const picture_t picture = {b.color, b.depth, raster->width, raster->height, raster->clear};
+    if (mode >= RASTER_SHOW_ATTACHMENT) {
+        show_attachment(raster, &b.picture, (int)mode - RASTER_SHOW_ATTACHMENT);
+        return;
+    }
+    const picture_t picture = {gfx_render_target_color(&b.picture, 0), gfx_render_target_depth(&b.picture, 0),
+                               raster->width, raster->height, raster->clear};
     const size_t count = (size_t)picture.width * (size_t)picture.height;
     const depth_range_t range = drawn_range(picture.depth, count);
     if (!range.any) {
