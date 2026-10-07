@@ -38,7 +38,7 @@
 #include "util/build/build_variant.h"
 #include "util/runtime/timing.h"
 #include "util/scalar/fixed.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */
@@ -294,7 +294,7 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
     const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
     const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
     const gfx_color_t c =
-        lit_whitened(boot_anim_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
+        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
     draw_grid_circle(d, &plane, c, steps, view);
     return tiny;
 }
@@ -415,7 +415,7 @@ static void
 draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joined) {
     /* Offsets spread to thicken curve centrally. */
     const int half = width / 2;
-    const bool shallow = im_abs(x1 - x0) > im_abs(y1 - y0);
+    const bool shallow = mathi_abs(x1 - x0) > mathi_abs(y1 - y0);
 
     for (int i = 0; i < width; i++) {
         const int off = i - half;
@@ -468,7 +468,7 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
             continue;
         }
 
-        draw_head(x, y, boot_anim_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
+        draw_head(x, y, gfx_hue_rgb(boot_anim_stroke(at, colour_pen).hue), ink);
     }
 }
 
@@ -564,7 +564,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         }
 
         const boot_anim_stroke_t s = boot_anim_stroke(a0 + ((a1 - a0) >> 1), colour);
-        gfx_color_t span_c = gfx_rgb(boot_anim_hue_rgb(s.hue));
+        gfx_color_t span_c = gfx_rgb(gfx_hue_rgb(s.hue));
         span_c = gfx_color_mix(span_c, COL_WHITE, s.bloom);
         span_c = gfx_color_mix(COL_BG, span_c, scale8(s.glow, ink));
 

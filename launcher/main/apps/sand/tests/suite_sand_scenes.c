@@ -31,7 +31,7 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "apps/sand/tests/suite_sand_scenes.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* on the real grid, on the real chip */
 
@@ -182,11 +182,9 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
     const int top = (REAL_H * EMPTY_SHARE_PERCENT) / 100;
     const int want = (n_mats * (n_mats - 1)) / 2;
 
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 23u);
@@ -346,11 +344,9 @@ build_four_liquid_scene(sand_t* s) {
  * rather than the defaults, because app_sand.c does too. */
 static void
 test_the_four_liquid_scene_keeps_reacting_after_settling(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 29u);
@@ -448,11 +444,9 @@ build_lava_stress_scene(sand_t* s) {
  * device test uses, step it the same number of times, and count. */
 static void
 test_the_lava_stress_scene_reaches_every_reaction_it_claims(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 37u);
@@ -545,11 +539,9 @@ build_smoke_and_steam_scene(sand_t* s) {
  * fire tests below make of their own scenes. */
 static void
 test_the_smoke_and_steam_scene_stays_a_gas_screen(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 31u);
@@ -872,12 +864,11 @@ count_distinct_cullet_tiles(const uint8_t* ever_cullet) {
  * STEPS it stands, not a count. */
 static void
 test_the_thermal_shock_scene_shatters_in_both_directions(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     uint8_t* ever_cullet = malloc(EVER_CULLET_BYTES);
-    const bool have_all = (big != NULL && blocks != NULL && ever_cullet != NULL);
-    if (!have_all) {
+    if (ever_cullet == NULL) {
         free(big);
         free(blocks);
         free(ever_cullet);
@@ -1188,17 +1179,9 @@ census_boiler_scene(const sand_t* s) {
  * minimum. */
 static void
 test_the_boiler_scene_keeps_boiling_across_the_window(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    const bool have_all = (big != NULL && blocks != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        TEST_FAIL_MESSAGE("need a grid and a block map for the boiler "
-                          "scene, and at least one of the two failed to "
-                          "allocate");
-    }
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 43u);
@@ -1822,17 +1805,9 @@ count_wet_earth_touching_columns(const sand_t* s) {
  * floor below sits at roughly half the worst measured quarter. */
 static void
 test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    const bool have_all = (big != NULL && blocks != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        TEST_FAIL_MESSAGE("need a grid and a block map for the wet earth "
-                          "scene, and at least one of the two failed to "
-                          "allocate");
-    }
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 53u);
@@ -1982,12 +1957,10 @@ build_water_over_lava_scene(sand_t* s) {
  *   source. */
 static void
 test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_claims(void) {
-    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     impulse_t* impulses = malloc((size_t)WATER_LAVA_IMPULSE_MAX * sizeof *impulses);
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
     TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
@@ -2219,12 +2192,10 @@ build_gas_ignition_vessel_scene(sand_t* s) {
 
 static void
 test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
-    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     impulse_t* impulses = malloc((size_t)GAS_IGNITION_VESSEL_IMPULSE_MAX * sizeof *impulses);
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
     TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
@@ -2372,12 +2343,11 @@ census_gunpowder_basin_aftermath(const sand_t* s, int ix0, int ix1, int iy0, int
  * stress, thermal shock, boiler and wet earth scenes each make above. */
 static void
 test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
-    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     impulse_t* impulses = malloc((size_t)GUNPOWDER_BASIN_IMPULSE_MAX * sizeof *impulses);
-    const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
-    if (!have_all) {
+    if (impulses == NULL) {
         free(big);
         free(blocks);
         free(impulses);
@@ -2639,11 +2609,9 @@ plant_ruin_window(sand_t* s, greenery_t* acid_before, greenery_t* acid_after, gr
  * single pour never reaches the roots at all. */
 static void
 test_the_plant_ruin_scene_eats_roots_and_burns_a_canopy(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     sand_init(&s2, big, REAL_W, REAL_H, 11u);
@@ -2726,11 +2694,9 @@ mature_tree_settle(sand_t* s, uint8_t* big, uint8_t* blocks) {
  * is finished and really is dry, AND fresh soil and rain start it again. */
 static void
 test_the_mature_tree_scene_is_finished_but_can_be_restarted(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     mature_tree_settle(&s2, big, blocks);
@@ -2803,11 +2769,9 @@ test_the_mature_tree_scene_is_finished_but_can_be_restarted(void) {
  * the perf suite reduces to one. */
 static void
 test_the_filling_basin_scene_runs_from_the_lip_to_the_pool(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     sand_init(&s2, big, REAL_W, REAL_H, 17u);
@@ -2858,11 +2822,9 @@ test_the_filling_basin_scene_runs_from_the_lip_to_the_pool(void) {
  * half of it. Both must be true when the window opens. */
 static void
 test_the_snowfall_scene_holds_a_crusting_bank_and_a_live_fall(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     sand_init(&s2, big, REAL_W, REAL_H, 23u);
@@ -2921,11 +2883,9 @@ test_the_snowfall_scene_holds_a_crusting_bank_and_a_live_fall(void) {
  * of the heap that is airborne, which is what the brush keeps replenishing. */
 static void
 test_the_plant_pour_scene_keeps_a_loose_heap_in_the_air(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     sand_init(&s2, big, REAL_W, REAL_H, 11u);
@@ -2981,11 +2941,9 @@ test_the_plant_pour_scene_keeps_a_loose_heap_in_the_air(void) {
  * whatever the plants are doing. */
 static void
 test_the_settled_plant_heap_is_dry_and_still_full_of_plants(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     sand_init(&s2, big, REAL_W, REAL_H, 11u);
@@ -3308,11 +3266,9 @@ landscape_fixture(sand_t* s, uint8_t* big, uint8_t* blocks, uint32_t seed) {
  * board with more grains in it. */
 static void
 test_the_landscape_beds_sleep_against_the_landscape_floor(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 29u);
@@ -3374,17 +3330,15 @@ test_the_landscape_beds_sleep_against_the_landscape_floor(void) {
  * a sleeping pile instead. */
 static void
 test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 29u);
     build_landscape_bed_scene(&s2);
 
-    const int asleep_before = (REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const int asleep_before = (int)sand_sleep_block_bytes(REAL_W, REAL_H);
 
     for (int i = 0; i < LANDSCAPE_PRIME_STEPS; i++) {
         landscape_water_pour(&s2, i);
@@ -3427,16 +3381,12 @@ test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
  * would blame the wrong step, or miss one shaken out by a later pour. */
 static void
 test_the_soak_only_skip_matches_the_full_walk_pouring_water_onto_a_sand_bed(void) {
-    uint8_t* big_full = malloc(REAL_W * REAL_H);
-    uint8_t* blocks_full =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    uint8_t* big_fast = malloc(REAL_W * REAL_H);
-    uint8_t* blocks_fast =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big_full);
-    TEST_ASSERT_NOT_NULL(blocks_full);
-    TEST_ASSERT_NOT_NULL(big_fast);
-    TEST_ASSERT_NOT_NULL(blocks_fast);
+    uint8_t* big_full;
+    uint8_t* blocks_full;
+    sand_test_grid_buffers_open(&big_full, &blocks_full, REAL_W, REAL_H);
+    uint8_t* big_fast;
+    uint8_t* blocks_fast;
+    sand_test_grid_buffers_open(&big_fast, &blocks_fast, REAL_W, REAL_H);
 
     sand_t full, fast;
     landscape_fixture(&full, big_full, blocks_full, 29u);
@@ -3535,11 +3485,9 @@ test_the_water_slope_stone_control_holds_no_sand(void) {
  * must run the whole way down the slope rather than pooling at the top. */
 static void
 test_pouring_water_over_the_slope_reaches_the_floor(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 41u);
@@ -3578,11 +3526,9 @@ test_pouring_water_over_the_slope_reaches_the_floor(void) {
  * rise, the one direction actual creation-from-nothing could show up as. */
 static void
 test_the_gravity_flip_conserves_water_mass_over_the_covered_slope(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 41u);
@@ -3634,11 +3580,9 @@ test_the_captured_slope_scene_matches_the_sampled_screenshot(void) {
  * reactions soak path both see nothing and never run. */
 static void
 test_the_captured_slope_scenes_water_is_live(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 41u);
@@ -3671,11 +3615,9 @@ test_the_captured_slope_scenes_water_is_live(void) {
  * that does reach 0 says the cost is convergence time, not a stuck block. */
 static void
 test_a_submerged_pile_settles_asleep_with_headroom(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 41u);
@@ -3720,11 +3662,9 @@ test_a_submerged_pile_settles_asleep_with_headroom(void) {
  * BLOCK_LIQUID_NEAR coverage, not REAL_W * REAL_H. */
 static void
 test_a_soaking_no_plant_board_stays_on_the_soak_only_path(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 29u);
@@ -3758,11 +3698,9 @@ test_a_soaking_no_plant_board_stays_on_the_soak_only_path(void) {
  * still avoid a REAL_W * REAL_H walk every step. */
 static void
 test_a_drying_no_plant_board_stays_off_the_full_walk(void) {
-    uint8_t* big = malloc(REAL_W * REAL_H);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(big);
-    TEST_ASSERT_NOT_NULL(blocks);
+    uint8_t* big;
+    uint8_t* blocks;
+    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
     landscape_fixture(&s2, big, blocks, 29u);

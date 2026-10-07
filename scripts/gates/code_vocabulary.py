@@ -3,6 +3,7 @@ import pathlib
 import re
 
 from tracked import committable
+from c_comments import blank_comments
 
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
 C_SUFFIXES = {".c", ".h"}
@@ -30,49 +31,6 @@ def source_paths(root):
             if path.suffix in SOURCE_SUFFIXES or path.name == "Kconfig.projbuild":
                 yield path
 
-
-
-def _without_comments_or_strings(text, strings=True):
-    """`text` with every C/C++ comment and string/char literal blanked to
-    spaces (newlines kept, so line numbers and `^`-anchored regexes still
-    line up). C syntax only, `#`, `//` as division, `'` inside a word and a
-    triple-quoted docstring all parse wrong under it, so `vocabulary()` below
-    applies this to C and .mjs sources, never to a .py file.
-
-    A name spelled `name()` only inside a comment or a message string, a
-    citation of some OTHER function, say, is not a declaration or a call,
-    so it must not count as the name being defined. Without this, a comment
-    that itself cites a dead name (a stale "replaces old_name()") makes
-    old_name() look real to every later scan, and a trim that garbles a
-    cited name can point at nothing forever without this gate ever noticing.
-    `strings=False` keeps literals: a protocol token the code prints
-    ("TUNE_OK") is real vocabulary even though no code names it.
-    """
-    out = []
-    i, n = 0, len(text)
-    while i < n:
-        if text.startswith("/*", i):
-            end = text.find("*/", i + 2)
-            end = n if end < 0 else end + 2
-            out.append("".join(ch if ch == "\n" else " " for ch in text[i:end]))
-            i = end
-        elif text.startswith("//", i):
-            end = text.find("\n", i)
-            end = n if end < 0 else end
-            out.append(" " * (end - i))
-            i = end
-        elif strings and text[i] in "\"'":
-            quote = text[i]
-            j = i + 1
-            while j < n and text[j] != quote:
-                j += 2 if text[j] == "\\" and j + 1 < n else 1
-            j = min(j + 1, n)
-            out.append("".join(ch if ch == "\n" else " " for ch in text[i:j]))
-            i = j
-        else:
-            out.append(text[i])
-            i += 1
-    return "".join(out)
 
 
 class Vocabulary:
@@ -112,9 +70,9 @@ def vocabulary(root):
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         if path.suffix in C_SUFFIXES:
-            code = _without_comments_or_strings(text)
-            # "\nSELFTEST_COMPLETE": an escape must not glue a letter onto the name.
-            spelled = re.sub(r"\\[a-z]", " ", _without_comments_or_strings(text, strings=False))
+            code = blank_comments(text, mode="code")
+            # A literal token is real vocabulary; escapes must not glue letters onto it.
+            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled"))
             functions = set(FUNCTION.findall(code))
             constants = set(CONSTANT.findall(spelled))
             vocab.functions |= functions
@@ -134,7 +92,7 @@ def vocabulary(root):
         elif path.suffix == ".mjs":
             # An environment variable a Node gate reads; its functions are
             # camelCase and never cited as a C or Python name would be.
-            vocab.constants |= set(CONSTANT.findall(_without_comments_or_strings(text, strings=False)))
+            vocab.constants |= set(CONSTANT.findall(blank_comments(text, mode="spelled")))
         else:
             kconfig += KCONFIG.findall(text)
     vocab.script_functions -= vocab.functions

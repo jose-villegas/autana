@@ -20,13 +20,10 @@
 
 #include "sand_palette256.h" /* see material_palette256_index() below */
 #include "util/scalar/fixed.h"
-#include "util/scalar/intmath.h" /* see material_set_gravity() below */
+#include "util/scalar/mathi.h"
 
-/* Channel `sh` of the way from `lo` to `hi`, out of 15. */
-#define LERP_CH(lo, hi, shift, sh)                                                                                     \
-    ((((((lo) >> (shift)) & 0xFF) * (15 - (sh)) + (((hi) >> (shift)) & 0xFF) * (sh)) / 15) & 0xFF)
-
-#define LERP_RGB(lo, hi, sh) ((LERP_CH(lo, hi, 16, sh) << 16) | (LERP_CH(lo, hi, 8, sh) << 8) | LERP_CH(lo, hi, 0, sh))
+/* `sh` of the way from `lo` to `hi`, out of 15. */
+#define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)
 
 #ifdef ANALYSIS_SCAN
 /* The tables below nest LERP inside LERP, so any stub that keeps both colour
@@ -39,10 +36,7 @@
 #endif
 
 /* glass MAT_GLASS case needs small tilt for finer gradient than palette steps */
-#define LERP8_CH(lo, hi, shift, fr)                                                                                    \
-    ((((((lo) >> (shift)) & 0xFF) * (255 - (fr)) + (((hi) >> (shift)) & 0xFF) * (fr)) / 255) & 0xFF)
-
-#define LERP8(lo, hi, fr) ((LERP8_CH(lo, hi, 16, fr) << 16) | (LERP8_CH(lo, hi, 8, fr) << 8) | LERP8_CH(lo, hi, 0, fr))
+#define LERP8(lo, hi, fr) GFX_LERP_RGB888(lo, hi, fr, 255)
 
 /* One shade per variant, dry to wet; the saturated level takes the full wet
  * colour. */
@@ -566,7 +560,7 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
  * surroundings. */
 void
 material_set_gravity(int gx, int gy) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         /* No "up" for light, so no rim highlight. */
         for (unsigned m = 0; m < MATERIAL_EDGE_MASK_COUNT; m++) {
@@ -586,7 +580,7 @@ material_set_gravity(int gx, int gy) {
 
 void
 material_shine_direction(int gx, int gy, int* ux_q8, int* uy_q8) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         *ux_q8 = 181;
         *uy_q8 = 181;
@@ -602,7 +596,7 @@ material_shine_direction(int gx, int gy, int* ux_q8, int* uy_q8) {
  * uses for its own band. Flat: defaults to grid-x. */
 void
 material_wood_leaf_wind_axis(int gx, int gy, int* ux_q8, int* uy_q8) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         *ux_q8 = 256;
         *uy_q8 = 0;
@@ -626,7 +620,7 @@ static const int8_t wood_leaf_ring[8][2] = {
  * glass_last_phase. */
 void
 material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     const long margin = len / 4;
     int down = *last_down & 7;
     long best = (long)wood_leaf_ring[down][0] * gx + (long)wood_leaf_ring[down][1] * gy;
@@ -770,7 +764,7 @@ liquid_interior(uint8_t id, unsigned depth) {
     const unsigned depth_capped = depth < DEPTH_SATURATE_CELLS ? depth : DEPTH_SATURATE_CELLS;
 
     const int bright = ((int)DEPTH_RANGE * (int)(DEPTH_SATURATE_CELLS - depth_capped)) / (int)DEPTH_SATURATE_CELLS;
-    const int idx = im_clamp((int)MASS_MAX - bright, 0, MASS_MAX);
+    const int idx = mathi_clamp((int)MASS_MAX - bright, 0, MASS_MAX);
     return palette[CELL_MAKE(id, (uint8_t)idx)];
 }
 
@@ -796,7 +790,7 @@ water_foams(unsigned hash, unsigned mask) {
  * material_palette.h. */
 static inline __attribute__((always_inline)) gfx_color_t
 liquid_rim(uint8_t id, uint8_t v, unsigned hash, unsigned mask, unsigned cardinal) {
-    const int idx = im_clamp((int)v + liquid_spec[cardinal], 0, MASS_MAX);
+    const int idx = mathi_clamp((int)v + liquid_spec[cardinal], 0, MASS_MAX);
     if (id == MAT_WATER && water_foams(hash, mask)) {
         return water_foam;
     }
@@ -940,11 +934,9 @@ material_palette(void) {
 
 /* One flash read, no search: sand_rgb565_to_index[] is generated straight
  * from build_palette()'s own per-group OKLab assignment (shading_palette.c,
- * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565 -
- * gfx_color_t is that swapped for the panel (gfx_color.h), so the lookup
- * key is the same swap native_key() takes in the generator. */
+ * write_sand_palette_header()), keyed by native (non-byte-swapped) RGB565,
+ * the same gfx_color_swap() the generator keys it with. */
 int
 material_palette256_index(gfx_color_t c) {
-    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
-    return sand_rgb565_to_index[native];
+    return sand_rgb565_to_index[gfx_color_swap(c)];
 }

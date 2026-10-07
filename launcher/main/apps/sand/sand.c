@@ -26,7 +26,7 @@
 #include "sand_liquid_move.h"
 #include "util/build/build_variant.h"
 #include "util/scalar/fixed.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* See sand_priv.h. Defined here, not sand_liquid.c: move_liquid_grain()
  * (sand_liquid_move.h) is called only from this file's own sweep. */
@@ -246,6 +246,11 @@ sand_enable_sleeping(sand_t* s, uint8_t* blocks) {
 }
 
 size_t
+sand_sleep_block_bytes(int w, int h) {
+    return (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+}
+
+size_t
 sand_step_stamp_bytes(int w, int h) {
     return (size_t)h * sand_stamp_stride(w);
 }
@@ -261,8 +266,7 @@ sand_enable_step_stamps(sand_t* s, uint8_t* bits) {
 size_t
 sand_lane_scratch_bytes(int w, int h) {
     const size_t rows = (size_t)h;
-    const size_t blocks =
-        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const size_t blocks = sand_sleep_block_bytes(w, h);
 
     return SAND_LANE_COUNT * (2 * rows * sizeof(uint16_t) + blocks + rows + SAND_LANE_DEFER_BYTES);
 }
@@ -665,15 +669,15 @@ emit_from_emitters(sand_t* s) {
  * undefined and the caller must stop rather than divide by it. */
 static bool
 gravity_axes(int gx, int gy, int* ax, int* ay, int* sx, int* sy) {
-    *ax = im_abs(gx);
-    *ay = im_abs(gy);
+    *ax = mathi_abs(gx);
+    *ay = mathi_abs(gy);
 
     if (*ax == 0 && *ay == 0) {
         return false;
     }
 
-    *sx = im_sign(gx);
-    *sy = im_sign(gy);
+    *sx = mathi_sign(gx);
+    *sy = mathi_sign(gy);
     return true;
 }
 
@@ -1187,8 +1191,8 @@ typedef struct {
  * block_state is disabled. */
 static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
-    const int lo = im_max(bx * SAND_BLOCK_W, ctx->x0);
-    const int hi = im_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
+    const int lo = mathi_max(bx * SAND_BLOCK_W, ctx->x0);
+    const int hi = mathi_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
 
     if (span_is_empty(ctx->row, lo, hi)) {
         return;
@@ -1306,8 +1310,8 @@ finalize_settling(sand_t* s, uint8_t settled_bit) {
  * gravitational potential. See xflow_t. */
 static void
 build_xflow(xflow_t* f, int gx, int gy) {
-    const int ax = im_abs(gx), ay = im_abs(gy);
-    const int sx = im_sign(gx), sy = im_sign(gy);
+    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
+    const int sx = mathi_sign(gx), sy = mathi_sign(gy);
 
     /* Whichever of gx/gy has the larger magnitude picks the major ray:
      * `ax` runs perpendicular to that axis, `dg` built from the same two
@@ -1333,11 +1337,11 @@ build_xflow(xflow_t* f, int gx, int gy) {
         f->q_q8 = (ay * 256) / ax;
     }
 
-    /* im_len()'s ~4% approximation (intmath.h) is fine: nothing reads a
+    /* mathi_len()'s ~4% approximation (mathi.h) is fine: nothing reads a
      * bias to that precision, only sign and rough size. A bias of exactly
      * zero when a ray is exactly level still holds - it comes from the
      * dot product cancelling exactly, independent of length. */
-    const int len = im_len(gx, gy);
+    const int len = mathi_len(gx, gy);
     if (len == 0) {
         f->bias_ax_q8 = 0;
         f->bias_dg_q8 = 0;
@@ -1836,7 +1840,7 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
  * holding a move's destination is always settled first. */
 static void
 run_sweep_split(sand_t* s, int dx, int dy) {
-    if (!sand_chunk_pass_run(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy), SAND_CHUNK_PASS_STAMP_CROSSINGS,
+    if (!sand_chunk_pass_run(s, SAND_SPLIT_SWEEP, mathi_sign(dx), mathi_sign(dy), SAND_CHUNK_PASS_STAMP_CROSSINGS,
                              sweep_one_chunk, &sweep_pass)) {
         return;
     }
@@ -1915,9 +1919,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Liquid spreads PERPENDICULAR TO GRAVITY, not across screen. Tilt
      * affects direction. Use nearest, not dithered, for stability. See
      * equalise_liquids() and test_a_settled_pool_does_not_flicker. */
-    const int i_stable = ring_of(load_dx, load_dy);
-    const int* const perp_a = ring_dir(i_stable + 2);
-    const int* const perp_b = ring_dir(i_stable + 6);
+    const int stable_index = ring_of(load_dx, load_dy);
+    const int* const perp_a = ring_dir(stable_index + 2);
+    const int* const perp_b = ring_dir(stable_index + 6);
 
     xflow_t flow;
     build_xflow(&flow, gx, gy);
@@ -1929,7 +1933,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * this window, never longer - gas and reactions later this step must
      * still draw from the plain sequential stream. */
     SAND_PASS_BEGIN(sweep);
-    if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, im_sign(dx), im_sign(dy))) {
+    if (sand_chunk_pass_ready(s, SAND_SPLIT_SWEEP, mathi_sign(dx), mathi_sign(dy))) {
         sweep_pass = (sweep_pass_t){
             .lanes = sand_lanes(s),
             .w = w,

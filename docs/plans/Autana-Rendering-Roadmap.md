@@ -940,7 +940,7 @@ board/      board bring-up, display bus, input devices, timers, memory caps
 gfx/        framebuffer or band buffers, present, primitives, dirty tracking
             (today's gfx.c minus the driver, plus the double-buffer /
             band-ring modes)
-core/       fixed.h, intmath.h, rng.h, tween.h, an arena allocator,
+core/       fixed.h, mathi.h, rng.h, tween.h, an arena allocator,
             the authored-timeline system graduated from boot_anim
 sim/        the sand automaton as an instance: any size, several alive, host
             boundary mask; materials and reactions as baked data; block

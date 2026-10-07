@@ -1,5 +1,6 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_band_run.h"
+#include "gfx/gfx_box.h"
 #include "gfx/gfx_dirty.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font_roles.h"
@@ -12,7 +13,7 @@
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 #include "util/runtime/tune.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -229,9 +230,7 @@ static const co5300_lcd_init_cmd_t co5300_init_cmds[] = {
 #endif
 
 /* Current clip rectangle, as inclusive-exclusive bounds. */
-static struct {
-    int x0, y0, x1, y1;
-} clip;
+static gfx_box_t clip;
 
 #ifdef ESP_PLATFORM
 /* Overlay save/restore scratch (see overlay_cell_save()), MEMORY_DMA. */
@@ -647,16 +646,14 @@ static bool interlace_on;
 #ifdef ESP_PLATFORM
 static int frame_parity; /* read only inside run_present_normal(), below */
 #endif
-static bool prev_bbox_valid;
-static int prev_bbox_x0, prev_bbox_y0, prev_bbox_x1, prev_bbox_y1;
-static bool drawn_bbox_valid;
-static int drawn_bbox_x0, drawn_bbox_y0, drawn_bbox_x1, drawn_bbox_y1;
+static gfx_box_t prev_bbox = GFX_BOX_EMPTY;
+static gfx_box_t drawn_bbox = GFX_BOX_EMPTY;
 
 void
 gfx_set_partial_clear(bool on) {
     GFX_PRESENT_GUARD();
     if (!on) {
-        prev_bbox_valid = false;
+        prev_bbox = GFX_BOX_EMPTY;
     }
     partial_clear_on = on;
 }
@@ -675,7 +672,7 @@ gfx_interlace_enabled(void) {
 void
 gfx_invalidate(void) {
     GFX_PRESENT_GUARD();
-    prev_bbox_valid = false;
+    prev_bbox = GFX_BOX_EMPTY;
     gfx_band_force_all();
 }
 
@@ -686,8 +683,8 @@ gfx_invalidate(void) {
 static void
 mark_all_dirty_now(void) {
     dirty_mark_all();
-    drawn_bbox_valid = false;
-    prev_bbox_valid = false;
+    drawn_bbox = GFX_BOX_EMPTY;
+    prev_bbox = GFX_BOX_EMPTY;
 }
 
 TUNE_OWNER(gfx);
@@ -753,30 +750,6 @@ gfx_full_redraw_clear_pending(void) {
     gfx_full_redraw_unlatch();
 }
 
-static void
-drawn_bbox_extend(int x0, int y0, int x1, int y1) {
-    if (!drawn_bbox_valid) {
-        drawn_bbox_x0 = x0;
-        drawn_bbox_y0 = y0;
-        drawn_bbox_x1 = x1;
-        drawn_bbox_y1 = y1;
-        drawn_bbox_valid = true;
-        return;
-    }
-    if (x0 < drawn_bbox_x0) {
-        drawn_bbox_x0 = x0;
-    }
-    if (y0 < drawn_bbox_y0) {
-        drawn_bbox_y0 = y0;
-    }
-    if (x1 > drawn_bbox_x1) {
-        drawn_bbox_x1 = x1;
-    }
-    if (y1 > drawn_bbox_y1) {
-        drawn_bbox_y1 = y1;
-    }
-}
-
 void
 gfx_mark_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
@@ -793,7 +766,7 @@ gfx_mark_dirty(int x, int y, int w, int h) {
         return;
     }
 
-    drawn_bbox_extend(x0, y0, x1, y1);
+    gfx_box_extend(&drawn_bbox, (gfx_box_t){x0, y0, x1, y1});
 }
 
 bool
@@ -847,15 +820,15 @@ gfx_clear(gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    if (!band_render_active && partial_clear_on && prev_bbox_valid) {
-        for (int y = prev_bbox_y0; y < prev_bbox_y1; y++) {
-            gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox_x0;
-            for (int x = prev_bbox_x0; x < prev_bbox_x1; x++) {
+    if (!band_render_active && partial_clear_on && !gfx_box_is_empty(prev_bbox)) {
+        for (int y = prev_bbox.y0; y < prev_bbox.y1; y++) {
+            gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox.x0;
+            for (int x = prev_bbox.x0; x < prev_bbox.x1; x++) {
                 *dst++ = color;
             }
         }
-        dirty_mark(prev_bbox_x0, prev_bbox_y0, prev_bbox_x1 - prev_bbox_x0, prev_bbox_y1 - prev_bbox_y0);
-        drawn_bbox_valid = false;
+        dirty_mark(prev_bbox.x0, prev_bbox.y0, prev_bbox.x1 - prev_bbox.x0, prev_bbox.y1 - prev_bbox.y0);
+        drawn_bbox = GFX_BOX_EMPTY;
         return;
     }
 
@@ -894,71 +867,6 @@ gfx_pixel(int x, int y, gfx_color_t color) {
     }
 }
 
-/* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */
-enum { OUT_LEFT = 1, OUT_RIGHT = 2, OUT_TOP = 4, OUT_BOTTOM = 8 };
-
-static int
-outcode(int x, int y) {
-    int code = 0;
-    if (x < clip.x0) {
-        code |= OUT_LEFT;
-    } else if (x >= clip.x1) {
-        code |= OUT_RIGHT;
-    }
-    if (y < clip.y0) {
-        code |= OUT_TOP;
-    } else if (y >= clip.y1) {
-        code |= OUT_BOTTOM;
-    }
-    return code;
-}
-
-/* Clipping affects error term, differs by pixel. Caller takes fast path if
- * both ends inside. */
-static bool
-clip_line(int* x0, int* y0, int* x1, int* y1) {
-    int c0 = outcode(*x0, *y0);
-    int c1 = outcode(*x1, *y1);
-
-    for (int pass = 0; pass < 8; pass++) {
-        if ((c0 | c1) == 0) {
-            return true; /* both ends inside */
-        }
-        if ((c0 & c1) != 0) {
-            return false; /* both beyond the same edge */
-        }
-
-        const int out = c0 ? c0 : c1;
-        int x, y;
-
-        /* Clips to last pixel inside, not boundary. */
-        if (out & OUT_BOTTOM) {
-            y = clip.y1 - 1;
-            x = *x0 + (int)(((int64_t)(*x1 - *x0) * (y - *y0)) / (*y1 - *y0));
-        } else if (out & OUT_TOP) {
-            y = clip.y0;
-            x = *x0 + (int)(((int64_t)(*x1 - *x0) * (y - *y0)) / (*y1 - *y0));
-        } else if (out & OUT_RIGHT) {
-            x = clip.x1 - 1;
-            y = *y0 + (int)(((int64_t)(*y1 - *y0) * (x - *x0)) / (*x1 - *x0));
-        } else {
-            x = clip.x0;
-            y = *y0 + (int)(((int64_t)(*y1 - *y0) * (x - *x0)) / (*x1 - *x0));
-        }
-
-        if (out == c0) {
-            *x0 = x;
-            *y0 = y;
-            c0 = outcode(x, y);
-        } else {
-            *x1 = x;
-            *y1 = y;
-            c1 = outcode(x, y);
-        }
-    }
-    return false;
-}
-
 /* One pixel of a line. */
 static void
 plot(int x, int y, gfx_color_t color, unsigned flags) {
@@ -979,8 +887,8 @@ plot(int x, int y, gfx_color_t color, unsigned flags) {
 /* Bresenham, treats both axes alike, no case analysis. */
 static void
 walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    const int dx = im_abs(x1 - x0);
-    const int dy = -im_abs(y1 - y0);
+    const int dx = mathi_abs(x1 - x0);
+    const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
     const int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
@@ -1011,15 +919,12 @@ walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
  * underestimating leaves stale. */
 static void
 draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    /* Only pay for clipping when some of the line is actually outside. */
-    if (outcode(x0, y0) | outcode(x1, y1)) {
-        if (!clip_line(&x0, &y0, &x1, &y1)) {
-            return;
-        }
+    if (!gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
+        return;
     }
 
-    int bx0 = im_min(x0, x1), bx1 = im_max(x0, x1) + 1;
-    int by0 = im_min(y0, y1), by1 = im_max(y0, y1) + 1;
+    int bx0 = mathi_min(x0, x1), bx1 = mathi_max(x0, x1) + 1;
+    int by0 = mathi_min(y0, y1), by1 = mathi_max(y0, y1) + 1;
 
     if (bx0 < clip.x0) {
         bx0 = clip.x0;
@@ -1825,10 +1730,10 @@ note_send_failure(esp_err_t err) {
 static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
-    x0 = even_floor(x0);
-    y0 = even_floor(y0);
-    x1 = even_ceil(x1);
-    y1 = even_ceil(y1);
+    x0 = mathi_even_floor(x0);
+    y0 = mathi_even_floor(y0);
+    x1 = mathi_even_ceil(x1);
+    y1 = mathi_even_ceil(y1);
     const int w = x1 - x0;
     const int h = y1 - y0;
 
@@ -2052,8 +1957,8 @@ send_partial_band(int y0, int y1, int* queued) {
         return false;
     }
 #endif
-    y0 = even_floor(y0);
-    y1 = even_ceil(y1);
+    y0 = mathi_even_floor(y0);
+    y1 = mathi_even_ceil(y1);
     if (send_fb_rows(y0, y1)) {
         (*queued)++;
     }
@@ -2272,16 +2177,12 @@ run_present_normal(void) {
         cell_dirty = remaining_cell_dirty;
     }
 
-    if (partial_clear_on && drawn_bbox_valid) {
-        prev_bbox_x0 = drawn_bbox_x0;
-        prev_bbox_y0 = drawn_bbox_y0;
-        prev_bbox_x1 = drawn_bbox_x1;
-        prev_bbox_y1 = drawn_bbox_y1;
-        prev_bbox_valid = true;
+    if (partial_clear_on && !gfx_box_is_empty(drawn_bbox)) {
+        prev_bbox = drawn_bbox;
     } else if (!partial_clear_on) {
-        prev_bbox_valid = false;
+        prev_bbox = GFX_BOX_EMPTY;
     }
-    drawn_bbox_valid = false;
+    drawn_bbox = GFX_BOX_EMPTY;
 
     send_heal_strips(send_fb_rows, &queued);
 

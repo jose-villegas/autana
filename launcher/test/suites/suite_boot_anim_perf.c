@@ -23,6 +23,8 @@
 
 #ifdef DEVICE_BUILD
 
+#include "perf_stats.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -74,13 +76,6 @@ typedef struct {
 static frame_sample_t* samples = NULL;
 static int32_t* stat_scratch = NULL;
 
-static int
-cmp_i32(const void* a, const void* b) {
-    int32_t va = *(const int32_t*)a;
-    int32_t vb = *(const int32_t*)b;
-    return (va > vb) - (va < vb);
-}
-
 typedef enum {
     FIELD_TOTAL,
     FIELD_CLEAR,
@@ -109,32 +104,12 @@ field_of(const frame_sample_t* s, sample_field_t field) {
     return 0;
 }
 
-typedef struct {
-    int64_t min, max, avg, med, p95;
-} phase_stats_t;
-
-static phase_stats_t
-compute_stats(sample_field_t field, int n) {
-    phase_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
-    int64_t sum = 0;
-
+static int32_t*
+sample_values(sample_field_t field, int n) {
     for (int i = 0; i < n; i++) {
-        int32_t v = field_of(&samples[i], field);
-        stat_scratch[i] = v;
-        if (v < s.min) {
-            s.min = v;
-        }
-        if (v > s.max) {
-            s.max = v;
-        }
-        sum += v;
+        stat_scratch[i] = field_of(&samples[i], field);
     }
-
-    s.avg = sum / n;
-    qsort(stat_scratch, n, sizeof(int32_t), cmp_i32);
-    s.med = stat_scratch[n / 2];
-    s.p95 = stat_scratch[(n * 95) / 100];
-    return s;
+    return stat_scratch;
 }
 
 typedef struct {
@@ -277,7 +252,8 @@ static const phase_row_t PHASE_ROWS[] = {
 /* One phase's stats live only while its own line prints. */
 static __attribute__((noinline)) void
 log_phase(const phase_row_t* row, int64_t total_avg) {
-    const phase_stats_t s = compute_stats(row->field, SAMPLES_PER_CHECKPOINT);
+    const perf_stats_t s =
+        perf_stats_compute(sample_values(row->field, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
     const double share = (double)s.avg / total_avg * 100;
     if (row->spread) {
         ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus (%.1f%%)", row->label,
@@ -289,7 +265,8 @@ log_phase(const phase_row_t* row, int64_t total_avg) {
 
 static __attribute__((noinline)) void
 report_checkpoint(const checkpoint_t* cp) {
-    const phase_stats_t total = compute_stats(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT);
+    const perf_stats_t total =
+        perf_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
 
     ESP_LOGI(TAG, "=== BOOT_ANIM PERF %s (now_ms=%u, %d samples) ===", cp->label, (unsigned)cp->now_ms,
              SAMPLES_PER_CHECKPOINT);
@@ -328,6 +305,9 @@ run_checkpoint(const boot_anim_motion_t* motion, const checkpoint_t* cp) {
 
 void
 test_boot_anim_performance_by_checkpoint(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("performance requires the device clock and display");
+#endif
     gfx_clear_clip();
     gfx_set_partial_clear(false);
     gfx_invalidate();

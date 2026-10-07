@@ -28,7 +28,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* Dirt: soaking, drying, and sand turning into soil. */
 
@@ -155,9 +155,7 @@ static void
 test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
     wide_cells = malloc((size_t)WIDE_W * WIDE_H);
     TEST_ASSERT_NOT_NULL(wide_cells);
-    const int block_cols = (WIDE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
-    const int block_rows = (WIDE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
-    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(WIDE_W, WIDE_H));
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 7u);
@@ -239,9 +237,7 @@ static void
 test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
     wide_cells = malloc((size_t)WIDE_W * WIDE_H);
     TEST_ASSERT_NOT_NULL(wide_cells);
-    const int block_cols = (WIDE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
-    const int block_rows = (WIDE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
-    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(WIDE_W, WIDE_H));
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 11u);

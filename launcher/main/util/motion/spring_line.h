@@ -23,7 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 #define SPRING_LINE_ONE           (1 << 16)
 
@@ -188,7 +188,7 @@ spring_line_tick(spring_line_t* line) {
 
     for (int x = lo; x < hi; x++) {
         line->offset[x] =
-            im_clamp(line->offset[x] + line->velocity[x], -SPRING_LINE_MAX_OFFSET, SPRING_LINE_MAX_OFFSET);
+            mathi_clamp(line->offset[x] + line->velocity[x], -SPRING_LINE_MAX_OFFSET, SPRING_LINE_MAX_OFFSET);
     }
     spring_line_trim(line);
 }

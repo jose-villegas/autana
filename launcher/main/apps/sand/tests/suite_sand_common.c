@@ -256,11 +256,21 @@ acid_tank(int sand_rows, int acid_rows) {
  * pass or fail for reasons of its own. */
 int
 panel_luminance(gfx_color_t c) {
-    const unsigned v = (unsigned)((c >> 8) | ((c & 0xFFu) << 8));
-    const unsigned r = ((v >> 11) & 0x1Fu) * 255u / 31u;
-    const unsigned g = ((v >> 5) & 0x3Fu) * 255u / 63u;
-    const unsigned b = (v & 0x1Fu) * 255u / 31u;
+    const uint16_t v = gfx_color_swap(c);
+    const unsigned r = gfx_rgb565_r5(v) * 255u / 31u;
+    const unsigned g = gfx_rgb565_g6(v) * 255u / 63u;
+    const unsigned b = gfx_rgb565_b5(v) * 255u / 31u;
     return (int)((299u * r + 587u * g + 114u * b) / 1000u);
+}
+
+int
+colour_gap(gfx_color_t x, gfx_color_t y) {
+    const uint16_t a = gfx_color_swap(x);
+    const uint16_t b = gfx_color_swap(y);
+    const int dr = (int)gfx_rgb565_r5(a) - (int)gfx_rgb565_r5(b);
+    const int dg = (int)gfx_rgb565_g6(a) - (int)gfx_rgb565_g6(b);
+    const int db = (int)gfx_rgb565_b5(a) - (int)gfx_rgb565_b5(b);
+    return ((dr < 0 ? -dr : dr) * 2) + (dg < 0 ? -dg : dg) + ((db < 0 ? -db : db) * 2);
 }
 
 int
@@ -428,4 +438,26 @@ void
 collect_core1_lane(void) {
     for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
     TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
+}
+
+void
+sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h) {
+    *grid = malloc((size_t)w * (size_t)h);
+    *blocks = malloc(sand_sleep_block_bytes(w, h));
+    if (*grid == NULL || *blocks == NULL) {
+        free(*grid);
+        free(*blocks);
+        TEST_FAIL_MESSAGE("grid or block map failed to allocate");
+    }
+}
+
+sand_t*
+sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
+    sand_test_grid_buffers_open(grid, blocks, w, h);
+
+    sand_t* const real = malloc(sizeof *real);
+    TEST_ASSERT_NOT_NULL(real);
+    sand_init(real, *grid, w, h, seed);
+    sand_enable_sleeping(real, *blocks);
+    return real;
 }

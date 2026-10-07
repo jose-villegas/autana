@@ -53,16 +53,6 @@
 #
 # POSIX sh, like the rest of this directory.
 
-# Git Bash hands the compiler and this script MSYS paths (/c/...), which the
-# Windows python below cannot open. cygpath exists only there, which is also
-# the only place the conversion is needed.
-render_scene_to_native() {
-    if command -v cygpath > /dev/null 2>&1; then
-        cygpath -w "$1"
-    else
-        printf '%s' "$1"
-    fi
-}
 
 # Empty where the platform has neither, which turns the pinned-hash check
 # into a notice rather than a silent pass, see render_scene_run() below.
@@ -92,21 +82,20 @@ render_scene_packs() {
     done
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
+    . "$_rs_launcher/../scripts/lib/native_path.sh"
     _rs_python=$(find_python) || return 1
     _rs_assets="$scene_out_dir/assets"
     set --
     for _rs_folder in $scene_assets; do
-        set -- "$@" "$(render_scene_to_native "$_rs_launcher/$_rs_folder")"
+        set -- "$@" "$(to_native "$_rs_launcher/$_rs_folder")"
     done
-    "$_rs_python" "$(render_scene_to_native "$_rs_tools/r3d/build_pack.py")" \
-        -o "$(render_scene_to_native "$_rs_assets")" "$@" > /dev/null || return 1
+    "$_rs_python" "$(to_native "$_rs_tools/r3d/build_pack.py")" \
+        -o "$(to_native "$_rs_assets")" "$@" > /dev/null || return 1
     if [ -z "$(find "$_rs_assets" -name '*.apak' | head -n 1)" ]; then
         echo "ERROR: scene_assets ($scene_assets) holds no asset roots, so the scene has nothing to read" >&2
         return 1
     fi
-    if command -v cygpath > /dev/null 2>&1; then
-        _rs_assets=$(cygpath -m "$_rs_assets")
-    fi
+    _rs_assets=$(printf '%s\n' "$_rs_assets" | to_native)
     _rs_asset_flags="-DASSET_DIR_DEFAULT_PATH=\"$_rs_assets\""
 }
 
@@ -313,8 +302,9 @@ render_scene_render() {
     # Neither is a dependency, and nothing here installs one.
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
+    . "$_rs_launcher/../scripts/lib/native_path.sh"
     if _rs_python=$(find_python 2> /dev/null); then
-        "$_rs_python" "$(render_scene_to_native "$_rs_tools/render/render_png.py")" \
-            "$(render_scene_to_native "$scene_out_dir")" || return 1
+        "$_rs_python" "$(to_native "$_rs_tools/render/render_png.py")" \
+            "$(to_native "$scene_out_dir")" || return 1
     fi
 }

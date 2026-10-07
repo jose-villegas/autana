@@ -16,8 +16,9 @@ row must link to the one heading its option names.
 """
 import pathlib
 import re
-import subprocess
 import sys
+
+from tracked import tracked_files
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
@@ -26,20 +27,10 @@ START = "README.md"
 
 
 def tracked_docs(root):
-    result = subprocess.run(["git", "ls-files", "docs"], cwd=root,
-                            capture_output=True, text=True)
-    if result.returncode or not result.stdout.strip():
-        return {path.relative_to(root).as_posix() for path in (root / "docs").rglob("*.md")}
-    return {name for name in result.stdout.splitlines() if name.endswith(".md")}
-
+    return {name for name in tracked_files(root) if name.startswith("docs/") and name.endswith(".md")}
 
 def tracked_markdown(root):
-    result = subprocess.run(["git", "ls-files"], cwd=root,
-                            capture_output=True, text=True)
-    if result.returncode or not result.stdout.strip():
-        return {path.relative_to(root).as_posix() for path in root.rglob("*.md")}
-    return {name for name in result.stdout.splitlines() if name.endswith(".md")}
-
+    return {name for name in tracked_files(root) if name.endswith(".md")}
 
 def blank_fences(lines):
     """`lines` with the content of each fenced code block, delimiters

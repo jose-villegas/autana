@@ -16,17 +16,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "icon_walk.h"
 #include "suites.h"
 #include "unity.h"
 
 #include "apps/sand/icons_sand.h"
 #include "gfx/icon.h"
-
-static bool
-baked_bit(const icon_t* icon, int x, int y) {
-    const uint8_t byte = icon_sand_rows[icon->offset + (unsigned)y * icon->stride + (unsigned)(x / 8)];
-    return (byte & (0x80 >> (x % 8))) != 0;
-}
 
 typedef struct {
     const char* name;
@@ -47,7 +42,7 @@ test_every_icon_is_non_empty(void) {
         bool set = false;
         for (int y = 0; y < icon->h && !set; y++) {
             for (int x = 0; x < icon->w; x++) {
-                if (baked_bit(icon, x, y)) {
+                if (icon_test_bit(icon_sand_rows, icon, x, y)) {
                     set = true;
                     break;
                 }
@@ -61,21 +56,6 @@ test_every_icon_is_non_empty(void) {
  * holds any of its icons at native size. */
 #define SAND_ICON_TEST_MAX_BLOCKS 40
 
-typedef struct {
-    icon_rect_t* blocks;
-    int count;
-    int cap;
-} collect_ctx_t;
-
-static void
-collect_emit(void* ctx, int x, int y, int w, int h) {
-    collect_ctx_t* cc = ctx;
-    TEST_ASSERT_TRUE_MESSAGE(cc->count < cc->cap,
-                             "icon_walk_blocks emitted more runs than the test's own buffer expects");
-    cc->blocks[cc->count] = (icon_rect_t){x, y, w, h};
-    cc->count++;
-}
-
 /* At native size (box == the icon's own w x h, scale 1) every run
  * icon_walk_blocks() emits must land inside that same box - only possible if
  * the artwork's own content lives inside its declared grid. */
@@ -84,9 +64,9 @@ test_every_icon_content_bbox_is_inside_16x16(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
         const icon_t* icon = &icon_sand_table[ICONS[i].id];
         icon_rect_t blocks[SAND_ICON_TEST_MAX_BLOCKS];
-        collect_ctx_t cc = {.blocks = blocks, .count = 0, .cap = SAND_ICON_TEST_MAX_BLOCKS};
-        icon_walk_blocks(icon_sand_rows + icon->offset, icon->w, icon->h, icon->stride, icon->w, icon->h, collect_emit,
-                         &cc);
+        icon_test_collect_t cc = {.blocks = blocks, .count = 0, .cap = SAND_ICON_TEST_MAX_BLOCKS};
+        icon_walk_blocks(icon_sand_rows + icon->offset, icon->w, icon->h, icon->stride, icon->w, icon->h,
+                         icon_test_collect, &cc);
 
         TEST_ASSERT_TRUE_MESSAGE(cc.count > 0, ICONS[i].name);
         for (int b = 0; b < cc.count; b++) {
@@ -150,7 +130,7 @@ test_every_icon_matches_the_artwork_it_replaced(void) {
             const char* row = EXPECTED[i].rows[y];
             for (int x = 0; x < 16; x++) {
                 const bool want = row[x] == 'X';
-                const bool got = baked_bit(icon, x, y);
+                const bool got = icon_test_bit(icon_sand_rows, icon, x, y);
                 TEST_ASSERT_EQUAL_INT_MESSAGE(want, got,
                                               "a baked icon diverges from the bitmap it replaced - see "
                                               "the message above for which row/col TEST_ASSERT_EQUAL_INT "
@@ -167,17 +147,7 @@ static void
 test_every_icon_blocks_matches_actual_run_length(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
         const icon_t* icon = &icon_sand_table[ICONS[i].id];
-        int total = 0;
-        for (int y = 0; y < icon->h; y++) {
-            bool in_run = false;
-            for (int x = 0; x < icon->w; x++) {
-                const bool on = baked_bit(icon, x, y);
-                if (on && !in_run) {
-                    total++;
-                }
-                in_run = on;
-            }
-        }
+        const int total = icon_test_runs(icon_sand_rows, icon);
         TEST_ASSERT_EQUAL_INT_MESSAGE(icon->blocks, total, ICONS[i].name);
     }
 }
@@ -189,7 +159,7 @@ static bool
 icon_is_left_right_symmetric(const icon_t* icon) {
     for (int y = 0; y < icon->h; y++) {
         for (int x = 0; x < icon->w / 2; x++) {
-            if (baked_bit(icon, x, y) != baked_bit(icon, icon->w - 1 - x, y)) {
+            if (icon_test_bit(icon_sand_rows, icon, x, y) != icon_test_bit(icon_sand_rows, icon, icon->w - 1 - x, y)) {
                 return false;
             }
         }
@@ -201,7 +171,7 @@ static bool
 icon_is_top_bottom_symmetric(const icon_t* icon) {
     for (int y = 0; y < icon->h / 2; y++) {
         for (int x = 0; x < icon->w; x++) {
-            if (baked_bit(icon, x, y) != baked_bit(icon, x, icon->h - 1 - y)) {
+            if (icon_test_bit(icon_sand_rows, icon, x, y) != icon_test_bit(icon_sand_rows, icon, x, icon->h - 1 - y)) {
                 return false;
             }
         }
