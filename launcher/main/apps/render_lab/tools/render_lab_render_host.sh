@@ -29,6 +29,8 @@ main/render/raster_show.c
 main/render/raster_motion.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
+main/render/resolution/resolution.c
+main/render/context/render_context.c
 main/anim/anim_track.c
 main/anim/anim_tracks.c
 main/render/r3d_span.c

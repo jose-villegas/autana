@@ -76,7 +76,6 @@ instantiate(const scene_asset_t* asset) {
                                                       .placement = &scene->transforms[c->entity],
                                                       .path = NULL},
                                              .entity = c->entity,
-                                             .render_scale_percent = 50,
                                              .clear = GFX_RGB(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {

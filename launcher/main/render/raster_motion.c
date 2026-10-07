@@ -8,7 +8,6 @@
 #include "render/r3d_project.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster.h"
-#include "render/viewport.h"
 
 /* While drawing, the attachment holds each pixel's tag: 0 for anything
  * that did not move, i + 1 for instance i that did. Resolving turns the tag
@@ -54,13 +53,13 @@ invert(const float m[3][4], float out[3][4]) {
     }
 }
 
-/* World to lens space for `camera` at this picture's size, what the raster
- * itself uses at one tick to the unit, then carried by `placement` when it
- * is not NULL, as r3d_lens_place() does for a placed mesh. */
+/* World to lens space for `camera`, the raster's own lens at one tick to the
+ * unit, then carried by `placement` when it is not NULL, as r3d_lens_place()
+ * does for a placed mesh. */
 static void
 lens_map(const camera_t* camera, const raster_t* raster, int quarter, const r3d_placement_t* placement,
          r3d_lens_t* lens) {
-    r3d_lens_init(lens, camera, 1, (viewport_t){raster->width, raster->height, quarter});
+    raster_lens(raster, camera, 1, quarter, lens);
     if (placement != NULL) {
         r3d_lens_place(lens, placement, 1);
     }
