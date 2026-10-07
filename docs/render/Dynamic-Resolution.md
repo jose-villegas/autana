@@ -28,45 +28,49 @@ render context the cull is the census, `r3d.census`. The suite behind
 these tables draws the test scene's path at every size, both cores, and then
 once more on one core with the span rasterizer stopped after each stage.
 
-<!-- generated: dynres-stages sha256=fe4c2bb9e556b8ba11be8a07966e5285b97ae603700cdca7270409bd3cc270ae -->
+<!-- generated: dynres-stages sha256=3b36ca2c42a37b806256d362a0f4d6587166f11ae76dd5f72d17b97687d1f217 -->
 | Render size | Divisor | Pixels | Frame mean | p50 | max | cull | transform | draw | upscale | 1 core: setup | rows | span setup | fill |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 368x448 | 1.00 | 100% | 108.6 | 109.5 | 128.6 | 0.6 | 4.4 | 93.7 | 9.9 | 33.5 | 33.4 | 33.4 | 48.8 |
-| 294x358 | 1.25 | 64% | 86.3 | 86.5 | 104.7 | 0.7 | 4.4 | 70.9 | 10.3 | 31.9 | 27.2 | 25.6 | 28.3 |
-| 276x336 | 1.33 | 56% | 81.4 | 81.5 | 99.2 | 0.6 | 4.4 | 66.0 | 10.3 | 31.5 | 25.6 | 23.6 | 24.8 |
-| 245x298 | 1.50 | 44% | 72.6 | 72.4 | 88.9 | 0.6 | 4.4 | 58.0 | 9.6 | 30.6 | 23.0 | 20.4 | 18.0 |
-| 210x256 | 1.75 | 33% | 65.3 | 66.1 | 79.9 | 0.6 | 4.4 | 50.9 | 9.3 | 29.6 | 19.9 | 16.8 | 13.7 |
-| 184x224 | 2.00 | 25% | 54.1 | 54.8 | 66.7 | 0.7 | 4.4 | 43.1 | 5.9 | 28.6 | 17.6 | 14.2 | 8.3 |
-| 147x179 | 2.50 | 16% | 48.8 | 49.5 | 60.3 | 0.7 | 4.4 | 35.2 | 8.5 | 27.0 | 14.3 | 10.6 | 3.8 |
-| 122x149 | 3.02 | 11% | 43.7 | 44.4 | 53.7 | 0.7 | 4.4 | 30.2 | 8.4 | 25.6 | 12.0 | 8.2 | 1.7 |
-| 368x224 | 1.00 x 2.00 | 50% | 67.5 | 67.2 | 82.9 | 0.7 | 4.4 | 55.2 | 7.2 | 31.2 | 18.8 | 16.6 | 21.0 |
-| 184x448 | 2.00 x 1.00 | 50% | 83.2 | 83.7 | 98.4 | 0.6 | 4.4 | 70.8 | 7.3 | 31.3 | 31.9 | 28.8 | 21.9 |
-| 245x224 | 1.50 x 2.00 | 33% | 62.0 | 62.3 | 76.4 | 0.6 | 4.4 | 47.5 | 9.4 | 29.6 | 18.1 | 15.3 | 12.7 |
-| 184x298 | 2.00 x 1.50 | 33% | 63.7 | 64.3 | 78.1 | 0.6 | 4.4 | 52.2 | 6.4 | 29.7 | 22.4 | 19.0 | 12.2 |
+| 368x448 | 1.00 | 100% | 107.0 | 108.3 | 126.6 | 0.6 | 4.3 | 91.6 | 10.3 | 32.9 | 33.5 | 33.5 | 44.7 |
+| 294x358 | 1.25 | 64% | 84.2 | 84.6 | 102.4 | 0.6 | 4.4 | 69.4 | 9.7 | 31.3 | 27.3 | 25.6 | 25.6 |
+| 276x336 | 1.33 | 56% | 79.4 | 79.9 | 97.2 | 0.6 | 4.4 | 64.7 | 9.7 | 30.9 | 25.8 | 23.6 | 22.4 |
+| 245x298 | 1.50 | 44% | 70.8 | 70.7 | 87.1 | 0.6 | 4.4 | 56.8 | 8.9 | 30.1 | 23.1 | 20.4 | 16.1 |
+| 210x256 | 1.75 | 33% | 63.6 | 64.6 | 78.1 | 0.6 | 4.4 | 49.9 | 8.6 | 29.0 | 20.0 | 16.8 | 12.3 |
+| 184x224 | 2.00 | 25% | 53.3 | 53.9 | 65.9 | 0.6 | 4.4 | 42.4 | 5.9 | 28.1 | 17.7 | 14.2 | 7.3 |
+| 147x179 | 2.50 | 16% | 47.5 | 48.1 | 58.9 | 0.6 | 4.4 | 34.6 | 7.7 | 26.5 | 14.4 | 10.6 | 3.2 |
+| 122x149 | 3.02 | 11% | 42.4 | 43.2 | 52.4 | 0.7 | 4.4 | 29.8 | 7.5 | 25.2 | 12.1 | 8.2 | 1.3 |
+| 368x224 | 1.00 x 2.00 | 50% | 66.3 | 66.3 | 81.6 | 0.6 | 4.4 | 54.0 | 7.3 | 30.7 | 18.9 | 16.6 | 19.0 |
+| 184x448 | 2.00 x 1.00 | 50% | 81.7 | 82.5 | 96.8 | 0.6 | 4.4 | 69.4 | 7.2 | 30.7 | 32.0 | 28.8 | 19.5 |
+| 245x224 | 1.50 x 2.00 | 33% | 60.4 | 60.6 | 74.7 | 0.6 | 4.4 | 46.6 | 8.7 | 29.1 | 18.2 | 15.3 | 11.3 |
+| 184x298 | 2.00 x 1.50 | 33% | 62.7 | 63.4 | 77.0 | 0.6 | 4.4 | 51.2 | 6.3 | 29.1 | 22.5 | 19.0 | 10.7 |
+| 368x358 | 1.00 x 1.25 | 80% | 90.7 | 91.5 | 110.3 | 0.6 | 4.4 | 76.4 | 9.3 | 32.1 | 27.7 | 26.6 | 34.1 |
+| 368x298 | 1.00 x 1.50 | 67% | 79.7 | 79.8 | 97.6 | 0.6 | 4.4 | 66.4 | 8.2 | 31.6 | 23.8 | 22.1 | 27.2 |
+| 184x358 | 2.00 x 1.25 | 40% | 69.9 | 71.5 | 85.5 | 0.6 | 4.4 | 58.2 | 6.6 | 29.8 | 26.3 | 22.9 | 13.8 |
+| 184x179 | 2.00 x 2.50 | 20% | 47.7 | 48.0 | 59.7 | 0.6 | 4.4 | 37.0 | 5.6 | 27.3 | 14.8 | 11.3 | 4.9 |
+| 184x149 | 2.00 x 3.01 | 17% | 43.9 | 44.6 | 55.0 | 0.6 | 4.4 | 33.4 | 5.4 | 26.7 | 12.8 | 9.3 | 3.6 |
 
 Milliseconds; both cores unless marked one core.
 <!-- /generated: dynres-stages -->
 
-The split compares neighbouring ladder steps and the floor and recovery
-against their isotropic cost references. Both the height-first and width-first
-ladders use only full or half panel width, so every step upscales whole rows
-or pixel pairs down a row map. The mapped sizes remain in the stage table as
-cost references. Rows and span setup follow the height; the height-first
-ladder cuts it before cutting the width. The one-core setup stage is the
+The questions the split answers, as differences between two sizes. A size
+that keeps the panel's width or halves it upscales whole rows or pixel pairs;
+any other width pays the mapped upscale on top, so both ladders keep to those
+two widths. Halving the height saves far more than halving the width, since
+rows and span setup follow the height, so a ladder cuts the height first. The
+floor and the recovery step are named for what they cost, not their scale:
+184x179 costs about what isotropic 2.5x (147x179) does, and 184x149 what 3x
+(122x149) does, the upscale they save paying for the pixels they keep. The one-core setup stage barely moves with size: it is the
 floor no step goes under.
 
-The ladders are defined in `sponza_content.c` and
-`suite_raster_scale_perf.c`. Both use 184x179 as the floor and reserve 184x149
-for recovery. Their cost targets are the isotropic 147x179 and 122x149
-counterparts, called 2.5x and 3x; those names describe cost, not pixel scale.
-
-<!-- generated: dynres-findings sha256=4d33a41910767f4d80a7b3a3426d37abd73ec023fab27bcb0dee7a63afc266b1 -->
+<!-- generated: dynres-findings sha256=79ffe301858e37dc53400e4a19d81368b4bfbe271fdf67f6d74ba19bf8917f9d -->
 | Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |
 |---|---|---|---|---|---|---|---|
-| 1.5x over 2x | 245x298 minus 184x224 | 18.5 | 14.8 | 3.7 | 5.3 | 6.2 | 9.6 |
-| 2x over 2.5x | 184x224 minus 147x179 | 5.3 | 7.9 | -2.6 | 3.3 | 3.6 | 4.5 |
-| full height over half | 368x448 minus 368x224 | 41.2 | 38.5 | 2.7 | 14.5 | 16.9 | 27.8 |
-| full width over half | 368x448 minus 184x448 | 25.4 | 22.9 | 2.6 | 1.5 | 4.7 | 27.0 |
+| half width, more height over half | 184x298 minus 184x224 | 9.4 | 8.9 | 0.5 | 4.8 | 4.8 | 3.4 |
+| half over floor | 184x224 minus 184x179 | 5.6 | 5.3 | 0.3 | 3.0 | 2.9 | 2.4 |
+| floor over 2.5x cost reference | 184x179 minus 147x179 | 0.2 | 2.4 | -2.2 | 0.4 | 0.7 | 1.7 |
+| recovery over 3x cost reference | 184x149 minus 122x149 | 1.5 | 3.6 | -2.1 | 0.7 | 1.1 | 2.3 |
+| full height over half | 368x448 minus 368x224 | 40.7 | 37.7 | 3.0 | 14.6 | 16.9 | 25.8 |
+| full width over half | 368x448 minus 184x448 | 25.3 | 22.2 | 3.1 | 1.5 | 4.7 | 25.2 |
 <!-- /generated: dynres-findings -->
 
 ## The policies on the board
@@ -76,17 +80,17 @@ manager, at two budgets; the fixed row is the camera's half scale. The quality
 columns score every frame's size against the reference render of the same
 pose at full size ([Render-Harness.md](../tools/Render-Harness.md)).
 
-<!-- generated: dynres-policies sha256=0aa73aa209df50104b8b5ddf83836d1e4a005981e8eab19bb89a3200ea9a7618 -->
+<!-- generated: dynres-policies sha256=454bcd3b44ad75301eaae49dcef69c2da3f94f9cc36bb12cdd6a541e3744b9fb -->
 | Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 60.0 | fixed | half | 54.8 | 66.5 | 68.6 | 25.3% | 0 | 184x224 100% | 9.30 | 0.5562 |
-| 60.0 | stepped | isotropic | 52.1 | 60.7 | 66.9 | 10.2% | 11 | 245x298 3%, 210x256 17%, 184x224 27%, 147x179 53% | 9.38 | 0.5502 |
-| 60.0 | predicted | isotropic | 54.6 | 60.4 | 64.7 | 7.2% | 14 | 294x358 1%, 245x298 9%, 210x256 18%, 184x224 32%, 147x179 39% | 9.37 | 0.5514 |
-| 60.0 | predicted | height | 53.9 | 60.4 | 63.2 | 7.0% | 14 | 368x298 2%, 368x224 15%, 245x224 16%, 184x224 28%, 147x179 39% | 9.35 | 0.5526 |
-| 75.0 | fixed | half | 54.8 | 66.5 | 68.6 | 0.0% | 0 | 184x224 100% | 9.30 | 0.5562 |
-| 75.0 | stepped | isotropic | 65.7 | 74.8 | 82.5 | 4.7% | 12 | 368x448 2%, 294x358 11%, 245x298 19%, 210x256 41%, 184x224 28% | 9.30 | 0.5564 |
-| 75.0 | predicted | isotropic | 66.5 | 73.3 | 77.9 | 1.5% | 10 | 294x358 15%, 245x298 27%, 210x256 39%, 184x224 20% | 9.30 | 0.5566 |
-| 75.0 | predicted | height | 66.1 | 73.7 | 81.3 | 2.9% | 12 | 368x358 4%, 368x298 19%, 368x224 38%, 245x224 25%, 184x224 15% | 9.27 | 0.5594 |
+| 60.0 | fixed | half | 54.0 | 65.6 | 67.7 | 23.4% | 0 | 184x224 100% | 9.30 | 0.5562 |
+| 60.0 | stepped | width | 51.1 | 60.8 | 66.9 | 10.6% | 13 | 184x448 2%, 184x358 3%, 184x298 18%, 184x224 28%, 184x179 49% | 9.31 | 0.5549 |
+| 60.0 | predicted | width | 53.9 | 60.1 | 63.1 | 5.8% | 14 | 184x448 2%, 184x358 13%, 184x298 16%, 184x224 31%, 184x179 38% | 9.31 | 0.5551 |
+| 60.0 | predicted | height | 52.6 | 60.1 | 61.8 | 5.9% | 10 | 368x298 3%, 368x224 16%, 184x224 44%, 184x179 37% | 9.30 | 0.5560 |
+| 75.0 | fixed | half | 54.0 | 65.6 | 67.7 | 0.0% | 0 | 184x224 100% | 9.30 | 0.5562 |
+| 75.0 | stepped | width | 64.5 | 74.6 | 82.0 | 4.1% | 12 | 368x448 2%, 184x448 14%, 184x358 25%, 184x298 34%, 184x224 25% | 9.28 | 0.5574 |
+| 75.0 | predicted | width | 66.1 | 73.8 | 77.3 | 1.2% | 10 | 184x448 22%, 184x358 32%, 184x298 29%, 184x224 17% | 9.28 | 0.5576 |
+| 75.0 | predicted | height | 65.2 | 74.1 | 80.7 | 2.5% | 12 | 368x448 2%, 368x358 2%, 368x298 25%, 368x224 41%, 184x224 30% | 9.26 | 0.5599 |
 
 Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM are against the reference at full size, lower dE and higher SSIM being closer.
 <!-- /generated: dynres-policies -->
@@ -102,12 +106,12 @@ What the table shows:
   just left.
 - **Quality.** The scorer's dE is mostly the bake against the reference, a
   floor every size shares, so the differences are small; the order is what
-  counts. A full-width, half-height render scores closer to the reference
-  than its isotropic cost reference, so the height-first ladder buys
-  more picture for the same milliseconds.
-- **Recovery.** The recovery step is available only past the panic share.
-  Its cost target is the 3x isotropic reference; the stage split checks it
-  against the setup floor.
+  counts. Cutting the height first keeps the full width longer and scores
+  closer to the reference than cutting the width first at the same budget,
+  so the height-first ladder buys more picture for the same milliseconds.
+- **Recovery.** The recovery step is reached only past the panic share;
+  neither budget here comes near it. Below the floor a step buys little, as
+  the setup floor in the stage table shows.
 
 ![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 
