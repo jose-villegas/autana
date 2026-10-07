@@ -442,12 +442,9 @@ def _gpu(args, out, work, executor):
         for prefix in ("lite", "full") for suffix in ("", ".crops")) + "\n")
     (out / "tables/sponza-flat-fit.md").write_text(markdown(
         ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"],
-        [row for row in rows if row[0] in ("flat-GI-bake", "flat-GI-fit", "lite-GI-fit")]) + "
-" + "
-".join(
+        [row for row in rows if row[0] in ("flat-GI-bake", "flat-GI-fit", "lite-GI-fit")]) + "\n" + "\n".join(
         f"![Flat bake, lite fit and flat fit{suffix}](../images/render/gpu/appearance-indirect-flat{suffix}.png)"
-        for suffix in ("", ".crops")) + "
-")
+        for suffix in ("", ".crops")) + "\n")
     with (out / "tables/sponza-gpu.md").open("a") as output:
         output.write("\n![Full bake and path cull](../images/render/gpu/appearance-path-culled.png)\n")
         if (out / "render/gpu/appearance-path-culled.crops.png").exists():
