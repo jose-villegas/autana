@@ -52,7 +52,7 @@ sequenceDiagram
     participant App as app
     Shell->>Core1: gfx_present_begin() sends the last frame
     Shell->>App: update(), if the app has one
-    Note over Shell: scene_render(): clocks, moved entities,<br/>raster_draw() on both cores into scratch
+    Note over Shell: scene_render(): clocks, moved entities,<br/>render_context_draw() on both cores into scratch
     Core1-->>Shell: gfx_present_wait()
     Note over Shell: scene_compose(): raster_upscale()<br/>into the framebuffer
     Shell->>App: frame() draws over the scene

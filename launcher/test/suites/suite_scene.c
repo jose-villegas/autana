@@ -34,12 +34,15 @@
 #include "test_asset_dir.h"
 #endif
 
-#define SIZE       64
-#define CENTER     (SIZE / 2)
-#define CLEAR_RGB  0x336699
-#define QUAD_BYTES 132
-#define PACK_MAX   8192
-#define SENTINEL   0x5A5A
+#define SIZE          64
+#define CENTER        (SIZE / 2)
+#define CLEAR_RGB     0x336699
+#define QUAD_BYTES    132
+#define PACK_MAX      8192
+#define SENTINEL      0x5A5A
+
+/* Copies of one mesh a test draws, to make a culled list worth measuring. */
+#define INSTANCES_MAX 64
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
  * one after another after the 44-byte header. */
@@ -302,6 +305,8 @@ typedef struct {
     void* raw;      /* what the aligned allocation gave */
     uint8_t* bytes; /* aligned inside it, as a pack must be */
     uint16_t* pixels;
+    uint16_t* held; /* a picture kept to compare the next with */
+    r3d_instance_t* instances;
     asset_pack_t pack;
     scene_target_t target;
 } fixture_t;
@@ -313,6 +318,8 @@ release_fixture(void) {
     scene_unload_all();
     test_free_aligned(fx.raw);
     free(fx.pixels);
+    free(fx.held);
+    free(fx.instances);
     fx = (fixture_t){0};
 }
 
@@ -323,9 +330,13 @@ fixture(void) {
     scene_unload_all();
     fx.bytes = test_alloc_aligned(PACK_MAX, ASSET_PACK_BASE_ALIGN, &fx.raw);
     fx.pixels = malloc(sizeof(*fx.pixels) * SIZE * SIZE);
+    fx.held = malloc(sizeof(*fx.held) * SIZE * SIZE);
+    fx.instances = malloc(sizeof(*fx.instances) * INSTANCES_MAX);
+    suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_NOT_NULL(fx.bytes);
     TEST_ASSERT_NOT_NULL(fx.pixels);
-    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(fx.held);
+    TEST_ASSERT_NOT_NULL(fx.instances);
     const uint32_t total = make_pack(fx.bytes);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
     fx.target = (scene_target_t){fx.pixels, SIZE, SIZE};
@@ -989,6 +1000,80 @@ test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(voi
     free(half);
 }
 
+/* Three steps of the 64-pixel destination, and a model that prices a step by
+ * its share of the pixels alone: 1000, 562 and 250 microseconds. */
+static const resolution_step_t LADDER[3] = {{SIZE, SIZE}, {SIZE * 3 / 4, SIZE * 3 / 4}, {SIZE / 2, SIZE / 2}};
+static const resolution_model_t PIXEL_MODEL = {.per_pixel_share_us = 1000.0F};
+
+/* The frame as the predictor draws it: opting in afresh puts the predictor on
+ * `first`, so the census is taken there, and the budget picks the step. */
+static void
+predicted_frame(int first, int32_t budget_us) {
+    const resolution_config_t config = resolution_config(LADDER, 3, 3, budget_us);
+    render_context_set_dynamic_resolution(render_context_main(), &config, &PIXEL_MODEL, first);
+    frame(0);
+}
+
+/* A draw is censused where the predictor stood and drawn where it chose, from
+ * the list the census kept: finer, coarser or two steps away, the picture and
+ * the stats are those of a draw at the chosen size alone. */
+static void
+test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
+    fixture();
+    show("test_pair", NULL);
+
+    const struct {
+        int first;
+        int32_t budget_us;
+        int chosen;
+    } cases[] = {{0, 700, 1}, {2, 700, 1}, {0, 300, 2}, {2, 2000, 0}, {1, 2000, 0}, {1, 300, 2}};
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        predicted_frame(cases[i].first, cases[i].budget_us);
+        const render_context_frame_t drawn = render_context_frame(render_context_main());
+        TEST_ASSERT_EQUAL_INT(cases[i].chosen, drawn.step);
+        TEST_ASSERT_EQUAL_INT(LADDER[cases[i].chosen].width, drawn.width);
+        memcpy(fx.held, fx.pixels, sizeof(*fx.held) * SIZE * SIZE);
+
+        render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
+        render_context_set_scale(render_context_main(), 100 * LADDER[cases[i].chosen].width / SIZE);
+        frame(0);
+        const render_context_frame_t fixed = render_context_frame(render_context_main());
+        TEST_ASSERT_EQUAL_INT(drawn.width, fixed.width);
+        TEST_ASSERT_EQUAL_INT(fixed.stats.clusters, drawn.stats.clusters);
+        TEST_ASSERT_EQUAL_INT(fixed.stats.triangles, drawn.stats.triangles);
+        TEST_ASSERT_EQUAL_INT(4, drawn.stats.triangles);
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * SIZE * SIZE));
+    }
+}
+
+/* The scratch block is taken once, for the finest step and the list the
+ * census keeps, wherever the predictor stands when it is taken. */
+static void
+test_the_scratch_holds_the_finest_step_and_the_culled_list(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    r3d_instance_t* instances = fx.instances;
+    for (int i = 0; i < INSTANCES_MAX; i++) {
+        instances[i] = (r3d_instance_t){&scene->renderers[0].mesh, NULL};
+    }
+    const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
+    render_context_t* c = render_context_main();
+    render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
+    const camera_t view = r3d_scene_camera_at(&scene->cameras[0].lens, 0);
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0, 0, SIZE, SIZE));
+    const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
+
+    raster_t finest = c->raster;
+    finest.width = LADDER[0].width;
+    finest.height = LADDER[0].height;
+    const size_t needed = raster_scratch_bytes(&finest) + (sizeof(uint16_t) * raster_culled_length(&finest));
+    TEST_ASSERT_TRUE(taken >= needed);
+    TEST_ASSERT_TRUE(c->scratch_bytes == needed);
+}
+
 static void
 test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time(void) {
     fixture();
@@ -1056,6 +1141,8 @@ run_scene_suite(void) {
     RUN_TEST(test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time);
     RUN_TEST(test_a_loaded_scene_that_is_not_active_keeps_its_time);
     RUN_TEST(test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for);
+    RUN_TEST(test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose);
+    RUN_TEST(test_the_scratch_holds_the_finest_step_and_the_culled_list);
 }
 
 SUITE_REGISTER(run_scene_suite);
