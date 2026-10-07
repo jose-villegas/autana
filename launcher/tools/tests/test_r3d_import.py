@@ -809,6 +809,7 @@ class ReferenceObjectTests(unittest.TestCase):
         self.assertEqual(bounced_job.bake.indirect.bounces, 2)
 
 
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class PathLightForTests(unittest.TestCase):
     def setUp(self):
         mesh_import.PATH_LIGHTS.clear()
