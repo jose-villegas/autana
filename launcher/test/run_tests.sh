@@ -145,6 +145,8 @@ $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/r3d_pipeline.c
 $MAIN_DIR/render/upscale.c
+$MAIN_DIR/render/resolution/resolution.c
+$MAIN_DIR/render/context/render_context.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
