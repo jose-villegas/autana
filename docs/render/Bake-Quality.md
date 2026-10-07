@@ -128,14 +128,14 @@ heatmaps and enlarged differences. The generated comparison below reports
 appearance, normal error, path culling and predicted time. GPU fits are scratch
 recipe outputs; the board table measures the committed scene assets.
 
-<!-- generated: sponza-gpu sha256=2d2b343224290c596953e154690dab0e5f493bb1a63bc9b508693ba8914871b2 -->
+<!-- generated: sponza-gpu sha256=e6a32c68fe3c8bd6a638b145182444447be4f46e8ab997f1f8c9f95638031a14 -->
 | Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
 |---|---|---|---|---|---|---|
-| lite-GI-bake | 8668 | 11.053 | 34.032 | 0.542 | 26.697 | 46.767 |
-| lite-GI-fit | 8672 | 5.651 | 15.390 | 0.750 | 15.711 | 45.686 |
-| full-GI-bake | 17377 | 9.361 | 28.251 | 0.589 | 21.857 | 59.052 |
-| full-path-culled | 11458 | 9.365 | 28.267 | 0.589 | 19.382 | 50.446 |
-| full-GI-fit | 17287 | 5.131 | 13.321 | 0.788 | 13.276 | 57.352 |
+| lite-GI-bake | 8669 | 11.310 | 33.189 | 0.535 | 24.944 | 47.192 |
+| lite-GI-fit | 8672 | 5.673 | 15.353 | 0.749 | 15.390 | 45.473 |
+| full-GI-bake | 17378 | 9.249 | 27.057 | 0.602 | 21.417 | 58.479 |
+| full-path-culled | 10723 | 9.242 | 27.010 | 0.602 | 19.381 | 48.741 |
+| full-GI-fit | 17152 | 5.138 | 13.341 | 0.788 | 13.202 | 56.984 |
 
 ![lite GI bake and fit](../images/render/gpu/appearance-indirect-lite.png)
 ![lite GI bake and fit.crops](../images/render/gpu/appearance-indirect-lite.crops.png)
@@ -155,16 +155,16 @@ held-out appearance against predicted time. These
 predictions use the cost weights; refresh the board stage before interpreting
 them as a model of current hardware performance.
 
-<!-- generated: sponza-budget sha256=4189c3425e23216f36bf48ac944e8942709006c6868f5f9574a2da3e8509173d -->
+<!-- generated: sponza-budget sha256=86eff39d79bc44a2062ee0651d7d99686bf3651e0637a19c550fd402e01c0ade -->
 | Budget | Cost weight | Triangles | Held-out dE76 | Predicted ms |
 |---|---|---|---|---|
-| 4000 | 0.0 | 4000 | 5.903 | 37.617 |
-| 4000 | 0.1 | 4000 | 6.027 | 36.208 |
-| 6000 | 0.0 | 6000 | 5.721 | 41.304 |
-| 6000 | 0.1 | 6000 | 5.887 | 39.098 |
-| 8672 | 0.0 | 8672 | 5.651 | 45.686 |
-| 8672 | 0.1 | 8672 | 5.783 | 41.929 |
-| 17381 | 0.0 | 17287 | 5.131 | 57.352 |
+| 4000 | 0.0 | 4000 | 5.918 | 37.836 |
+| 4000 | 0.1 | 4000 | 6.032 | 36.242 |
+| 6000 | 0.0 | 6000 | 5.704 | 41.349 |
+| 6000 | 0.1 | 6000 | 5.858 | 39.010 |
+| 8672 | 0.0 | 8672 | 5.673 | 45.473 |
+| 8672 | 0.1 | 8672 | 5.791 | 41.727 |
+| 17381 | 0.0 | 17152 | 5.138 | 56.984 |
 
 ![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)
 <!-- /generated: sponza-budget -->
@@ -172,13 +172,13 @@ them as a model of current hardware performance.
 The normal sweep varies the normal term while retaining the lite recipe's
 other settings. The angle heatmaps show where geometry differs from the source.
 
-<!-- generated: sponza-normal sha256=e5ef34f5995bdc71541d246daed863157ca7d3fd4542aca4ce8b69f516a279c4 -->
+<!-- generated: sponza-normal sha256=074722bdb6056ba84a2ce228780f223740f461abd4501dd37d1e363b01c0ff39 -->
 | Normal weight | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
 |---|---|---|---|---|---|---|
-| normal-0 | 8672 | 5.622 | 15.237 | 0.751 | 19.728 | 45.505 |
-| normal-0.1 | 8672 | 5.617 | 15.126 | 0.751 | 18.648 | 45.578 |
-| normal-0.3 | 8672 | 5.605 | 15.081 | 0.753 | 17.639 | 45.613 |
-| normal-1 | 8672 | 5.651 | 15.390 | 0.750 | 15.711 | 45.686 |
+| normal-0 | 8672 | 5.669 | 15.233 | 0.751 | 18.924 | 45.396 |
+| normal-0.1 | 8672 | 5.662 | 15.363 | 0.749 | 18.239 | 45.528 |
+| normal-0.3 | 8672 | 5.661 | 15.303 | 0.750 | 17.056 | 45.543 |
+| normal-1 | 8672 | 5.673 | 15.353 | 0.749 | 15.390 | 45.473 |
 
 ![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)
 <!-- /generated: sponza-normal -->
