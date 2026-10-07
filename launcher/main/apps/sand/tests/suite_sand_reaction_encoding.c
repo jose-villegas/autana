@@ -33,6 +33,46 @@
 /* encoding: no reaction may mint an ambiguous byte */
 
 static void
+test_empty_runs_preserve_reaction_grid_and_material_mask(void) {
+    fixture();
+
+    enum { ROW_W = 67, ROW_H = 3 };
+
+    uint8_t* grid = malloc(ROW_W * ROW_H);
+    sand_t* sim = malloc(sizeof *sim);
+    TEST_ASSERT_NOT_NULL(grid);
+    TEST_ASSERT_NOT_NULL(sim);
+    const bool two_core_before = sand_two_core_step_enabled();
+    sand_set_two_core_step(false);
+    for (unsigned seed = 1; seed <= 4; seed++) {
+        sand_init(sim, grid, ROW_W, ROW_H, seed);
+        sand_set(sim, 1, 1, EMBER);
+        sand_set(sim, 4, 1, STONE);
+        sand_set(sim, 17, 1, EMBER);
+        sand_set(sim, 34, 1, WOOD);
+        sand_set(sim, 49, 1, EMBER);
+        sim->last_step_dx = -1;
+        sim->last_step_dy = 0;
+        sand_reactions_cells_dispatched = 0;
+        sand_step_reactions(sim);
+        unsigned hash = 2166136261U;
+        for (int i = 0; i < ROW_W * ROW_H; i++) {
+            hash = (hash ^ grid[i]) * 16777619U;
+        }
+        static const unsigned expected_hash[] = {0x3f5b7751U, 0xab700f36U, 0xab700f36U, 0xd16230d9U};
+        TEST_ASSERT_EQUAL_HEX32(expected_hash[seed - 1], hash);
+        TEST_ASSERT_EQUAL_HEX16(0x0069, sim->may_have_materials);
+        if (seed == 1) {
+            TEST_ASSERT_EQUAL_UINT8(CELL_MAKE(MAT_FIRE, 15), grid[ROW_W + 2]);
+        }
+        TEST_ASSERT_EQUAL_UINT(ROW_W * ROW_H, sand_reactions_cells_dispatched);
+    }
+    sand_set_two_core_step(two_core_before);
+    free(sim);
+    free(grid);
+}
+
+static void
 assert_reaction_field_never_bare_extended(uint8_t v, const char* field, const char* owner) {
     char why[320];
     snprintf(why, sizeof why,
@@ -2352,6 +2392,7 @@ test_the_boiler_end_to_end(void) {
 
 void
 run_sand_reaction_encoding_suite(void) {
+    RUN_TEST(test_empty_runs_preserve_reaction_grid_and_material_mask);
     RUN_TEST(test_a_reaction_never_mints_a_static_from_gunpowder_or_the_reverse);
     RUN_TEST(test_wood_burning_state_is_byte_identical_under_lit_from);
     RUN_TEST(test_reaction_first_stage_never_dispatches_later_than_the_ladder);

@@ -358,8 +358,8 @@ static void
 spend_soil_moisture(sand_t* s, int w, const reaction_t* r, int soil_at, uint8_t amount, int contact_at,
                     int root_depth) {
     const cell_t soil = s->cells[soil_at];
-    s->cells[soil_at] = soil_set_moisture(soil, (uint8_t)(moisture_of(soil, reaction_of(soil)) - amount), 0);
-    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
+    retone_moisture(s, soil_at % w, soil_at / w,
+                    soil_set_moisture(soil, (uint8_t)(moisture_of(soil, reaction_of(soil)) - amount), 0));
 
     if (r->roots == 0 || contact_at < 0 || root_depth != 0) {
         return;
@@ -447,12 +447,8 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
         return true;
     }
     const cell_t src_c = s->cells[src.at], dst_c = s->cells[dst.at];
-    s->cells[src.at] = soil_set_moisture(src_c, (uint8_t)(src.m - 1), (uint8_t)(dst.m + 1));
-    s->cells[dst.at] = with_moisture(dst_c, (uint8_t)(dst.m + 1), reaction_of(dst_c));
-    mark_rows(s, src.x, src.y, src.y);
-    mark_rows(s, dst.x, dst.y, dst.y);
-    wake_block_and_neighbors(s, src.x, src.y);
-    wake_block_and_neighbors(s, dst.x, dst.y);
+    retone_moisture(s, src.x, src.y, soil_set_moisture(src_c, (uint8_t)(src.m - 1), (uint8_t)(dst.m + 1)));
+    retone_moisture(s, dst.x, dst.y, with_moisture(dst_c, (uint8_t)(dst.m + 1), reaction_of(dst_c)));
     return true;
 }
 
@@ -613,9 +609,7 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
 
     const cell_t soil = s->cells[soil_at];
     const reaction_t* sr = reaction_of(soil);
-    s->cells[soil_at] = with_moisture(soil, (uint8_t)(moisture_of(soil, sr) + 1), sr);
-    mark_rows(s, soil_at % w, soil_at / w, soil_at / w);
-    wake_block_and_neighbors(s, soil_at % w, soil_at / w);
+    retone_moisture(s, soil_at % w, soil_at / w, with_moisture(soil, (uint8_t)(moisture_of(soil, sr) + 1), sr));
     return true;
 }
 
