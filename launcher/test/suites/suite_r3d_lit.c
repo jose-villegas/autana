@@ -1400,6 +1400,7 @@ typedef struct {
 } parts_t;
 
 static parts_t* shared_parts;
+static parts_t* other_parts; /* a second mesh, for a test of two */
 
 static parts_t*
 parts_buffer(void) {
@@ -1409,6 +1410,16 @@ parts_buffer(void) {
     TEST_ASSERT_NOT_NULL(shared_parts);
     suite_set_test_cleanup(release_fixture);
     return shared_parts;
+}
+
+static parts_t*
+second_parts_buffer(void) {
+    if (other_parts == NULL) {
+        other_parts = malloc(sizeof(*other_parts));
+    }
+    TEST_ASSERT_NOT_NULL(other_parts);
+    suite_set_test_cleanup(release_fixture);
+    return other_parts;
 }
 
 static void
@@ -1759,6 +1770,78 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(upscaled);
 }
 
+/* The buffers a census test works in: freed by the cleanup, so a failed
+ * assertion leaves nothing behind in the arena. */
+static struct {
+    void* scratch;
+    uint16_t* culled;
+    uint16_t* want;
+} census_held;
+
+/* A raster of `instances` drawn as `W` by `H`, upscaled to twice that, with
+ * its buffers. */
+static raster_t
+census_raster(const r3d_instance_t* instances, int count) {
+    raster_t raster = {.instances = instances,
+                       .instance_count = count,
+                       .width = W,
+                       .height = H,
+                       .clear = SKY,
+                       .upscaled = true,
+                       .destination_width = 2 * W,
+                       .destination_height = 2 * H};
+    census_held.scratch = malloc(raster_scratch_bytes(&raster));
+    census_held.culled = malloc(sizeof(uint16_t) * raster_culled_length(&raster));
+    census_held.want = malloc(sizeof(uint16_t) * 2 * (size_t)W * H);
+    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(census_held.scratch);
+    TEST_ASSERT_NOT_NULL(census_held.culled);
+    TEST_ASSERT_NOT_NULL(census_held.want);
+    raster.scratch = census_held.scratch;
+    return raster;
+}
+
+/* The raster at size `z` of `sizes`, drawn directly and then from a census
+ * taken at the next size: the same picture, depth and survivors. */
+static void
+expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int sizes[][2], int z) {
+    uint16_t* want = census_held.want;
+    raster->width = sizes[z][0];
+    raster->height = sizes[z][1];
+    const size_t drawn = (size_t)raster->width * (size_t)raster->height;
+    memset(r3d_pipeline_carve(raster).color, 0xEE, sizeof(uint16_t) * drawn); /* upscaling never clears */
+    const raster_stats_t direct = raster_draw(raster, camera, 0);
+    memcpy(want, r3d_pipeline_carve(raster).color, sizeof(*want) * drawn);
+    memcpy(want + drawn, r3d_pipeline_carve(raster).depth, sizeof(*want) * drawn);
+
+    raster->width = sizes[(z + 1) % 3][0]; /* the census at another size */
+    raster->height = sizes[(z + 1) % 3][1];
+    const raster_stats_t counted = raster_census(raster, camera, 0, census_held.culled);
+    raster->width = sizes[z][0];
+    raster->height = sizes[z][1];
+    memset(r3d_pipeline_carve(raster).color, 0xEE, sizeof(uint16_t) * drawn);
+    raster_draw_culled(raster, camera, 0, census_held.culled);
+
+    TEST_ASSERT_GREATER_THAN_INT(0, direct.clusters);
+    TEST_ASSERT_EQUAL_INT(direct.clusters, counted.clusters);
+    TEST_ASSERT_EQUAL_INT(direct.triangles, counted.triangles);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, r3d_pipeline_carve(raster).color, drawn);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want + drawn, r3d_pipeline_carve(raster).depth, drawn);
+}
+
+/* Every size of the table, from eyes that cull different parts. */
+static void
+expect_census_draws_match_at_any_size(raster_t* raster) {
+    static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
+    static const int sizes[][2] = {{W, H}, {W / 2, H}, {W, H / 2 + 3}};
+    for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
+        const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        for (int z = 0; z < 3; z++) {
+            expect_census_draw_matches(raster, &camera, sizes, z);
+        }
+    }
+}
+
 /* Culled once at one size and drawn at another, two instances (the second
  * moved, so each keeps its own list): the same picture, depth and survivors
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
@@ -1768,52 +1851,24 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     build_wall_and_stack(p);
     const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
     const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
-    raster_t raster = {.instances = instances,
-                       .instance_count = 2,
-                       .width = W,
-                       .height = H,
-                       .clear = SKY,
-                       .upscaled = true,
-                       .destination_width = 2 * W,
-                       .destination_height = 2 * H};
-    const size_t pixels = (size_t)W * H;
-    raster.scratch = malloc(raster_scratch_bytes(&raster));
-    uint16_t* culled = malloc(sizeof(*culled) * raster_culled_length(&raster));
-    uint16_t* want = malloc(sizeof(*want) * 2 * pixels);
-    TEST_ASSERT_NOT_NULL(raster.scratch);
-    TEST_ASSERT_NOT_NULL(culled);
-    TEST_ASSERT_NOT_NULL(want);
+    raster_t raster = census_raster(instances, 2);
+    expect_census_draws_match_at_any_size(&raster);
+}
 
-    static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
-    static const int sizes[][2] = {{W, H}, {W / 2, H}, {W, H / 2 + 3}};
-    for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
-        for (int z = 0; z < (int)(sizeof sizes / sizeof sizes[0]); z++) {
-            raster.width = sizes[z][0];
-            raster.height = sizes[z][1];
-            const size_t drawn = (size_t)raster.width * (size_t)raster.height;
-            memset(r3d_pipeline_carve(&raster).color, 0xEE, sizeof(uint16_t) * drawn); /* upscaling never clears */
-            const raster_stats_t direct = raster_draw(&raster, &camera, 0);
-            memcpy(want, r3d_pipeline_carve(&raster).color, sizeof(*want) * drawn);
-            memcpy(want + drawn, r3d_pipeline_carve(&raster).depth, sizeof(*want) * drawn);
-
-            raster.width = sizes[(z + 1) % 3][0]; /* the census at another size */
-            raster.height = sizes[(z + 1) % 3][1];
-            const raster_stats_t counted = raster_census(&raster, &camera, 0, culled);
-            raster.width = sizes[z][0];
-            raster.height = sizes[z][1];
-            memset(r3d_pipeline_carve(&raster).color, 0xEE, sizeof(uint16_t) * drawn);
-            raster_draw_culled(&raster, &camera, 0, culled);
-
-            TEST_ASSERT_EQUAL_INT(direct.clusters, counted.clusters);
-            TEST_ASSERT_EQUAL_INT(direct.triangles, counted.triangles);
-            TEST_ASSERT_EQUAL_HEX16_ARRAY(want, r3d_pipeline_carve(&raster).color, drawn);
-            TEST_ASSERT_EQUAL_HEX16_ARRAY(want + drawn, r3d_pipeline_carve(&raster).depth, drawn);
-        }
-    }
-    free(want);
-    free(culled);
-    free(raster.scratch);
+/* Each instance's list is as long as its own mesh's clusters: three
+ * instances of two meshes with different cluster counts, so the third one's
+ * list starts after a list shorter than the first's. */
+static void
+test_a_census_list_steps_by_each_instances_own_mesh(void) {
+    parts_t* const wall = parts_buffer();
+    build_wall_and_stack(wall);
+    parts_t* const floor = second_parts_buffer();
+    build_floor_and_rects(floor);
+    TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
+    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
+    const r3d_instance_t instances[] = {{&wall->mesh, NULL}, {&floor->mesh, NULL}, {&wall->mesh, &moved}};
+    raster_t raster = census_raster(instances, 3);
+    expect_census_draws_match_at_any_size(&raster);
 }
 
 /* A destination the raster's own size is a copy of it, taking
@@ -2228,6 +2283,14 @@ static void
 release_fixture(void) {
     free(shared_parts);
     shared_parts = NULL;
+    free(other_parts);
+    other_parts = NULL;
+    free(census_held.scratch);
+    free(census_held.culled);
+    free(census_held.want);
+    census_held.scratch = NULL;
+    census_held.culled = NULL;
+    census_held.want = NULL;
     free(depth);
     depth = NULL;
     free(color);
@@ -2326,6 +2389,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
+    RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);

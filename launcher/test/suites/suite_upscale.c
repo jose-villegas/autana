@@ -5,6 +5,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "test_cleanup.h"
+
 #include "render/upscale.h"
 
 static void
@@ -128,43 +130,79 @@ assert_each_pixel_follows_the_maps(const upscale_t* scale, const uint16_t* sourc
     }
 }
 
-/* Upscales in two ranges split on an odd row, with and without depth, and
- * holds every destination pixel to what the maps say it shows. */
+#define UNWRITTEN 0xA5A5
+
+/* The buffers one case works in, freed by the cleanup so a failed assertion
+ * leaves nothing behind. */
+static struct {
+    uint16_t *source, *depth, *actual, *columns, *rows;
+} held;
+
+static void
+release_buffers(void) {
+    free(held.rows);
+    free(held.columns);
+    free(held.actual);
+    free(held.depth);
+    free(held.source);
+    held.source = held.depth = held.actual = held.columns = held.rows = NULL;
+}
+
+/* From `first` on, nothing was written. */
+static void
+assert_unwritten_from(const uint16_t* actual, size_t first, size_t count) {
+    for (size_t i = first; i < first + count; i++) {
+        TEST_ASSERT_EQUAL_HEX16(UNWRITTEN, actual[i]);
+    }
+}
+
+/* A call for rows [first, first + count) writes those and nothing else, not
+ * even a row past the destination, which `actual` holds one more of. */
+static void
+assert_a_range_writes_only_its_rows(const upscale_t* scale, const uint16_t* depth, int split) {
+    const size_t width = (size_t)scale->destination_width;
+    const size_t height = (size_t)scale->destination_height;
+    for (size_t i = 0; i < (height + 1) * width; i++) {
+        held.actual[i] = UNWRITTEN;
+    }
+    upscale_rows(scale, held.source, depth, 0xF00D, held.actual, 0, split);
+    assert_unwritten_from(held.actual, (size_t)split * width, ((height + 1) - (size_t)split) * width);
+    upscale_rows(scale, held.source, depth, 0xF00D, held.actual, split, scale->destination_height - split);
+    assert_unwritten_from(held.actual, height * width, width);
+    assert_each_pixel_follows_the_maps(scale, held.source, depth, held.actual);
+}
+
+/* Upscales in two ranges split on every row, with and without depth, and
+ * holds every destination pixel to what the maps say it shows, and the rows
+ * outside each range to what they were. */
 static void
 assert_matches_the_maps(const path_case_t* c) {
     const size_t source_pixels = (size_t)c->source_width * (size_t)c->source_height;
-    const size_t destination_pixels = (size_t)c->destination_width * (size_t)c->destination_height;
-    uint16_t* source = malloc(sizeof(*source) * source_pixels);
-    uint16_t* depth = malloc(sizeof(*depth) * source_pixels);
-    uint16_t* actual = malloc(sizeof(*actual) * destination_pixels);
-    uint16_t* columns = malloc(sizeof(*columns) * (size_t)c->destination_width);
-    uint16_t* rows = malloc(sizeof(*rows) * (size_t)c->destination_height);
-    TEST_ASSERT_NOT_NULL(source);
-    TEST_ASSERT_NOT_NULL(depth);
-    TEST_ASSERT_NOT_NULL(actual);
-    TEST_ASSERT_NOT_NULL(columns);
-    TEST_ASSERT_NOT_NULL(rows);
+    const size_t destination_pixels = (size_t)c->destination_width * (size_t)(c->destination_height + 1);
+    held.source = malloc(sizeof(*held.source) * source_pixels);
+    held.depth = malloc(sizeof(*held.depth) * source_pixels);
+    held.actual = malloc(sizeof(*held.actual) * destination_pixels);
+    held.columns = malloc(sizeof(*held.columns) * (size_t)c->destination_width);
+    held.rows = malloc(sizeof(*held.rows) * (size_t)c->destination_height);
+    suite_set_test_cleanup(release_buffers);
+    TEST_ASSERT_NOT_NULL(held.source);
+    TEST_ASSERT_NOT_NULL(held.depth);
+    TEST_ASSERT_NOT_NULL(held.actual);
+    TEST_ASSERT_NOT_NULL(held.columns);
+    TEST_ASSERT_NOT_NULL(held.rows);
     for (size_t i = 0; i < source_pixels; i++) {
-        source[i] = (uint16_t)(0x1000 + i);
-        depth[i] = (uint16_t)(i % 3 == 0 ? 0 : i);
+        held.source[i] = (uint16_t)(0x1000 + i);
+        held.depth[i] = (uint16_t)(i % 3 == 0 ? 0 : i);
     }
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, c->source_width, c->source_height, c->destination_width,
-                                  c->destination_height, columns, rows));
+                                  c->destination_height, held.columns, held.rows));
     TEST_ASSERT_EQUAL_INT(c->path, scale.path);
-    const int split = (c->destination_height / 2) | 1;
-    for (int with_depth = 0; with_depth < 2; with_depth++) {
-        const uint16_t* d = with_depth ? depth : NULL;
-        memset(actual, 0, sizeof(*actual) * destination_pixels);
-        upscale_rows(&scale, source, d, 0xF00D, actual, 0, split);
-        upscale_rows(&scale, source, d, 0xF00D, actual, split, c->destination_height - split);
-        assert_each_pixel_follows_the_maps(&scale, source, d, actual);
+    for (int split = 0; split <= c->destination_height; split++) {
+        assert_a_range_writes_only_its_rows(&scale, NULL, split);
+        assert_a_range_writes_only_its_rows(&scale, held.depth, split);
     }
-    free(rows);
-    free(columns);
-    free(actual);
-    free(depth);
-    free(source);
+    release_buffers();
 }
 
 /* Each destination from a source of its own width and from one of half its
