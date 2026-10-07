@@ -140,10 +140,11 @@ upscale_slice(void* ctx) {
     upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->raster->destination, s->first, s->count);
 }
 
+/* Core 1 takes a copy of `second_half`, so a caller may reuse both. */
 static void
-run_split(job_fn_t fn, slice_t first_half, slice_t second_half) {
-    (void)job_run_core1(fn, &second_half, sizeof second_half);
-    fn(&first_half);
+run_split(job_fn_t fn, slice_t* first_half, const slice_t* second_half) {
+    (void)job_run_core1(fn, second_half, sizeof *second_half);
+    fn(first_half);
     const bool done = job_wait(JOB_WAIT_MS);
     assert(done); /* the next stage reads what core 1 wrote */
     (void)done;
@@ -233,7 +234,7 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
     return count;
 }
 
-static void
+static inline __attribute__((always_inline)) void
 draw_visible(const raster_t* raster, int index, const camera_t* camera, int quarter, const uint16_t* visible,
              int count) {
     const r3d_instance_t* instance = &raster->instances[index];
@@ -247,16 +248,30 @@ draw_visible(const raster_t* raster, int index, const camera_t* camera, int quar
 
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
-    run_split(transform_slice, (slice_t){raster, mesh, &lens, visible, count, 0, half, clear, NULL, 0},
-              (slice_t){raster, mesh, &lens, visible, count, half, count - half, clear, NULL, 0});
+    slice_t mine = {raster, mesh, &lens, visible, count, 0, half, clear, NULL, 0};
+    slice_t other = mine;
+    other.first = half;
+    other.count = count - half;
+    run_split(transform_slice, &mine, &other);
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
     const int mid = r3d_pipeline_draw_split(mesh, visible, b.rows, count, raster->height);
-    run_split(draw_slice,
-              (slice_t){raster, mesh, &lens, visible, count, mid, raster->height - mid, clear, writers, writer_count},
-              (slice_t){raster, mesh, &lens, visible, count, 0, mid, clear, writers, writer_count});
+    mine.writers = other.writers = writers;
+    mine.writer_count = other.writer_count = writer_count;
+    mine.first = mid;
+    mine.count = raster->height - mid;
+    other.first = 0;
+    other.count = mid;
+    run_split(draw_slice, &mine, &other);
     FRAME_COST_END(drawn_from, "r3d.draw");
+}
+
+/* The scratch block's visible list, out of line so the carve's struct is
+ * not on the draw's stack. */
+static __attribute__((noinline)) uint16_t*
+scratch_visible(const raster_t* raster) {
+    return r3d_pipeline_carve(raster).visible;
 }
 
 /* Draws every instance: from `culled`, raster_census()'s list, or culling
@@ -275,23 +290,27 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, cons
         }
         resolves = resolves || a->resolve != NULL;
     }
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    uint16_t* const visible = culled == NULL ? scratch_visible(raster) : NULL;
     size_t at = 0;
     for (int i = 0; i < raster->instance_count; i++) {
+        const uint16_t* list = visible;
+        int count = 0;
         if (culled != NULL) {
-            draw_visible(raster, i, camera, quarter, culled + at + 1, culled[at]);
+            list = culled + at + 1;
+            count = culled[at];
             at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
-            continue;
+        } else {
+            FRAME_COST_BEGIN(culled_from);
+            count = cull_instance(raster, &raster->instances[i], camera, quarter, visible, stats);
+            FRAME_COST_END(culled_from, "r3d.cull");
         }
-        FRAME_COST_BEGIN(culled_from);
-        const int visible = cull_instance(raster, &raster->instances[i], camera, quarter, b.visible, stats);
-        FRAME_COST_END(culled_from, "r3d.cull");
-        draw_visible(raster, i, camera, quarter, b.visible, visible);
+        draw_visible(raster, i, camera, quarter, list, count);
     }
     if (resolves) {
         const int mid = raster->height / 2;
-        run_split(resolve_slice, (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0},
-                  (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0});
+        slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0};
+        const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0};
+        run_split(resolve_slice, &mine, &other);
     }
 }
 
@@ -350,8 +369,8 @@ raster_upscale(raster_t* raster) {
         assert(initialized);
     }
     const int mid = raster->destination_height / 2;
-    run_split(upscale_slice,
-              (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->destination_height - mid, false, NULL, 0},
-              (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0});
+    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->destination_height - mid, false, NULL, 0};
+    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0};
+    run_split(upscale_slice, &mine, &other);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }
