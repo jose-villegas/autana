@@ -49,12 +49,23 @@ typedef struct {
 /* Ladder sizes and mapped upscale sizes, including the isotropic
  * counterparts used to check the floor and recovery costs. */
 static const size_wh_t sizes[] = {
-    {.width = 368, .height = 448}, {.width = 294, .height = 358}, {.width = 276, .height = 336},
-    {.width = 245, .height = 298}, {.width = 210, .height = 256}, {.width = 184, .height = 224},
-    {.width = 147, .height = 179}, {.width = 122, .height = 149}, {.width = 368, .height = 224},
-    {.width = 184, .height = 448}, {.width = 245, .height = 224}, {.width = 184, .height = 298},
-    {.width = 368, .height = 358}, {.width = 368, .height = 298}, {.width = 184, .height = 358},
-    {.width = 184, .height = 179}, {.width = 184, .height = 149},
+    {368, 448},
+    {294, 358},
+    {276, 336},
+    {245, 298},
+    {210, 256},
+    {184, 224},
+    {147, 179},
+    {122, 149},
+    {368, 224},
+    {184, 448},
+    {245, 224},
+    {184, 298},
+    {.width = 368, .height = 358},
+    {.width = 368, .height = 298},
+    {.width = 184, .height = 358},
+    {.width = 184, .height = 179},
+    {.width = 184, .height = 149},
 };
 #define SIZE_COUNT ((int)(sizeof sizes / sizeof sizes[0]))
 
