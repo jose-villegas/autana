@@ -182,6 +182,21 @@ test_the_predictor_draws_the_finest_step_its_model_says_fits(void) {
 }
 
 static void
+test_the_predictor_reports_the_corrected_price_of_its_chosen_step(void) {
+    const resolution_config_t cfg = config();
+    resolution_predict_t p;
+    resolution_predict_init(&p, &cfg, &model, 0);
+    for (int correction = 1; correction <= 4; correction++) {
+        p.correction = (float)correction / 2.0F;
+        for (int triangles = 3000; triangles <= 30000; triangles += 3000) {
+            const int step = resolution_predict_choose(&p, &cfg, triangles);
+            TEST_ASSERT_FLOAT_WITHIN(0.01F, p.correction * resolution_model_predict_us(&model, &cfg, step, triangles),
+                                     p.chosen_us);
+        }
+    }
+}
+
+static void
 test_the_predictor_steps_down_on_the_frame_the_load_arrives(void) {
     const resolution_config_t cfg = config();
     resolution_predict_t p;
@@ -252,6 +267,7 @@ run_resolution_suite(void) {
     RUN_TEST(test_the_fit_recovers_the_weights_frames_were_made_with);
     RUN_TEST(test_frames_of_one_step_cannot_tell_the_weights_apart);
     RUN_TEST(test_the_predictor_draws_the_finest_step_its_model_says_fits);
+    RUN_TEST(test_the_predictor_reports_the_corrected_price_of_its_chosen_step);
     RUN_TEST(test_the_predictor_steps_down_on_the_frame_the_load_arrives);
     RUN_TEST(test_the_predictor_holds_the_floor_until_the_panic_share);
     RUN_TEST(test_the_predictor_does_not_flip_at_the_edge_of_the_budget);

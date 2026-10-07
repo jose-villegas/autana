@@ -265,6 +265,7 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
         p->step = chosen;
         p->switches++;
     }
+    p->chosen_us = corrected_us(p, config, p->step, triangles);
     return p->step;
 }
 

@@ -92,6 +92,7 @@ typedef struct {
     resolution_model_t model;
     int step;
     float correction; /* measured over predicted, smoothed */
+    float chosen_us;  /* corrected price when the step was chosen */
     int switches;
 } resolution_predict_t;
 
