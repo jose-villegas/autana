@@ -97,10 +97,13 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
 }
 
 RENDER_ENTRY_OFFSET(4) void
-upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-             uint16_t* destination, int first_row, int row_count) {
+upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_t clear, uint16_t* destination,
+             int first_row, int row_count) {
     assert(scale != NULL);
-    assert(source != NULL);
+    assert(picture != NULL);
+    const uint16_t* source = gfx_render_target_color(picture, picture->row0);
+    const uint16_t* depth =
+        picture->count > GFX_ATTACHMENT_DEPTH ? gfx_render_target_depth(picture, picture->row0) : NULL;
     assert(destination != NULL);
     assert(first_row >= 0);
     assert(row_count >= 0);

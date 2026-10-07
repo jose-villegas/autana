@@ -248,9 +248,7 @@ dry_heated_soil(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n, co
         return;
     }
     /* No neighbour to bias from, see soil_set_moisture() comment. */
-    s->cells[at] = soil_set_moisture(n, (uint8_t)(moisture_of(n, r) - 1), 0);
-    mark_rows(s, nx, ny, ny);
-    wake_block_and_neighbors(s, nx, ny);
+    retone_moisture(s, nx, ny, soil_set_moisture(n, (uint8_t)(moisture_of(n, r) - 1), 0));
     emit_into_empty_neighbor(s, nx, ny, w, h, MAT_STEAM);
 }
 
@@ -604,11 +602,7 @@ soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t
         return;
     }
     if (held < r->moist_max) {
-        /* No block wake: moisture only retones the cell, and nothing the
-         * gravity sweep or cross-flow reads depends on it. */
-        row[x] = with_moisture(c, (uint8_t)(held + 1), r);
-        mark_rows(s, x, y, y);
-        mark_block_has_moisture(s, x, y);
+        retone_moisture(s, x, y, with_moisture(c, (uint8_t)(held + 1), r));
     }
 }
 
@@ -643,21 +637,10 @@ soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reac
     return false;
 }
 
-/* Commits a moisture hand-off: this cell keeps `held - cost`, the
- * neighbour at (nx, ny) has already been written. Only a neighbour that
- * changed material (`converted`: its powder behaviour changed) wakes
- * blocks; a retone alone never moves a grain. */
-static inline __attribute__((always_inline)) void
-settle_moisture_move(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, cell_t c, uint8_t held, int cost,
-                     int recv_m, bool converted) {
-    row[x] = soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m);
-    mark_rows(s, x, y, y);
-    mark_rows(s, nx, ny, ny);
-    if (converted) {
-        wake_block_and_neighbors(s, nx, ny);
-    }
+static void
+place_soaked_cell(sand_t* s, int x, int y, size_t at, uint8_t material, uint8_t moisture) {
+    place_cell(s, x, y, at, soil_cell(CELL_MAKE(material, 0), 0, moisture, &reactions[material]));
     mark_block_has_moisture(s, x, y);
-    mark_block_has_moisture(s, nx, ny);
 }
 
 /* Shares moisture with one drinking neighbour. Returns whether it did. */
@@ -680,8 +663,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
         }
         cost = give;
         recv_m = give;
-        s->cells[nat] = soil_cell(CELL_MAKE(nr->soaks_to, 0), 0, (uint8_t)give, &reactions[nr->soaks_to]);
-        latch_content_flags(s, s->cells[nat]);
+        place_soaked_cell(s, nx, ny, nat, nr->soaks_to, (uint8_t)give);
     } else if (same_species(n, c) && !cell_is_burning(n)) {
         /* Moisture_of() reads lit fuse as 0. Gap calc overwrites lit
          * byte. */
@@ -694,13 +676,13 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
             return false; /* already even with this one */
         }
         recv_m = moisture_of(n, nr) + give;
-        s->cells[nat] = with_moisture(n, (uint8_t)recv_m, nr);
+        retone_moisture(s, nx, ny, with_moisture(n, (uint8_t)recv_m, nr));
         cost = give;
     } else {
         return false;
     }
 
-    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m, nr->soaks_to != 0);
+    retone_moisture(s, x, y, soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m));
     return true;
 }
 
@@ -788,18 +770,17 @@ percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t h
         recv_m = give;
         /* Arrives wet, so tone 0: soil_set_moisture() gives it a tone
          * through soil_dry_out() once it dries. */
-        s->cells[nat] = soil_cell(CELL_MAKE(br->soaks_to, 0), 0, (uint8_t)give, &reactions[br->soaks_to]);
-        latch_content_flags(s, s->cells[nat]);
+        place_soaked_cell(s, nx, ny, nat, br->soaks_to, (uint8_t)give);
     } else {
         const int room = (int)br->moist_max - moisture_of(below, br);
         if (give > room) {
             give = room;
         }
         recv_m = moisture_of(below, br) + give;
-        s->cells[nat] = with_moisture(below, (uint8_t)recv_m, br);
+        retone_moisture(s, nx, ny, with_moisture(below, (uint8_t)recv_m, br));
         cost = give;
     }
-    settle_moisture_move(s, row, x, y, nx, ny, c, held, cost, recv_m, br->soaks_to != 0);
+    retone_moisture(s, x, y, soil_set_moisture(c, (uint8_t)(held - cost), (uint8_t)recv_m));
 }
 
 /* Water percolates downhill, not just diffuses: on a won roll it hands
@@ -839,9 +820,7 @@ step_one_wet_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const rea
     }
 
     if (sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_DRY, r->dries)) {
-        /* No block wake: drying only retones the cell. */
-        row[x] = soil_set_moisture(c, (uint8_t)(held - 1), 0);
-        mark_rows(s, x, y, y);
+        retone_moisture(s, x, y, soil_set_moisture(c, (uint8_t)(held - 1), 0));
         return held - 1 != 0;
     }
 
@@ -1090,8 +1069,7 @@ cold_thaws_beside(sand_t* s, int x, int y, int w, int nx, int ny, size_t nat, ce
         const int rate = (int)r->thaws * (int)wet / ((int)nr->moist_max * 2);
         if (rate > 0 && (int)(rng_next(&s->rng) & 0xFF) < rate) {
             /* The soil pays for it, or one damp cell melts a whole bank. */
-            s->cells[nat] = soil_set_moisture(n, (uint8_t)(wet - 1), 0);
-            mark_rows(s, nx, ny, ny);
+            retone_moisture(s, nx, ny, soil_set_moisture(n, (uint8_t)(wet - 1), 0));
             place_reacted(s, x, y, (size_t)y * (size_t)w + (size_t)x, (material_id_t)r->heats_to);
             return true;
         }
@@ -2713,6 +2691,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
         const cell_t c = row[x];
         seen |= (uint16_t)(1u << CELL_MATERIAL(c));
         if (CELL_IS_EMPTY(c)) {
+            x = empty_run_end(row, x + 1, x_hi) - 1;
             continue;
         }
         k.x = x;

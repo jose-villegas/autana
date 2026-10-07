@@ -72,10 +72,10 @@ static int64_t
 one_core_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    memset(b.depth, 0, pixels * sizeof(*b.depth));
+    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
-    const r3d_span_target_t target = {b.color, b.depth, raster->width, 0, raster->height};
+    const r3d_span_target_t target = {b.picture, NULL, 0};
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.visible, visible, b.cs, b.rows, &target);
     const int64_t us = timing_now_us() - start;
     r3d_span_stop_after = 0;
@@ -98,7 +98,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_pipeline_transform(&mesh, &lens, b.visible, visible, b.cs, b.rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
-    memset(b.depth, 0, pixels * sizeof(*b.depth));
+    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
     const int64_t setup = one_core_draw_us(raster, &lens, visible, 1);
     const int64_t rows = one_core_draw_us(raster, &lens, visible, 2);

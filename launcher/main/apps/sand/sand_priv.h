@@ -1201,6 +1201,17 @@ soil_set_moisture(cell_t c, uint8_t new_moisture, uint8_t nearby_moisture) {
     return new_moisture != 0 ? with_moisture(c, new_moisture, reaction_of(c)) : soil_dry_out(c, nearby_moisture);
 }
 
+/* Moisture-only retones do not wake blocks because neither the gravity sweep
+ * nor cross-flow reads moisture. */
+static inline void
+retone_moisture(sand_t* s, int x, int y, cell_t c) {
+    s->cells[(size_t)y * (size_t)s->w + (size_t)x] = c;
+    mark_rows(s, x, y, y);
+    if (moisture_of(c, reaction_of(c)) != 0) {
+        mark_block_has_moisture(s, x, y);
+    }
+}
+
 /* Source and destination column marked separately, with no block-wake: the
  * main sweep's own moved_here bookkeeping (sand.c) already keeps
  * BLOCK_ACTIVE current for every cell it walks, so waking here would pay
@@ -1354,6 +1365,16 @@ span_is_empty(const uint8_t* row, int x0, int x1) {
         }
     }
     return true;
+}
+
+/* Returns the first non-empty x; reactions call it only for empty cells, so
+ * the non-empty path is unchanged. */
+static inline int
+empty_run_end(const uint8_t* row, int x0, int x1) {
+    while (x0 < x1 && CELL_IS_EMPTY(row[x0])) {
+        x0++;
+    }
+    return x0;
 }
 
 /* try_fall_or_scatter_impl()/try_slide_impl() live here, static inline,
