@@ -32,7 +32,7 @@ python3 -m http.server -d launcher/main/apps/sand/tools/web/dist
 WebAssembly, with `web_sand.c` doing the app's frame and `app.js` the page's
 input. The grid is the panel's own shape at the device's cell sizes;
 landscape is that panel turned a quarter turn. The Pages workflow publishes
-it as the site's front page on every push to `main`.
+it under the site's `sand/` on every push to `main`.
 
 ## Images in the docs
 
