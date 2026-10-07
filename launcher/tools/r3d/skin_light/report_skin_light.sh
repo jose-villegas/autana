@@ -8,7 +8,7 @@
 #   launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb [CLIP[:PHASE]]
 #
 #   ASSET.glb      a skinned glTF with normals and animations; the document's
-#                  numbers come from main/apps/render_lab/assets/capybara.glb,
+#                  numbers come from demo/capybara/capybara.glb,
 #                  drawn at gallop
 #   CLIP[:PHASE]   the frame the sheet draws (skin_light_data.py's --sheet)
 

@@ -38,8 +38,10 @@ git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 ```
 
 An app's `tools/doc_images.sh` may also need the packages in
-`launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
-SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
+`launcher/tools/r3d/requirements.txt`. Demo source models live in
+`launcher/demo/*/source/` under Git LFS; fetch them with
+`git lfs pull --exclude=""` before a reference render. The CPU workflow caches
+the LFS objects.
 A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`

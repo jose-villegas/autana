@@ -1,9 +1,9 @@
 [source]
-path = "sponza/sponza.obj"
+path = "source/sponza.obj"
 credit = "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in McGuire's Computer Graphics Archive, casual-effects.com/data."
 
 [output]
-directory = ".."
+directory = "."
 position_scale = 8
 
 [materials]
