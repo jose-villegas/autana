@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 
 #include "r3d_quad_mesh.h"
@@ -21,6 +22,8 @@ typedef struct {
     r3d_placement_t placement[RASTER_RIG_QUADS]; /* each placed quad's, set before a draw */
     r3d_instance_t instance[RASTER_RIG_QUADS];
     raster_t raster;
+    int width, height; /* the largest picture its scratch holds */
+    max_align_t own[]; /* the suite's own state, as many bytes as it asked for */
 } raster_rig_t;
 
 static raster_rig_t* raster_rig_now;
@@ -34,13 +37,27 @@ raster_rig_release(void) {
     }
 }
 
+/* Attaches `attachments` and gives the raster scratch for them at the rig's
+ * largest picture. */
+static inline void
+raster_rig_attach(raster_rig_t* r, const raster_attachment_t* const* attachments, int count) {
+    free(r->raster.scratch);
+    r->raster.attachments = attachments;
+    r->raster.attachment_count = count;
+    r->raster.width = r->width;
+    r->raster.height = r->height;
+    r->raster.scratch = malloc(raster_scratch_bytes(&r->raster));
+    TEST_ASSERT_NOT_NULL(r->raster.scratch);
+}
+
 /* `count` quads at `positions`, drawn in that order, quad i placed by
- * placement[i] when `placed` has bit i; `attachments` attached; scratch for
- * a picture up to `width` by `height`, the size it draws at until changed. */
+ * placement[i] when `placed` has bit i; pictures up to `width` by `height`,
+ * the size it draws at until changed; `own_bytes` of zeroed room in `own`.
+ * Nothing is attached until raster_rig_attach(). */
 static inline raster_rig_t*
-raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned placed,
-                const raster_attachment_t* const* attachments, int attachment_count, int width, int height) {
-    raster_rig_t* r = calloc(1, sizeof(*r));
+raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned placed, int width, int height,
+                size_t own_bytes) {
+    raster_rig_t* r = calloc(1, sizeof(*r) + own_bytes);
     TEST_ASSERT_NOT_NULL(r);
     TEST_ASSERT_TRUE(count <= RASTER_RIG_QUADS);
     raster_rig_now = r;
@@ -49,15 +66,10 @@ raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned place
         r3d_quad_init(&r->quad[i], positions[i]);
         r->instance[i] = (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->placement[i] : NULL};
     }
-    r->raster = (raster_t){.instances = r->instance,
-                           .instance_count = count,
-                           .width = width,
-                           .height = height,
-                           .clear = 0x1234,
-                           .attachments = attachments,
-                           .attachment_count = attachment_count};
-    r->raster.scratch = malloc(raster_scratch_bytes(&r->raster));
-    TEST_ASSERT_NOT_NULL(r->raster.scratch);
+    r->raster = (raster_t){.instances = r->instance, .instance_count = count, .clear = 0x1234};
+    r->width = width;
+    r->height = height;
+    raster_rig_attach(r, NULL, 0);
     return r;
 }
 
