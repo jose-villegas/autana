@@ -262,7 +262,7 @@ cube_draw_rows(gfx_color_t* target, int row0, int row1) {
         return;
     }
     assert(row1 - row0 <= GFX_BAND_HEIGHT);
-    const r3d_span_target_t window = {target, band_depth, GFX_WIDTH, row0, row1};
+    const r3d_span_target_t window = r3d_span_target(target, band_depth, GFX_WIDTH, row0, row1);
     bool depth_cleared = false;
     for (int i = 0; i < cube_bin_count; i++) {
         const cube_triangle_bin_t* entry = &cube_bin[i];

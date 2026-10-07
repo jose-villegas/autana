@@ -40,6 +40,25 @@ strip-sized buffers in internal DMA RAM that every send is copied through.
 Exactly one target is live at a time. Entering a band or indexed mode **frees
 the PSRAM framebuffer**; `gfx_mode_exit()` allocates it again.
 
+## Render targets
+
+`gfx_render_target.h`: a picture drawn off the panel as a set of
+attachments, each a per-pixel map with its own size per pixel. Colour comes
+first, in the panel's own format, then depth, then any further map a
+renderer attaches. Every attachment has the target's width and rows, so one
+row index finds a pixel in all of them.
+
+| Function | What it does |
+|---|---|
+| `gfx_render_target_bytes()` | the bytes every attachment takes, from each one's size per pixel |
+| `gfx_render_target_carve()` | points each attachment at its part of one block |
+| `gfx_render_target_window()` | the same picture's rows `[row0, row1)` |
+| `gfx_render_target_row()`, `_color()`, `_depth()` | an attachment's first pixel of a row |
+
+A target can be carved from a renderer's scratch block, or point its colour
+at a band buffer and its depth at a band of its own. What an attachment
+means beyond its size is its renderer's.
+
 ## Modes
 
 Requested with `gfx_mode_enter()` from an app's `enter()`, released with
