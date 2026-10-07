@@ -2,10 +2,9 @@
  * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
  * The scene manager owns the frame: this loads the scene, shows one of its
- * six bakes and draws the HUD, while the shell advances the camera and
- * draws it. Light is baked into the mesh, so a frame is only cull, transform,
- * clip and fill on both cores. Six scenes share this code, one per bake:
- * full, lite, flat, fitted, fitted full and flat fitted.
+ * bakes (sponza_bakes) and draws the HUD, while the shell advances the camera
+ * and draws it. Light is baked into the mesh, so a frame is only cull,
+ * transform, clip and fill on both cores. One scene per bake shares this code.
  */
 
 #include <assert.h>
@@ -71,7 +70,7 @@ record_failure(const scene_failure_t* why) {
     }
 }
 
-/* Loads the scene and shows sponza_bakes[shown], the one of its six bakes to draw. */
+/* Loads the scene and shows sponza_bakes[shown]. */
 static void
 enter_with(sponza_bake_t shown) {
     gfx_set_partial_clear(false);

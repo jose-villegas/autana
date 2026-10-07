@@ -410,7 +410,7 @@ moves; segment fits see fewer training poses.
 
 ```mermaid
 flowchart LR
-    S[simplified smooth bake] --> F[fit positions and colours]
+    S[simplified bake, smooth or flat] --> F[fit positions and colours]
     P[camera path poses] --> R[reference renders]
     R --> F
     F --> W[write_lit_mesh]
@@ -434,7 +434,7 @@ README.
 ##### A flat fit
 
 A renderer with both `shading = { flat = ... }` and a `fit` table is fitted
-flat: its start is the flat bake, and $`C`$ holds one colour per triangle
+flat: its start is a flat bake of its variant, and $`C`$ holds one colour per triangle
 instead of one per vertex. The positions are fitted as before, so a face's
 edges move to where one colour reads best, along a shading change. Each pixel
 takes its triangle's colour:
@@ -460,7 +460,8 @@ flowchart LR
     F --> W[write_lit_mesh<br/>face colours]
 ```
 
-![Flat against flat fitted](../images/render/compare-flat-flat-fitted.png)
+[Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
+with its flat fit.
 
 #### fit.hashes
 

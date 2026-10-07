@@ -1,5 +1,5 @@
 /*
- * sponza_content: the Sponza scene's id and six bakes, the size it is seen
+ * sponza_content: the Sponza scene's id and its bakes, the size it is seen
  * at, and what its camera loop is held to. The loop is the scene's camera, its
  * lens and path from scene_camera_lens() once the scene has loaded. Model
  * units are centimetres; y is up.

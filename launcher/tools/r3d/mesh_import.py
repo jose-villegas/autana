@@ -235,9 +235,9 @@ def check_fitted(job, scene):
 
 
 def write_baked(job, scene, out_dir, name, geometry=None):
-    """Bakes `job`'s geometry, or lights the `geometry` bake_geometry made
-    for it, and writes it as <name>.mesh in `out_dir`: flat when the renderer
-    is, smooth otherwise. Returns the baked mesh."""
+    """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
+    is and smooth otherwise, from `geometry` when bake_geometry already made it.
+    Returns the baked mesh."""
     renderer = job.renderer
     geometry = bake_geometry(job, scene) if geometry is None else geometry
     face_rgb = flat_colours(job, scene, geometry, renderer.face_samples) if renderer.face_samples else None

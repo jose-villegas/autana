@@ -39,11 +39,11 @@ class Fitted(NamedTuple):
     budget_point: bool = False
 
 
+# The stage runs the rows in this order, so a sheet may name the rows of an earlier entry.
 FITTED = (
     Fitted("atrium_fitted", "lite", "atrium_lite", (("GI bake", "lite-GI-bake"), ("GI fit", "lite-GI-fit")), sweeps=True),
     Fitted("atrium_fitted_full", "full", "atrium", (("GI bake", "full-GI-bake"), ("GI fit", "full-GI-fit")),
            path_cull=True, budget_point=True),
-    # The flat fit against its own bake and the smooth fit at lite's budget.
     Fitted("atrium_flat_fitted", "flat", "atrium_flat",
            (("flat bake", "flat-GI-bake"), ("lite fit", "lite-GI-fit"), ("flat fit", "flat-GI-fit"))),
 )

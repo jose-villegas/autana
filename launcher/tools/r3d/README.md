@@ -250,6 +250,8 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
 ```
 
+`NAME` is the fitted scene object, or its variant when only one object fits that variant.
+
 `prepare` bakes the start (the import's geometry steps at the variant's
 `triangles`, lit by the scene's bake, flat when the renderer's shading is), samples the camera's path every
 `fit.poses.train_every_ms`, holds out the multiples of
