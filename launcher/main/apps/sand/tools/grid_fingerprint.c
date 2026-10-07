@@ -46,6 +46,9 @@
 
 #include "material.h"
 #include "sand.h"
+#ifdef SAND_FORCE_WORK
+#include "sand_priv.h"
+#endif
 
 /* Small enough that every scene runs in well under a second on a laptop
  * - this gets called once per candidate in a loop that may try dozens
@@ -896,5 +899,8 @@ main(void) {
         }
     }
 
+#ifdef SAND_FORCE_WORK
+    sand_skip_sites_report();
+#endif
     return 0;
 }

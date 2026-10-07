@@ -3,21 +3,17 @@
 # Build and run grid_fingerprint.c: a hash of the simulation's actual
 # output per reference scene, with the material histogram behind it.
 #
-# The point is behavioural, not numeric. Every frame-budget row in this
-# app measures TIME; nothing measures whether an optimisation still
-# simulates the same thing. This does, over every cell of four scenes,
-# so a perf change can be shown to be free of behavioural consequence
-# rather than merely green - see grid_fingerprint.c's own top comment.
+# Normal and host-only SAND_FORCE_WORK builds share one baseline. Forced
+# work evaluates every SAND_SKIP_IF condition but never takes its skip.
+# Coverage counts how often each source site would have skipped; zero is
+# an untested-skip warning. Counts stay separate from the hash output.
 #
 # Usage:
 #   main/apps/sand/tools/report_fingerprint.sh            # print
 #   main/apps/sand/tools/report_fingerprint.sh --check    # diff vs baseline
 #   main/apps/sand/tools/report_fingerprint.sh --update   # re-record baseline
 #
-# --check is the gate: exit 0 means byte-identical behaviour, exit 1 means
-# something moved. It prints the diff, so a caller that cannot interpret a
-# hash can still show a human which scene changed and whether the material
-# counts moved with it (they should not, for a pure reordering).
+# --check compares both builds; --update records the normal build only.
 #
 # --update rewrites the baseline and is DELIBERATELY not something an
 # automated script may call. A loop that can re-record its own baseline
@@ -57,29 +53,39 @@ fi
 CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -g -O1"
 
 mkdir -p "$BUILD_DIR"
-OUT_BIN="$BUILD_DIR/grid_fingerprint"
+for MODE in normal forced; do
+    OUT_BIN="$BUILD_DIR/grid_fingerprint"
+    FORCE_FLAG=""
+    if [ "$MODE" = forced ]; then
+        OUT_BIN="${OUT_BIN}_forced"
+        FORCE_FLAG="-DSAND_FORCE_WORK"
+    fi
 
-# The portable half of the app only. app_sand.c and sand_ui.c are the
-# hardware-facing entry points (the apps/<name>/app_*.c convention in
-# docs/Building-an-App.md) and do not belong in a host build;
-# palette.c and row_runs.c
-# are draw-path concerns the grid state does not depend on.
-# shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
-    "$SCRIPT_DIR/grid_fingerprint.c" \
-    "$MAIN_DIR/util/runtime/job.c" \
-    "$SAND_DIR/sand.c" \
-    "$SAND_DIR/sand_chunk_sched.c" \
-    "$SAND_DIR/sand_impulse.c" \
-    "$SAND_DIR/sand_reactions.c" \
-    "$SAND_DIR/sand_plants.c" \
-    "$SAND_DIR/sand_gas.c" \
-    "$SAND_DIR/sand_liquid.c" \
-    "$SAND_DIR/material.c" \
-    -o "$OUT_BIN"
+    # The portable half of the app only. app_sand.c and sand_ui.c are the
+    # hardware-facing entry points (the apps/<name>/app_*.c convention in
+    # docs/Building-an-App.md) and do not belong in a host build;
+    # palette.c and row_runs.c
+    # are draw-path concerns the grid state does not depend on.
+    # shellcheck disable=SC2086
+    "$CC_BIN" $CFLAGS $FORCE_FLAG -I "$MAIN_DIR" -I "$SAND_DIR" \
+        "$SCRIPT_DIR/grid_fingerprint.c" \
+        "$MAIN_DIR/util/runtime/job.c" \
+        "$SAND_DIR/sand.c" \
+        "$SAND_DIR/sand_chunk_sched.c" \
+        "$SAND_DIR/sand_impulse.c" \
+        "$SAND_DIR/sand_reactions.c" \
+        "$SAND_DIR/sand_plants.c" \
+        "$SAND_DIR/sand_gas.c" \
+        "$SAND_DIR/sand_liquid.c" \
+        "$SAND_DIR/material.c" \
+        -o "$OUT_BIN"
 
-# MinGW appends .exe; elsewhere the plain name is produced.
-[ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
+    # MinGW appends .exe; elsewhere the plain name is produced.
+    [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
+    "$OUT_BIN" > "$BUILD_DIR/fingerprint.$MODE.txt" 2> "$BUILD_DIR/skip.$MODE.txt"
+done
+
+python "$MAIN_DIR/../../scripts/gates/check_skip_facts.py" --coverage "$BUILD_DIR/skip.forced.txt" "$SAND_DIR"
 
 case "${1:-}" in
 --check)
@@ -87,31 +93,30 @@ case "${1:-}" in
         echo "No baseline at $BASELINE - record one with --update first." >&2
         exit 1
     fi
-    TMP_OUT="$BUILD_DIR/fingerprint.current.txt"
-    "$OUT_BIN" > "$TMP_OUT"
-    if diff -u "$BASELINE" "$TMP_OUT"; then
-        echo "fingerprint: identical to baseline"
-        exit 0
-    fi
-    echo >&2
-    echo "BEHAVIOUR CHANGED. The simulation no longer produces the same" >&2
-    echo "grid it did at the recorded baseline." >&2
-    echo >&2
-    echo "Read the diff above by the numbers, not just the hash: the 16" >&2
-    echo "columns after it are per-material cell counts. Identical counts" >&2
-    echo "with a different hash means cells moved but nothing was created" >&2
-    echo "or destroyed - the signature of a REORDERING, which this project" >&2
-    echo "has found to be semantically fine before (and expensive to prove" >&2
-    echo "so). Changed counts mean material appeared or vanished, which is" >&2
-    echo "a bug until someone demonstrates otherwise." >&2
-    exit 1
+    RESULT=0
+    for MODE in normal forced; do
+        if diff -u "$BASELINE" "$BUILD_DIR/fingerprint.$MODE.txt"; then
+            echo "fingerprint ($MODE): identical to baseline"
+        else
+            RESULT=1
+            if [ "$MODE" = forced ]; then
+                echo "Forced-work mismatch: a skip dropped needed work." >&2
+            else
+                echo "BEHAVIOUR CHANGED in the normal build." >&2
+            fi
+        fi
+    done
+    exit "$RESULT"
     ;;
 --update)
-    "$OUT_BIN" > "$BASELINE"
+    cp "$BUILD_DIR/fingerprint.normal.txt" "$BASELINE"
     echo "Baseline recorded: $BASELINE"
     ;;
 "")
-    "$OUT_BIN"
+    echo "fingerprint (normal):"
+    cat "$BUILD_DIR/fingerprint.normal.txt"
+    echo "fingerprint (forced):"
+    cat "$BUILD_DIR/fingerprint.forced.txt"
     ;;
 *)
     echo "Unknown argument: $1" >&2

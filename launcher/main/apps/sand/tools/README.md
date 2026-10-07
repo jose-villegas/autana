@@ -5,6 +5,27 @@ names what it measures in its own header. The render harness the
 `*_render_host.sh` scenes use is
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
+## Grid fingerprint
+
+`report_fingerprint.sh --check` compares both the normal simulation and a
+host-only `SAND_FORCE_WORK` build against `fingerprint_baseline.txt`.
+`SAND_SKIP_IF` evaluates the skip condition in both builds; forced work
+always takes the work path. A forced mismatch identifies scenes where a
+skip changes the output. The source-derived coverage report counts how
+often each site would skip across the reference scenes. Zero counts warn
+that a skip is untested and do not fail the check.
+
+With no argument the tool prints both fingerprints. `--update` records
+only the normal build and requires an accepted behaviour change.
+`scripts/gates/check_skip_facts.py` requires declared facts to be read
+through the gate, except in fact predicates and writers. Scheduling and
+fact-maintenance functions retain their normal decisions.
+
+A mismatch also exposes skipped RNG draws and pass-direction bookkeeping
+such as `gas_flip` and `liquid_flip`. The rest predicate `cell_settled`
+constrains crust formation. Hash differences require investigating these
+effects alongside the correctness of absence facts.
+
 ## Host renders
 
 ```sh

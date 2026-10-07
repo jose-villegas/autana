@@ -93,7 +93,7 @@ gas_row_arm(int y) {
     }
 }
 
-static inline bool
+SAND_FACT static inline bool
 gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
@@ -663,7 +663,7 @@ sand_gas_line_fast_paths_enable(bool on) {
 static inline int
 gas_gap_ahead(sand_t* s, const uint8_t* row, int x, int y, int px, int py, int sight, uint8_t gas_id, bool carry_ok,
               gas_run_t* run) {
-    if (carry_ok && run->id == (int)gas_id && run->len >= sight) {
+    if (SAND_SKIP_IF(carry_ok && run->id == (int)gas_id && run->len >= sight)) {
         return 0;
     }
 
@@ -875,7 +875,7 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
      * conclusion as py == 0's own-row check, just aimed further out. */
     int row_sight = 0;
     const bool packed = row_is_packed(row, w, is_gas, &any_gas, &row_sight);
-    const bool skip = packed && (py == 0 || *clean_run >= row_sight);
+    const bool skip = SAND_SKIP_IF(packed && (py == 0 || *clean_run >= row_sight));
     *clean_run = packed ? *clean_run + 1 : 0;
     /* A row not swept leaves its cells uncounted in every column's run. */
     if (skip) {
@@ -887,7 +887,7 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
      * count of consecutive packed rows for the tilted skip above. That scan
      * breaks on the first empty cell, so on a sparse row it is a handful of
      * loads and the per-cell loop below is what the skip is worth. */
-    if (!gas_row_may_hold(y)) {
+    if (SAND_SKIP_IF(!gas_row_may_hold(y))) {
         gas_cols.stale |= along_col;
         return false;
     }
@@ -1004,7 +1004,7 @@ unsigned sand_gas_row_audit_skippable;
  * gas cell without arming the row it lands in is caught on whatever board the
  * caller is already running rather than on one written to suspect it. Off by
  * default and read once per pass, not per row. */
-static void
+SAND_FACT_WRITER static void
 gas_row_audit(const sand_t* s) {
     for (int y = 0; y < s->h; y++) {
         if (gas_row_may_hold(y)) {
@@ -1100,7 +1100,8 @@ choose_gas_sweep_order(const sand_t* s, int rdy, const int** slide_a, const int*
 void
 sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
               const int* perp_b, int load_dx, int load_dy, int x_step, int jostle) {
-    if (!s->may_have_gas) {
+    /* The forced pass includes gas_flip even when no gas cell is present. */
+    if (SAND_SKIP_IF(!s->may_have_gas)) {
         return;
     }
     build_gas_tables();

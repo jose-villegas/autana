@@ -120,6 +120,9 @@ jobs:
       - name: No new token clone pairs
         run: python3 scripts/gates/check_clones.py
 
+      - name: Simulation skip facts are read through the forced-work gate
+        run: python3 scripts/gates/check_skip_facts.py
+
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
