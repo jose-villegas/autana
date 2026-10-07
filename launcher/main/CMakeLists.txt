@@ -324,29 +324,20 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
-    # The asset packs are build products: one per root asset (a scene, a free
-    # import, a free .anim.toml), written to assets/ and, under a pack
-    # directory, into one image that flashes to the "assets" partition with the
-    # app. build_pack.py searches all of main/, so its inputs are globbed there
-    # too: a clip's .glb counts. `idf.py assets-flash` writes just that region.
+    # The packer owns input discovery, including demo manifests, and runs on
+    # every build so deleted manifests drop their demos. Unchanged packs and
+    # the image retain their timestamps. The image flashes to the "assets"
+    # partition; `idf.py assets-flash` writes just that region.
     idf_build_get_property(python PYTHON)
     set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
     set(asset_packs "${CMAKE_BINARY_DIR}/assets")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
-    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/*.mesh")
-    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/*.toml")
-    launcher_glob(asset_sources "${CMAKE_CURRENT_LIST_DIR}/*.glb")
-    add_custom_command(
-        OUTPUT "${asset_image}"
+    add_custom_target(asset_pack_image ALL
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
                 "${CMAKE_CURRENT_LIST_DIR}"
-        DEPENDS ${asset_inputs} ${asset_settings} ${asset_sources} "${asset_tools}/r3d/build_pack.py"
-                "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
-                "${asset_tools}/asset/asset_pack.py" "${asset_tools}/anim/tracks_asset.py"
-                "${asset_tools}/gltf/gltf_read.py"
+        BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)
-    add_custom_target(asset_pack_image ALL DEPENDS "${asset_image}")
     esptool_py_flash_to_partition(flash "assets" "${asset_image}")
     add_dependencies(flash asset_pack_image)
     partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")

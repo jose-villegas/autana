@@ -17,6 +17,6 @@
 *.bin binary
 *.mesh binary
 
-launcher/main/apps/*/meshes/*/** filter=lfs diff=lfs merge=lfs -text !eol
-launcher/main/apps/*/meshes/*/**/*.mtl !filter !diff !merge text eol=lf
-launcher/main/apps/*/meshes/*/**/*.txt !filter !diff !merge text eol=lf
+launcher/demo/*/source/** filter=lfs diff=lfs merge=lfs -text !eol
+launcher/demo/*/source/**/*.mtl !filter !diff !merge text eol=lf
+launcher/demo/*/source/**/*.txt !filter !diff !merge text eol=lf

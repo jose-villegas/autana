@@ -20,7 +20,7 @@ import tempfile
 import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
-SCENE = TOOLS.parent / "meshes" / "sponza.scene.toml"
+SCENE = TOOLS.parents[3] / "demo" / "sponza" / "sponza.scene.toml"
 sys.path.insert(0, str(TOOLS.parents[3] / "tools" / "render"))
 sys.path.insert(0, str(TOOLS.parents[3] / "tools"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))

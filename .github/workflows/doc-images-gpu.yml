@@ -14,7 +14,7 @@ on:
       - 'launcher/tools/gltf/**'
       - 'launcher/main/**/*.c'
       - 'launcher/main/**/*.h'
-      - 'launcher/main/apps/render_lab/meshes/**'
+      - 'launcher/demo/sponza/**'
       - 'launcher/main/apps/render_lab/scenes/**'
       - 'launcher/main/apps/render_lab/tools/*.sh'
       - 'launcher/main/apps/render_lab/tools/*.c'

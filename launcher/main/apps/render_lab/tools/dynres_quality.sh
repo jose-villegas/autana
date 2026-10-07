@@ -24,10 +24,11 @@ mkdir -p "$W"
 
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o "$W" > "$W/build.log"
 M=launcher/main/apps/render_lab
-"$PYTHON" launcher/tools/anim/track_host.py "$M/assets/flythrough.anim.toml" \
+DEMO=launcher/demo/sponza
+"$PYTHON" launcher/tools/anim/track_host.py "$DEMO/flythrough.anim.toml" \
     --every "$POSE_MS" --until $(((FRAMES + 1) * POSE_MS)) --poses camera 368 448 0.62 6 > "$W/poses.txt"
 REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
-    --reference "$M/meshes/sponza.scene.toml" --poses "$W/poses.txt" 2> "$W/reference.log")
+    --reference "$DEMO/sponza.scene.toml" --poses "$W/poses.txt" 2> "$W/reference.log")
 
 echo "width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim" > "$CSV"
 for size in "$@"; do

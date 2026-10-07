@@ -50,11 +50,10 @@ python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
-An import's OBJ, MTL and textures live in a subdirectory beside its
-`.import.toml` under an app's `meshes/` directory.
-Binary source files use Git LFS; MTL and attribution files stay text.
-Firmware clones exclude source assets through `.lfsconfig`. Before a source
-bake or reference render, run this from the repository root:
+An import's source files sit in `launcher/demo/*/source/`, which uses Git LFS (MTL and
+attribution files stay text) and which firmware clones exclude through
+`.lfsconfig`. Before a source bake or reference render, run this from the
+repository root:
 
 ```sh
 git lfs pull --exclude=""
@@ -76,8 +75,9 @@ the price of frame time; what it does and costs is in
 [Mesh-Import.md](../../../docs/render/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
-scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
-folder.
+scene file that places it and the `.mesh` it bakes live together.
+Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/README.md#packs)
+what ships.
 
 ## Fidelity reference
 
