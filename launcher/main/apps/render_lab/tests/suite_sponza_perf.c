@@ -28,6 +28,7 @@
 #include "render/r3d_span_internal.h"
 #include "render/raster_motion.h"
 #include "scene/scene.h"
+#include "sponza_suite.h"
 #include "util/runtime/job.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -276,22 +277,15 @@ test_sponza_frame_cost_with_motion(void) {
 
 void
 run_sponza_perf_suite(void) {
-    scene_failure_t why;
-    sponza = scene_load(SPONZA_SCENE, &why);
-    if (sponza == NULL) {
-        ESP_LOGE(TAG, "scene sponza: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
-                 why.what);
-    } else {
-        pack = asset_store_pack(SPONZA_SCENE);
-        flythrough = scene_camera_lens(sponza, NULL);
-    }
+    sponza_suite_t loaded = sponza_suite_load();
+    sponza = loaded.scene;
+    pack = loaded.pack;
+    flythrough = loaded.path;
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
     RUN_TEST(test_sponza_frame_cost_with_motion);
-    if (pack != NULL) {
-        asset_store_release(SPONZA_SCENE);
-    }
-    scene_unload(sponza);
+    loaded = (sponza_suite_t){sponza, pack, flythrough};
+    sponza_suite_release(&loaded);
     sponza = NULL;
     pack = NULL;
     flythrough = NULL;
