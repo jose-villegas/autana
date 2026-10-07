@@ -690,16 +690,9 @@ typedef struct {
  * grades each glass cell against. */
 static shock_neighbors_t
 scan_shock_neighbors(const sand_t* s, int x, int y) {
-    static const int dx[4] = {1, -1, 0, 0};
-    static const int dy[4] = {0, 0, 1, -1};
     shock_neighbors_t nb = {false, false};
 
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + dx[d], ny = y + dy[d];
-        if ((unsigned)nx >= (unsigned)REAL_W || (unsigned)ny >= (unsigned)REAL_H) {
-            continue;
-        }
-        const cell_t n = sand_at(s, nx, ny);
+    SAND_FOR_NEIGHBOR(s, x, y, REAL_W, REAL_H, nx, ny, nat, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -709,7 +702,7 @@ scan_shock_neighbors(const sand_t* s, int x, int y) {
         if (cell_is_burning(n)) {
             nb.near_burner = true;
         }
-    }
+    });
     return nb;
 }
 

@@ -571,19 +571,13 @@ step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
 bool
 step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self) {
     int lx = -1, ly = -1;
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const cell_t n = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
         if (!CELL_IS_EMPTY(n) && material_of(n)->kind == KIND_LIQUID && reaction_of(n)->wets != 0) {
             lx = nx;
             ly = ny;
             break;
         }
-    }
+    });
     if (lx < 0) {
         return false; /* nothing to drink */
     }
@@ -619,14 +613,7 @@ bool
 step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     int soil_at = -1, empty_at = -1, ex = 0, ey = 0;
 
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[nat];
+    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
         if (CELL_IS_EMPTY(n)) {
             if (empty_at < 0) {
                 empty_at = (int)nat;
@@ -638,7 +625,7 @@ step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t*
         if (soil_at < 0 && reaction_of(n)->soil != 0 && moisture_of(n, reaction_of(n)) != 0) {
             soil_at = (int)nat;
         }
-    }
+    });
     if (soil_at < 0 || empty_at < 0) {
         return soil_at >= 0;
     }
