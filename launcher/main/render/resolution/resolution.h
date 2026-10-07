@@ -2,9 +2,21 @@
  * resolution: dynamic resolution, the render size picked per frame to hold a
  * frame-cost budget. A step is one render size, finest first; the caller
  * draws at the chosen step and reports what the frame cost.
- * A stepped policy reacts to cost windows; a predictor refits an offline
- * prior from live draw costs, tracking with bounded covariance and clipped
- * innovations. Recovery steps need panic load. Portable; time is passed in.
+ *
+ * Two policies share the steps. The stepped controller reacts: a window of
+ * measured costs moves it one step at a time, with separate thresholds, a
+ * cooldown that doubles after a reversal, and a panic drop for one frame far
+ * over budget. The predictor acts first: its linear cost model starts from
+ * the offline fit and refits from each frame's measured draw by recursive
+ * least squares, with the fit as prior, bounded uncertainty, process noise
+ * to keep tracking, and one outlier frame clipped. It prices every step from
+ * what survived culling this frame, and the finest step that fits is drawn.
+ *
+ * Steps past `recovery_from` are recovery only: the stepped controller
+ * reaches them by a panic drop, the predictor only when the coarsest
+ * ordinary step would pass the panic share; short of that it holds that
+ * step as a floor, a little over budget.
+ * Pure, portable and host-tested; time is passed in.
  */
 #pragma once
 

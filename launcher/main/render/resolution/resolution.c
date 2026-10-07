@@ -17,14 +17,15 @@
 /* The predictor goes finer only with this much of the budget to spare, so
  * a prediction at the edge does not flip between two steps. */
 #define PREDICT_FINER_MARGIN_PERCENT 8
-/* Half-weight prior uncertainty allows scene differences; a 1 ms scaled
- * floor lets zero terms move. Five-percent observation noise rejects jitter;
- * process variance at 1e-5 of the prior keeps tracking after long flights,
- * with a 100 us noise floor for cheap draws. */
+/* Half-weight prior uncertainty allows scene differences. */
 #define PRIOR_SHARE                  0.5F
+/* A scaled uncertainty floor lets zero-weight terms move. */
 #define PRIOR_FLOOR_US               1000.0F
+/* Process variance keeps the fit tracking after long flights. */
 #define PROCESS_SHARE                1e-5F
+/* Observation noise rejects draw-time jitter. */
 #define NOISE_SHARE                  0.05F
+/* A noise floor keeps cheap draws from dominating the fit. */
 #define NOISE_FLOOR_US               100.0F
 
 /* Thousands of triangles and unit shares need comparable feature units. */
