@@ -5,13 +5,13 @@
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml or a folder
-searched for all three; with none, launcher/main is searched. Each
-app demo_assets.toml adds launcher/demo/NAME for each NAME in its `demo`
-list; demos cannot name demos. A folder reached twice is searched once.
-A root is a file nothing else names: NAME.scene.toml is pack NAME, holding
-the scene entry NAME, every mesh its renderers name and the clip its camera
-flies; an NAME.import.toml no scene places is pack NAME, holding its variants; an
-NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
+searched for all three; with none, launcher/main is searched. An app's
+demo_assets.toml adds launcher/demo/NAME for each NAME in its `demo` list;
+one inside launcher/demo is refused. A folder reached twice is searched
+once. A root is a file nothing else names: NAME.scene.toml is pack NAME,
+holding the scene entry NAME, every mesh its renderers name and the clip its
+camera flies; an NAME.import.toml no scene places is pack NAME, holding its
+variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
 a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
 from their files, each with its stem for id. Ids are unique within a pack,
@@ -59,7 +59,7 @@ def input_files(paths):
                 for name in load_demo_assets(manifest):
                     demo = DEMO / name
                     if not demo.is_dir():
-                        raise SettingsError(f"{manifest}: no demo folder for {demo.name!r}")
+                        raise SettingsError(f"{manifest}: no demo folder for {name!r}")
                     pending.append(demo)
         elif path.name.endswith((IMPORT, SCENE, CLIP)):
             found.add(path)
@@ -158,21 +158,21 @@ def write_if_changed(path, data):
 
 def write_packs(out, packs, image=None):
     """Writes each pack to out/<name>.apak, removing any other .apak there, and
-    with `image` the partition image."""
+    with `image` the partition image; returns the names of the packs whose
+    bytes changed. Every pack is parsed first, so a bad one is never written."""
+    for pack in packs.values():
+        parse_pack(pack)
     out.mkdir(parents=True, exist_ok=True)
     for stale in out.glob("*" + PACK_SUFFIX):
         if stale.name.removesuffix(PACK_SUFFIX) not in packs:
             stale.unlink()
-    for name, pack in packs.items():
-        if write_if_changed(out / f"{name}{PACK_SUFFIX}", pack):
-            entries = parse_pack(pack)
-            print(f"wrote {name}{PACK_SUFFIX} ({len(pack)} bytes): "
-                  + ", ".join(sorted(entries)))
+    changed = [name for name, pack in packs.items() if write_if_changed(out / f"{name}{PACK_SUFFIX}", pack)]
     if image is not None:
         data = build_directory(sorted(packs.items()))
         parse_directory(data)
         image.parent.mkdir(parents=True, exist_ok=True)
         write_if_changed(image, data)
+    return changed
 
 
 def main(argv=None):
@@ -195,7 +195,8 @@ def main(argv=None):
         if not args.out:
             parser.error("-o DIR is required")
         packs = pack_bytes(paths, args.replace)
-        write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None)
+        for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
+            print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
         parser.error(str(error))
     return 0

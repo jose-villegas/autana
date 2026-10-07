@@ -375,6 +375,13 @@ class DemoAssetTests(unittest.TestCase):
             build_pack.pack_bytes([self.main])
         self.assertIn(str(manifest), str(caught.exception))
 
+    def test_a_manifest_nested_in_a_demo_is_refused_naming_its_file(self):
+        write(self.main / "demo_assets.toml", 'demo = ["sample"]')
+        manifest = write(self.demo / "nested" / "demo_assets.toml", 'demo = ["sample"]')
+        with self.assertRaisesRegex(SettingsError, "only an app names demo assets") as caught:
+            build_pack.pack_bytes([self.main])
+        self.assertIn(str(manifest), str(caught.exception))
+
     def test_a_manifest_can_select_two_different_demos(self):
         other = self.demo.parent / "other"
         import_file(other, "other.import.toml", "two")

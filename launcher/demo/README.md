@@ -1,7 +1,7 @@
 # Demo assets
 
-Reference content for renderer documentation, CI and host renders, selected
-by the [demo manifest rule](../../docs/assets/README.md).
+Reference content for renderer documentation, CI and host renders. It ships
+in firmware only when an app [selects it](../../docs/assets/README.md#packs).
 
 Firmware inputs (`.mesh`, `.toml`, clip `.glb`) sit outside `source/`, which
 is Git LFS and absent from firmware clones.
@@ -10,9 +10,9 @@ is Git LFS and absent from firmware clones.
   geometry, fidelity and frame cost. Its [import](sponza/sponza.import.toml)
   names the OBJ, MTL and textures in `source/`; attribution is in
   [copyright.txt](sponza/source/copyright.txt). The baked `.mesh` variants and
-  the flythrough animation live beside the scene.
-  MTL and attribution stay text. Fetch sources with `git lfs pull --exclude=""`
-  before importing or rendering a reference.
+  the flythrough animation live beside the scene. MTL and attribution stay
+  text. Fetch sources with `git lfs pull --exclude=""` before importing or
+  rendering a reference.
 - [Capybara](capybara/) contains the Blender source and glTF export used by
   the [skinned lighting measurements](../../docs/render/Skinned-Lighting.md).
   Nothing in the firmware build reads these files.

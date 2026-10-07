@@ -559,7 +559,7 @@ def load_bake(table):
     return bake
 
 
-def load_demo_assets(path) -> list[pathlib.Path]:
+def load_demo_assets(path) -> list[str]:
     """The demo folder names in a manifest's `demo` list,
     each checked by identifier()."""
     path = pathlib.Path(path)
@@ -568,7 +568,7 @@ def load_demo_assets(path) -> list[pathlib.Path]:
             values = tomllib.load(source)
         check_keys(values, ("demo",), "demo assets")
         names = strings(values["demo"], "demo")
-        return [pathlib.Path(identifier(name, f"demo[{index}]")) for index, name in enumerate(names)]
+        return [identifier(name, f"demo[{index}]") for index, name in enumerate(names)]
     except (SettingsError, tomllib.TOMLDecodeError) as error:
         raise SettingsError(f"{path}: {error}") from error
 

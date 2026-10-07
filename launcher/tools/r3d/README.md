@@ -50,7 +50,7 @@ python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
-Source files sit in `launcher/demo/*/source/`, which uses Git LFS (MTL and
+An import's source files sit in `launcher/demo/*/source/`, which uses Git LFS (MTL and
 attribution files stay text) and which firmware clones exclude through
 `.lfsconfig`. Before a source bake or reference render, run this from the
 repository root:
@@ -76,8 +76,8 @@ the price of frame time; what it does and costs is in
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live together.
-Reference content lives in `launcher/demo/`; its selection follows the
-[demo manifest rule](../../../docs/assets/README.md).
+Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/README.md#packs)
+what ships.
 
 ## Fidelity reference
 
