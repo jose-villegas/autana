@@ -12,6 +12,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,8 @@
 #include "app/app.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
+#include "render/context/render_context.h"
+#include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
@@ -31,6 +34,10 @@ extern bool render_lab_show_hud;
 extern const char* render_lab_start_scene_key;
 
 static int shell_quarter;
+
+/* --size WxH: the scene drawn at that render size, either axis on its own,
+ * as one dynamic-resolution step; 0 keeps the scene's own scale. */
+static int size_width, size_height;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -100,8 +107,16 @@ options(int argc, char** argv) {
     const char* scene;
     const char* view;
     const char* scale;
+    const char* size;
     if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
-        || !option_value(argc, argv, "--scale", &scale)) {
+        || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)) {
+        return false;
+    }
+    if (size != NULL
+        && (sscanf(size, "%dx%d", &size_width, &size_height) != 2 || size_width <= 0 || size_height <= 0
+            || size_width > GFX_WIDTH || size_height > GFX_HEIGHT)) {
+        (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
+                      size);
         return false;
     }
     if (scene == NULL) {
@@ -130,6 +145,11 @@ setup(int quarter) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
+    if (size_width > 0) {
+        const resolution_step_t size = {size_width, size_height};
+        const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
+        render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
+    }
     if (render_lab_view() != RASTER_SHOW_SHADED && !render_lab_scene_shows_views()) {
         (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
         return false;

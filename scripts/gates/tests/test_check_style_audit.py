@@ -17,84 +17,68 @@ class StyleAuditTest(unittest.TestCase):
         findings, _ = check_style_audit.run_audit(root, rule_filter=rule_id, file_filter=file_filter)
         return findings
 
-    def test_undef_requires_analysis_scan_ifdef(self):
+    def audit(self, rule_id, files, file_filter=None):
+        """The rule's findings over a committed tree of `files`, {path: text}."""
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/defines.c",
-                            "#ifdef ANALYSIS_SCAN\n#undef A\n#ifdef INNER\n#undef B\n#endif\n"
-                            "#else\n#undef C\n#endif\n#undef D\n")
-            gate_tree.commit(root, "launcher")
-            hits = self.rule_hits(root, "UNDEF-PLACEMENT")
-            self.assertEqual([hit.line for hit in hits], [7, 9])
+            for name, text in files.items():
+                gate_tree.write(root, name, text)
+            gate_tree.commit(root, *sorted({name.split("/")[0] for name in files}))
+            return self.rule_hits(root, rule_id, file_filter)
+
+    def test_undef_requires_analysis_scan_ifdef(self):
+        hits = self.audit("UNDEF-PLACEMENT", {
+            "launcher/main/gfx/defines.c": "#ifdef ANALYSIS_SCAN\n#undef A\n#ifdef INNER\n#undef B\n#endif\n"
+                                           "#else\n#undef C\n#endif\n#undef D\n",
+        })
+        self.assertEqual([hit.line for hit in hits], [7, 9])
 
     def test_a_bd_issue_id_in_a_comment_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "/* gfx - fixture header. */\n\n"
-                            "void\ngfx_init(void) {\n"
-                            "    /* see bd autana-zq7 for the follow-up */\n}\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "TRACKER-REF")
+        findings = self.audit("TRACKER-REF", {
+            "launcher/main/gfx/gfx.c": "/* gfx - fixture header. */\n\n"
+                                       "void\ngfx_init(void) {\n"
+                                       "    /* see bd autana-zq7 for the follow-up */\n}\n",
+        })
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].severity, "ERROR")
 
     def test_a_bare_digit_led_tracker_id_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md", "See autana-9qz for the follow-up.\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "TRACKER-REF")
+        findings = self.audit("TRACKER-REF", {"docs/Guide.md": "See autana-9qz for the follow-up.\n"})
         self.assertEqual(len(findings), 1)
 
     def test_a_full_commit_hash_in_a_doc_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "Pinned to commit 8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c.\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "TRACKER-REF")
+        findings = self.audit("TRACKER-REF", {
+            "docs/Guide.md": "Pinned to commit 8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c.\n",
+        })
         self.assertEqual(len(findings), 1)
 
     def test_real_compound_words_and_a_short_build_id_are_not_flagged(self):
         # autana-cli, autana-screenshot, autana-monitor and autana-device
         # are all real, tracked, letter-only compounds in this repo; none
         # of them may start looking like a tracker id.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "Run `autana screenshot` (autana-screenshot), `autana monitor` "
-                            "(autana-monitor), autana-cli, or check autana-device; "
-                            "build a195574e7177-diag.\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "TRACKER-REF")
+        findings = self.audit("TRACKER-REF", {
+            "docs/Guide.md": "Run `autana screenshot` (autana-screenshot), `autana monitor` "
+                             "(autana-monitor), autana-cli, or check autana-device; "
+                             "build a195574e7177-diag.\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_date_in_a_comment_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "/* gfx - fixture header. */\n\n"
-                            "void\ngfx_init(void) {\n"
-                            "    /* measured on device, 2026-09-13 */\n}\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "CALENDAR-DATE")
+        findings = self.audit("CALENDAR-DATE", {
+            "launcher/main/gfx/gfx.c": "/* gfx - fixture header. */\n\n"
+                                       "void\ngfx_init(void) {\n"
+                                       "    /* measured on device, 2026-09-13 */\n}\n",
+        })
         self.assertEqual(len(findings), 1)
 
     def test_a_date_in_a_dated_log_txt_file_is_not_scanned(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "CALENDAR-DATE")
+        findings = self.audit("CALENDAR-DATE", {
+            "docs/doc_review_ledger.txt": "docs/Guide.md\t2026-09-17\tchecked\n",
+        })
         self.assertEqual(findings, [])
 
     def test_living_document_phrase_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md", "This is a living document.\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "LIVING-DOC")
+        findings = self.audit("LIVING-DOC", {"docs/Guide.md": "This is a living document.\n"})
         self.assertEqual(len(findings), 1)
 
     def gfx_fixture(self, root):
@@ -119,48 +103,39 @@ class StyleAuditTest(unittest.TestCase):
         # any layer/fixed.h) is even tried, so this is never a layer-header
         # reference at all, however many other folders happen to have a
         # file with the same basename.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/util/scalar/fixed.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/foo/fixed.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "fixed.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-LAYER")
+        findings = self.audit("INCLUDE-LAYER", {
+            "launcher/main/util/scalar/fixed.h": "#pragma once\n",
+            "launcher/main/apps/foo/fixed.h": "#pragma once\n",
+            "launcher/main/apps/foo/app_foo.c": '#include "fixed.h"\n',
+        })
         self.assertEqual(findings, [])
 
     def test_a_bare_include_that_resolves_nowhere_is_not_flagged(self):
         # Two layers each have a same-named header and neither sits at the
         # include root itself; the real compiler would not find this
         # include either, so it is a compile error, not this rule's concern.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/shared.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/ui/shared.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/sand/app_sand.c", '#include "shared.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-LAYER")
+        findings = self.audit("INCLUDE-LAYER", {
+            "launcher/main/gfx/shared.h": "#pragma once\n",
+            "launcher/main/ui/shared.h": "#pragma once\n",
+            "launcher/main/apps/sand/app_sand.c": '#include "shared.h"\n',
+        })
         self.assertEqual(findings, [])
 
     def test_a_relative_reach_into_board_is_flagged(self):
         # LAYER_DIRS used to be hand-typed and missed board/ entirely, so a
         # relative reach into it went unflagged.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/board/board.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/sand/app_sand.c", '#include "../../board/board.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-LAYER")
+        findings = self.audit("INCLUDE-LAYER", {
+            "launcher/main/board/board.h": "#pragma once\n",
+            "launcher/main/apps/sand/app_sand.c": '#include "../../board/board.h"\n',
+        })
         self.assertEqual(len(findings), 1)
         self.assertIn("board/board.h", findings[0].message)
 
     def test_an_apps_internal_relative_include_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/apps/sand/material.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/sand/ui/brush_screen.c",
-                            '#include "../material.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-LAYER")
+        findings = self.audit("INCLUDE-LAYER", {
+            "launcher/main/apps/sand/material.h": "#pragma once\n",
+            "launcher/main/apps/sand/ui/brush_screen.c": '#include "../material.h"\n',
+        })
         self.assertEqual(findings, [])
 
     def layer_tree(self, root):
@@ -341,21 +316,15 @@ class StyleAuditTest(unittest.TestCase):
                 self.rule_hits(root, "INCLUDE-DIRECTION")
 
     def test_a_windows_personal_path_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/device/device.py",
-                            'IDF_PYTHON = r"C:\\Users\\jdoe\\.espressif\\python_env\\python.exe"\n')
-            gate_tree.commit(root, "scripts")
-            findings = self.rule_hits(root, "PERSONAL-PATH")
+        findings = self.audit("PERSONAL-PATH", {
+            "scripts/device/device.py": 'IDF_PYTHON = r"C:\\Users\\jdoe\\.espressif\\python_env\\python.exe"\n',
+        })
         self.assertEqual(len(findings), 1)
 
     def test_a_drive_rooted_esp_idf_checkout_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/tools/build.sh",
-                            "DEFAULT_EXPORT='" + "\\".join(["C:", "Espressif", "esp-idf-v5.5", "export.bat"]) + "'\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "PERSONAL-PATH")
+        findings = self.audit("PERSONAL-PATH", {
+            "launcher/tools/build.sh": "DEFAULT_EXPORT='" + "\\".join(["C:", "Espressif", "esp-idf-v5.5", "export.bat"]) + "'\n",
+        })
         self.assertEqual(len(findings), 1)
 
     def test_any_drive_path_to_an_esp_idf_checkout_is_flagged(self):
@@ -363,67 +332,66 @@ class StyleAuditTest(unittest.TestCase):
         layouts = ["\\".join(["C:", "Espressif", "v5.5.5", "esp-idf", "export.bat"]),
                    "\\".join(["D:", "esp", "esp-idf", "export.bat"]),
                    "/".join(["C:", "Espressif", "v5.5.5", "esp-idf"])]
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/tools/build.sh",
-                            "".join(f"EXPORT_{i}='{layout}'\n" for i, layout in enumerate(layouts)))
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "PERSONAL-PATH")
+        findings = self.audit("PERSONAL-PATH", {
+            "launcher/tools/build.sh": "".join(f"EXPORT_{i}='{layout}'\n" for i, layout in enumerate(layouts)),
+        })
         self.assertEqual(len(findings), len(layouts))
 
     def test_portable_esp_idf_references_are_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/tools/build.sh",
-                            'EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"\n'
-                            "# https://github.com/espressif/esp-idf\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "PERSONAL-PATH")
+        findings = self.audit("PERSONAL-PATH", {
+            "launcher/tools/build.sh": 'EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"\n'
+                                       "# https://github.com/espressif/esp-idf\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_portable_home_relative_path_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "scripts/device/device.py",
-                            'GLOB = "~/.espressif/python_env/idf*_env/Scripts/python.exe"\n')
-            gate_tree.commit(root, "scripts")
-            findings = self.rule_hits(root, "PERSONAL-PATH")
+        findings = self.audit("PERSONAL-PATH", {
+            "scripts/device/device.py": 'GLOB = "~/.espressif/python_env/idf*_env/Scripts/python.exe"\n',
+        })
+        self.assertEqual(findings, [])
+
+    def test_a_tool_named_after_an_app_model_is_flagged(self):
+        findings = self.audit("MODEL-NAMED-TOOL", {
+            "launcher/main/apps/lab/assets/Otter.blend": "model",
+            "launcher/main/apps/lab/tools/export_otter_glb.py": "pass\n",
+            "scripts/otter_bake.sh": "true\n",
+        })
+        self.assertEqual(sorted(f.path for f in findings),
+                         ["launcher/main/apps/lab/tools/export_otter_glb.py", "scripts/otter_bake.sh"])
+
+    def test_app_runtime_code_and_generic_tools_may_name_or_skip_models(self):
+        findings = self.audit("MODEL-NAMED-TOOL", {
+            "launcher/main/apps/lab/assets/otter.glb": "model",
+            "launcher/main/apps/lab/scene_otter.c": "int x;\n",
+            "launcher/tools/gltf/blend_skin_to_glb.py": "pass\n",
+            "docs/images/otter.png": "image",
+        })
         self.assertEqual(findings, [])
 
     def test_a_stray_html_comment_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md", "text\n<!-- TODO: remove this -->\nmore text\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
+        findings = self.audit("STRAY-HTML-COMMENT", {
+            "docs/Guide.md": "text\n<!-- TODO: remove this -->\nmore text\n",
+        })
         self.assertEqual(len(findings), 1)
 
     def test_a_multi_line_html_comment_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md", "text\n<!-- a stray aside\nspanning two lines -->\nmore\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
+        findings = self.audit("STRAY-HTML-COMMENT", {
+            "docs/Guide.md": "text\n<!-- a stray aside\nspanning two lines -->\nmore\n",
+        })
         self.assertEqual(len(findings), 1)
 
     def test_a_known_escape_marker_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                            "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
+        findings = self.audit("STRAY-HTML-COMMENT", {
+            "docs/Guide.md": "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
+                             "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_named_generated_block_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "<!-- generated: scores sha256=" + "0" * 64 + " -->\n| 2 |\n"
-                            "<!-- /generated: scores -->\n<!-- generated: notes -->\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
+        findings = self.audit("STRAY-HTML-COMMENT", {
+            "docs/Guide.md": "<!-- generated: scores sha256=" + "0" * 64 + " -->\n| 2 |\n"
+                             "<!-- /generated: scores -->\n<!-- generated: notes -->\n",
+        })
         self.assertEqual(findings, [])
 
     def test_malformed_generated_marker_is_stray(self):
@@ -432,24 +400,18 @@ class StyleAuditTest(unittest.TestCase):
             pathlib.Path("."), "doc.md", lines))))
 
     def test_a_bullet_right_after_unindented_prose_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "This sentence continues onto the next line where it\n"
-                            "- 3 happens to start with a dash and a space\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
+        findings = self.audit("ACCIDENTAL-BULLET", {
+            "docs/Guide.md": "This sentence continues onto the next line where it\n"
+                             "- 3 happens to start with a dash and a space\n",
+        })
         self.assertEqual(len(findings), 1)
 
     def test_a_bullet_after_an_indented_list_continuation_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "- **First item.** Some wrapped continuation text\n"
-                            "  that is indented under the item above.\n"
-                            "- Second item.\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
+        findings = self.audit("ACCIDENTAL-BULLET", {
+            "docs/Guide.md": "- **First item.** Some wrapped continuation text\n"
+                             "  that is indented under the item above.\n"
+                             "- Second item.\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_lazily_continued_list_item_is_not_flagged(self):
@@ -457,30 +419,21 @@ class StyleAuditTest(unittest.TestCase):
         # on with no indentation at all; the paragraph this "- " sits in
         # started with its own list marker, so it is a sibling item, not an
         # accident.
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md",
-                            "- First item text\n"
-                            "continues here with no indentation at all\n"
-                            "- Second item\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
+        findings = self.audit("ACCIDENTAL-BULLET", {
+            "docs/Guide.md": "- First item text\n"
+                             "continues here with no indentation at all\n"
+                             "- Second item\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_list_right_after_a_closing_fence_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md", "```sh\nexample\n```\n- a real list item\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
+        findings = self.audit("ACCIDENTAL-BULLET", {
+            "docs/Guide.md": "```sh\nexample\n```\n- a real list item\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_real_list_introduced_by_a_colon_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Guide.md", "The rules are:\n- one\n- two\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "ACCIDENTAL-BULLET")
+        findings = self.audit("ACCIDENTAL-BULLET", {"docs/Guide.md": "The rules are:\n- one\n- two\n"})
         self.assertEqual(findings, [])
 
     def test_consecutive_blank_lines_are_flagged_and_fixed(self):
@@ -495,12 +448,9 @@ class StyleAuditTest(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "one\n\ntwo\n")
 
     def test_a_generated_tables_own_blank_lines_are_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "docs/Table.md",
-                            "<!-- BEGIN GENERATED -->\na\n\n\nb\n<!-- END GENERATED -->\n")
-            gate_tree.commit(root, "docs")
-            findings = self.rule_hits(root, "BLANK-LINES")
+        findings = self.audit("BLANK-LINES", {
+            "docs/Table.md": "<!-- BEGIN GENERATED -->\na\n\n\nb\n<!-- END GENERATED -->\n",
+        })
         self.assertEqual(findings, [])
 
     def test_trailing_blank_lines_are_flagged_and_fixed(self):
@@ -529,32 +479,23 @@ class StyleAuditTest(unittest.TestCase):
             self.assertNotIn("====", target.read_text(encoding="utf-8"))
 
     def test_a_title_case_comment_inside_a_function_body_is_a_warning(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "/* gfx - fixture header. */\n\n"
-                            "void\nfoo(void) {\n    int a = 1;\n    /* Setup */\n    a = 2;\n}\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "HEADING-COMMENT")
+        findings = self.audit("HEADING-COMMENT", {
+            "launcher/main/gfx/gfx.c": "/* gfx - fixture header. */\n\n"
+                                       "void\nfoo(void) {\n    int a = 1;\n    /* Setup */\n    a = 2;\n}\n",
+        })
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].severity, "WARN")
 
     def test_the_same_text_as_a_file_level_divider_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "/* Setup */\n\nstatic int\nfoo(void) {\n    return 1;\n}\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "HEADING-COMMENT")
+        findings = self.audit("HEADING-COMMENT", {
+            "launcher/main/gfx/gfx.c": "/* Setup */\n\nstatic int\nfoo(void) {\n    return 1;\n}\n",
+        })
         self.assertEqual(findings, [])
 
     def test_the_same_text_inside_an_array_initializer_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "static const int table[] = {\n    /* Values */\n    1, 2, 3,\n};\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "HEADING-COMMENT")
+        findings = self.audit("HEADING-COMMENT", {
+            "launcher/main/gfx/gfx.c": "static const int table[] = {\n    /* Values */\n    1, 2, 3,\n};\n",
+        })
         self.assertEqual(findings, [])
 
 
@@ -637,63 +578,52 @@ class MainTest(unittest.TestCase):
 
 class ShellCompoundStatusTest(unittest.TestCase):
     rule_hits = StyleAuditTest.rule_hits
+    audit = StyleAuditTest.audit
 
     def test_a_status_read_after_fi_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "tools/run.sh",
-                            "#!/bin/sh\n"
+        findings = self.audit("SHELL-COMPOUND-STATUS", {
+            "tools/run.sh": "#!/bin/sh\n"
                             "run_it() {\n"
                             "    if build >>\"$LOG\" 2>&1; then\n"
                             "        return 0\n"
                             "    fi\n"
                             "    rc=$?\n"
                             "    report \"$rc\"\n"
-                            "}\n")
-            gate_tree.commit(root, "tools")
-            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+                            "}\n",
+        })
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].line, 6)
         self.assertIn("compound's status", findings[0].message)
 
     def test_exit_after_fi_is_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "tools/run.sh",
-                            "#!/bin/sh\n"
+        findings = self.audit("SHELL-COMPOUND-STATUS", {
+            "tools/run.sh": "#!/bin/sh\n"
                             "if report run; then\n"
                             "    exit 0\n"
                             "fi\n"
-                            "exit $?\n")
-            gate_tree.commit(root, "tools")
-            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+                            "exit $?\n",
+        })
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].line, 5)
 
     def test_the_capture_inside_the_branch_is_not_flagged(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "tools/run.sh",
-                            "#!/bin/sh\n"
+        findings = self.audit("SHELL-COMPOUND-STATUS", {
+            "tools/run.sh": "#!/bin/sh\n"
                             "run_it() {\n"
                             "    build >>\"$LOG\" 2>&1 && return 0\n"
                             "    rc=$?\n"
                             "    report \"$rc\"\n"
                             "}\n"
-                            "report run || exit $?\n")
-            gate_tree.commit(root, "tools")
-            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+                            "report run || exit $?\n",
+        })
         self.assertEqual(findings, [])
 
     def test_a_c_file_is_not_shell(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c",
-                            "/* gfx - fixture header. */\n\n"
-                            "void\ngfx_init(void) {\n}\n"
-                            "int rc=$?\n")
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "SHELL-COMPOUND-STATUS")
+        findings = self.audit("SHELL-COMPOUND-STATUS", {
+            "launcher/main/gfx/gfx.c": "/* gfx - fixture header. */\n\n"
+                                       "void\ngfx_init(void) {\n}\n"
+                                       "int rc=$?\n",
+        })
         self.assertEqual(findings, [])
 
 

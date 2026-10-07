@@ -17,6 +17,7 @@
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
 #include "gfx/gfx_color.h"
+#include "render/context/render_context.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
@@ -342,7 +343,7 @@ static scene_t*
 show(const char* name, const char* camera) {
     scene_t* scene = load(name);
     TEST_ASSERT_TRUE(scene_activate(scene, camera));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     return scene;
 }
 
@@ -378,9 +379,41 @@ test_a_camera_clears_to_the_colour_its_scene_gives(void) {
     fixture();
     scene_t* scene = load("test_sky");
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x996633), pixel(-8.0F));
+}
+
+/* Dynamic resolution is opt-in: a camera draws at its own scale until a
+ * caller asks, again once it asks no more, and again after the app leaves. */
+static void
+test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for(void) {
+    fixture();
+    scene_t* scene = show("test_sky", NULL);
+    render_context_set_scale(render_context_main(), 50);
+    frame(0);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
+
+    const resolution_step_t quarter = {SIZE / 4, SIZE / 4};
+    const resolution_config_t one = resolution_config(&quarter, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
+    frame(0);
+    TEST_ASSERT_EQUAL_INT(0, render_context_frame(render_context_main()).step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 4, render_context_frame(render_context_main()).width);
+
+    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
+    frame(0);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
+
+    render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
+    (void)scene;
+    scene_unload_all();
+    scene = show("test_sky", NULL);
+    frame(0);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
+    TEST_ASSERT_EQUAL_INT(SIZE, render_context_frame(render_context_main()).width);
 }
 
 static void
@@ -751,13 +784,13 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F)); /* the other scene's quads are not drawn */
     scene_entity_set_enabled(pair, scene_find(pair, "red"), false);
     TEST_ASSERT_TRUE(scene_activate(pair, NULL));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* each scene kept its own state */
 }
@@ -771,7 +804,7 @@ test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone(void) {
     scene_unload(pair);
     TEST_ASSERT_FALSE(scene_has_active_camera());
     TEST_ASSERT_TRUE(scene_activate(solo, NULL));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
 }
@@ -831,7 +864,7 @@ static void
 test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target(void) {
     fixture();
     show("test_pair", NULL);
-    scene_set_render_scale(50);
+    render_context_set_scale(render_context_main(), 50);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
@@ -843,10 +876,11 @@ test_the_stats_count_what_the_last_draw_kept(void) {
     fixture();
     scene_t* scene = show("test_pair", NULL);
     frame(16);
-    TEST_ASSERT_EQUAL_INT(4, scene_stats().triangles); /* two quads of two triangles */
+    TEST_ASSERT_EQUAL_INT(4,
+                          render_context_frame(render_context_main()).stats.triangles); /* two quads of two triangles */
     scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
     frame(16);
-    TEST_ASSERT_EQUAL_INT(2, scene_stats().triangles);
+    TEST_ASSERT_EQUAL_INT(2, render_context_frame(render_context_main()).stats.triangles);
 }
 
 /* An app leaving: nothing it loaded outlives it, and the raster's scratch
@@ -874,7 +908,7 @@ test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone(void) {
         fx.pixels[i] = SENTINEL;
     }
     scene_render(16, 0, SIZE, SIZE);
-    TEST_ASSERT_EQUAL_INT(4, scene_stats().triangles);
+    TEST_ASSERT_EQUAL_INT(4, render_context_frame(render_context_main()).stats.triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
     scene_compose(16, 0, &fx.target);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
@@ -892,7 +926,7 @@ test_a_compose_with_no_framebuffer_writes_nothing(void) {
     scene_render(16, 0, SIZE, SIZE);
     const scene_target_t none = {NULL, SIZE, SIZE};
     scene_compose(16, 0, &none);
-    TEST_ASSERT_EQUAL_INT(4, scene_stats().triangles);
+    TEST_ASSERT_EQUAL_INT(4, render_context_frame(render_context_main()).stats.triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
     frame(16); /* and the next frame, with a framebuffer again, is whole */
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
@@ -915,12 +949,12 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
     fixture();
     scene_t* twin = load("test_twin");
     TEST_ASSERT_TRUE(scene_activate(twin, "right"));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* the quad is 4 units left of this camera */
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, "left"));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, NULL)); /* the first */
@@ -942,13 +976,13 @@ static void
 test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(void) {
     fixture();
     show("test_pair", NULL);
-    scene_set_render_scale(50);
+    render_context_set_scale(render_context_main(), 50);
     frame(16);
     const size_t small_free = memory_free_bytes(MEMORY_PSRAM);
     uint16_t* half = malloc(sizeof(*half) * SIZE * SIZE);
     TEST_ASSERT_NOT_NULL(half);
     memcpy(half, fx.pixels, sizeof(*half) * SIZE * SIZE);
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < small_free);
     TEST_ASSERT_TRUE(memcmp(half, fx.pixels, sizeof(*half) * SIZE * SIZE) != 0);
@@ -975,7 +1009,7 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
     show("test_pair", NULL);
     frame(500);
     TEST_ASSERT_TRUE(scene_activate(flight, NULL));
-    scene_set_render_scale(100);
+    render_context_set_scale(render_context_main(), 100);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
 }
@@ -1021,6 +1055,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch);
     RUN_TEST(test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time);
     RUN_TEST(test_a_loaded_scene_that_is_not_active_keeps_its_time);
+    RUN_TEST(test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for);
 }
 
 SUITE_REGISTER(run_scene_suite);
