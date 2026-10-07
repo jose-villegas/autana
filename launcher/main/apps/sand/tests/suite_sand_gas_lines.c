@@ -36,8 +36,7 @@ static gas_line_board_t slow_board;
 
 static void
 gas_line_board_open(gas_line_board_t* b, gas_line_scene_fn scene, uint32_t seed) {
-    const size_t blocks =
-        (size_t)((GASLINE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((GASLINE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const size_t blocks = sand_sleep_block_bytes(GASLINE_W, GASLINE_H);
     b->cells = malloc((size_t)GASLINE_W * (size_t)GASLINE_H);
     b->blocks = malloc(blocks);
     TEST_ASSERT_NOT_NULL(b->cells);

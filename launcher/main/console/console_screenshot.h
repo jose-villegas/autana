@@ -1,3 +1,4 @@
+/* console_screenshot: screenshot requests and the framebuffer dump with device state. */
 #pragma once
 
 #include <stdbool.h>

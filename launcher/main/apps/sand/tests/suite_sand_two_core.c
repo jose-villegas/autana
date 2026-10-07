@@ -21,10 +21,8 @@
 #include "freertos/task.h"
 #endif
 
-#define TC_W          ((int)REAL_W)
-#define TC_H          ((int)REAL_H)
-#define TC_BLOCK_COLS ((TC_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define TC_BLOCK_ROWS ((TC_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define TC_W ((int)REAL_W)
+#define TC_H ((int)REAL_H)
 
 _Static_assert(TC_H >= 2 * SAND_CHUNK_SIDE_MIN && TC_W >= 2 * SAND_CHUNK_SIDE_MIN,
                "the two-core suite needs a board sand_chunk_plan() can cut both ways");
@@ -154,7 +152,7 @@ tc_assert_split_arm_swept_split(unsigned before, bool two_core) {
 static uint32_t
 tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int steps, bool two_core) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -180,7 +178,7 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     tc_assert_split_arm_swept_split(swept_before, two_core);
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
+    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1u;
 
     free(scratch);
     free(cells);
@@ -591,7 +589,7 @@ test_a_grid_under_the_split_floor_steps_serially_unless_a_side_is_forced(void) {
 static void
 test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -691,7 +689,7 @@ worst_row_deltas(const int* occupied, int h, int side, int* interior_worst, int*
 static void
 test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -767,8 +765,7 @@ tc_board_open(int w, int h, int phase) {
     tc_board_t* b = malloc(sizeof *b);
     TEST_ASSERT_NOT_NULL(b);
     b->cells = malloc((size_t)w * (size_t)h);
-    b->blocks =
-        malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    b->blocks = malloc(sand_sleep_block_bytes(w, h));
     b->stamps = malloc(sand_step_stamp_bytes(w, h));
     TEST_ASSERT_NOT_NULL(b->cells);
     TEST_ASSERT_NOT_NULL(b->blocks);
@@ -987,8 +984,8 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
         for (int offset = 0; offset <= SAND_BLOCK_H / 2; offset += SAND_BLOCK_H / 2) {
             uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
             uint8_t* two_core_cells = malloc((size_t)TC_W * (size_t)TC_H);
-            uint8_t* serial_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
-            uint8_t* two_core_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+            uint8_t* serial_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
+            uint8_t* two_core_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
             TEST_ASSERT_NOT_NULL(serial_cells);
             TEST_ASSERT_NOT_NULL(two_core_cells);
             TEST_ASSERT_NOT_NULL(serial_blocks);
@@ -1463,7 +1460,7 @@ test_a_fuse_blast_throws_grains_on_both_cores(void) {
 static void
 test_a_settled_chunk_does_no_row_work(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1535,7 +1532,7 @@ tc_build_dense_pile(sand_t* s) {
 static uint32_t
 tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int offset, bool two_core, int* out_n) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1555,7 +1552,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     tc_collect_core1();
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
+    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1u;
 
     if (out_n != NULL) {
         int n = 0;
@@ -1634,8 +1631,8 @@ static void
 test_landscape_water_column_has_no_line_mass_lag(void) {
     uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
     uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* serial_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
-    uint8_t* split_blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* serial_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
+    uint8_t* split_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(serial_cells);
     TEST_ASSERT_NOT_NULL(split_cells);
     TEST_ASSERT_NOT_NULL(serial_blocks);
@@ -1658,7 +1655,7 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
     sand_force_hashed_rng(true);
     for (int step = 0; step < 40; step++) {
         memcpy(split_cells, serial_cells, (size_t)TC_W * (size_t)TC_H);
-        memcpy(split_blocks, serial_blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+        memcpy(split_blocks, serial_blocks, sand_sleep_block_bytes(TC_W, TC_H));
         split.step_phase = serial.step_phase;
 
         sand_set_two_core_step(true);
@@ -1925,8 +1922,7 @@ rc_build_reaction_heavy_scene(sand_t* s, uint8_t* cells, int w, int h, uint32_t 
  * one shared with the other core. */
 static uint32_t
 rc_run_reaction_heavy_and_hash(int w, int h, uint32_t seed, int steps, bool two_core) {
-    const size_t blocks =
-        (size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H);
+    const size_t blocks = sand_sleep_block_bytes(w, h);
     uint8_t* cells = malloc((size_t)w * (size_t)h);
     uint8_t* block_state = malloc(blocks);
     uint8_t* rows = malloc((size_t)h);
@@ -2164,7 +2160,7 @@ test_reaction_split_actually_changes_the_draw_stream(void) {
 static uint32_t
 tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
     void* scratch = malloc(sand_lane_scratch_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
@@ -2188,7 +2184,7 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
             }
         }
     }
-    memset(blocks, BLOCK_HAS_LIQUID, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    memset(blocks, BLOCK_HAS_LIQUID, sand_sleep_block_bytes(TC_W, TC_H));
 
     static const int slide_a[] = {-1, 1};
     static const int slide_b[] = {1, 1};
@@ -2205,7 +2201,7 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     sand_set_two_core_step(false);
 
     uint32_t h = tc_hash(cells, (size_t)TC_W * (size_t)TC_H);
-    h ^= tc_hash(blocks, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS) * 0x9E3779B1u;
+    h ^= tc_hash(blocks, sand_sleep_block_bytes(TC_W, TC_H)) * 0x9E3779B1u;
 
     free(scratch);
     free(stamps);
@@ -2233,7 +2229,7 @@ test_a_board_without_lane_scratch_steps_its_fluids_serially(void) {
 static void
 test_a_lane_merge_carries_every_content_flag_back(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -2298,7 +2294,7 @@ test_a_lane_merge_carries_every_content_flag_back(void) {
 static void
 test_a_split_fluid_step_allocates_nothing(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
@@ -2319,7 +2315,7 @@ test_a_split_fluid_step_allocates_nothing(void) {
             }
         }
     }
-    memset(blocks, BLOCK_HAS_LIQUID, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    memset(blocks, BLOCK_HAS_LIQUID, sand_sleep_block_bytes(TC_W, TC_H));
 
     static const int slide_a[] = {-1, 1};
     static const int slide_b[] = {1, 1};
@@ -2650,7 +2646,7 @@ test_no_split_pass_draws_from_the_sequential_stream(void) {
 static uint32_t
 tc_run_crossflow_and_hash(void) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -2665,7 +2661,7 @@ tc_run_crossflow_and_hash(void) {
     for (int x = 0; x < TC_W; x++) {
         sand_set(&s, x, TC_H / 3 - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + (x * 7) % MASS_MAX)));
     }
-    memset(blocks, BLOCK_HAS_LIQUID, (size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    memset(blocks, BLOCK_HAS_LIQUID, sand_sleep_block_bytes(TC_W, TC_H));
     /* Pinned strictly between 0 and 255, the two values that skip the roll,
      * and set by hand because sand_step() is what derives the flag. */
     sand_set_mobility(&s, 128);
@@ -2780,7 +2776,7 @@ typedef struct {
 static tc_dispatch_t
 tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int settle_steps, int gx, int gy) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc((size_t)TC_BLOCK_COLS * (size_t)TC_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
     uint8_t* stamps = malloc(sand_step_stamp_bytes(TC_W, TC_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
