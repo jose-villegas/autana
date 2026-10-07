@@ -1,12 +1,8 @@
 /*
- * Device-only suite: where a raster frame's time goes at each render size,
- * along the first camera's path. The stage split and model fit use that
- * path; each policy then flies every named camera through the scene manager
- * at a fixed frame step. Records include the corrected predicted price
- * alongside draw, upscale and triangle counts for each path and budget.
- * launcher/tools/r3d/dynres_report.py reads the capture.
- *
- * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
+ * Device-only suite: fit raster costs on the first camera path, then fly
+ * each named camera under every policy and budget. Frame costs and corrected
+ * predictions feed launcher/tools/r3d/dynres_report.py.
+ * Needs PSRAM, core 1 and a clock.
  */
 #include "suites.h" /* portable - needed by SUITE_REGISTER() even on host */
 

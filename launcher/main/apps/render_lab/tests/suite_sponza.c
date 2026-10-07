@@ -275,18 +275,23 @@ test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
 }
 
 static void
-test_the_flythrough_keeps_clear_of_every_triangle(void) {
-    open_the_meshes();
+check_camera_paths(void (*check)(const r3d_lit_mesh_t*)) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         camera_name = sponza_cameras[camera];
         flythrough = scene_camera_lens(sponza, camera_name);
         TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
         TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
-        check_the_flythrough_keeps_clear_of_every_triangle(MESH_FULL);
-        check_the_flythrough_keeps_clear_of_every_triangle(MESH_LITE);
-        check_the_flythrough_keeps_clear_of_every_triangle(MESH_FLAT);
+        check(MESH_FULL);
+        check(MESH_LITE);
+        check(MESH_FLAT);
     }
     flythrough = scene_camera_lens(sponza, NULL);
+}
+
+static void
+test_the_flythrough_keeps_clear_of_every_triangle(void) {
+    open_the_meshes();
+    check_camera_paths(check_the_flythrough_keeps_clear_of_every_triangle);
 }
 
 /* At the pace of a slow walk, with the seam between a lap's end and its start
@@ -355,16 +360,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
 static void
 test_the_flythrough_sees_mostly_building(void) {
     open_the_meshes();
-    for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
-        camera_name = sponza_cameras[camera];
-        flythrough = scene_camera_lens(sponza, camera_name);
-        TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
-        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
-        check_the_flythrough_sees_mostly_building(MESH_FULL);
-        check_the_flythrough_sees_mostly_building(MESH_LITE);
-        check_the_flythrough_sees_mostly_building(MESH_FLAT);
-    }
-    flythrough = scene_camera_lens(sponza, NULL);
+    check_camera_paths(check_the_flythrough_sees_mostly_building);
 }
 
 /* The pack the build wrote for the scene: on the device, the one flashed
