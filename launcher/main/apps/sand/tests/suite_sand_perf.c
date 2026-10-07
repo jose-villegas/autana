@@ -273,6 +273,14 @@ time_steps(sand_t* real, int steps, int gx, int gy, int gz) {
     return per_step;
 }
 
+static int64_t
+time_settled_steps(sand_t* real, int settle_steps, int measured_steps) {
+    for (int i = 0; i < settle_steps; i++) {
+        sand_step(real, 0, 1000, 0);
+    }
+    return time_steps(real, measured_steps, 0, 1000, 0);
+}
+
 static void
 log_step_time(const char* scene, int64_t per_step) {
     ESP_LOGI("device_tests", "%s, %dx%d: %lld us per step", scene, REAL_W, REAL_H, (long long)per_step);
@@ -1587,12 +1595,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
 
     /* Let the sand settle and the fire catch, so the timed steps are a
      * burning campfire rather than a scene still falling into place. */
-    for (int i = 0; i < 30; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-
-    const int steps = 20;
-    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
+    const int64_t per_step = time_settled_steps(real, 30, 20);
 
     log_step_time("campfire on a sand bed", per_step);
 
@@ -2171,12 +2174,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
 
     /* Settle first - the same "let it get going" step as the every-material
      * flip test above, so the measured window lands on a live scene. */
-    for (int i = 0; i < 10; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-
-    const int steps = 20;
-    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
+    const int64_t per_step = time_settled_steps(real, 10, 20);
 
     ESP_LOGI("device_tests",
              "four liquids reacting at once, %dx%d: %lld "
@@ -2294,16 +2292,12 @@ static void
 test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
     /* Step count is fixed at 10 by the host guard beside this test (its own
      * comment covers the cullet timeline); the ceiling is chosen against
      * the device's 5-second task watchdog at that fixed count - raising the
      * count without minding the ceiling needs re-doing the bet. */
 
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, big, REAL_W, REAL_H, 41u);
-    sand_enable_sleeping(real, blocks);
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41u);
     board_bookkeeping_open(real);
     sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
@@ -2339,12 +2333,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
 
     build_boiler_scene(real);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-
-    const int steps = 30;
-    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
+    const int64_t per_step = time_settled_steps(real, 20, 30);
 
     log_step_time("boiler scene", per_step);
 
@@ -2376,12 +2365,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
 
     build_wet_earth_scene(real);
 
-    for (int i = 0; i < 35; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
-
-    const int steps = 30;
-    const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
+    const int64_t per_step = time_settled_steps(real, 35, 30);
 
     log_step_time("wet earth scene", per_step);
 

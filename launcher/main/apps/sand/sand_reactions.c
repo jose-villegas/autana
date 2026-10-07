@@ -637,6 +637,12 @@ soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reac
     return false;
 }
 
+static void
+place_soaked_cell(sand_t* s, int x, int y, size_t at, uint8_t material, uint8_t moisture) {
+    place_cell(s, x, y, at, soil_cell(CELL_MAKE(material, 0), 0, moisture, &reactions[material]));
+    mark_block_has_moisture(s, x, y);
+}
+
 /* Shares moisture with one drinking neighbour. Returns whether it did. */
 static bool
 soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t nat, cell_t c, uint8_t held) {
@@ -657,11 +663,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
         }
         cost = give;
         recv_m = give;
-        s->cells[nat] = soil_cell(CELL_MAKE(nr->soaks_to, 0), 0, (uint8_t)give, &reactions[nr->soaks_to]);
-        latch_content_flags(s, s->cells[nat]);
-        mark_rows(s, nx, ny, ny);
-        mark_block_has_moisture(s, nx, ny);
-        wake_block_and_neighbors(s, nx, ny);
+        place_soaked_cell(s, nx, ny, nat, nr->soaks_to, (uint8_t)give);
     } else if (same_species(n, c) && !cell_is_burning(n)) {
         /* Moisture_of() reads lit fuse as 0. Gap calc overwrites lit
          * byte. */
@@ -768,11 +770,7 @@ percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t h
         recv_m = give;
         /* Arrives wet, so tone 0: soil_set_moisture() gives it a tone
          * through soil_dry_out() once it dries. */
-        s->cells[nat] = soil_cell(CELL_MAKE(br->soaks_to, 0), 0, (uint8_t)give, &reactions[br->soaks_to]);
-        latch_content_flags(s, s->cells[nat]);
-        mark_rows(s, nx, ny, ny);
-        mark_block_has_moisture(s, nx, ny);
-        wake_block_and_neighbors(s, nx, ny);
+        place_soaked_cell(s, nx, ny, nat, br->soaks_to, (uint8_t)give);
     } else {
         const int room = (int)br->moist_max - moisture_of(below, br);
         if (give > room) {

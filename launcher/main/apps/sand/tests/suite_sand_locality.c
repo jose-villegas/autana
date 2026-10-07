@@ -776,23 +776,33 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
 }
 
 static void
+loc_filled_fixture(cell_t cell) {
+    loc_fixture();
+    for (int y = 0; y < LOC_H; y++) {
+        for (int x = 0; x < LOC_W; x++) {
+            sand_set(&fx.loc, x, y, cell);
+        }
+    }
+}
+
+static void
+loc_seed_and_sleep(uint32_t seed) {
+    rng_seed(&fx.loc.rng, seed);
+    fx.loc.rng_seed_base = seed;
+    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
+}
+
+static void
 test_root_conduction_through_a_resting_bed_does_not_wake_it(void) {
     for (uint32_t seed = 1; seed <= 8; seed++) {
-        loc_fixture();
+        loc_filled_fixture(STONE);
         const int x = LOC_W / 2, y = LOC_H / 2;
-        for (int row = 0; row < LOC_H; row++) {
-            for (int col = 0; col < LOC_W; col++) {
-                sand_set(&fx.loc, col, row, STONE);
-            }
-        }
         sand_set(&fx.loc, x, y, MATX(MATX_ROOT));
         sand_set(&fx.loc, x, y - 1, CELL_SOIL(MAT_DIRT, 0, 5));
         sand_set(&fx.loc, x, y + 1, CELL_SOIL(MAT_DIRT, 0, 0));
         fx.loc.last_load_dx = 0;
         fx.loc.last_load_dy = 1;
-        rng_seed(&fx.loc.rng, seed);
-        fx.loc.rng_seed_base = seed;
-        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
+        loc_seed_and_sleep(seed);
         int moved = 0;
         for (int step = 0; step < 100 && !moved; step++) {
             step_one_conducting_cell(&fx.loc, x, y, LOC_W, LOC_H, reaction_of(MATX(MATX_ROOT)));
@@ -808,13 +818,8 @@ test_root_conduction_through_a_resting_bed_does_not_wake_it(void) {
 static void
 test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid(void) {
     for (uint32_t seed = 1; seed <= 8; seed++) {
-        loc_fixture();
+        loc_filled_fixture(STONE);
         const int x = LOC_W / 2, plant_y = SAND_BLOCK_H - 2, soil_y = 2 * SAND_BLOCK_H;
-        for (int y = 0; y < LOC_H; y++) {
-            for (int col = 0; col < LOC_W; col++) {
-                sand_set(&fx.loc, col, y, STONE);
-            }
-        }
         for (int y = plant_y; y < soil_y; y++) {
             sand_set(&fx.loc, x, y, CELL_MAKE(MAT_WOOD, 0));
         }
@@ -823,9 +828,7 @@ test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid(void) {
         sand_set(&fx.loc, x - 1, plant_y, CELL_MAKE(MAT_WATER, MASS_MAX));
         fx.loc.last_load_dx = 0;
         fx.loc.last_load_dy = 1;
-        rng_seed(&fx.loc.rng, seed);
-        fx.loc.rng_seed_base = seed;
-        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
+        loc_seed_and_sleep(seed);
         int drank = 0;
         const cell_t plant = sand_at(&fx.loc, x, plant_y);
         for (int step = 0; step < 100 && !drank; step++) {
@@ -844,16 +847,9 @@ test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid(void) {
 static void
 test_heat_drying_a_resting_bed_does_not_wake_it(void) {
     for (uint32_t seed = 1; seed <= 8; seed++) {
-        loc_fixture();
+        loc_filled_fixture(MATX(MATX_METAL));
         const int x = LOC_W / 2, y = LOC_H / 2;
-        for (int row = 0; row < LOC_H; row++) {
-            for (int col = 0; col < LOC_W; col++) {
-                sand_set(&fx.loc, col, row, MATX(MATX_METAL));
-            }
-        }
-        rng_seed(&fx.loc.rng, seed);
-        fx.loc.rng_seed_base = seed;
-        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
+        loc_seed_and_sleep(seed);
         bool dried = false;
         int awake = 0;
         for (int step = 0; step < 100 && !dried; step++) {
