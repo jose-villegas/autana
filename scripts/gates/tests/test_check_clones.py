@@ -134,6 +134,35 @@ class CloneTests(unittest.TestCase):
             original.write_text(BLOCK, encoding="utf-8")
             self.assertEqual(len(gate.scan(root, 80)), 1)
 
+    def test_whole_gate_splitting_a_file_keeps_its_clone(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def git(*args):
+                return gate.git(root, *args).decode().strip()
+            def commit():
+                git("add", "-A")
+                git("commit", "-m", "test: source")
+            git("init", "-b", "main")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            whole = root / "launcher/main/whole.c"
+            whole.parent.mkdir(parents=True)
+            # Mostly comment, so git sees the split as a deletion, not a rename.
+            notes = "".join(f"/* note {i}: what the rest of this file held */\n" for i in range(200))
+            whole.write_text(notes + BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta"), encoding="utf-8")
+            commit()
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            git("checkout", "-b", "feature/test")
+            git("rm", "-q", "launcher/main/whole.c")
+            whole.parent.mkdir(parents=True, exist_ok=True)
+            (root / "launcher/main/part.c").write_text(BLOCK + "int pad_new;\n" + BLOCK.replace("alpha", "beta"),
+                                                       encoding="utf-8")
+            commit()
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = gate.main([], root=root)
+            self.assertEqual(result, 0, output.getvalue())
+
     def pair(self, first="a.c", second="b.c", fragment=BLOCK):
         return {"firstFile": {"name": first, "start": 1, "end": 12},
                 "secondFile": {"name": second, "start": 1, "end": 12},

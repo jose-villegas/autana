@@ -98,8 +98,8 @@ panel_dev_config(void* vendor) {
 
 /* Creating the io and driver objects sends nothing to the panel, which is
  * what lets a clock change reopen them without re-running bring-up. The two
- * revisions differ only in the controller's io config, init sequence and
- * column gap. */
+ * revisions differ in the controller's driver, its io and vendor config,
+ * the init sequence and the column gap. */
 esp_err_t
 board_panel_open(int hz, esp_lcd_panel_io_color_trans_done_cb_t on_sent, esp_lcd_panel_io_handle_t* io,
                  esp_lcd_panel_handle_t* panel) {
