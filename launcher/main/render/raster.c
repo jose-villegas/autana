@@ -345,8 +345,14 @@ raster_upscale(raster_t* raster) {
     assert(raster->width > 0 && raster->height > 0);
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
     FRAME_COST_BEGIN(upscaled_from);
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    uint16_t* columns = (uint16_t*)((char*)b.picture.attachment[0].pixels + gfx_render_target_bytes(&b.picture));
+    uint16_t* columns;
+    /* The carve's lifetime ends before the slice pair uses the stack. */
+    {
+        const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+        const gfx_attachment_t* last = &b.picture.attachment[b.picture.count - 1];
+        columns = (uint16_t*)((char*)last->pixels
+                              + gfx_attachment_bytes(last->bytes_per_pixel, raster->width, raster->height));
+    }
     uint16_t* rows = columns + raster->destination_width;
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != raster->destination_width
