@@ -266,14 +266,12 @@ places names it, and the attachment seam does not change when it goes:
 |---|---|
 | `render/raster_motion.{c,h}`, `test/suites/suite_raster_motion.c`, `docs/images/render/sponza-motion-vectors.gif` | the files |
 | `render/context/render_context.c` | the include, `attach_motion()` and its state, its call, and the free in `render_context_release()` |
-| the Sponza perf suite of the app that shows the views | `test_sponza_frame_cost_with_motion` |
-| `CMakeLists.txt`, `test/run_tests.sh`, that app's host-render script | one source line each |
-| that app's host renderer and `tests/test_render_views.py` | the `motion` view name and its error text |
-| `doc_images.sh`, that app's `tools/README.md` | the GIF's line and row |
+| `CMakeLists.txt`, `test/run_tests.sh` | one source line each |
+| the app that measures and shows motion | its perf test with motion, its host renderer's source line, `motion` view name and error text, and its doc-image GIF line and README row |
 | this page | the `raster_motion.h` file row, this section, the motion note under the views |
 
 With no further attachment left, `RASTER_SHOW_ATTACHMENT` shows nothing
-and the app's view tunable can end at `RASTER_SHOW_DEPTH_TILES`.
+and an app's view tunable can end at `RASTER_SHOW_DEPTH_TILES`.
 
 ## Coverage and small triangles
 
