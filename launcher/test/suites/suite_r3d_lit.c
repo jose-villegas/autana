@@ -1666,7 +1666,9 @@ static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    raster_t raster = {ONE_MESH(&p->mesh), .width = W, .height = H};
+    const r3d_lit_mesh_t empty = {0};
+    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&empty, NULL}};
+    raster_t raster = {.instances = instances, .instance_count = 2, .width = W, .height = H};
     const size_t bytes = raster_scratch_bytes(&raster);
     char* scratch = malloc(bytes);
     TEST_ASSERT_NOT_NULL(scratch);
@@ -1675,7 +1677,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.visible, sizeof(uint16_t) * (size_t)p->mesh.cluster_count},
+        {(const char*)b.culled, gfx_attachment_bytes(sizeof(uint16_t), (int)raster_culled_length(&raster), 1)},
         {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
         {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
@@ -1691,6 +1693,11 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         total += parts[i].size;
     }
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)total);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
+    raster.width /= 2;
+    raster.height /= 2;
+    TEST_ASSERT_TRUE(b.culled == r3d_pipeline_carve(&raster).culled);
     free(scratch);
 }
 
@@ -1752,7 +1759,6 @@ test_the_two_core_frame_matches_one_full_draw(void) {
  * assertion leaves nothing behind in the arena. */
 static struct {
     void* scratch;
-    uint16_t* culled;
     uint16_t* want;
     uint16_t* destination;
     uint16_t* color; /* copies of what was drawn */
@@ -1772,11 +1778,9 @@ census_raster(const r3d_instance_t* instances, int count) {
                        .destination_width = 2 * W,
                        .destination_height = 2 * H};
     frame_held.scratch = malloc(raster_scratch_bytes(&raster));
-    frame_held.culled = malloc(sizeof(uint16_t) * raster_culled_length(&raster));
     frame_held.want = malloc(sizeof(uint16_t) * 2 * (size_t)W * H);
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_NOT_NULL(frame_held.scratch);
-    TEST_ASSERT_NOT_NULL(frame_held.culled);
     TEST_ASSERT_NOT_NULL(frame_held.want);
     raster.scratch = frame_held.scratch;
     return raster;
@@ -1797,11 +1801,11 @@ expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int s
 
     raster->width = sizes[(z + 1) % 3][0]; /* the census at another size */
     raster->height = sizes[(z + 1) % 3][1];
-    const raster_stats_t counted = raster_census(raster, camera, 0, frame_held.culled);
+    const raster_stats_t counted = raster_census(raster, camera, 0);
     raster->width = sizes[z][0];
     raster->height = sizes[z][1];
     memset(raster_color(raster), 0xEE, sizeof(uint16_t) * drawn);
-    raster_draw_culled(raster, camera, 0, frame_held.culled);
+    raster_draw_culled(raster, camera, 0);
 
     TEST_ASSERT_GREATER_THAN_INT(0, direct.clusters);
     TEST_ASSERT_EQUAL_INT(direct.clusters, counted.clusters);
@@ -2263,7 +2267,6 @@ release_fixture(void) {
     free(other_parts);
     other_parts = NULL;
     free(frame_held.scratch);
-    free(frame_held.culled);
     free(frame_held.want);
     free(frame_held.destination);
     free(frame_held.color);

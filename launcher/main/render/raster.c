@@ -173,7 +173,8 @@ raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
     const gfx_render_target_t picture = raster_picture(raster);
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
-           + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster_cluster_capacity(raster))
+           + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster))
+           + gfx_attachment_bytes(sizeof(uint16_t), (int)raster_culled_length(raster), 1)
            + gfx_render_target_bytes(&picture)
            + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
@@ -203,16 +204,10 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const came
     }
 }
 
-/* Culls one instance into `out`, counting what survived into `stats`. The
- * lens is not fitted, so the frustum is the picture's and the list holds at
- * every size the picture does. */
 static int
-cull_instance(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter,
-              uint16_t* out, raster_stats_t* stats) {
+cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    r3d_lens_t lens;
-    instance_lens(raster, instance, camera, quarter, false, &lens);
-    const int visible = r3d_pipeline_cull(mesh, &lens, out);
+    const int visible = r3d_pipeline_cull(mesh, lens, out);
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
         stats->triangles += mesh->clusters[out[i]].triangle_count;
@@ -234,11 +229,10 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
     return count;
 }
 
-/* The scratch block's visible list and cluster rows, out of line so the
- * carve's struct is not on the draw's stack. */
+/* Keep the carve's struct off the draw's stack. */
 static __attribute__((noinline)) uint16_t*
-scratch_visible(const raster_t* raster) {
-    return r3d_pipeline_carve(raster).visible;
+scratch_culled(const raster_t* raster) {
+    return r3d_pipeline_carve(raster).culled;
 }
 
 static __attribute__((noinline)) const r3d_pipeline_rows_t*
@@ -247,19 +241,15 @@ scratch_rows(const raster_t* raster) {
 }
 
 static inline __attribute__((always_inline)) void
-draw_visible(const raster_t* raster, int index, const camera_t* camera, int quarter, const uint16_t* visible,
-             int count) {
+draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const uint16_t* visible, int count) {
     const r3d_instance_t* instance = &raster->instances[index];
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const bool clear = index == 0;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
     const int writer_count = instance_writers(raster, index, writers);
-    r3d_lens_t lens;
-    instance_lens(raster, instance, camera, quarter, true, &lens);
-
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
-    slice_t mine = {raster, mesh, &lens, visible, count, 0, half, clear, NULL, 0};
+    slice_t mine = {raster, mesh, lens, visible, count, 0, half, clear, NULL, 0};
     slice_t other = mine;
     other.first = half;
     other.count = count - half;
@@ -278,13 +268,9 @@ draw_visible(const raster_t* raster, int index, const camera_t* camera, int quar
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
-/* Draws every instance: from `culled`, raster_census()'s list, or culling
- * each into the scratch block when it is NULL. The attachments begin before
- * the first and resolve after the last. Inlined into both entries, so the
- * draw's stack is no deeper than one entry's frame. */
+/* Inlined into both entries so the draw chain needs only one entry's frame. */
 static inline __attribute__((always_inline)) void
-draw_instances(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled,
-               raster_stats_t* stats) {
+draw_instances(const raster_t* raster, const camera_t* camera, int quarter, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
@@ -294,21 +280,18 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, cons
         }
         resolves = resolves || a->resolve != NULL;
     }
-    uint16_t* const visible = culled == NULL ? scratch_visible(raster) : NULL;
-    size_t at = 0;
+    uint16_t* culled = scratch_culled(raster);
     for (int i = 0; i < raster->instance_count; i++) {
-        const uint16_t* list = visible;
-        int count = 0;
-        if (culled != NULL) {
-            list = culled + at + 1;
-            count = culled[at];
-            at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
-        } else {
+        const r3d_instance_t* instance = &raster->instances[i];
+        r3d_lens_t lens;
+        instance_lens(raster, instance, camera, quarter, true, &lens);
+        if (stats != NULL) {
             FRAME_COST_BEGIN(culled_from);
-            count = cull_instance(raster, &raster->instances[i], camera, quarter, visible, stats);
+            culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats);
             FRAME_COST_END(culled_from, "r3d.cull");
         }
-        draw_visible(raster, i, camera, quarter, list, count);
+        draw_visible(raster, i, &lens, culled + 1, culled[0]);
+        culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     if (resolves) {
         const int mid = raster->height / 2;
@@ -321,7 +304,7 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, cons
 RENDER_ENTRY_OFFSET(4) raster_stats_t
 raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
     raster_stats_t stats = {0, 0};
-    draw_instances(raster, camera, quarter, NULL, &stats);
+    draw_instances(raster, camera, quarter, &stats);
     return stats;
 }
 
@@ -335,24 +318,25 @@ raster_culled_length(const raster_t* raster) {
 }
 
 raster_stats_t
-raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint16_t* culled) {
+raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
     assert(raster->instance_count > 0);
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
-    size_t at = 0;
+    uint16_t* culled = scratch_culled(raster);
     for (int i = 0; i < raster->instance_count; i++) {
-        culled[at] = (uint16_t)cull_instance(raster, &raster->instances[i], camera, quarter, culled + at + 1, &stats);
-        at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+        const r3d_instance_t* instance = &raster->instances[i];
+        r3d_lens_t lens;
+        instance_lens(raster, instance, camera, quarter, false, &lens);
+        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats);
+        culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     FRAME_COST_END(counted_from, "r3d.census");
     return stats;
 }
 
 RENDER_ENTRY_OFFSET(4) void
-raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled) {
-    assert(culled != NULL);
-    raster_stats_t unused = {0, 0};
-    draw_instances(raster, camera, quarter, culled, &unused);
+raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter) {
+    draw_instances(raster, camera, quarter, NULL);
 }
 
 RENDER_ENTRY_OFFSET(12) void
@@ -362,7 +346,7 @@ raster_upscale(raster_t* raster) {
     assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
     FRAME_COST_BEGIN(upscaled_from);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    uint16_t* columns = b.visible + raster_cluster_capacity(raster);
+    uint16_t* columns = (uint16_t*)((char*)b.picture.attachment[0].pixels + gfx_render_target_bytes(&b.picture));
     uint16_t* rows = columns + raster->destination_width;
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != raster->destination_width
