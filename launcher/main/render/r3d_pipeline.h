@@ -89,7 +89,9 @@ int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters
                             int count, int height);
 
 /* A raster's scratch block as its parts: the one layout
- * raster_scratch_bytes() sizes, the census list before the size-dependent picture. */
+ * raster_scratch_bytes() sizes. The census list comes first, so it stays put
+ * when the render size changes, and leaves the parts after it as far apart
+ * as without one. */
 typedef struct {
     r3d_pipeline_vertex_t* cs;   /* mesh->vertex_count entries */
     r3d_pipeline_rows_t* rows;   /* mesh->cluster_count entries */
@@ -101,12 +103,12 @@ static inline r3d_pipeline_buffers_t
 r3d_pipeline_carve(const raster_t* raster) {
     char* p = raster->scratch;
     r3d_pipeline_buffers_t b;
+    b.culled = (uint16_t*)p;
+    p += gfx_attachment_bytes(sizeof(uint16_t), (int)raster_culled_length(raster), 1);
     b.cs = (r3d_pipeline_vertex_t*)p;
     p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster);
     b.rows = (r3d_pipeline_rows_t*)p;
     p += sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster);
-    b.culled = (uint16_t*)p;
-    p += gfx_attachment_bytes(sizeof(uint16_t), (int)raster_culled_length(raster), 1);
     b.picture = raster_picture(raster);
     gfx_render_target_carve(&b.picture, p);
     return b;
