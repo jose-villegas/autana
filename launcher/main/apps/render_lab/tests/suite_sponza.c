@@ -304,7 +304,7 @@ share_covered_at(const raster_t* raster, uint32_t t_ms) {
     const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
     raster_draw(raster, &camera, 0);
     const int pixels = raster->width * raster->height;
-    const uint16_t* depth = r3d_pipeline_carve(raster).depth;
+    const uint16_t* depth = raster_depth(raster);
     int covered = 0;
     for (int i = 0; i < pixels; i++) {
         covered += depth[i] != 0;

@@ -26,7 +26,8 @@
 #define RENDER_CONTEXT_DEFAULT_SCALE_PERCENT 50
 
 /* The last frame: its step (-1 at the fixed scale), the size it drew at,
- * what culling kept and what its draw (census included) and upscale cost. */
+ * what culling kept and, under dynamic resolution only, what its draw (with
+ * any census) and upscale cost: at the fixed scale nothing is timed. */
 typedef struct {
     int step;
     int width, height;

@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gfx/gfx_render_target.h"
+
 /* How rows are filled, chosen once per size. All but UPSCALE_BLOCKS write
  * what the maps say, pixel for pixel; it repeats each pixel `factor` times. */
 typedef enum {
@@ -29,8 +31,8 @@ typedef struct {
 bool upscale_init(upscale_t* scale, int source_width, int source_height, int destination_width, int destination_height,
                   uint16_t* columns, uint16_t* rows);
 
-/* Scales destination rows [first_row, first_row + row_count). When `depth`
- * is present, a zero source depth writes `clear` instead of its colour.
- * `destination` is 4-byte aligned. */
-void upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                  uint16_t* destination, int first_row, int row_count);
+/* Scales destination rows [first_row, first_row + row_count) from
+ * `source`'s colour. When `source` has a depth attachment too, a zero depth
+ * writes `clear` instead of its colour. `destination` is 4-byte aligned. */
+void upscale_rows(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear, uint16_t* destination,
+                  int first_row, int row_count);

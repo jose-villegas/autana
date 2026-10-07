@@ -10,12 +10,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "gfx/gfx_render_target.h"
 #include "render/camera.h"
 #include "render/r3d_instance.h"
+#include "render/raster_attachment.h"
 #include "render/upscale.h"
 
 /* The caller's options; the scratch block holds everything else. */
-typedef struct {
+struct raster {
     /* What is drawn: each instance in turn into the one picture, nearer ones
      * covering farther ones whichever is drawn first. One mesh is a count of
      * one. The scratch block holds room for the largest. */
@@ -33,7 +35,10 @@ typedef struct {
     int destination_width, destination_height;
     upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
     void* scratch;     /* raster_scratch_bytes() of it */
-} raster_t;
+    /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER. */
+    const raster_attachment_t* const* attachments;
+    int attachment_count;
+};
 
 typedef struct {
     int clusters, triangles; /* what survived culling */
@@ -44,9 +49,19 @@ typedef struct {
 int raster_vertex_capacity(const raster_t* raster);
 int raster_cluster_capacity(const raster_t* raster);
 
-/* Everything a raster works in (per-vertex, per-cluster, colour and depth)
- * as one block, from its instances' meshes and size: the caller obtains it once, from
- * any memory, so none of it has to live in internal RAM. */
+/* The picture's attachments, colour and depth then `attachments`, over
+ * every row, not yet carved. */
+gfx_render_target_t raster_picture(const raster_t* raster);
+
+/* The picture's colour and depth from its first row, as raster_draw() left
+ * them: its first two attachments. */
+gfx_color_t* raster_color(const raster_t* raster);
+uint16_t* raster_depth(const raster_t* raster);
+
+/* Everything a raster works in (per-vertex, per-cluster and its picture's
+ * attachments) as one block, from its instances' meshes and size: the caller
+ * obtains it once, from any memory, so none of it has to live in internal
+ * RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
 
 /* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
@@ -73,9 +88,10 @@ void raster_upscale(raster_t* raster);
 
 /* What raster_show() puts in the colour buffer. */
 typedef enum {
-    RASTER_SHOW_SHADED,     /* the baked colours as drawn */
-    RASTER_SHOW_DEPTH,      /* the depth buffer as a grey ramp */
-    RASTER_SHOW_DEPTH_TILES /* the farthest depth of each RASTER_SHOW_TILE square */
+    RASTER_SHOW_SHADED,      /* the baked colours as drawn */
+    RASTER_SHOW_DEPTH,       /* the depth buffer as a grey ramp */
+    RASTER_SHOW_DEPTH_TILES, /* the farthest depth of each RASTER_SHOW_TILE square */
+    RASTER_SHOW_ATTACHMENT   /* + k: further attachment k's own view, else shaded */
 } raster_show_t;
 
 /* Development builds only: a release caller fails at link. Between draw and

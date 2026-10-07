@@ -25,8 +25,9 @@ int32_t r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t
 bool r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_span_box_t box);
 
 /* True when every pixel of `box` already holds depth at or nearer than
- * `bound`, so a triangle bounded by it would write none of them. */
-bool r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box);
+ * `bound`, so a triangle bounded by it would write none of them. Kept out
+ * of line, as its layout is pinned. */
+__attribute__((noinline)) bool r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box);
 
 /* Added before truncating, so the sum is positive and truncating floors. */
 #define R3D_SNAP_BIAS ((float)R3D_SPAN_RANGE + 0.5F)

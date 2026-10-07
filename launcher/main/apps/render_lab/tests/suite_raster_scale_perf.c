@@ -72,10 +72,10 @@ static int64_t
 one_core_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    memset(b.depth, 0, pixels * sizeof(*b.depth));
+    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
-    const r3d_span_target_t target = {b.color, b.depth, raster->width, 0, raster->height};
+    const r3d_span_target_t target = {b.picture, NULL, 0};
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.visible, visible, b.cs, b.rows, &target);
     const int64_t us = timing_now_us() - start;
     r3d_span_stop_after = 0;
@@ -98,7 +98,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_pipeline_transform(&mesh, &lens, b.visible, visible, b.cs, b.rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
-    memset(b.depth, 0, pixels * sizeof(*b.depth));
+    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
     const int64_t setup = one_core_draw_us(raster, &lens, visible, 1);
     const int64_t rows = one_core_draw_us(raster, &lens, visible, 2);
@@ -284,12 +284,17 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
     render_context_set_scale(render_context_main(), 50);
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     const scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT};
+    /* Timed here, around the scene's own two calls, so every policy and the
+     * fixed scale (which the context does not time) are timed alike. */
     for (int i = 0; i < frames; i++) {
+        const int64_t began_us = timing_now_us();
         scene_render(FRAME_DT_MS, 0, GFX_WIDTH, GFX_HEIGHT);
+        const int64_t drawn_us = timing_now_us();
         scene_compose(FRAME_DT_MS, 0, &target);
+        const int64_t composed_us = timing_now_us();
         const render_context_frame_t r = render_context_frame(render_context_main());
-        records[i] = (frame_record_t){(int8_t)r.step, r.draw_us, r.upscale_us,
-                                      render_context_frame(render_context_main()).stats.triangles};
+        records[i] = (frame_record_t){(int8_t)r.step, (int32_t)(drawn_us - began_us), (int32_t)(composed_us - drawn_us),
+                                      r.stats.triangles};
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(flown);

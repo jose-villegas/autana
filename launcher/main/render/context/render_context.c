@@ -71,8 +71,9 @@ current_step(const render_context_t* c) {
 }
 
 /* Fits the scratch block to what is drawn now (under dynamic resolution,
- * the finest step, so a step never allocates) with the culled list after
- * it; returns the list, or NULL when the block cannot be had. */
+ * the finest step, so a step never allocates), with the predictor's culled
+ * list after it; returns the list's place, or NULL when the block cannot be
+ * had. */
 static uint16_t*
 fit_scratch(render_context_t* c) {
     const int width = c->raster.width;
@@ -82,7 +83,8 @@ fit_scratch(render_context_t* c) {
         c->raster.height = c->ladder.steps[0].height;
     }
     const size_t raster_bytes = raster_scratch_bytes(&c->raster);
-    const size_t needed = raster_bytes + (sizeof(uint16_t) * raster_culled_length(&c->raster));
+    const size_t listed = c->policy == RENDER_PREDICTED ? raster_culled_length(&c->raster) : 0;
+    const size_t needed = raster_bytes + (sizeof(uint16_t) * listed);
     c->raster.width = width;
     c->raster.height = height;
     if (needed > c->scratch_bytes) {
@@ -111,18 +113,28 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     if (culled == NULL) {
         return false;
     }
-    const int64_t began_us = timing_now_us();
-    c->frame.stats = raster_census(r, camera, quarter, culled);
-    if (c->policy == RENDER_PREDICTED) {
-        const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
-        r->width = c->ladder.steps[chosen].width;
-        r->height = c->ladder.steps[chosen].height;
-    }
-    c->frame.step = current_step(c);
     c->frame.width = r->width;
     c->frame.height = r->height;
-    raster_draw_culled(r, camera, quarter, culled);
-    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    if (c->policy == RENDER_FIXED) {
+        /* Off: the plain draw, nothing timed or chosen. */
+        c->frame.stats = raster_draw(r, camera, quarter);
+    } else {
+        const int64_t began_us = timing_now_us();
+        if (c->policy == RENDER_PREDICTED) {
+            /* Culled once: the census prices the frame and the draw reuses its list. */
+            c->frame.stats = raster_census(r, camera, quarter, culled);
+            const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
+            r->width = c->ladder.steps[chosen].width;
+            r->height = c->ladder.steps[chosen].height;
+            c->frame.width = r->width;
+            c->frame.height = r->height;
+            raster_draw_culled(r, camera, quarter, culled);
+        } else {
+            c->frame.stats = raster_draw(r, camera, quarter);
+        }
+        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    }
+    c->frame.step = current_step(c);
 #if DEBUG_VIEW
     raster_show(r, c->debug_view);
 #endif
@@ -132,6 +144,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 void
 render_context_compose(render_context_t* c, uint16_t* destination) {
     c->raster.destination = destination;
+    if (c->policy == RENDER_FIXED) {
+        raster_upscale(&c->raster);
+        return;
+    }
     const int64_t began_us = timing_now_us();
     raster_upscale(&c->raster);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);

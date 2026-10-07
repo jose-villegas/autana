@@ -100,14 +100,20 @@ is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
 
+### Shared helpers
+
+Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
+
 ### Token clones
 
-`python scripts/gates/check_clones.py` rejects new clone pairs in HEAD
+`python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
 compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
 on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
-Extract a shared owner for each new pair; removing another pair gives no
-headroom. Pair keys combine sorted file names with the whitespace-normalised
-source fragment, so line shifts do not make an existing pair new.
+Extract a shared owner for each new clone that exceeds its file pair's allowance.
+Each sorted file pair has its own budget: new fragments may use only the
+tokens of base fragments that vanished from HEAD; a surviving shrink gives no
+headroom. Renames map to the base names; line shifts do not change a budget.
+Removing another file pair gives no headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without

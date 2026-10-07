@@ -1,3 +1,4 @@
+/* ui_launcher: home-screen app selection and scroll interaction. */
 #pragma once
 
 #include <stdint.h>

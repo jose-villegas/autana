@@ -143,8 +143,8 @@ r3d_boxes_count(r3d_boxes_t* out, const r3d_span_target_t* target, const r3d_spa
                 const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, bool solid) {
     const r3d_span_extent_t e = r3d_span_extent(a, b, c);
     const r3d_span_box_t box = e.centres;
-    const bool in_target = box.x0 < target->width && box.x1 > 0 && box.x0 < box.x1 && box.y0 < target->row1
-                           && box.y1 > target->row0 && box.y0 < box.y1;
+    const bool in_target = box.x0 < target->rows.width && box.x1 > 0 && box.x0 < box.x1 && box.y0 < target->rows.row1
+                           && box.y1 > target->rows.row0 && box.y0 < box.y1;
     if (!in_target || r3d_span_area2(a, b, c) == 0) {
         return;
     }

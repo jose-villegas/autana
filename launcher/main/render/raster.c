@@ -20,6 +20,8 @@ typedef struct {
     int visible_count;
     int first, count; /* clusters of visible[], or rows */
     bool clear;       /* the first mesh of a picture clears it; later ones draw over it */
+    const r3d_span_writer_t* writers;
+    int writer_count;
 } slice_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -31,15 +33,72 @@ transform_slice(void* ctx) {
     r3d_pipeline_transform(s->mesh, s->lens, s->visible + s->first, s->count, b.cs, b.rows);
 }
 
-/* A new picture starts from the clear colour, unless upscaling supplies it, and from no depth. */
+/* A new picture starts from the clear colour, unless upscaling supplies it. */
 static void
-clear_rows(const raster_t* r, uint16_t* color, uint16_t* depth, size_t pixels) {
-    if (!r->upscaled) {
-        for (size_t i = 0; i < pixels; i++) {
-            color[i] = r->clear;
+clear_color(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+    (void)self;
+    gfx_color_t* color = pixels;
+    if (!raster->upscaled) {
+        for (size_t i = 0; i < count; i++) {
+            color[i] = raster->clear;
         }
     }
-    memset(depth, 0, pixels * sizeof(*depth));
+}
+
+/* And from no depth. */
+static void
+clear_depth(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+    (void)self;
+    (void)raster;
+    memset(pixels, 0, count * sizeof(uint16_t));
+}
+
+static const raster_attachment_t color_attachment = {sizeof(gfx_color_t), clear_color, NULL, NULL, NULL, NULL, NULL};
+static const raster_attachment_t depth_attachment = {sizeof(uint16_t), clear_depth, NULL, NULL, NULL, NULL, NULL};
+_Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");
+
+/* Colour, depth, then the caller's, in the order raster_picture() lays them. */
+static const raster_attachment_t*
+attachment_at(const raster_t* raster, int index) {
+    if (index == GFX_ATTACHMENT_COLOR) {
+        return &color_attachment;
+    }
+    return index == GFX_ATTACHMENT_DEPTH ? &depth_attachment : raster->attachments[index - GFX_ATTACHMENT_FURTHER];
+}
+
+gfx_render_target_t
+raster_picture(const raster_t* raster) {
+    assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER);
+    gfx_render_target_t picture = {
+        raster->width, 0, raster->height, GFX_ATTACHMENT_FURTHER + raster->attachment_count, {{0}}};
+    for (int i = 0; i < picture.count; i++) {
+        picture.attachment[i].bytes_per_pixel = attachment_at(raster, i)->bytes_per_pixel;
+    }
+    return picture;
+}
+
+void
+raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
+                      int32_t z, int32_t dz) {
+    const uint16_t* depth = gfx_render_target_depth(rows, y);
+    uint16_t* tag = gfx_render_target_row(rows, writer->attachment, y);
+    for (int x = x_first; x <= x_last; x++, z += dz) {
+        if ((uint16_t)(z >> 8) == depth[x]) {
+            tag[x] = (uint16_t)writer->value;
+        }
+    }
+}
+
+gfx_color_t*
+raster_color(const raster_t* raster) {
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    return gfx_render_target_color(&b.picture, 0);
+}
+
+uint16_t*
+raster_depth(const raster_t* raster) {
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    return gfx_render_target_depth(&b.picture, 0);
 }
 
 static void
@@ -47,24 +106,38 @@ draw_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
-    const size_t offset = (size_t)s->first * (size_t)r->width;
-    const size_t pixels = (size_t)s->count * (size_t)r->width;
-    uint16_t* color = b.color + offset;
-    uint16_t* depth = b.depth + offset;
+    const r3d_span_target_t target = {gfx_render_target_window(&b.picture, s->first, s->first + s->count), s->writers,
+                                      s->writer_count};
 
     if (s->clear) {
-        clear_rows(r, color, depth, pixels);
+        const size_t pixels = (size_t)s->count * (size_t)r->width;
+        for (int i = 0; i < target.rows.count; i++) {
+            const raster_attachment_t* a = attachment_at(r, i);
+            a->clear(a, r, target.rows.attachment[i].pixels, pixels);
+        }
     }
-
-    const r3d_span_target_t target = {color, depth, r->width, s->first, s->first + s->count};
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b.cs, b.rows, &target);
+}
+
+static void
+resolve_slice(void* ctx) {
+    const slice_t* s = ctx;
+    const raster_t* r = s->raster;
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
+    const gfx_render_target_t rows = gfx_render_target_window(&b.picture, s->first, s->first + s->count);
+    for (int i = GFX_ATTACHMENT_FURTHER; i < rows.count; i++) {
+        const raster_attachment_t* a = attachment_at(r, i);
+        if (a->resolve != NULL) {
+            a->resolve(a, r, &rows, i);
+        }
+    }
 }
 
 static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    upscale_rows(&s->raster->upscale, b.color, b.depth, s->raster->clear, s->raster->destination, s->first, s->count);
+    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->raster->destination, s->first, s->count);
 }
 
 static void
@@ -97,10 +170,10 @@ raster_cluster_capacity(const raster_t* raster) {
 size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
-    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    const gfx_render_target_t picture = raster_picture(raster);
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
            + ((sizeof(r3d_pipeline_rows_t) + sizeof(uint16_t)) * (size_t)raster_cluster_capacity(raster))
-           + (2 * sizeof(uint16_t) * pixels)
+           + gfx_render_target_bytes(&picture)
            + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
 }
 
@@ -146,6 +219,20 @@ cull_instance(const raster_t* raster, const r3d_instance_t* instance, const came
     return visible;
 }
 
+/* The writers of the attachments that write while instance `index` is
+ * drawn; returns how many. */
+static int
+instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_MAX]) {
+    int count = 0;
+    for (int i = 0; i < raster->attachment_count; i++) {
+        const raster_attachment_t* a = raster->attachments[i];
+        if (a->writer != NULL && a->writer(a, index, &out[count])) {
+            out[count++].attachment = GFX_ATTACHMENT_FURTHER + i;
+        }
+    }
+    return count;
+}
+
 static void
 draw_visible(const raster_t* raster, int index, const camera_t* camera, int quarter, const uint16_t* visible,
              int count) {
@@ -153,33 +240,64 @@ draw_visible(const raster_t* raster, int index, const camera_t* camera, int quar
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const bool clear = index == 0;
+    r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
+    const int writer_count = instance_writers(raster, index, writers);
     r3d_lens_t lens;
     instance_lens(raster, instance, camera, quarter, true, &lens);
 
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
-    run_split(transform_slice, (slice_t){raster, mesh, &lens, visible, count, 0, half, clear},
-              (slice_t){raster, mesh, &lens, visible, count, half, count - half, clear});
+    run_split(transform_slice, (slice_t){raster, mesh, &lens, visible, count, 0, half, clear, NULL, 0},
+              (slice_t){raster, mesh, &lens, visible, count, half, count - half, clear, NULL, 0});
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
     const int mid = r3d_pipeline_draw_split(mesh, visible, b.rows, count, raster->height);
-    run_split(draw_slice, (slice_t){raster, mesh, &lens, visible, count, mid, raster->height - mid, clear},
-              (slice_t){raster, mesh, &lens, visible, count, 0, mid, clear});
+    run_split(draw_slice,
+              (slice_t){raster, mesh, &lens, visible, count, mid, raster->height - mid, clear, writers, writer_count},
+              (slice_t){raster, mesh, &lens, visible, count, 0, mid, clear, writers, writer_count});
     FRAME_COST_END(drawn_from, "r3d.draw");
+}
+
+/* Draws every instance: from `culled`, raster_census()'s list, or culling
+ * each into the scratch block when it is NULL. The attachments begin before
+ * the first and resolve after the last. */
+static RENDER_ENTRY_OFFSET(4) void
+draw_instances(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled,
+               raster_stats_t* stats) {
+    assert(raster->instance_count > 0);
+    bool resolves = false;
+    for (int i = 0; i < raster->attachment_count; i++) {
+        const raster_attachment_t* a = raster->attachments[i];
+        if (a->begin != NULL) {
+            a->begin(a, raster, camera, quarter);
+        }
+        resolves = resolves || a->resolve != NULL;
+    }
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    size_t at = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        if (culled != NULL) {
+            draw_visible(raster, i, camera, quarter, culled + at + 1, culled[at]);
+            at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+            continue;
+        }
+        FRAME_COST_BEGIN(culled_from);
+        const int visible = cull_instance(raster, &raster->instances[i], camera, quarter, b.visible, stats);
+        FRAME_COST_END(culled_from, "r3d.cull");
+        draw_visible(raster, i, camera, quarter, b.visible, visible);
+    }
+    if (resolves) {
+        const int mid = raster->height / 2;
+        run_split(resolve_slice, (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0},
+                  (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0});
+    }
 }
 
 RENDER_ENTRY_OFFSET(4) raster_stats_t
 raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
-    assert(raster->instance_count > 0);
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     raster_stats_t stats = {0, 0};
-    for (int i = 0; i < raster->instance_count; i++) {
-        FRAME_COST_BEGIN(culled_from);
-        const int visible = cull_instance(raster, &raster->instances[i], camera, quarter, b.visible, &stats);
-        FRAME_COST_END(culled_from, "r3d.cull");
-        draw_visible(raster, i, camera, quarter, b.visible, visible);
-    }
+    draw_instances(raster, camera, quarter, NULL, &stats);
     return stats;
 }
 
@@ -208,12 +326,9 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint1
 
 RENDER_ENTRY_OFFSET(4) void
 raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled) {
-    assert(raster->instance_count > 0);
-    size_t at = 0;
-    for (int i = 0; i < raster->instance_count; i++) {
-        draw_visible(raster, i, camera, quarter, culled + at + 1, culled[at]);
-        at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
-    }
+    assert(culled != NULL);
+    raster_stats_t unused = {0, 0};
+    draw_instances(raster, camera, quarter, culled, &unused);
 }
 
 RENDER_ENTRY_OFFSET(12) void
@@ -234,7 +349,8 @@ raster_upscale(raster_t* raster) {
         assert(initialized);
     }
     const int mid = raster->destination_height / 2;
-    run_split(upscale_slice, (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->destination_height - mid, false},
-              (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false});
+    run_split(upscale_slice,
+              (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->destination_height - mid, false, NULL, 0},
+              (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0});
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

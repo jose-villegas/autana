@@ -29,8 +29,9 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
-| `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows and a depth plane of the same shape, from `render/r3d_span.h` |
-| `raster_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
+| `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
+| `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
+| `raster_show()` | Development builds: shows the depth, or an attachment, instead of the colour, as a [view mode](#view-modes) |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
@@ -64,13 +65,14 @@ would see the scene mirrored.
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
+| `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
 | `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
 | `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
-| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
+| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
 | `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
 
@@ -185,6 +187,7 @@ flowchart LR
 | `RASTER_SHOW_SHADED` | untouched: the baked colours as drawn |
 | `RASTER_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
 | `RASTER_SHOW_DEPTH_TILES` | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
+| `RASTER_SHOW_ATTACHMENT` + k | further attachment k's own view, painted by its `show` hook |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
@@ -192,6 +195,36 @@ drew takes the raster's `clear`, the colour upscaling gives it, so it reads as e
 in every view; a tile holding one such pixel is empty. The views are at the
 raster's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
+
+## Attachments
+
+A raster's picture is a render target
+([Gfx-and-Presentation.md](../Gfx-and-Presentation.md#render-targets)):
+colour and depth, then any further attachment the caller lists in
+`raster_t.attachments`. Every attachment is carved from the scratch block at
+the drawn size, so a picture drawn at a new size carves anew, and none keeps
+pixels from one picture to the next.
+
+```mermaid
+flowchart LR
+    Begin["begin<br/><i>once per picture</i>"] --> Draw["draw each instance<br/><i>colour, depth, and the span writer<br/>an attachment chose for it</i>"]
+    Draw --> Resolve["resolve<br/><i>both cores, disjoint rows</i>"]
+    Resolve --> Show["raster_show()"] --> Upscale["raster_upscale()"]
+```
+
+| Hook | When | What it may do |
+|---|---|---|
+| `clear` | the first instance of a picture, on its rows | start its pixels; the only hook colour and depth have |
+| `begin` | once per `raster_draw()`, before anything is drawn | read the camera and the instances, keep its own state |
+| `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
+| `resolve` | once every instance is drawn | turn what was written into the final map |
+| `show` | `RASTER_SHOW_ATTACHMENT` | paint the colour from it |
+
+A writer finds the pixels its triangle won by their depth equalling the
+triangle's, so where two instances meet at exactly the same depth the pixel
+takes the later one's write. A writer sees only depth and one value per
+instance; a map that needs more, such as normals, rebuilds it from depth in
+its `resolve`.
 
 ## Coverage and small triangles
 
@@ -235,8 +268,8 @@ fills its spans without those clamps, which would change nothing there.
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
-scope. A frame's per-vertex, per-cluster, colour and depth buffers are one
-block:
+scope. A frame's per-vertex and per-cluster buffers and its picture's
+attachments are one block:
 `raster_scratch_bytes()` sizes it, the caller obtains it once and sets
 `scratch`, and each call carves it. The caller decides where it lives,
 so none of it has to take internal RAM.

@@ -25,8 +25,9 @@ test_two_times_matches_the_frame_doubling_reference(void) {
         source[i] = (uint16_t)(0x1200 + i);
     }
     upscale_t scale;
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, 2 * WIDTH, 2 * HEIGHT, columns, rows));
-    upscale_rows(&scale, source, NULL, 0, actual, 0, 2 * HEIGHT);
+    upscale_rows(&scale, &picture, 0, actual, 0, 2 * HEIGHT);
     for (int y = 0; y < 2 * HEIGHT; y++) {
         for (int x = 0; x < 2 * WIDTH; x++) {
             TEST_ASSERT_EQUAL_HEX16(source[(y / 2) * WIDTH + (x / 2)], actual[y * 2 * WIDTH + x]);
@@ -44,7 +45,8 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
 
     enum { WIDTH = 3, HEIGHT = 2 };
 
-    const uint16_t source[WIDTH * HEIGHT] = {1, 2, 3, 4, 5, 6};
+    uint16_t source[WIDTH * HEIGHT] = {1, 2, 3, 4, 5, 6};
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     for (size_t i = 0; i < sizeof(factors) / sizeof(factors[0]); i++) {
         const int factor = factors[i];
         const int out_width = factor * WIDTH;
@@ -57,7 +59,7 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
         TEST_ASSERT_NOT_NULL(rows);
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, out_width, out_height, columns, rows));
-        upscale_rows(&scale, source, NULL, 0, actual, 0, out_height);
+        upscale_rows(&scale, &picture, 0, actual, 0, out_height);
         for (int y = 0; y < out_height; y++) {
             for (int x = 0; x < out_width; x++) {
                 TEST_ASSERT_EQUAL_UINT16(source[(y / factor) * WIDTH + x / factor], actual[y * out_width + x]);
@@ -104,10 +106,11 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
         source[i] = (uint16_t)i;
     }
     upscale_t scale;
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, OUT_WIDTH, OUT_HEIGHT, columns, rows));
-    upscale_rows(&scale, source, NULL, 0, whole, 0, OUT_HEIGHT);
-    upscale_rows(&scale, source, NULL, 0, split, 0, OUT_HEIGHT / 2);
-    upscale_rows(&scale, source, NULL, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
+    upscale_rows(&scale, &picture, 0, whole, 0, OUT_HEIGHT);
+    upscale_rows(&scale, &picture, 0, split, 0, OUT_HEIGHT / 2);
+    upscale_rows(&scale, &picture, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, split, OUT_WIDTH * OUT_HEIGHT);
 }
 
@@ -160,15 +163,20 @@ assert_unwritten_from(const uint16_t* actual, size_t first, size_t count) {
  * `split` on, neither writes the row past the destination that `actual`
  * holds, and every pixel then shows what the maps say. */
 static void
-assert_a_range_writes_only_its_rows(const upscale_t* scale, const uint16_t* depth, int split) {
+assert_a_range_writes_only_its_rows(const upscale_t* scale, uint16_t* depth, int split) {
     const size_t width = (size_t)scale->destination_width;
     const size_t height = (size_t)scale->destination_height;
+    gfx_render_target_t picture = gfx_render_target_of_color(held.source, scale->source_width, scale->source_height);
+    if (depth != NULL) {
+        picture.attachment[GFX_ATTACHMENT_DEPTH] = (gfx_attachment_t){depth, sizeof(uint16_t)};
+        picture.count = GFX_ATTACHMENT_DEPTH + 1;
+    }
     for (size_t i = 0; i < (height + 1) * width; i++) {
         held.actual[i] = UNWRITTEN;
     }
-    upscale_rows(scale, held.source, depth, 0xF00D, held.actual, 0, split);
+    upscale_rows(scale, &picture, 0xF00D, held.actual, 0, split);
     assert_unwritten_from(held.actual, (size_t)split * width, ((height + 1) - (size_t)split) * width);
-    upscale_rows(scale, held.source, depth, 0xF00D, held.actual, split, scale->destination_height - split);
+    upscale_rows(scale, &picture, 0xF00D, held.actual, split, scale->destination_height - split);
     assert_unwritten_from(held.actual, height * width, width);
     assert_each_pixel_follows_the_maps(scale, held.source, depth, held.actual);
 }
