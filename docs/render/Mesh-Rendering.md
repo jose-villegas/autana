@@ -186,6 +186,11 @@ in every view; a tile holding one such pixel is empty. The views are at the
 raster's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
 
+The depth and depth-tile views along a flythrough:
+
+![The depth view along a flythrough](../images/render/sponza-depth.gif)
+![The depth-tile view along a flythrough](../images/render/sponza-tiles.gif)
+
 ## Attachments
 
 A raster's picture is a render target
