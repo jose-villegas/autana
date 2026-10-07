@@ -406,7 +406,22 @@ clip_to_guard(const r3d_lens_t* lens, clip_vertex_t poly[CLIP_VERTEX_MAX], int n
     return n;
 }
 
-static void
+/* One triangle, then the target's writers over it when `writes`: a constant
+ * at every caller, so the draw without writers carries none of it. */
+static inline __attribute__((always_inline)) void
+fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+              const r3d_span_vertex_t* c, const uint16_t* face_color, bool writes) {
+    if (face_color == NULL) {
+        r3d_span_triangle(target, a, b, c);
+    } else {
+        r3d_span_triangle_solid(target, a, b, c, *face_color);
+    }
+    if (writes) {
+        r3d_span_triangle_write(target, a, b, c);
+    }
+}
+
+static inline __attribute__((always_inline)) void
 draw_clipped(const r3d_lens_t* lens, const clip_vertex_t in[3], bool double_sided, const uint16_t* face_color,
              const r3d_span_target_t* target) {
     clip_vertex_t poly[CLIP_VERTEX_MAX] = {in[0], in[1], in[2]};
@@ -426,11 +441,7 @@ draw_clipped(const r3d_lens_t* lens, const clip_vertex_t in[3], bool double_side
         return;
     }
     for (int i = 1; i + 1 < n; i++) {
-        if (face_color == NULL) {
-            r3d_span_triangle(target, &s[0], &s[i], &s[i + 1]);
-        } else {
-            r3d_span_triangle_solid(target, &s[0], &s[i], &s[i + 1], *face_color);
-        }
+        fill_triangle(target, &s[0], &s[i], &s[i + 1], face_color, target->writer_count != 0);
     }
 }
 
@@ -444,18 +455,18 @@ misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t*
     const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
     const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
     const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
-    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->width || y_end <= target->row0
-           || y_first >= target->row1;
+    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.width
+           || y_end <= target->rows.row0 || y_first >= target->rows.row1;
 }
 
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
-    return !r->unbounded && (r->y1 < (float)target->row0 || r->y0 > (float)target->row1);
+    return !r->unbounded && (r->y1 < (float)target->rows.row0 || r->y0 > (float)target->rows.row1);
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
  * snap is rebuilt from the mesh and clipped. */
-static void
+static inline __attribute__((always_inline)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
              bool double_sided, const r3d_span_target_t* target) {
     clip_vertex_t in[3];
@@ -468,9 +479,9 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     draw_clipped(lens, in, double_sided, face_color, target);
 }
 
-static inline void
+static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target) {
+              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes) {
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
@@ -482,36 +493,48 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
     }
-    if (face_color == NULL) {
-        r3d_span_triangle(target, &s[0], &s[1], &s[2]);
-    } else {
-        r3d_span_triangle_solid(target, &s[0], &s[1], &s[2], *face_color);
-    }
+    fill_triangle(target, &s[0], &s[1], &s[2], face_color, writes);
 }
 
-static void
+static inline __attribute__((always_inline)) void
 draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
-             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target) {
+             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes) {
     const int end = c->triangle_first + c->triangle_count;
     for (int t = c->triangle_first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target);
+            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target);
         }
     }
 }
 
+/* The draw for a target with writers, kept out of the hot one's code. */
+static __attribute__((noinline, cold)) void
+draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+             const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
+    for (int i = 0; i < count; i++) {
+        if (rows == NULL || !rows_miss_target(&rows[clusters[i]], target)) {
+            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, true);
+        }
+    }
+}
+
+/* Chooses once per draw whether the target's writers follow each fill. */
 RENDER_ENTRY_OFFSET(4) void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
+    if (target->writer_count != 0) {
+        draw_writing(mesh, lens, clusters, count, cs, rows, target);
+        return;
+    }
     for (int i = 0; i < count; i++) {
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
-        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target);
+        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false);
     }
 }
