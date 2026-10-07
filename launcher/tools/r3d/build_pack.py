@@ -6,11 +6,11 @@
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml or a folder
 searched for all three; with none, launcher/main is searched. Each
-demo_assets.toml below a searched folder adds launcher/demo/NAME for each
-NAME in its `demo` list; a folder reached twice is searched once. A root is
-a file nothing else names: NAME.scene.toml is pack NAME, holding the scene entry
-NAME, every mesh its renderers name and the clip its camera flies; an
-NAME.import.toml no scene places is pack NAME, holding its variants; an
+app demo_assets.toml adds launcher/demo/NAME for each NAME in its `demo`
+list; demos cannot name demos. A folder reached twice is searched once.
+A root is a file nothing else names: NAME.scene.toml is pack NAME, holding
+the scene entry NAME, every mesh its renderers name and the clip its camera
+flies; an NAME.import.toml no scene places is pack NAME, holding its variants; an
 NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
 a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
@@ -42,7 +42,8 @@ PACK_SUFFIX = ".apak"
 
 
 def input_files(paths):
-    """The import, scene and clip files under `paths`, each folder searched."""
+    """The import, scene and clip files under `paths` and app-selected demos;
+    manifests inside DEMO are refused, and each folder is searched once."""
     found, searched = set(), set()
     pending = list(map(pathlib.Path, paths))
     while pending:
@@ -53,6 +54,8 @@ def input_files(paths):
         if path.is_dir():
             found.update(p for p in path.rglob("*.toml") if p.name.endswith((IMPORT, SCENE, CLIP)))
             for manifest in sorted(path.rglob("demo_assets.toml")):
+                if manifest.is_relative_to(DEMO.resolve()):
+                    raise SettingsError(f"{manifest}: only an app names demo assets")
                 for name in load_demo_assets(manifest):
                     demo = DEMO / name
                     if not demo.is_dir():
@@ -149,6 +152,8 @@ def pack_entry(key, source):
 def write_if_changed(path, data):
     if not path.is_file() or path.read_bytes() != data:
         path.write_bytes(data)
+        return True
+    return False
 
 
 def write_packs(out, packs, image=None):
@@ -159,7 +164,10 @@ def write_packs(out, packs, image=None):
         if stale.name.removesuffix(PACK_SUFFIX) not in packs:
             stale.unlink()
     for name, pack in packs.items():
-        write_if_changed(out / f"{name}{PACK_SUFFIX}", pack)
+        if write_if_changed(out / f"{name}{PACK_SUFFIX}", pack):
+            entries = parse_pack(pack)
+            print(f"wrote {name}{PACK_SUFFIX} ({len(pack)} bytes): "
+                  + ", ".join(sorted(entries)))
     if image is not None:
         data = build_directory(sorted(packs.items()))
         parse_directory(data)
@@ -187,12 +195,9 @@ def main(argv=None):
         if not args.out:
             parser.error("-o DIR is required")
         packs = pack_bytes(paths, args.replace)
-        contents = {name: parse_pack(pack) for name, pack in packs.items()}
         write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None)
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
         parser.error(str(error))
-    for name, entries in contents.items():
-        print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(entries)))
     return 0
 
 

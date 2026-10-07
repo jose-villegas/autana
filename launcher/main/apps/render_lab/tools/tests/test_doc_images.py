@@ -1,4 +1,5 @@
-"""The documentation stages retain their scene dependencies and physical settings."""
+"""doc_images.sh's bake copies keep their import file; physical_scene.py
+drops only the scene's indirect table and occlusion."""
 
 import pathlib
 import shutil

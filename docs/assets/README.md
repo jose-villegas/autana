@@ -34,7 +34,8 @@ searching, so no list is kept:
 
 The default search is `launcher/main/`. An app's `demo_assets.toml` adds
 each folder it names in `demo = ["name", ...]` from `launcher/demo/`.
-Reference content ships only through these selections; see the
+Only apps name demo assets; a `demo_assets.toml` inside `launcher/demo/` is
+refused. Reference content ships only through these selections; see the
 [demo assets](../../launcher/demo/README.md).
 
 Ids are unique within a pack whatever their type: the reader finds an entry

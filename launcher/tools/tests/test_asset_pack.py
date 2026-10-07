@@ -5,13 +5,13 @@ this one proves what the tools write is what that reads."""
 
 import contextlib
 import io
+import os
 import pathlib
 import struct
 import sys
 import tempfile
-import unittest
-import subprocess
 import tomllib
+import unittest
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -277,6 +277,27 @@ class BuilderTests(unittest.TestCase):
                 build_pack.main(["--pack-of", "two", str(root / "src")])
             self.assertEqual(printed.getvalue().strip(), "two")
 
+    def test_unchanged_packs_and_image_keep_timestamps_and_changed_bytes_are_written(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            out, image = root / "packs", root / "assets.bin"
+            packs = {"one": make_pack([("a", LIT_MESH, b"one")]),
+                     "two": make_pack([("b", LIT_MESH, b"two")])}
+            build_pack.write_packs(out, packs, image)
+            files = [out / "one.apak", out / "two.apak", image]
+            for path in files:
+                os.utime(path, ns=(1_000_000_000, 1_000_000_000))
+            before = [(path.stat().st_mtime_ns, path.stat().st_ctime_ns) for path in files]
+            build_pack.write_packs(out, packs, image)
+            self.assertEqual([(path.stat().st_mtime_ns, path.stat().st_ctime_ns) for path in files], before)
+            packs["one"] = make_pack([("a", LIT_MESH, b"changed")])
+            build_pack.write_packs(out, packs, image)
+            self.assertEqual(files[0].read_bytes(), packs["one"])
+            self.assertNotEqual(files[0].stat().st_mtime_ns, before[0][0])
+            self.assertEqual((files[1].stat().st_mtime_ns, files[1].stat().st_ctime_ns), before[1])
+            self.assertEqual(parse_directory(image.read_bytes()), packs)
+            self.assertNotEqual(image.stat().st_mtime_ns, before[2][0])
+
 
 class DemoAssetTests(unittest.TestCase):
     def setUp(self):
@@ -343,43 +364,40 @@ class DemoAssetTests(unittest.TestCase):
                 self.assertIn("must be letters", str(caught.exception))
 
     def test_relative_and_absolute_searches_produce_one_pack(self):
-        import os
         relative = pathlib.Path(os.path.relpath(self.demo))
         self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
                          {"sample": {"one": b"demo"}})
 
-    def test_self_and_mutual_manifest_cycles_terminate(self):
-        other = self.demo.parent / "other"
-        other.mkdir()
-        code = ("import pathlib, sys; sys.path.insert(0, sys.argv[1]); "
-                "from r3d import build_pack; build_pack.DEMO = pathlib.Path(sys.argv[2]); "
-                "assert set(build_pack.pack_bytes([sys.argv[3]])) == {'sample'}")
-        for first, second in (("sample", None), ("other", "sample")):
-            with self.subTest(first=first):
-                write(self.demo / "demo_assets.toml", f'demo = ["{first}"]')
-                if second:
-                    write(other / "demo_assets.toml", f'demo = ["{second}"]')
-                result = subprocess.run([sys.executable, "-c", code, str(pathlib.Path(build_pack.__file__).resolve().parents[1]),
-                                         str(self.demo.parent), str(self.demo)],
-                                        capture_output=True, text=True, timeout=5)
-                self.assertEqual(result.returncode, 0, result.stderr)
+    def test_a_demo_manifest_is_refused_naming_its_file(self):
+        write(self.main / "demo_assets.toml", 'demo = ["sample"]')
+        manifest = write(self.demo / "demo_assets.toml", 'demo = ["sample"]')
+        with self.assertRaisesRegex(SettingsError, "only an app names demo assets") as caught:
+            build_pack.pack_bytes([self.main])
+        self.assertIn(str(manifest), str(caught.exception))
 
-    def test_each_tree_manifest_selects_its_demo_root_packs(self):
-        with mock.patch.object(build_pack, "DEMO", build_pack.REPO / "launcher/demo"):
-            packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
-            manifests = list(build_pack.DEFAULT_SEARCH.rglob("demo_assets.toml"))
-            self.assertTrue(manifests)
-            for manifest in manifests:
-                for name in tomllib.loads(manifest.read_text())["demo"]:
-                    demo = build_pack.DEMO / name
-                    roots = build_pack.pack_bytes([demo])
-                    self.assertTrue(roots, str(demo))
-                    for root, data in roots.items():
-                        with self.subTest(manifest=manifest, root=root):
-                            self.assertEqual(packs[root], data)
+    def test_a_manifest_can_select_two_different_demos(self):
+        other = self.demo.parent / "other"
+        import_file(other, "other.import.toml", "two")
+        (other / "two.mesh").write_bytes(b"other")
+        write(self.main / "demo_assets.toml", 'demo = ["sample", "other"]')
+        self.assertEqual(contents(build_pack.pack_bytes([self.main])),
+                         {"sample": {"one": b"demo"}, "other": {"two": b"other"}})
 
 
 class TreeTests(unittest.TestCase):
+    def test_each_tree_manifest_selects_its_demo_root_packs(self):
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
+        manifests = list(build_pack.DEFAULT_SEARCH.rglob("demo_assets.toml"))
+        self.assertTrue(manifests)
+        for manifest in manifests:
+            for name in tomllib.loads(manifest.read_text())["demo"]:
+                demo = build_pack.DEMO / name
+                roots = build_pack.pack_bytes([demo])
+                self.assertTrue(roots, str(demo))
+                for root, data in roots.items():
+                    with self.subTest(manifest=manifest, root=root):
+                        self.assertEqual(packs[root], data)
+
     def test_the_packs_in_the_tree_pack_and_parse(self):
         packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
         self.assertTrue(packs)

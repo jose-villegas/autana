@@ -335,7 +335,7 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     add_custom_target(asset_pack_image ALL
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
                 "${CMAKE_CURRENT_LIST_DIR}"
-        BYPRODUCTS "${asset_image}" "${asset_packs}"
+        BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)
     esptool_py_flash_to_partition(flash "assets" "${asset_image}")

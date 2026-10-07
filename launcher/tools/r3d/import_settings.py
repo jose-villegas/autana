@@ -1,4 +1,5 @@
-"""Reads and checks a mesh's import-settings file and a scene file of objects.
+"""Reads and checks a mesh's import-settings file, a scene file of objects
+and an app's demo-assets manifest.
 
 Standard library only, so a settings error is reported, and tested, without the
 numeric environment the bake itself needs. Every table is closed: a key nobody
@@ -559,7 +560,8 @@ def load_bake(table):
 
 
 def load_demo_assets(path) -> list[pathlib.Path]:
-    """The relative demo paths a manifest selects, with plain pack names only."""
+    """The demo folder names in a manifest's `demo` list,
+    each checked by identifier()."""
     path = pathlib.Path(path)
     try:
         with path.open("rb") as source:
