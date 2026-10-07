@@ -110,7 +110,7 @@ static int strip_bounce_next;
 _Static_assert(GATHER_WINDOW_MAX_PIXELS <= GFX_WIDTH * STRIP_HEIGHT,
                "a gathered window must fit one strip_bounce slot");
 
-/* band_buf[] (alloc_band_buffers() below) always aliases these slots
+/* band_buf[] (alloc_band_buffers(), gfx_mode.c) always aliases these slots
  * instead of allocating; idle whenever band mode is, since band mode
  * never runs the full-fb send path they belong to. */
 _Static_assert(GFX_BAND_HEIGHT <= STRIP_HEIGHT, "a band must fit one strip_bounce slot to alias it");
@@ -178,7 +178,7 @@ display_bring_up(int hz) {
         ESP_LOGE(TAG, "Could not identify the board");
         return false;
     }
-    if (board_panel_bring_up(hz, GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t), on_strip_sent, &panel_io, &panel)
+    if (board_panel_bring_up(hz, GFX_WIDTH * STRIP_HEIGHT * (int)sizeof(gfx_color_t), on_strip_sent, &panel_io, &panel)
         != ESP_OK) {
         ESP_LOGE(TAG, "Could not start the display");
         return false;
@@ -330,7 +330,7 @@ gfx_invalidate(void) {
  * itself (already past the guard by definition: a present is in flight)
  * when a rejected esp_lcd_panel_draw_bitmap() means this frame never
  * reached the panel. */
-void
+static void
 mark_all_dirty_now(void) {
     dirty_mark_all();
     drawn_bbox = GFX_BOX_EMPTY;

@@ -241,7 +241,7 @@ functions start with their module name and then say what they do:
 prefix stable because it is the C namespace for that module.
 
 Static functions do not need a synthetic prefix. Give them the shortest clear
-verb or predicate in their file's context, such as `board_panel_bring_up()`. Do not
+verb or predicate in their file's context, such as `qspi_bus_up()`. Do not
 add `prv_`, type-encoded Hungarian prefixes, or another naming layer whose only
 purpose is to restate linkage or type information.
 

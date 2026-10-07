@@ -11,11 +11,10 @@ tracker, and the present path. A caller includes the header for what it does:
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 
-The code splits the same way: `draw/gfx_draw.c` over the pure colour, font,
-dither, icon, box and target headers in `draw/`; `present/gfx_present.c` (the
-present task and send paths), `present/gfx_mode.c` (modes and buffers) and
-`present/gfx_debug.c` over the pure dirty, heal, band, guard and indexed
-headers in `present/`; `gfx/gfx_internal.h` holds the state they share. The
+The code splits the same way: `draw/` holds `gfx_draw.c` and the pure headers
+it draws with; `present/` holds `gfx_present.c` (the present task and send
+paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
+they send with; `gfx/gfx_internal.h` holds the state they share. The
 panel link itself, QSPI and each revision's init sequence, is
 `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
@@ -102,8 +101,8 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 ## Dirty tracking
 
-`gfx_dirty.h`: header-only and static, so marking inlines into the fill and
-pixel hot paths. One tracker serves all three modes.
+`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`,
+so marking inlines into the fill and pixel hot paths. One tracker serves all three modes.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`

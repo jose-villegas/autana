@@ -161,7 +161,7 @@ menu "Launcher"
             frame. 40 MHz is clean. Even-edged windows are still required
             at either clock, but do not make 80 clean.
 
-            The dirty-band thresholds in gfx.h were fitted to 40 MHz timings
+            The dirty-band thresholds in gfx_dirty.h were fitted to 40 MHz timings
             and are wrong until re-measured - some of the win leaks back
             otherwise.
 

@@ -162,7 +162,7 @@ int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
  *
  * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
  * is a parameter rather than an internal ui_width() call, which is what
- * keeps it host-testable without pulling in gfx.h/BSP.
+ * keeps it host-testable without reaching the framebuffer.
  */
 
 /* A rect `w` wide, `h` tall, horizontally centred within a canvas
@@ -216,7 +216,7 @@ bool ui_end_over(ui_backdrop_fn paint_backdrop);
 void ui_invalidate(void);
 
 /*
- * Band mode (gfx.h) has no retained framebuffer, so ui_end()'s hash-and-skip
+ * Band mode (gfx_mode.h) has no retained framebuffer, so ui_end()'s hash-and-skip
  * does not apply. Closes the frame like ui_end() does, but bins commands by
  * row range instead of painting; ui_replay_band() draws a band's share when
  * gfx_band_run() draws that band. Call once per frame from frame(). Pass

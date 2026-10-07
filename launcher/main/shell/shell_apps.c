@@ -138,7 +138,7 @@ draw_home_hint(gesture_edge_t edge) {
     gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
 }
 
-/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into.
+/* Band mode (gfx_mode.h) has no framebuffer for draw_home_hint() to write into.
  * Queue it before frame(), so the app's ui_end_for_bands() call bins it. */
 static void
 queue_home_hint(gesture_edge_t edge) {

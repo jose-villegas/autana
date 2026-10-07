@@ -15,6 +15,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx_shared_state.h"
+
 #include "gfx/present/gfx_fb_guard.h"
 
 static void
@@ -75,12 +77,15 @@ test_restoring_the_framebuffer_stops_the_guard_from_tripping(void) {
 
 void
 run_gfx_fb_guard_suite(void) {
+    gfx_shared_state_t saved;
+    gfx_shared_state_save(&saved);
     RUN_TEST(test_drawing_is_allowed_while_a_framebuffer_is_available);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_drawing_is_refused_once_the_framebuffer_is_unavailable);
     RUN_TEST(test_repeated_draws_while_unavailable_keep_tripping);
     RUN_TEST(test_restoring_the_framebuffer_stops_the_guard_from_tripping);
 #endif
+    gfx_shared_state_restore(&saved);
 }
 
 SUITE_REGISTER(run_gfx_fb_guard_suite);

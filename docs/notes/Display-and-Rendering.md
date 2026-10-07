@@ -35,7 +35,7 @@ partial bands reduce bytes sent. Rendering and DMA can overlap, so timing an
 isolated band does not predict the cost of a pipelined frame.
 
 `CONFIG_LAUNCHER_GFX_QSPI_80MHZ` sets the boot clock, `GFX_QSPI_HZ`, in
-`launcher/main/gfx/gfx.h`. The shell may change it at run time through
+`launcher/main/gfx/present/gfx_present.h`. The shell may change it at run time through
 `gfx_set_panel_clock_hz()`. The SPI divider provides 40 or 80 MHz for these
 choices; requesting an intermediate value does not provide an intermediate
 panel clock.

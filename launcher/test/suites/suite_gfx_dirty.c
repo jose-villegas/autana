@@ -16,6 +16,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx_shared_state.h"
+
 #include "gfx/draw/gfx_box.h"
 #include "gfx/present/gfx_dirty.h"
 
@@ -508,7 +510,7 @@ test_band_extent_follows_a_moving_box_across_several_frames(void) {
      * ever widens within its own lifetime (never narrows before the next
      * dirty_mark_all()); correct, but it would make this test's exact
      * per-frame equality assert fail on a real, harmless over-touch. */
-    const int band_height = 32; /* a real GFX_BAND_HEIGHT choice (gfx.h), not reachable from here, see file comment */
+    const int band_height = 32; /* one of GFX_BAND_HEIGHT's choices, fixed so the test does not vary by build */
     const int box_x = 10, box_w = 15, box_h = 20;
     int box_y = 0;
     bool prev_valid = false;
@@ -648,6 +650,8 @@ test_box_clip_both_inside(void) {
 
 void
 run_gfx_dirty_suite(void) {
+    gfx_shared_state_t saved;
+    gfx_shared_state_save(&saved);
     RUN_TEST(test_box_clip_edges);
     RUN_TEST(test_box_clip_corners);
     RUN_TEST(test_box_clip_fully_outside);
@@ -698,6 +702,7 @@ run_gfx_dirty_suite(void) {
     RUN_TEST(test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers);
     RUN_TEST(test_band_extent_is_full_width_once_everything_is_marked);
     RUN_TEST(test_band_extent_follows_a_moving_box_across_several_frames);
+    gfx_shared_state_restore(&saved);
 }
 
 SUITE_REGISTER(run_gfx_dirty_suite);

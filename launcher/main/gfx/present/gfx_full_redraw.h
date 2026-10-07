@@ -25,7 +25,7 @@ gfx_band_force_all(void) {
 
 /* Reads and clears in one step: a request arriving after this frame's
  * capture must not retroactively force bands a frame already under way
- * already skipped; see gfx_band_frame_begin()'s own comment in gfx_mode.c. */
+ * already skipped; see band_frame_force_all in gfx_mode.c. */
 static inline bool
 gfx_band_take_force_all(void) {
     const bool forced = gfx_band_force_all_dirty;

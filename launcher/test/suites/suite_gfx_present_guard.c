@@ -11,28 +11,13 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx_shared_state.h"
+
 #include "gfx/present/gfx_dirty.h"
 #include "gfx/present/gfx_present_guard.h"
 
-/* This suite only drives the whole-frame path (dirty_mark_all(),
- * dirty_row_is_dirty(), dirty_row_sent(), dirty_frame_sent(), dirty_mark());
- * suite_gfx_dirty.c already covers the run/leaf-refinement machinery
- * gfx_dirty.h also carries. Referencing the rest here just keeps this
- * translation unit's own copy of it from tripping -Wunused-function. */
-static void
-touch_unused_dirty_symbols(void) {
-    (void)collect_runs_from_mask;
-    (void)collect_dirty_runs;
-    (void)run_is_leaf_eligible;
-    (void)leaf_mask_for_run;
-    (void)refine_run;
-    (void)plan_run;
-    (void)run_box;
-}
-
 static void
 fixture(void) {
-    touch_unused_dirty_symbols();
     gfx_present_guard_in_flight = false;
     gfx_present_guard_trips = 0;
 
@@ -146,6 +131,8 @@ test_a_mark_after_present_is_not_swallowed_by_a_stale_all_dirty_flag(void) {
 
 void
 run_gfx_present_guard_suite(void) {
+    gfx_shared_state_t saved;
+    gfx_shared_state_save(&saved);
     RUN_TEST(test_guard_is_quiet_with_no_present_in_flight);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_check_between_begin_and_end_trips_the_guard);
@@ -155,6 +142,7 @@ run_gfx_present_guard_suite(void) {
 
     RUN_TEST(test_present_sequencing_leaves_every_row_clean);
     RUN_TEST(test_a_mark_after_present_is_not_swallowed_by_a_stale_all_dirty_flag);
+    gfx_shared_state_restore(&saved);
 }
 
 SUITE_REGISTER(run_gfx_present_guard_suite);

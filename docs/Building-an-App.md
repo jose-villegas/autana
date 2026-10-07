@@ -25,7 +25,7 @@ the shell, not `CMakeLists.txt`:
 
 ```c
 #include "app/app.h"
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_draw.h"
 
 static void yours_enter(void) { /* reset state */ }
 

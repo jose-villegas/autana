@@ -120,9 +120,7 @@ typedef struct {
  * rects into `out`. Backs gfx_debug.c's leaf overlay. One rect per leaf,
  * never merged into runs; merging would hide the subdivision this layer
  * exists to show. A row marked solely by mark_band() has no leaf info, so
- * this returns nothing for it, by design, not a bug. static inline, not
- * plain static: every call site is inside `#if CONFIG_LAUNCHER_DEVELOPMENT`,
- * so plain static would warn -Wunused-function in a release build. */
+ * this returns nothing for it, by design, not a bug. */
 static inline int
 dirty_leaf_rects(int row, int x0, int y0, int x1, int y1, dirty_leaf_rect_t* out, int max_out) {
     int n = 0;

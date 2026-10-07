@@ -51,7 +51,7 @@ static const co5300_lcd_init_cmd_t co5300_init_cmds[] = {
 /* Common to both panel drivers: claims SPI2 for the QSPI lines, with the
  * same pad-strength opt-in either way. */
 static esp_err_t
-qspi_bus_up(size_t max_transfer_bytes) {
+qspi_bus_up(int max_transfer_bytes) {
     const spi_bus_config_t bus = {
         .sclk_io_num = BSP_LCD_PCLK,
         .data0_io_num = BSP_LCD_DATA0,
@@ -154,7 +154,7 @@ board_panel_open(int hz, esp_lcd_panel_io_color_trans_done_cb_t on_sent, esp_lcd
 /* The same steps for either revision; board_panel_open() picks the driver
  * the detected one needs (board_variant_t). */
 esp_err_t
-board_panel_bring_up(int hz, size_t max_transfer_bytes, esp_lcd_panel_io_color_trans_done_cb_t on_sent,
+board_panel_bring_up(int hz, int max_transfer_bytes, esp_lcd_panel_io_color_trans_done_cb_t on_sent,
                      esp_lcd_panel_io_handle_t* io, esp_lcd_panel_handle_t* panel) {
     esp_err_t err = qspi_bus_up(max_transfer_bytes);
     if (err != ESP_OK) {

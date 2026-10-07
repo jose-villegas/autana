@@ -703,7 +703,7 @@ the cheapest moment to capture it, and the only thing that stops it returning.
 `suite_gfx_present_guard.c` (portable) covers the present-in-flight guard and
 the dirty tracker's own begin/wait/present sequencing on a host, by including
 `gfx_present_guard.h` and `gfx_dirty.h` directly: the same reason
-`suite_gfx_dirty.c` can, and gfx.c's panel plumbing cannot. `suite_gfx_mode.c`
+`suite_gfx_dirty.c` can, and gfx_present.c's panel plumbing cannot. `suite_gfx_mode.c`
 and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly.

@@ -15,9 +15,7 @@
  * cells are actually sent each frame, cyan for a full-row send and yellow
  * for a gathered run. Off by default even in a development build: it
  * draws over real content, so it should be opted into, not always on.
- * Independent of the leaf layer below. Declared only under
- * CONFIG_LAUNCHER_DEVELOPMENT so calling it from a non-development file
- * fails to compile rather than silently no-opping. */
+ * Independent of the leaf layer below. */
 #if CONFIG_LAUNCHER_DEVELOPMENT
 void gfx_set_debug_overlay(bool on);
 bool gfx_debug_overlay(void);

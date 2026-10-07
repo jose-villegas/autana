@@ -307,7 +307,7 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
  * call, and the Bayer pattern repeats every 4 pixels, so the per-pixel
  * decision collapses to four booleans per row: a fully-covered row is a
  * plain memcpy, an untouched row costs nothing. Phase-locked to absolute
- * panel coordinates like every other dithered draw in gfx.h, so
+ * panel coordinates like every other dithered draw in gfx_draw.h, so
  * overlapping dithered shapes stay in register with each other. First
  * user: the boot animation's photograph crossfade (boot_anim.c's
  * draw_image()). */

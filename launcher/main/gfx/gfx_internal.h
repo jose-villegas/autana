@@ -1,7 +1,7 @@
 /*
  * gfx_internal: the state gfx's own files share, and the calls that cross
  * between them. Nothing outside gfx/ includes it; every other file goes
- * through gfx.h, gfx_draw.h, gfx_present.h or gfx_mode.h.
+ * through gfx.h, gfx_draw.h, gfx_present.h, gfx_mode.h or gfx_debug.h.
  */
 #pragma once
 
@@ -61,8 +61,6 @@ extern bool interlace_on;
 extern gfx_box_t prev_bbox;
 extern gfx_box_t drawn_bbox;
 extern gfx_heal_t heal;
-
-void mark_all_dirty_now(void);
 
 #ifdef ESP_PLATFORM
 /* The panel link, and the send buffers band mode and the overlays borrow. */

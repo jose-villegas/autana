@@ -1016,7 +1016,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
  * gather buffer at all: the case send_partial_band() (gfx_present.c) exists for.
  *
  * 90% is the threshold, not 75%, on purpose: 48 of a band's 64 rows is 75%
- * of its pixels, and a present is ~94% bus time (gfx.h), so once the fixed
+ * of its pixels, and a present is almost entirely bus time (docs/Gfx-and-Presentation.md), so once the fixed
  * per-transaction cost is counted the honest floor is around 78%. */
 static void
 test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
@@ -1158,9 +1158,8 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
 
 /* A small mark plus a wide one in the same coarse run, sized to land the
  * wide mark's leaf-refined piece right where GATHER_MAX_PIXELS decides
- * whether it gets gathered. Literal numbers because gfx_dirty.h is
- * header-only and static; a second include would duplicate its
- * dirty-tracking state. The wide mark covers leaf columns 2-6, so
+ * whether it gets gathered. Literal numbers, so the test states the budgets
+ * it crosses. The wide mark covers leaf columns 2-6, so
  * refine_run() reports a 5-leaf 115px piece: 115 * 64 = 7360 px; over
  * budget at 4096 and 6144, under it at the shipped 8192. */
 static void

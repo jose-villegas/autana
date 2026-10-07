@@ -13,7 +13,7 @@
 
 static const char* TAG = "gfx";
 
-/* See gfx.h for "why not always compiled". Used by gfx_set_debug_overlay()
+/* See gfx_debug.h for why this is development-only. Used by gfx_set_debug_overlay()
  * below. */
 bool debug_overlay_on;
 

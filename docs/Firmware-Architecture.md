@@ -451,8 +451,9 @@ the backdrop under it, re-scrims that region, then draws.
 ## Why microui, not LVGL
 
 The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
-LVGL interface removed; LVGL is not built. `gfx_present.c` drives the panel
-directly, and the BSP supplies board services and touch setup. Three
+LVGL interface removed; LVGL is not built. `board/board_panel.c` brings the
+panel up and `gfx/present/gfx_present.c` sends to it directly; the BSP
+supplies board services and touch setup. Three
 constraints point the same way:
 
 **Internal heap is tight even with the framebuffer in PSRAM.** A persistent

@@ -1,7 +1,8 @@
 /*
- * gfx_mode: the mode-grant arithmetic behind gfx_mode_enter(), as a
- * standalone, ESP-IDF-free module so a host suite can drive it without a
- * framebuffer or a panel.
+ * gfx_mode: which layout the framebuffer is held in (full, a band ring, or
+ * an index image) and reading the panel's frame back. gfx_mode_resolve() is
+ * the pure grant arithmetic a host suite drives without a framebuffer or a
+ * panel.
  *
  * An app declares what it wants at enter(): a layout, a resolution, and a
  * per-axis interlace choice. gfx_mode_resolve() is the pure function
@@ -88,7 +89,7 @@ gfx_mode_resolve(const gfx_mode_request_t* request, gfx_resolution_t system_max,
  * transient renderer, or a persistent internal-RAM index image.
  * Requested from enter(), released with gfx_mode_exit() from exit(). No
  * caller ever asks for anything but full resolution; an interlace request
- * is granted (gfx_mode.h) but changes nothing drawn; gfx_set_interlace()
+ * is granted (gfx_mode_resolve() above) but changes nothing drawn; gfx_set_interlace()
  * is the switch that does.
  */
 
