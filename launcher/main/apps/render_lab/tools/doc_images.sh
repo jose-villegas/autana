@@ -105,7 +105,8 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lit
     --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
     --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-flat-flat-fitted.png" --crops 3     --label-a flat --label-b "flat fitted" --row "flat | flat fitted" "$W/still-flat.bmp" "$W/still-flat-fitted.bmp" > "$W/compare-flat-flat-fitted.log"
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-flat-flat-fitted.png" --crops 3 \
+    --label-a flat --label-b "flat fitted" --row "flat | flat fitted" "$W/still-flat.bmp" "$W/still-flat-fitted.bmp" > "$W/compare-flat-flat-fitted.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
 for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full compare-flat-flat-fitted; do
