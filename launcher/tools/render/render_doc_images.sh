@@ -173,6 +173,13 @@ for script in launcher/main/apps/*/tools/doc_images.sh; do
     run bash "$script" "$OUT" "$WORK/$app"
 done
 
+# Dynamic resolution's tables and chart, from the board capture and the
+# reference scores kept beside its page.
+run mkdir -p "$OUT/render" "$OUT/tables"
+run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
+    --quality docs/render/data/dynamic-resolution-quality.csv --tables "$OUT/tables" \
+    --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+
 table_status=0
 if [ "$CHECK" = 1 ]; then
     "$PYTHON" "$TOOLS_DIR/generated_blocks.py" --tables "$OUT/tables" --check || table_status=$?
