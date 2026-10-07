@@ -29,6 +29,7 @@
 static scene_t* sponza;
 static const asset_pack_t* pack;
 static const r3d_scene_camera_t* flythrough;
+static const char* camera_name;
 #define MESH_FULL (&mesh_full)
 #define MESH_LITE (&mesh_lite)
 #define MESH_FLAT (&mesh_flat)
@@ -229,7 +230,8 @@ check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
-            TEST_ASSERT_TRUE(snprintf(message, sizeof message, "t=%u ms eye (%.0f, %.0f, %.0f) is %.1f from a triangle",
+            TEST_ASSERT_TRUE(snprintf(message, sizeof message,
+                                      "%s t=%u ms eye (%.0f, %.0f, %.0f) is %.1f from a triangle", camera_name,
                                       (unsigned)t, (double)eye.x, (double)eye.y, (double)eye.z, (double)d)
                              > 0);
             TEST_FAIL_MESSAGE(message);
@@ -275,9 +277,16 @@ test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
 static void
 test_the_flythrough_keeps_clear_of_every_triangle(void) {
     open_the_meshes();
-    check_the_flythrough_keeps_clear_of_every_triangle(MESH_FULL);
-    check_the_flythrough_keeps_clear_of_every_triangle(MESH_LITE);
-    check_the_flythrough_keeps_clear_of_every_triangle(MESH_FLAT);
+    for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
+        camera_name = sponza_cameras[camera];
+        flythrough = scene_camera_lens(sponza, camera_name);
+        TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
+        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
+        check_the_flythrough_keeps_clear_of_every_triangle(MESH_FULL);
+        check_the_flythrough_keeps_clear_of_every_triangle(MESH_LITE);
+        check_the_flythrough_keeps_clear_of_every_triangle(MESH_FLAT);
+    }
+    flythrough = scene_camera_lens(sponza, NULL);
 }
 
 /* At the pace of a slow walk, with the seam between a lap's end and its start
@@ -285,18 +294,25 @@ test_the_flythrough_keeps_clear_of_every_triangle(void) {
 static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     require_the_scene();
-    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
-    vec3f_t previous;
-    vec3f_t forward;
-    r3d_scene_camera_sample(flythrough, 0, &previous, &forward);
-    for (uint32_t t = 10; t <= period + 100; t += 10) {
-        vec3f_t eye;
-        r3d_scene_camera_sample(flythrough, t, &eye, &forward);
-        const vec3f_t step = vec3f_sub(eye, previous);
-        TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, "the eye jumped between two samples 10 ms apart");
-        TEST_ASSERT_FLOAT_WITHIN(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)));
-        previous = eye;
+    for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
+        camera_name = sponza_cameras[camera];
+        flythrough = scene_camera_lens(sponza, camera_name);
+        TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
+        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
+        const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+        vec3f_t previous;
+        vec3f_t forward;
+        r3d_scene_camera_sample(flythrough, 0, &previous, &forward);
+        for (uint32_t t = 10; t <= period + 100; t += 10) {
+            vec3f_t eye;
+            r3d_scene_camera_sample(flythrough, t, &eye, &forward);
+            const vec3f_t step = vec3f_sub(eye, previous);
+            TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, camera_name);
+            TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)), camera_name);
+            previous = eye;
+        }
     }
+    flythrough = scene_camera_lens(sponza, NULL);
 }
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
@@ -333,15 +349,22 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
         samples++;
     }
     memory_free(scratch);
-    TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.85F, sum / (float)samples, "the flythrough sees mostly sky");
+    TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.85F, sum / (float)samples, camera_name);
 }
 
 static void
 test_the_flythrough_sees_mostly_building(void) {
     open_the_meshes();
-    check_the_flythrough_sees_mostly_building(MESH_FULL);
-    check_the_flythrough_sees_mostly_building(MESH_LITE);
-    check_the_flythrough_sees_mostly_building(MESH_FLAT);
+    for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
+        camera_name = sponza_cameras[camera];
+        flythrough = scene_camera_lens(sponza, camera_name);
+        TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
+        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
+        check_the_flythrough_sees_mostly_building(MESH_FULL);
+        check_the_flythrough_sees_mostly_building(MESH_LITE);
+        check_the_flythrough_sees_mostly_building(MESH_FLAT);
+    }
+    flythrough = scene_camera_lens(sponza, NULL);
 }
 
 /* The pack the build wrote for the scene: on the device, the one flashed

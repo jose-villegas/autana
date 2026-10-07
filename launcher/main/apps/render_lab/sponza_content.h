@@ -35,6 +35,9 @@ typedef enum {
 /* The name of the entity that draws each bake, found at load. */
 extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];
 
+#define SPONZA_CAMERA_COUNT 2
+extern const char* const sponza_cameras[SPONZA_CAMERA_COUNT];
+
 /* The sizes dynamic resolution steps through: height first, since a frame's
  * rows and span setup follow the height, then the width. All widths upscale
  * on a fast path. The floor costs as its 2.5x isotropic counterpart (147x179);
