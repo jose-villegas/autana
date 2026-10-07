@@ -122,15 +122,15 @@ class CloneTests(unittest.TestCase):
             copy = original.with_name("b.c")
             copy.write_text(BLOCK, encoding="utf-8")
             commit()
-            check(1, "FAIL: 1 new clone pairs")
+            check(1, "FAIL: 1 new or growing clone file pairs")
             git("update-ref", "refs/remotes/origin/main", "HEAD")
             git("mv", "launcher/main/a.c", "launcher/main/renamed.c")
             commit()
-            check(0, "PASS: no new clone pairs (1 checked HEAD pairs, 1 base pairs)")
+            check(0, "PASS: no growing clone file pairs (1 checked HEAD pairs, 1 base pairs)")
             git("update-ref", "refs/remotes/origin/main", "HEAD")
             copy.write_text("\n\n" + BLOCK, encoding="utf-8")
             commit()
-            check(0, "PASS: no new clone pairs (1 checked HEAD pairs, 1 base pairs)")
+            check(0, "PASS: no growing clone file pairs (1 checked HEAD pairs, 1 base pairs)")
             original.write_text(BLOCK, encoding="utf-8")
             self.assertEqual(len(gate.scan(root, 80)), 1)
 
@@ -140,12 +140,76 @@ class CloneTests(unittest.TestCase):
                 "fragment": fragment, "format": "c", "tokens": 90}
 
     def test_added_clone_fails_when_another_is_removed(self):
-        base = [self.pair()]
-        head = [self.pair("c.c", "d.c")]
+        base = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
+        head = self.scan({"launcher/main/c.c": BLOCK, "launcher/main/d.c": BLOCK}, 80)
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             self.assertEqual(gate.check_pairs(head, base), 1)
-        self.assertIn("c.c:1-12 ~ d.c:1-12", output.getvalue())
+        self.assertIn("launcher/main/c.c:", output.getvalue())
+        self.assertIn("launcher/main/d.c:", output.getvalue())
+
+    def test_shortened_existing_clone_passes(self):
+        base = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
+        shortened = BLOCK.replace("    return result > 5 ? result : input;", "    return result;")
+        head = self.scan({"launcher/main/a.c": shortened, "launcher/main/b.c": shortened}, 80)
+        self.assertTrue(head)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base), 0)
+
+    def test_extended_existing_clone_fails(self):
+        base = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
+        extended = BLOCK.replace("    return result", "    result += input * 7;\n    return result")
+        head = self.scan({"launcher/main/a.c": extended, "launcher/main/b.c": extended}, 80)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base), 1)
+
+    def test_extraction_rebounds_existing_clone(self):
+        source = BLOCK.replace("    return result", "    for (int extra = 0; extra < 50; extra++) {\n        result += extra * input;\n        result ^= input + extra;\n    }\n    return result")
+        start = source.index("    for (int index")
+        end = source.index("    while")
+        extracted = source[:start] + "    result = shared_loop(input);\n" + source[end:]
+        base = self.scan({"launcher/main/a.c": source, "launcher/main/b.c": source}, 80)
+        helper = "int shared_loop(int input) {\n    int result = 0;\n" + source[start:end] + "    return result;\n}\n"
+        head = self.scan({"launcher/main/a.c": extracted, "launcher/main/b.c": extracted,
+                          "launcher/main/helper.c": helper}, 80)
+        self.assertTrue(head)
+        self.assertLess(sum(p["tokens"] for p in head), sum(p["tokens"] for p in base))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base), 0)
+
+    def test_existing_file_pair_token_growth_fails(self):
+        files = {"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}
+        extra = "int another(int value) {\n" + "    value += 3; value *= 7; value ^= 11;\n" * 12 + "    return value;\n}\n"
+        files["launcher/main/a.c"] += extra
+        base = self.scan(files, 80)
+        files["launcher/main/b.c"] += extra
+        head = self.scan(files, 80)
+        names = ("launcher/main/a.c", "launcher/main/b.c")
+        base = [p for p in base if gate.pair_key(p) == names]
+        head = [p for p in head if gate.pair_key(p) == names]
+        self.assertTrue(base)
+        self.assertGreater(sum(p["tokens"] for p in head), sum(p["tokens"] for p in base))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base), 1)
+
+    def test_new_copy_cannot_spend_an_unrelated_shrink_in_the_same_pair(self):
+        extra = "int another(int value) {\n" + "    value += 3; value *= 7; value ^= 11;\n" * 12 + "    return value;\n}\n"
+        separators = {"launcher/main/a.c": "int unique_a(void) { switch (1) { case 1: return 2; } return 3; }\n",
+                      "launcher/main/b.c": "void unique_b(void) { while (1) { continue; } }\n"}
+        base = self.scan({name: BLOCK + separator + extra
+                          for name, separator in separators.items()}, 80)
+        shortened = extra.replace("    value += 3; value *= 7; value ^= 11;\n" * 12,
+                                  "    value += 3; value *= 7; value ^= 11;\n" * 5)
+        new_copy = "int copied(int value) {\n" + "    if (value > 3) { value /= 7; } else { value -= 11; }\n" * 4 + "    return value;\n}\n"
+        head = self.scan({name: BLOCK + separator + shortened + separator + new_copy
+                          for name, separator in separators.items()}, 80)
+        names = ("launcher/main/a.c", "launcher/main/b.c")
+        base = [p for p in base if gate.pair_key(p) == names]
+        head = [p for p in head if gate.pair_key(p) == names]
+        self.assertGreaterEqual(len(head), 3)
+        self.assertLessEqual(sum(p["tokens"] for p in head), sum(p["tokens"] for p in base))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base), 1)
 
     def test_literal_only_table_rows_are_ignored(self):
         rows = "    {0xAB, 1.5e-2f, 42UL, 'x', \"identifier\"}, // label\n" * 12
@@ -163,9 +227,9 @@ class CloneTests(unittest.TestCase):
         self.assertEqual(gate.filter_pairs([self.pair("a.c", "a.c")]), [])
 
     def test_untouched_existing_clone_passes(self):
-        pair = self.pair()
+        pairs = self.scan({"launcher/main/a.c": BLOCK, "launcher/main/b.c": BLOCK}, 80)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(gate.check_pairs([pair], [pair]), 0)
+            self.assertEqual(gate.check_pairs(pairs, pairs), 0)
 
     def test_key_ignores_locations_file_order_and_whitespace(self):
         base = self.pair()
@@ -179,19 +243,10 @@ class CloneTests(unittest.TestCase):
         pair["secondFile"]["start"] = 20
         self.assertEqual(gate.filter_pairs([pair]), [pair])
 
-    def test_key_ignores_c_comments_but_preserves_string_literals(self):
-        base = self.pair()
-        head = self.pair(fragment=BLOCK.replace('int result', '/* Own description. */ int result'))
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(gate.check_pairs([head], [base]), 0)
-        left = self.pair(fragment='const char* text = "/* first */";')
-        right = self.pair(fragment='const char* text = "/* second */";')
-        self.assertNotEqual(gate.pair_key(left), gate.pair_key(right))
-
-    def test_fragment_edit_is_new(self):
+    def test_fragment_edit_with_equal_budget_passes(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gate.check_pairs([self.pair(fragment=BLOCK.replace("alpha", "beta"))],
-                                             [self.pair()]), 1)
+                                             [self.pair()]), 0)
 
     def test_committed_scan_ignores_worktree_edits(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -303,7 +303,7 @@ void sand_track_dirty_cols(sand_t* s, uint16_t* x0, uint16_t* x1);
 
 /* Skip settled BLOCKS entirely - without this, a settled grain still fails
  * its gravity-ward move and both slides, every step, to conclude nothing.
- * `blocks` is caller-owned, ceil(w/SAND_BLOCK_W) * ceil(h/SAND_BLOCK_H)
+ * `blocks` is caller-owned, sand_sleep_block_bytes(w, h)
  * bytes, one flag per block.
  * NULL disables sleeping. A shake, a gravity change, or sand landing in a
  * block wakes it. */
@@ -315,6 +315,7 @@ void sand_enable_sleeping(sand_t* s, uint8_t* blocks);
  * and such a grain may then move twice. */
 void sand_enable_step_stamps(sand_t* s, uint8_t* bits);
 size_t sand_step_stamp_bytes(int w, int h);
+size_t sand_sleep_block_bytes(int w, int h);
 
 /* sand_lane_scratch_bytes(w, h) bytes, caller-owned: the private block flags,
  * dirty spans and deferred work each of a two-core pass's two lanes fills and

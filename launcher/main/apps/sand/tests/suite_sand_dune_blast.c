@@ -267,8 +267,7 @@ static void
 test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     uint8_t* big = malloc(cells_len);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
     uint8_t* footprint = malloc(DUNE_FOOTPRINT_BYTES);
     impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
     const bool have_all = (big != NULL && blocks != NULL && footprint != NULL && impulses != NULL);
@@ -480,8 +479,7 @@ static void
 test_the_water_pool_scene_refills_its_own_cavity(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     uint8_t* big = malloc(cells_len);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
     impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
     const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
     if (!have_all) {
@@ -643,8 +641,7 @@ static void
 test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     uint8_t* big = malloc(cells_len);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
     impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
     const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
     if (!have_all) {
@@ -734,8 +731,7 @@ static int
 dune_over_wood_burning(uint32_t seed, bool* settled_out, int* wood_before_out) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     uint8_t* big = malloc(cells_len);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
     impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
     const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
     if (!have_all) {
@@ -917,8 +913,7 @@ static void
 test_the_layered_dune_scene_throws_more_than_one_band(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     uint8_t* big = malloc(cells_len);
-    uint8_t* blocks =
-        malloc(((REAL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * ((REAL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
     uint8_t* footprint = malloc(DUNE_FOOTPRINT_BYTES);
     impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
     const bool have_all = (big != NULL && blocks != NULL && footprint != NULL && impulses != NULL);
