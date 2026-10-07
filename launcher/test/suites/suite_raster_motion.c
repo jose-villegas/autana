@@ -265,13 +265,15 @@ test_a_still_camera_and_scene_have_no_motion(void) {
     }
 }
 
-/* One change between two pictures, before then now: the box's turn and
- * where it stands, and the camera's eye and yaw. */
+/* One change between two pictures. Before, the box stands unturned at
+ * (0, 0, 100) and the camera at (0, 0, 300) looks down -z; now the box is
+ * turned `turn` degrees about y and moved by `box`, and the camera moved by
+ * `eye` and turned `yaw` degrees. */
 typedef struct {
-    float turn[2];
-    vec3f_t at[2];
-    vec3f_t eye[2];
-    float yaw[2];
+    float turn;
+    vec3f_t box;
+    vec3f_t eye;
+    float yaw;
 } change_t;
 
 typedef struct {
@@ -281,11 +283,12 @@ typedef struct {
 
 static void
 pose_change(const change_t* c, bool with_box, posed_t* p) {
-    for (int i = 0; i < 2; i++) {
-        p->box[i] = turned(c->turn[i], c->at[i]);
-    }
-    p->before = (pose_t){camera_at(c->eye[0], c->yaw[0]), with_box ? &p->box[0] : NULL};
-    p->now = (pose_t){camera_at(c->eye[1], c->yaw[1]), with_box ? &p->box[1] : NULL};
+    const vec3f_t box = {0.0F, 0.0F, 100.0F};
+    const vec3f_t eye = {0.0F, 0.0F, 300.0F};
+    p->box[0] = turned(0.0F, box);
+    p->box[1] = turned(c->turn, vec3f_add(box, c->box));
+    p->before = (pose_t){camera_at(eye, 0.0F), with_box ? &p->box[0] : NULL};
+    p->now = (pose_t){camera_at(vec3f_add(eye, c->eye), c->yaw), with_box ? &p->box[1] : NULL};
 }
 
 /* The picture before at `w0` x `h0`, then now at W x H. */
@@ -307,20 +310,14 @@ check_change(const change_t* c, bool with_box, int w0, int h0, posed_t* p) {
 
 static void
 test_camera_motion_is_the_reprojection_through_the_previous_pose(void) {
-    static const change_t c = {{0.0F, 0.0F},
-                               {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F}},
-                               {{0.0F, 10.0F, 300.0F}, {12.0F, 0.0F, 280.0F}},
-                               {0.0F, 3.0F}};
+    static const change_t c = {0.0F, {0.0F, 0.0F, 0.0F}, {12.0F, -10.0F, -20.0F}, 3.0F};
     posed_t p;
     TEST_ASSERT_GREATER_THAN_INT(W * H * 3 / 4, check_change(&c, false, W, H, &p));
 }
 
 static void
 test_a_moving_instance_moves_by_its_previous_placement(void) {
-    static const change_t c = {{10.0F, 25.0F},
-                               {{-8.0F, 0.0F, 100.0F}, {6.0F, 4.0F, 110.0F}},
-                               {{0.0F, 0.0F, 300.0F}, {0.0F, 0.0F, 300.0F}},
-                               {0}};
+    static const change_t c = {15.0F, {14.0F, 4.0F, 10.0F}, {0.0F, 0.0F, 0.0F}, 0.0F};
     posed_t p;
     check_change(&c, true, W, H, &p);
     float mx;
@@ -332,10 +329,7 @@ test_a_moving_instance_moves_by_its_previous_placement(void) {
 
 static void
 test_camera_and_instance_motion_add_up(void) {
-    static const change_t c = {{-15.0F, 5.0F},
-                               {{10.0F, -5.0F, 90.0F}, {0.0F, 0.0F, 105.0F}},
-                               {{-10.0F, 5.0F, 310.0F}, {5.0F, 0.0F, 295.0F}},
-                               {-2.0F, 2.0F}};
+    static const change_t c = {20.0F, {-10.0F, 5.0F, 15.0F}, {15.0F, -5.0F, -15.0F}, 4.0F};
     posed_t p;
     check_change(&c, true, W, H, &p);
 }
@@ -343,10 +337,7 @@ test_camera_and_instance_motion_add_up(void) {
 /* The previous picture was half the size: motion is still in this one's pixels. */
 static void
 test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
-    static const change_t c = {{0.0F, 12.0F},
-                               {{0.0F, 0.0F, 100.0F}, {5.0F, 0.0F, 100.0F}},
-                               {{0.0F, 0.0F, 300.0F}, {8.0F, 0.0F, 290.0F}},
-                               {0.0F, 1.5F}};
+    static const change_t c = {12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, -10.0F}, 1.5F};
     posed_t p;
     check_change(&c, true, W / 2, H / 2, &p);
 }
@@ -354,10 +345,7 @@ test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
 /* Attaching motion changes no colour and no depth. */
 static void
 test_motion_leaves_colour_and_depth_as_they_are(void) {
-    static const change_t c = {{0.0F, 30.0F},
-                               {{0.0F, 0.0F, 100.0F}, {10.0F, 0.0F, 120.0F}},
-                               {{0.0F, 0.0F, 300.0F}, {4.0F, 2.0F, 290.0F}},
-                               {0.0F, 1.0F}};
+    static const change_t c = {30.0F, {10.0F, 0.0F, 20.0F}, {4.0F, 2.0F, -10.0F}, 1.0F};
     posed_t p;
     pose_change(&c, true, &p);
     uint16_t* plain = malloc(sizeof(uint16_t) * 2 * W * H);
