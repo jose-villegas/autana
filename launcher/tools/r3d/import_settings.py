@@ -1,4 +1,5 @@
-"""Reads and checks a mesh's import-settings file and a scene file of objects.
+"""Reads and checks a mesh's import-settings file, a scene file of objects
+and an app's demo-assets manifest.
 
 Standard library only, so a settings error is reported, and tested, without the
 numeric environment the bake itself needs. Every table is closed: a key nobody
@@ -244,12 +245,15 @@ def load_geometry(table, steps):
                                      keep=number(thin["keep"], "geometry.thin.keep"))
     if "simplify" in table:
         simplify = table["simplify"]
-        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams"), "geometry.simplify")
+        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
         steps.simplify = SimpleNamespace(
             dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
             props=set(strings(simplify["props"], "geometry.simplify.props")),
             props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
-            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"))
+            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
+            colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
+        if steps.simplify.colour_deviation <= 0:
+            raise SettingsError("geometry.simplify.colour_deviation must be above 0")
 
 
 def load_import_settings(path):
@@ -556,6 +560,20 @@ def load_bake(table):
         if not 0.0 <= bake.ao.strength <= 1.0:
             raise SettingsError("scene.bake.ao.strength must be between 0 and 1")
     return bake
+
+
+def load_demo_assets(path) -> list[str]:
+    """The demo folder names in a manifest's `demo` list,
+    each checked by identifier()."""
+    path = pathlib.Path(path)
+    try:
+        with path.open("rb") as source:
+            values = tomllib.load(source)
+        check_keys(values, ("demo",), "demo assets")
+        names = strings(values["demo"], "demo")
+        return [identifier(name, f"demo[{index}]") for index, name in enumerate(names)]
+    except (SettingsError, tomllib.TOMLDecodeError) as error:
+        raise SettingsError(f"{path}: {error}") from error
 
 
 def load_scene(path):

@@ -14,7 +14,7 @@ from r3d.mesh_import import bake_geometry
 
 def main(work, out):
     root = Path.cwd()
-    scene = load_scene(root / "launcher/main/apps/render_lab/meshes/sponza.scene.toml")
+    scene = load_scene(root / "launcher/demo/sponza/sponza.scene.toml")
     job = copy.deepcopy(next(item for item in scene.renderers if item.object.name == "atrium"))
     job.bake = None
     scratch = work / "albedo"

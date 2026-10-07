@@ -19,7 +19,7 @@ from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
 
-SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
+SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"

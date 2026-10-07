@@ -31,12 +31,12 @@
  * pair_theirs_bits() below can answer for a whole material without a `mine`
  * argument; the one pairwise question, whether the neighbour is denser, has
  * no bit - see max_smothering_density below. See docs/sand/Reaction-Table.md. */
-#define PAIR_HEAT_RESPONSIVE (1u << 0) /* theirs could pass try_heat_transform()'s first two gates */
-#define PAIR_WETS            (1u << 1) /* theirs is a liquid whose reaction row wets */
-#define PAIR_IGNITABLE       (1u << 2) /* theirs has a nonzero flammability - try_ignite_given()'s own first reject */
-#define PAIR_QUENCHES        (1u << 3) /* theirs is a liquid that is neither fuel nor a heat source - neighbor_quenches() */
-#define PAIR_DISSOLVABLE     (1u << 4) /* theirs has a nonzero dissolvable - step_one_dissolver_cell()'s own reject */
-#define PAIR_CONDUCTS        (1u << 5) /* theirs has a nonzero conducts - conduct_heat()'s own reject */
+#define PAIR_HEAT_RESPONSIVE (1U << 0) /* theirs could pass try_heat_transform()'s first two gates */
+#define PAIR_WETS            (1U << 1) /* theirs is a liquid whose reaction row wets */
+#define PAIR_IGNITABLE       (1U << 2) /* theirs has a nonzero flammability - try_ignite_given()'s own first reject */
+#define PAIR_QUENCHES        (1U << 3) /* theirs is a liquid that is neither fuel nor a heat source - neighbor_quenches() */
+#define PAIR_DISSOLVABLE     (1U << 4) /* theirs has a nonzero dissolvable - step_one_dissolver_cell()'s own reject */
+#define PAIR_CONDUCTS        (1U << 5) /* theirs has a nonzero conducts - conduct_heat()'s own reject */
 
 /* Every pair bit any material now on the board can offer a neighbour: the OR
  * of theirs_bits over s->may_have_materials, recomputed once a step in
@@ -130,17 +130,11 @@ smothered(const sand_t* s, int x, int y, int w, int h, uint8_t density) {
 
 static inline bool
 touches_air(const sand_t* s, int x, int y, int w, int h) {
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const cell_t n = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n) || material_of(n)->kind == KIND_GAS) {
             return true;
         }
-    }
+    });
     return false;
 }
 
@@ -461,13 +455,7 @@ crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id
         const int cy = (int)(at / (unsigned)w);
         done++;
 
-        for (int d = 0; d < 4; d++) {
-            const int nx = cx + reaction_dirs[d][0];
-            const int ny = cy + reaction_dirs[d][1];
-            if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-                continue;
-            }
-            const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+        SAND_FOR_NEIGHBOUR(s, cx, cy, w, h, nx, ny, nat, n, {
             if (CELL_MATERIAL(s->cells[nat]) != from) {
                 continue;
             }
@@ -475,7 +463,7 @@ crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id
             if (top < CRACK_MAX) {
                 frontier[top++] = (uint16_t)nat;
             }
-        }
+        });
     }
 }
 
@@ -611,14 +599,7 @@ soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t
 static bool
 soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, cell_t c, uint8_t held,
                  int soaks, bool* beside_liquid) {
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[nat];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         /* PAIR_WETS merges wets test into shift-and-test, covering
          * CELL_IS_EMPTY() without materials[] or reaction_of(n). */
         if ((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_WETS) == 0) {
@@ -633,7 +614,7 @@ soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reac
         pay_quench_cost(s, nx, ny, w);
         soak_in_one_level(s, row, x, y, w, r, c, held);
         return true;
-    }
+    });
     return false;
 }
 
@@ -690,17 +671,11 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
  * whether one did. */
 static bool
 soak_spread_to_neighbors(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uint8_t held) {
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (soak_share_with(s, row, x, y, nx, ny, nat, c, held)) {
             return true;
         }
-    }
+    });
     return false;
 }
 
@@ -908,19 +883,12 @@ warm_one_neighbor(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reactio
 
 static void
 step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[nat];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
         warm_one_neighbor(s, nx, ny, nat, n, r);
-    }
+    });
 }
 
 /* Bounds conduct_heat()'s walk out of a burning cell; COLD_REACH below
@@ -1111,14 +1079,7 @@ cold_chills_neighbor(sand_t* s, int x, int y, int w, int h, int nx, int ny, size
 /* The cardinal contact loop. Returns whether this cold cell melted. */
 static bool
 cold_touch_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[nat];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -1129,7 +1090,7 @@ cold_touch_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r)
         if (cold_chills_neighbor(s, x, y, w, h, nx, ny, nat, n, nr, r)) {
             return true;
         }
-    }
+    });
     return false;
 }
 
@@ -1211,14 +1172,7 @@ temper_push_into(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reaction
 static bool
 temper_spread_to_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r, uint8_t temp) {
     bool wet = false;
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[nat];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -1227,7 +1181,7 @@ temper_spread_to_neighbors(sand_t* s, int x, int y, int w, int h, const reaction
             wet = true;
         }
         temper_push_into(s, nx, ny, nat, n, r, temp);
-    }
+    });
     return wet;
 }
 
@@ -1354,17 +1308,11 @@ crust_faces(const sand_t* s, int x, int y, int w, int h, uint8_t mine, uint8_t b
  * wall. Avoids flood fill. */
 static inline bool
 gas_ignite_confined(const sand_t* s, int x, int y, int w, int h) {
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const cell_t n = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (!CELL_IS_EMPTY(n) && material_of(n)->kind == KIND_STATIC) {
             return true;
         }
-    }
+    });
     return false;
 }
 
@@ -1441,18 +1389,12 @@ try_ignite_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n) {
 /* Bidirectional. Confirms placement. Checks for duplicates. */
 static inline bool
 emit_into_empty_neighbor(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
-    for (int d = 0; d < 4; d++) {
-        const int fx = x + reaction_dirs[d][0];
-        const int fy = y + reaction_dirs[d][1];
-        if ((unsigned)fx >= (unsigned)w || (unsigned)fy >= (unsigned)h) {
-            continue;
-        }
-        const size_t at = (size_t)fy * (size_t)w + (size_t)fx;
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, fx, fy, at, n, {
         if (CELL_IS_EMPTY(s->cells[at])) {
             place_reacted(s, fx, fy, at, spec);
             return true;
         }
-    }
+    });
     return false;
 }
 
@@ -1832,14 +1774,7 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
         return false;
     }
 
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t at = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[at];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, at, n, {
         if (!dissolver_bites(s, n)) {
             continue;
         }
@@ -1852,7 +1787,7 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
             dissolve_eat(s, row, x, y, w, nx, ny, at, r);
         }
         return true;
-    }
+    });
     return false;
 }
 
@@ -2217,14 +2152,7 @@ react_burning_neighbors(const burning_cell_t* cell, int lava_cooloff) {
     bool acted = false;
 
 #pragma GCC unroll 4
-    for (int d = 0; d < 4; d++) {
-        const int nx = x + reaction_dirs[d][0];
-        const int ny = y + reaction_dirs[d][1];
-        if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
-            continue;
-        }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
-        const cell_t n = s->cells[nat];
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -2241,7 +2169,7 @@ react_burning_neighbors(const burning_cell_t* cell, int lava_cooloff) {
         if (heat_result == BURN_NEIGHBOR_SOURCE_QUENCHED) {
             return BURN_NEIGHBOR_SOURCE_QUENCHED;
         }
-    }
+    });
     return acted ? BURN_NEIGHBOR_ACTED : BURN_NEIGHBOR_NONE;
 }
 
