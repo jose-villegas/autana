@@ -31,14 +31,19 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
 
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     """A triangle is kept if, in any of `rounds` tries, a random point on it
-    sees a random point of the box lo..hi from its front side."""
+    sees a random point of the box lo..hi from its front side. Each try
+    tests one point, plus one more per mean triangle area: a large face that
+    shows only through an opening is found as surely as a small one wholly
+    in view, not by the luck of where a single point lands."""
     a, b, c = p[tri_v[:, 0]], p[tri_v[:, 1]], p[tri_v[:, 2]]
     normal = np.cross(b - a, c - a)
+    area = 0.5 * np.linalg.norm(normal, axis=1)
     normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
+    points = 1 + (area / max(area.mean(), 1e-12)).astype(np.int64)
     lo, hi = np.array(lo), np.array(hi)
     seen = np.zeros(len(tri_v), dtype=bool)
     for _ in range(rounds):
-        todo = np.nonzero(~seen)[0]
+        todo = np.repeat(np.nonzero(~seen)[0], points[~seen])
         if len(todo) == 0:
             break
         r1, r2 = np.sqrt(rng.random(len(todo)))[:, None], rng.random(len(todo))[:, None]

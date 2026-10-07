@@ -221,7 +221,9 @@ may be placed anywhere, by many scenes.
 #### visibility: camera_region
 
 `source` defaults to `"camera_region"`; `rounds` is how many random tries each
-triangle gets.
+triangle gets. A try tests one point of the triangle, plus one per mean
+triangle area, so a large face showing only through an opening is kept as
+surely as a small one in full view.
 The region source casts from points in the camera's `region`. Use it when the
 camera may occupy the box without a defined path. The image is the same import
 with the cull off above on, cropped where they differ most: without the cull

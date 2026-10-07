@@ -1,6 +1,7 @@
-"""Checks the camera-path visibility rule on small scenes: coincident faces,
+"""Checks the visibility rules on small scenes: the camera path's coincident faces,
 the view's frustum and margin, the import step that calls it, and that what
-it keeps covers poses between the sampled ones. Needs the pinned r3d
+it keeps covers poses between the sampled ones; and that the region rule
+keeps a large face seen only through a window. Needs the pinned r3d
 environment (tools/r3d/requirements.txt)."""
 
 import pathlib
@@ -18,7 +19,7 @@ try:
     from tests import soup
 
     from r3d import mesh_import
-    from r3d.light import coincident_faces, visible_from_path
+    from r3d.light import coincident_faces, visible_from_path, visible_from_region
     from r3d.poses import camera_rays
 except ImportError:
     np = None
@@ -157,6 +158,21 @@ class BetweenPoseTests(unittest.TestCase):
             drawn = hit[(hit >= 0)]
             drawn = drawn[(normal[drawn] * direction[hit >= 0]).sum(axis=1) < 0]
             self.assertTrue(kept[drawn].all(), f"a face drawn from {pose[:3]} was culled")
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class RegionTests(unittest.TestCase):
+    def test_a_large_face_seen_only_through_a_window_is_kept_every_time(self):
+        # A wall of small cards with one missing in the middle, and a backdrop card behind it as large as the wall:
+        # from the box in front, the backdrop shows only through the window, a few percent of its area.
+        wall = [card([x, y, 0], half=0.5) for x in range(-10, 11) for y in range(-10, 11) if (x, y) != (0, 0)]
+        positions, tris, intersector = scene(*wall, card([0, 0, -10], half=10.5))
+        double = np.zeros(len(tris), dtype=bool)
+        for seed in range(8):
+            seen = visible_from_region(positions, tris, double, intersector, 4, np.random.default_rng(seed),
+                                       [-0.5, -0.5, 5.0], [0.5, 0.5, 6.0])
+            self.assertTrue(seen[-2:].all(), f"seed {seed}: the backdrop behind the window was dropped")
 
 
 if __name__ == "__main__":
