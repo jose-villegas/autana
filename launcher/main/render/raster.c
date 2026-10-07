@@ -202,16 +202,11 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const came
     }
 }
 
-/* Culls one instance into `out`, counting what survived into `stats`. The
- * lens is not fitted, so the frustum is the picture's and the list holds at
- * every size the picture does. */
+/* The unfitted picture lens keeps survivors independent of render size. */
 static int
-cull_instance(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter,
-              uint16_t* out, raster_stats_t* stats) {
+cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    r3d_lens_t lens;
-    instance_lens(raster, instance, camera, quarter, false, &lens);
-    const int visible = r3d_pipeline_cull(mesh, &lens, out);
+    const int visible = r3d_pipeline_cull(mesh, lens, out);
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
         stats->triangles += mesh->clusters[out[i]].triangle_count;
@@ -234,28 +229,25 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
 }
 
 static void
-draw_visible(const raster_t* raster, int index, const camera_t* camera, int quarter, const uint16_t* visible,
-             int count) {
+draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const uint16_t* visible, int count) {
     const r3d_instance_t* instance = &raster->instances[index];
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const bool clear = index == 0;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
     const int writer_count = instance_writers(raster, index, writers);
-    r3d_lens_t lens;
-    instance_lens(raster, instance, camera, quarter, true, &lens);
 
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
-    run_split(transform_slice, (slice_t){raster, mesh, &lens, visible, count, 0, half, clear, NULL, 0},
-              (slice_t){raster, mesh, &lens, visible, count, half, count - half, clear, NULL, 0});
+    run_split(transform_slice, (slice_t){raster, mesh, lens, visible, count, 0, half, clear, NULL, 0},
+              (slice_t){raster, mesh, lens, visible, count, half, count - half, clear, NULL, 0});
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
     const int mid = r3d_pipeline_draw_split(mesh, visible, b.rows, count, raster->height);
     run_split(draw_slice,
-              (slice_t){raster, mesh, &lens, visible, count, mid, raster->height - mid, clear, writers, writer_count},
-              (slice_t){raster, mesh, &lens, visible, count, 0, mid, clear, writers, writer_count});
+              (slice_t){raster, mesh, lens, visible, count, mid, raster->height - mid, clear, writers, writer_count},
+              (slice_t){raster, mesh, lens, visible, count, 0, mid, clear, writers, writer_count});
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
@@ -277,15 +269,22 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, cons
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     size_t at = 0;
     for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        r3d_lens_t lens;
         if (culled != NULL) {
-            draw_visible(raster, i, camera, quarter, culled + at + 1, culled[at]);
+            instance_lens(raster, instance, camera, quarter, true, &lens);
+            draw_visible(raster, i, &lens, culled + at + 1, culled[at]);
             at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
             continue;
         }
         FRAME_COST_BEGIN(culled_from);
-        const int visible = cull_instance(raster, &raster->instances[i], camera, quarter, b.visible, stats);
+        instance_lens(raster, instance, camera, quarter, false, &lens);
+        const int visible = cull_instance(instance, &lens, b.visible, stats);
         FRAME_COST_END(culled_from, "r3d.cull");
-        draw_visible(raster, i, camera, quarter, b.visible, visible);
+        if (raster->upscaled) {
+            instance_lens(raster, instance, camera, quarter, true, &lens);
+        }
+        draw_visible(raster, i, &lens, b.visible, visible);
     }
     if (resolves) {
         const int mid = raster->height / 2;
@@ -317,7 +316,10 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint1
     FRAME_COST_BEGIN(counted_from);
     size_t at = 0;
     for (int i = 0; i < raster->instance_count; i++) {
-        culled[at] = (uint16_t)cull_instance(raster, &raster->instances[i], camera, quarter, culled + at + 1, &stats);
+        const r3d_instance_t* instance = &raster->instances[i];
+        r3d_lens_t lens;
+        instance_lens(raster, instance, camera, quarter, false, &lens);
+        culled[at] = (uint16_t)cull_instance(instance, &lens, culled + at + 1, &stats);
         at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
     }
     FRAME_COST_END(counted_from, "r3d.census");
