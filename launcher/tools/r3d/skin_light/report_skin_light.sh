@@ -8,8 +8,8 @@
 #   launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb [CLIP[:PHASE]]
 #
 #   ASSET.glb      a skinned glTF with normals and animations; the document's
-#                  numbers come from a glTF export of
-#                  main/apps/render_lab/assets/capybara.blend, drawn at gallop
+#                  numbers come from main/apps/render_lab/assets/capybara.glb,
+#                  drawn at gallop
 #   CLIP[:PHASE]   the frame the sheet draws (skin_light_data.py's --sheet)
 
 set -eu
@@ -20,7 +20,8 @@ LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$LAUNCHER_DIR/.." && pwd)
 
 [ $# -ge 1 ] && [ $# -le 2 ] && [ -f "$1" ] || { echo "usage: $0 ASSET.glb [CLIP[:PHASE]]" >&2; exit 2; }
-asset=$1
+# Absolute, since the steps below run from launcher/.
+asset=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
 sheet=${2:-}
 
 # shellcheck source=../../build/find_cc.sh

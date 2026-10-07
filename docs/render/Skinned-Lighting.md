@@ -41,25 +41,25 @@ a divide or square root costs several instructions.
 
 Per-vertex cost, the table's build excluded:
 
-<!-- generated: skin-light-cost sha256=eea43ce5ac09130e259e18f4fb54bf20522b4af8067832e065898199ba30af83 -->
+<!-- generated: skin-light-cost sha256=0230fcd048f963d58473099bf7c659d0c563c90aebe08d5985e009788ac43922 -->
 613 vertices x 242 frames, median of 15 runs; host compiler 16.1.0.
 
 | Variant | Lights | mul | add | div | sqrt | other | int mul | ns/vertex |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Skin only (shared) | any | 45 | 33 | 0 | 0 | 0 | 0 | 6.2 |
-| Reference: float normal, renormalised | 1 | 57 | 40 | 1 | 1 | 7 | 0 | 9.4 |
+| Skin only (shared) | any | 45 | 33 | 0 | 0 | 0 | 0 | 6.1 |
+| Reference: float normal, renormalised | 1 | 57 | 40 | 1 | 1 | 7 | 0 | 9.3 |
 | Reference: float normal, renormalised | 2 | 63 | 45 | 1 | 1 | 8 | 0 | 10.6 |
-| Reference: float normal, renormalised | 4 | 75 | 55 | 1 | 1 | 10 | 0 | 13.6 |
-| Reference: float normal, renormalised | 8 | 99 | 75 | 1 | 1 | 14 | 0 | 20.8 |
+| Reference: float normal, renormalised | 4 | 75 | 55 | 1 | 1 | 10 | 0 | 13.9 |
+| Reference: float normal, renormalised | 8 | 99 | 75 | 1 | 1 | 14 | 0 | 20.9 |
 | Direct: float normal | 1 | 51 | 38 | 0 | 0 | 7 | 0 | 7.5 |
 | Direct: float normal | 2 | 57 | 43 | 0 | 0 | 8 | 0 | 8.4 |
-| Direct: float normal | 4 | 69 | 53 | 0 | 0 | 10 | 0 | 10.0 |
+| Direct: float normal | 4 | 69 | 53 | 0 | 0 | 10 | 0 | 9.9 |
 | Direct: float normal | 8 | 93 | 73 | 0 | 0 | 14 | 0 | 12.9 |
 | Direct: int8 normal | 1 | 51 | 38 | 0 | 0 | 10 | 0 | 7.6 |
 | Direct: int8 normal | 2 | 57 | 43 | 0 | 0 | 11 | 0 | 8.4 |
 | Direct: int8 normal | 4 | 69 | 53 | 0 | 0 | 13 | 0 | 10.5 |
-| Direct: int8 normal | 8 | 93 | 73 | 0 | 0 | 17 | 0 | 13.8 |
-| Table 8x8 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.9 |
+| Direct: int8 normal | 8 | 93 | 73 | 0 | 0 | 17 | 0 | 13.7 |
+| Table 8x8 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.8 |
 | Table 16x16 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.8 |
 | Table 32x32 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.8 |
 | Table 8x8 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 16.3 |
@@ -70,7 +70,7 @@ Per-vertex cost, the table's build excluded:
 The table's build, per object per frame, and what it adds per vertex at the
 capybara's vertex count and at a larger mesh's (`LARGE_MESH`):
 
-<!-- generated: skin-light-build sha256=57d05ef06a63c3aa4905efc1a0ee9f86c9d554a27f823a0916baf47ed10bd3a7 -->
+<!-- generated: skin-light-build sha256=3be8439a05172d66dc570d6d8ebaca6d4e1416567b4c59eb393948609cabb2c1 -->
 | Table | Cells | Bytes per object | Shared direction bytes | Lights | mul | add | div | sqrt | other | int mul | Build us/frame | Build ns/vertex, 613 vertices | Build ns/vertex, 1500 vertices |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 8x8 | 64 | 256 | 768 | 1 | 384 | 320 | 0 | 0 | 448 | 0 | 0.10 | 0.2 | 0.1 |
@@ -81,10 +81,10 @@ capybara's vertex count and at a larger mesh's (`LARGE_MESH`):
 | 16x16 | 256 | 1024 | 3072 | 2 | 3072 | 2560 | 0 | 0 | 2048 | 0 | 0.55 | 0.9 | 0.4 |
 | 16x16 | 256 | 1024 | 3072 | 4 | 6144 | 5120 | 0 | 0 | 2560 | 0 | 0.85 | 1.4 | 0.6 |
 | 16x16 | 256 | 1024 | 3072 | 8 | 12288 | 10240 | 0 | 0 | 3584 | 0 | 1.49 | 2.4 | 1.0 |
-| 32x32 | 1024 | 4096 | 12288 | 1 | 6144 | 5120 | 0 | 0 | 7168 | 0 | 1.56 | 2.5 | 1.0 |
-| 32x32 | 1024 | 4096 | 12288 | 2 | 12288 | 10240 | 0 | 0 | 8192 | 0 | 2.27 | 3.7 | 1.5 |
-| 32x32 | 1024 | 4096 | 12288 | 4 | 24576 | 20480 | 0 | 0 | 10240 | 0 | 3.58 | 5.8 | 2.4 |
-| 32x32 | 1024 | 4096 | 12288 | 8 | 49152 | 40960 | 0 | 0 | 14336 | 0 | 6.37 | 10.4 | 4.2 |
+| 32x32 | 1024 | 4096 | 12288 | 1 | 6144 | 5120 | 0 | 0 | 7168 | 0 | 1.55 | 2.5 | 1.0 |
+| 32x32 | 1024 | 4096 | 12288 | 2 | 12288 | 10240 | 0 | 0 | 8192 | 0 | 2.26 | 3.7 | 1.5 |
+| 32x32 | 1024 | 4096 | 12288 | 4 | 24576 | 20480 | 0 | 0 | 10240 | 0 | 3.54 | 5.8 | 2.4 |
+| 32x32 | 1024 | 4096 | 12288 | 8 | 49152 | 40960 | 0 | 0 | 14336 | 0 | 6.39 | 10.4 | 4.3 |
 <!-- /generated: skin-light-build -->
 
 Error against the reference over every vertex of every frame. Light byte is the
@@ -164,11 +164,11 @@ unchanged and add a fraction of one step on average.
 
 ## Reproduce
 
-From the repository root, with a glTF export of the capybara (Blender's glTF
-exporter: deform bones, every action as an animation, four influences):
+From the repository root, with the committed glTF export that
+`report_skin_light.sh` names:
 
 ```sh
-launcher/tools/r3d/skin_light/report_skin_light.sh capybara.glb gallop
+launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb gallop
 ```
 
 It builds and runs the benchmark, redraws the sheet and rewrites the three
