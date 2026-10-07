@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "r3d_quad_mesh.h"
+#include "raster_rig.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -26,7 +26,6 @@
 #define WALL  0
 #define BOX   1
 #define NONE  (-1)
-#define SKY   0x1234
 /* Half-pixel storage rounds by a quarter pixel; 16-bit inverse depth over
  * these distances adds a few hundredths. */
 #define SLACK 0.35F
@@ -35,10 +34,7 @@
  * about its own origin, also facing +z: both quads of two triangles. */
 static const int16_t wall_positions[][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
 static const int16_t box_positions[][3] = {{-40, -40, 0}, {40, -40, 0}, {40, 40, 0}, {-40, 40, 0}};
-static const r3d_lit_node_t wall_node = {{-400, -400, 0}, {400, 400, 0}, 0, 1, true};
-static const r3d_lit_node_t box_node = {{-40, -40, 0}, {40, 40, 0}, 0, 1, true};
-static const r3d_lit_cluster_t wall_cluster = {0, 4, 0, 2, {-400, -400, 0}, {400, 400, 0}, true};
-static const r3d_lit_cluster_t box_cluster = {0, 4, 0, 2, {-40, -40, 0}, {40, 40, 0}, true};
+static const int16_t (*const wall_and_box[])[3] = {wall_positions, box_positions};
 
 /* The box turned `degrees` about y and standing at `at`. */
 static r3d_placement_t
@@ -50,19 +46,26 @@ turned(float degrees, vec3f_t at) {
 }
 
 static vec3f_t
+row_of(const r3d_placement_t* p, int r) {
+    return (vec3f_t){p->m[r][0], p->m[r][1], p->m[r][2]};
+}
+
+static vec3f_t
+column_of(const r3d_placement_t* p, int c) {
+    return (vec3f_t){p->m[0][c], p->m[1][c], p->m[2][c]};
+}
+
+static vec3f_t
 place(const r3d_placement_t* p, vec3f_t v) {
-    return (vec3f_t){(p->m[0][0] * v.x) + (p->m[0][1] * v.y) + (p->m[0][2] * v.z) + p->position.x,
-                     (p->m[1][0] * v.x) + (p->m[1][1] * v.y) + (p->m[1][2] * v.z) + p->position.y,
-                     (p->m[2][0] * v.x) + (p->m[2][1] * v.y) + (p->m[2][2] * v.z) + p->position.z};
+    const vec3f_t turned_v = {vec3f_dot(row_of(p, 0), v), vec3f_dot(row_of(p, 1), v), vec3f_dot(row_of(p, 2), v)};
+    return vec3f_add(turned_v, p->position);
 }
 
 /* The same with the transpose of m, which undoes a rotation. */
 static vec3f_t
 unplace(const r3d_placement_t* p, vec3f_t w) {
-    const vec3f_t v = vec3f_sub(w, p->position);
-    return (vec3f_t){(p->m[0][0] * v.x) + (p->m[1][0] * v.y) + (p->m[2][0] * v.z),
-                     (p->m[0][1] * v.x) + (p->m[1][1] * v.y) + (p->m[2][1] * v.z),
-                     (p->m[0][2] * v.x) + (p->m[1][2] * v.y) + (p->m[2][2] * v.z)};
+    const vec3f_t d = vec3f_sub(w, p->position);
+    return (vec3f_t){vec3f_dot(column_of(p, 0), d), vec3f_dot(column_of(p, 1), d), vec3f_dot(column_of(p, 2), d)};
 }
 
 typedef struct {
@@ -145,56 +148,36 @@ truth(const pose_t* now, const pose_t* before, int w, int h, int px, int py, flo
     return what;
 }
 
+/* What motion's attachment points at, in the rig's own room. */
 typedef struct {
-    r3d_lit_mesh_t wall, box;
-    r3d_instance_t instances[2];
-    r3d_placement_t box_at; /* the box instance's placement, one address for every picture */
     raster_motion_t motion;
     raster_attachment_t attachment;
     const raster_attachment_t* attached[1];
-    raster_t raster;
-} rig_t;
+} motion_own_t;
 
-static rig_t* rig;
-
-static void
-release_rig(void) {
-    if (rig != NULL) {
-        free(rig->raster.scratch);
-        free(rig);
-        rig = NULL;
-    }
+static motion_own_t*
+own_of(raster_rig_t* r) {
+    return (motion_own_t*)r->own;
 }
 
-/* Allocated per test: a picture of the wall and, when `with_box`, the box,
- * motion attached unless `detached`, scratch for a W x H picture. */
-static rig_t*
+/* Allocated per test: the wall and, when `with_box`, the box placed by
+ * placement[1], motion attached unless `detached`, pictures up to W x H. */
+static raster_rig_t*
 rig_open(bool with_box, bool detached) {
-    rig = calloc(1, sizeof(*rig));
-    TEST_ASSERT_NOT_NULL(rig);
-    suite_set_test_cleanup(release_rig);
-    rig->wall = r3d_quad_mesh(wall_positions, NULL, NULL, &wall_cluster, &wall_node);
-    rig->box = r3d_quad_mesh(box_positions, NULL, NULL, &box_cluster, &box_node);
-    rig->instances[0] = (r3d_instance_t){&rig->wall, NULL};
-    rig->instances[1] = (r3d_instance_t){&rig->box, &rig->box_at};
-    rig->attachment = raster_motion_attachment(&rig->motion);
-    rig->attached[0] = &rig->attachment;
-    rig->raster = (raster_t){.instances = rig->instances,
-                             .instance_count = with_box ? 2 : 1,
-                             .width = W,
-                             .height = H,
-                             .clear = SKY,
-                             .attachments = detached ? NULL : rig->attached,
-                             .attachment_count = detached ? 0 : 1};
-    rig->raster.scratch = malloc(raster_scratch_bytes(&rig->raster));
-    TEST_ASSERT_NOT_NULL(rig->raster.scratch);
-    return rig;
+    raster_rig_t* r = raster_rig_open(wall_and_box, with_box ? 2 : 1, 1U << 1, W, H, sizeof(motion_own_t));
+    motion_own_t* own = own_of(r);
+    own->attachment = raster_motion_attachment(&own->motion);
+    own->attached[0] = &own->attachment;
+    if (!detached) {
+        raster_rig_attach(r, own->attached, 1);
+    }
+    return r;
 }
 
 static void
-draw(rig_t* r, const pose_t* pose, int w, int h) {
+draw(raster_rig_t* r, const pose_t* pose, int w, int h) {
     if (pose->box != NULL) {
-        r->box_at = *pose->box;
+        r->placement[1] = *pose->box;
     }
     r->raster.width = w;
     r->raster.height = h;
@@ -202,9 +185,8 @@ draw(rig_t* r, const pose_t* pose, int w, int h) {
 }
 
 static const raster_motion_px_t*
-motion_of(const rig_t* r) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&r->raster);
-    return b.picture.attachment[2].pixels;
+motion_of(const raster_rig_t* r) {
+    return raster_rig_attachment(r, 0);
 }
 
 static camera_t
@@ -235,7 +217,7 @@ well_inside(const pose_t* now, const pose_t* before, int w, int h, int x, int y,
 /* Every pixel well inside one surface holds the true motion within SLACK;
  * returns how many were checked. */
 static int
-assert_motion_is_true(const rig_t* r, const pose_t* now, const pose_t* before, int w, int h) {
+assert_motion_is_true(const raster_rig_t* r, const pose_t* now, const pose_t* before, int w, int h) {
     const raster_motion_px_t* m = motion_of(r);
     int checked = 0;
     float worst = 0.0F;
@@ -261,7 +243,7 @@ assert_motion_is_true(const rig_t* r, const pose_t* now, const pose_t* before, i
 
 static void
 test_the_first_picture_knows_no_motion(void) {
-    rig_t* r = rig_open(false, false);
+    raster_rig_t* r = rig_open(false, false);
     const pose_t now = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
     draw(r, &now, W, H);
     const raster_motion_px_t* m = motion_of(r);
@@ -272,7 +254,7 @@ test_the_first_picture_knows_no_motion(void) {
 
 static void
 test_a_still_camera_and_scene_have_no_motion(void) {
-    rig_t* r = rig_open(true, false);
+    raster_rig_t* r = rig_open(true, false);
     const r3d_placement_t at = turned(20.0F, (vec3f_t){0.0F, 0.0F, 100.0F});
     const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), &at};
     draw(r, &pose, W, H);
@@ -286,7 +268,7 @@ test_a_still_camera_and_scene_have_no_motion(void) {
 
 static void
 test_camera_motion_is_the_reprojection_through_the_previous_pose(void) {
-    rig_t* r = rig_open(false, false);
+    raster_rig_t* r = rig_open(false, false);
     const pose_t before = {camera_at((vec3f_t){0.0F, 10.0F, 300.0F}, 0.0F), NULL};
     const pose_t now = {camera_at((vec3f_t){12.0F, 0.0F, 280.0F}, 3.0F), NULL};
     draw(r, &before, W, H);
@@ -296,7 +278,7 @@ test_camera_motion_is_the_reprojection_through_the_previous_pose(void) {
 
 static void
 test_a_moving_instance_moves_by_its_previous_placement(void) {
-    rig_t* r = rig_open(true, false);
+    raster_rig_t* r = rig_open(true, false);
     const camera_t still = camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F);
     const r3d_placement_t was = turned(10.0F, (vec3f_t){-8.0F, 0.0F, 100.0F});
     const r3d_placement_t is = turned(25.0F, (vec3f_t){6.0F, 4.0F, 110.0F});
@@ -314,7 +296,7 @@ test_a_moving_instance_moves_by_its_previous_placement(void) {
 
 static void
 test_camera_and_instance_motion_add_up(void) {
-    rig_t* r = rig_open(true, false);
+    raster_rig_t* r = rig_open(true, false);
     const r3d_placement_t was = turned(-15.0F, (vec3f_t){10.0F, -5.0F, 90.0F});
     const r3d_placement_t is = turned(5.0F, (vec3f_t){0.0F, 0.0F, 105.0F});
     const pose_t before = {camera_at((vec3f_t){-10.0F, 5.0F, 310.0F}, -2.0F), &was};
@@ -327,7 +309,7 @@ test_camera_and_instance_motion_add_up(void) {
 /* The previous picture was half the size: motion is still in this one's pixels. */
 static void
 test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
-    rig_t* r = rig_open(true, false);
+    raster_rig_t* r = rig_open(true, false);
     const r3d_placement_t was = turned(0.0F, (vec3f_t){0.0F, 0.0F, 100.0F});
     const r3d_placement_t is = turned(12.0F, (vec3f_t){5.0F, 0.0F, 100.0F});
     const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), &was};
@@ -346,12 +328,12 @@ test_motion_leaves_colour_and_depth_as_they_are(void) {
     const pose_t now = {camera_at((vec3f_t){4.0F, 2.0F, 290.0F}, 1.0F), &is};
     uint16_t* plain = malloc(sizeof(uint16_t) * 2 * W * H);
     TEST_ASSERT_NOT_NULL(plain);
-    rig_t* r = rig_open(true, true);
+    raster_rig_t* r = rig_open(true, true);
     draw(r, &before, W, H);
     draw(r, &now, W, H);
     memcpy(plain, raster_color(&r->raster), sizeof(uint16_t) * W * H);
     memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(uint16_t) * W * H);
-    release_rig();
+    raster_rig_release();
     r = rig_open(true, false);
     draw(r, &before, W, H);
     draw(r, &now, W, H);
@@ -362,10 +344,10 @@ test_motion_leaves_colour_and_depth_as_they_are(void) {
 
 static void
 test_forgetting_makes_the_next_picture_first(void) {
-    rig_t* r = rig_open(false, false);
+    raster_rig_t* r = rig_open(false, false);
     const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
     draw(r, &pose, W, H);
-    raster_motion_forget(&r->motion);
+    raster_motion_forget(&own_of(r)->motion);
     draw(r, &pose, W, H);
     TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
 }

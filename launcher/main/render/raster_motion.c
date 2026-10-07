@@ -28,22 +28,27 @@ compose(const float a[3][4], const float b[3][4], float out[3][4]) {
     }
 }
 
-/* The inverse of an affine map whose 3x3 part is invertible. */
+/* The cofactor of m's 3x3 part at row r, column c. */
+static float
+cofactor(const float m[3][4], int r, int c) {
+    const int r1 = (r + 1) % 3;
+    const int r2 = (r + 2) % 3;
+    const int c1 = (c + 1) % 3;
+    const int c2 = (c + 2) % 3;
+    return (m[r1][c1] * m[r2][c2]) - (m[r1][c2] * m[r2][c1]);
+}
+
+/* The inverse of an affine map whose 3x3 part is invertible: the adjugate
+ * over the determinant, and the translation carried back through it. */
 static void
 invert(const float m[3][4], float out[3][4]) {
-    const float c00 = (m[1][1] * m[2][2]) - (m[1][2] * m[2][1]);
-    const float c01 = (m[1][2] * m[2][0]) - (m[1][0] * m[2][2]);
-    const float c02 = (m[1][0] * m[2][1]) - (m[1][1] * m[2][0]);
-    const float inv = 1.0F / ((m[0][0] * c00) + (m[0][1] * c01) + (m[0][2] * c02));
-    out[0][0] = c00 * inv;
-    out[0][1] = ((m[0][2] * m[2][1]) - (m[0][1] * m[2][2])) * inv;
-    out[0][2] = ((m[0][1] * m[1][2]) - (m[0][2] * m[1][1])) * inv;
-    out[1][0] = c01 * inv;
-    out[1][1] = ((m[0][0] * m[2][2]) - (m[0][2] * m[2][0])) * inv;
-    out[1][2] = ((m[0][2] * m[1][0]) - (m[0][0] * m[1][2])) * inv;
-    out[2][0] = c02 * inv;
-    out[2][1] = ((m[0][1] * m[2][0]) - (m[0][0] * m[2][1])) * inv;
-    out[2][2] = ((m[0][0] * m[1][1]) - (m[0][1] * m[1][0])) * inv;
+    const float inv =
+        1.0F / ((m[0][0] * cofactor(m, 0, 0)) + (m[0][1] * cofactor(m, 0, 1)) + (m[0][2] * cofactor(m, 0, 2)));
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            out[r][c] = cofactor(m, c, r) * inv;
+        }
+    }
     for (int r = 0; r < 3; r++) {
         out[r][3] = -((out[r][0] * m[0][3]) + (out[r][1] * m[1][3]) + (out[r][2] * m[2][3]));
     }
@@ -143,21 +148,6 @@ clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, siz
     memset(pixels, 0, count * sizeof(tag_t));
 }
 
-/* Tags the pixels this triangle won: those whose depth is the one it
- * filled with. */
-static void
-tag_span(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last, int32_t z,
-         int32_t dz) {
-    const uint16_t* depth = gfx_render_target_depth(rows, y);
-    tag_t* tag = gfx_render_target_row(rows, writer->attachment, y);
-    for (int x = x_first; x <= x_last; x++) {
-        if ((uint16_t)(z >> 8) == depth[x]) {
-            tag[x] = (tag_t)writer->value;
-        }
-        z += dz;
-    }
-}
-
 /* From the first instance that moved on: before it every pixel keeps the
  * tag 0 it was cleared to, so on a picture where nothing moved nothing is
  * written while drawing. */
@@ -167,7 +157,7 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     if (m->first_moved < 0 || instance < m->first_moved) {
         return false;
     }
-    out->span = tag_span;
+    out->span = raster_attachment_tag;
     out->value = m->moved[instance] ? (uint32_t)instance + 1U : 0U;
     return true;
 }
