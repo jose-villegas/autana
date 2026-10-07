@@ -202,7 +202,8 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const came
     }
 }
 
-/* The unfitted picture lens keeps survivors independent of render size. */
+/* Culls one instance through `lens` into `out`, counting what survived into
+ * `stats`. */
 static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
@@ -271,19 +272,15 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, cons
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
+        instance_lens(raster, instance, camera, quarter, true, &lens);
         if (culled != NULL) {
-            instance_lens(raster, instance, camera, quarter, true, &lens);
             draw_visible(raster, i, &lens, culled + at + 1, culled[at]);
-            at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+            at += 1 + (size_t)instance->mesh->cluster_count;
             continue;
         }
         FRAME_COST_BEGIN(culled_from);
-        instance_lens(raster, instance, camera, quarter, false, &lens);
         const int visible = cull_instance(instance, &lens, b.visible, stats);
         FRAME_COST_END(culled_from, "r3d.cull");
-        if (raster->upscaled) {
-            instance_lens(raster, instance, camera, quarter, true, &lens);
-        }
         draw_visible(raster, i, &lens, b.visible, visible);
     }
     if (resolves) {
@@ -317,7 +314,7 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint1
     size_t at = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        r3d_lens_t lens;
+        r3d_lens_t lens; /* unfitted: the picture's frustum, so the list holds at every size */
         instance_lens(raster, instance, camera, quarter, false, &lens);
         culled[at] = (uint16_t)cull_instance(instance, &lens, culled + at + 1, &stats);
         at += 1 + (size_t)raster->instances[i].mesh->cluster_count;
