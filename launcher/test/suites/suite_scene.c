@@ -16,7 +16,7 @@
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #include "render/context/render_context.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"

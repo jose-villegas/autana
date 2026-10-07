@@ -149,7 +149,7 @@ menu "Launcher"
 
             Needs every strip sent from internal DMA RAM, never read in place
             from PSRAM: DMA from PSRAM shares the PSRAM bus's bandwidth, and at
-            80 MHz the panel receives dropped data (gfx.c, strip_bounce).
+            80 MHz the panel receives dropped data (gfx_present.c, strip_bounce).
 
             80 MHz is outside the panel's own rating: the CO5300 datasheet
             (6.4) gives a 50 MHz write maximum, 6.5 ns clock high/low (80

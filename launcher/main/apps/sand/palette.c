@@ -85,8 +85,8 @@ void
 palette_panel_rect(int count, int cols, int screen_w, int screen_h, int* x, int* y, int* w, int* h) {
     /* row_left_x(cols, ...) is exactly the panel's own left edge: a
      * full-width row (row_count == cols) IS the panel's own width, centred
-     * the same way. Not hardcoded to 0: palette_cols(PALETTE_SCREEN_W) *
-     * PALETTE_TILE == PALETTE_SCREEN_W (368 == 368) only in the upright case - at
+     * the same way. Not hardcoded to 0: palette_cols(GFX_WIDTH) *
+     * PALETTE_TILE == GFX_WIDTH (368 == 368) only in the upright case - at
      * screen_w == 448 (a quarter turn), a panel narrower than the canvas
      * no longer fills it and has to be centred like everything else here. */
     *x = row_left_x(cols, screen_w);
@@ -103,8 +103,8 @@ palette_label_origin(int x, int y, int w, int h, int len, int turn, int* out_x, 
      * turns 1/3 because the glyphs stack vertically instead of side by side
      * - see this function's declaration in palette.h. */
     const bool turned = (turn == 1) || (turn == 3);
-    const int box_w = turned ? PALETTE_CHAR_H : len * PALETTE_CHAR_W;
-    const int box_h = turned ? len * PALETTE_CHAR_W : PALETTE_CHAR_H;
+    const int box_w = turned ? GFX_CHAR_H : len * GFX_CHAR_W;
+    const int box_h = turned ? len * GFX_CHAR_W : GFX_CHAR_H;
 
     const int box_x = x + (w - box_w) / 2;
     const int box_y = y + (h - box_h) / 2;
@@ -117,8 +117,8 @@ palette_label_origin(int x, int y, int w, int h, int len, int turn, int* out_x, 
     *out_x = box_x;
     *out_y = box_y;
     if (turn == 2) {
-        *out_x = box_x + box_w - PALETTE_CHAR_W;
+        *out_x = box_x + box_w - GFX_CHAR_W;
     } else if (turn == 3) {
-        *out_y = box_y + box_h - PALETTE_CHAR_W;
+        *out_y = box_y + box_h - GFX_CHAR_W;
     }
 }

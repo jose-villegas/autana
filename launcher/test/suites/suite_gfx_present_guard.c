@@ -3,18 +3,16 @@
  * tracker's own sequencing.
  *
  * gfx_present_guard.h carries no ESP-IDF dependency, the same reason
- * gfx_dirty.h does not; see suite_gfx_dirty.c. Including both here gets an
- * independent copy of each, exactly as gfx.c's own translation unit does,
- * so this exercises the same state
+ * gfx_dirty.h does not; see suite_gfx_dirty.c. This drives the same state
  * gfx_present_begin()/gfx_present_wait() drive on a real build without
- * needing the panel plumbing gfx.c also carries.
+ * needing the panel plumbing gfx_present.c also carries.
  */
 
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_dirty.h"
-#include "gfx/gfx_present_guard.h"
+#include "gfx/present/gfx_dirty.h"
+#include "gfx/present/gfx_present_guard.h"
 
 /* This suite only drives the whole-frame path (dirty_mark_all(),
  * dirty_row_is_dirty(), dirty_row_sent(), dirty_frame_sent(), dirty_mark());
@@ -67,7 +65,7 @@ test_guard_is_quiet_with_no_present_in_flight(void) {
 #ifndef DEVICE_BUILD
 
 /* Stands in for "a draw call between begin and wait": every gfx_* entry
- * point gfx.c guards calls exactly this function first; see GFX_PRESENT_
+ * point gfx guards calls exactly this function first; see GFX_PRESENT_
  * GUARD() in gfx_present_guard.h. */
 static void
 test_a_check_between_begin_and_end_trips_the_guard(void) {
@@ -100,7 +98,7 @@ test_end_stops_the_guard_from_tripping(void) {
 
 /* begin/wait/present sequencing vs. the dirty tracker */
 
-/* gfx_present_wait()'s host implementation (gfx.c) is exactly this drain,
+/* gfx_present_wait()'s host implementation (gfx_present.c) is exactly this drain,
  * minus interlace; see dirty_frame_sent()'s own comment for why the whole-
  * frame clear happens once, after every row's own reset. */
 static void

@@ -33,8 +33,10 @@
 
 #include "boot/boot_anim_image.h"
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/present/gfx_present.h"
 #include "util/build/build_variant.h"
 #include "util/runtime/timing.h"
 #include "util/scalar/fixed.h"
@@ -673,7 +675,7 @@ draw_image(uint8_t ink, uint8_t reveal) {
 /* The loop */
 
 /* EVERY FRAME IS A FULL REPAINT suite_boot_anim_perf.c times this phase
- * gfx_clear() cost in gfx.c */
+ * gfx_clear() cost in gfx_draw.c */
 void
 boot_anim_clear_frame(void) {
     gfx_clear(COL_BG);

@@ -253,6 +253,8 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_present.h"
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/timing.h"
 #include "xtensa/xt_perf_consts.h"

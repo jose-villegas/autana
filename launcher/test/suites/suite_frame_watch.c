@@ -14,7 +14,7 @@
 #include <stdlib.h>
 
 #include "esp_log.h"
-#include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #endif
 
 #define SITE_A ((uintptr_t)0x42001000u)

@@ -2,18 +2,14 @@
  * gfx_dirty: the grid dirty-region tracker behind gfx_present(), as a
  * standalone, ESP-IDF-free module.
  *
- * Header-only and all static: marking sits on the drawing primitives' hot
- * path (a dithered glyph marks once per set font pixel) and a
- * cross-translation-unit call there costs about 5% of the launcher's frame
- * rate. A host test includes this file directly and gets its own copy, with
- * no .c to link and no ESP-IDF.
+ * Header-only functions over one shared instance (gfx_present.c):
+ * marking sits on the drawing primitives' hot path (a dithered glyph marks
+ * once per set font pixel) and a cross-translation-unit call there costs
+ * about 5% of the launcher's frame rate. A host suite drives it directly.
  *
- * gfx.c is the only place in the real firmware that ever includes this;
- * every other file goes through gfx.h's public gfx_mark_dirty()/
- * gfx_mark_all_dirty()/gfx_region_dirty(), which gfx.c implements as thin
- * wrappers around the dirty_*() functions here. Those three are the only
- * names in this file with a public-API counterpart to avoid colliding
- * with; everything else is private to gfx.c.
+ * Only gfx's own files include this; every other file goes through
+ * gfx_present.h's gfx_mark_dirty()/gfx_mark_all_dirty()/gfx_region_dirty(),
+ * thin wrappers around the dirty_*() functions here.
  */
 #pragma once
 
@@ -21,21 +17,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "gfx/gfx.h"
 #include "util/build/build_variant.h"
 #include "util/scalar/mathi.h"
-
-/* Mirrors gfx.h's GFX_WIDTH/GFX_HEIGHT (BSP_LCD_H_RES/V_RES) as plain
- * literals; this module must stay free of ESP-IDF/BSP headers to compile
- * on a host. gfx.c carries a _Static_assert tying these back together, so
- * drift between the two becomes a compile error, not a silent mismatch. */
-#define GFX_DIRTY_WIDTH  368
-#define GFX_DIRTY_HEIGHT 448
 
 /* The frame is sent in full-width bands. Full width matters: it makes each
  * band a contiguous run inside the framebuffer, so one memcpy moves it into
  * a DMA bounce slot with no packing. 448 / 64 = 7 bands exactly. */
-#define STRIP_HEIGHT     64
-#define STRIP_COUNT      (GFX_DIRTY_HEIGHT / STRIP_HEIGHT)
+#define STRIP_HEIGHT 64
+#define STRIP_COUNT  (GFX_HEIGHT / STRIP_HEIGHT)
 
 /* The screen as a fixed grid of cells, ROWS tall bands x COLS wide
  * columns. Both dimensions are a fixed partition, not just rows with an
@@ -45,17 +35,17 @@
  * means "this cell changed and must be considered for sending". The
  * panel refreshes from its own GRAM, so anything not sent simply stays
  * on screen. */
-#define GRID_COLS        4
-#define COL_WIDTH        (GFX_DIRTY_WIDTH / GRID_COLS)
-#define CELL_COUNT       (STRIP_COUNT * GRID_COLS)
-static uint32_t cell_dirty;
+#define GRID_COLS    4
+#define COL_WIDTH    (GFX_WIDTH / GRID_COLS)
+#define CELL_COUNT   (STRIP_COUNT * GRID_COLS)
+extern uint32_t cell_dirty;
 
 /* Set once dirty_mark_all() has run this frame, cleared alongside
  * cell_dirty by dirty_frame_sent(). Every cell is already claimed at
  * that point, so any further mark_band()/dirty_mark() call this frame
  * can only ever repeat work already done; real for anything that clears
  * then draws many small primitives on top, as microui does. */
-static bool all_dirty;
+extern bool all_dirty;
 
 /* Per cell, the (x0,x1) x (y0,y1) box actually known to be dirty this
  * frame, in absolute panel pixels, not cell-relative. Anything marking a
@@ -64,10 +54,10 @@ static bool all_dirty;
  * callers that DO know a real box) may narrow a cell, and narrowing is
  * always a min/max union, never an overwrite: that is what makes the two
  * ways of marking a cell order-independent within one frame. */
-static int cell_x0[CELL_COUNT];
-static int cell_x1[CELL_COUNT];
-static int cell_y0[CELL_COUNT];
-static int cell_y1[CELL_COUNT];
+extern int cell_x0[CELL_COUNT];
+extern int cell_x1[CELL_COUNT];
+extern int cell_y0[CELL_COUNT];
+extern int cell_y1[CELL_COUNT];
 
 /* A second, finer level underneath the cell grid above: each cell is
  * also split into a fixed 4x4 grid of LEAF_W x LEAF_H leaves; 23 is
@@ -81,9 +71,9 @@ static int cell_y1[CELL_COUNT];
 #define LEAF_W    (COL_WIDTH / LEAF_SUB)
 #define LEAF_H    (STRIP_HEIGHT / LEAF_SUB)
 #define LEAF_COLS (GRID_COLS * LEAF_SUB)
-static uint16_t leaf_dirty[STRIP_COUNT * LEAF_SUB];
+extern uint16_t leaf_dirty[STRIP_COUNT * LEAF_SUB];
 
-/* Bounds gather_buf, the scratch space gfx.c packs one gathered run's box
+/* Bounds gather_buf, the scratch space gfx_present.c packs one gathered run's box
  * into edge-to-edge before sending it as one esp_lcd_panel_draw_bitmap()
  * call. A run bigger than this is not worth gathering at all, at which
  * point the row is sent whole instead. Also the size budget plan_run()'s
@@ -127,7 +117,7 @@ typedef struct {
 #define LEAF_RECTS_PER_ROW_MAX (LEAF_COLS * LEAF_SUB)
 
 /* Enumerates strip `row`'s dirty leaves intersecting [x0,x1)x[y0,y1), as
- * rects into `out`. Backs gfx.c's leaf debug overlay. One rect per leaf,
+ * rects into `out`. Backs gfx_debug.c's leaf overlay. One rect per leaf,
  * never merged into runs; merging would hide the subdivision this layer
  * exists to show. A row marked solely by mark_band() has no leaf info, so
  * this returns nothing for it, by design, not a bug. static inline, not
@@ -205,7 +195,7 @@ mark_band(int y0, int y1) {
 }
 
 /* gfx_mark_all_dirty()'s implementation: named distinctly here only
- * because gfx.c must itself export the public gfx_mark_all_dirty symbol as
+ * because gfx_present.c must itself export the public gfx_mark_all_dirty symbol as
  * a thin wrapper around this. */
 static inline void
 dirty_mark_all(void) {
@@ -275,14 +265,14 @@ dirty_mark(int x, int y, int w, int h) {
     if (x0 < 0) {
         x0 = 0;
     }
-    if (x1 > GFX_DIRTY_WIDTH) {
-        x1 = GFX_DIRTY_WIDTH;
+    if (x1 > GFX_WIDTH) {
+        x1 = GFX_WIDTH;
     }
     if (y0 < 0) {
         y0 = 0;
     }
-    if (y1 > GFX_DIRTY_HEIGHT) {
-        y1 = GFX_DIRTY_HEIGHT;
+    if (y1 > GFX_HEIGHT) {
+        y1 = GFX_HEIGHT;
     }
     if (x0 >= x1 || y0 >= y1) {
         return;
@@ -317,14 +307,14 @@ dirty_region_dirty(int x, int y, int w, int h) {
     if (x0 < 0) {
         x0 = 0;
     }
-    if (x1 > GFX_DIRTY_WIDTH) {
-        x1 = GFX_DIRTY_WIDTH;
+    if (x1 > GFX_WIDTH) {
+        x1 = GFX_WIDTH;
     }
     if (y0 < 0) {
         y0 = 0;
     }
-    if (y1 > GFX_DIRTY_HEIGHT) {
-        y1 = GFX_DIRTY_HEIGHT;
+    if (y1 > GFX_HEIGHT) {
+        y1 = GFX_HEIGHT;
     }
     if (x0 >= x1 || y0 >= y1) {
         return false;
@@ -380,7 +370,7 @@ static inline bool
 dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
     const int row_first = y0 / STRIP_HEIGHT;
     const int row_last = (y1 - 1) / STRIP_HEIGHT;
-    int x0 = GFX_DIRTY_WIDTH;
+    int x0 = GFX_WIDTH;
     int x1 = 0;
     bool any = false;
 
@@ -410,7 +400,7 @@ dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
     x0 = mathi_even_floor(x0);
     x1 = mathi_even_ceil(x1);
     *out_x0 = x0 < 0 ? 0 : x0;
-    *out_x1 = x1 > GFX_DIRTY_WIDTH ? GFX_DIRTY_WIDTH : x1;
+    *out_x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
     return true;
 }
 
@@ -420,7 +410,7 @@ dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
  * runs were found, or -1 if there would have been more than `max_runs`;
  * the caller can then tell "fits" from "too fragmented to be worth it"
  * without a second pass. */
-static int
+static inline int
 collect_runs_from_mask(uint32_t mask, int width, int* start, int* end, int max_runs) {
     int n = 0;
     int bit = 0;
@@ -450,7 +440,7 @@ collect_runs_from_mask(uint32_t mask, int width, int* start, int* end, int max_r
  * bound this at GRID_COLS/2 runs at most: a run needs at least one gap
  * column to separate it from the next, so the -1 "too fragmented" case
  * from collect_runs_from_mask can never trigger here. */
-static int
+static inline int
 collect_dirty_runs(int row, int* run_start, int* run_end) {
     const uint32_t bits = (cell_dirty >> (row * GRID_COLS)) & ((1u << GRID_COLS) - 1u);
     const int n = collect_runs_from_mask(bits, GRID_COLS, run_start, run_end, GRID_COLS);
@@ -464,7 +454,7 @@ collect_dirty_runs(int row, int* run_start, int* run_end) {
  * in the run disables refinement for the whole run; a run mixing coarse
  * and tight cells is rare, and getting this simple and always-correct
  * matters more than squeezing out that case. */
-static bool
+static inline bool
 run_is_leaf_eligible(int row, int col_first, int col_last) {
     for (int col = col_first; col < col_last; col++) {
         const int idx = row * GRID_COLS + col;
@@ -480,7 +470,7 @@ run_is_leaf_eligible(int row, int col_first, int col_last) {
  * only refines x; the run's own tight cell_y0/cell_y1 union is already
  * exact for a caller whose real rows are only a couple pixels tall, which
  * is the case this exists for. */
-static uint16_t
+static inline uint16_t
 leaf_mask_for_run(int row, int col_first, int col_last) {
     const int lc0 = col_first * LEAF_SUB;
     const int lc1 = col_last * LEAF_SUB;
@@ -498,7 +488,7 @@ leaf_mask_for_run(int row, int col_first, int col_last) {
  * "use the coarse box, there is nothing safe or worthwhile to split on",
  * whenever the run is not leaf-eligible, has no real internal gap, or is
  * too fragmented for the cap. */
-static int
+static inline int
 refine_run(int row, int col_first, int col_last, int* sx0, int* sx1) {
     if (!run_is_leaf_eligible(row, col_first, col_last)) {
         return 0;
@@ -524,7 +514,7 @@ refine_run(int row, int col_first, int col_last, int* sx0, int* sx1) {
  * gather_buf's fixed GATHER_MAX_PIXELS allocation: skipping this check
  * risks a buffer overflow into DMA-mapped memory, not a graceful
  * degradation. Falls back to the coarse box (0) if any split fails it. */
-static int
+static inline int
 plan_run(int row, int col_first, int col_last, int y0, int y1, int* sx0, int* sx1) {
     const int n = refine_run(row, col_first, col_last, sx0, sx1);
 
@@ -540,9 +530,9 @@ plan_run(int row, int col_first, int col_last, int y0, int y1, int* sx0, int* sx
 /* The union box across columns [start,end) of row: every column in a
  * contiguous run is already confirmed dirty, so this only needs to widen,
  * never test. */
-static void
+static inline void
 run_box(int row, int start, int end, int* x0, int* x1, int* y0, int* y1) {
-    *x0 = GFX_DIRTY_WIDTH;
+    *x0 = GFX_WIDTH;
     *x1 = 0;
     *y0 = row * STRIP_HEIGHT + STRIP_HEIGHT;
     *y1 = row * STRIP_HEIGHT;

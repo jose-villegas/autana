@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "util/runtime/frame_watch.h"
 

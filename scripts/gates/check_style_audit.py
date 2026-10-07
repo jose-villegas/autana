@@ -659,7 +659,7 @@ def rule_drawn_comment(root, path, text, comments):
 # been an extracted, named helper, docs/C-Style-Guide.md's "needing to
 # comment parts of a function separately means the function is the
 # problem." The identical shape is also this tree's normal way to divide a
-# FILE's top-level declarations into named groups (gfx.c's own
+# FILE's top-level declarations into named groups (gfx_present.c's own
 # "/* Dirty tracking */" before its dirty-tracking statics), which is a
 # different, accepted use, so this only fires once brace tracking proves
 # the comment sits inside a real function body, not a top-level divider or

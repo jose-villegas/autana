@@ -381,7 +381,7 @@ It drops the 120 MHz flash configuration, which QEMU's flash model cannot
 follow: such an image resets silently in the second-stage bootloader. It
 moves the console to UART0, the port QEMU exposes. And it sets
 `CONFIG_LAUNCHER_QEMU`: no panel, I/O expander or touch controller exists
-there, so board identification fails, and with that option `gfx.c` gives an
+there, so board identification fails, and with that option `gfx_present.c` gives an
 unidentified board a null panel (`gfx_null_panel_device.c`). It keeps the one
 property of the link the code above depends on: a strip occupies the bus
 for its own transfer time at the current panel clock, one strip after

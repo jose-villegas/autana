@@ -1,5 +1,5 @@
 /*
- * Portable suite: gfx/icons_system.h, the baked system icon atlas.
+ * Portable suite: gfx/draw/icons_system.h, the baked system icon atlas.
  *
  * The check mark's own artwork is pinned independently in suite_icons.c
  * (hand-transcribed expected rows, not read back from this generated
@@ -24,8 +24,8 @@
 #include "unity.h"
 
 #include "bbox_extend.h"
-#include "gfx/icon.h"
-#include "gfx/icons_system.h"
+#include "gfx/draw/icon.h"
+#include "gfx/draw/icons_system.h"
 
 /* A run-length walk of the UNPACKED rows, independent of count_runs() in
  * gen_icons.py, proving every baked `blocks` field against what the bytes

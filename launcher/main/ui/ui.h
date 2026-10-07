@@ -32,8 +32,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_font.h"
-#include "gfx/icon.h"
+#include "gfx/draw/gfx_font.h"
+#include "gfx/draw/icon.h"
 #include "input/input.h"
 #include "microui.h"
 #include "ui/ui_style.h"
@@ -180,7 +180,7 @@ ui_centered_rect(int canvas_w, int w, int h, int y) {
  * icon_walk_blocks(), streamed rather than collected, so an icon's run
  * count no longer bounds artwork. `rows` is separate from `icon` because
  * icon_t.offset indexes into its own header's blob, not a self-contained
- * pointer; see gfx/icon.h. */
+ * pointer; see gfx/draw/icon.h. */
 void ui_draw_icon(mu_Context* ctx, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like

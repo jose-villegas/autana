@@ -13,7 +13,7 @@
 #include <string.h>
 
 #include "asset/asset_file.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"

@@ -2,7 +2,7 @@
  * ui: paints one microui frame into the real framebuffer. See ui.h for what
  * and why, and ui_build.c for the other half of this module: building the
  * frame this file paints, split out specifically because it needs none of
- * gfx.c and so can run on a host; see ui_build.c's own top comment.
+ * gfx and so can run on a host; see ui_build.c's own top comment.
  *
  * THE CANVAS MODEL
  *
@@ -31,9 +31,12 @@
 
 #include "esp_log.h"
 
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_target.h"
+#include "gfx/draw/icons_system.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_target.h"
-#include "gfx/icons_system.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
 #include "util/build/build_variant.h"
@@ -170,7 +173,7 @@ draw_command(const mu_Command* cmd) {
 
         case MU_COMMAND_ICON: {
             /* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK
-         * is real artwork (gfx/icons_system.h's baked ICON_SYSTEM_CHECK)
+         * is real artwork (gfx/draw/icons_system.h's baked ICON_SYSTEM_CHECK)
          * because two callers need it: a checkbox toggle, and a per-tile
          * spawn-selection badge. The other three stay a small
          * centred-square placeholder: a deliberate gap, not
@@ -522,7 +525,7 @@ bin_fill_rect(mu_Rect rect, mu_Color color) {
  * (16) regardless of which one this build actually uses; a build using a
  * taller band simply leaves the tail unused. Compared and updated once per
  * ui_end_for_bands() call, this is the UI's own contribution to band
- * mode's per-band dirty decision (gfx_band_dirty(), gfx.c): a band whose
+ * mode's per-band dirty decision (gfx_band_dirty(), gfx_mode.c): a band whose
  * bound commands hash the same as last frame drew nothing new. */
 #define UI_BAND_HASH_MAX (GFX_HEIGHT / 16)
 static uint64_t ui_band_hash[UI_BAND_HASH_MAX];
@@ -567,7 +570,7 @@ hash_band_entries(int row0, int row1) {
 }
 
 /* The UI's own half of band mode's per-band dirty decision: marks a band
- * dirty (gfx_mark_dirty(), gfx.c) exactly when what would replay into it
+ * dirty (gfx_mark_dirty(), gfx_present.c) exactly when what would replay into it
  * changed since last frame, at that band's own full width: an entry's own
  * rect narrower than the band is not tracked per-entry here, only per-band. */
 static void

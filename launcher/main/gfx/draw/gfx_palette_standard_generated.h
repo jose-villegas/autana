@@ -1,7 +1,7 @@
 /*===========================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h
+ *     python tools/gen/gen_gfx_palette_standard.py > main/gfx/draw/gfx_palette_standard_generated.h
  *
  * Two formulaic 256-entry palettes for gfx_palette_standard.c: a
  * VGA-style default (16 EGA + a 216-colour web-safe RGB lattice +
@@ -9,7 +9,7 @@
  *===========================================================================*/
 #pragma once
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 static const gfx_color_t gfx_palette_vga256_entries[256] = {
     GFX_RGB(0x000000), GFX_RGB(0x0000AA), GFX_RGB(0x00AA00), GFX_RGB(0x00AAAA), GFX_RGB(0xAA0000), GFX_RGB(0xAA00AA), GFX_RGB(0xAA5500), GFX_RGB(0xAAAAAA),

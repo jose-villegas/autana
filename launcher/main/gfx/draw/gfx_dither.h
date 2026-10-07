@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_dither_patterns_generated.h"
+#include "gfx/draw/gfx_dither_patterns_generated.h"
 
 #define GFX_DITHER_MAX_LEVELS 1024
 

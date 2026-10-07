@@ -6,7 +6,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_font_roles.h"
+#include "gfx/draw/gfx_font_roles.h"
 
 /* gfx_font_ui(): the UI/body-text role */
 
@@ -20,7 +20,7 @@ static void
 test_ui_role_is_the_shipped_8x8_font(void) {
     TEST_ASSERT_EQUAL_PTR_MESSAGE(&gfx_font_8x8, gfx_font_ui(),
                                   "gfx_font_ui() must resolve to gfx_font_8x8 itself - every UI call "
-                                  "site this role replaced (gfx.c, ui.c, boot_anim.c) drew with that "
+                                  "site this role replaced (gfx_draw.c, ui.c, boot_anim.c) drew with that "
                                   "exact font before the role existed, and the migration promised no "
                                   "visual change");
 }

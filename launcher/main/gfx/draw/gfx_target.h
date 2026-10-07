@@ -17,8 +17,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "gfx/gfx_box.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_box.h"
+#include "gfx/draw/gfx_color.h"
 
 typedef struct {
     gfx_color_t* buf; /* row 0 of this buffer is absolute row y0 */
@@ -57,7 +57,7 @@ gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
  * (x, y, w, h) and `clip` are in full-screen space, the same as every
  * gfx_fill_rect() caller already uses; only the write lands in the
  * target's own local rows. Reports the actually-painted rect back through
- * the out params: gfx.c's own caller needs it (already clipped) to mark
+ * the out params: gfx_draw.c's own caller needs it (already clipped) to mark
  * the right dirty region. */
 static inline void
 gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int x, int y, int w,

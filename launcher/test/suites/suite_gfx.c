@@ -32,10 +32,14 @@
 #include "board/board.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_band_run.h"
-#include "gfx/gfx_font_roles.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 #include "util/runtime/memory.h"
@@ -414,7 +418,7 @@ test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
     free(src);
 }
 
-/* The primitive's whole correctness claim (see its comment in gfx.c): the
+/* The primitive's whole correctness claim (see its comment in gfx_draw.c): the
  * row-pattern walk, fringes and memcpy shortcuts included, is bit-identical
  * to asking gfx_dither_covers() at every pixel. Checked at a deliberately
  * UNALIGNED rect (x = 13, so the prologue and epilogue of
@@ -847,7 +851,7 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
  * dirty_row_is_dirty() checks, collect_dirty_runs(), leaf refinement and
  * the gather-vs-full-band choice, all of which run even when the whole
  * screen goes out as full-band sends.
- * gfx_present_raw_full_frame_for_test() (gfx.c, CONFIG_LAUNCHER_DEVELOPMENT
+ * gfx_present_raw_full_frame_for_test() (gfx_present.c, CONFIG_LAUNCHER_DEVELOPMENT
  * only) is the bus-time side: every strip as a full-band send, with none
  * of that involved. */
 static void
@@ -908,7 +912,7 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
 
 /* The ratio tests below take a band presented alone as their reference,
  * which is the UN-PIPELINED price: 3,405 us. Inside a real frame
- * send_full_row() (gfx.c) queues without waiting and gfx_present() drains
+ * send_full_row() (gfx_present.c) queues without waiting and gfx_present() drains
  * every band at the end, so seven bands come to 18,147 us, not 7 x 3,405.
  * Sanity-checking one figure against the other by multiplying is not
  * valid. */
@@ -1009,7 +1013,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
 
 /* Full width, most of a band's height: 368x48 is far over GATHER_MAX_PIXELS,
  * yet a full-width box is already contiguous in the framebuffer and needs no
- * gather buffer at all: the case send_partial_band() (gfx.c) exists for.
+ * gather buffer at all: the case send_partial_band() (gfx_present.c) exists for.
  *
  * 90% is the threshold, not 75%, on purpose: 48 of a band's 64 rows is 75%
  * of its pixels, and a present is ~94% bus time (gfx.h), so once the fixed
@@ -1043,7 +1047,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
 
     perf_guard("a full-width box shorter than a whole band must send fewer rows "
                "and cost less than claiming the whole band - see "
-               "send_partial_band() in gfx.c",
+               "send_partial_band() in gfx_present.c",
                partial, full_band * 9 / 10);
 }
 

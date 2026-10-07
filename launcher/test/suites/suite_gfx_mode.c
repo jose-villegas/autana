@@ -1,7 +1,7 @@
 /*
  * Portable suite: gfx_mode_resolve(), the mode-grant arithmetic behind
- * gfx_mode_enter() (gfx.c), driven directly since gfx_mode.h carries no
- * ESP-IDF dependency. gfx.c's own allocation and geometry-swap side of
+ * gfx_mode_enter() (gfx_mode.c), driven directly since gfx_mode.h carries no
+ * ESP-IDF dependency. gfx_mode.c's own allocation and geometry-swap side of
  * gfx_mode_enter()/gfx_mode_exit() needs real device memory and is not
  * covered here; see suite_gfx.c for that half.
  */
@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_mode.h"
+#include "gfx/present/gfx_mode.h"
 
 #define FULL_W 368
 #define FULL_H 448

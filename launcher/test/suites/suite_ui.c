@@ -20,7 +20,9 @@
 
 #include "unity.h"
 
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 
 /* Two separate canvases, well apart, each inside its own band. */

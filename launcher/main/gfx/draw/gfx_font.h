@@ -15,7 +15,7 @@
 #include <stddef.h> /* NULL, used by the advance field of a monospace font */
 #include <stdint.h>
 
-#include "gfx/font8x8_basic.h"
+#include "gfx/draw/font8x8_basic.h"
 
 /* Describes one font: where its glyph bitmaps live, how big a cell is,
  * which codepoints it covers, and cursor advance per glyph. `atlas` is
@@ -53,7 +53,7 @@ static const gfx_font_t gfx_font_8x8 = {
  * at all, for a monospace font, falls back to cell_w * scale. That
  * matches the font this module ships today exactly, where
  * gfx_text_turned() advanced by a fixed cell every character regardless
- * of range; see gfx.c. A font WITH an advance table looks up the
+ * of range; see gfx_draw.c. A font WITH an advance table looks up the
  * per-glyph value only when `ch` is in range, and falls back the same
  * way otherwise. */
 static inline int

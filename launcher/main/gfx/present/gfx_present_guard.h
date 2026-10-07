@@ -3,10 +3,8 @@
  * entry point that reads or writes drawing state or the framebuffer checks,
  * as a standalone, ESP-IDF-free module.
  *
- * Header-only and static, the same reason gfx_dirty.h is: gfx.c includes
- * this once and gets its own flag and trip counter; a host suite includes it
- * again and gets an independent copy to drive and inspect directly, with no
- * ESP-IDF dependency to satisfy; see suite_gfx_present_guard.c.
+ * Header-only over one instance (gfx_present.c), ESP-IDF-free so a host
+ * suite drives it directly; see suite_gfx_present_guard.c.
  *
  * Compiled out of a release device build entirely (GFX_PRESENT_GUARD() folds
  * to nothing there, so the check costs nothing), active on a development
@@ -25,10 +23,10 @@
 #include <assert.h>
 #endif
 
-static bool gfx_present_guard_in_flight;
+extern bool gfx_present_guard_in_flight;
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-static unsigned gfx_present_guard_trips;
+extern unsigned gfx_present_guard_trips;
 #endif
 
 /* gfx_present_begin() calls this once it has committed to sending, device

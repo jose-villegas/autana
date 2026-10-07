@@ -7,7 +7,7 @@
  * currently sending while band k's DMA transfer is still in flight, and the
  * only wait is for band k's own transfer to land before band k+1's own send
  * can be queued; queuing any earlier would put fresh content on a buffer
- * still on the wire. gfx.c's gfx_band_submit() is where that wait actually
+ * still on the wire. gfx_mode.c's gfx_band_submit() is where that wait actually
  * blocks; here it is just a boolean the ring computes from how many bands
  * have been handed out and which one, if any, is still in flight.
  */

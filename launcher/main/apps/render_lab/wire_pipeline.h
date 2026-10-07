@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_box.h"
+#include "gfx/draw/gfx_box.h"
 #include "render/r3d_project.h"
 #include "util/math/vec2i.h"
 #include "wire_mesh.h"

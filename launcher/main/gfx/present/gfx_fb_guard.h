@@ -22,13 +22,14 @@
 #include <assert.h>
 #endif
 
-static bool gfx_fb_guard_available = true;
+/* One instance, in gfx_mode.c. */
+extern bool gfx_fb_guard_available;
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-static unsigned gfx_fb_guard_trips;
+extern unsigned gfx_fb_guard_trips;
 #endif
 
-/* gfx_mode_enter()/gfx_mode_exit() (gfx.c) call this as the framebuffer is
+/* gfx_mode_enter()/gfx_mode_exit() (gfx_mode.c) call this as the framebuffer is
  * freed or restored. */
 static inline void
 gfx_fb_guard_set_available(bool available) {

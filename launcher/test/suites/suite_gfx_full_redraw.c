@@ -1,20 +1,19 @@
 /*
- * Portable suite: the two latches behind gfx_request_full_redraw() (gfx.h).
+ * Portable suite: the two latches behind gfx_request_full_redraw() (gfx_present.h).
  *
  * gfx_full_redraw.h carries no ESP-IDF dependency, the same reason
  * gfx_dirty.h and gfx_present_guard.h do not; see suite_gfx_dirty.c.
- * gfx.c's real gfx_request_full_redraw() composes gfx_mark_all_dirty()
- * (dirty_mark_all() here) and gfx_invalidate() (gfx_band_force_all() here)
- * with gfx_full_redraw_latch(); this suite drives that same header state
- * directly, exactly as gfx.c's own translation unit does, with no panel or
- * BSP dependency to satisfy.
+ * gfx_present.c's real gfx_request_full_redraw() composes
+ * gfx_mark_all_dirty() (dirty_mark_all() here) and gfx_invalidate()
+ * (gfx_band_force_all() here) with gfx_full_redraw_latch(); this suite
+ * drives that same header state directly, with no panel to satisfy.
  */
 
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_dirty.h"
-#include "gfx/gfx_full_redraw.h"
+#include "gfx/present/gfx_dirty.h"
+#include "gfx/present/gfx_full_redraw.h"
 
 /* This suite only drives dirty_mark_all()/all_dirty; suite_gfx_dirty.c
  * already covers the run/leaf-refinement machinery gfx_dirty.h also

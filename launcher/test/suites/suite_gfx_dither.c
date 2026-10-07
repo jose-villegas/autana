@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_dither.h"
+#include "gfx/draw/gfx_dither.h"
 
 static void
 test_every_pattern_visits_each_threshold_once_per_period(void) {

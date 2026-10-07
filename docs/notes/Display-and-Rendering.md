@@ -9,12 +9,12 @@ last pixels, including after firmware crashes.
 
 ## Bring-up
 
-`launcher/main/gfx/gfx.c` owns SPI2, panel IO and panel initialization.
+`launcher/main/board/board_panel.c` owns SPI2, panel IO and panel initialization.
 `board_detect()` selects SH8601 with FT3168 touch or CO5300 with CST820 touch.
 Keep revision detection and panel offsets in the board layer rather than
 hardcoding a driver or applying the gap in drawing code.
 
-The panel-specific init tables in `gfx.c` are required alongside the driver;
+The panel-specific init tables in `board_panel.c` are required alongside the driver;
 driver defaults alone do not supply the board's panel settings.
 
 | Constraint | Guard |
@@ -62,7 +62,7 @@ panel received them correctly.
 A panel transaction has setup cost as well as payload cost. Sending one row
 per call can cost more than a larger merged transfer. Gather and run-merging
 thresholds `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` in
-`launcher/main/gfx/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
+`launcher/main/gfx/present/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
 device before changing the clock or those thresholds.
 
 ## Dirty-region costs
@@ -72,7 +72,7 @@ narrow changes, short wide changes and separated marks against each other.
 Use those tests for current costs rather than transferring isolated timings
 between clocks or render modes. Geometry and marking ownership are in
 [Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking) and
-`launcher/main/gfx/gfx_dirty.h`.
+`launcher/main/gfx/present/gfx_dirty.h`.
 
 Full-width partial bands are contiguous and need no gather packing. Narrow
 runs use bounce slots; the queued transfer must finish before its slot is

@@ -1,8 +1,8 @@
 /*
  * Portable suite: gfx_dirty, the grid/leaf dirty-region tracker.
  *
- * gfx_dirty.h carries no ESP-IDF dependency, unlike gfx.c (which
- * unconditionally includes ESP-IDF SPI headers); that split is what
+ * gfx_dirty.h carries no ESP-IDF dependency, unlike gfx_present.c (which
+ * includes ESP-IDF's panel headers); that split is what
  * makes this logic reachable from a host at all.
  * suite_gfx.c (device-only) still covers whether the design is actually
  * cheaper to send; this suite covers whether the geometry and bitmask
@@ -16,12 +16,10 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_box.h"
-#include "gfx/gfx_dirty.h"
+#include "gfx/draw/gfx_box.h"
+#include "gfx/present/gfx_dirty.h"
 
-/* gfx_dirty.h's state is static, so this file gets its own private copy,
- * exactly like a real device build's gfx.c does, and exactly what makes it
- * possible to reset and inspect directly here. */
+/* gfx_dirty.h's state is gfx's one instance; every test starts it empty. */
 static void
 fixture(void) {
     cell_dirty = 0;
@@ -82,9 +80,9 @@ test_mark_leaves_spans_a_cell_boundary_too(void) {
 /*
  * dirty_leaf_rects()
  *
- * Backs the leaf debug-overlay layer in gfx.c: one rectangle per dirty
+ * Backs the leaf debug-overlay layer in gfx_debug.c: one rectangle per dirty
  * leaf, unmerged, clipped to the caller's box. A host build cannot reach
- * gfx.c's overlay code at all (it is CONFIG_LAUNCHER_DEVELOPMENT, ESP-IDF-
+ * gfx_debug.c's overlay code at all (it is CONFIG_LAUNCHER_DEVELOPMENT, ESP-IDF-
  * dependent), so this enumerator, not the drawing that consumes it, is
  * where the geometry actually gets proven correct.
  */
@@ -94,7 +92,7 @@ test_dirty_leaf_rects_finds_nothing_in_a_clean_row(void) {
     fixture();
 
     dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, STRIP_HEIGHT, out, 8);
+    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
 
     TEST_ASSERT_EQUAL_INT(0, n);
 }
@@ -105,7 +103,7 @@ test_dirty_leaf_rects_one_pixel_yields_the_whole_leaf(void) {
     dirty_mark(5, 5, 1, 1); /* leaf column 0, leaf row 0 */
 
     dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, STRIP_HEIGHT, out, 8);
+    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
 
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(0, out[0].x0);
@@ -120,7 +118,7 @@ test_dirty_leaf_rects_two_columns_are_two_adjacent_rects(void) {
     dirty_mark(LEAF_W - 1, 0, 2, 1); /* straddles leaf columns 0 and 1 */
 
     dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, STRIP_HEIGHT, out, 8);
+    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, n,
                                   "one rect per dirty leaf, never merged into a run - merging would "
@@ -137,7 +135,7 @@ test_dirty_leaf_rects_two_leaf_rows_both_appear(void) {
     dirty_mark(5, LEAF_H - 1, 1, 2); /* straddles leaf rows 0 and 1 */
 
     dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, STRIP_HEIGHT, out, 8);
+    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
 
     TEST_ASSERT_EQUAL_INT(2, n);
     TEST_ASSERT_EQUAL_INT(0, out[0].y0);
@@ -181,7 +179,7 @@ test_dirty_leaf_rects_respects_the_max_out_cap(void) {
     leaf_dirty[0] = 0xFFFF; /* every leaf column dirty in leaf row 0 */
 
     dirty_leaf_rect_t out[16];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, STRIP_HEIGHT, out, 5);
+    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 5);
 
     TEST_ASSERT_EQUAL_INT(5, n);
 }
@@ -195,7 +193,7 @@ test_dirty_leaf_rects_leaf_rows_are_independent(void) {
     /* Box only spans leaf row 0's own height; leaf row 2's rect must not
      * leak into this result just because it shares the same strip row. */
     dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_DIRTY_WIDTH, LEAF_H, out, 8);
+    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, LEAF_H, out, 8);
 
     TEST_ASSERT_EQUAL_INT(1, n);
     TEST_ASSERT_EQUAL_INT(0, out[0].y0);
@@ -229,7 +227,7 @@ test_run_is_leaf_eligible_false_if_any_cell_in_the_run_is_coarse(void) {
 /*
  * collect_runs_from_mask
  *
- * Shared by the cell-level and leaf-level run finders in gfx.c; these
+ * Shared by the cell-level and leaf-level run finders in gfx_present.c; these
  * exercise it directly, at the bit-manipulation level, rather than only
  * indirectly through whichever caller happens to reach it.
  */
@@ -299,7 +297,7 @@ test_collect_runs_from_mask_gives_up_past_the_cap(void) {
  * collect_dirty_runs()/run_box() are the cell-granularity counterparts of
  * collect_runs_from_mask() above, and plan_run() is what decides whether a
  * run gets leaf-refined at all, exercised directly here rather than only
- * indirectly through gfx.c's send path, which a host build cannot reach.
+ * indirectly through gfx_present.c's send path, which a host build cannot reach.
  */
 
 static void
@@ -444,7 +442,7 @@ test_band_extent_false_when_nothing_is_dirty(void) {
     TEST_ASSERT_FALSE(dirty_band_extent(0, 32, &x0, &x1));
 }
 
-/* An odd-edged mark rounds outward to even, the same rule gfx.c's own
+/* An odd-edged mark rounds outward to even, the same rule gfx_present.c's own
  * mathi_even_floor()/mathi_even_ceil() apply to a real panel window. */
 static void
 test_band_extent_returns_the_marked_x_range_rounded_even(void) {
@@ -483,7 +481,7 @@ test_band_extent_only_sees_the_part_of_a_strip_its_own_range_covers(void) {
 
 /* dirty_mark_all() is what a caller reaches for to force everything: band
  * mode's own "orientation change / app enter / gfx_invalidate()" case (see
- * gfx.c) ends up here too, so this is the query-side half of that promise:
+ * gfx_mode.c) ends up here too, so this is the query-side half of that promise:
  * once marked, every row range reports the full width dirty. */
 static void
 test_band_extent_is_full_width_once_everything_is_marked(void) {
@@ -493,7 +491,7 @@ test_band_extent_is_full_width_once_everything_is_marked(void) {
     int x0, x1;
     TEST_ASSERT_TRUE(dirty_band_extent(0, 32, &x0, &x1));
     TEST_ASSERT_EQUAL_INT(0, x0);
-    TEST_ASSERT_EQUAL_INT(GFX_DIRTY_WIDTH, x1);
+    TEST_ASSERT_EQUAL_INT(GFX_WIDTH, x1);
     TEST_ASSERT_TRUE(dirty_band_extent(416, 448, &x0, &x1));
 }
 
@@ -522,7 +520,7 @@ test_band_extent_follows_a_moving_box_across_several_frames(void) {
         }
         dirty_mark(box_x, box_y, box_w, box_h);
 
-        for (int band = 0; band * band_height < GFX_DIRTY_HEIGHT; band++) {
+        for (int band = 0; band * band_height < GFX_HEIGHT; band++) {
             const int row0 = band * band_height;
             const int row1 = row0 + band_height;
             int x0, x1;
@@ -574,7 +572,7 @@ test_region_query_keeps_full_width_band_marks(void) {
     mark_band(STRIP_HEIGHT, 2 * STRIP_HEIGHT);
 
     TEST_ASSERT_TRUE(dirty_region_dirty(0, STRIP_HEIGHT + 5, 1, 1));
-    TEST_ASSERT_TRUE(dirty_region_dirty(GFX_DIRTY_WIDTH - 1, STRIP_HEIGHT + 5, 1, 1));
+    TEST_ASSERT_TRUE(dirty_region_dirty(GFX_WIDTH - 1, STRIP_HEIGHT + 5, 1, 1));
     TEST_ASSERT_FALSE(dirty_region_dirty(0, STRIP_HEIGHT - 1, 1, 1));
 }
 

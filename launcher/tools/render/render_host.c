@@ -21,8 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gfx/draw/gfx_color.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_color.h"
 #include "render_video.h"
 #include "render_watch.h"
 #include "ui/ui_transform.h"
