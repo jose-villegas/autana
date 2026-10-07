@@ -1,6 +1,6 @@
 /*
  * Device-only suite: fit raster costs on the first camera path, then fly
- * each named camera under every policy and budget. Frame costs and corrected
+ * each named camera under every policy and budget. Frame costs and refitted
  * predictions feed launcher/tools/r3d/dynres_report.py.
  * Needs PSRAM, core 1 and a clock.
  */
@@ -320,6 +320,12 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         const int64_t composed_us = timing_now_us();
         record_frame(&records[i], began_us, drawn_us, composed_us);
     }
+    if (model != NULL) {
+        const resolution_model_t* refit = &render_context_main()->predict.model;
+        ESP_LOGI(TAG, "dynres_refit: %s %s %ld base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f",
+                 camera, ladder->name, (long)config->budget_us, (double)refit->base_us, (double)refit->per_triangle_us,
+                 (double)refit->per_triangle_row_us, (double)refit->per_pixel_share_us);
+    }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(flown);
     log_frames(camera, policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records,
@@ -355,10 +361,11 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
+static const int32_t budgets_us[] = {60000, 75000};
+
 void
 test_dynamic_resolution_policies_along_the_path(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    static const int32_t budgets_us[] = {60000, 75000};
 
     /* Each ladder's config and fitted model: too big for the frame task's stack. */
     typedef struct {
@@ -393,6 +400,33 @@ test_dynamic_resolution_policies_along_the_path(void) {
     TEST_PASS();
 }
 
+static void
+test_dynamic_resolution_refit_cost(void) {
+    static const resolution_model_t prior = {10000.0F, 2.0F, 4.0F, 20000.0F, {0}};
+    resolution_predict_t* predict = memory_alloc(sizeof(*predict), MEMORY_INTERNAL);
+    resolution_config_t* config = memory_alloc(sizeof(*config), MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(predict);
+    TEST_ASSERT_NOT_NULL(config);
+    configure(&ladders[0], budgets_us[0], config);
+    resolution_predict_init(predict, config, &prior, 0);
+    int64_t total_us = 0, max_us = 0;
+    for (int i = 0; i < 1000; i++) {
+        predict->step = i % config->step_count;
+        const int triangles = 1000 + (i * 137 % 19000);
+        const int32_t draw_us = (int32_t)resolution_model_predict_us(&prior, config, predict->step, triangles);
+        const int64_t began_us = timing_now_us();
+        resolution_predict_measured(predict, config, triangles, draw_us, 0);
+        const int64_t elapsed_us = timing_now_us() - began_us;
+        total_us += elapsed_us;
+        max_us = elapsed_us > max_us ? elapsed_us : max_us;
+    }
+    ESP_LOGI(TAG, "dynres_refit_cost: calls 1000 mean_us %.3f max_us %lld", (double)total_us / 1000.0,
+             (long long)max_us);
+    memory_free(config);
+    memory_free(predict);
+    TEST_PASS();
+}
+
 void
 run_raster_scale_perf_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
@@ -408,6 +442,7 @@ run_raster_scale_perf_suite(void) {
             scene = NULL;
         }
     }
+    RUN_TEST(test_dynamic_resolution_refit_cost);
     RUN_TEST(test_raster_stage_split_by_size);
     RUN_TEST(test_dynamic_resolution_policies_along_the_path);
     loaded = (sponza_suite_t){scene, pack, path};

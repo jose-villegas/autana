@@ -6,6 +6,7 @@
 #include "unity.h"
 
 #include "render/resolution/resolution.h"
+#include "util/scalar/rng.h"
 
 #define BUDGET_US 66000
 
@@ -265,14 +266,12 @@ changed_model(void) {
 
 static void
 feed_frames(resolution_predict_t* p, const resolution_config_t* cfg, const resolution_model_t* truth, int frames,
-            int held_step, unsigned* seed) {
+            int held_step, rng_t* random) {
     for (int i = 0; i < frames; i++) {
-        *seed = (*seed * 1103515245U) + 12345U;
-        p->step = held_step >= 0 ? held_step : (int)((*seed >> 16) % (unsigned)cfg->step_count);
-        const int triangles = 1000 + (int)((*seed >> 8) % 19000U);
+        p->step = held_step >= 0 ? held_step : rng_below(random, cfg->step_count);
+        const int triangles = 1000 + rng_below(random, 19000);
         const float draw = resolution_model_predict_us(truth, cfg, p->step, triangles) - truth->upscale_us[p->step];
-        *seed = (*seed * 1103515245U) + 12345U;
-        const float noise = 1.0F + (float)((int)((*seed >> 16) % 101U) - 50) / 1000.0F;
+        const float noise = 1.0F + (float)(rng_below(random, 101) - 50) / 1000.0F;
         resolution_predict_measured(p, cfg, triangles, (int32_t)(draw * noise), (int32_t)truth->upscale_us[p->step]);
     }
 }
@@ -295,10 +294,11 @@ check_refit_prices(const resolution_model_t* truth, int warmup_frames, int frame
     resolution_predict_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     for (unsigned seed_start = 1; seed_start <= 4; seed_start++) {
-        unsigned seed = seed_start;
+        rng_t random;
+        rng_seed(&random, seed_start);
         resolution_predict_init(p, &cfg, &model, 0);
-        feed_frames(p, &cfg, &model, warmup_frames, -1, &seed);
-        feed_frames(p, &cfg, truth, frames, -1, &seed);
+        feed_frames(p, &cfg, &model, warmup_frames, -1, &random);
+        feed_frames(p, &cfg, truth, frames, -1, &random);
         assert_prices(p, &cfg, truth, error_share);
     }
     free(p);
@@ -317,9 +317,10 @@ test_refit_held_step_does_not_drift(void) {
     resolution_predict_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     for (unsigned seed_start = 1; seed_start <= 4; seed_start++) {
-        unsigned seed = seed_start;
+        rng_t random;
+        rng_seed(&random, seed_start);
         resolution_predict_init(p, &cfg, &model, 3);
-        feed_frames(p, &cfg, &truth, 10000, 3, &seed);
+        feed_frames(p, &cfg, &truth, 10000, 3, &random);
         for (int i = 0; i < 4; i++) {
             TEST_ASSERT_TRUE(isfinite(p->covariance[i][i]));
             TEST_ASSERT_LESS_OR_EQUAL_FLOAT(p->prior_variance[i], p->covariance[i][i]);
@@ -345,8 +346,9 @@ test_refit_clips_a_hitch_frame(void) {
     resolution_predict_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     resolution_predict_init(p, &cfg, &model, 3);
-    unsigned seed = 1;
-    feed_frames(p, &cfg, &model, 300, -1, &seed);
+    rng_t random;
+    rng_seed(&random, 1);
+    feed_frames(p, &cfg, &model, 300, -1, &random);
     p->step = 3;
     const float before = resolution_model_predict_us(&p->model, &cfg, 3, 9000);
     resolution_predict_measured(p, &cfg, 9000, (int32_t)(10.0F * before), 0);

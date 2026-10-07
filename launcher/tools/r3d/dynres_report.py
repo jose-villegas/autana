@@ -34,8 +34,12 @@ SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) row
 STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
 FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")
 
+_REFIT_COST = re.compile(r"dynres_refit_cost: calls (\d+) mean_us ([\d.]+) max_us ([\d.]+)")
+_REFIT = re.compile(r"dynres_refit: (\w+) (\w+) (\d+) base ([\d.eE+-]+) per_triangle ([\d.eE+-]+) "
+                   r"per_triangle_row ([\d.eE+-]+) per_pixel_share ([\d.eE+-]+)")
 
-def read_captures(paths):
+
+def read_captures(paths, refit=None):
     splits, spans, ladders, frames = {}, {}, {}, {}
     for path in paths:
         raw = pathlib.Path(path).read_bytes()
@@ -50,6 +54,14 @@ def read_captures(paths):
                                                          (int(v) for v in m.groups()[2:])))
             elif m := STEP.search(line):
                 ladders.setdefault(m[1], {})[int(m[2])] = (int(m[3]), int(m[4]))
+            elif m := _REFIT_COST.search(line):
+                if refit is not None:
+                    refit["cost"] = {"calls": int(m[1]), "mean_us": float(m[2]), "max_us": float(m[3])}
+            elif m := _REFIT.search(line):
+                if refit is not None:
+                    refit.setdefault("weights", {})[(m[1], m[2], int(m[3]))] = dict(zip(
+                        ("base", "per_triangle", "per_triangle_row", "per_pixel_share"),
+                        (float(value) for value in m.groups()[3:])))
             elif m := FRAMES.search(line):
                 records = [tuple(int(v) for v in item.split(":")) for item in m[6].split()]
                 frames.setdefault((m[1], m[2], m[3], int(m[4])), {})[int(m[5])] = records
@@ -170,7 +182,7 @@ def policies_table(rows):
                                "are against the reference at full size, lower dE and higher SSIM being closer.")
 
 
-def prediction_table(runs):
+def prediction_table(runs, refit=None):
     lines = ["| Path | Ladder | Budget | Frames | Median error | p95 error | Over budget |",
              "|---|---|---|---|---|---|---|"]
     for (camera, policy, ladder, budget), records in sorted(runs.items(), key=lambda item: (item[0][0], item[0][3], item[0][2])):
@@ -182,6 +194,11 @@ def prediction_table(runs):
         over = 100 * sum(draw + upscale > budget for _, draw, upscale, _, _ in records) / len(records)
         lines.append(f"| {camera} | {ladder} | {ms(budget)} | {len(records)} "
                      f"| {statistics.median(errors):.1f}% | {percentile(errors, 0.95):.1f}% | {over:.1f}% |")
+    if refit and "cost" in refit:
+        cost = refit["cost"]
+        lines.extend(["", f"Online refit: {cost['calls']} calls, mean {cost['mean_us']:.3f} us, "
+                          f"max {cost['max_us']:g} us per call."])
+
     return "\n".join(lines)
 
 
@@ -220,7 +237,8 @@ def main():
     parser.add_argument("--chart", required=True)
     parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
     args = parser.parse_args()
-    splits, spans, ladders, runs = read_captures(args.captures)
+    refit = {}
+    splits, spans, ladders, runs = read_captures(args.captures, refit)
     if not splits or not runs:
         parser.error("the captures hold no scale_split or no dynres_frames lines")
     scores = {}
@@ -232,7 +250,7 @@ def main():
     rows = policy_rows(runs, ladders, scores, splits)
     args.tables.mkdir(parents=True, exist_ok=True)
     tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
-              "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs)}
+              "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs, refit)}
     for name, body in tables.items():
         (args.tables / f"{name}.md").write_text(body + "\n", encoding="utf-8")
     chart(rows, args.chart)
