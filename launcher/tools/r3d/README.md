@@ -51,7 +51,7 @@ tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.tx
 ```
 
 An import's OBJ, MTL and textures live in a subdirectory beside its
-`.import.toml`. The reference content lives in `launcher/demo/sponza/`.
+`.import.toml`.
 Binary source files use Git LFS; MTL and attribution files stay text.
 Firmware clones exclude source assets through `.lfsconfig`. Before a source
 bake or reference render, run this from the repository root:
@@ -76,8 +76,9 @@ the price of frame time; what it does and costs is in
 [Mesh-Import.md](../../../docs/render/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
-scene file that places it and the `.mesh` it bakes live together. The
-reference scene lives in `launcher/demo/sponza/`.
+scene file that places it and the `.mesh` it bakes live together.
+Reference content an app may ship lives in `launcher/demo/`; see the
+[demo assets](../../demo/README.md).
 
 `build_pack.py` searches `launcher/main/` by default. A `demo_assets.toml`
 anywhere below a searched folder adds the folders named by its `demo` list

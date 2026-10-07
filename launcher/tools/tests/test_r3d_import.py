@@ -4,7 +4,6 @@ import contextlib
 import hashlib
 import io
 import pathlib
-import re
 import sys
 import tempfile
 import tomllib
@@ -202,8 +201,6 @@ class ImportTests(unittest.TestCase):
         for path in sorted((ROOT / "launcher/tools/r3d").rglob("*")):
             if path.suffix in (".py", ".md", ".txt") and ".cache" not in path.parts:
                 content = path.read_text().lower()
-                if path.suffix == ".md":
-                    content = re.sub(r"launcher/demo/[^`\s]+", "", content)
                 for name in banned:
                     self.assertNotIn(name, content, path.name)
 
