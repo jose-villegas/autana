@@ -32,6 +32,39 @@ except ImportError:
     Image = render_compare = None
 
 
+@unittest.skipIf(mesh_import is None, "needs the r3d environment")
+class WriteBakedTests(unittest.TestCase):
+    """The one writer behind bake(), the fit's start and the GPU stage's bakes writes what the renderer's shading
+    says: a flat renderer's mesh carries a colour per triangle, a smooth one a colour per vertex."""
+
+    def write(self, face_samples):
+        import numpy as np
+        from r3d.lit_mesh import read_lit_mesh
+
+        positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+        geometry = SimpleNamespace(positions=positions, rgb=np.full((4, 3), 100), tris=np.array([[0, 1, 2], [0, 2, 3]]),
+                                   tri_double=np.zeros(2, dtype=int), scale={"position_scale": 8})
+        job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples))
+        faces = np.array([[255.0, 0.0, 0.0], [0.0, 0.0, 255.0]])
+        with tempfile.TemporaryDirectory() as directory, \
+                unittest.mock.patch.object(mesh_import, "flat_colours", return_value=faces) as lit:
+            mesh_import.write_baked(job, None, pathlib.Path(directory), "card", geometry)
+            back = read_lit_mesh(pathlib.Path(directory) / "card.mesh")
+        return back, lit
+
+    def test_a_flat_renderer_writes_a_flat_mesh(self):
+        back, lit = self.write((4, 1, 4, None))
+        lit.assert_called_once()
+        self.assertIsNone(back.rgb)
+        self.assertEqual(sorted(map(tuple, back.face_colors.tolist())), [(0, 0, 255), (255, 0, 0)])
+
+    def test_a_smooth_renderer_writes_vertex_colours(self):
+        back, lit = self.write(None)
+        lit.assert_not_called()
+        self.assertIsNone(back.face_colors)
+        self.assertTrue((back.rgb == 100).all())
+
+
 @unittest.skipIf(parse_poses is None, "needs NumPy")
 class FittedVariantTests(unittest.TestCase):
     def test_the_multiples_of_the_held_out_step_are_held_out_but_time_zero_trains(self):

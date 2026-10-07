@@ -116,6 +116,15 @@ class AppearanceMeshTests(unittest.TestCase):
                   for p, c in zip(points[mesh[5]], rgb)}
         self.assertEqual(written, wanted)
 
+    def test_a_flat_start_reads_each_face_colour_onto_its_own_triangle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_flat_start(directory))
+        left = mesh.points[mesh.vertex_point][mesh.tris].mean(axis=1)[:, 0] < 0
+        self.assertTrue(left.any() and (~left).any())
+        # The colours write_flat_start gives each half, within an RGB565 step.
+        wanted = np.where(left[:, None], [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]]) / 255.0
+        self.assertTrue(np.all(np.abs(mesh.rgb - wanted) <= 8 / 255.0), "a face colour landed on another triangle")
+
     def test_a_flat_start_carries_a_colour_per_triangle_and_writes_back_flat(self):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_flat_start(directory))
@@ -356,17 +365,14 @@ class AppearanceFitTests(unittest.TestCase):
         points = torch.as_tensor(positions, dtype=torch.float32, device="cuda")
         with torch.no_grad():
             image = render(points, torch.as_tensor(colours, dtype=torch.float32, device="cuda"), matrix).cpu().numpy()
-            ids = render.visible_ids(points, matrix).flip(0).cpu().numpy()
-        shown = sorted({int(k) for k in ids.ravel() if k >= 0})
-        self.assertGreaterEqual(len(shown), 2)
-        for k in shown:
-            # The triangle's own pixels, away from its edges: a pixel whose four neighbours show the same triangle.
-            inner = (ids == k)
-            inner[1:-1, 1:-1] &= (ids[:-2, 1:-1] == k) & (ids[2:, 1:-1] == k) & (ids[1:-1, :-2] == k) & (ids[1:-1, 2:] == k)
-            inner[0], inner[-1], inner[:, 0], inner[:, -1] = False, False, False, False
-            rows, cols = np.nonzero(inner)
-            self.assertTrue(len(rows), f"triangle {k} has no interior pixel")
-            self.assertTrue(np.allclose(image[rows[0], cols[0]], colours[k], atol=1e-4), f"triangle {k} is not in its own colour")
+        # Each triangle's centroid, projected by the matrix alone, lands on a pixel of that triangle's colour.
+        width, height = size
+        for k, tri in enumerate(tris):
+            clip = matrix.cpu().numpy().astype(np.float64) @ np.append(positions[tri].mean(axis=0), 1.0)
+            x, y = clip[:2] / clip[3]
+            column, row = int((x + 1) / 2 * width), int((1 - y) / 2 * height)
+            self.assertTrue(0 <= column < width and 0 <= row < height, f"triangle {k} is off screen")
+            self.assertTrue(np.allclose(image[row, column], colours[k], atol=1e-4), f"triangle {k} is not in its own colour")
 
     def test_a_flat_fit_moves_each_face_colour_toward_its_own_target(self):
         from r3d.appearance_simplify import Renderer, optimise
