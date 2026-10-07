@@ -45,7 +45,8 @@ Keys before `;` are required; after it, optional.
 `[source].path` names a local file relative to the import file. The supported
 extension is `.obj`, with its sibling `.mtl` and the textures the MTL names.
 `credit` records the source attribution. An import's source files live in a
-subdirectory beside its `.import.toml` under an app's `meshes/` directory.
+subdirectory beside its `.import.toml`. The reference scene and its source
+live in `launcher/demo/sponza/`.
 Binary source files use Git LFS;
 MTL and attribution files stay text. Firmware clones exclude source assets
 through `.lfsconfig`. Before a source bake or reference render, run this from

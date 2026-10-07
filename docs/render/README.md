@@ -7,6 +7,9 @@ framework, only a span rasterizer on both cores.
 
 To put a model on screen, start with [Building a Scene](Building-a-Scene.md).
 
+The [demo assets](../../launcher/demo/README.md) hold reference content;
+the Sponza scene, imports, bakes and flythrough live in `launcher/demo/sponza/`.
+
 | | |
 |---|---|
 | [Building-a-Scene.md](Building-a-Scene.md) | **Start here**: import a mesh, place it in a scene, light it, add a camera, draw it. |

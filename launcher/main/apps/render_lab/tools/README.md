@@ -145,18 +145,18 @@ a firmware capture of those meshes; predicted ms is labelled separately.
 
 ## Sponza poses
 
-The flythrough is a glTF camera animation, `../assets/flythrough.glb`, named
-by `../assets/flythrough.anim.toml`. Its poses for
+The flythrough is a glTF camera animation, `launcher/demo/sponza/flythrough.glb`, named
+by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses
 `suite_sponza_perf.c` times (every `SPONZA_POSE_EVERY_MS`) and the size
 `sponza_content.h` names and the lens of the scene's camera object
-(`meshes/sponza.scene.toml`):
+(`launcher/demo/sponza/sponza.scene.toml`):
 
 ```sh
 python launcher/tools/anim/track_host.py \
-    launcher/main/apps/render_lab/assets/flythrough.anim.toml \
+    launcher/demo/sponza/flythrough.anim.toml \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh sponza.atrium -
@@ -164,26 +164,26 @@ python launcher/tools/anim/track_host.py \
 
 ## The capybara asset
 
-`../assets/capybara.blend` is a hand-modelled low-poly capybara (992
-triangles, 22 deform bones) with a control rig and five in-place loops at
-30 fps: `idle`, `walk`, `walk_fast`, `gallop` and `half_bound`. It is the source
-asset for skinned-mesh import; nothing in the build reads it yet.
+`launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
+with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
+`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
+nothing in the build reads it.
 
-`../assets/capybara.glb` is its glTF export: deform bones only, every loop as
+`launcher/demo/capybara/capybara.glb` is its glTF export: deform bones only, every loop as
 an animation, four influences per vertex. Host tools that read glTF use it,
 such as the [skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
 measurement. After editing the `.blend`, export it again with Blender
-through the model-agnostic exporter, naming the five loops (the file also
+through the model-agnostic exporter, naming the loops (the file also
 holds the rig's own `capyrigAction`):
 
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
-    launcher/main/apps/render_lab/assets/capybara.blend launcher/main/apps/render_lab/assets/capybara.glb \
+    launcher/demo/capybara/capybara.blend launcher/demo/capybara/capybara.glb \
     --clips idle,walk,walk_fast,gallop,half_bound
 ```
 
 and measure the lighting again:
 
 ```sh
-launcher/tools/r3d/skin_light/report_skin_light.sh launcher/main/apps/render_lab/assets/capybara.glb gallop
+launcher/tools/r3d/skin_light/report_skin_light.sh launcher/demo/capybara/capybara.glb gallop
 ```

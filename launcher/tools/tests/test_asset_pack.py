@@ -10,6 +10,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -275,6 +276,41 @@ class BuilderTests(unittest.TestCase):
             self.assertEqual(printed.getvalue().strip(), "two")
 
 
+class DemoAssetTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = pathlib.Path(directory.name)
+        self.main = self.root / "launcher/main"
+        self.main.mkdir(parents=True)
+        self.demo = self.root / "launcher/demo/sample"
+        import_file(self.demo, "sample.import.toml", "one")
+        (self.demo / "one.mesh").write_bytes(b"demo")
+        patch = mock.patch.object(build_pack, "REPO", self.root)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_manifest_pulls_in_named_demo_packs(self):
+        write(self.main / "apps/example/demo_assets.toml", 'demo = ["sample"]')
+        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": b"demo"}})
+
+    def test_unknown_demo_names_its_manifest_and_name(self):
+        manifest = write(self.main / "apps/example/demo_assets.toml", 'demo = ["missing"]')
+        with self.assertRaises(SettingsError) as caught:
+            build_pack.pack_bytes([self.main])
+        self.assertIn(str(manifest), str(caught.exception))
+        self.assertIn("missing", str(caught.exception))
+
+    def test_demo_is_not_packed_without_a_manifest(self):
+        self.assertEqual(build_pack.pack_bytes([self.main]), {})
+
+    def test_repeated_demo_and_overlapping_search_folders_are_searched_once(self):
+        for app in ("a", "b"):
+            write(self.main / app / "demo_assets.toml", 'demo = ["sample", "sample"]')
+        self.assertEqual(contents(build_pack.pack_bytes([self.main, self.main / "a", self.demo])),
+                         {"sample": {"one": b"demo"}})
+
+
 class TreeTests(unittest.TestCase):
     def test_the_packs_in_the_tree_pack_and_parse(self):
         packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
@@ -285,7 +321,7 @@ class TreeTests(unittest.TestCase):
 
     def test_each_scene_s_pack_holds_its_entry_every_mesh_it_names_and_its_camera_s_tracks(self):
         packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
-        scenes = sorted((REPO / "launcher" / "main").rglob("*.scene.toml"))
+        scenes = [path for path in build_pack.input_files([build_pack.DEFAULT_SEARCH]) if path.name.endswith(build_pack.SCENE)]
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
             name = scene_asset.scene_id(path)

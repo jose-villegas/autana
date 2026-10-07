@@ -110,15 +110,16 @@ done
 
 # The fidelity sheet: two poses of the committed flat bake against the source
 # model lit per pixel. Poses at 0 to 25000 ms every 5000 give render frames 0 to 4,
-# and the sheet shows frames 2 and 4. The source model is fetched once, SHA-256
-# checked, into launcher/tools/r3d/.cache.
+# and the sheet shows frames 2 and 4. The source model lives in
+# launcher/demo/sponza/source/ and uses Git LFS.
 M=launcher/main/apps/render_lab
-run "$PYTHON" launcher/tools/anim/track_host.py "$M/assets/flythrough.anim.toml" \
+DEMO=launcher/demo/sponza
+run "$PYTHON" launcher/tools/anim/track_host.py "$DEMO/flythrough.anim.toml" \
     --every 5000 --until 30000 --poses camera 184 224 0.62 6 > "$W/fidelity-poses.txt"
 # render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
 # their inputs, so only a change to the scene, tracer or poses traces again.
 REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
-    --reference "$M/meshes/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
+    --reference "$DEMO/sponza.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
 run "$W/render_lab_render" --quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000 \
     -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
@@ -143,7 +144,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth
 # pack the mesh in place of the committed one and render the five poses to DIR.avi.
 bake_and_render() {
     dir=$1 mesh=$2 scene=$3
-    run ln -sfn "$PWD/$M/meshes/sponza" "$dir/sponza"
+    run ln -sfn "$PWD/$DEMO/source" "$dir/source"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/sponza.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
     run "$R3D_PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" --replace "$mesh=$dir/$mesh.mesh" > "$dir/pack.log"
     run env AUTANA_ASSET_DIR="$dir/assets" "$W/render_lab_render" --quarter 0 --no-hud --scene "$scene" --frames 5 --dt 5000 \
@@ -152,12 +153,12 @@ bake_and_render() {
 # The indirect-light and occlusion studies start from the physical look: the
 # committed scene without its occlusion and its [indirect] table, which the
 # scene sets for its own renders. Everything else here uses the committed look.
-run "$R3D_PYTHON" "$M/tools/physical_scene.py" "$M/meshes/sponza.scene.toml" "$W/physical.scene.toml"
+run "$R3D_PYTHON" "$M/tools/physical_scene.py" "$DEMO/sponza.scene.toml" "$W/physical.scene.toml"
 # variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
 # the scene's `[bake].indirect` out; the table goes before the first object.
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
-    run cp "$M/meshes/sponza.import.toml" "$W/indirect-$1/"
+    run cp "$DEMO/sponza.import.toml" "$W/indirect-$1/"
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$W/physical.scene.toml" > "$W/indirect-$1/sponza.scene.toml"
@@ -205,7 +206,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/bake-indire
 # bakes raise it. ao_bake NAME AO-LINE: the line goes after `[bake].indirect`.
 ao_bake() {
     run mkdir -p "$W/ao-$1"
-    run cp "$M/meshes/sponza.import.toml" "$W/ao-$1/"
+    run cp "$DEMO/sponza.import.toml" "$W/ao-$1/"
     run awk -v ao="$2" '/^\[/ { ambient = ($0 == "[ambient]") } ambient && /^intensity = / { print "intensity = 0.25"; next }
         { print } /^indirect = \{/ && ao != "" { print ao }' \
         "$W/physical.scene.toml" > "$W/ao-$1/sponza.scene.toml"
@@ -296,7 +297,7 @@ for kind in lite flat; do
 done
 
 sweep_start=$(date +%s)
-"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$M/meshes/sponza.scene.toml" --mesh atrium_flat \
+"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$DEMO/sponza.scene.toml" --mesh atrium_flat \
     --host "$W/render_lab_render" \
     --render-args "--quarter 0 --no-hud --scene sponza-flat --frames 5 --dt 5000" \
     --reference "$REFERENCE" --work "$W/sampling" \

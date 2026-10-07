@@ -43,8 +43,8 @@ class DocImageFailureTest(unittest.TestCase):
     def test_variant_scene_keeps_its_import_dependency(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            meshes = root / "meshes"
-            shutil.copytree(ROOT / "launcher/main/apps/render_lab/meshes", meshes,
+            meshes = root / "launcher/demo/sponza"
+            shutil.copytree(ROOT / "launcher/demo/sponza", meshes,
                             ignore=shutil.ignore_patterns("*.mesh", "*.c", "*.h"))
             importer = root / "launcher/tools/r3d/mesh_import.py"
             importer.parent.mkdir(parents=True)
@@ -57,7 +57,7 @@ class DocImageFailureTest(unittest.TestCase):
             functions = "\n".join(line for line in functions.splitlines() if "physical_scene.py" not in line)
             script = root / "stage.sh"
             script.write_text(
-                'set -e\nW=work\nM=.\nR3D_PYTHON=sh\nmkdir -p work\ncp meshes/sponza.scene.toml work/physical.scene.toml\n'
+                'set -e\nW=work\nM=.\nDEMO=launcher/demo/sponza\nR3D_PYTHON=sh\nmkdir -p work\ncp launcher/demo/sponza/sponza.scene.toml work/physical.scene.toml\n'
                 + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct none ''\n", encoding="utf-8")
             result = subprocess.run(["sh", script.as_posix()], cwd=root, capture_output=True, text=True)
             log = (root / "work/indirect-direct/bake.log").read_text(encoding="utf-8")
@@ -76,7 +76,7 @@ class PhysicalSceneTests(unittest.TestCase):
 
     def test_the_committed_scene_loses_its_indirect_table_and_occlusion_and_nothing_else(self):
         import tomllib
-        text = (ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml").read_text(encoding="utf-8")
+        text = (ROOT / "launcher/demo/sponza/sponza.scene.toml").read_text(encoding="utf-8")
         committed, physical = tomllib.loads(text), tomllib.loads(self.module.physical_scene(text))
         self.assertIn("indirect", committed)
         self.assertIn("ao", committed["bake"])
@@ -95,7 +95,7 @@ class PhysicalSceneTests(unittest.TestCase):
 
     def test_a_copy_in_another_folder_still_reaches_the_camera_animation(self):
         from r3d.import_settings import load_scene
-        scene = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
+        scene = ROOT / "launcher/demo/sponza/sponza.scene.toml"
         text = self.module.physical_scene(scene.read_text(encoding="utf-8"), scene.parent)
         with tempfile.TemporaryDirectory() as directory:
             copy = pathlib.Path(directory) / "study" / scene.name

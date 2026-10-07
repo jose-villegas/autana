@@ -32,6 +32,11 @@ searching, so no list is kept:
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its `.glb` |
 
+The default search is `launcher/main/`. An app's `demo_assets.toml` adds
+each folder it names in `demo = ["name", ...]` from `launcher/demo/`.
+Reference content ships only through these selections; see the
+[demo assets](../../launcher/demo/README.md).
+
 Ids are unique within a pack whatever their type: the reader finds an entry
 by name, then checks its type, so a scene and its clip cannot share a stem,
 and `build_pack.py` refuses them, naming both files. A mesh or clip two roots
@@ -155,7 +160,7 @@ renderer.
 | Tool | Does |
 |---|---|
 | `mesh_import.py` | bakes a mesh and writes `<name>.mesh`, one entry, beside its import file |
-| `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main`, and with `--image` the partition image |
+| `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 

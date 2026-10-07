@@ -16,6 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from r3d import build_pack
 from anim_probe import write_camera_clip  # noqa: E402
 
 try:
@@ -189,17 +190,20 @@ class ImportTests(unittest.TestCase):
 
     def test_the_tools_name_no_scene(self):
         banned = set()
-        for path in ROOT.glob("launcher/main/apps/**/meshes/*.import.toml"):
+        files = build_pack.input_files([build_pack.DEFAULT_SEARCH])
+        for path in (file for file in files if file.name.endswith(build_pack.IMPORT)):
             values = tomllib.loads(path.read_text())
             banned.update(variant["name"].lower() for variant in values.get("variants", []))
             if "name" in values["output"]:
                 banned.add(values["output"]["name"].lower())
         banned.update(path.name.removesuffix(".scene.toml").lower()
-                      for path in ROOT.glob("launcher/main/apps/**/meshes/*.scene.toml"))
+                      for path in files if path.name.endswith(build_pack.SCENE))
         self.assertTrue(banned)
         for path in sorted((ROOT / "launcher/tools/r3d").rglob("*")):
             if path.suffix in (".py", ".md", ".txt") and ".cache" not in path.parts:
                 content = path.read_text().lower()
+                if path.suffix == ".md":
+                    content = re.sub(r"launcher/demo/[^`\s]+", "", content)
                 for name in banned:
                     self.assertNotIn(name, content, path.name)
 

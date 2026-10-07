@@ -327,8 +327,9 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # The asset packs are build products: one per root asset (a scene, a free
     # import, a free .anim.toml), written to assets/ and, under a pack
     # directory, into one image that flashes to the "assets" partition with the
-    # app. build_pack.py searches all of main/, so its inputs are globbed there
-    # too: a clip's .glb counts. `idf.py assets-flash` writes just that region.
+    # app. build_pack.py searches main/ and the demo folders named by app
+    # manifests. Both trees are dependencies, including clips' .glb sources.
+    # `idf.py assets-flash` writes just that region.
     idf_build_get_property(python PYTHON)
     set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
     set(asset_packs "${CMAKE_BINARY_DIR}/assets")
@@ -336,11 +337,15 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/*.mesh")
     launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/*.toml")
     launcher_glob(asset_sources "${CMAKE_CURRENT_LIST_DIR}/*.glb")
+    launcher_glob(demo_inputs "${CMAKE_CURRENT_LIST_DIR}/../demo/*.mesh")
+    launcher_glob(demo_settings "${CMAKE_CURRENT_LIST_DIR}/../demo/*.toml")
+    launcher_glob(demo_sources "${CMAKE_CURRENT_LIST_DIR}/../demo/*.glb")
     add_custom_command(
         OUTPUT "${asset_image}"
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
                 "${CMAKE_CURRENT_LIST_DIR}"
         DEPENDS ${asset_inputs} ${asset_settings} ${asset_sources} "${asset_tools}/r3d/build_pack.py"
+                ${demo_inputs} ${demo_settings} ${demo_sources}
                 "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
                 "${asset_tools}/asset/asset_pack.py" "${asset_tools}/anim/tracks_asset.py"
                 "${asset_tools}/gltf/gltf_read.py"
