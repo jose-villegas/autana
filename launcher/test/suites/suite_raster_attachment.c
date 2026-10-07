@@ -16,11 +16,9 @@
 #define W 64
 #define H 48
 
-/* A wall 800 square on z = 0 and a card 80 square in front of it, both
- * facing +z, drawn in that order. */
-static const int16_t wall[][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
+/* The rig's wall, then a card 80 square in front of it, also facing +z. */
 static const int16_t card[][3] = {{-40, -40, 100}, {40, -40, 100}, {40, 40, 100}, {-40, 40, 100}};
-static const int16_t (*const wall_and_card[])[3] = {wall, card};
+static const int16_t (*const wall_and_card[])[3] = {raster_rig_wall, card};
 
 static void
 id_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
