@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "gfx/gfx_color.h"
+#include "render/raster_motion.h"
 #include "scene/scene_internal.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/tune.h"
@@ -27,6 +28,10 @@ static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
 #if TUNE_ENABLED
 static raster_show_t debug_view = RASTER_SHOW_SHADED;
+/* Motion vectors, attached while the attachment view shows them. */
+static raster_motion_t* motion;
+static raster_attachment_t motion_attachment;
+static const raster_attachment_t* const attachments[] = {&motion_attachment};
 #endif
 
 bool
@@ -49,6 +54,11 @@ scene_activate(scene_t* scene, const char* camera) {
     }
     active = (active_t){scene, index};
     rendered = false;
+#if TUNE_ENABLED
+    if (motion != NULL) {
+        raster_motion_forget(motion); /* a cut */
+    }
+#endif
     return true;
 }
 
@@ -74,6 +84,10 @@ scene_draw_release(void) {
     raster = (raster_t){0};
     stats = (raster_stats_t){0, 0};
     paused = false;
+#if TUNE_ENABLED
+    memory_free(motion);
+    motion = NULL;
+#endif
 }
 
 static scene_camera_t*
@@ -98,6 +112,26 @@ scene_stats(void) {
 void
 scene_set_debug_view(raster_show_t mode) {
     debug_view = mode;
+}
+
+/* Attaches motion while it is shown, its state in PSRAM; a picture after a
+ * gap has no previous one. */
+static void
+attach_motion(void) {
+    const bool wanted = debug_view >= RASTER_SHOW_ATTACHMENT;
+    if (wanted && motion == NULL) {
+        motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
+    }
+    if (!wanted || motion == NULL) {
+        raster.attachment_count = 0;
+        return;
+    }
+    if (raster.attachment_count == 0) {
+        *motion = (raster_motion_t){0};
+        motion_attachment = raster_motion_attachment(motion);
+    }
+    raster.attachments = attachments;
+    raster.attachment_count = 1;
 }
 #endif
 
@@ -159,6 +193,9 @@ draw_active(int quarter, int width, int height) {
     raster.upscaled = true; /* scene_compose() names the picture */
     raster.destination_width = width;
     raster.destination_height = height;
+#if TUNE_ENABLED
+    attach_motion();
+#endif
     if (!fit_scratch()) {
         return;
     }

@@ -26,6 +26,7 @@ main/util/runtime/tune.c
 main/util/runtime/job.c
 main/render/raster.c
 main/render/raster_show.c
+main/render/raster_motion.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
 main/anim/anim_track.c

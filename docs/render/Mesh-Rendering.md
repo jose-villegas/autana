@@ -64,6 +64,7 @@ would see the scene mirrored.
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
+| `raster_motion.h` | The motion-vector attachment: where each pixel's point was in the previous picture |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
@@ -155,7 +156,7 @@ flowchart LR
 | `RASTER_SHOW_SHADED` | untouched: the baked colours as drawn |
 | `RASTER_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
 | `RASTER_SHOW_DEPTH_TILES` | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
-| `RASTER_SHOW_ATTACHMENT` + k | further attachment k's own view, painted by its `show` hook |
+| `RASTER_SHOW_ATTACHMENT` + k | further attachment k's own view, painted by its `show` hook; for motion, mid-grey for none, red for x and green for y |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
@@ -193,6 +194,34 @@ triangle's, so where two instances meet at exactly the same depth the pixel
 takes the later one's write. A writer sees only depth and one value per
 instance; a map that needs more, such as normals, rebuilds it from depth in
 its `resolve`.
+
+### Motion vectors
+
+`raster_motion.h`: for each pixel, the previous position of the point it
+shows minus this one, two signed bytes in half pixels of this picture.
+`RASTER_MOTION_UNKNOWN` marks a pixel nothing drew, the first picture, a
+point behind the previous camera, and motion past the range.
+
+- **The camera.** `begin` builds this picture's lens and the previous
+  camera's lens at this picture's size. `resolve` takes each pixel back to
+  the world through its depth and projects it through the previous lens. So
+  a size change between pictures needs nothing special.
+- **Moving instances.** An instance is known by its placement's address. One
+  whose placement changed since the previous picture gets its own map, which
+  carries the point to where the mesh was. From the first instance that
+  moved on, every triangle writes its instance's tag (0 for anything still),
+  and `resolve` picks the map by it; before it, pixels keep the 0 they were
+  cleared to. On a picture where nothing moved, nothing is written while
+  drawing. A raster with motion attached draws at most
+  `RASTER_MOTION_INSTANCES_MAX` instances.
+- **The caller** owns a zeroed `raster_motion_t`, attaches
+  `raster_motion_attachment()`, and calls `raster_motion_forget()` after a
+  cut. `scene_draw.c` attaches it while the attachment view shows it.
+
+Removing motion is deleting `raster_motion.{c,h}` and
+`suite_raster_motion.c`, and the lines that name it: `scene_draw.c`'s
+attachment list, the frame-cost test that attaches it, and one line each in
+`CMakeLists.txt`, `run_tests.sh` and the render harness's source list.
 
 ## Coverage and small triangles
 

@@ -88,7 +88,7 @@ bool render_lab_band_mode = true;
 bool render_lab_show_hud = true;
 
 TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RASTER_SHOW_SHADED, RASTER_SHOW_SHADED, RASTER_SHOW_DEPTH_TILES);
+TUNE(render_lab, view, RASTER_SHOW_SHADED, RASTER_SHOW_SHADED, RASTER_SHOW_ATTACHMENT);
 TUNE(render_lab, scale, 200, 100, 800);
 
 raster_show_t
