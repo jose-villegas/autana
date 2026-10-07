@@ -189,7 +189,7 @@ def bake_geometry(job, scene):
         steps = settings.simplify
         props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
         positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles, props,
-                                                 seal_seams=steps.seal_seams, **scale)
+                                                 colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
         rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
         tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,

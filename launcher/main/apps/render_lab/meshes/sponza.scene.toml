@@ -91,8 +91,8 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "36034dc189699ec3cc122f4bedc6c9cc3d496061dd2d02d4f76560bcaa28c11a"
-recipe_sha256 = "705419acf060df183e69ff97fe73e591e65d227b24e84b3fc90341aea5af8990"
+sha256 = "9cd15eaa37d4e14a4f0080f3c5d6a0857024e575c9b2a8046f4ddb798dd7cc32"
+recipe_sha256 = "b6bb2e1258f8cb0e5262e3d4f0a1cd4119209891f644d0d5e974010d24056c67"
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -118,5 +118,5 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "4c6360763a7d6b53eb4df1100ff9dd7d8b062b5be13c6075ee2b2777397209f4"
-recipe_sha256 = "74700f2cf407252c3cfbaf5c3a07b175c77590f9a2947f47c21f0f79ff22e6ca"
+sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
+recipe_sha256 = "8a8adbfce7367f3e1afbe4af92b460c8b3ab2602b9951c2bb89326a88da9ac0f"
