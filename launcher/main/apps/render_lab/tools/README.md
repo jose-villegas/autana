@@ -49,6 +49,23 @@ A pose of the flythrough is `--frames` times `--dt`:
 render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 ```
 
+## On the board
+
+A development build answers these from any shell, so a measurement selects
+its scene by name rather than through the menu:
+
+| Command | Does |
+|---|---|
+| `autana render scenes` | every scene's key and name, and which one is showing |
+| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza` or `sponza-lite` |
+| `autana render partial on\|off` | partial updates, as the menu's toggle sets them |
+| `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
+| `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+
+A screenshot's state carries an `app` object naming the scene, whether the
+menu is open, the layout, partial updates and the scale, so two captures can
+be checked to have measured the same thing.
+
 ## Images in the docs
 
 `doc_images.sh` here makes these in `docs/images/overview/` and `docs/images/render/`, run by
