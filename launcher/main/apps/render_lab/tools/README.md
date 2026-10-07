@@ -99,8 +99,186 @@ regenerate its images and tables. The scenes `sponza`, `sponza-lite`,
 `tests/test_sky_through_walls.py` flies the full, flat and lite bakes and fails
 when more frames show sky through a wall than its ceiling allows.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
-line (`test_sponza_frame_cost_along_the_flythrough`), the reading the board
-stage below takes.
+line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
+doc-images workflow
+([Render-Harness.md](../../../../../docs/tools/Render-Harness.md#images-in-these-docs)).
+
+Where the variants differ, at the pose the GIFs end on: each sheet is the two
+renders and their amplified difference, and the crops below it are the places
+that differ most, the first render above the second, enlarged.
+
+![Full against lite](../../../../../docs/images/render/compare-full-lite.png)
+![Full against lite, the places they differ most](../../../../../docs/images/render/compare-full-lite.crops.png)
+
+Lite spends fewer triangles, so small shapes merge or drop and edges step; the
+surfaces keep their colour.
+
+![Smooth against flat](../../../../../docs/images/render/compare-full-flat.png)
+![Smooth against flat, the places they differ most](../../../../../docs/images/render/compare-full-flat.crops.png)
+
+Flat shows each face in one colour, so a curtain's fold reads as bands where
+the smooth mesh blends.
+
+![Lite against fitted](../../../../../docs/images/render/compare-lite-fitted.png)
+![Lite against fitted, the places they differ most](../../../../../docs/images/render/compare-lite-fitted.crops.png)
+
+The fitted mesh has lite's budget, moved off what the flythrough never draws
+and fitted to the reference: arches, shadow edges and the banners' colours
+come back.
+
+![Full against fitted full](../../../../../docs/images/render/compare-full-fitted-full.png)
+![Full against fitted full, the places they differ most](../../../../../docs/images/render/compare-full-fitted-full.crops.png)
+
+The fitted full mesh is the same recipe at full's budget, so the same edges
+and colours come back on full's finer geometry.
+
+## Fidelity against the source
+
+The source model is lit per pixel at the same camera-path poses as the
+doc images. The generated fidelity table scores the committed bakes against
+that reference. Metric definitions are in
+[Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
+`doc_images.sh` owns the poses and measurement commands.
+
+<!-- generated: sponza-fidelity sha256=09072737b39c15733a636e9d2ea727fc55fa4ef392bde6f6e0ef50d34dc6cc83 -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
+|---|---:|---:|---:|---:|---:|
+| Full smooth | 9.101 | 28.245 | 0.5931 | 16.799 | 7.397 |
+| Lite smooth | 11.040 | 34.597 | 0.5363 | 19.361 | 9.179 |
+| Flat, committed | 12.412 | 41.872 | 0.4454 | 22.516 | 10.152 |
+<!-- /generated: sponza-fidelity -->
+
+The flat and smooth bakes differ in how colour varies across a face. The
+generated comparison scores the same fidelity poses. The sheet and enlarged
+crops in [The Sponza variants](#the-sponza-variants)
+show where that difference lies.
+
+<!-- generated: sponza-flat-smooth sha256=3bdb5845938187516b8a3c18f2477d00fe6e07b396f793349c642e29eb1d02d9 -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
+|---|---:|---:|---:|---:|---:|
+| Flat against smooth, fidelity poses | 9.798 | 33.485 | 0.5455 | 17.543 | 8.473 |
+<!-- /generated: sponza-flat-smooth -->
+
+The flat sampling sweep re-bakes the current scene over the same geometry
+and scores it against the same reference. Rows are sorted by mean error.
+Labels beginning with min or max change the auto bounds; area scales the
+median face area; sky changes the sky-ray count. Sampling changes bake
+quality without adding work to the runtime renderer.
+
+<!-- generated: sponza-flat-sampling sha256=e5cd81eac799755a4468a7c458ff7ef6b0122200169a5208bd2d7d890943d78f -->
+| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
+|---|---:|---:|---:|---:|---:|
+| fixed64 | 10.973 | 33.694 | 0.5114 | 19.312 | 9.108 |
+| fixed32 | 11.005 | 33.681 | 0.5100 | 19.374 | 9.133 |
+| fixed16 | 11.064 | 34.118 | 0.5038 | 19.485 | 9.179 |
+| fixed8 | 11.216 | 34.422 | 0.4950 | 19.861 | 9.289 |
+| area0.25 | 11.483 | 36.892 | 0.4861 | 20.781 | 9.400 |
+| min4 | 11.673 | 37.135 | 0.4723 | 20.672 | 9.658 |
+| fixed4 | 11.703 | 37.395 | 0.4685 | 20.713 | 9.687 |
+| area0.5 | 11.941 | 40.082 | 0.4679 | 21.869 | 9.716 |
+| min2 | 12.107 | 39.445 | 0.4550 | 21.582 | 9.989 |
+| declared | 12.412 | 41.872 | 0.4454 | 22.516 | 10.152 |
+| max32 | 12.413 | 41.872 | 0.4452 | 22.515 | 10.153 |
+| max8 | 12.420 | 41.871 | 0.4447 | 22.527 | 10.160 |
+| sky256 | 12.424 | 41.845 | 0.4449 | 22.500 | 10.170 |
+| sky512 | 12.430 | 41.847 | 0.4447 | 22.509 | 10.175 |
+| sky64 | 12.437 | 41.833 | 0.4451 | 22.505 | 10.184 |
+| fixed2 | 12.459 | 42.246 | 0.4396 | 21.875 | 10.362 |
+| max4 | 12.474 | 42.230 | 0.4421 | 22.537 | 10.222 |
+| sky32 | 12.533 | 41.878 | 0.4436 | 22.547 | 10.289 |
+| sky16 | 12.845 | 41.872 | 0.4408 | 22.570 | 10.660 |
+| area2 | 13.032 | 45.316 | 0.4211 | 23.397 | 10.721 |
+| centroid | 13.069 | 45.968 | 0.4077 | 23.342 | 10.774 |
+| fixed1 | 13.549 | 46.618 | 0.3931 | 23.817 | 11.261 |
+<!-- /generated: sponza-flat-sampling -->
+
+The sheet of the committed flat bake, left to right the reference,
+the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the
+heatmap's scale below. The error sits at lit arch edges, shadow boundaries and
+the foreground drapery. `doc_images.sh` regenerates the sheet.
+
+![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
+
+### Appearance fit of the lite and full meshes
+
+The GPU stage rebuilds GI bakes and fitted meshes from the scene's current
+recipes. It scores every mesh against the same held-out reference poses;
+triangle counts come from the output meshes. The sheets include reference
+heatmaps and enlarged differences. The generated comparison below reports
+appearance, normal error, path culling and predicted time. GPU fits are scratch
+recipe outputs; the board table measures the committed scene assets.
+
+<!-- generated: sponza-gpu sha256=cabd0fa7f1aaa3a811d7f9f1ad14aee76af86c3a7e3afb8c39838076e3d43227 -->
+| Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
+|---|---|---|---|---|---|---|
+| lite-GI-bake | 8670 | 10.997 | 33.754 | 0.540 | 26.210 | 45.711 |
+| lite-GI-fit | 8672 | 5.631 | 15.285 | 0.751 | 15.606 | 45.890 |
+| full-GI-bake | 17374 | 9.033 | 27.568 | 0.599 | 21.154 | 57.443 |
+| full-path-culled | 11974 | 9.025 | 27.501 | 0.600 | 19.118 | 51.326 |
+| full-GI-fit | 17287 | 5.143 | 13.330 | 0.788 | 13.248 | 57.478 |
+
+![lite GI bake and fit](../../../../../docs/images/render/gpu/appearance-indirect-lite.png)
+![lite GI bake and fit.crops](../../../../../docs/images/render/gpu/appearance-indirect-lite.crops.png)
+![full GI bake and fit](../../../../../docs/images/render/gpu/appearance-indirect-full.png)
+![full GI bake and fit.crops](../../../../../docs/images/render/gpu/appearance-indirect-full.crops.png)
+
+![Full bake and path cull](../../../../../docs/images/render/gpu/appearance-path-culled.png)
+
+![Path cull differences](../../../../../docs/images/render/gpu/appearance-path-culled.crops.png)
+<!-- /generated: sponza-gpu -->
+
+### Budget and normal sweeps
+
+The budget sweep varies the lite recipe's pruning budget and cost weight.
+The full recipe fit is included as its own point. The Pareto sheet plots
+held-out appearance against predicted time. These
+predictions use the cost weights; refresh the board stage before interpreting
+them as a model of current hardware performance.
+
+<!-- generated: sponza-budget sha256=4e3f19668b2237e46b767acda02498ee741999f7b89db3b435ad39166c90a530 -->
+| Budget | Cost weight | Triangles | Held-out dE76 | Predicted ms |
+|---|---|---|---|---|
+| 4000 | 0.0 | 4000 | 5.918 | 37.585 |
+| 4000 | 0.1 | 4000 | 6.031 | 36.153 |
+| 6000 | 0.0 | 6000 | 5.721 | 41.321 |
+| 6000 | 0.1 | 6000 | 5.885 | 39.002 |
+| 8672 | 0.0 | 8672 | 5.631 | 45.890 |
+| 8672 | 0.1 | 8672 | 5.793 | 41.890 |
+| 17381 | 0.0 | 17287 | 5.143 | 57.478 |
+
+![Budget and cost sweep](../../../../../docs/images/render/gpu/appearance-pareto.png)
+<!-- /generated: sponza-budget -->
+
+The normal sweep varies the normal term while retaining the lite recipe's
+other settings. The angle heatmaps show where geometry differs from the source.
+
+<!-- generated: sponza-normal sha256=1a897c33d7ded4ba3df4b04ead0a2082d547e93e620f8e6051c1b03a24f13e6d -->
+| Normal weight | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
+|---|---|---|---|---|---|---|
+| normal-0 | 8672 | 5.622 | 15.169 | 0.751 | 19.802 | 45.447 |
+| normal-0.1 | 8672 | 5.609 | 15.152 | 0.751 | 18.576 | 45.465 |
+| normal-0.3 | 8672 | 5.639 | 15.205 | 0.750 | 17.618 | 45.559 |
+| normal-1 | 8672 | 5.631 | 15.285 | 0.751 | 15.606 | 45.890 |
+
+![Normal angle heatmaps](../../../../../docs/images/render/gpu/appearance-normal-heat.png)
+<!-- /generated: sponza-normal -->
+
+### Board measurements
+
+The board stage consumes captures from one firmware commit, takes the median
+of each variant's mean across captures, and fits cost weights from the full
+and lite per-pose timings. Its generated model table records the source rows.
+It does not access the board.
+
+<!-- generated: sponza-board sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
+Run the documented stage to populate this comparison from current inputs.
+<!-- /generated: sponza-board -->
+
+<!-- generated: sponza-board-model sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
+Run the documented stage to populate this comparison from current inputs.
+<!-- /generated: sponza-board-model -->
+
+### Refresh commands
 
 The import-light and face-sampling examples are regenerated by the CPU stage
 with its albedo bake and flat-sampling sweep.
