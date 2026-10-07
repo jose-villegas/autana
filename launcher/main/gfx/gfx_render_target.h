@@ -31,6 +31,12 @@ typedef struct {
     gfx_attachment_t attachment[GFX_ATTACHMENTS_MAX];
 } gfx_render_target_t;
 
+/* A target of colour alone: `width` by `height` pixels at `color`. */
+static inline gfx_render_target_t
+gfx_render_target_of_color(gfx_color_t* color, int width, int height) {
+    return (gfx_render_target_t){width, 0, height, 1, {{color, sizeof(gfx_color_t)}}};
+}
+
 /* What one attachment of `rows` rows takes, rounded up to 4 bytes so the
  * next one carved after it starts aligned. */
 static inline size_t
