@@ -25,3 +25,5 @@ docs/Animation-Tracks.md	2026-10-05	PR 625 round 3: reviewed against anim_tracks
 docs/render/Mesh-Import.md	2026-10-05	PR 625 round 3: BOUNDS/FORMAT reviewed against r3d_lit_mesh.c, accurate
 docs/Animation-Tracks.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py, track_host.py and test_anim_bake.py, accurate
 launcher/tools/anim/README.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py and track_host.py, accurate
+docs/render/Dynamic-Resolution.md	2026-10-07	PR #684 round 2: hand-written prose reviewed against choose_path() and the capture, accurate
+docs/render/Scene-Manager.md	2026-10-07	PR #684 round 2: frame sequence reviewed against scene_render(), accurate

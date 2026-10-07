@@ -1857,7 +1857,7 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
 
 /* Each instance's list is as long as its own mesh's clusters: three
  * instances of two meshes with different cluster counts, so the third one's
- * list starts after a list shorter than the first's. */
+ * list starts after a list of a different length. */
 static void
 test_a_census_list_steps_by_each_instances_own_mesh(void) {
     parts_t* const wall = parts_buffer();

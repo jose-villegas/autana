@@ -25,7 +25,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
-| `raster_census()` | `raster_draw()`'s cull alone, into a list the caller holds: what survives is the same at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_census()` | `raster_draw()`'s cull alone, into a list the caller holds: on an upscaled raster it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
@@ -94,7 +94,7 @@ flowchart LR
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Cull --> List["the culled list<br/><i>the same at any render size</i>"]
+    Cull --> List["the culled list<br/><i>any render size of an upscaled raster</i>"]
     Size["the render size"] --> Fit
     List --> Fit
     subgraph Draw["raster_draw_culled()"]
@@ -104,8 +104,8 @@ flowchart LR
     DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `raster_draw()`, which is the census and
-the draw back to back, and `raster_upscale()` when it set `upscaled`. A
+A caller fills a camera, then calls `raster_draw()`, which culls and draws
+each instance in turn, and `raster_upscale()` when it set `upscaled`. A
 caller that picks the render size from what culling kept, as the render
 context does, calls `raster_census()`, sets the size, then
 `raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
@@ -170,13 +170,13 @@ sequenceDiagram
 ### View modes
 
 Development builds can look at the depth a frame drew instead of its
-colour. `raster_show()` runs after `raster_draw()` and before
+colour. `raster_show()` runs after the draw and before
 `raster_upscale()`, and overwrites the raster's colour buffer from its
 depth buffer, which it reads as the render left it and never writes.
 
 ```mermaid
 flowchart LR
-    Render["raster_draw()<br/><i>colour and depth</i>"] --> Show
+    Render["the draw<br/><i>colour and depth</i>"] --> Show
     Show["raster_show(mode)<br/><i>colour from depth</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 

@@ -130,8 +130,8 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const came
 }
 
 /* Culls one instance into `out`, counting what survived into `stats`. The
- * lens is not fitted: its frustum is the picture's at any render size, so
- * the list holds for every size. */
+ * lens is not fitted, so the frustum is the picture's and the list holds at
+ * every size the picture does. */
 static int
 cull_instance(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter,
               uint16_t* out, raster_stats_t* stats) {

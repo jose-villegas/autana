@@ -63,7 +63,7 @@ size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint16_t* culled);
 void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled);
 
-/* Fills `destination` from what raster_draw() or raster_draw_culled() last drew, both cores taking
+/* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster);
 

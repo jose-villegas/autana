@@ -156,8 +156,9 @@ assert_unwritten_from(const uint16_t* actual, size_t first, size_t count) {
     }
 }
 
-/* A call for rows [first, first + count) writes those and nothing else, not
- * even a row past the destination, which `actual` holds one more of. */
+/* Upscales [0, split) then the rest: the first call writes no row from
+ * `split` on, neither writes the row past the destination that `actual`
+ * holds, and every pixel then shows what the maps say. */
 static void
 assert_a_range_writes_only_its_rows(const upscale_t* scale, const uint16_t* depth, int split) {
     const size_t width = (size_t)scale->destination_width;
@@ -172,9 +173,7 @@ assert_a_range_writes_only_its_rows(const upscale_t* scale, const uint16_t* dept
     assert_each_pixel_follows_the_maps(scale, held.source, depth, held.actual);
 }
 
-/* Upscales in two ranges split on every row, with and without depth, and
- * holds every destination pixel to what the maps say it shows, and the rows
- * outside each range to what they were. */
+/* Every split row, with and without depth. */
 static void
 assert_matches_the_maps(const path_case_t* c) {
     const size_t source_pixels = (size_t)c->source_width * (size_t)c->source_height;
