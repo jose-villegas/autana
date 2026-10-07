@@ -140,7 +140,7 @@ class RenderViews(unittest.TestCase):
     def test_an_unknown_view_is_refused(self):
         run, _ = self.render("--scene", "sponza", "--view", "octree")
         self.assertNotEqual(0, run.returncode)
-        self.assertIn("--view is shaded, depth or tiles", run.stderr)
+        self.assertIn("--view is shaded, depth, tiles or motion", run.stderr)
 
     def test_a_picture_that_cannot_be_written_fails_the_run(self):
         missing = self.out / "no-such-folder" / "view.bmp"
