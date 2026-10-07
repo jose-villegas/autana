@@ -48,6 +48,8 @@ raster_draw	function	8	203	7
 raster_draw	loop	9	9	1
 raster_draw	loop	5	9	1
 raster_draw	blt-back	4	77	3
+raster_draw_culled	function	8	76	3
+raster_draw_culled	blt-back	6	44	2
 raster_upscale	function	24	410	14
 raster_upscale	loop	28	9	2
 raster_upscale	loop	4	9	1
