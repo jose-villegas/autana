@@ -25,7 +25,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
-| `raster_census()` | `raster_draw()`'s cull alone, into a list the caller holds: on an upscaled raster it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
@@ -96,18 +96,19 @@ flowchart LR
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Cull --> List["the culled list<br/><i>any render size of an upscaled raster</i>"]
+    Cull --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
     Size["the render size"] --> Fit
     List --> Fit
     subgraph Draw["raster_draw_culled()"]
-        Fit["r3d_lens_fit()<br/><i>to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Fit["r3d_lens_init(), r3d_lens_fit(), r3d_lens_place()<br/><i>per instance, fitted to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
     DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
 A caller fills a camera, then calls `raster_draw()`, which culls and draws
-each instance in turn, and `raster_upscale()` when it set `upscaled`. A
+each instance in turn with one fitted lens shared by culling and drawing,
+and `raster_upscale()` when it set `upscaled`. A
 caller that picks the render size from what culling kept, as the render
 context does, calls `raster_census()`, sets the size, then
 `raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
@@ -273,8 +274,10 @@ fills its spans without those clamps, which would change nothing there.
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
-scope. A frame's per-vertex and per-cluster buffers and its picture's
-attachments are one block:
+scope. A frame's per-vertex and per-cluster buffers, census list, picture
+attachments and upscale maps are one block. The list follows the vertex and
+cluster buffers, before the picture, at an offset independent of render size.
+Its storage is padded to the picture attachments' alignment:
 `raster_scratch_bytes()` sizes it, the caller obtains it once and sets
 `scratch`, and each call carves it. The caller decides where it lives,
 so none of it has to take internal RAM.

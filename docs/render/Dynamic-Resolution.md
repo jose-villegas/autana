@@ -16,15 +16,17 @@ and with no call every frame draws at the context's fixed scale.
 
 The cost a policy holds is the part that scales: the draw and the upscale.
 The present and whatever an app draws over the scene are not in it. The
-render context culls once, before it chooses a size, and draws from that
-list, so pricing a frame from what culling kept costs the predictor nothing
-extra.
+predictor culls once with the picture's unfitted lens, before it chooses a
+size, and draws from the scratch block's census list with a fitted lens. The
+list's offset is independent of render size, so the context reserves only
+the finest step's raster block. Fixed and stepped draws share one fitted lens
+per instance between culling and drawing.
 
 ## Where a frame's time goes at each size
 
 The raster brackets its stages for [frame cost](../tools/Frame-Cost.md):
 `r3d.cull`, `r3d.transform`, `r3d.draw` and `r3d.upscale`; through the
-render context the cull is the census, `r3d.census`. The suite behind
+predictor the cull is the census, `r3d.census`. The suite behind
 these tables draws the test scene's path at every size, both cores, and then
 once more on one core with the span rasterizer stopped after each stage.
 
