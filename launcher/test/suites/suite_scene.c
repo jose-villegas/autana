@@ -1048,10 +1048,10 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
     }
 }
 
-/* The scratch block is taken once, for the finest step and the list the
- * census keeps, wherever the predictor stands when it is taken. */
+/* The scratch block is taken once for the finest step, wherever the
+ * predictor stands when it is taken. */
 static void
-test_the_scratch_holds_the_finest_step_and_the_culled_list(void) {
+test_the_scratch_is_the_finest_steps_raster_block(void) {
     fixture();
     scene_t* scene = show("test_pair", NULL);
     r3d_instance_t* instances = fx.instances;
@@ -1069,7 +1069,7 @@ test_the_scratch_holds_the_finest_step_and_the_culled_list(void) {
     raster_t finest = c->raster;
     finest.width = LADDER[0].width;
     finest.height = LADDER[0].height;
-    const size_t needed = raster_scratch_bytes(&finest) + (sizeof(uint16_t) * raster_culled_length(&finest));
+    const size_t needed = raster_scratch_bytes(&finest);
     TEST_ASSERT_TRUE(taken >= needed);
     TEST_ASSERT_TRUE(c->scratch_bytes == needed);
 }
@@ -1142,7 +1142,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_loaded_scene_that_is_not_active_keeps_its_time);
     RUN_TEST(test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for);
     RUN_TEST(test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose);
-    RUN_TEST(test_the_scratch_holds_the_finest_step_and_the_culled_list);
+    RUN_TEST(test_the_scratch_is_the_finest_steps_raster_block);
 }
 
 SUITE_REGISTER(run_scene_suite);

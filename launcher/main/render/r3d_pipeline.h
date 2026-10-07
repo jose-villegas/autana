@@ -23,6 +23,10 @@
 #include "render/viewport.h"
 #include "util/math/vec3f.h"
 
+#if defined(ESP_PLATFORM)
+#include "sdkconfig.h"
+#endif
+
 /* A camera made ready for one viewport and one mesh's position scale.
  * Lens space: x and y are already pixels at unit depth, turned for the
  * panel's quarter, so a screen position is centre + (x, y) / z. */
@@ -88,15 +92,31 @@ int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clu
 int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
                             int count, int height);
 
+/* One way of the data cache: addresses this far apart share a cache set. */
+#if defined(ESP_PLATFORM)
+#define R3D_PIPELINE_CACHE_WAY (CONFIG_ESP32S3_DATA_CACHE_SIZE / CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS)
+#else
+#define R3D_PIPELINE_CACHE_WAY 8192 /* the board's 64 KB in 8 ways */
+#endif
+
 /* A raster's scratch block as its parts: the one layout
- * raster_scratch_bytes() sizes, widest alignment first so each part lands
- * aligned after the one before. */
+ * raster_scratch_bytes() sizes. The census list comes first, so it stays put
+ * when the render size changes, and takes whole cache ways, so the parts
+ * after it fall in the cache sets they would without it. */
 typedef struct {
     r3d_pipeline_vertex_t* cs;   /* mesh->vertex_count entries */
     r3d_pipeline_rows_t* rows;   /* mesh->cluster_count entries */
     gfx_render_target_t picture; /* raster_picture(), every row */
-    uint16_t* visible;           /* mesh->cluster_count entries */
+    uint16_t* culled;            /* raster_culled_length() entries */
 } r3d_pipeline_buffers_t;
+
+/* The census list's share of the scratch block: raster_culled_length()
+ * entries, rounded up to whole cache ways. */
+static inline size_t
+r3d_pipeline_culled_bytes(const raster_t* raster) {
+    const size_t way = R3D_PIPELINE_CACHE_WAY;
+    return ((sizeof(uint16_t) * raster_culled_length(raster)) + way - 1) / way * way;
+}
 
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
  * the size it renders at, for a mesh of `position_scale`. */
@@ -106,11 +126,13 @@ static inline r3d_pipeline_buffers_t
 r3d_pipeline_carve(const raster_t* raster) {
     char* p = raster->scratch;
     r3d_pipeline_buffers_t b;
+    b.culled = (uint16_t*)p;
+    p += r3d_pipeline_culled_bytes(raster);
     b.cs = (r3d_pipeline_vertex_t*)p;
     p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster);
     b.rows = (r3d_pipeline_rows_t*)p;
     p += sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster);
     b.picture = raster_picture(raster);
-    b.visible = (uint16_t*)gfx_render_target_carve(&b.picture, p);
+    gfx_render_target_carve(&b.picture, p);
     return b;
 }

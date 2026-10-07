@@ -282,7 +282,10 @@ cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores). An app that
 loads a scene and activates its camera needs none of that: while a camera is
 active the shell draws it in the same overlap window and upscales it into the
 framebuffer before `frame()`, whether or not the app has an `update()`
-([Scene-Manager.md](render/Scene-Manager.md#each-frame)).
+([Scene-Manager.md](render/Scene-Manager.md#each-frame)). The render context
+owns one raster scratch block, including the census list before the picture
+attachments. Dynamic resolution reserves the finest step's block, so choosing
+a render size preserves the census without a separate allocation.
 
 ### Engine systems
 

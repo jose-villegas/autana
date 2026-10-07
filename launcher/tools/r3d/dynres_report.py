@@ -104,10 +104,15 @@ def findings_table(splits, spans):
                     f"| {delta('r3d.draw', sa, sb):.1f} | {delta('r3d.upscale', sa, sb):.1f} "
                     + " ".join(f"| {ms(delta(k, oa, ob))}" for k in ("rows", "span_setup", "fill")) + " |")
 
-    row("1.5x over 2x", (245, 298), (184, 224))
-    row("2x over 2.5x", (184, 224), (147, 179))
-    row("full height over half", (368, 448), (368, 224))
-    row("full width over half", (368, 448), (184, 448))
+    for question, a, b in (
+        ("half width, more height over half", (184, 298), (184, 224)),
+        ("half over floor", (184, 224), (184, 179)),
+        ("floor over 2.5x cost reference", (184, 179), (147, 179)),
+        ("recovery over 3x cost reference", (184, 149), (122, 149)),
+        ("full height over half", (368, 448), (368, 224)),
+        ("full width over half", (368, 448), (184, 448)),
+    ):
+        row(question, a, b)
     return "\n".join(rows)
 
 
@@ -173,7 +178,7 @@ def chart(rows, path):
     for column, budget in enumerate(budgets):
         cost_axis, size_axis = axes[0][column], axes[1][column]
         for r in (r for r in rows if r["budget"] == budget):
-            label = r["policy"] if r["ladder"] in ("half", "isotropic") else f"{r['policy']}, {r['ladder']}"
+            label = r["policy"] if r["ladder"] == "half" else f"{r['policy']}, {r['ladder']}"
             seconds = [(i + 1) * 0.05 for i in range(len(r["costs"]))]
             cost_axis.plot(seconds, [c / 1000 for c in r["costs"]], linewidth=0.8, label=label)
             share = [100 * w * h / (DESTINATION[0] * DESTINATION[1]) for w, h in r["sizes"]]
