@@ -99,7 +99,7 @@ MEASURE_RE = re.compile(r"device_tests.*(?<![\d.])(\d+)\s*us\b")
 #
 # A line saying "per step" or "for the one step" names its subject;
 # everything else keeps the last-figure rule and the gfx reasoning above.
-PER_STEP_RE = re.compile(r"device_tests.*?(?<![\d.])(\d+)\s*us (?:per step|for the one step)")
+PER_STEP_RE = re.compile(r"device_tests.*?(?<![\d.])(\d+)\s*us (?:per step|for (?:the )?one step)")
 
 # "frame time, lava stress: sim 92706 us/frame" - one phase of a frame a test
 # splits into sim, mark, present and total before logging its own figure. A
