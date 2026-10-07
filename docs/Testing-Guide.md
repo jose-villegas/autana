@@ -204,11 +204,13 @@ when a host frame nears the ceiling.
 `launcher/tools/quality/stack_chain_gate.py` discovers `stack_chain.txt` under
 `launcher/`, excluding build directories. App roots belong in their app's
 spec; engine roots belong in the test spec. A `root FUNCTION KIND` line
-names a `test`, `frame` or `system` entry. The diagnostics compiler measures
+names a `test`, `frame` or `system` entry. The target compiler measures
 frames and calls in the engine, opted-in apps, tests and task/test runners.
 
-An `indirect CALLER... : CALLEE...` line supplies pointer targets; an
-undeclared pointer caller reachable below a root fails. Private names may be
+An `indirect CALLER... : CALLEE...` line supplies pointer targets. Every
+spec contributes to one graph; declare each edge once beside the pointer
+caller, with engine edges in the engine spec. An undeclared source-line
+pointer caller reachable below a root fails. Private names may be
 qualified as `file.c:function`. Suite registrations and Unity's wrapper
 supply runner pointer edges from their sources. The runner overhead is the
 deepest measured path from the main-task entry to the kind's dispatcher:
@@ -224,9 +226,22 @@ window spills; coprocessor and TLS storage occupy the top of the task stack.
 Worker-task calls are separate; a dispatcher's synchronous fallback remains
 on its caller's stack. The conservative maximum includes clipping paths,
 which a device's high-water mark may not encounter with an interrupt.
-External library calls and compiler-generated copies are not summed. The
-chain gate runs in self-test CI and `autana build diag --check`; it predicts
-stack use without flashing.
+Linked library frames and direct call edges come from the build's own
+`launcher.elf`, using the toolchain beside the compiler in
+`compile_commands.json`. `entry a1, N` supplies each frame; windowed calls
+and register calls to literal function addresses supply direct edges.
+Library pointer calls are not followed unless a spec declares their targets.
+Functions without a return instruction end the task or test; calls into
+them are excluded, except ancestors of the task dispatchers whose loops
+run the task. The C standard's nonreturning functions, including linker
+wraps, also end a path. Branch targets split basic blocks. Calls in blocks
+that cannot reach a return before a nonreturning call are excluded. A
+missing branch target or an indirect jump makes disassembly incomplete;
+that function retains its calls and is not inferred nonreturning from
+instructions. Returning paths, including lazy initialization, remain counted. The compiler graphs retain source-line pointer checks and private
+function qualification; ELF disassembly alone does not supply those checks.
+The chain gate runs in self-test CI and `autana build diag --check`; it
+predicts stack use without flashing.
 
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate

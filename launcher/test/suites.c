@@ -130,39 +130,38 @@ unmatched_patterns(void) {
     return unmatched;
 }
 
-suite_run_t
-suites_run_request(const char* request) {
-    suite_run_t run = {0};
+void
+suites_run_request(const char* request, suite_run_t* run) {
+    *run = (suite_run_t){0};
     const char* space = strchr(request, ' ');
     const size_t name_length = space != NULL ? (size_t)(space - request) : strlen(request);
     const char* list = space != NULL ? space + 1 : "";
     if (name_length > SUITE_NAME_MAX) {
-        return run;
+        return;
     }
-    memcpy(run.name, request, name_length);
+    memcpy(run->name, request, name_length);
 
     filtering = false;
     selected_count = 0;
     memset(pattern_hits, 0, sizeof pattern_hits);
     for (int i = 0; i < registered; i++) {
-        if (strcmp(suites[i].name, run.name) != 0) {
+        if (strcmp(suites[i].name, run->name) != 0) {
             continue;
         }
-        run.found = true;
+        run->found = true;
         filtering = list[0] != '\0';
         if (filtering && !parse_patterns(list)) {
             filtering = false;
-            run.refused = true;
-            return run;
+            run->refused = true;
+            return;
         }
         suites[i].fn();
-        run.selected = selected_count;
-        run.unmatched = filtering ? unmatched_patterns() : 0;
+        run->selected = selected_count;
+        run->unmatched = filtering ? unmatched_patterns() : 0;
         break;
     }
     filtering = false;
     pattern_count = 0;
-    return run;
 }
 
 void

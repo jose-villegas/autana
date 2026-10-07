@@ -6,17 +6,7 @@ root test_the_flythrough_sees_mostly_building test
 root test_dynamic_resolution_policies_along_the_path test
 root render_lab_frame frame
 
-indirect draw_slice : clear_color clear_depth raster_motion.c:clear
-indirect instance_writers : raster_motion.c:writer
-indirect raster_draw raster_draw_culled : raster_motion.c:begin
-indirect resolve_slice : raster_motion.c:resolve
-indirect writer_rows r3d_span_triangle_write : raster_attachment_tag
-
-indirect raster_show : raster_motion.c:show
-
 indirect render_lab_frame : scene_cube_frame scene_wire_frame scene_raytrace_frame scene_pathtrace_frame scene_sponza_frame scene_cube_frame_band scene_wire_frame_band
 indirect switch_to_scene : scene_cube_enter scene_wire_plane_enter scene_wire_cube_enter scene_wire_sphere_enter scene_wire_capsule_enter scene_raytrace_enter scene_pathtrace_enter scene_sponza_enter scene_sponza_lite_enter scene_sponza_flat_enter scene_sponza_fitted_enter scene_sponza_fitted_full_enter wire_exit scene_cube_exit scene_raytrace_exit scene_pathtrace_exit scene_sponza_exit
 indirect update_fps_counter : scene_cube_invalidate scene_wire_invalidate scene_raytrace_invalidate scene_pathtrace_invalidate scene_sponza_invalidate
 indirect draw_fps : wire_status raytrace_status pathtrace_status sponza_status
-indirect shell_systems_update : scene_shell_render
-indirect job_run_core1 : lattice_row_job_worker seed_row_job_worker sweep_row_job_worker

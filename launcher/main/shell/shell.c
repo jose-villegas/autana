@@ -160,7 +160,8 @@ run_pending_selftest_suite(void) {
     if (request == NULL) {
         return;
     }
-    const suite_run_t run = suites_run_request(request);
+    static suite_run_t run;
+    suites_run_request(request, &run);
     if (!run.found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
@@ -360,7 +361,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
 void
 shell_run(void) {
     const app_t* current = NULL; /* NULL means the launcher is showing */
-    input_t input = {0};
+    static input_t input;
     int64_t previous_us = timing_now_us();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t fps_window_start = previous_us;

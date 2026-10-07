@@ -191,7 +191,7 @@ raster_scratch_bytes(const raster_t* raster) {
            + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
            + gfx_render_target_bytes(&picture)
            + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1)
-           + 2 * r3d_pipeline_work_bytes() + sizeof(draw_work_t);
+           + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t);
 }
 
 /* The shape the camera frames: the destination's when upscaled, so a render

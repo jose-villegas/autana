@@ -214,8 +214,9 @@ static void
 report_frame_cost(const char* label, const r3d_instance_t* instance, const raster_attachment_t* const* attachments,
                   r3d_placement_t* moving) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    bench_t b;
-    bench_open(&b, instance, attachments);
+    bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(b);
+    bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
@@ -228,8 +229,8 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
             moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
         }
         const int64_t start = timing_now_us();
-        const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
-        raster_upscale(&b.raster, b.panel, GFX_WIDTH, GFX_HEIGHT);
+        const raster_stats_t stats = raster_draw(&b->raster, &camera, 0);
+        raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
@@ -239,7 +240,8 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
     }
     ESP_LOGI(TAG, "%s both cores: mean %lldus (%.1f fps before present), worst %lldus", label,
              (long long)(frame_sum / samples), 1e6 * samples / (double)frame_sum, (long long)worst);
-    bench_close(&b);
+    bench_close(b);
+    memory_free(b);
 }
 
 void

@@ -80,13 +80,14 @@ def symbols(nm, elf, functions=FUNCTIONS):
     return found
 
 
+def parse_instruction(line):
+    match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
+    return (int(match[1], 16), len(match[2]) // 2, match[3], match[4]) if match else None
+
+
 def instructions(objdump, elf, function):
-    found = []
-    for line in run(objdump, "-d", "--disassemble=%s" % function, str(elf)).splitlines():
-        match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
-        if match:
-            found.append((int(match[1], 16), len(match[2]) // 2, match[3], match[4]))
-    return found
+    return [parsed for line in run(objdump, "-d", "--disassemble=%s" % function, str(elf)).splitlines()
+            if (parsed := parse_instruction(line)) is not None]
 
 
 def target_of(operands):

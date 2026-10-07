@@ -1,26 +1,13 @@
 #!/usr/bin/env python3
-"""Check main-task stack chains using the diagnostics compiler's call graph.
+"""Predict task stack from compiler graphs and the linked ELF.
 
-Specs are discovered as launcher/**/stack_chain.txt (outside build directories):
+Discover launcher/**/stack_chain.txt: root FUNCTION test|frame|system and
+indirect CALLER... : CALLEE... (private names: file.c:function).
+Compiler graphs close source pointer calls; ELF adds library frames/calls.
+Undeclared library pointers are not followed. Returnless callees are
+excluded except dispatcher ancestors. Context and budgets are derived.
 
-    root <function> <test|frame|system>
-    indirect <caller>... : <callee>...
-
-Private names may be qualified as file.c:function. Roots share the rule
-stack - timing.c reserve - derived runner - target context. The runner
-is the deepest measured path from main_task to the pointer dispatch for that
-kind. Suite registration and Unity's test wrapper supply runner pointer edges;
-engine/app pointer targets still require indirect declarations. Undeclared
-pointer calls below roots, missing harness paths and non-static frames fail.
-
-Only synchronous calls belong to a task's chain. job_run_core1's inline
-fallback is synchronous; job_task_fn's dispatched work uses its own stack.
-XT_STK_FRMSZ includes interrupt context and window spills; the aligned
-coprocessor save area also occupies the task stack. TLS comes from the ELF.
-External library calls and compiler-generated copies are not summed; this is
-a prediction that requires device verification, not a measured watermark.
-
-    launcher/tools/quality/stack_chain_gate.py [build-dir]
+    stack_chain_gate.py [build-dir]
 """
 
 import glob
@@ -38,6 +25,8 @@ LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
 MAIN_DIR = os.path.join(LAUNCHER, "main")
 CHECKER = os.path.join(LAUNCHER, "test", "check_stack_usage.py")
 TIMING = os.path.join(LAUNCHER, "test", "timing.c")
+sys.path.insert(0, os.path.dirname(HERE))
+from render.code_layout import parse_instruction, target_of
 
 
 def stack_reserve():
@@ -54,6 +43,7 @@ FRAME_RE = re.compile(r"(\d+) bytes \(static\)")
 INDIRECT = "__indirect_call"
 KINDS = {"test": "call_protected", "frame": "shell_step_app",
          "system": "scene_shell_render"}
+C_NORETURN = {"abort", "exit", "_Exit", "quick_exit", "longjmp", "thrd_exit"}
 
 
 class SpecError(Exception):
@@ -122,6 +112,135 @@ def resolve(name, frame):
                   and (not qualifier or qualifier in t.replace("\\", "/")))
 
 
+def parse_elf(text):
+    """Windowed entry frames and direct calls, including linker long calls."""
+    frame, calls, registers, returning, code = {}, {}, {}, set(), {}
+    node = None
+    for line in text.splitlines():
+        header = re.match(r"^[0-9a-fA-F]+ <([^>]+)>:", line)
+        if header:
+            node = header.group(1)
+            frame[node] = 0
+            code[node] = []
+            registers.clear()
+        elif node:
+            if re.search(r"\bretw?(?:\.n)?\b", line):
+                returning.add(node)
+            entry = re.search(r"\bentry\s+a1,\s*(0x[0-9a-f]+|\d+)", line)
+            direct = re.search(r"\bcall(?:4|8|12)\s+[0-9a-f]+ <([^>+]+)>", line)
+            literal = re.search(r"\bl32r\s+(a\d+),.*\([0-9a-f]+ <([^>]+)>\)", line)
+            indirect = re.search(r"\bcallx(?:4|8|12)\s+(a\d+)", line)
+            callee = direct.group(1) if direct else (
+                registers.get(indirect.group(1)) if indirect else None)
+            if entry:
+                frame[node] = int(entry.group(1), 0)
+            if callee:
+                calls.setdefault(node, set()).add(callee)
+            instruction = parse_instruction(line)
+            if instruction:
+                address, _size, op, operands = instruction
+                code[node].append((address, op, operands, callee))
+            if literal:
+                registers[literal.group(1)] = literal.group(2)
+            else:
+                written = re.search(r":\s+[0-9a-f]+\s+\w+(?:\.\w+)?\s+(a\d+),", line)
+                if written:
+                    registers.pop(written.group(1), None)
+            if direct or indirect or re.search(r"\b(?:j|b\w+)\s", line):
+                registers.clear()
+    addresses = {n: {i[0] for i in instructions} for n, instructions in code.items()}
+    incomplete = {n for n, instructions in code.items() if not instructions or any(
+        op == 'jx' or ((op == 'j' or op.startswith(('b', 'loop')))
+                      and (target := target_of(operands)) is not None
+                      and target not in addresses[n])
+        for _address, op, operands, _callee in instructions)}
+    terminal = set(frame) - returning - incomplete
+    functions = set(frame) | {callee for ts in calls.values() for callee in ts}
+    terminal |= {n for n in functions
+                 if re.sub(r"^__(?:wrap|real)_", "", source_name(n)) in C_NORETURN}
+    live = {n: calls.get(n, set()) if n in incomplete else returning_calls(instructions, terminal)
+            for n, instructions in code.items()}
+    blocked = {n: ts - live[n] for n, ts in calls.items()}
+    return frame, {n: ts for n, ts in live.items() if ts}, terminal, blocked
+
+
+def returning_calls(instructions, terminal):
+    """Calls in blocks that can reach a return without entering a terminal callee."""
+    if not instructions:
+        return set()
+    leaders = {instructions[0][0]}
+    targets = {}
+    for i, (address, op, operands, callee) in enumerate(instructions):
+        branch = op == 'j' or op.startswith(('b', 'loop'))
+        target = target_of(operands) if branch else None
+        if target is not None:
+            targets[address] = target
+            leaders.add(targets[address])
+        if branch or op.startswith('ret') or callee in terminal:
+            if i + 1 < len(instructions):
+                leaders.add(instructions[i + 1][0])
+    blocks = {}
+    for instruction in instructions:
+        if instruction[0] in leaders:
+            leader = instruction[0]
+            blocks[leader] = []
+        blocks[leader].append(instruction)
+    starts = list(blocks)
+    reverse, returns = {}, set()
+    for i, start in enumerate(starts):
+        address, op, _operands, callee = blocks[start][-1]
+        if op.startswith('ret'):
+            returns.add(start)
+        elif callee not in terminal:
+            successors = [targets[address]] if address in targets else []
+            if op != 'j' and i + 1 < len(starts):
+                successors.append(starts[i + 1])
+            for successor in successors:
+                if successor in blocks:
+                    reverse.setdefault(successor, set()).add(start)
+    live = reachable(returns, reverse)
+    return {callee for start in live for _address, _op, _operands, callee in blocks[start]
+            if callee is not None}
+
+
+def linked_graph(ci_paths, text):
+    frame, calls, pointers, bad = parse_graph(ci_paths)
+    linked_frames, linked_calls, terminal, blocked = parse_elf(text)
+    nonreturning = terminal
+    terminal = {source_name(n) for n in terminal} - {
+        source_name(n) for n in linked_frames if n not in terminal}
+    reverse = {}
+    for caller, callees in calls.items():
+        for callee in callees:
+            reverse.setdefault(callee, set()).add(caller)
+    dispatchers = [n for endpoint in KINDS.values() for n in resolve(endpoint, frame)]
+    ancestors = {source_name(n) for n in reachable(dispatchers, reverse)}
+    terminal -= ancestors
+    names = {}
+    for title in frame:
+        names.setdefault(source_name(title), []).append(title)
+    for name, size in linked_frames.items():
+        titles = names.get(source_name(name), [])
+        if not titles:
+            frame[name] = size
+            names.setdefault(source_name(name), []).append(name)
+        for title in titles:
+            if frame[title] == 0:
+                frame[title] = size
+    for caller in linked_frames:
+        callees = linked_calls.get(caller, ())
+        for title in names.get(source_name(caller), ()):
+            if caller in blocked and caller not in nonreturning:
+                dead = {source_name(n) for n in blocked[caller]} - ancestors
+                calls[title] = {t for t in calls.get(title, ()) if source_name(t) not in dead}
+            if title in linked_frames:
+                calls.setdefault(title, set()).update(
+                    target for callee in callees for target in names.get(source_name(callee), ()))
+    calls = {n: {t for t in ts if source_name(t) not in terminal}
+             for n, ts in calls.items()}
+    return frame, calls, pointers, bad
+
+
 def deepest(root, frame, calls, stop=None):
     memo = {}
 
@@ -151,9 +270,11 @@ def reachable(roots, calls):
     return seen
 
 
-def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=()):
-    roots, declared = read_spec(spec_path)
-    frame, calls, pointer_callers, bad = parse_graph(ci_paths)
+def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=(),
+              graph=None, declared=None):
+    roots, own_edges = read_spec(spec_path)
+    declared = own_edges if declared is None else declared
+    frame, calls, pointer_callers, bad = graph or parse_graph(ci_paths)
     problems = []
 
     covered = set()
@@ -298,7 +419,7 @@ def main(argv):
                                           text=True)
 
         failed = False
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
+        with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 2)) as pool:
             for source, done in pool.map(compile_one, jobs):
                 if done.returncode != 0:
                     failed = True
@@ -327,32 +448,40 @@ def main(argv):
         raise SpecError("ELF does not define the TLS stack area")
     context = int(size.group(1)) + ((tls["_thread_local_bss_end"] -
                                    tls["_thread_local_data_start"] + 15) & ~15)
-    if not compile_jobs(shared_jobs, shared):
-        return 1
-    shared_paths = sorted(glob.glob(os.path.join(shared, "*.ci")))
-    status = 0
+    all_jobs = list(shared_jobs)
+    groups = [(shared_jobs, shared)]
     for spec in specs:
         app_dir = os.path.dirname(spec)
-        name = os.path.basename(app_dir)
-        out = os.path.join(build, "stack-chain", name)
-        os.makedirs(out, exist_ok=True)
         jobs = app_jobs(db, app_dir) if "/apps/" in app_dir.replace("\\", "/") else []
-        if jobs and not compile_jobs(jobs, out):
-            status = 1
-            continue
-
-        ci_paths = shared_paths + (sorted(glob.glob(os.path.join(out, "*.ci"))) if jobs else [])
+        if jobs:
+            all_jobs.extend(jobs)
+            groups.append((jobs, os.path.join(build, "stack-chain", os.path.basename(app_dir))))
+    ci_paths = []
+    for jobs, out in groups:
+        os.makedirs(out, exist_ok=True)
+        if not compile_jobs(jobs, out):
+            return 1
+        ci_paths.extend(sorted(glob.glob(os.path.join(out, "*.ci"))))
+    text = subprocess.run([cmd[0].replace("gcc", "objdump"), "-d",
+                           os.path.join(build, "launcher.elf")],
+                          capture_output=True, text=True, check=True).stdout
+    declared = [edge for spec in specs for edge in read_spec(spec)[1]]
+    graph = linked_graph(ci_paths, text)
+    status = 0
+    for spec in specs:
+        name = os.path.basename(os.path.dirname(spec))
         try:
             problems = check_app(name, spec, ci_paths, stack_bytes,
-                                  stack_reserve(), context, runner_edges(jobs + shared_jobs, spec))
+                                  stack_reserve(), context, runner_edges(all_jobs, spec),
+                                  graph, declared)
         except SpecError as exc:
             problems = [str(exc)]
         for problem in problems:
             print("stack_chain_gate: %s: %s" % (name, problem))
         if problems:
             status = 1
-        # The per-function ceiling rides along on the same device frames.
-        if jobs and subprocess.run([sys.executable, CHECKER, out]).returncode != 0:
+    for _jobs, out in groups[1:]:
+        if subprocess.run([sys.executable, CHECKER, out]).returncode != 0:
             status = 1
     return status
 
