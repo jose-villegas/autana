@@ -95,8 +95,9 @@ class SkyThroughWalls(unittest.TestCase):
         counts = [sky_pixels(frame, sky) for frame in read_video(video)[1]]
         video.unlink()
         self.assertEqual(len(counts), FRAMES)
-        # Sky open to the top in most frames: the colour matched, so a frame with no holes counted none.
-        self.assertGreater(sum(open_ > 0 for _, open_ in counts), FRAMES // 2, f"{scene}: no sky found")
+        # The path looks up at the open roof, so sky open to the top must turn up: the colour matched, and a frame
+        # with no holes counted none rather than missing them all.
+        self.assertTrue(any(open_ > HOLE_PIXELS for _, open_ in counts), f"{scene}: no sky found")
         holed = [frame for frame, (enclosed, _) in enumerate(counts) if enclosed > HOLE_PIXELS]
         self.assertLessEqual(len(holed), most, f"{scene}: holed frames {holed}")
 
