@@ -158,6 +158,37 @@ typedef struct {
     uint8_t mask;
 } walk_entry_t;
 
+#define CLIP_PLANES     5
+#define CLIP_VERTEX_MAX (3 + CLIP_PLANES)
+
+typedef struct {
+    float x, y, z, r, g, b;
+} clip_vertex_t;
+
+typedef struct {
+    float x, y, z, w; /* inside where x lx + y ly + z lz + w >= 0 */
+} clip_plane_t;
+
+struct r3d_pipeline_work {
+    union {
+        struct {
+            plane_t planes[PLANE_COUNT];
+            walk_entry_t stack[WALK_STACK_MAX];
+        } cull;
+
+        struct {
+            clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
+            r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
+            clip_plane_t planes[CLIP_PLANES];
+        } clip;
+    };
+};
+
+size_t
+r3d_pipeline_work_bytes(void) {
+    return sizeof(r3d_pipeline_work_t);
+}
+
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
@@ -186,11 +217,11 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
 }
 
 int
-r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out) {
-    plane_t planes[PLANE_COUNT];
+r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
+    plane_t* planes = work->cull.planes;
     frustum_planes(lens, planes);
 
-    walk_entry_t stack[WALK_STACK_MAX];
+    walk_entry_t* stack = work->cull.stack;
     int top = 0;
     stack[top++] = (walk_entry_t){0, ALL_PLANES};
     int count = 0;
@@ -345,10 +376,6 @@ r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, co
     return draw_split_row(weight, height);
 }
 
-typedef struct {
-    float x, y, z, r, g, b;
-} clip_vertex_t;
-
 static r3d_span_vertex_t
 project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     const float inv = (float)R3D_SUBPIXEL / v->z;
@@ -370,13 +397,6 @@ static inline int32_t
 signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t cy) {
     return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
 }
-
-#define CLIP_PLANES     5
-#define CLIP_VERTEX_MAX (3 + CLIP_PLANES)
-
-typedef struct {
-    float x, y, z, w; /* inside where x lx + y ly + z lz + w >= 0 */
-} clip_plane_t;
 
 static inline float
 plane_distance(const clip_plane_t* p, const clip_vertex_t* v) {
@@ -407,14 +427,16 @@ clip_to_plane(const clip_plane_t* p, const clip_vertex_t* in, int n, clip_vertex
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
 static int
-clip_to_guard(const r3d_lens_t* lens, clip_vertex_t poly[CLIP_VERTEX_MAX], int n) {
+clip_to_guard(const r3d_lens_t* lens, r3d_pipeline_work_t* work, int n) {
+    clip_vertex_t* poly = work->clip.poly;
     const float g = (float)GUARD_PIXELS;
-    const clip_plane_t planes[CLIP_PLANES] = {
-        {0.0F, 0.0F, 1.0F, -lens->near_z},       {1.0F, 0.0F, lens->center_x + g, 0.0F},
-        {-1.0F, 0.0F, g - lens->center_x, 0.0F}, {0.0F, 1.0F, lens->center_y + g, 0.0F},
-        {0.0F, -1.0F, g - lens->center_y, 0.0F},
-    };
-    clip_vertex_t other[CLIP_VERTEX_MAX];
+    clip_plane_t* planes = work->clip.planes;
+    planes[0] = (clip_plane_t){0.0F, 0.0F, 1.0F, -lens->near_z};
+    planes[1] = (clip_plane_t){1.0F, 0.0F, lens->center_x + g, 0.0F};
+    planes[2] = (clip_plane_t){-1.0F, 0.0F, g - lens->center_x, 0.0F};
+    planes[3] = (clip_plane_t){0.0F, 1.0F, lens->center_y + g, 0.0F};
+    planes[4] = (clip_plane_t){0.0F, -1.0F, g - lens->center_y, 0.0F};
+    clip_vertex_t* other = work->clip.other;
     for (int p = 0; p < CLIP_PLANES && n >= 3; p++) {
         n = clip_to_plane(&planes[p], poly, n, other);
         memcpy(poly, other, sizeof(clip_vertex_t) * (size_t)n);
@@ -438,14 +460,14 @@ fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const
 }
 
 static inline __attribute__((always_inline)) void
-draw_clipped(const r3d_lens_t* lens, const clip_vertex_t in[3], bool double_sided, const uint16_t* face_color,
-             const r3d_span_target_t* target) {
-    clip_vertex_t poly[CLIP_VERTEX_MAX] = {in[0], in[1], in[2]};
-    const int n = clip_to_guard(lens, poly, 3);
+draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_color, const r3d_span_target_t* target,
+             r3d_pipeline_work_t* work) {
+    clip_vertex_t* poly = work->clip.poly;
+    const int n = clip_to_guard(lens, work, 3);
     if (n < 3) {
         return;
     }
-    r3d_span_vertex_t s[CLIP_VERTEX_MAX];
+    r3d_span_vertex_t* s = work->clip.projected;
     int64_t area2 = 0;
     for (int i = 0; i < n; i++) {
         s[i] = project(lens, &poly[i]);
@@ -482,17 +504,17 @@ rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) 
 
 /* A triangle with a corner behind the near plane or too far off screen to
  * snap is rebuilt from the mesh and clipped. */
-static inline __attribute__((always_inline)) void
+static __attribute__((noinline, cold)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
-             bool double_sided, const r3d_span_target_t* target) {
-    clip_vertex_t in[3];
+             bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    clip_vertex_t* in = work->clip.poly;
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
-    draw_clipped(lens, in, double_sided, face_color, target);
+    draw_clipped(lens, double_sided, face_color, target, work);
 }
 
 static inline __attribute__((always_inline)) void
@@ -514,7 +536,7 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
 
 static inline __attribute__((always_inline)) void
 draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
-             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes) {
+             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes, r3d_pipeline_work_t* work) {
     const int end = c->triangle_first + c->triangle_count;
     for (int t = c->triangle_first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
@@ -523,7 +545,7 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
             draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target);
+            draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
         }
     }
 }
@@ -531,10 +553,11 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
 /* The draw for a target with writers, kept out of the hot one's code. */
 static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-             const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
+             const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+             r3d_pipeline_work_t* work) {
     for (int i = 0; i < count; i++) {
         if (rows == NULL || !rows_miss_target(&rows[clusters[i]], target)) {
-            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, true);
+            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, true, work);
         }
     }
 }
@@ -542,15 +565,16 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 /* Chooses once per draw whether the target's writers follow each fill. */
 RENDER_ENTRY_OFFSET(4) void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
+                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+                  r3d_pipeline_work_t* work) {
     if (target->writer_count != 0) {
-        draw_writing(mesh, lens, clusters, count, cs, rows, target);
+        draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
         return;
     }
     for (int i = 0; i < count; i++) {
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
-        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false);
+        draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false, work);
     }
 }

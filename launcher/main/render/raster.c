@@ -23,6 +23,7 @@ typedef struct {
     const r3d_span_writer_t* writers;
     int writer_count;
     uint16_t* destination;
+    int work_index;
 } slice_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -117,7 +118,7 @@ draw_slice(void* ctx) {
             a->clear(a, r, target.rows.attachment[i].pixels, pixels);
         }
     }
-    r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b.cs, b.rows, &target);
+    r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b.cs, b.rows, &target, b.work[s->work_index]);
 }
 
 static void
@@ -176,7 +177,8 @@ raster_scratch_bytes(const raster_t* raster) {
     return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
            + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
            + gfx_render_target_bytes(&picture)
-           + (sizeof(uint16_t) * ((size_t)raster->destination_width + (size_t)raster->destination_height));
+           + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1)
+           + 2 * r3d_pipeline_work_bytes();
 }
 
 /* The shape the camera frames: the destination's when upscaled, so a render
@@ -212,9 +214,10 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const came
 }
 
 static int
-cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats) {
+cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
+              r3d_pipeline_work_t* work) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    const int visible = r3d_pipeline_cull(mesh, lens, out);
+    const int visible = r3d_pipeline_cull(mesh, lens, out, work);
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
         stats->triangles += mesh->clusters[out[i]].triangle_count;
@@ -243,6 +246,11 @@ scratch_culled(const raster_t* raster) {
     return r3d_pipeline_carve(raster).culled;
 }
 
+static __attribute__((noinline)) r3d_pipeline_work_t*
+scratch_work(const raster_t* raster) {
+    return r3d_pipeline_carve(raster).work[0];
+}
+
 static __attribute__((noinline)) const r3d_pipeline_rows_t*
 scratch_rows(const raster_t* raster) {
     return r3d_pipeline_carve(raster).rows;
@@ -257,7 +265,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const int writer_count = instance_writers(raster, index, writers);
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
-    slice_t mine = {raster, mesh, lens, visible, count, 0, half, clear, NULL, 0, NULL};
+    slice_t mine = {raster, mesh, lens, visible, count, 0, half, clear, NULL, 0, NULL, 0};
     slice_t other = mine;
     other.first = half;
     other.count = count - half;
@@ -268,6 +276,8 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const int mid = r3d_pipeline_draw_split(mesh, visible, scratch_rows(raster), count, raster->height);
     mine.writers = other.writers = writers;
     mine.writer_count = other.writer_count = writer_count;
+    mine.work_index = 1;
+    other.work_index = 0;
     mine.first = mid;
     mine.count = raster->height - mid;
     other.first = 0;
@@ -296,7 +306,7 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
         instance_lens(raster, instance, camera, quarter, true, &lens);
         if (stats != NULL) {
             FRAME_COST_BEGIN(culled_from);
-            culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats);
+            culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, scratch_work(raster));
             FRAME_COST_END(culled_from, "r3d.cull");
         }
         draw_visible(raster, i, &lens, culled + 1, culled[0]);
@@ -304,8 +314,8 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
     }
     if (resolves) {
         const int mid = raster->height / 2;
-        slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL};
-        const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL};
+        slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0};
+        const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0};
         run_split(resolve_slice, &mine, &other);
     }
 }
@@ -336,7 +346,7 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
         instance_lens(raster, instance, camera, quarter, false, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats);
+        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats, scratch_work(raster));
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     FRAME_COST_END(counted_from, "r3d.census");
@@ -371,8 +381,8 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
         assert(initialized);
     }
     const int mid = height / 2;
-    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination};
-    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination};
+    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0};
+    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0};
     run_split(upscale_slice, &mine, &other);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

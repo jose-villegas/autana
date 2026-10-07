@@ -196,19 +196,28 @@ rather than an edit everywhere; a profile field that has never been
 measured is the literal `unmeasured`, and both loaders refuse to hand one
 to a gate.
 
-**These are approximations, and worth knowing where they end.** The stack
-gate checks test code only, one function at a time, so it bounds the worst
-single frame rather than the deepest path. The deepest path under each root an
-app declares in its `stack_chain.txt` is summed from the diagnostics build's
-own call graph by `launcher/tools/quality/stack_chain_gate.py` (CI and
-`autana build diag --check`). Calls through a pointer are declared there too,
-and a caller that makes a pointer call without being declared fails the
-gate; a new target of a declared pointer must still be added by hand.
-Its frames are the host compiler's: the Xtensa frame is half the size at
-the median but up to 1.67x larger in the worst measured case, so
-`check_stack_usage_device.sh`, the same checker over the target
-compiler's own frames, no device needed, is what to run when a host frame
-nears the ceiling.
+**These are approximations, and worth knowing where they end.** The host
+stack gate checks test code one function at a time. Its frames are the host
+compiler's; `check_stack_usage_device.sh` checks the target compiler's frames
+when a host frame nears the ceiling.
+
+`launcher/tools/quality/stack_chain_gate.py` sums the deepest path below each
+root an app declares in `stack_chain.txt`, using the self-test compiler's
+call graph. It compiles the app's sources and shares the graphs of all
+non-app engine sources, the test sources and the upstream task/test runners.
+An `indirect CALLER... : CALLEE...` line supplies pointer targets; an
+undeclared pointer caller reachable from a root fails. Private names may
+be qualified as `file.c:function`. Every possible target of a declared
+pointer still needs listing by hand.
+
+A `harness ROOT : ANCESTOR...` line lists the frames live above the root,
+including the suite runner for a test and the shell for a frame entry. The
+root's budget plus those measured frames and `timing.c`'s reserve must fit
+`DP_MAIN_TASK_STACK_BYTES`. A harness frame with no measurement fails.
+Library calls outside these graphs and compiler-generated copies are not
+summed. The chain gate runs in self-test CI and `autana build diag --check`;
+it predicts stack use without flashing.
+
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate
 replaces a device capture. They make a whole class of bug cost a second on

@@ -26,8 +26,19 @@
 
 static gfx_color_t* color;
 static uint16_t* depth;
+static r3d_pipeline_work_t* work;
 
 static void release_fixture(void);
+
+static r3d_pipeline_work_t*
+pipeline_work(void) {
+    if (work == NULL) {
+        work = malloc(r3d_pipeline_work_bytes());
+    }
+    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(work);
+    return work;
+}
 
 static r3d_span_target_t
 fixture(void) {
@@ -1051,8 +1062,8 @@ draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
     (void)fixture();
     const r3d_span_target_t top = fixture_rows(0, split);
     const r3d_span_target_t bottom = fixture_rows(split, H);
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top);
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom);
+    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top, pipeline_work());
+    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom, pipeline_work());
 }
 
 /* Whether the reference says the same of a centre nudged a subpixel either
@@ -1140,7 +1151,7 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
         r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
         (void)fixture();
         const r3d_span_target_t window = fixture_rows(row0, row1);
-        r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window);
+        r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window, pipeline_work());
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
         TEST_ASSERT_NOT_EQUAL(0, depth[(spots[i][1] * W) + spots[i][0]]);
     }
@@ -1207,11 +1218,11 @@ draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
+    const int count = r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work());
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t, pipeline_work());
     return covered();
 }
 
@@ -1242,12 +1253,12 @@ test_a_lens_fitted_to_half_the_width_keeps_the_view(void) {
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     r3d_lens_fit(&lens, W / 2, H);
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
+    const int count = r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work());
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     (void)fixture();
     const r3d_span_target_t t = r3d_span_target(color, depth, W / 2, 0, H);
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t, pipeline_work());
     TEST_ASSERT_EQUAL_INT(12 * 24, covered());
     for (int y = 12; y < 36; y++) {
         for (int x = 10; x < 22; x++) {
@@ -1269,7 +1280,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1285,12 +1296,12 @@ draw_floor(const uint16_t* face_colors) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
+    const int count = r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work());
     TEST_ASSERT_EQUAL_INT(1, count);
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t, pipeline_work());
 }
 
 /* The near clip keeps the part in front and nothing lands above the horizon row. */
@@ -1492,9 +1503,9 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible);
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work());
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
-    r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t);
+    r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
     free(cs);
     free(visible);
@@ -1678,14 +1689,16 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
         {(const char*)b.culled, r3d_pipeline_culled_bytes(&raster)},
+        {(const char*)b.work[0], r3d_pipeline_work_bytes()},
+        {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
         {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
-    for (int i = 0; i < 5; i++) {
+    for (size_t i = 0; i < sizeof parts / sizeof parts[0]; i++) {
         TEST_ASSERT_TRUE_MESSAGE(parts[i].at >= scratch && parts[i].at + parts[i].size <= scratch + bytes,
                                  "a working array reaches outside the scratch");
-        for (int j = 0; j < i; j++) {
+        for (size_t j = 0; j < i; j++) {
             TEST_ASSERT_TRUE_MESSAGE(parts[i].at + parts[i].size <= parts[j].at
                                          || parts[j].at + parts[j].size <= parts[i].at,
                                      "two working arrays overlap");
@@ -2246,6 +2259,8 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
+    free(work);
+    work = NULL;
     free(shared_parts);
     shared_parts = NULL;
     free(other_parts);

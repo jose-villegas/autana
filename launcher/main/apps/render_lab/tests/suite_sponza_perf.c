@@ -106,7 +106,7 @@ clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     }
     memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     const r3d_span_target_t target = {b.picture, NULL, 0};
-    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target);
+    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
 }
 
 typedef struct {
@@ -126,7 +126,8 @@ draw_half(half_job_t* j) {
     const r3d_span_target_t target = {gfx_render_target_window(&b.picture, j->row0, j->row1), NULL, 0};
     memset(gfx_render_target_depth(&target.rows, j->row0), 0,
            (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
-    r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target);
+    r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target,
+                      b.work[j->row0 == 0 ? 0 : 1]);
     j->us = timing_now_us() - start;
 }
 
@@ -178,7 +179,7 @@ test_sponza_draw_stage_breakdown(void) {
     bench_open(&b, &atrium, NULL);
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
-    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1);
+    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1, parts.work[0]);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, &lens, parts.culled + 1, visible, parts.cs, parts.rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(timing_now_us() - start));

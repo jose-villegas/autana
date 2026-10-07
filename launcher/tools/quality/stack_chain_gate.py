@@ -11,11 +11,19 @@ An app opts in with launcher/main/apps/<name>/stack_chain.txt:
     # comments
     root     <function> <budget bytes>
     indirect <caller>... : <callee>...
+    harness  <root> : <ancestor>...
 
-This recompiles that app's sources with the diagnostics image's own compiler
-and flags (build.diag/compile_commands.json) plus -fstack-usage and
+This recompiles each app's sources and shares one compilation of every
+non-app engine source, the test sources and the upstream task/test runners,
+using the diagnostics image's compiler and flags from
+build.diag/compile_commands.json, plus -fstack-usage and
 -fcallgraph-info=su, and sums the deepest chain under each root from the
-frames GCC reports. Nothing is linked or flashed.
+frames GCC reports. Nothing is linked or flashed. A harness lists the frames
+that remain live above its root; their measured sizes plus the root budget
+and timing.c's reserve must fit the device profile's main-task stack. Names
+may be qualified with a source path fragment (file.c:function) to distinguish
+private functions with the same name. Ancestor definitions outside the engine
+are found in the compile database's sources; no runner filenames are listed.
 
 The call graph cannot see a call through a function pointer, so the app
 declares each one as an `indirect` edge, and the gate is closed on both
@@ -64,7 +72,7 @@ class SpecError(Exception):
 
 
 def read_spec(path):
-    roots, indirect = [], []
+    roots, indirect, harness = [], [], {}
     with open(path, "r", encoding="utf-8") as fh:
         for no, raw in enumerate(fh, 1):
             words = raw.split("#", 1)[0].split()
@@ -72,6 +80,10 @@ def read_spec(path):
                 continue
             if words[0] == "root" and len(words) == 3 and words[2].isdigit():
                 roots.append((words[1], int(words[2])))
+            elif words[0] == "harness" and len(words) > 3 and words[2] == ":":
+                if words[1] in harness:
+                    raise SpecError("%s:%d: duplicate harness" % (path, no))
+                harness[words[1]] = words[3:]
             elif words[0] == "indirect" and words.count(":") == 1:
                 split = words.index(":")
                 callers, callees = words[1:split], words[split + 1:]
@@ -81,10 +93,12 @@ def read_spec(path):
                 indirect.extend((a, b) for a in callers for b in callees)
             else:
                 raise SpecError("%s:%d: not 'root F BYTES' or 'indirect "
-                                "A... : B...'" % (path, no))
+                                "A... : B...' or 'harness ROOT : F...'" % (path, no))
     if not roots:
         raise SpecError("%s: no root" % path)
-    return roots, indirect
+    if set(harness) - {root for root, _ in roots}:
+        raise SpecError("%s: harness names an undeclared root" % path)
+    return roots, indirect, harness
 
 
 def source_name(title):
@@ -105,7 +119,7 @@ def parse_graph(ci_paths):
             sized = FRAME_RE.search(label)
             if sized:
                 frame[title] = int(sized.group(1))
-            elif re.search(r"\d+ bytes", label) or "dynamic" in label:
+            elif re.search(r"\d+ bytes", label):
                 bad.append(title)
             else:
                 frame.setdefault(title, 0)
@@ -120,7 +134,9 @@ def parse_graph(ci_paths):
 
 
 def resolve(name, frame):
-    return sorted(t for t in frame if source_name(t) == name)
+    qualifier, _, function = name.rpartition(":")
+    return sorted(t for t in frame if source_name(t) == (function or name)
+                  and (not qualifier or qualifier in t.replace("\\", "/")))
 
 
 def deepest(root, frame, calls):
@@ -152,11 +168,9 @@ def reachable(roots, calls):
 
 
 def check_app(name, spec_path, ci_paths, stack_bytes, reserve):
-    roots, declared = read_spec(spec_path)
+    roots, declared, harness = read_spec(spec_path)
     frame, calls, pointer_callers, bad = parse_graph(ci_paths)
     problems = []
-    for title in bad:
-        problems.append("%s has a frame that is not a fixed size" % title)
 
     covered = set()
     for caller, callee in declared:
@@ -175,6 +189,8 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve):
             problems.append("root %s is not in the graph" % root)
         root_titles.extend(found)
     for title in sorted(reachable(root_titles, calls)):
+        if title in bad:
+            problems.append("%s has a frame that is not a fixed size" % title)
         if title in pointer_callers and title not in covered:
             problems.append("%s makes a call through a pointer that no "
                             "'indirect' line declares" % title)
@@ -183,7 +199,20 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve):
         titles = resolve(root, frame)
         if not titles:
             continue
+        overhead = 0
+        for ancestor in harness.get(root, ()):
+            found = resolve(ancestor, frame)
+            if not found or any(frame[t] == 0 for t in found):
+                problems.append("harness frame %s is not measured" % ancestor)
+            else:
+                overhead += max(frame[t] for t in found)
+        if budget + overhead + reserve > stack_bytes:
+            problems.append("%s() budget %d + harness %d + reserve %d exceeds "
+                            "the %d-byte main task" %
+                            (root, budget, overhead, reserve, stack_bytes))
         total, chain = max(deepest(t, frame, calls) for t in titles)
+        print("stack_chain_gate: %s() harness %d bytes, reserve %d bytes" %
+              (root, overhead, reserve))
         print("stack_chain_gate: %s %s() deepest chain %d of %d bytes (%s)" %
               (name, root, total, budget,
                " > ".join("%s %d" % (source_name(n), frame.get(n, 0))
@@ -197,14 +226,22 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve):
     return problems
 
 
-def app_jobs(db_path, app_dir):
+def app_jobs(db_path, app_dir=None, functions=()):
     with open(db_path, "r", encoding="utf-8") as fh:
         entries = json.load(fh)
-    marker = app_dir.replace("\\", "/").rstrip("/") + "/"
+    marker = (app_dir or MAIN_DIR).replace("\\", "/").rstrip("/") + "/"
     jobs = []
+    definition = re.compile(r"\b(?:%s)\s*\([^;{}]*\)\s*\{" %
+                            "|".join(re.escape(f) for f in functions)) if functions else None
     for entry in entries:
         source = entry["file"].replace("\\", "/")
-        if marker not in source or not source.endswith(".c"):
+        if not source.endswith(".c") or (app_dir is None and "/apps/" in source):
+            continue
+        if definition is not None:
+            with open(source, "r", encoding="utf-8", errors="replace") as fh:
+                if not definition.search(fh.read()):
+                    continue
+        elif marker not in source:
             continue
         argv, skip = [], 0
         for tok in shlex.split(entry["command"], posix=(os.name != "nt")):
@@ -224,7 +261,7 @@ def app_jobs(db_path, app_dir):
 
 def object_name(source, marker_root):
     rel = os.path.relpath(source, marker_root).replace("\\", "/")
-    return rel.replace("/", "__")[:-2] + ".o"
+    return "obj__" + rel.replace("/", "__").replace(":", "_")[:-2] + ".o"
 
 
 def main(argv):
@@ -246,24 +283,16 @@ def main(argv):
               "nothing is budgeted", file=sys.stderr)
         return 1
 
-    status = 0
-    for spec in specs:
-        app_dir = os.path.dirname(spec)
-        name = os.path.basename(app_dir)
-        out = os.path.join(build, "stack-chain", name)
-        os.makedirs(out, exist_ok=True)
+    shared = os.path.join(build, "stack-chain", "engine")
+    os.makedirs(shared, exist_ok=True)
+
+    def compile_jobs(jobs, out):
         for old in os.listdir(out):
             os.remove(os.path.join(out, old))
-        jobs = app_jobs(db, app_dir)
-        if not jobs:
-            print("stack_chain_gate: %s has no sources in %s" % (name, db),
-                  file=sys.stderr)
-            status = 1
-            continue
 
         def compile_one(job):
             cmd, cwd, source = job
-            obj = os.path.join(out, object_name(source, MAIN_DIR))
+            obj = os.path.join(out, object_name(source, LAUNCHER))
             cmd = cmd + ["-fstack-usage", "-fcallgraph-info=su", "-c", source,
                          "-o", obj]
             return source, subprocess.run(cmd, cwd=cwd, capture_output=True,
@@ -276,11 +305,33 @@ def main(argv):
                     failed = True
                     print("stack_chain_gate: %s did not compile:\n%s"
                           % (source, done.stderr[-600:]), file=sys.stderr)
-        if failed:
+        return not failed
+
+    shared_jobs = app_jobs(db)
+    shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "test"))
+    ancestors = set()
+    for spec in specs:
+        _roots, _indirect, harness = read_spec(spec)
+        ancestors.update(name.rsplit(":", 1)[-1]
+                         for names in harness.values() for name in names)
+    selected = {source for _cmd, _cwd, source in shared_jobs}
+    shared_jobs += [job for job in app_jobs(db, functions=ancestors)
+                    if job[2] not in selected]
+    if not compile_jobs(shared_jobs, shared):
+        return 1
+    shared_paths = sorted(glob.glob(os.path.join(shared, "*.ci")))
+    status = 0
+    for spec in specs:
+        app_dir = os.path.dirname(spec)
+        name = os.path.basename(app_dir)
+        out = os.path.join(build, "stack-chain", name)
+        os.makedirs(out, exist_ok=True)
+        jobs = app_jobs(db, app_dir)
+        if not jobs or not compile_jobs(jobs, out):
             status = 1
             continue
 
-        ci_paths = sorted(glob.glob(os.path.join(out, "*.ci")))
+        ci_paths = shared_paths + sorted(glob.glob(os.path.join(out, "*.ci")))
         try:
             problems = check_app(name, spec, ci_paths, stack_bytes,
                                   stack_reserve())
