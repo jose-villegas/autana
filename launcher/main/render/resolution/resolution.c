@@ -323,9 +323,8 @@ bound_covariance(resolution_predict_t* p) {
 }
 
 void
-resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* config, int triangles, int32_t draw_us,
-                            int32_t upscale_us) {
-    (void)upscale_us;
+resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* config, int triangles,
+                            int32_t draw_us) {
     float x[4], px[4], weights[4];
     features(config, p->step, triangles, x);
     scaled_weights(&p->model, weights);

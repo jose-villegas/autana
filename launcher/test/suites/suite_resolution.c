@@ -246,8 +246,7 @@ test_measured_frames_correct_a_model_that_runs_fast(void) {
         const int step = resolution_predict_choose(&p, &cfg, 6000);
         resolution_predict_measured(
             &p, &cfg, 6000,
-            (int32_t)(1.2F * (resolution_model_predict_us(&model, &cfg, step, 6000) - model.upscale_us[step])),
-            (int32_t)model.upscale_us[step]);
+            (int32_t)(1.2F * (resolution_model_predict_us(&model, &cfg, step, 6000) - model.upscale_us[step])));
     }
     TEST_ASSERT_LESS_OR_EQUAL_FLOAT(
         1.01F * (float)BUDGET_US,
@@ -272,7 +271,7 @@ feed_frames(resolution_predict_t* p, const resolution_config_t* cfg, const resol
         const int triangles = 1000 + rng_below(random, 19000);
         const float draw = resolution_model_predict_us(truth, cfg, p->step, triangles) - truth->upscale_us[p->step];
         const float noise = 1.0F + (float)(rng_below(random, 101) - 50) / 1000.0F;
-        resolution_predict_measured(p, cfg, triangles, (int32_t)(draw * noise), (int32_t)truth->upscale_us[p->step]);
+        resolution_predict_measured(p, cfg, triangles, (int32_t)(draw * noise));
     }
 }
 
@@ -351,7 +350,7 @@ test_refit_clips_a_hitch_frame(void) {
     feed_frames(p, &cfg, &model, 300, -1, &random);
     p->step = 3;
     const float before = resolution_model_predict_us(&p->model, &cfg, 3, 9000);
-    resolution_predict_measured(p, &cfg, 9000, (int32_t)(10.0F * before), 0);
+    resolution_predict_measured(p, &cfg, 9000, (int32_t)(10.0F * before));
     TEST_ASSERT_FLOAT_WITHIN(0.02F * before, before, resolution_model_predict_us(&p->model, &cfg, 3, 9000));
     free(p);
 }

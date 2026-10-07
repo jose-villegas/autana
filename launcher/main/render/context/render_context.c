@@ -185,8 +185,7 @@ render_context_compose(render_context_t* c, uint16_t* destination) {
     if (c->policy == RENDER_STEPPED) {
         (void)resolution_control_update(&c->control, &c->ladder, cost_us);
     } else if (c->policy == RENDER_PREDICTED) {
-        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, c->frame.draw_us,
-                                    c->frame.upscale_us);
+        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, c->frame.draw_us);
     }
 }
 

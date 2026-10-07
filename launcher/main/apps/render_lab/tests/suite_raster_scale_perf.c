@@ -422,7 +422,7 @@ test_dynamic_resolution_refit_cost(void) {
         const int triangles = 1000 + (i * 137 % 19000);
         const int32_t draw_us = (int32_t)resolution_model_predict_us(&prior, config, predict->step, triangles);
         const int64_t began_us = timing_now_us();
-        resolution_predict_measured(predict, config, triangles, draw_us, 0);
+        resolution_predict_measured(predict, config, triangles, draw_us);
         const int64_t elapsed_us = timing_now_us() - began_us;
         total_us += elapsed_us;
         max_us = elapsed_us > max_us ? elapsed_us : max_us;

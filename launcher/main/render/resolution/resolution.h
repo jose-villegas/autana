@@ -108,4 +108,4 @@ int resolution_predict_choose(resolution_predict_t* predict, const resolution_co
 
 /* Draw cost refits the weights; the offline per-step upscale stays fixed. */
 void resolution_predict_measured(resolution_predict_t* predict, const resolution_config_t* config, int triangles,
-                                 int32_t draw_us, int32_t upscale_us);
+                                 int32_t draw_us);
