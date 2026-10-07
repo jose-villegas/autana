@@ -262,20 +262,34 @@ class SealSeamsTests(unittest.TestCase):
         self.assertEqual(self.seams(True), 0)
 
 
-def folded_sheet(n=61, size=600.0):
-    """A floor and a wall meeting at a right-angled crease, each an n by n grid of side `size`, under hard bands of
-    light and shadow with some noise, as baked shading looks."""
+def banded_plane(n=41, size=400.0):
+    """A flat n by n grid of side `size` under hard bands of light and shadow with some noise, as baked shading looks:
+    nothing in its geometry asks to keep a vertex, so only colour can."""
     xs = np.linspace(0, size, n)
     x, y = np.meshgrid(xs, xs)
-    floor = np.stack([x.ravel(), y.ravel(), np.zeros(n * n)], axis=1)
-    wall = np.stack([np.full(n * n, size), y.ravel(), x.ravel()], axis=1)
-    pos = np.concatenate([floor, wall])
-    cells = [(base + i * n + j) for base in (0, n * n) for i in range(n - 1) for j in range(n - 1)]
+    pos = np.stack([x.ravel(), y.ravel(), np.zeros(n * n)], axis=1)
+    cells = [i * n + j for i in range(n - 1) for j in range(n - 1)]
     tris = np.array([t for a in cells for t in ((a, a + 1, a + n + 1), (a, a + n + 1, a + n))])
-    shade = 40 + 140 * (np.sin(pos[:, 1] / 37 + pos[:, 0] / 53 + pos[:, 2] / 41) > 0.3)
-    shade = shade + np.random.default_rng(1).normal(0, 6, len(pos))
-    rgb = np.clip(np.stack([shade, 0.9 * shade, 0.8 * shade], axis=1), 0, 255)
-    return pos, rgb, tris, (lambda p: np.minimum(np.abs(p[:, 2]), np.abs(p[:, 0] - size)))
+    shade = 40 + 140 * (np.sin(pos[:, 0] / 37 + pos[:, 1] / 53) > 0.3) + np.random.default_rng(1).normal(0, 4, len(pos))
+    return pos, np.clip(np.stack([shade] * 3, axis=1), 0, 255), tris
+
+
+def colour_error_on_plane(pos, rgb, sp, sc, st):
+    """Mean difference, over the input vertices of a mesh on z = 0, between each vertex's colour and the simplified
+    surface's interpolated colour at its position."""
+    a, b, c = sp[st[:, 0], :2], sp[st[:, 1], :2], sp[st[:, 2], :2]
+    e1, e2 = b - a, c - a
+    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    errors = []
+    for q, colour in zip(pos[:, :2], rgb):
+        d = q - a
+        with np.errstate(divide="ignore", invalid="ignore"):
+            u = (d[:, 0] * e2[:, 1] - d[:, 1] * e2[:, 0]) / det
+            v = (e1[:, 0] * d[:, 1] - e1[:, 1] * d[:, 0]) / det
+        k = np.flatnonzero((u >= -1e-6) & (v >= -1e-6) & (u + v <= 1 + 1e-6))[0]
+        got = (1 - u[k] - v[k]) * sc[st[k, 0]] + u[k] * sc[st[k, 1]] + v[k] * sc[st[k, 2]]
+        errors.append(np.abs(got - colour).mean())
+    return np.mean(errors)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -289,27 +303,31 @@ class ColourDeviationTests(unittest.TestCase):
 
     def test_each_part_weighs_colour_by_its_own_area_and_budget(self):
         p, tris = grid(4)
-        small, labels = p.copy(), np.arange(len(tris)) % 2
+        labels = (np.arange(len(tris)) < 6).astype(int)  # a reserved part of six triangles, the rest twenty-six
         seen = []
 
         def record(pos, rgb, t, budget, weight, options):
-            seen.append((budget, weight, colour_weight(pos, t, budget, 2.0)))
+            seen.append((budget, weight, colour_weight(pos, t, budget, 2.0), triangle_areas(pos, t).sum()))
             return simplify_with_update(pos, rgb, t, budget, weight, options)
 
         with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
-            simplify(small, np.full((len(p), 3), 100.0), tris, labels, 12, [({1}, 0.25)], colour_deviation=2.0)
-        self.assertEqual([budget for budget, _, _ in seen], [3, 9])
-        for _, weight, expected in seen:
+            simplify(p, np.full((len(p), 3), 100.0), tris, labels, 12, [({1}, 0.25)], colour_deviation=2.0)
+        self.assertEqual([budget for budget, _, _, _ in seen], [3, 9])
+        self.assertEqual([area for _, _, _, area in seen], [3.0, 13.0])
+        for _, weight, expected, _ in seen:
             self.assertAlmostEqual(weight, expected)
 
-    def test_a_smaller_deviation_keeps_the_surface_nearer_its_planes(self):
-        pos, rgb, tris, off_plane = folded_sheet()
-        moved = {}
-        for deviation in (1.0, 4.0):
-            p, _, _, _ = simplify(pos, rgb, tris, np.zeros(len(tris), dtype=int), 200, colour_deviation=deviation)
-            moved[deviation] = off_plane(p).max()
-        self.assertLess(moved[1.0], moved[4.0])
-        self.assertLess(moved[1.0], 0.01 * 600.0, "the surface moved more than a hundredth of the sheet")
+    def test_a_part_with_no_area_weighs_colour_at_nothing(self):
+        line = np.array([[0.0, 0, 0], [1, 0, 0], [2, 0, 0]])
+        self.assertEqual(colour_weight(line, np.array([[0, 1, 2]]), 1, 1.0), 0.0)
+
+    def test_colour_keeps_the_bands_of_a_plane_that_geometry_alone_would_lose(self):
+        pos, rgb, tris = banded_plane()
+        error = {}
+        for deviation in (1e-4, 1.0):
+            sp, sc, st, _ = simplify(pos, rgb, tris, np.zeros(len(tris), dtype=int), 300, colour_deviation=deviation)
+            error[deviation] = colour_error_on_plane(pos, rgb, sp, sc, st)
+        self.assertLess(error[1.0], 0.6 * error[1e-4], error)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
