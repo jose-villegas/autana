@@ -167,34 +167,16 @@ assert_matches_the_maps(const path_case_t* c) {
     free(source);
 }
 
+/* A kept width copies mapped rows, a doubled one writes pairs down any row
+ * map, and any other fractional width takes the maps. */
 static void
-test_a_kept_width_copies_mapped_rows(void) {
+test_each_width_takes_its_path_and_matches_the_maps(void) {
     static const path_case_t cases[] = {
-        {8, 5, 8, 9, UPSCALE_ROWS},      {8, 6, 8, 12, UPSCALE_ROWS},     {6, 3, 6, 3, UPSCALE_ROWS},
-        {92, 56, 92, 112, UPSCALE_ROWS}, {92, 90, 92, 112, UPSCALE_ROWS}, {92, 75, 92, 112, UPSCALE_ROWS},
-    };
-    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        assert_matches_the_maps(&cases[i]);
-    }
-}
-
-static void
-test_a_doubled_width_writes_pairs_down_any_row_map(void) {
-    static const path_case_t cases[] = {
-        {4, 5, 8, 9, UPSCALE_PAIRS},      {4, 3, 8, 7, UPSCALE_PAIRS},       {7, 5, 14, 10, UPSCALE_PAIRS},
-        {46, 75, 92, 112, UPSCALE_PAIRS}, {46, 112, 92, 112, UPSCALE_PAIRS}, {46, 56, 92, 112, UPSCALE_PAIRS},
-    };
-    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        assert_matches_the_maps(&cases[i]);
-    }
-}
-
-static void
-test_other_fractional_widths_take_the_maps(void) {
-    static const path_case_t cases[] = {
-        {61, 75, 92, 112, UPSCALE_MAPPED},
-        {6, 4, 15, 10, UPSCALE_MAPPED},
-        {5, 4, 15, 8, UPSCALE_MAPPED},
+        {8, 5, 8, 9, UPSCALE_ROWS},        {8, 6, 8, 12, UPSCALE_ROWS},       {6, 3, 6, 3, UPSCALE_ROWS},
+        {92, 56, 92, 112, UPSCALE_ROWS},   {92, 90, 92, 112, UPSCALE_ROWS},   {92, 75, 92, 112, UPSCALE_ROWS},
+        {4, 5, 8, 9, UPSCALE_PAIRS},       {4, 3, 8, 7, UPSCALE_PAIRS},       {7, 5, 14, 10, UPSCALE_PAIRS},
+        {46, 75, 92, 112, UPSCALE_PAIRS},  {46, 112, 92, 112, UPSCALE_PAIRS}, {46, 56, 92, 112, UPSCALE_PAIRS},
+        {61, 75, 92, 112, UPSCALE_MAPPED}, {6, 4, 15, 10, UPSCALE_MAPPED},    {5, 4, 15, 8, UPSCALE_MAPPED},
         {5, 3, 5, 7, UPSCALE_MAPPED},
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
@@ -208,9 +190,7 @@ run_upscale_suite(void) {
     RUN_TEST(test_integer_factors_copy_each_source_pixel_to_its_block);
     RUN_TEST(test_fractional_maps_cover_destination_in_order_and_at_source_corners);
     RUN_TEST(test_two_row_ranges_equal_one_whole_upscale);
-    RUN_TEST(test_a_kept_width_copies_mapped_rows);
-    RUN_TEST(test_a_doubled_width_writes_pairs_down_any_row_map);
-    RUN_TEST(test_other_fractional_widths_take_the_maps);
+    RUN_TEST(test_each_width_takes_its_path_and_matches_the_maps);
 }
 
 SUITE_REGISTER(run_upscale_suite);
