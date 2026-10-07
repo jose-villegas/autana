@@ -25,7 +25,8 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
-| `raster_census()` | What `raster_draw()` would keep after culling, without drawing: the same at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_census()` | `raster_draw()`'s cull alone, into a list the caller holds: on an upscaled raster it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
@@ -90,18 +91,27 @@ raster's lens and cluster transform stay a 3x4 of their own.
 
 ```mermaid
 flowchart LR
-    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
-    subgraph Render["raster_draw()"]
-        Lens["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_fit()<br/><i>to the render size</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
-        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
-        Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Picture
+    subgraph Census["raster_census()"]
+        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Cull --> List["the culled list<br/><i>any render size of an upscaled raster</i>"]
+    Size["the render size"] --> Fit
+    List --> Fit
+    subgraph Draw["raster_draw_culled()"]
+        Fit["r3d_lens_fit()<br/><i>to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+    end
+    DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `raster_draw()`, and
-`raster_upscale()` when it set `upscaled`. The stages inside are
-`r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
+A caller fills a camera, then calls `raster_draw()`, which culls and draws
+each instance in turn, and `raster_upscale()` when it set `upscaled`. A
+caller that picks the render size from what culling kept, as the render
+context does, calls `raster_census()`, sets the size, then
+`raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
+or tool that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
@@ -162,13 +172,13 @@ sequenceDiagram
 ### View modes
 
 Development builds can look at the depth a frame drew instead of its
-colour. `raster_show()` runs after `raster_draw()` and before
+colour. `raster_show()` runs after the draw and before
 `raster_upscale()`, and overwrites the raster's colour buffer from its
 depth buffer, which it reads as the render left it and never writes.
 
 ```mermaid
 flowchart LR
-    Render["raster_draw()<br/><i>colour and depth</i>"] --> Show
+    Render["the draw<br/><i>colour and depth</i>"] --> Show
     Show["raster_show(mode)<br/><i>colour from depth</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
