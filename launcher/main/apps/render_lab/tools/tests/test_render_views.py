@@ -9,15 +9,16 @@ wherever any pixel of it is; and a view the scene cannot give, an unknown
 view name, or a picture that cannot be written fails the run rather than
 reporting an image.
 """
-import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
-TOOLS = pathlib.Path(__file__).resolve().parents[1]
-SCRIPT = TOOLS / "render_lab_render_host.sh"
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import host_render  # noqa: E402
+
 # One label per way the panel is turned: portrait, landscape, landscape flipped.
 TURNS = {
     "portrait": ("sponza-portrait", "sponza-depth-portrait", "sponza-tiles-portrait"),
@@ -47,24 +48,13 @@ def is_grey(px):
     return max(px) - min(px) <= GREY_SLACK
 
 
-def shell():
-    return shutil.which("sh") or shutil.which("bash")
-
-
 class RenderViews(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.out = pathlib.Path(tempfile.mkdtemp(prefix="render_views_"))
-        # The pinned hashes belong to the compiler that pinned them; these
-        # checks compare the views with each other, so no baseline is read.
-        env = dict(os.environ, scene_baseline=str(cls.out / "no-baseline.txt"))
-        run = subprocess.run(
-            [shell(), str(SCRIPT), "-o", str(cls.out)], capture_output=True, text=True, timeout=900, env=env
-        )
+        run, cls.binary = host_render.run(cls.out)
         cls.run_output = run.stdout + run.stderr
         cls.built = run.returncode == 0
-        exe = "render_lab_render.exe" if os.name == "nt" else "render_lab_render"
-        cls.binary = cls.out / exe
 
     @classmethod
     def tearDownClass(cls):
