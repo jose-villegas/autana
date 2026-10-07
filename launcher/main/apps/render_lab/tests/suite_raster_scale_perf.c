@@ -284,12 +284,17 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
     render_context_set_scale(render_context_main(), 50);
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     const scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT};
+    /* Timed here, around the scene's own two calls, so every policy and the
+     * fixed scale (which the context does not time) are timed alike. */
     for (int i = 0; i < frames; i++) {
+        const int64_t began_us = timing_now_us();
         scene_render(FRAME_DT_MS, 0, GFX_WIDTH, GFX_HEIGHT);
+        const int64_t drawn_us = timing_now_us();
         scene_compose(FRAME_DT_MS, 0, &target);
+        const int64_t composed_us = timing_now_us();
         const render_context_frame_t r = render_context_frame(render_context_main());
-        records[i] = (frame_record_t){(int8_t)r.step, r.draw_us, r.upscale_us,
-                                      render_context_frame(render_context_main()).stats.triangles};
+        records[i] = (frame_record_t){(int8_t)r.step, (int32_t)(drawn_us - began_us), (int32_t)(composed_us - drawn_us),
+                                      r.stats.triangles};
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(flown);

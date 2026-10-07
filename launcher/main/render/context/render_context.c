@@ -108,18 +108,25 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     if (!fit_scratch(c)) {
         return false;
     }
-    const int64_t began_us = timing_now_us();
-    if (c->policy == RENDER_PREDICTED) {
-        const int chosen =
-            resolution_predict_choose(&c->predict, &c->ladder, raster_census(r, camera, quarter).triangles);
-        r->width = c->ladder.steps[chosen].width;
-        r->height = c->ladder.steps[chosen].height;
-    }
-    c->frame.step = current_step(c);
     c->frame.width = r->width;
     c->frame.height = r->height;
-    c->frame.stats = raster_draw(r, camera, quarter);
-    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    if (c->policy == RENDER_FIXED) {
+        /* Off: the plain draw, nothing timed or chosen. */
+        c->frame.stats = raster_draw(r, camera, quarter);
+    } else {
+        const int64_t began_us = timing_now_us();
+        if (c->policy == RENDER_PREDICTED) {
+            const int chosen =
+                resolution_predict_choose(&c->predict, &c->ladder, raster_census(r, camera, quarter).triangles);
+            r->width = c->ladder.steps[chosen].width;
+            r->height = c->ladder.steps[chosen].height;
+            c->frame.width = r->width;
+            c->frame.height = r->height;
+        }
+        c->frame.stats = raster_draw(r, camera, quarter);
+        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    }
+    c->frame.step = current_step(c);
 #if DEBUG_VIEW
     raster_show(r, c->debug_view);
 #endif
@@ -129,6 +136,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 void
 render_context_compose(render_context_t* c, uint16_t* destination) {
     c->raster.destination = destination;
+    if (c->policy == RENDER_FIXED) {
+        raster_upscale(&c->raster);
+        return;
+    }
     const int64_t began_us = timing_now_us();
     raster_upscale(&c->raster);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
