@@ -104,12 +104,15 @@ def findings_table(splits, spans):
                     f"| {delta('r3d.draw', sa, sb):.1f} | {delta('r3d.upscale', sa, sb):.1f} "
                     + " ".join(f"| {ms(delta(k, oa, ob))}" for k in ("rows", "span_setup", "fill")) + " |")
 
-    row("half width, more height over half", (184, 298), (184, 224))
-    row("half over floor", (184, 224), (184, 179))
-    row("floor over 2.5x cost reference", (184, 179), (147, 179))
-    row("recovery over 3x cost reference", (184, 149), (122, 149))
-    row("full height over half", (368, 448), (368, 224))
-    row("full width over half", (368, 448), (184, 448))
+    for question, a, b in (
+        ("half width, more height over half", (184, 298), (184, 224)),
+        ("half over floor", (184, 224), (184, 179)),
+        ("floor over 2.5x cost reference", (184, 179), (147, 179)),
+        ("recovery over 3x cost reference", (184, 149), (122, 149)),
+        ("full height over half", (368, 448), (368, 224)),
+        ("full width over half", (368, 448), (184, 448)),
+    ):
+        row(question, a, b)
     return "\n".join(rows)
 
 
