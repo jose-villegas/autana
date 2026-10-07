@@ -35,7 +35,7 @@ SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
-SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true }\n'
+SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'
 VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE
@@ -177,6 +177,10 @@ class ImportTests(unittest.TestCase):
     def test_a_flag_and_a_count_are_type_checked(self):
         self.rejects("true or false", SIMPLIFY.replace("seal_seams = true", 'seal_seams = "no"') + VARIANT)
         self.rejects("must be an integer", SIMPLIFY + VARIANT.replace("= 10", "= 1.5"))
+
+    def test_simplify_needs_a_positive_colour_deviation(self):
+        self.rejects("colour_deviation is required", SIMPLIFY.replace(", colour_deviation = 1.0", "") + VARIANT)
+        self.rejects("must be above 0", SIMPLIFY.replace("colour_deviation = 1.0", "colour_deviation = 0") + VARIANT)
 
     def test_simplify_needs_a_budget_per_variant_and_a_budget_needs_simplify(self):
         self.rejects("needs variants", SIMPLIFY)

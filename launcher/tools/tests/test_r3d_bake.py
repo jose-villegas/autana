@@ -10,6 +10,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -25,7 +26,8 @@ try:
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
     from r3d.repair import _weld_borders, repair
-    from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, merge_close_colours, simplify
+    from r3d import simplify as simplify_module
+    from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, colour_weight, merge_close_colours, simplify
     from r3d.tessellate import split_marked_edges
 except ImportError:
     np = None
@@ -239,7 +241,7 @@ def seam_fixture():
 class SealSeamsTests(unittest.TestCase):
     def open_seam(self, seal, gap, scale):
         p, tris = two_pieces(gap)
-        sp, _, st, _ = simplify(p, np.full((len(p), 3), 100.0), tris, np.arange(len(tris)) % 2, 4, seal_seams=seal,
+        sp, _, st, _ = simplify(p, np.full((len(p), 3), 100.0), tris, np.arange(len(tris)) % 2, 4, colour_deviation=1.0, seal_seams=seal,
                                 position_scale=scale)
         return any(0.5 < (a[1] + b[1]) / 2 < 3.5 and abs(a[0] + b[0]) / 2 < gap + 0.3 for a, b in open_edges(sp, st))
 
@@ -251,13 +253,63 @@ class SealSeamsTests(unittest.TestCase):
 
     def seams(self, seal):
         corners, rgb, tris, labels = seam_fixture()
-        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), seal_seams=seal)
+        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), colour_deviation=1.0, seal_seams=seal)
         mesh = bake_lit_mesh(sp, np.rint(sc).astype(np.int64), st, np.zeros(len(st), dtype=int))
         return len(mesh.pos) - len({tuple(v) for v in mesh.pos.tolist()})
 
     def test_the_default_keeps_a_seam_of_near_colours_and_the_option_merges_it(self):
         self.assertGreater(self.seams(False), 0)
         self.assertEqual(self.seams(True), 0)
+
+
+def folded_sheet(n=61, size=600.0):
+    """A floor and a wall meeting at a right-angled crease, each an n by n grid of side `size`, under hard bands of
+    light and shadow with some noise, as baked shading looks."""
+    xs = np.linspace(0, size, n)
+    x, y = np.meshgrid(xs, xs)
+    floor = np.stack([x.ravel(), y.ravel(), np.zeros(n * n)], axis=1)
+    wall = np.stack([np.full(n * n, size), y.ravel(), x.ravel()], axis=1)
+    pos = np.concatenate([floor, wall])
+    cells = [(base + i * n + j) for base in (0, n * n) for i in range(n - 1) for j in range(n - 1)]
+    tris = np.array([t for a in cells for t in ((a, a + 1, a + n + 1), (a, a + n + 1, a + n))])
+    shade = 40 + 140 * (np.sin(pos[:, 1] / 37 + pos[:, 0] / 53 + pos[:, 2] / 41) > 0.3)
+    shade = shade + np.random.default_rng(1).normal(0, 6, len(pos))
+    rgb = np.clip(np.stack([shade, 0.9 * shade, 0.8 * shade], axis=1), 0, 255)
+    return pos, rgb, tris, (lambda p: np.minimum(np.abs(p[:, 2]), np.abs(p[:, 0] - size)))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ColourDeviationTests(unittest.TestCase):
+    def test_the_weight_follows_the_region_a_vertex_stands_for_in_the_model_s_own_units(self):
+        p, tris = grid(4)
+        weight = colour_weight(p, tris, 8, 1.0)
+        self.assertAlmostEqual(colour_weight(p, tris, 32, 1.0), 2 * weight)  # a quarter of the area per triangle
+        self.assertAlmostEqual(colour_weight(p * 10, tris, 8, 10.0), weight)  # the same model in other units
+        self.assertAlmostEqual(colour_weight(p, tris, 8, 3.0), 3 * weight)
+
+    def test_each_part_weighs_colour_by_its_own_area_and_budget(self):
+        p, tris = grid(4)
+        small, labels = p.copy(), np.arange(len(tris)) % 2
+        seen = []
+
+        def record(pos, rgb, t, budget, weight, options):
+            seen.append((budget, weight, colour_weight(pos, t, budget, 2.0)))
+            return simplify_with_update(pos, rgb, t, budget, weight, options)
+
+        with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
+            simplify(small, np.full((len(p), 3), 100.0), tris, labels, 12, [({1}, 0.25)], colour_deviation=2.0)
+        self.assertEqual([budget for budget, _, _ in seen], [3, 9])
+        for _, weight, expected in seen:
+            self.assertAlmostEqual(weight, expected)
+
+    def test_a_smaller_deviation_keeps_the_surface_nearer_its_planes(self):
+        pos, rgb, tris, off_plane = folded_sheet()
+        moved = {}
+        for deviation in (1.0, 4.0):
+            p, _, _, _ = simplify(pos, rgb, tris, np.zeros(len(tris), dtype=int), 200, colour_deviation=deviation)
+            moved[deviation] = off_plane(p).max()
+        self.assertLess(moved[1.0], moved[4.0])
+        self.assertLess(moved[1.0], 0.01 * 600.0, "the surface moved more than a hundredth of the sheet")
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
