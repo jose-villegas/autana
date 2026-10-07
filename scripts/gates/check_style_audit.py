@@ -401,16 +401,16 @@ def rule_personal_path(root, path, text):
 
 # RULE: an importer, exporter, baker or measuring tool takes a model as an
 # argument and is never named after one, or every new model needs its own copy
-# and every model change a clean-up. A model is any .blend, .glb, .gltf, .obj or
-# .fbx an app tracks; a tool is code under a `tools` directory or scripts/. The
-# app's own runtime code may name the content it shows.
+# and every model change a clean-up. A model is any tracked .blend, .glb, .gltf,
+# .obj or .fbx, wherever it lives; a tool is code under a `tools` directory or
+# scripts/. An app's own runtime code may name the content it shows.
 
 MODEL_SUFFIXES = (".blend", ".glb", ".gltf", ".obj", ".fbx")
 TOOL_CODE_SUFFIXES = {".py", ".c", ".h", ".cc", ".cpp", ".sh", ".mjs", ".js", ".ps1"}
 
 
 def _model_names(root):
-    return {pathlib.PurePosixPath(rel).stem.lower() for rel in tracked_files(root, ["launcher/main/apps"])
+    return {pathlib.PurePosixPath(rel).stem.lower() for rel in tracked_files(root, [])
             if rel.lower().endswith(MODEL_SUFFIXES)}
 
 
