@@ -206,7 +206,7 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint1
     return stats;
 }
 
-void
+RENDER_ENTRY_OFFSET(4) void
 raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled) {
     assert(raster->instance_count > 0);
     size_t at = 0;
