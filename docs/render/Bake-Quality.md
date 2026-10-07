@@ -11,8 +11,8 @@ regenerated from the source by the doc-images pipeline
 ## The Sponza variants
 
 The Sponza scene places renderers over the import's variants
-([Scene-Files.md](Scene-Files.md)): it records bakes
-and appearance-fit recipes, culled to the camera's path, at lite's and full's
+([Scene-Files.md](Scene-Files.md)): it records region-culled bakes
+and path-culled appearance-fit recipes, at lite's and full's
 budgets. Every row plays the same stretch of the flythrough, so the rows
 compare.
 
