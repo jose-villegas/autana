@@ -336,7 +336,7 @@ def comma_numbers(text, cast):
 def sweep_main(argv):
     parser = argparse.ArgumentParser(description="Fit and score a recipe over triangle budgets and cost weights.")
     parser.add_argument("scene")
-    parser.add_argument("--variant", required=True, help="the fitted variant the scene places")
+    parser.add_argument("--variant", required=True, help="the fitted scene object, or its variant when only one object fits it")
     parser.add_argument("--budgets", required=True, type=lambda text: comma_numbers(text, int))
     parser.add_argument("--cost-weights", default="0", type=lambda text: comma_numbers(text, float))
     parser.add_argument("--board-ms", type=lambda text: comma_numbers(text, float), help="measurements in budget, cost-weight order")
@@ -396,7 +396,7 @@ def main(argv=None):
         return sweep_main(argv[1:])
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene")
-    parser.add_argument("--mesh", required=True, help="the fitted variant's name")
+    parser.add_argument("--mesh", required=True, help="the fitted scene object, or its variant when only one object fits it")
     parser.add_argument("--work", required=True, help="scratch directory the two steps share")
     parser.add_argument("step", choices=("prepare", "fit"))
     args = parser.parse_args(argv)

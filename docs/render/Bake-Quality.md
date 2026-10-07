@@ -51,6 +51,13 @@ come back.
 ![Full against fitted full](../images/render/compare-full-fitted-full.png)
 ![Full against fitted full, the places they differ most](../images/render/compare-full-fitted-full.crops.png)
 
+![Flat against flat fitted](../images/render/compare-flat-flat-fitted.png)
+![Flat against flat fitted, the places they differ most](../images/render/compare-flat-flat-fitted.crops.png)
+
+The flat fitted mesh keeps one colour per face but fits those colours and its
+positions to the reference: the banners, arches and floor take their colours
+back.
+
 The fitted full mesh is the same recipe at full's budget, so the same edges
 and colours come back on full's finer geometry.
 
@@ -183,6 +190,18 @@ other settings. The angle heatmaps show where geometry differs from the source.
 
 ![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)
 <!-- /generated: sponza-normal -->
+
+### Appearance fit of the flat mesh
+
+A flat renderer with a `fit` table is fitted the same way, a colour per
+triangle in place of a colour per vertex: the fit moves the positions, so a
+face's edges settle where one colour reads best. The GPU stage scores it
+against the flat bake and the smooth fit at lite's budget, the cheapest
+meshes on the board, over the same held-out poses.
+
+<!-- generated: sponza-flat-fit sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
+Run the documented stage to populate this comparison from current inputs.
+<!-- /generated: sponza-flat-fit -->
 
 ### Board measurements
 
