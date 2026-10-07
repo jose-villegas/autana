@@ -47,14 +47,18 @@ once more on one core with the span rasterizer stopped after each stage.
 Milliseconds; both cores unless marked one core.
 <!-- /generated: dynres-stages -->
 
-The questions the split answers, as differences between two sizes. Most of
-the gap between neighbouring isotropic steps is the raster, not the upscale.
-A step that keeps the panel's width or halves it upscales whole rows or
-pixel pairs down any row map; the other widths on these ladders pay the
-mapped upscale on top, which is why 2.5x saves little over 2x. Halving the
-height saves far more than halving the width, since rows and span setup
-follow the height, so a ladder cuts the height first. The one-core setup
-stage barely moves with size: it is the floor no step goes under.
+The split compares neighbouring ladder steps and the floor and recovery
+against their isotropic cost references. Both the height-first and width-first
+ladders use only full or half panel width, so every step upscales whole rows
+or pixel pairs down a row map. The mapped sizes remain in the stage table as
+cost references. Rows and span setup follow the height; the height-first
+ladder cuts it before cutting the width. The one-core setup stage is the
+floor no step goes under.
+
+The ladders are defined in `sponza_content.c` and
+`suite_raster_scale_perf.c`. Both use 184x179 as the floor and reserve 184x149
+for recovery. Their cost targets are the isotropic 147x179 and 122x149
+counterparts, called 2.5x and 3x; those names describe cost, not pixel scale.
 
 <!-- generated: dynres-findings sha256=4d33a41910767f4d80a7b3a3426d37abd73ec023fab27bcb0dee7a63afc266b1 -->
 | Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |
@@ -90,7 +94,7 @@ Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM a
 What the table shows:
 
 - **Over budget.** At the tight budget the half scale itself is often over,
-  and both policies step down to the 2.5x floor and stop there: a frame a
+  and both policies step down to the floor and stop there: a frame a
   little over budget costs less than a harsh drop in picture. The predictor
   steps on the frame the load arrives, the controller a window later.
 - **Switches.** Neither flaps: the cooldown spaces the controller's steps,
@@ -99,11 +103,11 @@ What the table shows:
 - **Quality.** The scorer's dE is mostly the bake against the reference, a
   floor every size shares, so the differences are small; the order is what
   counts. A full-width, half-height render scores closer to the reference
-  than the isotropic step that costs as much, so the height-first ladder buys
+  than its isotropic cost reference, so the height-first ladder buys
   more picture for the same milliseconds.
-- **Recovery.** 3x is reached only past the panic share; neither budget
-  here comes near it. Below 2.5x a step buys little, as the setup floor in
-  the stage table shows.
+- **Recovery.** The recovery step is available only past the panic share.
+  Its cost target is the 3x isotropic reference; the stage split checks it
+  against the setup floor.
 
 ![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 

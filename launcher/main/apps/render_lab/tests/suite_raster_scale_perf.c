@@ -46,11 +46,11 @@ typedef struct {
     int width, height;
 } size_wh_t;
 
-/* The isotropic steps 1x to 4x, then each axis cut on its own: half of
- * one, and 1.5x of one with half of the other. */
+/* Ladder sizes and mapped upscale sizes, including the isotropic
+ * counterparts used to check the floor and recovery costs. */
 static const size_wh_t sizes[] = {
-    {368, 448}, {294, 358}, {276, 336}, {245, 298}, {210, 256}, {184, 224},
-    {147, 179}, {122, 149}, {368, 224}, {184, 448}, {245, 224}, {184, 298},
+    {368, 448}, {294, 358}, {276, 336}, {245, 298}, {210, 256}, {184, 224}, {147, 179}, {122, 149}, {368, 224},
+    {184, 448}, {245, 224}, {184, 298}, {368, 358}, {368, 298}, {184, 358}, {184, 179}, {184, 149},
 };
 #define SIZE_COUNT ((int)(sizeof sizes / sizeof sizes[0]))
 
@@ -185,21 +185,20 @@ test_raster_stage_split_by_size(void) {
     TEST_PASS();
 }
 
-/* Two ladders. Isotropic: 1.33x is dropped for costing little less than
- * 1.25x, 1.75x splits the widest gap, 2.5x is the floor and 3x recovery
- * only. Height first: the render lab's own ladder. */
+/* Width-first and height-first ladders keep every upscale on a fast path,
+ * with the last step reserved for recovery. */
 typedef struct {
     const char* name;
     const resolution_step_t* steps;
     int count, recovery_from, half;
 } ladder_t;
 
-static const resolution_step_t isotropic_steps[] = {
-    {368, 448}, {294, 358}, {245, 298}, {210, 256}, {184, 224}, {147, 179}, {122, 149},
+static const resolution_step_t width_steps[] = {
+    {368, 448}, {184, 448}, {184, 358}, {184, 298}, {184, 224}, {184, 179}, {184, 149},
 };
 
 static const ladder_t ladders[] = {
-    {"isotropic", isotropic_steps, 7, 6, 4},
+    {"width", width_steps, 7, 6, 4},
     {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
 };
 

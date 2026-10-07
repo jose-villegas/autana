@@ -4,8 +4,9 @@
 # the scene drawn at every WxH given, scored frame by frame against the
 # reference render at full size, one CSV row per size and frame.
 #
-#   dynres_quality.sh <work-dir> <out.csv> WxH [WxH ...]
+#   dynres_quality.sh <work-dir> <out.csv> [WxH ...]
 #
+# With no sizes, score the ladders and their mapped cost references.
 # Frames are every POSE_MS from one step in, matching the poses the device
 # suite measures (suite_raster_scale_perf.c), so launcher/tools/r3d/
 # dynres_report.py can weigh a policy's frames by the quality of their size.
@@ -20,6 +21,10 @@ FRAMES=14
 W=$1
 CSV=$2
 shift 2
+if [ "$#" -eq 0 ]; then
+    set -- 368x448 368x358 368x298 368x224 184x448 184x358 184x298 184x224 184x179 184x149 \
+        294x358 276x336 245x298 210x256 245x224 147x179 122x149
+fi
 mkdir -p "$W"
 
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o "$W" > "$W/build.log"
