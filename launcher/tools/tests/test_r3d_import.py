@@ -189,7 +189,7 @@ class ImportTests(unittest.TestCase):
 
     def test_the_tools_name_no_scene(self):
         banned = set()
-        files = build_pack.input_files([build_pack.DEFAULT_SEARCH])
+        files = build_pack.input_files([build_pack.DEFAULT_SEARCH, build_pack.DEMO])
         for path in (file for file in files if file.name.endswith(build_pack.IMPORT)):
             values = tomllib.loads(path.read_text())
             banned.update(variant["name"].lower() for variant in values.get("variants", []))

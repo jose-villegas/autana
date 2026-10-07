@@ -10,6 +10,8 @@ import struct
 import sys
 import tempfile
 import unittest
+import subprocess
+import tomllib
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -286,7 +288,7 @@ class DemoAssetTests(unittest.TestCase):
         self.demo = self.root / "launcher/demo/sample"
         import_file(self.demo, "sample.import.toml", "one")
         (self.demo / "one.mesh").write_bytes(b"demo")
-        patch = mock.patch.object(build_pack, "REPO", self.root)
+        patch = mock.patch.object(build_pack, "DEMO", self.demo.parent)
         patch.start()
         self.addCleanup(patch.stop)
 
@@ -309,6 +311,72 @@ class DemoAssetTests(unittest.TestCase):
             write(self.main / app / "demo_assets.toml", 'demo = ["sample", "sample"]')
         self.assertEqual(contents(build_pack.pack_bytes([self.main, self.main / "a", self.demo])),
                          {"sample": {"one": b"demo"}})
+
+    def test_only_the_named_demo_is_packed_and_removing_the_manifest_drops_it(self):
+        other = self.demo.parent / "other"
+        import_file(other, "other.import.toml", "two")
+        (other / "two.mesh").write_bytes(b"other")
+        manifest = write(self.main / "demo_assets.toml", 'demo = ["sample"]')
+        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": b"demo"}})
+        manifest.unlink()
+        self.assertEqual(build_pack.pack_bytes([self.main]), {})
+
+    def test_malformed_manifests_name_the_file(self):
+        for text, pattern in (('demo = [', 'Invalid value'), ('', 'is required'),
+                              ('demo = []\nextra = 1', 'not a known setting'),
+                              ('demo = "sample"', 'array of strings'),
+                              ('demo = [1]', 'non-empty string')):
+            with self.subTest(text=text):
+                manifest = write(self.main / "demo_assets.toml", text)
+                with self.assertRaisesRegex(SettingsError, pattern) as caught:
+                    build_pack.pack_bytes([self.main])
+                self.assertIn(str(manifest), str(caught.exception))
+
+    def test_non_plain_names_are_rejected_before_folder_lookup(self):
+        for name in ("..", ".", "x/source", "x\\source"):
+            with self.subTest(name=name):
+                (self.demo.parent / name).mkdir(parents=True, exist_ok=True)
+                manifest = write(self.main / "demo_assets.toml", f"demo = ['{name}']")
+                with self.assertRaises(SettingsError) as caught:
+                    build_pack.pack_bytes([self.main])
+                self.assertIn(str(manifest), str(caught.exception))
+                self.assertIn("must be letters", str(caught.exception))
+
+    def test_relative_and_absolute_searches_produce_one_pack(self):
+        import os
+        relative = pathlib.Path(os.path.relpath(self.demo))
+        self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
+                         {"sample": {"one": b"demo"}})
+
+    def test_self_and_mutual_manifest_cycles_terminate(self):
+        other = self.demo.parent / "other"
+        other.mkdir()
+        code = ("import pathlib, sys; sys.path.insert(0, sys.argv[1]); "
+                "from r3d import build_pack; build_pack.DEMO = pathlib.Path(sys.argv[2]); "
+                "assert set(build_pack.pack_bytes([sys.argv[3]])) == {'sample'}")
+        for first, second in (("sample", None), ("other", "sample")):
+            with self.subTest(first=first):
+                write(self.demo / "demo_assets.toml", f'demo = ["{first}"]')
+                if second:
+                    write(other / "demo_assets.toml", f'demo = ["{second}"]')
+                result = subprocess.run([sys.executable, "-c", code, str(pathlib.Path(build_pack.__file__).resolve().parents[1]),
+                                         str(self.demo.parent), str(self.demo)],
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_each_tree_manifest_selects_its_demo_root_packs(self):
+        with mock.patch.object(build_pack, "DEMO", build_pack.REPO / "launcher/demo"):
+            packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
+            manifests = list(build_pack.DEFAULT_SEARCH.rglob("demo_assets.toml"))
+            self.assertTrue(manifests)
+            for manifest in manifests:
+                for name in tomllib.loads(manifest.read_text())["demo"]:
+                    demo = build_pack.DEMO / name
+                    roots = build_pack.pack_bytes([demo])
+                    self.assertTrue(roots, str(demo))
+                    for root, data in roots.items():
+                        with self.subTest(manifest=manifest, root=root):
+                            self.assertEqual(packs[root], data)
 
 
 class TreeTests(unittest.TestCase):

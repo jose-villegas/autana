@@ -9,6 +9,7 @@ demo = ["sponza"]
 
 `launcher/tools/r3d/build_pack.py` follows these manifests below the folders
 it searches. Deleting an app also removes its demo selection.
+Firmware inputs (`.mesh`, `.toml` and clip `.glb`) sit outside `source/`, which uses Git LFS and is absent from firmware clones.
 
 - [Sponza](sponza/sponza.scene.toml) is the reference scene for baked lighting,
   geometry, fidelity and frame cost. Its [import](sponza/sponza.import.toml)

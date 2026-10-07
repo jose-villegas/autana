@@ -77,13 +77,9 @@ the price of frame time; what it does and costs is in
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live together.
-Reference content an app may ship lives in `launcher/demo/`; see the
+Reference content lives in `launcher/demo/`; `build_pack.py` packs a folder
+there only when a `demo_assets.toml` below a searched folder names it. See the
 [demo assets](../../demo/README.md).
-
-`build_pack.py` searches `launcher/main/` by default. A `demo_assets.toml`
-anywhere below a searched folder adds the folders named by its `demo` list
-from `launcher/demo/`. Unselected demo content stays out of the firmware
-packs; see the [demo assets](../../demo/README.md).
 
 ## Fidelity reference
 

@@ -558,6 +558,19 @@ def load_bake(table):
     return bake
 
 
+def load_demo_assets(path) -> list[pathlib.Path]:
+    """The relative demo paths a manifest selects, with plain pack names only."""
+    path = pathlib.Path(path)
+    try:
+        with path.open("rb") as source:
+            values = tomllib.load(source)
+        check_keys(values, ("demo",), "demo assets")
+        names = strings(values["demo"], "demo")
+        return [pathlib.Path(identifier(name, f"demo[{index}]")) for index, name in enumerate(names)]
+    except (SettingsError, tomllib.TOMLDecodeError) as error:
+        raise SettingsError(f"{path}: {error}") from error
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""

@@ -147,8 +147,9 @@ a firmware capture of those meshes; predicted ms is labelled separately.
 
 ## Sponza poses
 
-The flythrough is a glTF camera animation, `launcher/demo/sponza/flythrough.glb`, named
-by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
+The flythrough is a glTF camera animation,
+`launcher/demo/sponza/flythrough.glb`, named by
+`launcher/demo/sponza/flythrough.anim.toml`. Its poses for
 [`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses
@@ -171,8 +172,8 @@ with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
 `gallop` and `half_bound`. It is the source asset for skinned-mesh import;
 nothing in the build reads it.
 
-`launcher/demo/capybara/capybara.glb` is its glTF export: deform bones only, every loop as
-an animation, four influences per vertex. Host tools that read glTF use it,
+`launcher/demo/capybara/capybara.glb` is its glTF export: deform bones only,
+every loop as an animation, four influences per vertex. Host tools that read glTF use it,
 such as the [skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
 measurement. After editing the `.blend`, export it again with Blender
 through the model-agnostic exporter, naming the loops (the file also

@@ -6,10 +6,9 @@
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml or a folder
 searched for all three; with none, launcher/main is searched. Each
-demo_assets.toml below a searched folder adds its demo names from
-launcher/demo/<name>/; unnamed demos are not included. Folders and input
-files are searched once. A root is a file
-nothing else names: NAME.scene.toml is pack NAME, holding the scene entry
+demo_assets.toml below a searched folder adds launcher/demo/NAME for each
+NAME in its `demo` list; a folder reached twice is searched once. A root is
+a file nothing else names: NAME.scene.toml is pack NAME, holding the scene entry
 NAME, every mesh its renderers name and the clip its camera flies; an
 NAME.import.toml no scene places is pack NAME, holding its variants; an
 NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
@@ -26,18 +25,18 @@ products, never committed.
 import argparse
 import pathlib
 import sys
-import tomllib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset  # noqa: E402
-from r3d.import_settings import SettingsError, check_keys, load_import_settings, load_scene, strings  # noqa: E402
+from r3d.import_settings import SettingsError, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
+DEMO = REPO / "launcher" / "demo"
 SCENE, IMPORT, CLIP = ".scene.toml", ".import.toml", tracks_asset.SUFFIX
 PACK_SUFFIX = ".apak"
 
@@ -54,17 +53,10 @@ def input_files(paths):
         if path.is_dir():
             found.update(p for p in path.rglob("*.toml") if p.name.endswith((IMPORT, SCENE, CLIP)))
             for manifest in sorted(path.rglob("demo_assets.toml")):
-                try:
-                    with manifest.open("rb") as source:
-                        values = tomllib.load(source)
-                    check_keys(values, ("demo",), "demo assets")
-                    names = strings(values["demo"], "demo")
-                except (SettingsError, tomllib.TOMLDecodeError) as error:
-                    raise SettingsError(f"{manifest}: {error}") from error
-                for name in names:
-                    demo = REPO / "launcher" / "demo" / name
-                    if name in (".", "..") or "/" in name or "\\" in name or not demo.is_dir():
-                        raise SettingsError(f"{manifest}: no demo folder for {name!r}")
+                for name in load_demo_assets(manifest):
+                    demo = DEMO / name
+                    if not demo.is_dir():
+                        raise SettingsError(f"{manifest}: no demo folder for {demo.name!r}")
                     pending.append(demo)
         elif path.name.endswith((IMPORT, SCENE, CLIP)):
             found.add(path)
