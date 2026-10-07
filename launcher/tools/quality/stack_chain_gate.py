@@ -114,13 +114,15 @@ def resolve(name, frame):
 
 def parse_elf(text):
     """Windowed entry frames and direct calls, including linker long calls."""
-    frame, calls, registers, returning, code = {}, {}, {}, set(), {}
+    frame, calls, registers, returning, code, duplicate = {}, {}, {}, set(), {}, set()
     node = None
     for line in text.splitlines():
         header = re.match(r"^[0-9a-fA-F]+ <([^>]+)>:", line)
         if header:
             node = header.group(1)
-            frame[node] = 0
+            if node in frame:
+                duplicate.add(node)
+            frame.setdefault(node, 0)
             code[node] = []
             registers.clear()
         elif node:
@@ -133,7 +135,7 @@ def parse_elf(text):
             callee = direct.group(1) if direct else (
                 registers.get(indirect.group(1)) if indirect else None)
             if entry:
-                frame[node] = int(entry.group(1), 0)
+                frame[node] = max(frame[node], int(entry.group(1), 0))
             if callee:
                 calls.setdefault(node, set()).add(callee)
             instruction = parse_instruction(line)
@@ -154,6 +156,7 @@ def parse_elf(text):
                       and (target := target_of(operands)) is not None
                       and target not in addresses[n])
         for _address, op, operands, _callee in instructions)}
+    incomplete |= duplicate
     terminal = set(frame) - returning - incomplete
     functions = set(frame) | {callee for ts in calls.values() for callee in ts}
     terminal |= {n for n in functions
@@ -230,7 +233,7 @@ def linked_graph(ci_paths, text):
     for caller in linked_frames:
         callees = linked_calls.get(caller, ())
         for title in names.get(source_name(caller), ()):
-            if caller in blocked and caller not in nonreturning:
+            if caller in blocked and caller not in nonreturning and len(names[source_name(caller)]) == 1:
                 dead = {source_name(n) for n in blocked[caller]} - ancestors
                 calls[title] = {t for t in calls.get(title, ()) if source_name(t) not in dead}
             if title in linked_frames:

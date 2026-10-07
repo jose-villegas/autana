@@ -11,6 +11,27 @@ from quality import stack_chain_gate as gate
 
 
 class StackChainTests(unittest.TestCase):
+    def test_duplicate_private_symbols_keep_the_largest_frame_and_both_calls(self):
+        frame, calls, terminal, _blocked = gate.parse_elf('''
+42000000 <private>:
+42000000: 006136 entry a1, 48
+42000003: 000025 call8 42000040 <one>
+42000006: f01d retw.n
+42000020 <private>:
+42000020: 004136 entry a1, 32
+42000023: 000025 call8 42000060 <two>
+42000026: f01d retw.n
+42000040 <one>:
+42000040: 004136 entry a1, 32
+42000043: f01d retw.n
+42000060 <two>:
+42000060: 004136 entry a1, 32
+42000063: f01d retw.n
+''')
+        self.assertEqual(48, frame['private'])
+        self.assertEqual({'one', 'two'}, calls['private'])
+        self.assertNotIn('private', terminal)
+
     def test_incomplete_branch_disassembly_keeps_the_callee(self):
         frame, calls, terminal, _blocked = gate.parse_elf('''
 42000000 <caller>:

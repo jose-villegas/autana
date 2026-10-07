@@ -238,7 +238,10 @@ wraps, also end a path. Branch targets split basic blocks. Calls in blocks
 that cannot reach a return before a nonreturning call are excluded. A
 missing branch target or an indirect jump makes disassembly incomplete;
 that function retains its calls and is not inferred nonreturning from
-instructions. Returning paths, including lazy initialization, remain counted. The compiler graphs retain source-line pointer checks and private
+instructions. Returning paths, including lazy initialization, remain counted.
+Duplicate private ELF names retain the largest frame and combined calls;
+ambiguous source identities retain their compiler edges.
+The compiler graphs retain source-line pointer checks and private
 function qualification; ELF disassembly alone does not supply those checks.
 The chain gate runs in self-test CI and `autana build diag --check`; it
 predicts stack use without flashing.
