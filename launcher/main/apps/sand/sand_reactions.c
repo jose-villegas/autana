@@ -31,12 +31,12 @@
  * pair_theirs_bits() below can answer for a whole material without a `mine`
  * argument; the one pairwise question, whether the neighbour is denser, has
  * no bit - see max_smothering_density below. See docs/sand/Reaction-Table.md. */
-#define PAIR_HEAT_RESPONSIVE (1u << 0) /* theirs could pass try_heat_transform()'s first two gates */
-#define PAIR_WETS            (1u << 1) /* theirs is a liquid whose reaction row wets */
-#define PAIR_IGNITABLE       (1u << 2) /* theirs has a nonzero flammability - try_ignite_given()'s own first reject */
-#define PAIR_QUENCHES        (1u << 3) /* theirs is a liquid that is neither fuel nor a heat source - neighbor_quenches() */
-#define PAIR_DISSOLVABLE     (1u << 4) /* theirs has a nonzero dissolvable - step_one_dissolver_cell()'s own reject */
-#define PAIR_CONDUCTS        (1u << 5) /* theirs has a nonzero conducts - conduct_heat()'s own reject */
+#define PAIR_HEAT_RESPONSIVE (1U << 0) /* theirs could pass try_heat_transform()'s first two gates */
+#define PAIR_WETS            (1U << 1) /* theirs is a liquid whose reaction row wets */
+#define PAIR_IGNITABLE       (1U << 2) /* theirs has a nonzero flammability - try_ignite_given()'s own first reject */
+#define PAIR_QUENCHES        (1U << 3) /* theirs is a liquid that is neither fuel nor a heat source - neighbor_quenches() */
+#define PAIR_DISSOLVABLE     (1U << 4) /* theirs has a nonzero dissolvable - step_one_dissolver_cell()'s own reject */
+#define PAIR_CONDUCTS        (1U << 5) /* theirs has a nonzero conducts - conduct_heat()'s own reject */
 
 /* Every pair bit any material now on the board can offer a neighbour: the OR
  * of theirs_bits over s->may_have_materials, recomputed once a step in
