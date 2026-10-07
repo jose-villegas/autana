@@ -31,6 +31,14 @@ class GfxColorTests(unittest.TestCase):
         self.assertTrue(np.array_equal(gfx_color.rgb565(r, g, b), native))
         self.assertTrue(np.array_equal(gfx_color.swap(gfx_color.swap(native)), native))
 
+    def test_a_step_is_the_levels_one_565_step_of_each_channel_spans(self):
+        for channel, (step, one) in enumerate(zip(gfx_color.STEP, (1 << 11, 1 << 5, 1))):
+            with self.subTest(channel=channel):
+                below, at = [0, 0, 0], [0, 0, 0]
+                below[channel], at[channel] = step - 1, step
+                self.assertEqual(gfx_color.rgb565(*below), 0)
+                self.assertEqual(gfx_color.rgb565(*at), one)
+
     def test_swap_moves_the_bytes(self):
         self.assertEqual(gfx_color.swap(0xF800), 0x00F8)
         self.assertEqual(gfx_color.swap(gfx_color.rgb565(0xFF, 0, 0)), 0x00F8)

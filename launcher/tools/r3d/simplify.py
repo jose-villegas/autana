@@ -1,21 +1,28 @@
 """Appearance-preserving simplification of a lit mesh: split evenly, bake
-colour per vertex (the caller does that), weld across materials, then one
-meshoptimizer pass with colour as an attribute. Groups of materials can hold
-a reserved share of the budget, so small detailed props are not starved by
-large surfaces a global pass prefers to keep."""
+colour per vertex (the caller does that), then one meshoptimizer pass per
+part with colour as an attribute. Groups of materials can hold a reserved
+share of the budget, so small detailed props are not starved by large
+surfaces a global pass prefers to keep."""
+
+import pathlib
+import sys
 
 import numpy as np
 
 from . import log
+from .geometry import triangle_areas
 from .lit_mesh import POSITION_SCALE
 from .meshopt import PERMISSIVE, REGULARIZE, REGULARIZE_LIGHT, simplify_with_update
 from .repair import repair
 from .tessellate import split_marked_edges
 
-# One RGB565 step on the sRGB channels is (8, 4, 8) levels. A step and a half
-# is what keeps the meshlets sharing their vertices on the meshes measured: one
-# step leaves the larger of them with more vertices than triangles.
-SEAM_COLOUR_TOLERANCE = 1.5 * np.array([8, 4, 8])
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+import gfx_color  # noqa: E402  (path must be set up first)
+
+# A step and a half of RGB565 is what keeps the meshlets sharing their
+# vertices on the meshes measured: one step leaves the larger of them with
+# more vertices than triangles.
+SEAM_COLOUR_TOLERANCE = 1.5 * np.array(gfx_color.STEP)
 
 
 def densify(p, tris, labels, max_edge, rounds=16):
@@ -32,19 +39,17 @@ def densify(p, tris, labels, max_edge, rounds=16):
     return p, tris, labels
 
 
-def weld_colours(pos, rgb, tris, labels, grid=1e-2):
-    """One vertex per position, its colour the mean of the copies welded
-    into it: the simplifier then sees one connected surface instead of seams
-    at every crease and material edge."""
-    key = np.round(pos / grid).astype(np.int64)
-    _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
-    inverse = inverse.reshape(-1)
-    colour = np.zeros((len(first), 3))
-    np.add.at(colour, inverse, rgb)
-    colour /= np.bincount(inverse).astype(np.float64)[:, None]
-    t = inverse[tris]
-    keep = (t[:, 0] != t[:, 1]) & (t[:, 1] != t[:, 2]) & (t[:, 0] != t[:, 2])
-    return pos[first], colour, t[keep], np.asarray(labels)[keep]
+def colour_weight(pos, tris, budget, deviation):
+    """The colour weight, per 8-bit level, at which one panel colour step
+    (the coarsest channel's) costs the simplifier as much as moving the
+    surface `deviation` units. meshoptimizer weighs a vertex's colour error
+    by the area it stands for, so the trade scales with the side of that
+    area, the square root of the part's area over its budget; dividing by it
+    makes the trade the same for every part and budget, and steeper shading
+    costs more colour steps, not more deviation for each. A part with no
+    area has no surface to move, and its colour weighs nothing."""
+    side = np.sqrt(triangle_areas(pos, tris).sum() / budget)
+    return deviation / (side * max(gfx_color.STEP)) if side > 0 else 0.0
 
 
 def _label_after(tris_in, labels_in, kept, tris_out):
@@ -80,13 +85,15 @@ def merge_close_colours(q, rgb, tolerance):
     return out
 
 
-def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, seal_seams=False,
+def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation, seal_seams=False,
              position_scale=POSITION_SCALE):
     """`reserved` is a list of (label set, share of `triangles`); what is
-    left of the budget goes to every other label. `seal_seams` is the import
-    option that joins pieces touching within one quantisation step
-    (`1 / position_scale`, see repair.py) before the pass, simplifies with
-    light regularizing, and afterwards gives vertices that end at one
+    left of the budget goes to every other label. Colour steers which edges
+    collapse, priced so one colour step costs as much as moving the surface
+    `colour_deviation` units in every part (see colour_weight). `seal_seams`
+    is the import option that joins pieces touching within one quantisation
+    step (`1 / position_scale`, see repair.py) before the pass, simplifies
+    with light regularizing, and afterwards gives vertices that end at one
     quantised position and differ by less than a panel colour step one
     colour. Returns pos, rgb (0..255 floats), tris and a label per
     triangle."""
@@ -110,13 +117,14 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), colour_weight=1.0, 
         sub = tris[sel]
         used, local = np.unique(sub, return_inverse=True)
         local = local.reshape(-1, 3)
-        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, colour_weight, options)
+        weight = colour_weight(pos[used], local, budget, colour_deviation)
+        p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options)
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
         out_labels.append(_label_after(local, labels[sel], kept, t))
         base += len(p)
-        log(f"  simplified {len(sub)} -> {len(t)} triangles (budget {budget})")
+        log(f"  simplified {len(sub)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
     out_pos, out_rgb = np.concatenate(out_pos), np.concatenate(out_rgb)
     if seal_seams:
         rounded = np.clip(np.rint(out_rgb), 0, 255)

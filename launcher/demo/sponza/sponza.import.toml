@@ -15,7 +15,7 @@ seed = 1
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "leaf", keep = 0.35 }
-simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"], props_share = 0.3, seal_seams = true }
+simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }
 
 [[variants]]
 name = "sponza"

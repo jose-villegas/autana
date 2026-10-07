@@ -10,6 +10,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -18,14 +19,15 @@ try:
     import numpy as np
     from tests import soup
 
-    from r3d.geometry import triangle_areas, weld
+    from r3d.geometry import closest_point_on_triangles, triangle_areas, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
     from r3d.repair import _weld_borders, repair
-    from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, merge_close_colours, simplify
+    from r3d import simplify as simplify_module
+    from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, colour_weight, merge_close_colours, simplify
     from r3d.tessellate import split_marked_edges
 except ImportError:
     np = None
@@ -130,7 +132,7 @@ class RepairTests(unittest.TestCase):
         self.assertTrue(any(on_seam(e) for e in open_edges(p, tris)), "the fixture has no open seam")
         rp, rgb, rt, _ = self.repaired(p, tris)
         self.assertFalse(any(on_seam(e) for e in open_edges(rp, rt)), "the seam is still open")
-        sp, _, st, _ = simplify_with_update(rp, rgb, rt, 4)
+        sp, _, st, _ = simplify_with_update(rp, rgb, rt, 4, 1 / 255)
         self.assertLess(len(st), len(rt))
         self.assertFalse(any(on_seam(e) for e in open_edges(sp, st)), "simplification opened the seam")
 
@@ -239,7 +241,7 @@ def seam_fixture():
 class SealSeamsTests(unittest.TestCase):
     def open_seam(self, seal, gap, scale):
         p, tris = two_pieces(gap)
-        sp, _, st, _ = simplify(p, np.full((len(p), 3), 100.0), tris, np.arange(len(tris)) % 2, 4, seal_seams=seal,
+        sp, _, st, _ = simplify(p, np.full((len(p), 3), 100.0), tris, np.arange(len(tris)) % 2, 4, colour_deviation=1.0, seal_seams=seal,
                                 position_scale=scale)
         return any(0.5 < (a[1] + b[1]) / 2 < 3.5 and abs(a[0] + b[0]) / 2 < gap + 0.3 for a, b in open_edges(sp, st))
 
@@ -251,13 +253,81 @@ class SealSeamsTests(unittest.TestCase):
 
     def seams(self, seal):
         corners, rgb, tris, labels = seam_fixture()
-        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), seal_seams=seal)
+        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), colour_deviation=1.0, seal_seams=seal)
         mesh = bake_lit_mesh(sp, np.rint(sc).astype(np.int64), st, np.zeros(len(st), dtype=int))
         return len(mesh.pos) - len({tuple(v) for v in mesh.pos.tolist()})
 
     def test_the_default_keeps_a_seam_of_near_colours_and_the_option_merges_it(self):
         self.assertGreater(self.seams(False), 0)
         self.assertEqual(self.seams(True), 0)
+
+
+def banded_plane(cells=40, size=400.0):
+    """A flat grid of side `size` under hard bands of light and shadow with some noise, as baked shading looks: nothing
+    in its geometry asks to keep a vertex, so only colour can."""
+    p, tris = grid(cells)
+    pos = p * (size / cells)
+    shade = 40 + 140 * (np.sin(pos[:, 0] / 37 + pos[:, 1] / 53) > 0.3) + np.random.default_rng(1).normal(0, 4, len(pos))
+    return pos, np.clip(np.stack([shade] * 3, axis=1), 0, 255), tris
+
+
+def against_plane(pos, rgb, sp, sc, st):
+    """(mean colour difference, uncovered): for each input vertex the simplified surface's colour at the nearest
+    point, over the vertices the surface still covers, and how many it no longer does."""
+    n, m = len(pos), len(st)
+    q = np.repeat(pos, m, axis=0)
+    a, b, c = (np.tile(sp[st[:, k]], (n, 1)) for k in range(3))
+    bary, distance = closest_point_on_triangles(q, a, b, c)
+    distance = distance.reshape(n, m)
+    k = distance.argmin(axis=1)
+    w = bary.reshape(n, m, 3)[np.arange(n), k]
+    colour = (w[:, :, None] * sc[st[k]]).sum(axis=1)
+    covered = distance[np.arange(n), k] < 1e-3
+    return np.abs(colour - rgb)[covered].mean(), int((~covered).sum())
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ColourDeviationTests(unittest.TestCase):
+    def test_the_weight_follows_the_region_a_vertex_stands_for_in_the_model_s_own_units(self):
+        p, tris = grid(4)
+        weight = colour_weight(p, tris, 8, 1.0)
+        # Sixteen unit cells over eight triangles: a region side of sqrt(2), and an 8-level step priced at 1 unit.
+        self.assertAlmostEqual(weight, 1.0 / (np.sqrt(16 / 8) * 8))
+        self.assertAlmostEqual(colour_weight(p, tris, 32, 1.0), 2 * weight)  # a quarter of the area per triangle
+        self.assertAlmostEqual(colour_weight(p * 10, tris, 8, 10.0), weight)  # the same model in other units
+        self.assertAlmostEqual(colour_weight(p, tris, 8, 3.0), 3 * weight)
+
+    def test_each_part_weighs_colour_by_its_own_area_and_budget(self):
+        p, tris = grid(4)
+        labels = (np.arange(len(tris)) < 6).astype(int)  # a reserved part of six triangles, the rest twenty-six
+        seen = []
+
+        def record(pos, rgb, t, budget, weight, options):
+            seen.append((budget, weight, colour_weight(pos, t, budget, 2.0), triangle_areas(pos, t).sum()))
+            return simplify_with_update(pos, rgb, t, budget, weight, options)
+
+        with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
+            simplify(p, np.full((len(p), 3), 100.0), tris, labels, 12, [({1}, 0.25)], colour_deviation=2.0)
+        self.assertEqual([budget for budget, _, _, _ in seen], [3, 9])
+        self.assertEqual([area for _, _, _, area in seen], [3.0, 13.0])
+        for _, weight, expected, _ in seen:
+            self.assertAlmostEqual(weight, expected)
+
+    def test_a_part_with_no_area_weighs_colour_at_nothing(self):
+        line = np.array([[0.0, 0, 0], [1, 0, 0], [2, 0, 0]])
+        self.assertEqual(colour_weight(line, np.array([[0, 1, 2]]), 1, 1.0), 0.0)
+
+    def test_colour_keeps_the_bands_of_a_plane_that_geometry_alone_would_lose(self):
+        pos, rgb, tris = banded_plane()
+        error, uncovered = {}, {}
+        for deviation in (1e-4, 1.0, 16.0):
+            sp, sc, st, _ = simplify(pos, rgb, tris, np.zeros(len(tris), dtype=int), 300, colour_deviation=deviation)
+            error[deviation], uncovered[deviation] = against_plane(pos, rgb, sp, sc, st)
+        self.assertLess(error[1.0], 0.6 * error[1e-4], error)
+        # The other side of the trade: at the import's scale the plane stays whole, while colour priced far above it
+        # buys collapses that pull the plane's border in.
+        self.assertEqual((uncovered[1e-4], uncovered[1.0]), (0, 0))
+        self.assertGreater(uncovered[16.0], 0)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

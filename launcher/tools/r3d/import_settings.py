@@ -245,12 +245,15 @@ def load_geometry(table, steps):
                                      keep=number(thin["keep"], "geometry.thin.keep"))
     if "simplify" in table:
         simplify = table["simplify"]
-        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams"), "geometry.simplify")
+        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
         steps.simplify = SimpleNamespace(
             dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
             props=set(strings(simplify["props"], "geometry.simplify.props")),
             props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
-            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"))
+            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
+            colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
+        if steps.simplify.colour_deviation <= 0:
+            raise SettingsError("geometry.simplify.colour_deviation must be above 0")
 
 
 def load_import_settings(path):
