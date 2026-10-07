@@ -4,8 +4,9 @@ Every function works on plain ints and on numpy integer arrays at least 16
 bits wide.
 """
 
-# The 8-bit levels one step of each RGB565 channel spans: red, green, blue.
-STEP = (8, 4, 8)
+# The 8-bit levels one step of each RGB565 channel spans: red, green, blue,
+# the bits rgb565() drops from each.
+STEP = (1 << 3, 1 << 2, 1 << 3)
 
 
 def rgb565(r, g, b):
