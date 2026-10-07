@@ -229,7 +229,8 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
     return count;
 }
 
-/* Keep the carve's struct off the draw's stack. */
+/* The scratch block's census list and cluster rows, out of line so the
+ * carve's struct is not on the draw's stack. */
 static __attribute__((noinline)) uint16_t*
 scratch_culled(const raster_t* raster) {
     return r3d_pipeline_carve(raster).culled;
@@ -268,7 +269,11 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
-/* Inlined into both entries so the draw chain needs only one entry's frame. */
+/* Draws every instance through its fitted lens: culled with that lens into
+ * the scratch block's list first when `stats` counts what survived, or from
+ * raster_census()'s list when it is NULL. The attachments begin before the
+ * first and resolve after the last. Inlined into both entries, so the draw
+ * chain needs only one entry's frame. */
 static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const camera_t* camera, int quarter, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
