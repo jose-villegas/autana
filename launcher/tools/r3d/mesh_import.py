@@ -234,16 +234,22 @@ def check_fitted(job, scene):
     log(f"{target.name} matches its fit recipe")
 
 
-def bake(job, scene):
-    """Bakes one mesh. `scene` is None for a bare import."""
+def write_baked(job, scene, out_dir, name):
+    """Bakes `job`'s geometry and writes it as <name>.mesh in `out_dir`:
+    flat when the renderer is, smooth otherwise. Returns the baked mesh."""
     renderer = job.renderer
-    if renderer.fit:
-        check_fitted(job, scene)
-        return
     geometry = bake_geometry(job, scene)
     face_rgb = flat_colours(job, scene, geometry, renderer.face_samples) if renderer.face_samples else None
-    mesh = write_lit_mesh(job.asset_path.parent, job.asset_name, geometry.positions, None if renderer.face_samples else geometry.rgb,
+    return write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
                           geometry.tris, geometry.tri_double, face_rgb=face_rgb, **geometry.scale)
+
+
+def bake(job, scene):
+    """Bakes one mesh. `scene` is None for a bare import."""
+    if job.renderer.fit:
+        check_fitted(job, scene)
+        return
+    mesh = write_baked(job, scene, job.asset_path.parent, job.asset_name)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 

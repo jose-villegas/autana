@@ -7,7 +7,8 @@
 
 A scene renderer with a `fit` table is not baked by mesh_import.py.
 `prepare`, in the r3d environment, bakes its start (the import's geometry
-steps at the variant's `triangles`, lit by the scene's bake), samples the
+steps at the variant's `triangles`, lit by the scene's bake, flat when the
+renderer's shading is), samples the
 scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
@@ -109,8 +110,7 @@ def recipe_digest(job, scene):
 
 
 def prepare(scene_path, scene, job, work):
-    from r3d.lit_mesh import write_lit_mesh
-    from r3d.mesh_import import bake_geometry, camera_path_poses
+    from r3d.mesh_import import camera_path_poses, write_baked
     from r3d.reference_render import main as reference_main
 
     renderer = job.renderer
@@ -118,8 +118,7 @@ def prepare(scene_path, scene, job, work):
     if visibility is None or visibility.source != "camera_path":
         raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
-    geometry = bake_geometry(job, scene)
-    write_lit_mesh(work, variant.name, geometry.positions, geometry.rgb, geometry.tris, geometry.tri_double, **geometry.scale)
+    start = write_baked(job, scene, work, variant.name)
     w, h, lens, near, poses = camera_path_poses(scene, visibility, fit.train_every_ms, either_way_up=False)
     training, held_out = split_poses(fit, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
@@ -130,7 +129,7 @@ def prepare(scene_path, scene, job, work):
                              ("held_out.txt", "reference_held_out")):
         reference_main([str(scene_path), "--object", job.object.name, "--poses",
                         str(work / poses), "--out", str(work / reference), "--normals"])
-    log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
+    log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
 
 
 def reference_digest(scene_path, job, scene):
