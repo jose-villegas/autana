@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Reject new jscpd pairs in tracked first-party C/C++ and Python.
+"""Reject growing jscpd file-pair budgets in tracked first-party C/C++ and Python.
 
 Compare HEAD with its merge-base with origin/main, or HEAD~1 when HEAD is
-on main. Pair keys use sorted filenames and whitespace-normalised fragments.
+on main. New fragments in each sorted file pair may spend only the tokens of
+base fragments that vanished from HEAD. A surviving shrink gives no headroom.
 --report lists all pairs. --min-tokens N reports another threshold without
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
@@ -20,7 +21,6 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
-from c_comments import blank_comments
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
@@ -180,22 +180,46 @@ def describe(pair):
 
 
 def pair_key(pair):
-    names = tuple(sorted(pair[side]["name"] for side in ("firstFile", "secondFile")))
-    fragment = pair["fragment"]
-    if pair["format"] != "python":
-        fragment = blank_comments(fragment)
-    return names, " ".join(fragment.split())
+    return tuple(sorted(pair[side]["name"] for side in ("firstFile", "secondFile")))
 
 
 def check_pairs(pairs, base_pairs):
-    existing = {pair_key(pair) for pair in base_pairs}
-    added = [pair for pair in pairs if pair_key(pair) not in existing]
-    if added:
-        print(f"FAIL: {len(added)} new clone pairs; extract a shared owner.")
-        for pair in added:
-            print(describe(pair))
+    existing = {}
+    for pair in base_pairs:
+        names = pair_key(pair)
+        existing.setdefault(names, []).append(pair)
+    current = {}
+    for pair in pairs:
+        current.setdefault(pair_key(pair), []).append(pair)
+    grown = {}
+    for names, group in current.items():
+        remaining = list(existing.get(names, []))
+        added = 0
+        for pair in sorted(group, key=lambda item: -item["tokens"]):
+            fragment = re.findall(r"\w+|[^\w\s]", pair["fragment"])
+            match = None
+            for old in remaining:
+                tokens = iter(re.findall(r"\w+|[^\w\s]", old["fragment"]))
+                if pair["tokens"] <= old["tokens"] and all(
+                        any(token == previous for previous in tokens) for token in fragment):
+                    match = old
+                    break
+            if match is None:
+                added += pair["tokens"]
+            else:
+                remaining.remove(match)
+        if names not in existing or added > sum(pair["tokens"] for pair in remaining):
+            grown[names] = group
+    if grown:
+        print(f"FAIL: {len(grown)} new or growing clone file pairs; extract a shared owner.")
+        for names, group in sorted(grown.items()):
+            total = sum(pair["tokens"] for pair in group)
+            old_total = sum(pair["tokens"] for pair in existing.get(names, []))
+            print(f"{' ~ '.join(names)}: {old_total} -> {total} cloned tokens")
+            for pair in group:
+                print(describe(pair))
         return 1
-    print(f"PASS: no new clone pairs ({len(pairs)} checked HEAD pairs, {len(base_pairs)} base pairs).")
+    print(f"PASS: no growing clone file pairs ({len(pairs)} checked HEAD pairs, {len(base_pairs)} base pairs).")
     return 0
 
 
