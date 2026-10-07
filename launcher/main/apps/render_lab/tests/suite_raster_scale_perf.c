@@ -301,12 +301,17 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
     log_frames(policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records, frames);
 }
 
-/* A ladder's config at `budget_us`, fitted to the board on every one of its
- * steps; not inlined, so its frame is gone before the flights run. */
+/* A ladder's config at `budget_us`; not inlined, so the config it returns is
+ * off the stack before the calibration frames draw. */
 static __attribute__((noinline)) void
-fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config, resolution_model_t* model) {
+configure(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config) {
     *config = resolution_config(ladder->steps, ladder->count, ladder->recovery_from, budget_us);
-    TEST_ASSERT_TRUE_MESSAGE(calibrate(config, model), "the calibration frames did not fit a model");
+}
+
+/* The fitted model's lines; not inlined, so its frame is gone before the
+ * calibration frames draw. */
+static __attribute__((noinline)) void
+log_fit(const ladder_t* ladder, const resolution_config_t* config, const resolution_model_t* model) {
     ESP_LOGI(TAG, "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f",
              ladder->name, (double)model->base_us, (double)model->per_triangle_us, (double)model->per_triangle_row_us,
              (double)model->per_pixel_share_us);
@@ -314,6 +319,15 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
         ESP_LOGI(TAG, "dynres_step: %s %d %dx%d upscale %.0f", ladder->name, step, config->steps[step].width,
                  config->steps[step].height, (double)model->upscale_us[step]);
     }
+}
+
+/* A ladder's config at `budget_us`, fitted to the board on every one of its
+ * steps; not inlined, so its frame is gone before the flights run. */
+static __attribute__((noinline)) void
+fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config, resolution_model_t* model) {
+    configure(ladder, budget_us, config);
+    TEST_ASSERT_TRUE_MESSAGE(calibrate(config, model), "the calibration frames did not fit a model");
+    log_fit(ladder, config, model);
 }
 
 void
