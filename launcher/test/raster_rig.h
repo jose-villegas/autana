@@ -17,6 +17,10 @@
 
 #define RASTER_RIG_QUADS 2
 
+/* A wall 800 square on z = 0, facing +z: behind everything a test camera
+ * on +z looks at, and filling its picture. */
+static const int16_t raster_rig_wall[4][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
+
 typedef struct {
     r3d_quad_t quad[RASTER_RIG_QUADS];
     r3d_placement_t placement[RASTER_RIG_QUADS]; /* each placed quad's, set before a draw */
