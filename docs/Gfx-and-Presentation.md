@@ -79,12 +79,40 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
   `GFX_LAYOUT_FULL_FB`. Check the grant's `layout`, not the request's.
-- Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
-  request fields grant correctly and nothing consumes them.
+- Geometry is the panel's full size. Per-axis interlace request fields are
+  granted but do not alter drawing; `gfx_set_interlace()` controls strip sends.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
   divides `GFX_HEIGHT`. On the device, at every band height, the two band
   buffers alias `gfx.c`'s strip-bounce slots rather than allocating; a host
   build mallocs them.
+
+## Expanded frames
+
+A scene drawn at exactly half the panel size in both axes composes 1:1 into
+`gfx_half_picture()`. Depth-zero pixels become the scene's clear colour.
+`gfx_expand_frame()` marks every strip dirty and holds the picture until
+`gfx_present_wait()` completes. The present doubles rows into its bounce
+slots and replays the shell's registered UI overlay there. Indexed pictures
+and expanded frames use the same strip loop, without interlace or partial
+clear. Raw framebuffer drawing is guarded while a frame is expanded.
+
+`ui_end()` bins commands for strip replay during an expanded frame. The shell
+clears the previous overlay after the present completes and queues its home
+hint before the app builds new commands. A frame with no UI replays no HUD.
+Readback uses the same expansion and overlay path, including when the
+requested row is odd.
+
+The development tunable `gfx.half_separate` selects the picture's placement:
+`0` uses the framebuffer's first quarter; `1` lazily allocates a half-size
+PSRAM picture and frees it on mode exit. Allocation failure uses the
+framebuffer. Release uses the framebuffer placement. Other render sizes
+compose directly into the full framebuffer.
+
+![Full upscale and expanded readback with the HUD, in panel orientations](images/render/expanded-present.png)
+
+The host comparison includes the HUD and its text halos. Both paths produce
+identical pixels; the difference column is black. The revision comparison
+uses [render_compare.sh](../launcher/tools/render/render_compare.sh).
 
 ## Dirty tracking
 
@@ -308,7 +336,7 @@ For a capture of what the panel shows:
 
 | Mode | `gfx_readback_begin()` |
 |---|---|
-| full framebuffer, indexed | `GFX_READBACK_READY` at once |
+| full framebuffer, expanded frame, indexed | `GFX_READBACK_READY` at once |
 | band ring | `GFX_READBACK_PENDING`: forces the next frame to redraw every band into a PSRAM snapshot; call once per frame until `GFX_READBACK_READY` |
 | band ring, no room for the snapshot | `GFX_READBACK_UNAVAILABLE` |
 

@@ -22,15 +22,17 @@
 typedef struct {
     uint16_t* pixels;
     int width, height;
+    uint16_t* half_pixels; /* NULL disables expansion */
 } scene_target_t;
 
 /* Whether a camera is active and the scene not paused. */
 bool scene_has_active_camera(void);
 void scene_render(uint32_t dt_ms, int quarter, int width, int height);
-void scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
+bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
 
-/* The two above on the panel's framebuffer and orientation. Compose marks the
- * framebuffer dirty and does nothing without an active camera. */
+/* The two above on the panel's pictures and orientation. Compose marks an
+ * exact-half picture for expansion, otherwise the full framebuffer dirty;
+ * it does nothing without an active camera. */
 void scene_shell_render(uint32_t dt_ms);
 void scene_shell_compose(uint32_t dt_ms);
 

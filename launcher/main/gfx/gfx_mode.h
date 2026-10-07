@@ -2,14 +2,6 @@
  * gfx_mode: the mode-grant arithmetic behind gfx_mode_enter(), as a
  * standalone, ESP-IDF-free module so a host suite can drive it without a
  * framebuffer or a panel.
- *
- * An app declares what it wants at enter(): a layout, a resolution, and a
- * per-axis interlace choice. gfx_mode_resolve() is the pure function
- * that turns a request into a grant; gfx_mode_enter() (gfx.c) is the only
- * caller that also allocates. All layouts are wired to real rendering,
- * but only GFX_RESOLUTION_FULL with no interlace is (no caller ever
- * requests HALF or turns interlace on), so those fields exist ahead of a
- * caller that needs them.
  */
 #pragma once
 
@@ -21,17 +13,8 @@ typedef enum {
     GFX_LAYOUT_INDEXED, /* a persistent index image in internal RAM; core-1 expands it */
 } gfx_layout_t;
 
-/* Ordered least-restrictive first, so resolving a grant is "whichever of
- * request and system max asks for less"; see gfx_mode_resolve() below,
- * where the higher ordinal (the smaller resolution) always wins. */
-typedef enum {
-    GFX_RESOLUTION_FULL = 0,
-    GFX_RESOLUTION_HALF = 1,
-} gfx_resolution_t;
-
 typedef struct {
     gfx_layout_t layout;
-    gfx_resolution_t resolution;
     bool interlace_x; /* render-side: skip alternate columns */
     bool interlace_y; /* render-side: skip alternate rows */
     int index_grid_w; /* GFX_LAYOUT_INDEXED only: the index image's own size */
@@ -41,10 +24,9 @@ typedef struct {
 
 typedef struct {
     gfx_layout_t layout;
-    gfx_resolution_t resolution;
     bool interlace_x;
     bool interlace_y;
-    int width; /* granted pixel geometry, after resolution */
+    int width; /* granted pixel geometry, of the panel */
     int height;
     int band_height; /* the granted band height, or 0 outside GFX_LAYOUT_BANDS */
     int index_grid_w;
@@ -52,29 +34,22 @@ typedef struct {
     int cell_size;
 } gfx_mode_t;
 
-/* Resolves a request against the system's resolution cap and the panel's own
- * geometry, without touching any buffer. `full_width`/`full_height` are the
- * panel's real geometry (GFX_WIDTH/GFX_HEIGHT on the device) and
- * `full_band_height` is GFX_BAND_HEIGHT, passed in rather than read from a
- * macro so a host suite can drive this with its own numbers. Layout and
- * interlace pass through unchanged: gfx does not yet cap either. */
+/* Panel and band geometry are passed in so host suites can grant modes
+ * without device macros. Layout and interlace requests pass through. */
 static inline gfx_mode_t
-gfx_mode_resolve(const gfx_mode_request_t* request, gfx_resolution_t system_max, int full_width, int full_height,
-                 int full_band_height) {
+gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_height, int full_band_height) {
     gfx_mode_t granted;
 
     granted.layout = request->layout;
-    granted.resolution = (request->resolution > system_max) ? request->resolution : system_max;
     granted.interlace_x = request->interlace_x;
     granted.interlace_y = request->interlace_y;
     granted.index_grid_w = request->index_grid_w;
     granted.index_grid_h = request->index_grid_h;
     granted.cell_size = request->cell_size;
 
-    const int divisor = (granted.resolution == GFX_RESOLUTION_HALF) ? 2 : 1;
-    granted.width = full_width / divisor;
-    granted.height = full_height / divisor;
-    granted.band_height = (granted.layout == GFX_LAYOUT_BANDS) ? full_band_height / divisor : 0;
+    granted.width = full_width;
+    granted.height = full_height;
+    granted.band_height = (granted.layout == GFX_LAYOUT_BANDS) ? full_band_height : 0;
 
     return granted;
 }

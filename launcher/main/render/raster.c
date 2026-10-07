@@ -22,6 +22,7 @@ typedef struct {
     bool clear;       /* the first mesh of a picture clears it; later ones draw over it */
     const r3d_span_writer_t* writers;
     int writer_count;
+    uint16_t* destination;
 } slice_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -137,7 +138,7 @@ static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->raster->destination, s->first, s->count);
+    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
 }
 
 /* Core 1 takes a copy of `second_half`, so a caller may reuse both. */
@@ -256,7 +257,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const int writer_count = instance_writers(raster, index, writers);
     FRAME_COST_BEGIN(transformed_from);
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
-    slice_t mine = {raster, mesh, lens, visible, count, 0, half, clear, NULL, 0};
+    slice_t mine = {raster, mesh, lens, visible, count, 0, half, clear, NULL, 0, NULL};
     slice_t other = mine;
     other.first = half;
     other.count = count - half;
@@ -306,8 +307,8 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
     }
     if (resolves) {
         const int mid = raster->height / 2;
-        slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0};
-        const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0};
+        slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL};
+        const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL};
         run_split(resolve_slice, &mine, &other);
     }
 }
@@ -351,10 +352,10 @@ raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter) 
 }
 
 RENDER_ENTRY_OFFSET(12) void
-raster_upscale(raster_t* raster) {
-    assert(raster->upscaled && raster->destination != NULL);
+raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
+    assert(raster->upscaled && destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
-    assert(raster->destination_width >= raster->width && raster->destination_height >= raster->height);
+    assert(width >= raster->width && height >= raster->height);
     FRAME_COST_BEGIN(upscaled_from);
     uint16_t* columns;
     /* The carve's lifetime ends before the slice pair uses the stack. */
@@ -364,18 +365,17 @@ raster_upscale(raster_t* raster) {
         columns = (uint16_t*)((char*)last->pixels
                               + gfx_attachment_bytes(last->bytes_per_pixel, raster->width, raster->height));
     }
-    uint16_t* rows = columns + raster->destination_width;
+    uint16_t* rows = columns + width;
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
-        || raster->upscale.destination_width != raster->destination_width
-        || raster->upscale.destination_height != raster->destination_height || raster->upscale.columns != columns
-        || raster->upscale.rows != rows) {
-        const bool initialized = upscale_init(&raster->upscale, raster->width, raster->height,
-                                              raster->destination_width, raster->destination_height, columns, rows);
+        || raster->upscale.destination_width != width || raster->upscale.destination_height != height
+        || raster->upscale.columns != columns || raster->upscale.rows != rows) {
+        const bool initialized =
+            upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
     }
-    const int mid = raster->destination_height / 2;
-    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, raster->destination_height - mid, false, NULL, 0};
-    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0};
+    const int mid = height / 2;
+    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination};
+    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination};
     run_split(upscale_slice, &mine, &other);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

@@ -124,17 +124,19 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
     }
 }
 
-void
+bool
 scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     if (paused) {
-        return;
+        return false;
     }
     if (!stepped) {
         scene_render(dt_ms, quarter, target->width, target->height);
     }
+    bool expanded = false;
     if (rendered && target->pixels != NULL) {
-        render_context_compose(render_context_main(), target->pixels);
+        expanded = render_context_compose(render_context_main(), target->pixels, target->half_pixels);
     }
     rendered = false;
     stepped = false;
+    return expanded;
 }
