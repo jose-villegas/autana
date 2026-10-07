@@ -6,7 +6,7 @@ launcher/tools/render/render_doc_images.sh runs it on the capture and scores
 kept in docs/render/data/.
 
     python launcher/tools/r3d/dynres_report.py CAPTURE [CAPTURE ...] --tables DIR --chart PNG
-        [--quality CSV]
+        [--quality CAMERA=CSV ...]
 
 CAPTURE is a device log holding the frame-cost suite's `scale_split`,
 `scale_spans`, `dynres_step` and `dynres_frames` lines; a later line replaces
@@ -14,7 +14,8 @@ an earlier one of the same key, so several captures merge with the newest
 last. CSV is the per-size reference score a scene's quality script writes
 (width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim); each flown frame takes
 the score of its size at the nearest scored time. DIR receives
-dynres-stages.md, dynres-findings.md and dynres-policies.md, one per block.
+dynres-stages.md, dynres-findings.md, dynres-policies.md and
+dynres-prediction.md, one per block.
 """
 
 import argparse
@@ -22,6 +23,7 @@ import csv
 import gzip
 import pathlib
 import re
+import statistics
 
 
 DESTINATION = (368, 448)
@@ -30,7 +32,7 @@ SPLIT = re.compile(r"scale_split: (\d+)x(\d+) poses=(\d+) tris=(\d+) frame mean/
 STAGE = re.compile(r"(r3d\.\w+) ([\d.]+)/([\d.]+)")
 SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) rows (-?\d+) span_setup (-?\d+) fill (-?\d+) clear (-?\d+)")
 STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
-FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+)*)")
+FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")
 
 
 def read_captures(paths):
@@ -49,8 +51,8 @@ def read_captures(paths):
             elif m := STEP.search(line):
                 ladders.setdefault(m[1], {})[int(m[2])] = (int(m[3]), int(m[4]))
             elif m := FRAMES.search(line):
-                records = [tuple(int(v) for v in item.split(":")) for item in m[5].split()]
-                frames.setdefault((m[1], m[2], int(m[3])), {})[int(m[4])] = records
+                records = [tuple(int(v) for v in item.split(":")) for item in m[6].split()]
+                frames.setdefault((m[1], m[2], m[3], int(m[4])), {})[int(m[5])] = records
     runs = {}
     for key, chunks in frames.items():
         runs[key] = [record for first in sorted(chunks) for record in chunks[first]]
@@ -128,43 +130,59 @@ def quality_at(scores, size, t_ms):
 
 
 def policy_rows(runs, ladders, scores, splits):
-    """One row per (policy, ladder, budget) and, for the fixed run, one per budget."""
-    budgets = sorted({budget for (_, _, budget) in runs if budget > 0})
+    """One row per path, policy, ladder and budget; fixed runs repeat per budget."""
     rows = []
-    for budget in budgets:
-        for (policy, ladder, run_budget), records in runs.items():
-            if run_budget not in (0, budget):
-                continue
-            sizes = [ladders.get(ladder, {}).get(step, (DESTINATION[0] // 2, DESTINATION[1] // 2)) for step, *_ in records]
-            costs = [draw + upscale for _, draw, upscale, _ in records]
-            steps = {}
-            for size in sizes:
-                steps[size] = steps.get(size, 0) + 1
-            switches = sum(1 for a, b in zip(sizes, sizes[1:]) if a != b)
-            quality = [quality_at(scores, size, (i + 1) * 50) for i, size in enumerate(sizes)]
-            known = [q for q in quality if q is not None]
-            rows.append({
-                "policy": policy, "ladder": ladder, "budget": budget, "costs": costs, "sizes": sizes,
-                "p50": percentile(costs, 0.5), "p95": percentile(costs, 0.95), "max": max(costs),
-                "over": sum(1 for c in costs if c > budget) / len(costs), "switches": switches, "steps": steps,
-                "delta_e": sum(q[1] for q in known) / len(known) if known else None,
-                "ssim": sum(q[2] for q in known) / len(known) if known else None,
-            })
+    for camera in sorted({key[0] for key in runs}):
+        budgets = sorted({budget for (path, _, _, budget) in runs if path == camera and budget > 0})
+        for budget in budgets:
+            for (path, policy, ladder, run_budget), records in runs.items():
+                if path != camera or run_budget not in (0, budget):
+                    continue
+                sizes = [ladders.get(ladder, {}).get(step, (DESTINATION[0] // 2, DESTINATION[1] // 2)) for step, *_ in records]
+                costs = [draw + upscale for _, draw, upscale, _, _ in records]
+                steps = {}
+                for size in sizes:
+                    steps[size] = steps.get(size, 0) + 1
+                switches = sum(1 for a, b in zip(sizes, sizes[1:]) if a != b)
+                quality = [quality_at(scores.get(camera, {}), size, (i + 1) * 50) for i, size in enumerate(sizes)]
+                known = [q for q in quality if q is not None]
+                rows.append({
+                    "camera": camera, "policy": policy, "ladder": ladder, "budget": budget, "costs": costs, "sizes": sizes,
+                    "p50": percentile(costs, 0.5), "p95": percentile(costs, 0.95), "max": max(costs),
+                    "over": sum(1 for c in costs if c > budget) / len(costs), "switches": switches, "steps": steps,
+                    "delta_e": sum(q[1] for q in known) / len(known) if known else None,
+                    "ssim": sum(q[2] for q in known) / len(known) if known else None,
+                })
     return rows
 
 
 def policies_table(rows):
-    lines = ["| Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |",
-             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| Path | Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         total = sum(r["steps"].values())
         spread = ", ".join(f"{w}x{h} {100 * n / total:.0f}%" for (w, h), n in
                            sorted(r["steps"].items(), key=lambda item: -item[0][0] * item[0][1]))
         quality = "" if r["delta_e"] is None else f"{r['delta_e']:.2f} | {r['ssim']:.4f}"
-        lines.append(f"| {ms(r['budget'])} | {r['policy']} | {r['ladder']} | {ms(r['p50'])} | {ms(r['p95'])} "
+        lines.append(f"| {r['camera']} | {ms(r['budget'])} | {r['policy']} | {r['ladder']} | {ms(r['p50'])} | {ms(r['p95'])} "
                      f"| {ms(r['max'])} | {100 * r['over']:.1f}% | {r['switches']} | {spread} | {quality or '- | -'} |")
     return "\n".join(lines) + ("\n\nFrame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM "
                                "are against the reference at full size, lower dE and higher SSIM being closer.")
+
+
+def prediction_table(runs):
+    lines = ["| Path | Ladder | Budget | Frames | Median error | p95 error | Over budget |",
+             "|---|---|---|---|---|---|---|"]
+    for (camera, policy, ladder, budget), records in sorted(runs.items(), key=lambda item: (item[0][0], item[0][3], item[0][2])):
+        if policy != "predicted":
+            continue
+        if any(predicted <= 0 for *_, predicted in records):
+            raise ValueError("predicted frames must have a positive predicted price")
+        errors = [100 * abs((draw + upscale) / predicted - 1) for _, draw, upscale, _, predicted in records]
+        over = 100 * sum(draw + upscale > budget for _, draw, upscale, _, _ in records) / len(records)
+        lines.append(f"| {camera} | {ladder} | {ms(budget)} | {len(records)} "
+                     f"| {statistics.median(errors):.1f}% | {percentile(errors, 0.95):.1f}% | {over:.1f}% |")
+    return "\n".join(lines)
 
 
 def chart(rows, path):
@@ -173,22 +191,24 @@ def chart(rows, path):
     import matplotlib.pyplot as plt
 
     budgets = sorted({r["budget"] for r in rows})
-    figure, axes = plt.subplots(2, len(budgets), figsize=(6 * len(budgets), 6), sharex=True,
+    cameras = sorted({r["camera"] for r in rows})
+    figure, axes = plt.subplots(2 * len(cameras), len(budgets), figsize=(6 * len(budgets), 6 * len(cameras)),
                                 layout="constrained", squeeze=False)
-    for column, budget in enumerate(budgets):
-        cost_axis, size_axis = axes[0][column], axes[1][column]
-        for r in (r for r in rows if r["budget"] == budget):
-            label = r["policy"] if r["ladder"] == "half" else f"{r['policy']}, {r['ladder']}"
-            seconds = [(i + 1) * 0.05 for i in range(len(r["costs"]))]
-            cost_axis.plot(seconds, [c / 1000 for c in r["costs"]], linewidth=0.8, label=label)
-            share = [100 * w * h / (DESTINATION[0] * DESTINATION[1]) for w, h in r["sizes"]]
-            size_axis.step(seconds, share, linewidth=0.8, where="post", label=label)
-        cost_axis.axhline(budget / 1000, color="black", linestyle="--", linewidth=0.8)
-        cost_axis.set_title(f"budget {budget / 1000:.0f} ms")
-        cost_axis.set_ylabel("draw + upscale, ms")
-        size_axis.set_ylabel("pixels drawn, % of panel")
-        size_axis.set_xlabel("path time, s")
-        cost_axis.legend(fontsize=7, loc="upper right")
+    for row, camera in enumerate(cameras):
+        for column, budget in enumerate(budgets):
+            cost_axis, size_axis = axes[2 * row][column], axes[2 * row + 1][column]
+            for r in (r for r in rows if r["camera"] == camera and r["budget"] == budget):
+                label = r["policy"] if r["ladder"] == "half" else f"{r['policy']}, {r['ladder']}"
+                seconds = [(i + 1) * 0.05 for i in range(len(r["costs"]))]
+                cost_axis.plot(seconds, [c / 1000 for c in r["costs"]], linewidth=0.8, label=label)
+                share = [100 * w * h / (DESTINATION[0] * DESTINATION[1]) for w, h in r["sizes"]]
+                size_axis.step(seconds, share, linewidth=0.8, where="post", label=label)
+            cost_axis.axhline(budget / 1000, color="black", linestyle="--", linewidth=0.8)
+            cost_axis.set_title(f"{camera}, budget {budget / 1000:.0f} ms")
+            cost_axis.set_ylabel("draw + upscale, ms")
+            size_axis.set_ylabel("pixels drawn, % of panel")
+            size_axis.set_xlabel("path time, s")
+            cost_axis.legend(fontsize=7, loc="upper right")
     pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(path, dpi=110)
 
@@ -198,15 +218,21 @@ def main():
     parser.add_argument("captures", nargs="+")
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True)
-    parser.add_argument("--quality")
+    parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
     args = parser.parse_args()
     splits, spans, ladders, runs = read_captures(args.captures)
     if not splits or not runs:
         parser.error("the captures hold no scale_split or no dynres_frames lines")
-    rows = policy_rows(runs, ladders, read_quality(args.quality), splits)
+    scores = {}
+    for quality in args.quality:
+        camera, separator, csv_path = quality.partition("=")
+        if not separator or not camera or not csv_path or camera in scores:
+            parser.error("--quality needs a unique CAMERA=CSV")
+        scores[camera] = read_quality(csv_path)
+    rows = policy_rows(runs, ladders, scores, splits)
     args.tables.mkdir(parents=True, exist_ok=True)
     tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
-              "dynres-policies": policies_table(rows)}
+              "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs)}
     for name, body in tables.items():
         (args.tables / f"{name}.md").write_text(body + "\n", encoding="utf-8")
     chart(rows, args.chart)

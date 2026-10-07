@@ -1,10 +1,9 @@
 /*
  * Device-only suite: where a raster frame's time goes at each render size,
- * along the render lab's flythrough. One line per size gives the raster's
- * frame_cost stages on both cores and one core's span stages, which is what
- * a dynamic-resolution controller's steps and cost model are sized from.
- * Then each policy flies the path through the scene manager at a fixed
- * frame step, one record per frame, against two budgets.
+ * along the first camera's path. The stage split and model fit use that
+ * path; each policy then flies every named camera through the scene manager
+ * at a fixed frame step. Records include the corrected predicted price
+ * alongside draw, upscale and triangle counts for each path and budget.
  * launcher/tools/r3d/dynres_report.py reads the capture.
  *
  * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
@@ -226,6 +225,7 @@ typedef struct {
     int8_t step;
     int32_t draw_us, upscale_us;
     int32_t triangles;
+    int32_t predicted_us;
 } frame_record_t;
 
 /* Every step at every pose, drawn as the scene draws it, for the fit. */
@@ -268,34 +268,49 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     return fitted;
 }
 
-static void
-log_frames(const char* policy, const char* ladder, int32_t budget_us, const frame_record_t* records, int frames) {
-    const size_t line_size = (LINE_FRAMES * 32) + 64;
+static __attribute__((noinline)) void
+log_frames(const char* camera, const char* policy, const char* ladder, int32_t budget_us, const frame_record_t* records,
+           int frames) {
+    const size_t line_size = (LINE_FRAMES * 64) + 128;
     char* line = malloc(line_size);
     TEST_ASSERT_NOT_NULL(line);
     for (int first = 0; first < frames; first += LINE_FRAMES) {
-        int length = snprintf(line, line_size, "dynres_frames: %s %s %ld %d", policy, ladder, (long)budget_us, first);
+        int length =
+            snprintf(line, line_size, "dynres_frames: %s %s %s %ld %d", camera, policy, ladder, (long)budget_us, first);
         for (int i = first; i < frames && i < first + LINE_FRAMES && length > 0 && (size_t)length < line_size; i++) {
             const frame_record_t* r = &records[i];
-            length += snprintf(line + length, line_size - (size_t)length, " %d:%ld:%ld:%ld", r->step, (long)r->draw_us,
-                               (long)r->upscale_us, (long)r->triangles);
+            length += snprintf(line + length, line_size - (size_t)length, " %d:%ld:%ld:%ld:%ld", r->step,
+                               (long)r->draw_us, (long)r->upscale_us, (long)r->triangles, (long)r->predicted_us);
         }
         ESP_LOGI(TAG, "%s", line);
     }
     free(line);
 }
 
+/* Frame metadata stays off the stack while the next frame draws. */
+static __attribute__((noinline)) void
+record_frame(frame_record_t* record, int64_t began_us, int64_t drawn_us, int64_t composed_us) {
+    const render_context_frame_t r = render_context_frame(render_context_main());
+    *record = (frame_record_t){(int8_t)r.step, (int32_t)(drawn_us - began_us), (int32_t)(composed_us - drawn_us),
+                               r.stats.triangles, r.predicted_us};
+}
+
 /* The path flown through the scene manager at FRAME_DT_MS a frame: at the
  * camera's half scale when `config` is NULL, else under the policy. */
-static void
-fly(const char* policy, const ladder_t* ladder, const resolution_config_t* config, const resolution_model_t* model,
-    uint16_t* picture, frame_record_t* records, int frames) {
+static __attribute__((noinline)) void
+fly(const char* camera, const char* policy, const ladder_t* ladder, const resolution_config_t* config,
+    const resolution_model_t* model, uint16_t* picture, frame_record_t* records) {
     scene_t* flown = scene_load(SPONZA_SCENE, NULL);
     TEST_ASSERT_NOT_NULL(flown);
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
-    TEST_ASSERT_TRUE(scene_activate(flown, NULL));
+    TEST_ASSERT_TRUE(scene_activate(flown, camera));
+    const r3d_scene_camera_t* flown_path = scene_camera_lens(flown, camera);
+    TEST_ASSERT_NOT_NULL(flown_path);
+    const uint32_t period = r3d_scene_camera_period_ms(flown_path);
+    const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
+    TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_context_set_scale(render_context_main(), 50);
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     const scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT};
@@ -307,13 +322,12 @@ fly(const char* policy, const ladder_t* ladder, const resolution_config_t* confi
         const int64_t drawn_us = timing_now_us();
         scene_compose(FRAME_DT_MS, 0, &target);
         const int64_t composed_us = timing_now_us();
-        const render_context_frame_t r = render_context_frame(render_context_main());
-        records[i] = (frame_record_t){(int8_t)r.step, (int32_t)(drawn_us - began_us), (int32_t)(composed_us - drawn_us),
-                                      r.stats.triangles};
+        record_frame(&records[i], began_us, drawn_us, composed_us);
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(flown);
-    log_frames(policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records, frames);
+    log_frames(camera, policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records,
+               frames);
 }
 
 /* A ladder's config at `budget_us`; not inlined, so the config it returns is
@@ -357,8 +371,6 @@ test_dynamic_resolution_policies_along_the_path(void) {
     } fitted_t;
 
     fitted_t* fitted = memory_alloc(sizeof(*fitted) * LADDER_COUNT, MEMORY_PSRAM);
-    const int path_frames = (int)(r3d_scene_camera_period_ms(path) / FRAME_DT_MS);
-    const int frames = path_frames < FRAMES_MAX ? path_frames : FRAMES_MAX;
     uint16_t* picture = memory_alloc(sizeof(uint16_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
     frame_record_t* records = memory_alloc(sizeof(*records) * FRAMES_MAX, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(fitted);
@@ -367,14 +379,17 @@ test_dynamic_resolution_policies_along_the_path(void) {
     for (int i = 0; i < LADDER_COUNT; i++) {
         fit_ladder(&ladders[i], budgets_us[0], &fitted[i].config, &fitted[i].model);
     }
-    fly("fixed", NULL, NULL, NULL, picture, records, frames);
-    for (int b = 0; b < (int)(sizeof budgets_us / sizeof budgets_us[0]); b++) {
-        for (int i = 0; i < LADDER_COUNT; i++) {
-            fitted[i].config.budget_us = budgets_us[b];
+    for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
+        const char* name = sponza_cameras[camera];
+        fly(name, "fixed", NULL, NULL, NULL, picture, records);
+        for (int b = 0; b < (int)(sizeof budgets_us / sizeof budgets_us[0]); b++) {
+            for (int i = 0; i < LADDER_COUNT; i++) {
+                fitted[i].config.budget_us = budgets_us[b];
+            }
+            fly(name, "stepped", &ladders[0], &fitted[0].config, NULL, picture, records);
+            fly(name, "predicted", &ladders[0], &fitted[0].config, &fitted[0].model, picture, records);
+            fly(name, "predicted", &ladders[1], &fitted[1].config, &fitted[1].model, picture, records);
         }
-        fly("stepped", &ladders[0], &fitted[0].config, NULL, picture, records, frames);
-        fly("predicted", &ladders[0], &fitted[0].config, &fitted[0].model, picture, records, frames);
-        fly("predicted", &ladders[1], &fitted[1].config, &fitted[1].model, picture, records, frames);
     }
     memory_free(records);
     memory_free(picture);

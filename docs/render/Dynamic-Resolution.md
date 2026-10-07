@@ -97,6 +97,12 @@ pose at full size ([Render-Harness.md](../tools/Render-Harness.md)).
 Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM are against the reference at full size, lower dE and higher SSIM being closer.
 <!-- /generated: dynres-policies -->
 
+Prediction error compares each predicted frame's corrected price with its
+measured draw plus upscale cost, grouped by path, ladder and budget.
+
+<!-- generated: dynres-prediction -->
+<!-- /generated: dynres-prediction -->
+
 What the table shows:
 
 - **Over budget.** At the tight budget the half scale itself is often over,
@@ -121,9 +127,11 @@ What the table shows:
 
 The tables and the chart are made by the docs generator,
 `launcher/tools/render/render_doc_images.sh`, like every other measured page,
-from the board capture and the quality CSV kept beside this page in `data/`.
+from the board capture and per-path quality CSVs in `data/`:
+`dynamic-resolution-quality-camera.csv` and
+`dynamic-resolution-quality-tour.csv`.
 The capture is the suite's `scale_split`, `scale_spans`, `dynres_step` and
-`dynres_frames` lines; the CSV is the test scene's own quality script, which
+`dynres_frames` lines; each CSV is made by the test scene's quality script, which
 renders the path at each size on a host and scores it. A new board run
 replaces the capture, and the generator does the rest:
 
