@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Dynamic-resolution results from a board capture: the stage split by render
 size, what it says about the gaps between sizes, and how each policy flew the
-path, written into a document's generated blocks and a chart.
+path, as tables for the docs generator's block writer and a chart.
+launcher/tools/render/render_doc_images.sh runs it on the capture and scores
+kept in docs/render/data/.
 
-    python launcher/tools/r3d/dynres_report.py CAPTURE [CAPTURE ...] --doc DOC --chart PNG
+    python launcher/tools/r3d/dynres_report.py CAPTURE [CAPTURE ...] --tables DIR --chart PNG
         [--quality CSV]
 
 CAPTURE is a device log holding the frame-cost suite's `scale_split`,
@@ -11,8 +13,8 @@ CAPTURE is a device log holding the frame-cost suite's `scale_split`,
 an earlier one of the same key, so several captures merge with the newest
 last. CSV is the per-size reference score a scene's quality script writes
 (width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim); each flown frame takes
-the score of its size at the nearest scored time. The blocks written are
-dynres-stages, dynres-findings and dynres-policies.
+the score of its size at the nearest scored time. DIR receives
+dynres-stages.md, dynres-findings.md and dynres-policies.md, one per block.
 """
 
 import argparse
@@ -20,10 +22,7 @@ import csv
 import gzip
 import pathlib
 import re
-import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
-from generated_blocks import replace_block  # noqa: E402
 
 DESTINATION = (368, 448)
 
@@ -185,13 +184,14 @@ def chart(rows, path):
         size_axis.set_ylabel("pixels drawn, % of panel")
         size_axis.set_xlabel("path time, s")
         cost_axis.legend(fontsize=7, loc="upper right")
+    pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(path, dpi=110)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("captures", nargs="+")
-    parser.add_argument("--doc", required=True)
+    parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True)
     parser.add_argument("--quality")
     args = parser.parse_args()
@@ -199,9 +199,11 @@ def main():
     if not splits or not runs:
         parser.error("the captures hold no scale_split or no dynres_frames lines")
     rows = policy_rows(runs, ladders, read_quality(args.quality), splits)
-    replace_block(args.doc, "dynres-stages", stages_table(splits, spans))
-    replace_block(args.doc, "dynres-findings", findings_table(splits, spans))
-    replace_block(args.doc, "dynres-policies", policies_table(rows))
+    args.tables.mkdir(parents=True, exist_ok=True)
+    tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
+              "dynres-policies": policies_table(rows)}
+    for name, body in tables.items():
+        (args.tables / f"{name}.md").write_text(body + "\n", encoding="utf-8")
     chart(rows, args.chart)
 
 

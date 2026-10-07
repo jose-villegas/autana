@@ -102,19 +102,19 @@ What the table shows:
   here comes near it. Below 2.5x a step buys little, as the setup floor in
   the stage table shows.
 
-![Frame cost and render size along the path, per policy and budget](images/dynamic-resolution-flight.png)
+![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 
 ## Refreshing
 
-The tables and the chart come from a board capture and a quality CSV kept
-beside this page in `data/`. The capture is the suite's `scale_split`,
-`scale_spans`, `dynres_step` and `dynres_frames` lines; the CSV is the test
-scene's own quality script, which renders the path at each size on a host and
-scores it. The report rewrites the blocks above from the two:
+The tables and the chart are made by the docs generator,
+`launcher/tools/render/render_doc_images.sh`, like every other measured page,
+from the board capture and the quality CSV kept beside this page in `data/`.
+The capture is the suite's `scale_split`, `scale_spans`, `dynres_step` and
+`dynres_frames` lines; the CSV is the test scene's own quality script, which
+renders the path at each size on a host and scores it. A new board run
+replaces the capture, and the generator does the rest:
 
 ```sh
 autana suite run_raster_scale_perf_suite --flash
-python launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    --quality docs/render/data/dynamic-resolution-quality.csv \
-    --doc docs/render/Dynamic-Resolution.md --chart docs/render/images/dynamic-resolution-flight.png
+sh launcher/tools/render/render_doc_images.sh
 ```
