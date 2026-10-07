@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -182,17 +183,13 @@ test_the_predictor_draws_the_finest_step_its_model_says_fits(void) {
 }
 
 static void
-test_the_predictor_reports_the_corrected_price_of_its_chosen_step(void) {
+test_the_predictor_reports_the_price_of_its_chosen_step(void) {
     const resolution_config_t cfg = config();
     resolution_predict_t p;
     resolution_predict_init(&p, &cfg, &model, 0);
-    for (int correction = 1; correction <= 4; correction++) {
-        p.correction = (float)correction / 2.0F;
-        for (int triangles = 3000; triangles <= 30000; triangles += 3000) {
-            const int step = resolution_predict_choose(&p, &cfg, triangles);
-            TEST_ASSERT_FLOAT_WITHIN(0.01F, p.correction * resolution_model_predict_us(&model, &cfg, step, triangles),
-                                     p.chosen_us);
-        }
+    for (int triangles = 3000; triangles <= 30000; triangles += 3000) {
+        const int step = resolution_predict_choose(&p, &cfg, triangles);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, resolution_model_predict_us(&p.model, &cfg, step, triangles), p.chosen_us);
     }
 }
 
@@ -238,8 +235,7 @@ test_the_predictor_does_not_flip_at_the_edge_of_the_budget(void) {
     TEST_ASSERT_EQUAL_INT(switches, p.switches);
 }
 
-/* The board runs 20% slower than the model: measured frames correct it, and
- * the predictor settles on the step the slower board can afford. */
+/* Draws 20% slower than the prior must still fit the chosen step. */
 static void
 test_measured_frames_correct_a_model_that_runs_fast(void) {
     const resolution_config_t cfg = config();
@@ -247,12 +243,126 @@ test_measured_frames_correct_a_model_that_runs_fast(void) {
     resolution_predict_init(&p, &cfg, &model, 0);
     for (int i = 0; i < 200; i++) {
         const int step = resolution_predict_choose(&p, &cfg, 6000);
-        resolution_predict_measured(&p, &cfg, 6000,
-                                    (int32_t)(1.2F * resolution_model_predict_us(&model, &cfg, step, 6000)));
+        resolution_predict_measured(
+            &p, &cfg, 6000,
+            (int32_t)(1.2F * (resolution_model_predict_us(&model, &cfg, step, 6000) - model.upscale_us[step])),
+            (int32_t)model.upscale_us[step]);
     }
-    TEST_ASSERT_FLOAT_WITHIN(0.02F, 1.2F, p.correction);
-    TEST_ASSERT_LESS_OR_EQUAL_FLOAT(1.01F * (float)BUDGET_US,
-                                    1.2F * resolution_model_predict_us(&model, &cfg, p.step, 6000));
+    TEST_ASSERT_LESS_OR_EQUAL_FLOAT(
+        1.01F * (float)BUDGET_US,
+        1.2F * (resolution_model_predict_us(&model, &cfg, p.step, 6000) - model.upscale_us[p.step])
+            + model.upscale_us[p.step]);
+}
+
+static resolution_model_t
+changed_model(void) {
+    resolution_model_t truth = model;
+    truth.base_us += 3000.0F;
+    truth.per_triangle_us *= 1.5F;
+    truth.per_pixel_share_us *= 0.8F;
+    return truth;
+}
+
+static void
+feed_frames(resolution_predict_t* p, const resolution_config_t* cfg, const resolution_model_t* truth, int frames,
+            int held_step, unsigned* seed) {
+    for (int i = 0; i < frames; i++) {
+        *seed = (*seed * 1103515245U) + 12345U;
+        p->step = held_step >= 0 ? held_step : (int)((*seed >> 16) % (unsigned)cfg->step_count);
+        const int triangles = 1000 + (int)((*seed >> 8) % 19000U);
+        const float draw = resolution_model_predict_us(truth, cfg, p->step, triangles) - truth->upscale_us[p->step];
+        *seed = (*seed * 1103515245U) + 12345U;
+        const float noise = 1.0F + (float)((int)((*seed >> 16) % 101U) - 50) / 1000.0F;
+        resolution_predict_measured(p, cfg, triangles, (int32_t)(draw * noise), (int32_t)truth->upscale_us[p->step]);
+    }
+}
+
+static void
+assert_prices(const resolution_predict_t* p, const resolution_config_t* cfg, const resolution_model_t* truth,
+              float share) {
+    for (int step = 0; step < cfg->step_count; step++) {
+        for (int triangles = 1000; triangles <= 20000; triangles += 1000) {
+            const float expected = resolution_model_predict_us(truth, cfg, step, triangles);
+            TEST_ASSERT_FLOAT_WITHIN(share * expected, expected,
+                                     resolution_model_predict_us(&p->model, cfg, step, triangles));
+        }
+    }
+}
+
+static void
+check_refit_prices(const resolution_model_t* truth, int warmup_frames, int frames, float error_share) {
+    const resolution_config_t cfg = config();
+    resolution_predict_t* p = malloc(sizeof(*p));
+    TEST_ASSERT_NOT_NULL(p);
+    for (unsigned seed_start = 1; seed_start <= 4; seed_start++) {
+        unsigned seed = seed_start;
+        resolution_predict_init(p, &cfg, &model, 0);
+        feed_frames(p, &cfg, &model, warmup_frames, -1, &seed);
+        feed_frames(p, &cfg, truth, frames, -1, &seed);
+        assert_prices(p, &cfg, truth, error_share);
+    }
+    free(p);
+}
+
+static void
+test_refit_converges_over_mixed_frames(void) {
+    const resolution_model_t truth = changed_model();
+    check_refit_prices(&truth, 0, 300, 0.04F);
+}
+
+static void
+test_refit_held_step_does_not_drift(void) {
+    const resolution_config_t cfg = config();
+    const resolution_model_t truth = changed_model();
+    resolution_predict_t* p = malloc(sizeof(*p));
+    TEST_ASSERT_NOT_NULL(p);
+    for (unsigned seed_start = 1; seed_start <= 4; seed_start++) {
+        unsigned seed = seed_start;
+        resolution_predict_init(p, &cfg, &model, 3);
+        feed_frames(p, &cfg, &truth, 10000, 3, &seed);
+        for (int i = 0; i < 4; i++) {
+            TEST_ASSERT_TRUE(isfinite(p->covariance[i][i]));
+            TEST_ASSERT_LESS_OR_EQUAL_FLOAT(p->prior_variance[i], p->covariance[i][i]);
+            TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(0.0F, p->covariance[i][i]);
+            for (int j = 0; j < 4; j++) {
+                TEST_ASSERT_TRUE(isfinite(p->covariance[i][j]));
+                TEST_ASSERT_FLOAT_WITHIN(0.01F, p->covariance[i][j], p->covariance[j][i]);
+            }
+        }
+        for (int step = 0; step < cfg.step_count; step++) {
+            const float expected = resolution_model_predict_us(&truth, &cfg, step, 9000);
+            const float prior = resolution_model_predict_us(&model, &cfg, step, 9000);
+            TEST_ASSERT_FLOAT_WITHIN(fabsf(prior - expected) + 0.02F * expected, expected,
+                                     resolution_model_predict_us(&p->model, &cfg, step, 9000));
+        }
+    }
+    free(p);
+}
+
+static void
+test_refit_clips_a_hitch_frame(void) {
+    const resolution_config_t cfg = config();
+    resolution_predict_t* p = malloc(sizeof(*p));
+    TEST_ASSERT_NOT_NULL(p);
+    resolution_predict_init(p, &cfg, &model, 3);
+    unsigned seed = 1;
+    feed_frames(p, &cfg, &model, 300, -1, &seed);
+    p->step = 3;
+    const float before = resolution_model_predict_us(&p->model, &cfg, 3, 9000);
+    resolution_predict_measured(p, &cfg, 9000, (int32_t)(10.0F * before), 0);
+    TEST_ASSERT_FLOAT_WITHIN(0.02F * before, before, resolution_model_predict_us(&p->model, &cfg, 3, 9000));
+    free(p);
+}
+
+static void
+test_refit_preserves_a_correct_prior_under_noise(void) {
+    check_refit_prices(&model, 0, 1000, 0.025F);
+}
+
+static void
+test_refit_tracks_a_scene_change(void) {
+    const resolution_model_t truth = changed_model();
+    check_refit_prices(&truth, 1000, 300, 0.04F);
 }
 
 void
@@ -267,11 +377,16 @@ run_resolution_suite(void) {
     RUN_TEST(test_the_fit_recovers_the_weights_frames_were_made_with);
     RUN_TEST(test_frames_of_one_step_cannot_tell_the_weights_apart);
     RUN_TEST(test_the_predictor_draws_the_finest_step_its_model_says_fits);
-    RUN_TEST(test_the_predictor_reports_the_corrected_price_of_its_chosen_step);
+    RUN_TEST(test_the_predictor_reports_the_price_of_its_chosen_step);
     RUN_TEST(test_the_predictor_steps_down_on_the_frame_the_load_arrives);
     RUN_TEST(test_the_predictor_holds_the_floor_until_the_panic_share);
     RUN_TEST(test_the_predictor_does_not_flip_at_the_edge_of_the_budget);
     RUN_TEST(test_measured_frames_correct_a_model_that_runs_fast);
+    RUN_TEST(test_refit_converges_over_mixed_frames);
+    RUN_TEST(test_refit_held_step_does_not_drift);
+    RUN_TEST(test_refit_clips_a_hitch_frame);
+    RUN_TEST(test_refit_preserves_a_correct_prior_under_noise);
+    RUN_TEST(test_refit_tracks_a_scene_change);
 }
 
 SUITE_REGISTER(run_resolution_suite);

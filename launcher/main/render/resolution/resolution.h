@@ -2,19 +2,9 @@
  * resolution: dynamic resolution, the render size picked per frame to hold a
  * frame-cost budget. A step is one render size, finest first; the caller
  * draws at the chosen step and reports what the frame cost.
- *
- * Two policies share the steps. The stepped controller reacts: a window of
- * measured costs moves it one step at a time, with separate thresholds, a
- * cooldown that doubles after a reversal, and a panic drop for one frame far
- * over budget. The predictor acts first: a linear cost model, fitted on the
- * board, prices every step from what survived culling this frame, and the
- * finest step that fits is drawn.
- *
- * Steps past `recovery_from` are recovery only: the stepped controller
- * reaches them by a panic drop, the predictor only when the coarsest
- * ordinary step would pass the panic share; short of that it holds that
- * step as a floor, a little over budget.
- * Pure, portable and host-tested; time is passed in.
+ * A stepped policy reacts to cost windows; a predictor refits an offline
+ * prior from live draw costs, tracking with bounded covariance and clipped
+ * innovations. Recovery steps need panic load. Portable; time is passed in.
  */
 #pragma once
 
@@ -91,8 +81,10 @@ float resolution_model_predict_us(const resolution_model_t* model, const resolut
 typedef struct {
     resolution_model_t model;
     int step;
-    float correction; /* measured over predicted, smoothed */
-    float chosen_us;  /* corrected price when the step was chosen */
+    resolution_model_t prior;
+    float covariance[4][4];
+    float prior_variance[4];
+    float chosen_us; /* model price when the step was chosen */
     int switches;
 } resolution_predict_t;
 
@@ -102,6 +94,6 @@ void resolution_predict_init(resolution_predict_t* predict, const resolution_con
 /* The step for this frame, from the triangles culling kept. */
 int resolution_predict_choose(resolution_predict_t* predict, const resolution_config_t* config, int triangles);
 
-/* What the frame drawn at the chosen step cost, to correct the model by. */
+/* Draw cost refits the weights; the offline per-step upscale stays fixed. */
 void resolution_predict_measured(resolution_predict_t* predict, const resolution_config_t* config, int triangles,
-                                 int32_t frame_us);
+                                 int32_t draw_us, int32_t upscale_us);
