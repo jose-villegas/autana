@@ -1,8 +1,9 @@
-"""Checks the visibility rules on small scenes: the camera path's coincident faces,
-the view's frustum and margin, the import step that calls it, and that what
-it keeps covers poses between the sampled ones; and that the region rule
-keeps a large face seen only through a window. Needs the pinned r3d
-environment (tools/r3d/requirements.txt)."""
+"""Checks the visibility rules on small scenes. The camera-path rule:
+coincident faces, the view's frustum and margin, the import step that calls
+it, and that what it keeps covers poses between the sampled ones. The region
+rule: a large face seen only through a window is kept, and one behind a solid
+wall or facing away is not. Needs the pinned r3d environment
+(tools/r3d/requirements.txt)."""
 
 import pathlib
 import sys
@@ -163,16 +164,31 @@ class BetweenPoseTests(unittest.TestCase):
 @needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class RegionTests(unittest.TestCase):
+    BOX = ([-0.5, -0.5, 5.0], [0.5, 0.5, 6.0])
+
+    def kept(self, positions, tris, intersector, seed):
+        return visible_from_region(positions, tris, np.zeros(len(tris), dtype=bool), intersector, 4,
+                                   np.random.default_rng(seed), *self.BOX)
+
     def test_a_large_face_seen_only_through_a_window_is_kept_every_time(self):
         # A wall of small cards with one missing in the middle, and a backdrop card behind it as large as the wall:
-        # from the box in front, the backdrop shows only through the window, a few percent of its area.
+        # from the box in front, the backdrop shows only through the window, a few percent of its area. card()
+        # emits two triangles, so the backdrop is the last two.
         wall = [card([x, y, 0], half=0.5) for x in range(-10, 11) for y in range(-10, 11) if (x, y) != (0, 0)]
         positions, tris, intersector = scene(*wall, card([0, 0, -10], half=10.5))
-        double = np.zeros(len(tris), dtype=bool)
         for seed in range(8):
-            seen = visible_from_region(positions, tris, double, intersector, 4, np.random.default_rng(seed),
-                                       [-0.5, -0.5, 5.0], [0.5, 0.5, 6.0])
-            self.assertTrue(seen[-2:].all(), f"seed {seed}: the backdrop behind the window was dropped")
+            self.assertTrue(self.kept(positions, tris, intersector, seed)[-2:].all(),
+                            f"seed {seed}: the backdrop behind the window was dropped")
+
+    def test_a_large_face_behind_a_solid_wall_or_facing_away_is_dropped(self):
+        # The same wall with no window: the backdrop behind it, and a second large card off to the side in open view
+        # that faces away from the box, get many points each, and none may count.
+        wall = [card([x, y, 0], half=0.5) for x in range(-10, 11) for y in range(-10, 11)]
+        positions, tris, intersector = scene(*wall, card([0, 0, -10], half=10.5), card([0, 30, 2], half=10.5, away=True))
+        for seed in range(8):
+            kept = self.kept(positions, tris, intersector, seed)
+            self.assertFalse(kept[-4:].any(), f"seed {seed}: a face the box cannot see was kept")
+            self.assertTrue(kept[:-4].any(), f"seed {seed}: the wall the box faces was dropped")
 
 
 if __name__ == "__main__":
