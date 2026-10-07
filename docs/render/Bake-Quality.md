@@ -13,8 +13,8 @@ regenerated from the source by the doc-images pipeline
 The Sponza scene places renderers over the import's variants
 ([Scene-Files.md](Scene-Files.md)): it records bakes
 and appearance-fit recipes, culled to the camera's path, at lite's and full's
-budgets. Every row plays the same three seconds of the flythrough, so the
-rows compare.
+budgets. Every row plays the same stretch of the flythrough, so the rows
+compare.
 
 | Variant | What it is | Mesh entry |
 |---|---|---|
@@ -252,16 +252,6 @@ colour on the column beside it, and the lit ceiling.
 
 ![Where bounce light changes the picture](../images/render/bake-indirect-crops.png)
 
-The images start from the physical look, the scene without its `[indirect]`
-table and its occlusion, baked without `[bake].indirect` for the direct-light
-side. The reference is that look's, lit per pixel with physical bounced light.
-
-### Fitted variants against indirect light
-
-The GPU stage's [appearance comparison](#appearance-fit-of-the-lite-and-full-meshes)
-rebuilds the GI bake and GI fit at both recipe budgets against one current
-reference. Its generated sheets show the held-out error and enlarged differences.
-
 ### Indirect look
 
 The scene's `[indirect]` table, described in
@@ -272,8 +262,8 @@ sets its own look in that table; this sheet, like the indirect images above,
 starts from the physical look, the scene without that table and without its
 occlusion. The reference reads the same table, so each
 look has two references: the physical one and one made with the look's own
-settings. The sheet bakes the same import at intensity 2 and 3 and at an albedo
-boost of 2 and shows, at the last pose, the physical reference above the bakes
+settings. The sheet bakes the same import at the raised intensities and albedo boost
+the table below names and shows, at the last pose, the physical reference above the bakes
 with their heatmaps against it, then each look's own reference with the
 heatmap against that:
 
@@ -306,7 +296,7 @@ occlusion at every pixel and the bake at every vertex, so the two heatmaps show
 where the bake's occlusion helps and where it overshoots.
 
 The sheet is the reference, the bake without occlusion and the bake with it at
-two poses, each with its error heatmap against the reference.
+the fidelity poses, each with its error heatmap against the reference.
 
 ![Reference, bake without occlusion and bake with it, with error heatmaps](../images/render/bake-ao-compare.png)
 
@@ -314,7 +304,7 @@ The places the two bakes differ most, the reference above them.
 
 ![Where occlusion changes the picture](../images/render/bake-ao-crops.png)
 
-The occlusion factor alone at the same two poses, white where nothing is near
+The occlusion factor alone at the same poses, white where nothing is near
 and dark where the surroundings close in, beside the reference frame. It is
 low where stone meets stone: column bases, under arches, the creases between
 walls and floor and around the pots. A curtain stays open on its visible side
