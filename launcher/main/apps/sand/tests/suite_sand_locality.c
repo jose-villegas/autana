@@ -36,23 +36,21 @@
  * These exercise 2D locality whichever way gravity points, on a 3x3-block
  * grid, which is the smallest that gives "far apart" a meaning.
  */
-#define LOC_W_CAP      (((SAND_BLOCK_W + 2) > 128) ? (SAND_BLOCK_W + 2) : 128)
+#define LOC_W_CAP (((SAND_BLOCK_W + 2) > 128) ? (SAND_BLOCK_W + 2) : 128)
 /* Capped, and malloc'd per test rather than `static`: this file also
  * compiles into the device build, where a `static` array is permanent BSS
  * for the whole boot. A block-size tuning experiment (SAND_BLOCK_H=64) once
  * grew a `static loc_cells` from 2304 to 9216 bytes, and the already-tight
  * device heap (framebuffer alone claims 322 of ~424 KiB) could not spare it
  * for the rest of that boot. */
-#define LOC_H_CAP      (((SAND_BLOCK_H + 2) > 128) ? (SAND_BLOCK_H + 2) : 128)
+#define LOC_H_CAP (((SAND_BLOCK_H + 2) > 128) ? (SAND_BLOCK_H + 2) : 128)
 /* The cap can't be a flat 128 independent of block size:
  * test_a_block_wakes_when_disturbed_diagonally() needs LOC_H >=
  * SAND_BLOCK_H + 2 to exist on the grid at all, and sand_set() on an
  * out-of-range cell is a silent no-op, so a flat cap below that would fail
  * the test on unrelated grounds once SAND_BLOCK_H passed ~42. */
-#define LOC_W          (((SAND_BLOCK_W * 3) < LOC_W_CAP) ? (SAND_BLOCK_W * 3) : LOC_W_CAP)
-#define LOC_H          (((SAND_BLOCK_H * 3) < LOC_H_CAP) ? (SAND_BLOCK_H * 3) : LOC_H_CAP)
-#define LOC_BLOCK_COLS ((LOC_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define LOC_BLOCK_ROWS ((LOC_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define LOC_W     (((SAND_BLOCK_W * 3) < LOC_W_CAP) ? (SAND_BLOCK_W * 3) : LOC_W_CAP)
+#define LOC_H     (((SAND_BLOCK_H * 3) < LOC_H_CAP) ? (SAND_BLOCK_H * 3) : LOC_H_CAP)
 static uint8_t* loc_cells;
 static uint8_t* loc_sleep_blocks;
 
@@ -62,7 +60,7 @@ static uint8_t* loc_sleep_blocks;
 static void
 loc_fixture(void) {
     loc_cells = malloc((size_t)LOC_W * LOC_H);
-    loc_sleep_blocks = malloc((size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+    loc_sleep_blocks = malloc(sand_sleep_block_bytes(LOC_W, LOC_H));
     TEST_ASSERT_NOT_NULL(loc_cells);
     TEST_ASSERT_NOT_NULL(loc_sleep_blocks);
 
@@ -188,7 +186,7 @@ test_a_block_wakes_when_disturbed_diagonally(void) {
 static void
 test_an_interior_write_wakes_only_its_block(void) {
     loc_fixture();
-    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST, (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST, sand_sleep_block_bytes(LOC_W, LOC_H));
 
     sand_set(&fx.loc, SAND_BLOCK_W + 2, SAND_BLOCK_H + 2, SAND_FIRST_SHADE);
     const int awake = count_awake_blocks(&fx.loc);
@@ -274,8 +272,6 @@ test_sideways_tilt_wakes_only_the_disturbed_column(void) {
 #define POOL_WALL_ROWS  3
 #define POOL_WATER_COLS (POOL_W / 8)
 #define POOL_WATER_H    (POOL_H - POOL_WALL_ROWS - 1)
-#define POOL_BLOCK_COLS ((POOL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define POOL_BLOCK_ROWS ((POOL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 /* malloc'd/freed per-test rather than static - a static array here is
  * permanent BSS for the whole device boot in any build that links this
  * suite (diagnostics), not just while this test runs. See loc_fixture()'s
@@ -287,7 +283,7 @@ static sand_t* pool_p;
 static void
 pool_fixture(void) {
     pool_cells = malloc((size_t)POOL_W * POOL_H);
-    pool_sleep_blocks = malloc((size_t)POOL_BLOCK_COLS * POOL_BLOCK_ROWS);
+    pool_sleep_blocks = malloc(sand_sleep_block_bytes(POOL_W, POOL_H));
     pool_p = malloc(sizeof *pool_p);
     TEST_ASSERT_NOT_NULL(pool_cells);
     TEST_ASSERT_NOT_NULL(pool_sleep_blocks);
@@ -397,15 +393,13 @@ test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in(void) {
  * so nothing else covers the destination. Un-expanded, the pass finds no
  * liquid and switches itself off with the water still on screen.
  */
-#define CROSS_BLOCK_W    40
-#define CROSS_BLOCK_H    80
-#define CROSS_BLOCK_COLS ((CROSS_BLOCK_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define CROSS_BLOCK_ROWS ((CROSS_BLOCK_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define CROSS_BLOCK_W 40
+#define CROSS_BLOCK_H 80
 
 static void
 test_water_falling_into_the_next_block_down_still_spreads(void) {
     uint8_t* cells = malloc((size_t)CROSS_BLOCK_W * CROSS_BLOCK_H);
-    uint8_t* blocks = malloc((size_t)CROSS_BLOCK_COLS * CROSS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(CROSS_BLOCK_W, CROSS_BLOCK_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -509,15 +503,13 @@ test_water_crosses_a_block_boundary_sideways(void) {
  * all of them while still producing bad indices at the screen's true edges.
  * This drives grains into every block edge, the two partial ones included,
  * under every gravity direction the dithering can produce. */
-#define STRESS_W          184
-#define STRESS_H          224
-#define STRESS_BLOCK_COLS ((STRESS_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define STRESS_BLOCK_ROWS ((STRESS_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define STRESS_W 184
+#define STRESS_H 224
 
 static void
 test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc((size_t)STRESS_BLOCK_COLS * STRESS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -576,7 +568,7 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
 static void
 test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc((size_t)STRESS_BLOCK_COLS * STRESS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -610,7 +602,7 @@ test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(
 static void
 test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc((size_t)STRESS_BLOCK_COLS * STRESS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -783,6 +775,103 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, "moisture moving through a bed at rest must not wake its blocks");
 }
 
+static void
+loc_filled_fixture(cell_t cell) {
+    loc_fixture();
+    for (int y = 0; y < LOC_H; y++) {
+        for (int x = 0; x < LOC_W; x++) {
+            sand_set(&fx.loc, x, y, cell);
+        }
+    }
+}
+
+static void
+loc_seed_and_sleep(uint32_t seed) {
+    rng_seed(&fx.loc.rng, seed);
+    fx.loc.rng_seed_base = seed;
+    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
+}
+
+static void
+test_root_conduction_through_a_resting_bed_does_not_wake_it(void) {
+    for (uint32_t seed = 1; seed <= 8; seed++) {
+        loc_filled_fixture(STONE);
+        const int x = LOC_W / 2;
+        const int y = LOC_H / 2;
+        sand_set(&fx.loc, x, y, MATX(MATX_ROOT));
+        sand_set(&fx.loc, x, y - 1, CELL_SOIL(MAT_DIRT, 0, 5));
+        sand_set(&fx.loc, x, y + 1, CELL_SOIL(MAT_DIRT, 0, 0));
+        fx.loc.last_load_dx = 0;
+        fx.loc.last_load_dy = 1;
+        loc_seed_and_sleep(seed);
+        int moved = 0;
+        for (int step = 0; step < 100 && !moved; step++) {
+            step_one_conducting_cell(&fx.loc, x, y, LOC_W, LOC_H, reaction_of(MATX(MATX_ROOT)));
+            moved = CELL_MOISTURE(sand_at(&fx.loc, x, y + 1));
+        }
+        const int awake = count_awake_blocks(&fx.loc);
+        loc_free();
+        TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, moved, "setup: the root must conduct moisture");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, "root conduction must leave the resting bed asleep");
+    }
+}
+
+static void
+test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid(void) {
+    for (uint32_t seed = 1; seed <= 8; seed++) {
+        loc_filled_fixture(STONE);
+        const int x = LOC_W / 2;
+        const int plant_y = SAND_BLOCK_H - 2;
+        const int soil_y = 2 * SAND_BLOCK_H;
+        for (int y = plant_y; y < soil_y; y++) {
+            sand_set(&fx.loc, x, y, CELL_MAKE(MAT_WOOD, 0));
+        }
+        sand_set(&fx.loc, x, plant_y, MATX(MATX_LEAF));
+        sand_set(&fx.loc, x, soil_y, CELL_SOIL(MAT_DIRT, 0, 1));
+        sand_set(&fx.loc, x - 1, plant_y, CELL_MAKE(MAT_WATER, MASS_MAX));
+        fx.loc.last_load_dx = 0;
+        fx.loc.last_load_dy = 1;
+        loc_seed_and_sleep(seed);
+        int drank = 0;
+        const cell_t plant = sand_at(&fx.loc, x, plant_y);
+        for (int step = 0; step < 100 && !drank; step++) {
+            drank = step_one_drinking_cell(&fx.loc, x, plant_y, LOC_W, LOC_H, reaction_of(plant), plant);
+        }
+        const int moisture = CELL_MOISTURE(sand_at(&fx.loc, x, soil_y));
+        const bool soil_settled = cell_settled(&fx.loc, x, soil_y);
+        const bool liquid_settled = cell_settled(&fx.loc, x - 1, plant_y);
+        loc_free();
+        TEST_ASSERT_TRUE_MESSAGE(drank && moisture == 2, "setup: the plant must grant soil moisture");
+        TEST_ASSERT_FALSE_MESSAGE(liquid_settled, "spending liquid must retain its wake");
+        TEST_ASSERT_TRUE_MESSAGE(soil_settled, "drinking must leave the distant resting bed asleep");
+    }
+}
+
+static void
+test_heat_drying_a_resting_bed_does_not_wake_it(void) {
+    for (uint32_t seed = 1; seed <= 8; seed++) {
+        loc_filled_fixture(MATX(MATX_METAL));
+        const int x = LOC_W / 2;
+        const int y = LOC_H / 2;
+        loc_seed_and_sleep(seed);
+        bool dried = false;
+        int awake = 0;
+        for (int step = 0; step < 100 && !dried; step++) {
+            /* Spoiling changes material and must wake; only a retone tests drying. */
+            sand_set(&fx.loc, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
+            sand_set(&fx.loc, x, y + 1, CELL_SOIL(MAT_DIRT, 0, SOIL_MOISTURE_MAX));
+            memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
+            sand_step(&fx.loc, 0, 1, 0);
+            const cell_t soil = sand_at(&fx.loc, x, y + 1);
+            dried = reaction_of(soil)->soil != 0 && CELL_MOISTURE(soil) < SOIL_MOISTURE_MAX;
+            awake = count_awake_blocks(&fx.loc);
+        }
+        loc_free();
+        TEST_ASSERT_TRUE_MESSAGE(dried, "setup: heat must dry the soil without converting it");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, awake, "heat drying must leave the resting bed asleep");
+    }
+}
+
 void
 run_sand_locality_suite(void) {
     RUN_TEST(test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other);
@@ -801,6 +890,9 @@ run_sand_locality_suite(void) {
     RUN_TEST(test_scatter_conserves_grains);
     RUN_TEST(test_a_lagging_grain_is_not_left_asleep);
     RUN_TEST(test_moisture_moving_through_a_resting_bed_does_not_wake_it);
+    RUN_TEST(test_root_conduction_through_a_resting_bed_does_not_wake_it);
+    RUN_TEST(test_heat_drying_a_resting_bed_does_not_wake_it);
+    RUN_TEST(test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid);
 }
 
 SUITE_REGISTER(run_sand_locality_suite);

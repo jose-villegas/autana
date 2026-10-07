@@ -288,8 +288,7 @@ typedef struct {
     uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
                             * only the first grid_h are in use at any
                             * quality below ULTRA */
-    uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
-                            * settled blocks to skip - see
+    uint8_t* sleep_blocks;  /* sized for the largest grid - see
                             * sand_enable_sleeping() */
     uint8_t* step_stamps;   /* sized for the largest grid - see
                             * sand_enable_step_stamps() */
@@ -531,7 +530,7 @@ alloc_sim_buffers(sim_buffers_t* b) {
         b->dirty_rows = malloc(GRID_H_MAX);
     }
     if (b->sleep_blocks == NULL) {
-        b->sleep_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
+        b->sleep_blocks = malloc(sand_sleep_block_bytes(GRID_W_MAX, GRID_H_MAX));
     }
     if (b->grid == NULL) {
         b->grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);

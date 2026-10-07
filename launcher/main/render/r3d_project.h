@@ -16,7 +16,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "util/math/mat4f.h"
 #include "util/math/vec3f.h"
@@ -54,11 +53,14 @@ r3d_to_camera_space(vec3f_t model_point, const r3d_line_view_t* view) {
  * needs one. Garbage for z <= 0, which no caller projects. */
 static inline float
 r3d_reciprocal(float z) {
-    uint32_t bits;
-    memcpy(&bits, &z, sizeof bits);
-    bits = 0x7EF311C7u - bits;
-    float y;
-    memcpy(&y, &bits, sizeof y);
+    /* A union, not memcpy: the firmware build can leave memcpy a call. */
+    union {
+        float f;
+        uint32_t bits;
+    } seed = {z};
+
+    seed.bits = 0x7EF311C7u - seed.bits;
+    float y = seed.f;
     y = y * (2.0F - (z * y));
     return y * (2.0F - (z * y));
 }

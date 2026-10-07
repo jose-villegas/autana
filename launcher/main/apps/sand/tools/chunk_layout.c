@@ -68,8 +68,7 @@ typedef struct {
 static void
 board_open(board_t* b, int w, int h, uint32_t seed) {
     b->cells = malloc((size_t)w * (size_t)h);
-    b->blocks =
-        malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    b->blocks = malloc(sand_sleep_block_bytes(w, h));
     b->stamps = malloc(sand_step_stamp_bytes(w, h));
     b->scratch = malloc(sand_lane_scratch_bytes(w, h));
     if (b->cells == NULL || b->blocks == NULL || b->stamps == NULL || b->scratch == NULL) {

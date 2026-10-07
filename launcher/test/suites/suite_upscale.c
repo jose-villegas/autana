@@ -23,8 +23,9 @@ test_two_times_matches_the_frame_doubling_reference(void) {
         source[i] = (uint16_t)(0x1200 + i);
     }
     upscale_t scale;
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, 2 * WIDTH, 2 * HEIGHT, columns, rows));
-    upscale_rows(&scale, source, NULL, 0, actual, 0, 2 * HEIGHT);
+    upscale_rows(&scale, &picture, 0, actual, 0, 2 * HEIGHT);
     for (int y = 0; y < 2 * HEIGHT; y++) {
         for (int x = 0; x < 2 * WIDTH; x++) {
             TEST_ASSERT_EQUAL_HEX16(source[(y / 2) * WIDTH + (x / 2)], actual[y * 2 * WIDTH + x]);
@@ -42,7 +43,8 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
 
     enum { WIDTH = 3, HEIGHT = 2 };
 
-    const uint16_t source[WIDTH * HEIGHT] = {1, 2, 3, 4, 5, 6};
+    uint16_t source[WIDTH * HEIGHT] = {1, 2, 3, 4, 5, 6};
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     for (size_t i = 0; i < sizeof(factors) / sizeof(factors[0]); i++) {
         const int factor = factors[i];
         const int out_width = factor * WIDTH;
@@ -55,7 +57,7 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
         TEST_ASSERT_NOT_NULL(rows);
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, out_width, out_height, columns, rows));
-        upscale_rows(&scale, source, NULL, 0, actual, 0, out_height);
+        upscale_rows(&scale, &picture, 0, actual, 0, out_height);
         for (int y = 0; y < out_height; y++) {
             for (int x = 0; x < out_width; x++) {
                 TEST_ASSERT_EQUAL_UINT16(source[(y / factor) * WIDTH + x / factor], actual[y * out_width + x]);
@@ -102,10 +104,11 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
         source[i] = (uint16_t)i;
     }
     upscale_t scale;
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, OUT_WIDTH, OUT_HEIGHT, columns, rows));
-    upscale_rows(&scale, source, NULL, 0, whole, 0, OUT_HEIGHT);
-    upscale_rows(&scale, source, NULL, 0, split, 0, OUT_HEIGHT / 2);
-    upscale_rows(&scale, source, NULL, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
+    upscale_rows(&scale, &picture, 0, whole, 0, OUT_HEIGHT);
+    upscale_rows(&scale, &picture, 0, split, 0, OUT_HEIGHT / 2);
+    upscale_rows(&scale, &picture, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, split, OUT_WIDTH * OUT_HEIGHT);
 }
 
