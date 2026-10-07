@@ -32,6 +32,12 @@ range that frame drew, so grey compares pixels within a frame, not across
 frames; a pixel nothing reached takes the scene's clear colour, as the
 shaded frame does, and a tile with one such pixel is empty.
 
+`--view motion` attaches motion vectors and shows them through
+`RASTER_SHOW_ATTACHMENT`: mid-grey where nothing moved, red for motion along
+x and green along y, a full channel at 16 pixels. A frame needs the one before
+it, so the first frame and any pixel whose motion is unknown take the clear
+colour.
+
 They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to
 the panel's orientation and the size the script declares. The picture is the
@@ -61,7 +67,7 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
-| `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
+| `render/sponza-{depth,tiles,motion-vectors}.gif` | those three seconds as the depth, depth-tile and motion-vector views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the physical reference beside the smooth bake without and with indirect light (the scene's physical look, bakes made without and with that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
 | `render/bake-indirect-look.png` | the physical reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
@@ -93,6 +99,7 @@ over the full mesh.
 | ![Sponza flythrough, fitted full](../../../../../docs/images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | the `sponza.atrium_fitted_full` entry's counts |
 | ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
 | ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
+| ![Sponza flythrough, motion vectors](../../../../../docs/images/render/sponza-motion-vectors.gif) | `RASTER_SHOW_ATTACHMENT` with motion vectors attached, over the full mesh | as full |
 
 The counts are those of the five meshes in `meshes/`.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
