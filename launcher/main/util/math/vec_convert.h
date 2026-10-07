@@ -20,8 +20,6 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "util/math/maths.h"
-#include "util/math/mathx.h"
 #include "util/math/vec2f.h"
 #include "util/math/vec2i.h"
 #include "util/math/vec2s.h"
@@ -30,6 +28,8 @@
 #include "util/math/vec3i.h"
 #include "util/math/vec3s.h"
 #include "util/math/vec3x.h"
+#include "util/scalar/maths.h"
+#include "util/scalar/mathx.h"
 
 /* The largest float below 2^31, so a clamped value still converts. */
 #define MATH_FLOAT_INT_LIMIT 2147483520.0F

@@ -24,11 +24,13 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_comment_length import EXCLUDED, scan  # noqa: E402
+from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -398,7 +400,8 @@ def rule_personal_path(root, path, text):
 
 
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own
-# escape markers and a generator's BEGIN/END GENERATED pair are allowed;
+# escape markers, a generator's BEGIN/END GENERATED pair and
+# generated_blocks.py's named block markers are allowed;
 # anything else is a stray aside nobody will see. Scanned across the whole
 # file (not line by line) so a comment wrapped across two lines is still
 # caught, with fenced code blanked first so a shell transcript's own
@@ -407,7 +410,7 @@ def rule_personal_path(root, path, text):
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" +
-    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED")
+    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on
@@ -642,33 +645,6 @@ def rule_drawn_comment(root, path, text, comments):
 LABEL = re.compile(r"^[A-Z][a-z]+(?:\s[A-Za-z][a-z]*){0,4}$")
 
 
-def _blank_comments_and_strings(text, comments):
-    """`text` with every comment span (from `comments`) and every string/
-    char literal blanked to spaces, newlines and length preserved, so a
-    brace inside either can never affect the count below."""
-    out = list(text)
-    for c in comments:
-        for start, end in c.spans:
-            for i in range(start, end):
-                if out[i] != "\n":
-                    out[i] = " "
-    i, n = 0, len(out)
-    while i < n:
-        ch = out[i]
-        if ch in "\"'":
-            quote, j = ch, i + 1
-            while j < n and out[j] != quote:
-                j += 2 if out[j] == "\\" and j + 1 < n else 1
-            j = min(j + 1, n)
-            for k in range(i, j):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j
-            continue
-        i += 1
-    return "".join(out)
-
-
 def _function_body_comments(text, comments):
     """The subset of `comments` sitting inside a real function body: a '{'
     at brace-depth 0 opens one only when the character before it is ')',
@@ -676,7 +652,7 @@ def _function_body_comments(text, comments):
     those follow '=' or a bare type keyword. Everything nested inside that
     frame (if/for/switch blocks, compound literals) inherits its state,
     counted in the one loop below."""
-    blanked = _blank_comments_and_strings(text, comments)
+    blanked = blank_comments(text, mode="code")
     spans = {start: c for c in comments for start, _ in c.spans}
     inside = {}
     depth_is_fn, last_nonspace = [], ""
@@ -698,7 +674,7 @@ def rule_undef_placement(root, path, text):
     if not relpath(root, path).startswith("launcher/main/"):
         return
     comments = scan(relpath(root, path), text)
-    code = _blank_comments_and_strings(text, comments)
+    code = blank_comments(text, mode="code")
     stack = []
     for number, line in enumerate(code.splitlines(), 1):
         directive = re.match(r"\s*#\s*(if|ifdef|ifndef|else|elif|endif|undef)\b(.*)", line)

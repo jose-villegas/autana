@@ -313,11 +313,7 @@ JOBS=$(host_jobs "$JOBS")
 
 # make reads native paths: on Windows it is a native program, so the MSYS
 # path rewriting that shields gcc under sh does not apply to it.
-if command -v cygpath >/dev/null 2>&1; then
-    to_native() { cygpath -m -f -; }
-else
-    to_native() { cat; }
-fi
+. "$TEST_DIR/../../scripts/lib/native_path.sh"
 # Collapses "a/../b" so two spellings of one file get one object name.
 squash() { sed -e ':a' -e 's|/[^/][^/]*/\.\./|/|' -e 'ta'; }
 native() { printf '%s\n' "$1" | to_native | squash; }

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generated_blocks import apply_tables
+from generated_blocks import apply_tables, tracked_files
 from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
@@ -44,7 +44,7 @@ def source_stamp(root, paths):
 
 
 def current_stamp():
-    names = subprocess.check_output(["git", "ls-files", "-z", "launcher", "scripts"], cwd=ROOT).decode().split("\0")
+    names = tracked_files(ROOT, ("launcher", "scripts"))
     paths = {ROOT / name for name in names if name and
              Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt")}
     for name in names:

@@ -22,7 +22,7 @@ driver defaults alone do not supply the board's panel settings.
 | Bitmap submission queues an asynchronous DMA read | do not rewrite a submitted buffer until its transfer completes |
 | Multiple transfers can finish before the caller waits | `strip_sent` is a counting semaphore, with one take per queued transfer |
 | The panel expects byte-swapped RGB565 | construct colours through `gfx_rgb()` |
-| Panel windows require even edges | round windows outward with `even_floor()` and `even_ceil()` |
+| Panel windows require even edges | round windows outward with `mathi_even_floor()` and `mathi_even_ceil()` |
 | External-memory buffers cannot supply the fast panel path reliably | send through internal `MEMORY_DMA` bounce slots |
 
 ## The panel link

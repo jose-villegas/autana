@@ -17,6 +17,8 @@
 
 set -eu
 TOOLS_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+. "$TOOLS_DIR/../../../scripts/lib/python.sh"
+PYTHON=$(find_python) || exit 1
 REPO_DIR=$(CDPATH='' cd -- "$TOOLS_DIR/../../.." && pwd)
 # shellcheck source=../revision_worktree.sh
 # shellcheck disable=SC1091
@@ -60,7 +62,7 @@ while [ "$remaining" -gt 0 ]; do
     esac
 done
 [ -n "$rev_a" ] && [ -n "$rev_b" ] || { echo "two revisions or directories required: A B (or A A)" >&2; exit 2; }
-python3 "$TOOLS_DIR/perf_compare.py" --validate-plan "$@"
+"$PYTHON" "$TOOLS_DIR/perf_compare.py" --validate-plan "$@"
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out"
 out=$(CDPATH='' cd -- "$out" && pwd)
@@ -80,13 +82,13 @@ short_name() {
     else git -C "$REPO_DIR" rev-parse --short=8 "$1"
     fi
 }
-python3 "$TOOLS_DIR/perf_compare.py" --validate-plan --project-a "$tree_a" --project-b "$tree_b" "$@"
+"$PYTHON" "$TOOLS_DIR/perf_compare.py" --validate-plan --project-a "$tree_a" --project-b "$tree_b" "$@"
 status=0
-python3 "$TOOLS_DIR/perf_compare.py" --out "$out" --project-a "$tree_a" --project-b "$tree_b" \
+"$PYTHON" "$TOOLS_DIR/perf_compare.py" --out "$out" --project-a "$tree_a" --project-b "$tree_b" \
     --label-a "$(short_name "$rev_a")" --label-b "$(short_name "$rev_b")" "$@" || status=$?
 if [ "$restore" -eq 1 ]; then
     restore_tree=$(revision_worktree_checkout origin/main restore)
-    python3 "$TOOLS_DIR/perf_compare.py" --restore-project "$restore_tree" \
+    "$PYTHON" "$TOOLS_DIR/perf_compare.py" --restore-project "$restore_tree" \
         --autana "$autana" --wait "$wait" < /dev/null || status=$?
 fi
 echo "summary $out/summary.md"

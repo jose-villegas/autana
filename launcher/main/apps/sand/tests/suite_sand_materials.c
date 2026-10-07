@@ -27,7 +27,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* materials */
 
@@ -709,8 +709,7 @@ material_variant_sum_in_columns(const sand_t* s, int x0, int x1, int h, material
 static int
 settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
     uint8_t* cells = malloc((size_t)w * (size_t)h);
-    uint8_t* blocks =
-        malloc((size_t)((w + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((h + SAND_BLOCK_H - 1) / SAND_BLOCK_H));
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(w, h));
     /* Free whatever succeeded BEFORE asserting, not after, see 565f72e.
      * TEST_ASSERT_NOT_NULL(blocks) alone would longjmp straight past both
      * frees and leak `cells` for the rest of that boot if the second

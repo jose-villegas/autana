@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include "suites.h"
+#include "transform_cache.h"
 #include "unity.h"
 
 #include "util/math/transformf.h"
@@ -145,21 +146,16 @@ test_a_zero_initialized_transform_builds_on_first_use(void) {
     TEST_ASSERT_TRUE(t.cached);
 }
 
+static vec3f_t
+to_f(float x, float y, float z) {
+    return (vec3f_t){x, y, z};
+}
+
 static void
 test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix(void) {
     transformf_t t = TRANSFORMF_IDENTITY;
-    TEST_ASSERT_FALSE(rebuilds(&t));
-    transformf_set_position(&t, (vec3f_t){1.0F, 0.0F, 0.0F});
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    TEST_ASSERT_FALSE(rebuilds(&t));
-    transformf_set_rotation(&t, quatf_identity());
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_set_scale(&t, (vec3f_t){2.0F, 2.0F, 2.0F});
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_translate(&t, (vec3f_t){1.0F, 0.0F, 0.0F});
-    TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_rotate(&t, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI));
-    TEST_ASSERT_TRUE(rebuilds(&t));
+    ASSERT_TRANSFORM_SETTERS(transformf, t, to_f, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI),
+                             rebuilds);
     transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, 9.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     TEST_ASSERT_TRUE(rebuilds(&t));
 }
@@ -233,6 +229,30 @@ test_look_at_straight_back_is_a_half_turn(void) {
     assert_vec3((vec3f_t){0.0F, 1.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 1.0F, 0.0F}));
 }
 
+static void
+test_the_octahedral_map_ignores_length_and_round_trips(void) {
+    const vec3f_t dirs[] = {{0.0F, 0.0F, 1.0F},  {0.0F, 0.0F, -1.0F},  {1.0F, 0.0F, 0.0F},  {0.0F, -1.0F, 0.0F},
+                            {0.3F, -0.5F, 0.8F}, {-0.6F, 0.2F, -0.7F}, {0.1F, 0.9F, -0.4F}, {-0.7F, -0.7F, -0.1F}};
+    for (unsigned i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        const vec2f_t p = vec3f_octahedral(dirs[i]);
+        const vec2f_t scaled = vec3f_octahedral(vec3f_scale(dirs[i], 3.5F));
+        TEST_ASSERT_TRUE(fabsf(p.x) <= 1.0F && fabsf(p.y) <= 1.0F);
+        TEST_ASSERT_FLOAT_WITHIN(SLACK, p.x, scaled.x);
+        TEST_ASSERT_FLOAT_WITHIN(SLACK, p.y, scaled.y);
+        assert_vec3(vec3f_normalize(dirs[i]), vec3f_from_octahedral(p));
+    }
+}
+
+static void
+test_the_octahedral_map_puts_the_poles_at_the_centre_and_a_corner(void) {
+    const vec2f_t up = vec3f_octahedral((vec3f_t){0.0F, 0.0F, 2.0F});
+    const vec2f_t down = vec3f_octahedral((vec3f_t){0.0F, 0.0F, -2.0F});
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, up.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, up.y);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, fabsf(down.x));
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, fabsf(down.y));
+}
+
 void
 suite_math(void) {
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
@@ -252,6 +272,8 @@ suite_math(void) {
     RUN_TEST(test_the_view_matrix_puts_the_camera_at_the_origin_looking_down_z);
     RUN_TEST(test_look_at_points_local_z_at_the_target_with_up_kept_up);
     RUN_TEST(test_look_at_straight_back_is_a_half_turn);
+    RUN_TEST(test_the_octahedral_map_ignores_length_and_round_trips);
+    RUN_TEST(test_the_octahedral_map_puts_the_poles_at_the_centre_and_a_corner);
 }
 
 SUITE_REGISTER(suite_math);

@@ -381,10 +381,10 @@ test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
 
 static void
 channels_of(gfx_color_t c, int out[3]) {
-    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
-    out[0] = native >> 11;
-    out[1] = (native >> 5) & 63;
-    out[2] = native & 31;
+    const uint16_t native = gfx_color_swap(c);
+    out[0] = (int)gfx_rgb565_r5(native);
+    out[1] = (int)gfx_rgb565_g6(native);
+    out[2] = (int)gfx_rgb565_b5(native);
 }
 
 /* A small triangle with a random colour and depth at each corner, and the
@@ -1883,20 +1883,15 @@ color_at(const raster_t* f, int x, int y) {
     return raster_color(f)[y * f->width + x];
 }
 
-static uint16_t
-native565(uint16_t px) {
-    return (uint16_t)((px >> 8) | (px << 8));
-}
-
 /* A pixel's red channel, 0..31, the panel's byte swap undone. */
 static int
 level(uint16_t px) {
-    return native565(px) >> 11;
+    return gfx_color_swap(px) >> 11;
 }
 
 static bool
 is_grey(uint16_t px) {
-    const uint16_t n = native565(px);
+    const uint16_t n = gfx_color_swap(px);
     return (n >> 11) == (n & 31) && (n >> 11) == ((n >> 5) & 63) / 2;
 }
 

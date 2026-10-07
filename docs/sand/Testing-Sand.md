@@ -38,7 +38,7 @@ writes a markdown table; `compare_reports.py` diffs two such reports, and
 comparison as part of a capture.
 
 A timed fixture opens `board_bookkeeping_open()` (`suite_sand_common.c`) on
-its grid, which gives it what `alloc_grid_bookkeeping()` (`app_sand.c`) gives
+its grid, which gives it what `alloc_sim_buffers()` (`app_sand.c`) gives
 a shipped board: dirty rows and columns, step stamps, lane scratch, and block
 state where the scene brought none. Without the last two no pass is ever
 ready to split, so the row times one core however many it asked for. What a
