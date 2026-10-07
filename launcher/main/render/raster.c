@@ -261,8 +261,9 @@ draw_visible(const raster_t* raster, int index, const camera_t* camera, int quar
 
 /* Draws every instance: from `culled`, raster_census()'s list, or culling
  * each into the scratch block when it is NULL. The attachments begin before
- * the first and resolve after the last. */
-static RENDER_ENTRY_OFFSET(4) void
+ * the first and resolve after the last. Inlined into both entries, so the
+ * draw's stack is no deeper than one entry's frame. */
+static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled,
                raster_stats_t* stats) {
     assert(raster->instance_count > 0);
