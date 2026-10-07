@@ -796,7 +796,8 @@ static void
 test_root_conduction_through_a_resting_bed_does_not_wake_it(void) {
     for (uint32_t seed = 1; seed <= 8; seed++) {
         loc_filled_fixture(STONE);
-        const int x = LOC_W / 2, y = LOC_H / 2;
+        const int x = LOC_W / 2;
+        const int y = LOC_H / 2;
         sand_set(&fx.loc, x, y, MATX(MATX_ROOT));
         sand_set(&fx.loc, x, y - 1, CELL_SOIL(MAT_DIRT, 0, 5));
         sand_set(&fx.loc, x, y + 1, CELL_SOIL(MAT_DIRT, 0, 0));
@@ -819,7 +820,9 @@ static void
 test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid(void) {
     for (uint32_t seed = 1; seed <= 8; seed++) {
         loc_filled_fixture(STONE);
-        const int x = LOC_W / 2, plant_y = SAND_BLOCK_H - 2, soil_y = 2 * SAND_BLOCK_H;
+        const int x = LOC_W / 2;
+        const int plant_y = SAND_BLOCK_H - 2;
+        const int soil_y = 2 * SAND_BLOCK_H;
         for (int y = plant_y; y < soil_y; y++) {
             sand_set(&fx.loc, x, y, CELL_MAKE(MAT_WOOD, 0));
         }
@@ -848,7 +851,8 @@ static void
 test_heat_drying_a_resting_bed_does_not_wake_it(void) {
     for (uint32_t seed = 1; seed <= 8; seed++) {
         loc_filled_fixture(MATX(MATX_METAL));
-        const int x = LOC_W / 2, y = LOC_H / 2;
+        const int x = LOC_W / 2;
+        const int y = LOC_H / 2;
         loc_seed_and_sleep(seed);
         bool dried = false;
         int awake = 0;
