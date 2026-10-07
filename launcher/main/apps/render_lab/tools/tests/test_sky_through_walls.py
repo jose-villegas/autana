@@ -7,21 +7,22 @@ camera path (FRAMES frames, DT_MS apart), and counts per frame the pixels of
 the clear colour that are not connected to the top row: sky showing where a
 wall should be. A frame with more than HOLE_PIXELS of them is holed; a bake
 may have no more holed frames than MOST_HOLED_FRAMES allows. The roof
-opening seen straight up is enclosed sky too, so the ceilings include it.
+opening seen straight up is enclosed sky too: the current bakes' holed
+frames are the few that look up through it.
 
-Needs numpy, scipy and Pillow (launcher/tools/r3d/requirements.txt).
+Needs the r3d environment (launcher/tools/r3d/requirements.txt).
 """
 import pathlib
 import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 SCENE = TOOLS.parent / "meshes" / "sponza.scene.toml"
 sys.path.insert(0, str(TOOLS.parents[3] / "tools" / "render"))
+sys.path.insert(0, str(TOOLS.parents[3] / "tools"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import host_render  # noqa: E402
 
@@ -29,6 +30,7 @@ try:
     import numpy as np
     from scipy import ndimage
 
+    from r3d.import_settings import load_scene
     from render_compare import expand_565, read_video
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
@@ -41,10 +43,8 @@ MOST_HOLED_FRAMES = {"sponza": 8, "sponza-flat": 8, "sponza-lite": 8}
 
 def clear_colour():
     """The scene's camera background as the 16-bit framebuffer shows it."""
-    with SCENE.open("rb") as source:
-        scene = tomllib.load(source)
-    rgb = next(item["camera"]["background"] for item in scene["objects"] if "camera" in item)
-    return expand_565(((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF))
+    rgb = load_scene(SCENE).camera.component.background
+    return expand_565((rgb >> 16, (rgb >> 8) & 0xFF, rgb & 0xFF))
 
 
 def sky_pixels(frame, sky):
@@ -57,7 +57,7 @@ def sky_pixels(frame, sky):
     return int(enclosed.sum()), int(mask.sum() - enclosed.sum())
 
 
-@unittest.skipIf(np is None, "needs numpy, scipy and Pillow")
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyCount(unittest.TestCase):
     def test_sky_enclosed_by_a_wall_counts_and_sky_open_to_the_top_does_not(self):
         sky = (156, 195, 231)
@@ -67,7 +67,7 @@ class SkyCount(unittest.TestCase):
         self.assertEqual(sky_pixels(frame, sky), (6, 24))
 
 
-@unittest.skipIf(np is None, "needs numpy, scipy and Pillow")
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyThroughWalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -95,8 +95,8 @@ class SkyThroughWalls(unittest.TestCase):
         counts = [sky_pixels(frame, sky) for frame in read_video(video)[1]]
         video.unlink()
         self.assertEqual(len(counts), FRAMES)
-        # The path looks up at the open roof, so sky open to the top must turn up: the colour matched, and a frame
-        # with no holes counted none rather than missing them all.
+        # The path looks up at the open roof, so sky open to the top must turn up: that proves the clear colour
+        # matched, so a count of no holes is real.
         self.assertTrue(any(open_ > HOLE_PIXELS for _, open_ in counts), f"{scene}: no sky found")
         holed = [frame for frame, (enclosed, _) in enumerate(counts) if enclosed > HOLE_PIXELS]
         self.assertLessEqual(len(holed), most, f"{scene}: holed frames {holed}")
