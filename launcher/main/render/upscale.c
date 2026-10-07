@@ -19,10 +19,10 @@ nearest_source(int destination, int destination_size, int source_size) {
 static upscale_path_t
 choose_path(int source_width, int source_height, int destination_width, int destination_height) {
     if (destination_width == source_width && destination_width % 2 == 0) {
-        return UPSCALE_ROWS;
+        return UPSCALE_KEPT;
     }
     if (destination_width == 2 * source_width) {
-        return UPSCALE_PAIRS;
+        return UPSCALE_DOUBLED;
     }
     const int factor = destination_width / source_width;
     const bool integer = destination_width % source_width == 0 && destination_height % source_height == 0
@@ -76,11 +76,11 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
     }
 }
 
-/* UPSCALE_ROWS and UPSCALE_PAIRS store 32 bits at a time: two
+/* UPSCALE_KEPT and UPSCALE_DOUBLED store 32 bits at a time: two
  * neighbouring source pixels when the width is kept, one twice when it is
  * doubled. A source row read once feeds the next destination row too when
- * the row map repeats it inside the range. Inlined per path, so neither
- * branches per pixel on which. */
+ * the row map repeats it inside the range. Inlined into each path, so
+ * neither tests `doubled` per pixel. */
 static inline __attribute__((always_inline)) void
 paired_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
             uint16_t* destination, int first_row, int row_count, bool doubled) {
@@ -141,8 +141,10 @@ upscale_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* dep
     assert(row_count >= 0);
     assert(first_row + row_count <= scale->destination_height);
     switch (scale->path) {
-        case UPSCALE_ROWS: upscale_kept_rows(scale, source, depth, clear, destination, first_row, row_count); break;
-        case UPSCALE_PAIRS: upscale_doubled_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_KEPT: upscale_kept_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_DOUBLED:
+            upscale_doubled_rows(scale, source, depth, clear, destination, first_row, row_count);
+            break;
         case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
         case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
     }

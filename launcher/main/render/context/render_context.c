@@ -70,9 +70,9 @@ current_step(const render_context_t* c) {
     return c->policy == RENDER_STEPPED ? c->control.step : c->predict.step;
 }
 
-/* A scratch block big enough for what is drawn now, the culled list after
- * it: under dynamic resolution, for the finest step, so a step never
- * allocates. */
+/* Fits the scratch block to what is drawn now (under dynamic resolution,
+ * the finest step, so a step never allocates) with the culled list after
+ * it; returns the list, or NULL when the block cannot be had. */
 static uint16_t*
 fit_scratch(render_context_t* c) {
     const int width = c->raster.width;

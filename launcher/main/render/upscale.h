@@ -10,10 +10,10 @@
 /* How rows are filled, chosen once per size. All but UPSCALE_BLOCKS write
  * what the maps say, pixel for pixel; it repeats each pixel `factor` times. */
 typedef enum {
-    UPSCALE_MAPPED, /* each destination pixel through both maps */
-    UPSCALE_ROWS,   /* the width kept: a mapped row copied whole */
-    UPSCALE_PAIRS,  /* the width doubled: each source pixel one 32-bit store */
-    UPSCALE_BLOCKS, /* both axes by one integer factor, where neither above applies */
+    UPSCALE_MAPPED,  /* each destination pixel through both maps */
+    UPSCALE_KEPT,    /* the width kept and even: two source pixels per 32-bit store */
+    UPSCALE_DOUBLED, /* the width doubled: each source pixel one 32-bit store */
+    UPSCALE_BLOCKS,  /* both axes by one integer factor, where neither above applies */
 } upscale_path_t;
 
 typedef struct {

@@ -146,7 +146,6 @@ cull_instance(const raster_t* raster, const r3d_instance_t* instance, const came
     return visible;
 }
 
-/* Transforms and draws the `count` clusters of `visible` on both cores. */
 static void
 draw_visible(const raster_t* raster, int index, const camera_t* camera, int quarter, const uint16_t* visible,
              int count) {

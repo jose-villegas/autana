@@ -26,7 +26,7 @@ typedef struct {
     /* The picture is upscaled into `destination`, destination_width by
      * destination_height. The colour target is then never cleared, since
      * upscaling puts the clear colour wherever nothing was drawn. Drawing does
-     * not touch `destination`, so it may be set after raster_draw(), before
+     * not touch `destination`, so it may be set after drawing, before
      * raster_upscale(). */
     bool upscaled;
     uint16_t* destination;
@@ -54,14 +54,17 @@ raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int q
 
 /* raster_draw() split in two, so a caller can price sizes between them.
  * raster_census() culls every instance into `culled`, raster_culled_length()
- * entries the caller holds, and returns what survived: the same at any
- * render size. raster_draw_culled() then draws that list at the raster's
- * size now, the picture raster_draw() would draw, without culling again. */
+ * entries the caller holds, and returns what survived. raster_draw_culled()
+ * then draws that list at the raster's size now, the picture raster_draw()
+ * would draw, without culling again. The list holds for the same camera,
+ * quarter and instances, at any size of an upscaled raster with its
+ * destination size unchanged; without upscaling, only at the size it was
+ * taken at, since the picture is then the render size. */
 size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint16_t* culled);
 void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled);
 
-/* Fills `destination` from what raster_draw() last drew, both cores taking
+/* Fills `destination` from what raster_draw() or raster_draw_culled() last drew, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster);
 

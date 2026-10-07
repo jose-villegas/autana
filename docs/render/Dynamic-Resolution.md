@@ -15,9 +15,10 @@ and with no call every frame draws at the context's fixed scale.
 | Predictor | any step, before the cost | a linear model of the frame, priced at every step from the triangles culling kept this frame, corrected by measured frames | going finer needs a margin under the budget |
 
 The cost a policy holds is the part that scales: the draw and the upscale.
-The render context culls once, in a census whose list the draw then uses,
-so the predictor prices a frame from what culling kept at no extra cost. The present and whatever an
-app draws over the scene are not in it.
+The present and whatever an app draws over the scene are not in it. The
+render context culls once, before it chooses a size, and draws from that
+list, so pricing a frame from what culling kept costs the predictor nothing
+extra.
 
 ## Where a frame's time goes at each size
 
@@ -49,11 +50,11 @@ Milliseconds; both cores unless marked one core.
 The questions the split answers, as differences between two sizes. Most of
 the gap between neighbouring isotropic steps is the raster, not the upscale.
 A step that keeps the panel's width or halves it upscales whole rows or
-pixel pairs down any row map; any other width pays the mapped upscale on
-top, which is why 2.5x saves little over 2x. Halving the height saves far more than halving the width,
-since rows and span setup follow the height, so a ladder cuts the height
-first. The one-core setup stage barely moves with size: it is the floor no
-step goes under.
+pixel pairs down any row map; the other widths on these ladders pay the
+mapped upscale on top, which is why 2.5x saves little over 2x. Halving the
+height saves far more than halving the width, since rows and span setup
+follow the height, so a ladder cuts the height first. The one-core setup
+stage barely moves with size: it is the floor no step goes under.
 
 <!-- generated: dynres-findings sha256=4d33a41910767f4d80a7b3a3426d37abd73ec023fab27bcb0dee7a63afc266b1 -->
 | Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |

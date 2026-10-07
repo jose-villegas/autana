@@ -89,18 +89,27 @@ raster's lens and cluster transform stay a 3x4 of their own.
 
 ```mermaid
 flowchart LR
-    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
-    subgraph Render["raster_draw()"]
-        Lens["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_fit()<br/><i>to the render size</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
-        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
-        Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Picture
+    subgraph Census["raster_census()"]
+        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Cull --> List["the culled list<br/><i>the same at any render size</i>"]
+    Size["the render size"] --> Fit
+    List --> Fit
+    subgraph Draw["raster_draw_culled()"]
+        Fit["r3d_lens_fit()<br/><i>to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+    end
+    DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `raster_draw()`, and
-`raster_upscale()` when it set `upscaled`. The stages inside are
-`r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
+A caller fills a camera, then calls `raster_draw()`, which is the census and
+the draw back to back, and `raster_upscale()` when it set `upscaled`. A
+caller that picks the render size from what culling kept, as the render
+context does, calls `raster_census()`, sets the size, then
+`raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
+or tool that schedules them itself.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
