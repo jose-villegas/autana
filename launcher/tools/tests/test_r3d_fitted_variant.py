@@ -21,9 +21,9 @@ except ImportError:
     parse_poses = None
 
 try:
-    from r3d import lit_mesh, mesh_import, reference_render
+    from r3d import mesh_import, reference_render
 except ImportError:
-    lit_mesh = mesh_import = reference_render = None
+    mesh_import = reference_render = None
 
 try:
     from PIL import Image
@@ -144,7 +144,7 @@ class SweepTests(unittest.TestCase):
 
     @unittest.skipIf(reference_render is None, "needs the r3d renderer")
     def test_a_sweep_reuses_one_prepared_reference_set(self):
-        geometry = SimpleNamespace(positions=[], rgb=[], tris=[0], tri_double=[], scale={})
+        start = SimpleNamespace(tris=[0])
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
                                    fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
@@ -153,9 +153,8 @@ class SweepTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
-                 unittest.mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
+                 unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
                  unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
-                 unittest.mock.patch.object(lit_mesh, "write_lit_mesh"), \
                  unittest.mock.patch.object(reference_render, "main") as render:
                 fitted_variant.sweep_references("scene", "data", job, work)
                 fitted_variant.sweep_references("scene", "data", job, work)
