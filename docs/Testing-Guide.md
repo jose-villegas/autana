@@ -226,23 +226,12 @@ window spills; coprocessor and TLS storage occupy the top of the task stack.
 Worker-task calls are separate; a dispatcher's synchronous fallback remains
 on its caller's stack. The conservative maximum includes clipping paths,
 which a device's high-water mark may not encounter with an interrupt.
-Linked library frames and direct call edges come from the build's own
-`launcher.elf`, using the toolchain beside the compiler in
-`compile_commands.json`. `entry a1, N` supplies each frame; windowed calls
-and register calls to literal function addresses supply direct edges.
-Library pointer calls are not followed unless a spec declares their targets.
-Functions without a return instruction end the task or test; calls into
-them are excluded, except ancestors of the task dispatchers whose loops
-run the task. The C standard's nonreturning functions, including linker
-wraps, also end a path. Branch targets split basic blocks. Calls in blocks
-that cannot reach a return before a nonreturning call are excluded. A
-missing branch target or an indirect jump makes disassembly incomplete;
-that function retains its calls and is not inferred nonreturning from
-instructions. Returning paths, including lazy initialization, remain counted.
-Duplicate private ELF names retain the largest frame and combined calls;
-ambiguous source identities retain their compiler edges.
-The compiler graphs retain source-line pointer checks and private
-function qualification; ELF disassembly alone does not supply those checks.
+The gate counts frames only in the source files it recompiles. Uncompiled
+libraries, including newlib's printf family (about 800 bytes for
+`_vfprintf_r`), esp_log and FreeRTOS, are not counted. There is no library
+allowance; `timing.c`'s board stack-watermark check covers the remaining
+stack use. Source-line pointer checks and private function qualification
+come from compiler graphs.
 The chain gate runs in self-test CI and `autana build diag --check`; it
 predicts stack use without flashing.
 

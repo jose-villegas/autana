@@ -10,5 +10,4 @@ indirect raster_draw raster_draw_culled : raster_motion.c:begin
 indirect resolve_slice : raster_motion.c:resolve
 indirect draw_slice : clear_color clear_depth raster_motion.c:clear
 indirect raster_show : raster_motion.c:show
-indirect esp_log : vprintf
 indirect job_run_core1 : lattice_row_job_worker seed_row_job_worker sweep_row_job_worker sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
