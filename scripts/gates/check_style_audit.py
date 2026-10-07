@@ -399,6 +399,31 @@ def rule_personal_path(root, path, text):
             yield number, f"{m.group(0)} is machine-specific - use ~, or launcher/tools/build/espressif.py or IDF_PATH, for an ESP-IDF path"
 
 
+# RULE: an importer, exporter, baker or measuring tool takes a model as an
+# argument and is never named after one, or every new model needs its own copy
+# and every model change a clean-up. A model is any .blend, .glb, .gltf, .obj or
+# .fbx an app tracks; a tool is code under a `tools` directory or scripts/. The
+# app's own runtime code may name the content it shows.
+
+MODEL_SUFFIXES = (".blend", ".glb", ".gltf", ".obj", ".fbx")
+TOOL_CODE_SUFFIXES = {".py", ".c", ".h", ".cc", ".cpp", ".sh", ".mjs", ".js", ".ps1"}
+
+
+def _model_names(root):
+    return {pathlib.PurePosixPath(rel).stem.lower() for rel in tracked_files(root, ["launcher/main/apps"])
+            if rel.lower().endswith(MODEL_SUFFIXES)}
+
+
+@text_rule("MODEL-NAMED-TOOL")
+def rule_model_named_tool(root, path, text):
+    rel = pathlib.PurePosixPath(relpath(root, path))
+    if rel.suffix.lower() not in TOOL_CODE_SUFFIXES or not ("tools" in rel.parts or rel.parts[0] == "scripts"):
+        return
+    for model in _model_names(root):
+        if model in rel.name.lower():
+            yield 1, f"named after the model {model} - take the model as an argument and name the tool for what it does"
+
+
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own
 # escape markers, a generator's BEGIN/END GENERATED pair and
 # generated_blocks.py's named block markers are allowed;

@@ -489,3 +489,22 @@ python launcher/tools/anim/track_host.py \
 triangles, 22 deform bones) with a control rig and five in-place loops at
 30 fps: `idle`, `walk`, `walk_fast`, `gallop` and `half_bound`. It is the source
 asset for skinned-mesh import; nothing in the build reads it yet.
+
+`../assets/capybara.glb` is its glTF export: deform bones only, every loop as
+an animation, four influences per vertex. Host tools that read glTF use it,
+such as the [skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
+measurement. After editing the `.blend`, export it again with Blender
+through the model-agnostic exporter, naming the five loops (the file also
+holds the rig's own `capyrigAction`):
+
+```sh
+blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
+    launcher/main/apps/render_lab/assets/capybara.blend launcher/main/apps/render_lab/assets/capybara.glb \
+    --clips idle,walk,walk_fast,gallop,half_bound
+```
+
+and measure the lighting again:
+
+```sh
+launcher/tools/r3d/skin_light/report_skin_light.sh launcher/main/apps/render_lab/assets/capybara.glb gallop
+```
