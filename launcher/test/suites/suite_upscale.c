@@ -167,20 +167,24 @@ assert_matches_the_maps(const path_case_t* c) {
     free(source);
 }
 
-/* A kept width copies mapped rows, a doubled one writes pairs down any row
- * map, and any other fractional width takes the maps. */
+/* Each destination from a source of its own width and from one of half its
+ * width, at a source height giving repeated, uneven and identity row maps;
+ * then widths neither kept nor doubled. */
 static void
 test_each_width_takes_its_path_and_matches_the_maps(void) {
-    static const path_case_t cases[] = {
-        {8, 5, 8, 9, UPSCALE_ROWS},        {8, 6, 8, 12, UPSCALE_ROWS},       {6, 3, 6, 3, UPSCALE_ROWS},
-        {92, 56, 92, 112, UPSCALE_ROWS},   {92, 90, 92, 112, UPSCALE_ROWS},   {92, 75, 92, 112, UPSCALE_ROWS},
-        {4, 5, 8, 9, UPSCALE_PAIRS},       {4, 3, 8, 7, UPSCALE_PAIRS},       {7, 5, 14, 10, UPSCALE_PAIRS},
-        {46, 75, 92, 112, UPSCALE_PAIRS},  {46, 112, 92, 112, UPSCALE_PAIRS}, {46, 56, 92, 112, UPSCALE_PAIRS},
-        {61, 75, 92, 112, UPSCALE_MAPPED}, {6, 4, 15, 10, UPSCALE_MAPPED},    {5, 4, 15, 8, UPSCALE_MAPPED},
-        {5, 3, 5, 7, UPSCALE_MAPPED},
+    static const int shapes[][3] = {
+        /* destination width, height; source height */
+        {8, 9, 5}, {8, 12, 6}, {6, 3, 3}, {14, 10, 5}, {92, 112, 56}, {92, 112, 90}, {92, 112, 75},
     };
-    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        assert_matches_the_maps(&cases[i]);
+    for (size_t i = 0; i < sizeof(shapes) / sizeof(shapes[0]); i++) {
+        const int* d = shapes[i];
+        assert_matches_the_maps(&(path_case_t){d[0], d[2], d[0], d[1], UPSCALE_ROWS});
+        assert_matches_the_maps(&(path_case_t){d[0] / 2, d[2], d[0], d[1], UPSCALE_PAIRS});
+    }
+    static const path_case_t mapped[] = {
+        {61, 75, 92, 112, UPSCALE_MAPPED}, {6, 4, 15, 10, UPSCALE_MAPPED}, {5, 3, 5, 7, UPSCALE_MAPPED}};
+    for (size_t i = 0; i < sizeof(mapped) / sizeof(mapped[0]); i++) {
+        assert_matches_the_maps(&mapped[i]);
     }
 }
 
