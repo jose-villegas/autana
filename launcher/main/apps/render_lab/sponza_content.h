@@ -1,5 +1,5 @@
 /*
- * sponza_content: the Sponza scene's id and five bakes, the size it is seen
+ * sponza_content: the Sponza scene's id and six bakes, the size it is seen
  * at, and what its camera loop is held to. The loop is the scene's camera, its
  * lens and path from scene_camera_lens() once the scene has loaded. Model
  * units are centimetres; y is up.
@@ -29,6 +29,7 @@ typedef enum {
     SPONZA_BAKE_LITE,
     SPONZA_BAKE_FITTED,
     SPONZA_BAKE_FITTED_FULL,
+    SPONZA_BAKE_FLAT_FITTED,
     SPONZA_BAKE_COUNT,
 } sponza_bake_t;
 

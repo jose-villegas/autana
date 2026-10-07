@@ -2,10 +2,10 @@
  * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
  * The scene manager owns the frame: this loads the scene, shows one of its
- * five bakes and draws the HUD, while the shell advances the camera and
+ * six bakes and draws the HUD, while the shell advances the camera and
  * draws it. Light is baked into the mesh, so a frame is only cull, transform,
- * clip and fill on both cores. Five scenes share this code, one per bake:
- * full, lite, flat, fitted and fitted full.
+ * clip and fill on both cores. Six scenes share this code, one per bake:
+ * full, lite, flat, fitted, fitted full and flat fitted.
  */
 
 #include <assert.h>
@@ -71,7 +71,7 @@ record_failure(const scene_failure_t* why) {
     }
 }
 
-/* Loads the scene and shows sponza_bakes[shown], the one of its five bakes to draw. */
+/* Loads the scene and shows sponza_bakes[shown], the one of its six bakes to draw. */
 static void
 enter_with(sponza_bake_t shown) {
     gfx_set_partial_clear(false);
@@ -126,6 +126,11 @@ scene_sponza_fitted_enter(void) {
 static void
 scene_sponza_fitted_full_enter(void) {
     enter_with(SPONZA_BAKE_FITTED_FULL);
+}
+
+static void
+scene_sponza_flat_fitted_enter(void) {
+    enter_with(SPONZA_BAKE_FLAT_FITTED);
 }
 
 static void
@@ -228,6 +233,20 @@ const render_lab_scene_t scene_sponza_fitted_full = {
     .name = "Sponza Fitted Full",
     .key = "sponza-fitted-full",
     .enter = scene_sponza_fitted_full_enter,
+    .frame = scene_sponza_frame,
+    .update = NULL,
+    .frame_band = NULL,
+    .exit = scene_sponza_exit,
+    .invalidate = scene_sponza_invalidate,
+    .status = sponza_status,
+    .needs_full_framebuffer = true,
+    .shows_view_modes = true,
+};
+
+const render_lab_scene_t scene_sponza_flat_fitted = {
+    .name = "Sponza Flat Fitted",
+    .key = "sponza-flat-fitted",
+    .enter = scene_sponza_flat_fitted_enter,
     .frame = scene_sponza_frame,
     .update = NULL,
     .frame_band = NULL,

@@ -252,13 +252,13 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
         jobs = [NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
-                               variant=NS(triangles=10000))) for _ in range(2)]
+                               variant=NS(triangles=10000))) for _ in range(3)]
         calls, consumed, completed, prepare_futures, fit_futures = [], [], [], [], []
 
         class PrepareFuture(Future):
             def add_done_callback(self, callback):
                 super().add_done_callback(callback)
-                if len(prepare_futures) == 2 and all(f._done_callbacks for f in prepare_futures):
+                if len(prepare_futures) == 3 and all(f._done_callbacks for f in prepare_futures):
                     for future in reversed(prepare_futures):
                         future.set_result(None)
                     for future, directory, target in reversed(fit_futures):
@@ -314,7 +314,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                 stages._gpu(NS(smoke=False), out, root / 'work', Executor())
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
-                             'full-GI-bake', 'full-path-culled', 'full-GI-fit']
+                             'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'flat-GI-bake', 'flat-GI-fit']
             self.assertEqual(consumed, expected_rows)
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
@@ -332,6 +332,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                                   job.renderer.fit.normal_weight))
             self.assertCountEqual(arguments, [
                 ('fit-lite', 'lite.mesh', None, 0., .3), ('fit-full', 'full.mesh', None, 0., .3),
+                ('fit-flat', 'flat.mesh', None, 0., .3),
                 ('normal-0', 'normal-0.mesh', None, 0., 0.), ('normal-0.1', 'normal-0.1.mesh', None, 0., .1),
                 ('budget-4000-cost-0.1', 'budget-4000-cost-0.1.mesh', 4000, .1, .3),
                 ('budget-6000-cost-0.1', 'budget-6000-cost-0.1.mesh', 6000, .1, .3)])

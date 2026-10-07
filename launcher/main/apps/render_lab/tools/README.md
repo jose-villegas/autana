@@ -95,7 +95,7 @@ be checked to have measured the same thing.
 The measured comparisons of bakes are in
 [Bake-Quality.md](../../../../../docs/render/Bake-Quality.md); these commands
 regenerate its images and tables. The scenes `sponza`, `sponza-lite`,
-`sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one variant.
+`sponza-flat`, `sponza-fitted`, `sponza-fitted-full` and `sponza-flat-fitted` each draw one variant.
 `tests/test_sky_through_walls.py` flies the full, flat and lite bakes and fails
 when more frames show sky through a wall than its ceiling allows.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`

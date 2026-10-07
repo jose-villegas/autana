@@ -20,10 +20,12 @@ from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRE
 from r3d.import_settings import content_checksum, load_import_settings, source_files
 
 SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
-HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
-VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full")
+VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full", "flat-fitted")
+# The GPU stage's fitted objects, the prefix of their rows, and the bake each is compared with.
+FITTED = (("atrium_fitted", "lite", "atrium_lite"), ("atrium_fitted_full", "full", "atrium"),
+          ("atrium_flat_fitted", "flat", "atrium_flat"))
 
 
 def git_environment():
@@ -105,7 +107,7 @@ def capture_rows(path, commit):
     if re.search(r"\bFAIL\b", text):
         raise ValueError(f"{path}: failed suite")
     aliases = {"atrium": "sponza", "atrium_lite": "lite", "atrium_flat": "flat",
-               "atrium_fitted": "fitted", "atrium_fitted_full": "fitted-full"}
+               "atrium_fitted": "fitted", "atrium_fitted_full": "fitted-full", "atrium_flat_fitted": "flat-fitted"}
     names = [aliases.get(match.group("name"), match.group("name")) for match in MEAN_RE.finditer(text)]
     if len(names) != len(set(names)):
         raise ValueError(f"{path}: duplicate variant means; give one --capture per run")
@@ -211,12 +213,12 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
     from r3d.appearance_simplify import load_views, normal_error, start_mesh
     from r3d.lit_mesh import finest_triangles, read_lit_mesh
     from r3d.cost_model import predict, mesh_rows
+    from r3d.fitted_variant import viewer_args
     directory = work / label
     directory.mkdir(exist_ok=True)
     from r3d.poses import read_poses
     count = len(read_poses(reference_inputs / "held_out.txt")[-1])
-    settings = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {job.renderer.variant.name.replace('_', '-')} "
-                                          f"--frames {count} --dt {job.renderer.fit.held_out_every_ms}",
+    settings = SimpleNamespace(render_args=viewer_args(job, count, job.renderer.fit.held_out_every_ms),
                                reference=reference_inputs / "reference_held_out", reference_scale=2)
     metrics = score(settings, host, write_assets(job.asset_name, mesh, directory), directory)
     views, size = load_views([(str(reference_inputs / "held_out.txt"), str(settings.reference))], 2)
@@ -228,14 +230,13 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
                                          "p95_delta_e": metrics[1], "predicted_ms": predicted}
 
 def bake_worker(scene, job, index, prefix, baked_name, work):
-    from r3d.mesh_import import bake_geometry, camera_path_poses
+    from r3d.mesh_import import bake_geometry, camera_path_poses, write_baked
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     directory = work / f"bake-{prefix}"
     directory.mkdir(exist_ok=True)
     geometry = bake_geometry(baked, scene)
-    write_lit_mesh(directory, baked.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
-                   geometry.tri_double, **geometry.scale)
+    write_baked(baked, scene, directory, baked.renderer.variant.name, geometry)
     if index == 1:
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
@@ -270,7 +271,7 @@ def prepare_variants(executor, scene, jobs, work, on_ready):
     ready = [Future() for job in jobs]
     prepares = [executor.submit(prepare, SCENE, scene, job, work / f"inputs-{prefix}", estimates=PREPARE_BYTES,
                                 priority=True)
-                for prefix, job in zip(("lite", "full"), jobs)]
+                for (_name, prefix, _baked), job in zip(FITTED, jobs)]
     for index, (job, future) in enumerate(zip(jobs, prepares)):
         def completed(future, index=index, job=job):
             try:
@@ -308,7 +309,7 @@ def gpu(args, out, work):
 
 
 def _gpu(args, out, work, executor):
-    from r3d.fitted_variant import (placed_variant, plot_pareto, prepare,
+    from r3d.fitted_variant import (VIEWER, placed_variant, plot_pareto, prepare,
                                    run_sweep_points, sweep_rows, write_sweep_csv, fit_point)
     from r3d.import_settings import load_scene
     from r3d.bake_fidelity import build_host
@@ -317,7 +318,7 @@ def _gpu(args, out, work, executor):
     from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
     scene = load_scene(SCENE)
-    jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
+    jobs = [placed_variant(scene, name) for name, _prefix, _baked in FITTED]
     if len({job.renderer.fit.held_out_every_ms for job in jobs}) != 1:
         raise ValueError("GPU comparisons require a common held-out pose interval")
     stamp = current_stamp()
@@ -331,7 +332,7 @@ def _gpu(args, out, work, executor):
                         work / "smoke.mesh", estimates=FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
-    host = build_host(HOST_SCRIPT, work / "host")
+    host = build_host(VIEWER, work / "host")
     rows, comparisons, sweep = [], {}, []
     weights, *_ = load(WEIGHTS)
 
@@ -344,7 +345,7 @@ def _gpu(args, out, work, executor):
 
     fitted_futures, normal_futures, sweep_futures = {}, {}, {}
     def prepared(index, job):
-        prefix = "lite" if index == 0 else "full"
+        prefix = FITTED[index][1]
         reference_inputs = work / f"inputs-{prefix}"
         fitted_futures[prefix] = executor.submit(fit_point, {}, work / f"fit-{prefix}", SCENE, scene, job,
                                                   reference_inputs, False, work / f"{prefix}.mesh", estimates=FIT_BYTES)
@@ -367,9 +368,9 @@ def _gpu(args, out, work, executor):
 
     for index, job in enumerate(jobs):
         ready[index].result()
-        prefix = "lite" if index == 0 else "full"
+        _name, prefix, baked = FITTED[index]
         reference_inputs = work / f"inputs-{prefix}"
-        for label, baked_name in (("GI-bake", "atrium_lite" if index == 0 else "atrium"),):
+        for label, baked_name in (("GI-bake", baked),):
             baked_mesh, culled_mesh = executor.submit(bake_worker, scene, job, index, prefix, baked_name,
                                                         work, estimates=BAKE_BYTES, priority=True).result()
             measure(f"{prefix}-{label}", job, baked_mesh, reference_inputs)
@@ -385,6 +386,13 @@ def _gpu(args, out, work, executor):
         if index == 1:
             sweep.append({"budget": job.renderer.fit.budget, "cost_weight": 0.0, **fitted_values})
         image = out / "render/gpu" / f"appearance-indirect-{prefix}.png"
+        if prefix == "flat":
+            # The flat fit against its own bake and the smooth fit at lite's budget, the three cheapest on the board.
+            run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
+                 "--reference-bakes", reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
+                 "--bake", "flat bake", comparisons["flat-GI-bake"], "--bake", "lite fit", comparisons["lite-GI-fit"],
+                 "--bake", "flat fit", comparisons["flat-GI-fit"], "--crops", "3"], work / f"sheet-{prefix}.log")
+            continue
         run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
              "--reference-bakes", reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
              "--bake", "GI bake", comparisons[f"{prefix}-GI-bake"], "--bake", "GI fit", comparisons[f"{prefix}-GI-fit"],
@@ -432,6 +440,14 @@ def _gpu(args, out, work, executor):
         [row for row in rows if row[0].startswith("full-")]) + "\n" + "\n".join(
         f"![{prefix} GI bake and fit{suffix}](../images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
         for prefix in ("lite", "full") for suffix in ("", ".crops")) + "\n")
+    (out / "tables/sponza-flat-fit.md").write_text(markdown(
+        ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"],
+        [row for row in rows if row[0] in ("flat-GI-bake", "flat-GI-fit", "lite-GI-fit")]) + "
+" + "
+".join(
+        f"![Flat bake, lite fit and flat fit{suffix}](../images/render/gpu/appearance-indirect-flat{suffix}.png)"
+        for suffix in ("", ".crops")) + "
+")
     with (out / "tables/sponza-gpu.md").open("a") as output:
         output.write("\n![Full bake and path cull](../images/render/gpu/appearance-path-culled.png)\n")
         if (out / "render/gpu/appearance-path-culled.crops.png").exists():
