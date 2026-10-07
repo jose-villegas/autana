@@ -66,6 +66,7 @@ would see the scene mirrored.
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
+| `raster_motion.h` | The motion-vector attachment: where each pixel's point was in the previous picture |
 | `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
 | `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
@@ -187,7 +188,7 @@ flowchart LR
 | `RASTER_SHOW_SHADED` | untouched: the baked colours as drawn |
 | `RASTER_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
 | `RASTER_SHOW_DEPTH_TILES` | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
-| `RASTER_SHOW_ATTACHMENT` + k | further attachment k's own view, painted by its `show` hook |
+| `RASTER_SHOW_ATTACHMENT` + k | further attachment k's own view, painted by its `show` hook; for motion, mid-grey for none, red for x and green for y |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
@@ -230,6 +231,49 @@ triangle's, so where two instances meet at exactly the same depth the pixel
 takes the later one's write. A writer sees only depth and one value per
 instance; a map that needs more, such as normals, rebuilds it from depth in
 its `resolve`.
+
+### Motion vectors
+
+`raster_motion.h`: for each pixel, the previous position of the point it
+shows minus this one, two signed bytes in half pixels of this picture.
+`RASTER_MOTION_UNKNOWN` marks a pixel nothing drew, the first picture, a
+point behind the previous camera, and motion past the range.
+
+The motion view along a flythrough, red for x and green for y:
+
+![The motion-vector view along a flythrough](../images/render/sponza-motion-vectors.gif)
+
+- **The camera.** `begin` builds this picture's lens and the previous
+  camera's lens at this picture's size. `resolve` takes each pixel back to
+  the world through its depth and projects it through the previous lens. So
+  a size change between pictures needs nothing special.
+- **Moving instances.** An instance is known by its placement's address. One
+  whose placement changed since the previous picture gets its own map, which
+  carries the point to where the mesh was. From the first instance that
+  moved on, every triangle writes its instance's tag (0 for anything still),
+  and `resolve` picks the map by it; before it, pixels keep the 0 they were
+  cleared to. On a picture where nothing moved, nothing is written while
+  drawing. A raster with motion attached draws at most
+  `RASTER_MOTION_INSTANCES_MAX` instances.
+- **The caller** owns a zeroed `raster_motion_t`, attaches
+  `raster_motion_attachment()`, and calls `raster_motion_forget()` after a
+  cut. The render context attaches it while the attachment view shows it.
+
+Motion stays only while an experiment shows a gain. Nothing outside these
+places names it, and the attachment seam does not change when it goes:
+
+| Remove | What |
+|---|---|
+| `render/raster_motion.{c,h}`, `test/suites/suite_raster_motion.c`, `docs/images/render/sponza-motion-vectors.gif` | the files |
+| `render/context/render_context.c` | the include, `attach_motion()` and its state, its call, and the free in `render_context_release()` |
+| `apps/render_lab/tests/suite_sponza_perf.c` | `test_sponza_frame_cost_with_motion` |
+| `CMakeLists.txt`, `test/run_tests.sh`, `render_lab_render_host.sh` | one source line each |
+| `render_lab_render_host.c`, `tests/test_render_views.py` | the `motion` view name and its error text |
+| `doc_images.sh`, render_lab `tools/README.md` | the GIF's line and row |
+| this page | the `raster_motion.h` file row, this section, the motion note under the views |
+
+With no further attachment left, `RASTER_SHOW_ATTACHMENT` shows nothing
+and the render_lab view tunable can end at `RASTER_SHOW_DEPTH_TILES`.
 
 ## Coverage and small triangles
 
