@@ -34,13 +34,20 @@ from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa
 
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
 BOARD_SCALE = 2
+# The host renderer that draws any scene file's objects along its camera path.
+VIEWER = pathlib.Path(__file__).resolve().parents[1] / "render/scenes/scene_viewer_render_host.sh"
 
 
 def placed_variant(scene, name):
-    """The fitted renderer named by its variant or scene output."""
-    jobs = [item for item in scene.renderers if name in (item.renderer.variant.name, item.asset_name) and item.renderer.fit]
+    """The fitted renderer named by its scene object, its scene output or,
+    when only one renderer fits it, its variant."""
+    fitted = [item for item in scene.renderers if item.renderer.fit]
+    jobs = [item for item in fitted if name in (item.object.name, item.asset_name)]
+    jobs = jobs or [item for item in fitted if item.renderer.variant.name == name]
     if not jobs:
         raise SettingsError(f"the scene places no fitted variant {name!r}")
+    if len(jobs) > 1:
+        raise SettingsError(f"{name!r} is fitted by {', '.join(item.object.name for item in jobs)}; name the object")
     return jobs[0]
 
 
@@ -60,9 +67,11 @@ def split_poses(fit, poses):
     return training, held_out
 
 
-def host_scene_key(variant_name):
-    """The host renderer's scene key for a generated mesh identifier."""
-    return variant_name.replace("_", "-")
+def viewer_args(job, frames, dt_ms):
+    """The scene viewer's arguments that draw `job`'s object alone, portrait,
+    for `frames` frames `dt_ms` apart along the scene camera's path."""
+    scene_id, object_name = job.asset_name.split(".", 1)
+    return f"--scene {scene_id} --object {object_name} --quarter 0 --frames {frames} --dt {dt_ms}"
 
 
 def canonical(value):
@@ -275,13 +284,12 @@ def held_out_score(job, mesh_path, work, host, inputs=None):
     from types import SimpleNamespace
     from r3d.poses import read_poses
 
-    variant, fit = job.renderer.variant, job.renderer.fit
+    fit = job.renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
     _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {host_scene_key(variant.name)} --frames {len(poses)} "
-                                       f"--dt {fit.held_out_every_ms}", reference=inputs / "reference_held_out",
+    args = SimpleNamespace(render_args=viewer_args(job, len(poses), fit.held_out_every_ms), reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
     return _score_mesh(args, job.asset_name, mesh_path, score_dir, host)
 
@@ -356,9 +364,8 @@ def sweep_main(argv):
         nonlocal host
         if host is None:
             from r3d.bake_fidelity import build_host
-            from r3d.mesh_import import REPO
 
-            host = build_host(REPO / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh", out / "host")
+            host = build_host(VIEWER, out / "host")
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
                    smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)

@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
-    from r3d.appearance_simplify import point_edges, projection, prune, refine, start_mesh, write_mesh
+    from r3d.appearance_simplify import FitMesh, point_edges, projection, prune, refine, start_mesh, write_mesh
     from r3d.cost_model import fit, predict, triangle_terms
     from r3d.lit_mesh import finest_triangles, read_lit_mesh, write_lit_mesh
 except ImportError:
@@ -70,6 +70,15 @@ def write_start(directory, count=4):
     return pathlib.Path(directory) / "card.mesh"
 
 
+def write_flat_start(directory, count=4):
+    """The grid card baked flat: left half one colour, right half another."""
+    positions, _rgb, tris = grid(count)
+    left = positions[tris].mean(axis=1)[:, 0] < 0
+    face = np.where(left[:, None], [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
+    write_lit_mesh(directory, "flat", positions, None, tris, np.zeros(len(tris), dtype=int), position_scale=64, face_rgb=face)
+    return pathlib.Path(directory) / "flat.mesh"
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
     def test_projection_casts_the_reference_pinhole_rays(self):
@@ -90,10 +99,10 @@ class AppearanceMeshTests(unittest.TestCase):
 
     def test_seam_vertices_share_one_position(self):
         with tempfile.TemporaryDirectory() as directory:
-            points, rgb, tris, _double, _scale, vertex_point = start_mesh(write_start(directory))
-            self.assertLess(len(points), len(rgb))
-            self.assertEqual(len(np.unique(points, axis=0)), len(points))
-            self.assertTrue(np.all(point_edges(tris, vertex_point) < len(points)))
+            mesh = start_mesh(write_start(directory))
+            self.assertLess(len(mesh.points), len(mesh.rgb))
+            self.assertEqual(len(np.unique(mesh.points, axis=0)), len(mesh.points))
+            self.assertTrue(np.all(point_edges(mesh.tris, mesh.vertex_point) < len(mesh.points)))
 
     def test_the_written_mesh_holds_the_fitted_positions_and_colours(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -106,6 +115,24 @@ class AppearanceMeshTests(unittest.TestCase):
         wanted = {(tuple(np.rint(p * back.position_scale).astype(int)), tuple(np.rint(c * 255).astype(int)))
                   for p, c in zip(points[mesh[5]], rgb)}
         self.assertEqual(written, wanted)
+
+    def test_a_flat_start_carries_a_colour_per_triangle_and_writes_back_flat(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_flat_start(directory))
+            self.assertTrue(mesh.flat)
+            self.assertEqual(len(mesh.rgb), len(mesh.tris))
+            self.assertEqual(len(mesh.points), len(mesh.vertex_point), "a flat start welds by position alone")
+            points, rgb = mesh.points + [0.25, 0.0, 0.0], 1.0 - mesh.rgb
+            write_mesh(pathlib.Path(directory) / "out", "flat", points, rgb, mesh)
+            back = read_lit_mesh(pathlib.Path(directory) / "out" / "flat.mesh")
+        q, colours, tris, _double, face = finest_triangles(back)
+        self.assertIsNone(colours)
+        written = {tuple(map(tuple, q[t])): tuple(c) for t, c in zip(tris, face)}
+        expected = {tuple(map(tuple, np.rint(points[mesh.vertex_point][t] * 64).astype(int))): c for t, c in zip(mesh.tris, rgb)}
+        self.assertEqual(written.keys(), expected.keys())
+        for key, colour in expected.items():
+            # Face colours are stored as RGB565, so a channel comes back within its step.
+            self.assertTrue(np.all(np.abs(np.array(written[key]) - colour * 255) <= 8), key)
 
     def test_fitted_mesh_keeps_the_budget_and_closes_seams(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -129,7 +156,7 @@ class AppearanceMeshTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
-        mesh = (np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
+        mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
         shown = np.array([0, 50, 3, 0, 900, 7])
         pruned = prune(mesh, shown, 3)
         self.assertEqual(len(pruned[2]), 3)
@@ -137,6 +164,12 @@ class PruneAndCostTests(unittest.TestCase):
         for index in (4, 1, 5):
             self.assertIn(tuple(mesh[2][index]), kept)
         self.assertEqual(len(prune(mesh, shown, 6)[2]), 4, "a triangle no view shows was kept")
+
+    def test_a_flat_mesh_keeps_each_colour_with_its_triangle(self):
+        colours = np.arange(18, dtype=float).reshape(6, 3) / 17.0
+        mesh = FitMesh(np.zeros((9, 3)), colours, np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9), True)
+        pruned = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
+        self.assertEqual(pruned.rgb.tolist(), colours[[1, 4, 5]].tolist())
 
     def terms(self, positions, tris):
         matrix = projection([0.0, 0.0, 5.0], [0.0, 0.0, -1.0], 64, 48, 0.62, 0.5)
@@ -266,6 +299,25 @@ class AppearanceFitTests(unittest.TestCase):
                                               lr_colour=0.05, laplacian=0.0, report=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
+    def test_a_flat_fit_moves_the_edge_between_two_face_colours(self):
+        from r3d.appearance_simplify import Renderer, optimise
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_flat_start(directory))
+        size = (96, 80)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 48, 40, 0.62, 0.5)
+        truth = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, "cuda", flat=True)
+        # The target's colour boundary sits a third of a column to the right of the start's.
+        shifted = mesh.points + np.where(np.abs(mesh.points[:, :1]) < 0.4, [[0.15, 0.0, 0.0]], 0.0)
+        target = truth(torch.as_tensor(shifted, dtype=torch.float32, device="cuda"),
+                       torch.as_tensor(mesh.rgb, dtype=torch.float32, device="cuda"),
+                       torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+        points, rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.005,
+                                        lr_colour=0.0, laplacian=0.0, report=0)
+        self.assertEqual(rgb.shape, mesh.rgb.shape)
+        self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]), "the colour edge did not move")
+        self.assertGreater(points[np.abs(mesh.points[:, 0]) < 1e-9, 0].mean(), 0.05)
+
     def test_views_of_both_orientations_train_one_mesh_each_at_its_own_size(self):
         from r3d.appearance_simplify import Renderer, optimise
 
@@ -302,7 +354,7 @@ class AppearanceFitTests(unittest.TestCase):
         before = normal_error(mesh, [view], size)
         points, _rgb, _history = optimise(mesh, [view], size, steps=200, batch=1, lr_position=0.02, lr_colour=0.0,
                                           laplacian=0.0, report=0, normal_weight=1.0)
-        after = normal_error((points,) + mesh[1:], [view], size)
+        after = normal_error(mesh._replace(points=points), [view], size)
         self.assertLess(after, 0.5 * before)
 
     def test_coverage_never_prunes_a_visible_triangle(self):

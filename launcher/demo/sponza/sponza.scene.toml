@@ -125,7 +125,7 @@ name = "atrium_flat_fitted"
 
 [objects.mesh_renderer]
 mesh = "sponza.import.toml"
-variant = "sponza_flat_fitted"
+variant = "sponza_fitted_full"
 bake = true
 shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }

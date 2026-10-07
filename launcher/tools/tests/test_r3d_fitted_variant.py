@@ -88,8 +88,10 @@ class SweepTests(unittest.TestCase):
             self.assertNotIn("fit output 0\n", str(caught.exception))
             self.assertIsInstance(caught.exception.__cause__, ValueError)
 
-    def test_mesh_names_map_to_the_host_scene_keys(self):
-        self.assertEqual(fitted_variant.host_scene_key("tiny_fitted"), "tiny-fitted")
+    def test_the_viewer_draws_the_scene_object_alone(self):
+        job = SimpleNamespace(asset_name="tiny.walls_fitted")
+        self.assertEqual(fitted_variant.viewer_args(job, 3, 5000),
+                         "--scene tiny --object walls_fitted --quarter 0 --frames 3 --dt 5000")
 
     @unittest.skipIf(Image is None, "needs the synthetic render scorer")
     def test_held_out_score_keeps_each_mesh_and_pose_with_its_reference(self):
@@ -110,7 +112,7 @@ class SweepTests(unittest.TestCase):
                 first = fitted_variant.held_out_score(job, meshes[1], work, work / "host")
                 second = fitted_variant.held_out_score(job, meshes[2], work, work / "host")
                 one_pose_late = self._synthetic_score(
-                    SimpleNamespace(render_args="--scene tiny-fitted --frames 3 --dt 5", reference=references,
+                    SimpleNamespace(render_args="--scene tiny --object fitted --frames 3 --dt 5", reference=references,
                                     reference_first=1), job.asset_name, meshes[0], work / "late", work / "host")
         self.assertLess(aligned[0], 0.01)
         self.assertNotAlmostEqual(first[0], second[0], places=3)
