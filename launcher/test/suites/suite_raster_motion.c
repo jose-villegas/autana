@@ -30,11 +30,10 @@
  * these distances adds a few hundredths. */
 #define SLACK 0.35F
 
-/* A wall 800 units square on z = 0, facing +z, and a box face 80 square
- * about its own origin, also facing +z: both quads of two triangles. */
-static const int16_t wall_positions[][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
+/* The rig's wall, then a box face 80 square about its own origin, also
+ * facing +z, placed wherever a test stands it. */
 static const int16_t box_positions[][3] = {{-40, -40, 0}, {40, -40, 0}, {40, 40, 0}, {-40, 40, 0}};
-static const int16_t (*const wall_and_box[])[3] = {wall_positions, box_positions};
+static const int16_t (*const wall_and_box[])[3] = {raster_rig_wall, box_positions};
 
 /* The box turned `degrees` about y and standing at `at`. */
 static r3d_placement_t
