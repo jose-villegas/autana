@@ -51,18 +51,19 @@ def _library():
     return _lib
 
 
-def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight=1.0, options=REGULARIZE | PERMISSIVE):
+def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, options=REGULARIZE | PERMISSIVE):
     """Simplifies to about target_triangles, keeping colour (0..255 per
-    channel) as an attribute and moving the surviving vertices and colours to
-    where they best preserve the appearance. Returns (pos, rgb, tris, kept):
-    kept[i] is the input vertex output vertex i came from."""
+    channel, `colour_weight` per level) as an attribute and moving the
+    surviving vertices and colours to where they best preserve the appearance.
+    Returns (pos, rgb, tris, kept): kept[i] is the input vertex output vertex
+    i came from."""
     lib = _library()
     fn = lib.meshopt_simplifyWithUpdate
     fn.restype = ctypes.c_size_t
     p = np.ascontiguousarray(pos, dtype=np.float32).copy()
     a = np.ascontiguousarray(np.asarray(rgb, dtype=np.float64) / 255.0, dtype=np.float32).copy()
     i = np.ascontiguousarray(np.asarray(tris).reshape(-1), dtype=np.uint32).copy()
-    w = np.full(3, colour_weight, dtype=np.float32)
+    w = np.full(3, colour_weight * 255.0, dtype=np.float32)  # meshoptimizer sees colour as 0..1
     err = ctypes.c_float(0)
     c = ctypes.c_void_p
     n = fn(i.ctypes.data_as(c), ctypes.c_size_t(len(i)), p.ctypes.data_as(c), ctypes.c_size_t(len(p)),

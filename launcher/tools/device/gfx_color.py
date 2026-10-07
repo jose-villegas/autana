@@ -4,6 +4,9 @@ Every function works on plain ints and on numpy integer arrays at least 16
 bits wide.
 """
 
+# The 8-bit levels one step of each RGB565 channel spans: red, green, blue.
+STEP = (8, 4, 8)
+
 
 def rgb565(r, g, b):
     """GFX_RGB565 from 8-bit channels: truncating, not rounding."""

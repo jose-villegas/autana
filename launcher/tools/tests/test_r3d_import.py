@@ -180,7 +180,12 @@ class ImportTests(unittest.TestCase):
 
     def test_simplify_needs_a_positive_colour_deviation(self):
         self.rejects("colour_deviation is required", SIMPLIFY.replace(", colour_deviation = 1.0", "") + VARIANT)
-        self.rejects("must be above 0", SIMPLIFY.replace("colour_deviation = 1.0", "colour_deviation = 0") + VARIANT)
+        for value in ("0", "-1.0"):
+            self.rejects("must be above 0", SIMPLIFY.replace("colour_deviation = 1.0", f"colour_deviation = {value}") + VARIANT)
+        with tempfile.TemporaryDirectory() as directory:
+            body = SIMPLIFY.replace("colour_deviation = 1.0", "colour_deviation = 0.01") + VARIANT
+            settings = load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n', body=body))
+        self.assertEqual(settings.simplify.colour_deviation, 0.01)
 
     def test_simplify_needs_a_budget_per_variant_and_a_budget_needs_simplify(self):
         self.rejects("needs variants", SIMPLIFY)
@@ -740,6 +745,25 @@ class BakeStepTests(unittest.TestCase):
                 renderer_ = SimpleNamespace(visibility=visibility, variant=SimpleNamespace(triangles=None))
                 mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(seen, [own])
+
+    def test_the_simplifier_gets_the_imports_colour_deviation(self):
+        steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set())
+        p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        source = SimpleNamespace(p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]), names=["m"],
+                                 textures=[None], materials={})
+        given = {}
+
+        def simplify(pos, rgb, tris, labels, *rest, **options):
+            given.update(options)
+            return pos, rgb, tris, labels
+
+        with mock.patch.object(mesh_import, "load_source", return_value=source), \
+                mock.patch.object(mesh_import, "shade_unlit", return_value=(p, np.zeros((3, 3)), np.array([[0, 1, 2]]))), \
+                mock.patch.object(mesh_import, "simplify", side_effect=simplify):
+            renderer_ = SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=1))
+            mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
+        self.assertEqual(given["colour_deviation"], 2.5)
 
     def test_check_fitted_names_what_changed_and_what_to_do(self):
         with tempfile.TemporaryDirectory() as directory:

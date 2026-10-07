@@ -132,7 +132,7 @@ class RepairTests(unittest.TestCase):
         self.assertTrue(any(on_seam(e) for e in open_edges(p, tris)), "the fixture has no open seam")
         rp, rgb, rt, _ = self.repaired(p, tris)
         self.assertFalse(any(on_seam(e) for e in open_edges(rp, rt)), "the seam is still open")
-        sp, _, st, _ = simplify_with_update(rp, rgb, rt, 4)
+        sp, _, st, _ = simplify_with_update(rp, rgb, rt, 4, 1 / 255)
         self.assertLess(len(st), len(rt))
         self.assertFalse(any(on_seam(e) for e in open_edges(sp, st)), "simplification opened the seam")
 
