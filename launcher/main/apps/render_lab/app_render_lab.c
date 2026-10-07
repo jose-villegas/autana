@@ -485,31 +485,32 @@ static bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
         for (int i = 0; i < SCENE_COUNT; i++) {
-            printf("RENDER scene=%s name=%s current=%d\n", scenes[i]->key, scenes[i]->name, i == current_scene_index);
+            (void)printf("RENDER scene=%s name=%s current=%d\n", scenes[i]->key, scenes[i]->name,
+                         i == current_scene_index);
         }
-        printf("RENDER_END\n");
-        fflush(stdout);
+        (void)printf("RENDER_END\n");
+        (void)fflush(stdout);
         return true;
     }
     if (strncmp(args, "scene ", 6) == 0) {
         for (int i = 0; i < SCENE_COUNT; i++) {
             if (strcmp(scenes[i]->key, args + 6) == 0) {
                 scene_requested = i;
-                printf("RENDER scene=%s\nRENDER_END\n", scenes[i]->key);
-                fflush(stdout);
+                (void)printf("RENDER scene=%s\nRENDER_END\n", scenes[i]->key);
+                (void)fflush(stdout);
                 return true;
             }
         }
-        printf("RENDER_ERR unknown scene '%s'; `render scenes` lists them\n", args + 6);
-        fflush(stdout);
+        (void)printf("RENDER_ERR unknown scene '%s'; `render scenes` lists them\n", args + 6);
+        (void)fflush(stdout);
         return true;
     }
     const bool on = strcmp(args, "partial on") == 0;
     if (on || strcmp(args, "partial off") == 0) {
         render_lab_partial_updates = on;
         gfx_invalidate();
-        printf("RENDER partial=%s\nRENDER_END\n", on ? "on" : "off");
-        fflush(stdout);
+        (void)printf("RENDER partial=%s\nRENDER_END\n", on ? "on" : "off");
+        (void)fflush(stdout);
         return true;
     }
     return false;
