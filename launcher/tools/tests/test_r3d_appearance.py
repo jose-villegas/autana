@@ -233,6 +233,33 @@ class RefineTests(unittest.TestCase):
         added = [v for v in np.round(refined[0] * 64).astype(int) if tuple(v) not in before]
         self.assertTrue(added and all(v[0] > 0 or v[1] > 0 for v in added), "the split is not on the worst triangle")
 
+    def test_refining_a_flat_mesh_gives_each_half_its_triangles_colour_and_double_flag(self):
+        positions, tris = grid_mesh(2, 1.0)
+        colours = np.stack([(k + 1) / 20.0 * np.array([1.0, 0.5, 0.25]) + [0.0, 0.01 * k, 0.0] for k in range(len(tris))])
+        double = np.arange(len(tris)) % 2 == 0
+        mesh = FitMesh(positions, colours, tris, double, 64, np.arange(len(positions)), True)
+        error = np.zeros(len(tris))
+        error[[0, 5]] = 10.0
+        refined = refine(mesh, error, len(tris) + 4)
+        self.assertTrue(refined.flat)
+        self.assertGreaterEqual(len(refined.tris), len(tris) + 4)
+        self.assertEqual(refined.rgb.shape, (len(refined.tris), 3), "one colour per triangle, not per vertex")
+        self.assertEqual(len(refined.double), len(refined.tris))
+        corners = refined.points[refined.vertex_point][refined.tris]
+        old = positions[tris]
+        for k, tri in enumerate(corners):
+            centre = tri.mean(axis=0)
+            parents = []
+            for j, parent in enumerate(old):
+                a, b, c = parent
+                cross = lambda u, v, w: (v[0] - u[0]) * (w[1] - u[1]) - (v[1] - u[1]) * (w[0] - u[0])
+                signs = (cross(a, b, centre), cross(b, c, centre), cross(c, a, centre))
+                if all(value > 1e-9 for value in signs) or all(value < -1e-9 for value in signs):
+                    parents.append(j)
+            self.assertEqual(len(parents), 1, "a half's centre lies inside exactly one original triangle")
+            self.assertTrue(np.allclose(refined.rgb[k], colours[parents[0]]), f"triangle {k} lost its parent's colour")
+            self.assertEqual(bool(refined.double[k]), bool(double[parents[0]]))
+
 
 @needs_mitsuba
 @unittest.skipIf(np is None or soup is None, "the r3d environment is not installed")
@@ -317,6 +344,61 @@ class AppearanceFitTests(unittest.TestCase):
         self.assertEqual(rgb.shape, mesh.rgb.shape)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]), "the colour edge did not move")
         self.assertGreater(points[np.abs(mesh.points[:, 0]) < 1e-9, 0].mean(), 0.05)
+
+    def test_a_flat_renderer_draws_each_triangle_in_its_own_colour(self):
+        from r3d.appearance_simplify import Renderer
+
+        positions, tris = grid_mesh(2, 1.0)
+        colours = np.stack([[(k + 1) / (len(tris) + 1), 1.0 - k / len(tris), (k % 3) / 2.0] for k in range(len(tris))])
+        size = (96, 80)
+        matrix = torch.as_tensor(projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 48, 40, 0.62, 0.5), dtype=torch.float32, device="cuda")
+        render = Renderer(tris, np.zeros(len(tris), dtype=bool), np.arange(len(positions)), size, "cuda", flat=True)
+        points = torch.as_tensor(positions, dtype=torch.float32, device="cuda")
+        with torch.no_grad():
+            image = render(points, torch.as_tensor(colours, dtype=torch.float32, device="cuda"), matrix).cpu().numpy()
+            ids = render.visible_ids(points, matrix).flip(0).cpu().numpy()
+        shown = sorted({int(k) for k in ids.ravel() if k >= 0})
+        self.assertGreaterEqual(len(shown), 2)
+        for k in shown:
+            # The triangle's own pixels, away from its edges: a pixel whose four neighbours show the same triangle.
+            inner = (ids == k)
+            inner[1:-1, 1:-1] &= (ids[:-2, 1:-1] == k) & (ids[2:, 1:-1] == k) & (ids[1:-1, :-2] == k) & (ids[1:-1, 2:] == k)
+            inner[0], inner[-1], inner[:, 0], inner[:, -1] = False, False, False, False
+            rows, cols = np.nonzero(inner)
+            self.assertTrue(len(rows), f"triangle {k} has no interior pixel")
+            self.assertTrue(np.allclose(image[rows[0], cols[0]], colours[k], atol=1e-4), f"triangle {k} is not in its own colour")
+
+    def test_a_flat_fit_moves_each_face_colour_toward_its_own_target(self):
+        from r3d.appearance_simplify import Renderer, optimise
+
+        positions, tris = grid_mesh(2, 1.0)
+        count = len(tris)
+        vertex_point = np.arange(len(positions))
+        double = np.zeros(count, dtype=bool)
+        size = (96, 80)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 48, 40, 0.62, 0.5)
+        wanted = np.stack([[(k % 4) / 3.0, ((k // 4) % 2), 1.0 - k / count] for k in range(count)])
+        truth = Renderer(tris, double, vertex_point, size, "cuda", flat=True)
+        target = truth(torch.as_tensor(positions, dtype=torch.float32, device="cuda"),
+                       torch.as_tensor(wanted, dtype=torch.float32, device="cuda"),
+                       torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+        start = np.full((count, 3), 0.5)
+        mesh = FitMesh(positions, start, tris, double, 64, vertex_point, True)
+        _points, rgb, _history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.0, lr_colour=0.05,
+                                          laplacian=0.0, report=0)
+        coverage_pixels = np.zeros(count)
+        with torch.no_grad():
+            ids = truth.visible_ids(torch.as_tensor(positions, dtype=torch.float32, device="cuda"),
+                                    torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).cpu().numpy()
+        coverage_pixels = np.bincount(ids[ids >= 0], minlength=count)
+        seen = np.nonzero(coverage_pixels > 50)[0]
+        self.assertGreaterEqual(len(seen), 4)
+        for k in seen:
+            own = np.abs(rgb[k] - wanted[k]).max()
+            others = [np.abs(rgb[k] - wanted[j]).max() for j in seen if j != k and np.abs(wanted[j] - wanted[k]).max() > 0.2]
+            self.assertLess(own, 0.15, f"face {k} did not reach its target colour")
+            self.assertTrue(all(own < other for other in others), f"face {k} is closer to a neighbour's target")
+        self.assertGreater(np.abs(rgb[seen] - 0.5).max(), 0.2, "the colours never left the start")
 
     def test_views_of_both_orientations_train_one_mesh_each_at_its_own_size(self):
         from r3d.appearance_simplify import Renderer, optimise

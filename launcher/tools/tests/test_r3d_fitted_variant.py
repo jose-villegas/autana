@@ -53,6 +53,58 @@ class FittedVariantTests(unittest.TestCase):
         self.assertEqual(list(poses[0]), [1.0, 2.0, 3.0, 0.0, 0.0, -1.0])
 
 
+def fake_job(object_name, asset_name, variant, fitted=True):
+    return SimpleNamespace(object=SimpleNamespace(name=object_name), asset_name=asset_name,
+                           renderer=SimpleNamespace(fit=object() if fitted else None, variant=SimpleNamespace(name=variant)))
+
+
+@unittest.skipIf(fitted_variant is None, "needs the r3d environment")
+class PlacedVariantTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from r3d.import_settings import load_scene
+        scene = pathlib.Path(__file__).resolve().parents[3] / "launcher/demo/sponza/sponza.scene.toml"
+        try:
+            cls.sponza = load_scene(scene)
+        except Exception as error:
+            raise unittest.SkipTest(f"the Sponza scene does not load here: {error}")
+
+    def test_a_scene_object_name_picks_its_own_renderer_even_when_a_variant_is_shared(self):
+        for name in ("atrium_fitted_full", "atrium_flat_fitted", "atrium_fitted"):
+            job = fitted_variant.placed_variant(self.sponza, name)
+            self.assertEqual(job.object.name, name)
+        self.assertEqual(fitted_variant.placed_variant(self.sponza, "atrium_flat_fitted").renderer.variant.name,
+                         "sponza_fitted_full")
+
+    def test_an_asset_name_picks_its_own_renderer(self):
+        job = fitted_variant.placed_variant(self.sponza, "sponza.atrium_flat_fitted")
+        self.assertEqual(job.object.name, "atrium_flat_fitted")
+
+    def test_a_variant_only_one_fitted_object_uses_names_that_object(self):
+        self.assertEqual(fitted_variant.placed_variant(self.sponza, "sponza_fitted").object.name, "atrium_fitted")
+
+    def test_a_variant_two_fitted_objects_share_is_refused_naming_both(self):
+        with self.assertRaises(fitted_variant.SettingsError) as caught:
+            fitted_variant.placed_variant(self.sponza, "sponza_fitted_full")
+        message = str(caught.exception)
+        self.assertIn("atrium_fitted_full", message)
+        self.assertIn("atrium_flat_fitted", message)
+        self.assertNotIn("atrium_fitted,", message)
+
+    def test_unknown_names_and_objects_that_are_not_fitted_are_refused(self):
+        for name in ("no_such_object", "sponza_lite", "atrium", "atrium_flat", "atrium_lite", "sponza"):
+            with self.assertRaisesRegex(fitted_variant.SettingsError, "no fitted variant"):
+                fitted_variant.placed_variant(self.sponza, name)
+
+    def test_an_object_name_wins_over_another_objects_variant_of_the_same_name(self):
+        scene = SimpleNamespace(renderers=[fake_job("wanted", "s.wanted", "other"), fake_job("second", "s.second", "wanted")])
+        self.assertEqual(fitted_variant.placed_variant(scene, "wanted").object.name, "wanted")
+
+    def test_a_shared_variant_is_ambiguous_only_among_fitted_renderers(self):
+        scene = SimpleNamespace(renderers=[fake_job("a", "s.a", "v"), fake_job("b", "s.b", "v", fitted=False)])
+        self.assertEqual(fitted_variant.placed_variant(scene, "v").object.name, "a")
+
+
 @unittest.skipIf(fitted_variant is None, "needs the r3d environment")
 class SweepTests(unittest.TestCase):
     def test_fit_point_default_target_and_recipe_arguments(self):
