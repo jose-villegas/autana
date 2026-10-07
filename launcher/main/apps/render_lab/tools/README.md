@@ -78,7 +78,7 @@ be checked to have measured the same thing.
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
-| `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
+| `render/sponza-{depth,tiles,motion-vectors}.gif` | those three seconds as the depth, depth-tile and motion-vector views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#fidelity-against-the-source)) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the physical reference beside the smooth bake without and with indirect light (the scene's physical look, bakes made without and with that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#indirect-light)) |
 | `render/bake-indirect-look.png` | the physical reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#indirect-look)) |

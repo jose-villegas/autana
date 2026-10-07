@@ -188,15 +188,22 @@ picture_viewport(const raster_t* raster, int quarter) {
     return (viewport_t){raster->width, raster->height, quarter};
 }
 
-/* The lens an instance is drawn with: the picture's, fitted to the render
- * size unless `fitted` is false. */
+void
+raster_lens(const raster_t* raster, const camera_t* camera, int position_scale, int quarter, r3d_lens_t* lens) {
+    r3d_lens_init(lens, camera, position_scale, picture_viewport(raster, quarter));
+    r3d_lens_fit(lens, raster->width, raster->height);
+}
+
+/* The lens an instance is drawn with: raster_lens(), or the picture's unfitted
+ * when `fitted` is false. */
 static void
 instance_lens(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter, bool fitted,
               r3d_lens_t* lens) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    r3d_lens_init(lens, camera, mesh->position_scale, picture_viewport(raster, quarter));
     if (fitted) {
-        r3d_lens_fit(lens, raster->width, raster->height);
+        raster_lens(raster, camera, mesh->position_scale, quarter, lens);
+    } else {
+        r3d_lens_init(lens, camera, mesh->position_scale, picture_viewport(raster, quarter));
     }
     if (instance->placement != NULL) {
         r3d_lens_place(lens, instance->placement, mesh->position_scale);
