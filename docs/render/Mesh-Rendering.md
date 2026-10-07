@@ -25,6 +25,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
+| `raster_census()` | What `raster_draw()` would keep after culling, without drawing: the same at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
@@ -64,6 +65,8 @@ would see the scene mirrored.
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
+| `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
+| `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
@@ -89,7 +92,7 @@ raster's lens and cluster transform stay a 3x4 of their own.
 flowchart LR
     Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
     subgraph Render["raster_draw()"]
-        Lens["r3d_lens_init()<br/><i>for this viewport</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Lens["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_fit()<br/><i>to the render size</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
@@ -106,7 +109,26 @@ rows of its own target. `r3d_pipeline_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
 outside them. The raster draws at the caller's width and height and can
 upscale the result into a destination picture, so rendering at half the
-panel's size quarters the pixels and halves the rows and spans.
+panel's size quarters the pixels and halves the rows and spans. The lens
+frames the destination's shape and `r3d_lens_fit()` then scales each axis to
+the render size on its own, so a render may cut its height more than its
+width and still show the same view.
+
+### The render context
+
+A camera is perspective only. What a frame is drawn at belongs to the render
+context (`context/render_context.h`): it owns the raster and its scratch
+block, the render size and the debug view. A caller hands it instances, a
+camera and a clear colour, then a destination to upscale into. The scene
+manager draws the active camera through the engine's one context,
+`render_context_main()`, released when an app exits.
+
+| Call | Meaning |
+|---|---|
+| `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
+| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
+| `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
 ### On both cores
 

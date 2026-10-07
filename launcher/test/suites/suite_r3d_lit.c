@@ -1232,6 +1232,30 @@ test_a_counter_clockwise_face_toward_the_camera_is_drawn(void) {
     }
 }
 
+/* The 24-pixel square, framed for the full W by H and rendered at half the
+ * width: half as many columns, the same rows, and still centred. */
+static void
+test_a_lens_fitted_to_half_the_width_keeps_the_view(void) {
+    r3d_lit_cluster_t cluster;
+    const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, NULL, &cluster);
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
+    r3d_lens_fit(&lens, W / 2, H);
+    uint16_t visible[1];
+    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
+    (void)fixture();
+    const r3d_span_target_t t = r3d_span_target(color, depth, W / 2, 0, H);
+    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    TEST_ASSERT_EQUAL_INT(12 * 24, covered());
+    for (int y = 12; y < 36; y++) {
+        for (int x = 10; x < 22; x++) {
+            TEST_ASSERT_NOT_EQUAL(0, depth[(y * (W / 2)) + x]);
+        }
+    }
+}
+
 static void
 test_a_face_turned_away_is_culled_unless_double_sided(void) {
     TEST_ASSERT_EQUAL_INT(0, draw_quad(quad_back, false));
@@ -2216,6 +2240,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_rebuilt_and_fast_triangles_sharing_edges_fill_every_pixel_once);
 
     RUN_TEST(test_a_counter_clockwise_face_toward_the_camera_is_drawn);
+    RUN_TEST(test_a_lens_fitted_to_half_the_width_keeps_the_view);
     RUN_TEST(test_a_face_turned_away_is_culled_unless_double_sided);
     RUN_TEST(test_a_cluster_behind_the_camera_is_culled);
     RUN_TEST(test_a_floor_crossing_the_near_plane_draws_only_below_the_horizon);

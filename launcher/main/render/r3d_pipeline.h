@@ -46,6 +46,11 @@ typedef struct {
 /* Turned for the viewport's quarter as viewport.h maps it. */
 void r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport);
 
+/* Refits a lens made for one picture size to a render `width` by `height`
+ * stretched back to it on the way out, each axis on its own, so a render
+ * need not keep the picture's shape. */
+void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
+
 /* Carries the mesh into the world first: the lens matrix is composed with the
  * placement, so culling, transform and clipping see the mesh where it sits.
  * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */

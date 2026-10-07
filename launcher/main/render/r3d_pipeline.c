@@ -51,6 +51,22 @@ r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, view
 }
 
 void
+r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
+    const float scale_x = (float)width / (float)lens->width;
+    const float scale_y = (float)height / (float)lens->height;
+    for (int j = 0; j < 4; j++) {
+        lens->m[0][j] *= scale_x;
+        lens->m[1][j] *= scale_y;
+    }
+    lens->center_x = (float)width * 0.5F;
+    lens->center_y = (float)height * 0.5F;
+    lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->snap_cy = (lens->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->width = width;
+    lens->height = height;
+}
+
+void
 r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
     const float to_ticks = (float)position_scale;
     const vec3f_t p = placement->position;
