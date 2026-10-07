@@ -1144,7 +1144,7 @@ static const int8_t reaction_dirs[4][2] = {
         if ((unsigned)nx >= (unsigned)(w) || (unsigned)ny >= (unsigned)(h)) {                                          \
             continue;                                                                                                  \
         }                                                                                                              \
-        const size_t at = (size_t)ny * (size_t)(w) + (size_t)nx;                                                       \
+        const size_t at = ((size_t)ny * (size_t)(w)) + (size_t)nx;                                                     \
         const cell_t n = (s)->cells[at];                                                                               \
         (void)n;                                                                                                       \
         __VA_ARGS__                                                                                                    \
