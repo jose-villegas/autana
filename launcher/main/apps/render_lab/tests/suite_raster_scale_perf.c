@@ -42,17 +42,30 @@ static const char* TAG = "scale_perf";
 #define POSE_EVERY_MS 2500
 #define POSES_MAX     64
 
-typedef struct {
-    int width, height;
-} size_wh_t;
-
-/* Ladder sizes and mapped upscale sizes, including the isotropic
- * counterparts used to check the floor and recovery costs. */
-static const size_wh_t sizes[] = {
-    {368, 448}, {294, 358}, {276, 336}, {245, 298}, {210, 256}, {184, 224}, {147, 179}, {122, 149}, {368, 224},
-    {184, 448}, {245, 224}, {184, 298}, {368, 358}, {368, 298}, {184, 358}, {184, 179}, {184, 149},
+/* Width-first and height-first ladders keep every upscale on a fast path,
+ * with the last step reserved for recovery. */
+static const resolution_step_t width_steps[] = {
+    {368, 448}, {184, 448}, {184, 358}, {184, 298}, {184, 224}, {184, 179}, {184, 149},
 };
-#define SIZE_COUNT ((int)(sizeof sizes / sizeof sizes[0]))
+
+typedef struct {
+    const char* name;
+    const resolution_step_t* steps;
+    int count, recovery_from, half;
+} ladder_t;
+
+static const ladder_t ladders[] = {
+    {"width", width_steps, 7, 6, 4},
+    {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
+};
+#define LADDER_COUNT ((int)(sizeof ladders / sizeof ladders[0]))
+
+/* The stage split measures every ladder step, then these: sizes off the
+ * fast upscale widths, among them the isotropic 2.5x and 3x the floor and
+ * the recovery step are costed against. */
+static const resolution_step_t mapped_sizes[] = {
+    {294, 358}, {276, 336}, {245, 298}, {210, 256}, {245, 224}, {147, 179}, {122, 149},
+};
 
 static scene_t* scene;
 static const asset_pack_t* pack;
@@ -112,7 +125,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
 }
 
 static void
-measure_size(raster_t* raster, size_wh_t size, int32_t* frame_us, char* report) {
+measure_size(raster_t* raster, resolution_step_t size, int32_t* frame_us, char* report) {
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
@@ -147,6 +160,21 @@ measure_size(raster_t* raster, size_wh_t size, int32_t* frame_us, char* report) 
              (long long)(spans.span_setup / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses));
 }
 
+/* Whether step `step` of ladder `ladder` is a size an earlier step, of this
+ * ladder or one before it, already measured. */
+static bool
+measured_before(int ladder, int step) {
+    const resolution_step_t* size = &ladders[ladder].steps[step];
+    for (int l = 0; l <= ladder; l++) {
+        for (int i = 0; i < (l == ladder ? step : ladders[l].count); i++) {
+            if (ladders[l].steps[i].width == size->width && ladders[l].steps[i].height == size->height) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void
 test_raster_stage_split_by_size(void) {
 #if !FRAME_COST_ENABLED
@@ -161,13 +189,9 @@ test_raster_stage_split_by_size(void) {
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
     };
-    size_t scratch_bytes = 0;
-    for (int i = 0; i < SIZE_COUNT; i++) {
-        raster.width = sizes[i].width;
-        raster.height = sizes[i].height;
-        const size_t bytes = raster_scratch_bytes(&raster);
-        scratch_bytes = bytes > scratch_bytes ? bytes : scratch_bytes;
-    }
+    raster.width = ladders[0].steps[0].width; /* every size is no larger */
+    raster.height = ladders[0].steps[0].height;
+    const size_t scratch_bytes = raster_scratch_bytes(&raster);
     raster.scratch = memory_alloc(scratch_bytes, MEMORY_PSRAM);
     raster.destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(int32_t) * POSES_MAX);
@@ -176,8 +200,15 @@ test_raster_stage_split_by_size(void) {
     TEST_ASSERT_NOT_NULL(raster.scratch);
     TEST_ASSERT_NOT_NULL(raster.destination);
     TEST_ASSERT_NOT_NULL(frame_us);
-    for (int i = 0; i < SIZE_COUNT; i++) {
-        measure_size(&raster, sizes[i], frame_us, report);
+    for (int l = 0; l < LADDER_COUNT; l++) {
+        for (int i = 0; i < ladders[l].count; i++) {
+            if (!measured_before(l, i)) {
+                measure_size(&raster, ladders[l].steps[i], frame_us, report);
+            }
+        }
+    }
+    for (int i = 0; i < (int)(sizeof mapped_sizes / sizeof mapped_sizes[0]); i++) {
+        measure_size(&raster, mapped_sizes[i], frame_us, report);
     }
     free(report);
     free(frame_us);
@@ -185,23 +216,6 @@ test_raster_stage_split_by_size(void) {
     memory_free(raster.scratch);
     TEST_PASS();
 }
-
-/* Width-first and height-first ladders keep every upscale on a fast path,
- * with the last step reserved for recovery. */
-typedef struct {
-    const char* name;
-    const resolution_step_t* steps;
-    int count, recovery_from, half;
-} ladder_t;
-
-static const resolution_step_t width_steps[] = {
-    {368, 448}, {184, 448}, {184, 358}, {184, 298}, {184, 224}, {184, 179}, {184, 149},
-};
-
-static const ladder_t ladders[] = {
-    {"width", width_steps, 7, 6, 4},
-    {"height", sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, SPONZA_LADDER_HALF},
-};
 
 #define FRAME_DT_MS 50
 #define FRAMES_MAX  1024
@@ -341,7 +355,7 @@ test_dynamic_resolution_policies_along_the_path(void) {
         resolution_model_t model;
     } fitted_t;
 
-    fitted_t* fitted = memory_alloc(sizeof(*fitted) * 2, MEMORY_PSRAM);
+    fitted_t* fitted = memory_alloc(sizeof(*fitted) * LADDER_COUNT, MEMORY_PSRAM);
     const int path_frames = (int)(r3d_scene_camera_period_ms(path) / FRAME_DT_MS);
     const int frames = path_frames < FRAMES_MAX ? path_frames : FRAMES_MAX;
     uint16_t* picture = memory_alloc(sizeof(uint16_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
@@ -349,13 +363,14 @@ test_dynamic_resolution_policies_along_the_path(void) {
     TEST_ASSERT_NOT_NULL(fitted);
     TEST_ASSERT_NOT_NULL(picture);
     TEST_ASSERT_NOT_NULL(records);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < LADDER_COUNT; i++) {
         fit_ladder(&ladders[i], budgets_us[0], &fitted[i].config, &fitted[i].model);
     }
     fly("fixed", NULL, NULL, NULL, picture, records, frames);
     for (int b = 0; b < (int)(sizeof budgets_us / sizeof budgets_us[0]); b++) {
-        fitted[0].config.budget_us = budgets_us[b];
-        fitted[1].config.budget_us = budgets_us[b];
+        for (int i = 0; i < LADDER_COUNT; i++) {
+            fitted[i].config.budget_us = budgets_us[b];
+        }
         fly("stepped", &ladders[0], &fitted[0].config, NULL, picture, records, frames);
         fly("predicted", &ladders[0], &fitted[0].config, &fitted[0].model, picture, records, frames);
         fly("predicted", &ladders[1], &fitted[1].config, &fitted[1].model, picture, records, frames);
