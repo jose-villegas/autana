@@ -13,4 +13,4 @@ const resolution_step_t sponza_ladder[SPONZA_LADDER_STEPS] = {
 };
 
 const resolution_model_t sponza_ladder_model = {
-    6909.0F, 1.4831F, 3.2274F, 48099.0F, {9938, 9050, 8140, 7202, 9447, 5899, 8518, 8375}};
+    6730.0F, 1.4723F, 3.2152F, 46424.0F, {10361, 9414, 8300, 7337, 8738, 5897, 7756, 7586}};
