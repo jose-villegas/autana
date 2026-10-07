@@ -19,6 +19,33 @@ Open `launcher/tools/results/render/launcher_home/landscape.bmp`
 for the home screen. The reference below explains how scenes are declared,
 checked, and compared with device captures.
 
+## Viewing a scene file
+
+```sh
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
+```
+
+The viewer needs no app. It builds the scene file's pack with
+`build_pack.py`, including its baked meshes and camera clip, into the harness's
+results folder and selects it through `AUTANA_ASSET_DIR`. The scene file can
+live outside the repository; its mesh and clip references resolve beside it.
+Meshes must already be baked.
+
+Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
+all authored renderers. An unknown renderer reports the available names.
+`--camera NAME` selects a camera; omission activates the scene's default.
+The camera follows its own path at `--frames N` times `--dt MS` (defaults:
+30 frames, 16 ms). `--view shaded|depth|tiles|motion` selects the render
+context's view, with shaded as the default. A debug view needs an enabled mesh.
+`--size WxH` fixes the internal render resolution through a one-step ladder;
+the output still has the panel's dimensions. Each render axis must fit the
+panel framebuffer, 368 by 448.
+
+`--quarter 0|1` selects portrait or landscape (default: landscape), and
+`--panel` writes the panel's native orientation. `-o FILE` saves the final
+frame as BMP; without it the BMP goes to stdout. `--video FILE.avi` also saves
+every frame through the shared harness's video writer.
+
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the

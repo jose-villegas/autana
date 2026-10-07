@@ -67,6 +67,10 @@ void scene_unload(scene_t* scene);
  * it up once, when the scene loads, and keep it. */
 scene_entity_t scene_find(const scene_t* scene, const char* name);
 
+/* Enumeration for tools selecting components by their authored names. */
+int scene_entity_count(const scene_t* scene);
+const char* scene_entity_name(const scene_t* scene, scene_entity_t entity);
+
 /* The pack id of the mesh the entity draws, or NULL when it draws none. */
 const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 
