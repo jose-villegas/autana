@@ -3,7 +3,9 @@
 
 Compare HEAD with its merge-base with origin/main, or HEAD~1 when HEAD is
 on main. New fragments in each sorted file pair may spend only the tokens of
-base fragments that vanished from HEAD. A surviving shrink gives no headroom.
+base fragments that vanished from HEAD, or a fragment a file this change
+deleted already held (code moved out of it). A surviving shrink gives no
+headroom.
 --report lists all pairs. --min-tokens N reports another threshold without
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
@@ -67,22 +69,24 @@ PYTHON_TOKENS = re.compile(
 )
 
 
-# A suite's list of RUN_TEST lines matches any other long list once
-# identifiers are ignored, and has no shared owner to extract; a pair counts
-# only if what remains without them is still a clone's length in itself.
-TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;")
+# A suite's list of RUN_TEST lines, or a file's block of #include lines,
+# matches any other long list once identifiers are ignored, and has no
+# shared owner to extract; a pair counts only if what remains without them
+# is still a clone's length in itself.
+LIST_LINES = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|^[ \t]*#[ \t]*include[ \t]*[<\"][^>\"\n]*[>\"]",
+                        re.MULTILINE)
 
 
-def registration_only(pair):
+def list_only(pair):
     if pair["format"] == "python":
         return False
-    rest = TEST_REGISTRATION.sub(" ", pair["fragment"])
+    rest = LIST_LINES.sub(" ", pair["fragment"])
     return pair["fragment"] != rest and len(C_TOKENS.findall(rest)) < MIN_TOKENS // 2
 
 
 def filter_pairs(pairs):
     def keep(pair):
-        if registration_only(pair):
+        if list_only(pair):
             return False
         first, second = pair["firstFile"], pair["secondFile"]
         same_range = (first["name"] == second["name"]
@@ -160,6 +164,7 @@ def changed_paths(root, base, head):
                   .decode().rstrip("\0").split("\0"))
     changed = set()
     renames = {}
+    deleted = set()
     for status in fields:
         if not status:
             continue
@@ -168,8 +173,11 @@ def changed_paths(root, base, head):
             new_name = next(fields)
             renames[new_name] = name
             name = new_name
+        elif status.startswith("D"):
+            deleted.add(name)
+            continue
         changed.add(name)
-    return changed, renames
+    return changed, renames, deleted
 
 
 def describe(pair):
@@ -183,7 +191,17 @@ def pair_key(pair):
     return tuple(sorted(pair[side]["name"] for side in ("firstFile", "secondFile")))
 
 
-def check_pairs(pairs, base_pairs):
+def same_fragment(pair, old):
+    fragment = re.findall(r"\w+|[^\w\s]", pair["fragment"])
+    tokens = iter(re.findall(r"\w+|[^\w\s]", old["fragment"]))
+    return pair["tokens"] <= old["tokens"] and all(any(token == previous for previous in tokens)
+                                                   for token in fragment)
+
+
+def check_pairs(pairs, base_pairs, moved=()):
+    """`moved` holds base pairs in files this change deleted: a pair whose
+    fragment one of them already held moved with its code, and spends it."""
+    moved = list(moved)
     existing = {}
     for pair in base_pairs:
         names = pair_key(pair)
@@ -196,19 +214,16 @@ def check_pairs(pairs, base_pairs):
         remaining = list(existing.get(names, []))
         added = 0
         for pair in sorted(group, key=lambda item: -item["tokens"]):
-            fragment = re.findall(r"\w+|[^\w\s]", pair["fragment"])
-            match = None
-            for old in remaining:
-                tokens = iter(re.findall(r"\w+|[^\w\s]", old["fragment"]))
-                if pair["tokens"] <= old["tokens"] and all(
-                        any(token == previous for previous in tokens) for token in fragment):
-                    match = old
-                    break
-            if match is None:
-                added += pair["tokens"]
-            else:
+            match = next((old for old in remaining if same_fragment(pair, old)), None)
+            if match is not None:
                 remaining.remove(match)
-        if names not in existing or added > sum(pair["tokens"] for pair in remaining):
+                continue
+            match = next((old for old in moved if same_fragment(pair, old)), None)
+            if match is not None:
+                moved.remove(match)
+                continue
+            added += pair["tokens"]
+        if added > sum(pair["tokens"] for pair in remaining):
             grown[names] = group
     if grown:
         print(f"FAIL: {len(grown)} new or growing clone file pairs; extract a shared owner.")
@@ -241,13 +256,16 @@ def main(argv=None, root=ROOT):
             print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
             return 0
         base = comparison_base(root, head)
-        changed, renames = changed_paths(root, base, head)
+        changed, renames, deleted = changed_paths(root, base, head)
         candidates = [pair for pair in pairs
                       if any(pair[side]["name"] in changed for side in ("firstFile", "secondFile"))]
         names = sorted({pair[side]["name"] for pair in candidates
                         for side in ("firstFile", "secondFile")})
-        base_pairs = scan(root, args.min_tokens, names=names, revision=base, renames=renames) if names else []
-        result = check_pairs(candidates, base_pairs)
+        base_pairs = (scan(root, args.min_tokens, names=names + sorted(deleted), revision=base, renames=renames)
+                      if names else [])
+        moved = [pair for pair in base_pairs
+                 if any(pair[side]["name"] in deleted for side in ("firstFile", "secondFile"))]
+        result = check_pairs(candidates, base_pairs, moved)
         print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
         return result
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:

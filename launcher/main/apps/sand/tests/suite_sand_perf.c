@@ -3239,8 +3239,8 @@ test_present_cost_against_a_falling_sand_scene(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, full_bands + gathered + partial_bands,
                                          "the present sent no strip, so the row is not timing the bus");
 
-    /* Present() is ~94% irreducible bus time (
-     * test_full_present_cost_splits_into_bus_time_and_overhead); the only
+    /* Present() is mostly irreducible bus time (docs/sand/Sand-Simulation.md,
+     * "Performance discipline"); the only
      * movable thing is HOW MANY strips get sent, shown by the strip-send
      * counts beside the timing. */
     perf_target("present: falling sand", mean_us, 5810, 6690);

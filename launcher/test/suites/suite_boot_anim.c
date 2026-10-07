@@ -42,9 +42,8 @@
 #include "test_cleanup.h"
 #endif
 
-/* The panel these numbers are laid out for. Named here rather than pulled
- * from gfx.h, which needs the BSP; gfx_dirty.h mirrors the same two numbers
- * for the same reason. */
+/* The panel these numbers are laid out for, spelled out so a wrong
+ * GFX_WIDTH/HEIGHT cannot quietly agree with them. */
 #define PANEL_W 368
 #define PANEL_H 448
 

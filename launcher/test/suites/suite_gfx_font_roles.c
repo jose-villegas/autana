@@ -1,6 +1,5 @@
 /*
  * Portable suite for the UI font role's fixed font identity.
- * gfx.h requires the BSP; gfx_font_roles.h compiles on the host.
  */
 
 #include "suites.h"

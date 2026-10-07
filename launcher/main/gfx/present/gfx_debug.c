@@ -177,27 +177,6 @@ gfx_set_leaf_overlay(bool on) {
     }
 }
 
-/* Cyan for the band that was sent, green for each leaf marked inside it. */
-void
-mark_band_overlay(gfx_color_t* buf, int row0, int height) {
-    if (debug_overlay_on) {
-        mark_rect_border(buf, GFX_WIDTH, GFX_WIDTH, height, gfx_rgb(0x00FFFF));
-    }
-    if (leaf_overlay_on) {
-        const int row_first = row0 / STRIP_HEIGHT;
-        const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
-        for (int row = row_first; row <= row_last; row++) {
-            const int n =
-                dirty_leaf_rects(row, 0, row0, GFX_WIDTH, row0 + height, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
-            for (int i = 0; i < n; i++) {
-                const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-                gfx_color_t* at = buf + (size_t)(r->y0 - row0) * GFX_WIDTH + r->x0;
-                mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
-            }
-        }
-    }
-}
-
 #ifdef ESP_PLATFORM
 /* `send_shadow` holds every pixel handed to the panel, so after a present
  * it must equal `fb`. A difference is a pixel never sent, or one copied out
@@ -445,4 +424,25 @@ send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued)
     overlay_bordered_rows = 0;
 }
 #endif /* ESP_PLATFORM */
+
+/* Cyan for the band that was sent, green for each leaf marked inside it. */
+void
+mark_band_overlay(gfx_color_t* buf, int row0, int height) {
+    if (debug_overlay_on) {
+        mark_rect_border(buf, GFX_WIDTH, GFX_WIDTH, height, gfx_rgb(0x00FFFF));
+    }
+    if (leaf_overlay_on) {
+        const int row_first = row0 / STRIP_HEIGHT;
+        const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
+        for (int row = row_first; row <= row_last; row++) {
+            const int n =
+                dirty_leaf_rects(row, 0, row0, GFX_WIDTH, row0 + height, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+            for (int i = 0; i < n; i++) {
+                const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
+                gfx_color_t* at = buf + (size_t)(r->y0 - row0) * GFX_WIDTH + r->x0;
+                mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+            }
+        }
+    }
+}
 #endif

@@ -5,7 +5,7 @@
  * A private copy per .c file would leave every header-level suite passing
  * while a draw never told the presenter anything. These tests go through the
  * real draw primitives and observe the effect through the present/mode side,
- * so a split copy fails here and nowhere else.
+ * so a split copy fails here.
  */
 
 #include "suites.h"
@@ -128,7 +128,8 @@ run_bands(void) {
 }
 
 /* gfx_invalidate() sets the force latch gfx_mode.c's band loop reads. The
- * first frames after enter are skipped: enter forces its own full frame. */
+ * Bands run until a frame sends none first, since enter forces its own full
+ * frame. */
 static void
 test_invalidate_alone_forces_one_full_band_frame(void) {
     fixture();

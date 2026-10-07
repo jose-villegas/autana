@@ -86,69 +86,51 @@ qspi_bus_up(int max_transfer_bytes) {
     return ESP_OK;
 }
 
-/* The panel io and driver objects at `hz`. Creating them sends nothing to
- * the panel, which is what lets a clock change reopen them without
- * re-running bring-up. */
-static esp_err_t
-panel_open_sh8601(int hz, esp_lcd_panel_io_color_trans_done_cb_t on_sent, esp_lcd_panel_io_handle_t* io,
-                  esp_lcd_panel_handle_t* panel) {
-    esp_lcd_panel_io_spi_config_t io_config = SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_sent, NULL);
+static esp_lcd_panel_dev_config_t
+panel_dev_config(void* vendor) {
+    return (esp_lcd_panel_dev_config_t){
+        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line; see board_detect() */
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .bits_per_pixel = 16,
+        .vendor_config = vendor,
+    };
+}
+
+/* Creating the io and driver objects sends nothing to the panel, which is
+ * what lets a clock change reopen them without re-running bring-up. The two
+ * revisions differ only in the controller's io config, init sequence and
+ * column gap. */
+esp_err_t
+board_panel_open(int hz, esp_lcd_panel_io_color_trans_done_cb_t on_sent, esp_lcd_panel_io_handle_t* io,
+                 esp_lcd_panel_handle_t* panel) {
+    ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);
+    const bool co5300 = board_variant() == BOARD_VARIANT_CO5300_CST;
+    esp_lcd_panel_io_spi_config_t io_config =
+        co5300 ? (esp_lcd_panel_io_spi_config_t)CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_sent, NULL)
+               : (esp_lcd_panel_io_spi_config_t)SH8601_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_sent, NULL);
     io_config.pclk_hz = hz;
     esp_err_t err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, io);
     if (err != ESP_OK) {
         return err;
     }
 
+    if (co5300) {
+        co5300_vendor_config_t vendor = {
+            .init_cmds = co5300_init_cmds,
+            .init_cmds_size = sizeof(co5300_init_cmds) / sizeof(co5300_init_cmds[0]),
+            .flags = {.use_qspi_interface = 1},
+        };
+        const esp_lcd_panel_dev_config_t panel_config = panel_dev_config(&vendor);
+        err = esp_lcd_new_panel_co5300(*io, &panel_config, panel);
+        return err != ESP_OK ? err : esp_lcd_panel_set_gap(*panel, BOARD_PANEL_X_GAP, 0);
+    }
     sh8601_vendor_config_t vendor = {
         .init_cmds = lcd_init_cmds,
         .init_cmds_size = sizeof(lcd_init_cmds) / sizeof(lcd_init_cmds[0]),
         .flags = {.use_qspi_interface = 1},
     };
-    const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line; see board_detect() */
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
-        .bits_per_pixel = 16,
-        .vendor_config = &vendor,
-    };
+    const esp_lcd_panel_dev_config_t panel_config = panel_dev_config(&vendor);
     return esp_lcd_new_panel_sh8601(*io, &panel_config, panel);
-}
-
-static esp_err_t
-panel_open_co5300(int hz, esp_lcd_panel_io_color_trans_done_cb_t on_sent, esp_lcd_panel_io_handle_t* io,
-                  esp_lcd_panel_handle_t* panel) {
-    esp_lcd_panel_io_spi_config_t io_config = CO5300_PANEL_IO_QSPI_CONFIG(BSP_LCD_CS, on_sent, NULL);
-    io_config.pclk_hz = hz;
-    esp_err_t err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BSP_LCD_SPI_NUM, &io_config, io);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    co5300_vendor_config_t vendor = {
-        .init_cmds = co5300_init_cmds,
-        .init_cmds_size = sizeof(co5300_init_cmds) / sizeof(co5300_init_cmds[0]),
-        .flags = {.use_qspi_interface = 1},
-    };
-    const esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = GPIO_NUM_NC, /* no dedicated reset line; see board_detect() */
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
-        .bits_per_pixel = 16,
-        .vendor_config = &vendor,
-    };
-    err = esp_lcd_new_panel_co5300(*io, &panel_config, panel);
-    if (err != ESP_OK) {
-        return err;
-    }
-    return esp_lcd_panel_set_gap(*panel, BOARD_PANEL_X_GAP, 0);
-}
-
-esp_err_t
-board_panel_open(int hz, esp_lcd_panel_io_color_trans_done_cb_t on_sent, esp_lcd_panel_io_handle_t* io,
-                 esp_lcd_panel_handle_t* panel) {
-    ESP_LOGI(TAG, "panel QSPI at %d MHz", hz / 1000000);
-    if (board_variant() == BOARD_VARIANT_CO5300_CST) {
-        return panel_open_co5300(hz, on_sent, io, panel);
-    }
-    return panel_open_sh8601(hz, on_sent, io, panel);
 }
 
 /* The same steps for either revision; board_panel_open() picks the driver

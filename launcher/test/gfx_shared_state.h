@@ -1,8 +1,8 @@
 /*
- * gfx_shared_state: a snapshot of the state gfx_dirty.h, gfx_fb_guard.h,
- * gfx_full_redraw.h and gfx_present_guard.h share with the running
- * firmware. A suite that drives those headers directly saves it first and
- * restores it last, so a device run leaves the shell's own state as it was.
+ * gfx_shared_state: a snapshot of the live state gfx_dirty.h, gfx_fb_guard.h,
+ * gfx_full_redraw.h and gfx_present_guard.h declare. A suite that drives
+ * those headers directly saves it first and restores it last, so a device
+ * run leaves the shell's own state as it was.
  */
 #pragma once
 

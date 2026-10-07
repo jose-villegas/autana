@@ -1016,8 +1016,9 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
  * gather buffer at all: the case send_partial_band() (gfx_present.c) exists for.
  *
  * 90% is the threshold, not 75%, on purpose: 48 of a band's 64 rows is 75%
- * of its pixels, and a present is almost entirely bus time (docs/Gfx-and-Presentation.md), so once the fixed
- * per-transaction cost is counted the honest floor is around 78%. */
+ * of its pixels, and a present is almost entirely bus time
+ * (test_full_present_cost_splits_into_bus_time_and_overhead() above logs the
+ * split), so once the fixed per-transaction cost is counted the honest floor is around 78%. */
 static void
 test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
     fixture();

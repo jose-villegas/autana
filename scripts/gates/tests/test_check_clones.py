@@ -223,6 +223,27 @@ class CloneTests(unittest.TestCase):
         copied = self.pair(fragment=BLOCK + listing)
         self.assertEqual(gate.filter_pairs([copied]), [copied])
 
+    def test_an_include_block_is_ignored_but_a_copy_beside_it_is_not(self):
+        block = "".join(f'#include "layer/header_{i}.h"\n' for i in range(24))
+        self.assertEqual(gate.filter_pairs([self.pair(fragment=block)]), [])
+        copied = self.pair(fragment=block + BLOCK)
+        self.assertEqual(gate.filter_pairs([copied]), [copied])
+
+    def test_code_moved_out_of_a_deleted_file_spends_its_clone(self):
+        base = self.scan({"launcher/main/old.c": BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta")}, 80)
+        head = self.scan({"launcher/main/new.c": BLOCK + "int pad_new;\n" + BLOCK.replace("alpha", "beta")}, 80)
+        self.assertTrue(base and head)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base, moved=base), 0)
+            self.assertEqual(gate.check_pairs(head, base), 1)
+
+    def test_a_moved_clone_that_grew_still_fails(self):
+        base = self.scan({"launcher/main/old.c": BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta")}, 80)
+        grown = BLOCK.replace("    return result", "    result += input * 7;\n    return result")
+        head = self.scan({"launcher/main/new.c": grown + "int pad_new;\n" + grown.replace("alpha", "beta")}, 80)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base, moved=base), 1)
+
     def test_self_match_is_ignored(self):
         self.assertEqual(gate.filter_pairs([self.pair("a.c", "a.c")]), [])
 

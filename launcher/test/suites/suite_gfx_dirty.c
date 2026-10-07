@@ -1,9 +1,8 @@
 /*
  * Portable suite: gfx_dirty, the grid/leaf dirty-region tracker.
  *
- * gfx_dirty.h carries no ESP-IDF dependency, unlike gfx_present.c (which
- * includes ESP-IDF's panel headers); that split is what
- * makes this logic reachable from a host at all.
+ * gfx_dirty.h is pure, so this suite drives the tracker directly, with no
+ * framebuffer and no panel.
  * suite_gfx.c (device-only) still covers whether the design is actually
  * cheaper to send; this suite covers whether the geometry and bitmask
  * logic underneath it is correct in the first place, which a timing
