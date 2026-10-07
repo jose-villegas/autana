@@ -2,6 +2,7 @@
 
 #include <assert.h>
 
+#include "render/raster_motion.h"
 #include "util/build/build_variant.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -11,6 +12,32 @@
 #define DEBUG_VIEW 1
 #else
 #define DEBUG_VIEW 0
+#endif
+
+#if DEBUG_VIEW
+/* Motion vectors, attached while the attachment view shows them, their state
+ * in PSRAM; one set, as the main context is the one that shows views. */
+static raster_motion_t* motion;
+static raster_attachment_t motion_attachment;
+static const raster_attachment_t* const motion_attached[] = {&motion_attachment};
+
+static void
+attach_motion(render_context_t* c) {
+    const bool wanted = c->debug_view >= RASTER_SHOW_ATTACHMENT;
+    if (wanted && motion == NULL) {
+        motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
+    }
+    if (!wanted || motion == NULL) {
+        c->raster.attachment_count = 0;
+        return;
+    }
+    if (c->raster.attachment_count == 0) {
+        *motion = (raster_motion_t){0};
+        motion_attachment = raster_motion_attachment(motion);
+    }
+    c->raster.attachments = motion_attached;
+    c->raster.attachment_count = 1;
+}
 #endif
 
 static render_context_t main_context = {
@@ -27,6 +54,10 @@ render_context_main(void) {
 void
 render_context_release(render_context_t* c) {
     memory_free(c->scratch);
+#if DEBUG_VIEW
+    memory_free(motion);
+    motion = NULL;
+#endif
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .debug_view = RASTER_SHOW_SHADED,
@@ -109,6 +140,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = width;
     r->destination_height = height;
+#if DEBUG_VIEW
+    attach_motion(c);
+#endif
     uint16_t* culled = fit_scratch(c);
     if (culled == NULL) {
         return false;
