@@ -291,6 +291,8 @@ class ColourDeviationTests(unittest.TestCase):
     def test_the_weight_follows_the_region_a_vertex_stands_for_in_the_model_s_own_units(self):
         p, tris = grid(4)
         weight = colour_weight(p, tris, 8, 1.0)
+        # Sixteen unit cells over eight triangles: a region side of sqrt(2), and an 8-level step priced at 1 unit.
+        self.assertAlmostEqual(weight, 1.0 / (np.sqrt(16 / 8) * 8))
         self.assertAlmostEqual(colour_weight(p, tris, 32, 1.0), 2 * weight)  # a quarter of the area per triangle
         self.assertAlmostEqual(colour_weight(p * 10, tris, 8, 10.0), weight)  # the same model in other units
         self.assertAlmostEqual(colour_weight(p, tris, 8, 3.0), 3 * weight)
