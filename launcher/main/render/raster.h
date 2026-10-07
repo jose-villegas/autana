@@ -20,7 +20,8 @@
 struct raster {
     /* What is drawn: each instance in turn into the one picture, nearer ones
      * covering farther ones whichever is drawn first. One mesh is a count of
-     * one. The scratch block holds room for the largest. */
+     * one. Scratch holds the largest mesh's working buffers and every instance's
+     * census slot. */
     const r3d_instance_t* instances;
     int instance_count;
     int width, height; /* the size drawn at */
@@ -58,25 +59,26 @@ gfx_render_target_t raster_picture(const raster_t* raster);
 gfx_color_t* raster_color(const raster_t* raster);
 uint16_t* raster_depth(const raster_t* raster);
 
-/* Everything a raster works in (per-vertex, per-cluster and its picture's
- * attachments) as one block, from its instances' meshes and size: the caller
- * obtains it once, from any memory, so none of it has to live in internal
- * RAM. */
+/* Everything a raster works in (per-vertex, per-cluster, the census list,
+ * the picture's attachments and the upscale maps) as one block, from its
+ * instances' meshes and size: the caller obtains it once, from any memory,
+ * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
 
 /* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
 /* raster_draw() split in two, so a caller can price sizes between them.
- * raster_census() culls every instance into `culled`, raster_culled_length()
- * entries the caller holds, and returns what survived; raster_draw_culled()
- * draws that list at the raster's size now without culling again. The list
- * holds for the same camera, quarter and instances, at any size of an
- * upscaled raster whose destination size is unchanged; without upscaling,
- * only at the size it was taken at. */
+ * raster_census() culls every instance into the scratch block's list,
+ * raster_culled_length() entries, and returns what survived;
+ * raster_draw_culled() draws that list at the raster's size now without
+ * culling again. The list holds, in the same scratch block, for the same
+ * camera, quarter and instances, at any size of an upscaled raster whose
+ * destination size is unchanged; without upscaling, only at the size it was
+ * taken at. */
 size_t raster_culled_length(const raster_t* raster);
-raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter, uint16_t* culled);
-void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter, const uint16_t* culled);
+raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter);
+void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter);
 
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
