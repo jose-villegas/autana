@@ -571,7 +571,7 @@ step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
 bool
 step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self) {
     int lx = -1, ly = -1;
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (!CELL_IS_EMPTY(n) && material_of(n)->kind == KIND_LIQUID && reaction_of(n)->wets != 0) {
             lx = nx;
             ly = ny;
@@ -613,7 +613,7 @@ bool
 step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     int soil_at = -1, empty_at = -1, ex = 0, ey = 0;
 
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             if (empty_at < 0) {
                 empty_at = (int)nat;

@@ -692,7 +692,7 @@ static shock_neighbors_t
 scan_shock_neighbors(const sand_t* s, int x, int y) {
     shock_neighbors_t nb = {false, false};
 
-    SAND_FOR_NEIGHBOR(s, x, y, REAL_W, REAL_H, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, REAL_W, REAL_H, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }

@@ -120,17 +120,17 @@ smothered(const sand_t* s, int x, int y, int w, int h, uint8_t density) {
      * instructions and gains them. The win is straight-line paths on a core
      * with no branch predictor. */
 #pragma GCC unroll 4
-    SAND_FOR_CARDINAL({
+    for (int d = 0; d < 4; d++) {
         if (!neighbor_smothers(s, x + reaction_dirs[d][0], y + reaction_dirs[d][1], w, h, density)) {
             return false;
         }
-    });
+    }
     return true;
 }
 
 static inline bool
 touches_air(const sand_t* s, int x, int y, int w, int h) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n) || material_of(n)->kind == KIND_GAS) {
             return true;
         }
@@ -455,7 +455,7 @@ crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id
         const int cy = (int)(at / (unsigned)w);
         done++;
 
-        SAND_FOR_NEIGHBOR(s, cx, cy, w, h, nx, ny, nat, {
+        SAND_FOR_NEIGHBOUR(s, cx, cy, w, h, nx, ny, nat, n, {
             if (CELL_MATERIAL(s->cells[nat]) != from) {
                 continue;
             }
@@ -492,7 +492,7 @@ cool_off_chain(sand_t* s, int x, int y, int w, int h, uint8_t product, int chanc
         }
         /* Collect eligible neighbours first for uniform pick. */
         int cand_x[4], cand_y[4], n_cand = 0;
-        SAND_FOR_CARDINAL({
+        for (int d = 0; d < 4; d++) {
             const int nx = cx + reaction_dirs[d][0];
             const int ny = cy + reaction_dirs[d][1];
             if (!is_cool_off_link(s, nx, ny, w, h, product)) {
@@ -501,7 +501,7 @@ cool_off_chain(sand_t* s, int x, int y, int w, int h, uint8_t product, int chanc
             cand_x[n_cand] = nx;
             cand_y[n_cand] = ny;
             n_cand++;
-        });
+        }
         if (n_cand == 0) {
             return;
         }
@@ -599,7 +599,7 @@ soak_in_one_level(sand_t* s, uint8_t* row, int x, int y, int w, const reaction_t
 static bool
 soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reaction_t* r, cell_t c, uint8_t held,
                  int soaks, bool* beside_liquid) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         /* PAIR_WETS merges wets test into shift-and-test, covering
          * CELL_IS_EMPTY() without materials[] or reaction_of(n). */
         if ((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_WETS) == 0) {
@@ -671,7 +671,7 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
  * whether one did. */
 static bool
 soak_spread_to_neighbors(sand_t* s, uint8_t* row, int x, int y, int w, int h, cell_t c, uint8_t held) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (soak_share_with(s, row, x, y, nx, ny, nat, c, held)) {
             return true;
         }
@@ -883,7 +883,7 @@ warm_one_neighbor(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reactio
 
 static void
 step_one_warming_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -1079,7 +1079,7 @@ cold_chills_neighbor(sand_t* s, int x, int y, int w, int h, int nx, int ny, size
 /* The cardinal contact loop. Returns whether this cold cell melted. */
 static bool
 cold_touch_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -1172,7 +1172,7 @@ temper_push_into(sand_t* s, int nx, int ny, size_t nat, cell_t n, const reaction
 static bool
 temper_spread_to_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r, uint8_t temp) {
     bool wet = false;
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
@@ -1308,7 +1308,7 @@ crust_faces(const sand_t* s, int x, int y, int w, int h, uint8_t mine, uint8_t b
  * wall. Avoids flood fill. */
 static inline bool
 gas_ignite_confined(const sand_t* s, int x, int y, int w, int h) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (!CELL_IS_EMPTY(n) && material_of(n)->kind == KIND_STATIC) {
             return true;
         }
@@ -1389,7 +1389,7 @@ try_ignite_given(sand_t* s, int nx, int ny, int w, int h, size_t at, cell_t n) {
 /* Bidirectional. Confirms placement. Checks for duplicates. */
 static inline bool
 emit_into_empty_neighbor(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, fx, fy, at, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, fx, fy, at, n, {
         if (CELL_IS_EMPTY(s->cells[at])) {
             place_reacted(s, fx, fy, at, spec);
             return true;
@@ -1585,7 +1585,7 @@ conduct_heat(sand_t* s, int x, int y, int w, int h) {
     }
 
 #pragma GCC unroll 4
-    SAND_FOR_CARDINAL({
+    for (int d = 0; d < 4; d++) {
         const int dx = reaction_dirs[d][0];
         const int dy = reaction_dirs[d][1];
         int rx = x + dx;
@@ -1600,7 +1600,7 @@ conduct_heat(sand_t* s, int x, int y, int w, int h) {
         if (conduct_into_far_cell(s, rx, ry, w, h)) {
             acted = true;
         }
-    });
+    }
 
     return acted;
 }
@@ -1774,7 +1774,7 @@ step_one_dissolver_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, con
         return false;
     }
 
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, at, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, at, n, {
         if (!dissolver_bites(s, n)) {
             continue;
         }
@@ -2010,7 +2010,7 @@ quench_burning_cell(const burning_cell_t* cell, bool lit_state) {
     const int h = s->h;
 
 #pragma GCC unroll 4
-    SAND_FOR_CARDINAL({
+    for (int d = 0; d < 4; d++) {
         const int nx = x + reaction_dirs[d][0];
         const int ny = y + reaction_dirs[d][1];
         if (!neighbor_quenches(s, nx, ny, w, h)) {
@@ -2023,7 +2023,7 @@ quench_burning_cell(const burning_cell_t* cell, bool lit_state) {
         }
         pay_quench_cost(s, nx, ny, w);
         return true;
-    });
+    }
     return false;
 }
 
@@ -2152,7 +2152,7 @@ react_burning_neighbors(const burning_cell_t* cell, int lava_cooloff) {
     bool acted = false;
 
 #pragma GCC unroll 4
-    SAND_FOR_NEIGHBOR(s, x, y, w, h, nx, ny, nat, {
+    SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
             continue;
         }
