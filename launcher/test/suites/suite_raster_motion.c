@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "r3d_quad_mesh.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -34,26 +35,10 @@
  * about its own origin, also facing +z: both quads of two triangles. */
 static const int16_t wall_positions[][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
 static const int16_t box_positions[][3] = {{-40, -40, 0}, {40, -40, 0}, {40, 40, 0}, {-40, 40, 0}};
-static const uint8_t white[][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
-static const uint16_t facing_z[][3] = {{0, 1, 2}, {0, 2, 3}};
 static const r3d_lit_node_t wall_node = {{-400, -400, 0}, {400, 400, 0}, 0, 1, true};
 static const r3d_lit_node_t box_node = {{-40, -40, 0}, {40, 40, 0}, 0, 1, true};
 static const r3d_lit_cluster_t wall_cluster = {0, 4, 0, 2, {-400, -400, 0}, {400, 400, 0}, true};
 static const r3d_lit_cluster_t box_cluster = {0, 4, 0, 2, {-40, -40, 0}, {40, 40, 0}, true};
-
-static r3d_lit_mesh_t
-quad(const int16_t (*positions)[3], const r3d_lit_cluster_t* cluster, const r3d_lit_node_t* node) {
-    return (r3d_lit_mesh_t){.positions = positions,
-                            .colors = white,
-                            .triangles = facing_z,
-                            .clusters = cluster,
-                            .nodes = node,
-                            .vertex_count = 4,
-                            .triangle_count = 2,
-                            .cluster_count = 1,
-                            .node_count = 1,
-                            .position_scale = 1};
-}
 
 /* The box turned `degrees` about y and standing at `at`. */
 static r3d_placement_t
@@ -188,8 +173,8 @@ rig_open(bool with_box, bool detached) {
     rig = calloc(1, sizeof(*rig));
     TEST_ASSERT_NOT_NULL(rig);
     suite_set_test_cleanup(release_rig);
-    rig->wall = quad(wall_positions, &wall_cluster, &wall_node);
-    rig->box = quad(box_positions, &box_cluster, &box_node);
+    rig->wall = r3d_quad_mesh(wall_positions, NULL, NULL, &wall_cluster, &wall_node);
+    rig->box = r3d_quad_mesh(box_positions, NULL, NULL, &box_cluster, &box_node);
     rig->instances[0] = (r3d_instance_t){&rig->wall, NULL};
     rig->instances[1] = (r3d_instance_t){&rig->box, &rig->box_at};
     rig->attachment = raster_motion_attachment(&rig->motion);
