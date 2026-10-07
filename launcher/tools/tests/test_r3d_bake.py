@@ -19,7 +19,7 @@ try:
     import numpy as np
     from tests import soup
 
-    from r3d.geometry import triangle_areas, weld
+    from r3d.geometry import closest_point_on_triangles, triangle_areas, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
@@ -262,34 +262,28 @@ class SealSeamsTests(unittest.TestCase):
         self.assertEqual(self.seams(True), 0)
 
 
-def banded_plane(n=41, size=400.0):
-    """A flat n by n grid of side `size` under hard bands of light and shadow with some noise, as baked shading looks:
-    nothing in its geometry asks to keep a vertex, so only colour can."""
-    xs = np.linspace(0, size, n)
-    x, y = np.meshgrid(xs, xs)
-    pos = np.stack([x.ravel(), y.ravel(), np.zeros(n * n)], axis=1)
-    cells = [i * n + j for i in range(n - 1) for j in range(n - 1)]
-    tris = np.array([t for a in cells for t in ((a, a + 1, a + n + 1), (a, a + n + 1, a + n))])
+def banded_plane(cells=40, size=400.0):
+    """A flat grid of side `size` under hard bands of light and shadow with some noise, as baked shading looks: nothing
+    in its geometry asks to keep a vertex, so only colour can."""
+    p, tris = grid(cells)
+    pos = p * (size / cells)
     shade = 40 + 140 * (np.sin(pos[:, 0] / 37 + pos[:, 1] / 53) > 0.3) + np.random.default_rng(1).normal(0, 4, len(pos))
     return pos, np.clip(np.stack([shade] * 3, axis=1), 0, 255), tris
 
 
-def colour_error_on_plane(pos, rgb, sp, sc, st):
-    """Mean difference, over the input vertices of a mesh on z = 0, between each vertex's colour and the simplified
-    surface's interpolated colour at its position."""
-    a, b, c = sp[st[:, 0], :2], sp[st[:, 1], :2], sp[st[:, 2], :2]
-    e1, e2 = b - a, c - a
-    det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
-    errors = []
-    for q, colour in zip(pos[:, :2], rgb):
-        d = q - a
-        with np.errstate(divide="ignore", invalid="ignore"):
-            u = (d[:, 0] * e2[:, 1] - d[:, 1] * e2[:, 0]) / det
-            v = (e1[:, 0] * d[:, 1] - e1[:, 1] * d[:, 0]) / det
-        k = np.flatnonzero((u >= -1e-6) & (v >= -1e-6) & (u + v <= 1 + 1e-6))[0]
-        got = (1 - u[k] - v[k]) * sc[st[k, 0]] + u[k] * sc[st[k, 1]] + v[k] * sc[st[k, 2]]
-        errors.append(np.abs(got - colour).mean())
-    return np.mean(errors)
+def against_plane(pos, rgb, sp, sc, st):
+    """(mean colour difference, uncovered): for each input vertex the simplified surface's colour at the nearest
+    point, over the vertices the surface still covers, and how many it no longer does."""
+    n, m = len(pos), len(st)
+    q = np.repeat(pos, m, axis=0)
+    a, b, c = (np.tile(sp[st[:, k]], (n, 1)) for k in range(3))
+    bary, distance = closest_point_on_triangles(q, a, b, c)
+    distance = distance.reshape(n, m)
+    k = distance.argmin(axis=1)
+    w = bary.reshape(n, m, 3)[np.arange(n), k]
+    colour = (w[:, :, None] * sc[st[k]]).sum(axis=1)
+    covered = distance[np.arange(n), k] < 1e-3
+    return np.abs(colour - rgb)[covered].mean(), int((~covered).sum())
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -323,11 +317,15 @@ class ColourDeviationTests(unittest.TestCase):
 
     def test_colour_keeps_the_bands_of_a_plane_that_geometry_alone_would_lose(self):
         pos, rgb, tris = banded_plane()
-        error = {}
-        for deviation in (1e-4, 1.0):
+        error, uncovered = {}, {}
+        for deviation in (1e-4, 1.0, 16.0):
             sp, sc, st, _ = simplify(pos, rgb, tris, np.zeros(len(tris), dtype=int), 300, colour_deviation=deviation)
-            error[deviation] = colour_error_on_plane(pos, rgb, sp, sc, st)
+            error[deviation], uncovered[deviation] = against_plane(pos, rgb, sp, sc, st)
         self.assertLess(error[1.0], 0.6 * error[1e-4], error)
+        # The other side of the trade: at the import's scale the plane stays whole, while colour priced far above it
+        # buys collapses that pull the plane's border in.
+        self.assertEqual((uncovered[1e-4], uncovered[1.0]), (0, 0))
+        self.assertGreater(uncovered[16.0], 0)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
