@@ -266,77 +266,110 @@ test_a_still_camera_and_scene_have_no_motion(void) {
     }
 }
 
+/* One change between two pictures, before then now: the box's turn and
+ * where it stands, and the camera's eye and yaw. */
+typedef struct {
+    float turn[2];
+    vec3f_t at[2];
+    vec3f_t eye[2];
+    float yaw[2];
+} change_t;
+
+typedef struct {
+    r3d_placement_t box[2];
+    pose_t before, now;
+} posed_t;
+
+static void
+pose_change(const change_t* c, bool with_box, posed_t* p) {
+    for (int i = 0; i < 2; i++) {
+        p->box[i] = turned(c->turn[i], c->at[i]);
+    }
+    p->before = (pose_t){camera_at(c->eye[0], c->yaw[0]), with_box ? &p->box[0] : NULL};
+    p->now = (pose_t){camera_at(c->eye[1], c->yaw[1]), with_box ? &p->box[1] : NULL};
+}
+
+/* The picture before at `w0` x `h0`, then now at W x H. */
+static void
+draw_change(raster_rig_t* r, const posed_t* p, int w0, int h0) {
+    draw(r, &p->before, w0, h0);
+    draw(r, &p->now, W, H);
+}
+
+/* Draws `c` on a rig, the box in it when `with_box`, and checks every pixel
+ * against the truth; returns how many were checked. */
+static int
+check_change(const change_t* c, bool with_box, int w0, int h0, posed_t* p) {
+    raster_rig_t* r = rig_open(with_box, false);
+    pose_change(c, with_box, p);
+    draw_change(r, p, w0, h0);
+    return assert_motion_is_true(r, &p->now, &p->before, W, H);
+}
+
 static void
 test_camera_motion_is_the_reprojection_through_the_previous_pose(void) {
-    raster_rig_t* r = rig_open(false, false);
-    const pose_t before = {camera_at((vec3f_t){0.0F, 10.0F, 300.0F}, 0.0F), NULL};
-    const pose_t now = {camera_at((vec3f_t){12.0F, 0.0F, 280.0F}, 3.0F), NULL};
-    draw(r, &before, W, H);
-    draw(r, &now, W, H);
-    TEST_ASSERT_GREATER_THAN_INT(W * H * 3 / 4, assert_motion_is_true(r, &now, &before, W, H));
+    static const change_t c = {{0.0F, 0.0F},
+                               {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F}},
+                               {{0.0F, 10.0F, 300.0F}, {12.0F, 0.0F, 280.0F}},
+                               {0.0F, 3.0F}};
+    posed_t p;
+    TEST_ASSERT_GREATER_THAN_INT(W * H * 3 / 4, check_change(&c, false, W, H, &p));
 }
 
 static void
 test_a_moving_instance_moves_by_its_previous_placement(void) {
-    raster_rig_t* r = rig_open(true, false);
-    const camera_t still = camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F);
-    const r3d_placement_t was = turned(10.0F, (vec3f_t){-8.0F, 0.0F, 100.0F});
-    const r3d_placement_t is = turned(25.0F, (vec3f_t){6.0F, 4.0F, 110.0F});
-    const pose_t before = {still, &was};
-    const pose_t now = {still, &is};
-    draw(r, &before, W, H);
-    draw(r, &now, W, H);
-    assert_motion_is_true(r, &now, &before, W, H);
+    static const change_t c = {{10.0F, 25.0F},
+                               {{-8.0F, 0.0F, 100.0F}, {6.0F, 4.0F, 110.0F}},
+                               {{0.0F, 0.0F, 300.0F}, {0.0F, 0.0F, 300.0F}},
+                               {0}};
+    posed_t p;
+    check_change(&c, true, W, H, &p);
     float mx;
     float my;
-    TEST_ASSERT_EQUAL_INT(BOX, truth(&now, &before, W, H, W / 2, H / 2, &mx, &my));
+    TEST_ASSERT_EQUAL_INT(BOX, truth(&p.now, &p.before, W, H, W / 2, H / 2, &mx, &my));
     TEST_ASSERT_TRUE_MESSAGE(fabsf(mx) > 1.0F, "the box moved on screen");
-    TEST_ASSERT_EQUAL_INT8(0, motion_of(r)[2 * W + 2].dx); /* the wall behind it did not */
+    TEST_ASSERT_EQUAL_INT8(0, motion_of(raster_rig_now)[2 * W + 2].dx); /* the wall behind it did not */
 }
 
 static void
 test_camera_and_instance_motion_add_up(void) {
-    raster_rig_t* r = rig_open(true, false);
-    const r3d_placement_t was = turned(-15.0F, (vec3f_t){10.0F, -5.0F, 90.0F});
-    const r3d_placement_t is = turned(5.0F, (vec3f_t){0.0F, 0.0F, 105.0F});
-    const pose_t before = {camera_at((vec3f_t){-10.0F, 5.0F, 310.0F}, -2.0F), &was};
-    const pose_t now = {camera_at((vec3f_t){5.0F, 0.0F, 295.0F}, 2.0F), &is};
-    draw(r, &before, W, H);
-    draw(r, &now, W, H);
-    assert_motion_is_true(r, &now, &before, W, H);
+    static const change_t c = {{-15.0F, 5.0F},
+                               {{10.0F, -5.0F, 90.0F}, {0.0F, 0.0F, 105.0F}},
+                               {{-10.0F, 5.0F, 310.0F}, {5.0F, 0.0F, 295.0F}},
+                               {-2.0F, 2.0F}};
+    posed_t p;
+    check_change(&c, true, W, H, &p);
 }
 
 /* The previous picture was half the size: motion is still in this one's pixels. */
 static void
 test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
-    raster_rig_t* r = rig_open(true, false);
-    const r3d_placement_t was = turned(0.0F, (vec3f_t){0.0F, 0.0F, 100.0F});
-    const r3d_placement_t is = turned(12.0F, (vec3f_t){5.0F, 0.0F, 100.0F});
-    const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), &was};
-    const pose_t now = {camera_at((vec3f_t){8.0F, 0.0F, 290.0F}, 1.5F), &is};
-    draw(r, &before, W / 2, H / 2);
-    draw(r, &now, W, H);
-    assert_motion_is_true(r, &now, &before, W, H);
+    static const change_t c = {{0.0F, 12.0F},
+                               {{0.0F, 0.0F, 100.0F}, {5.0F, 0.0F, 100.0F}},
+                               {{0.0F, 0.0F, 300.0F}, {8.0F, 0.0F, 290.0F}},
+                               {0.0F, 1.5F}};
+    posed_t p;
+    check_change(&c, true, W / 2, H / 2, &p);
 }
 
 /* Attaching motion changes no colour and no depth. */
 static void
 test_motion_leaves_colour_and_depth_as_they_are(void) {
-    const r3d_placement_t was = turned(0.0F, (vec3f_t){0.0F, 0.0F, 100.0F});
-    const r3d_placement_t is = turned(30.0F, (vec3f_t){10.0F, 0.0F, 120.0F});
-    const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), &was};
-    const pose_t now = {camera_at((vec3f_t){4.0F, 2.0F, 290.0F}, 1.0F), &is};
+    static const change_t c = {{0.0F, 30.0F},
+                               {{0.0F, 0.0F, 100.0F}, {10.0F, 0.0F, 120.0F}},
+                               {{0.0F, 0.0F, 300.0F}, {4.0F, 2.0F, 290.0F}},
+                               {0.0F, 1.0F}};
+    posed_t p;
+    pose_change(&c, true, &p);
     uint16_t* plain = malloc(sizeof(uint16_t) * 2 * W * H);
     TEST_ASSERT_NOT_NULL(plain);
     raster_rig_t* r = rig_open(true, true);
-    draw(r, &before, W, H);
-    draw(r, &now, W, H);
+    draw_change(r, &p, W, H);
     memcpy(plain, raster_color(&r->raster), sizeof(uint16_t) * W * H);
     memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(uint16_t) * W * H);
     raster_rig_release();
     r = rig_open(true, false);
-    draw(r, &before, W, H);
-    draw(r, &now, W, H);
+    draw_change(r, &p, W, H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(plain, raster_color(&r->raster), W * H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(plain + (W * H), raster_depth(&r->raster), W * H);
     free(plain);
