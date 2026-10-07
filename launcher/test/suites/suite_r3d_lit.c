@@ -1402,24 +1402,15 @@ typedef struct {
 static parts_t* shared_parts;
 static parts_t* other_parts; /* a second mesh, for a test of two */
 
+/* The mesh buffer `held` points at, taken on first use. */
 static parts_t*
-parts_buffer(void) {
-    if (shared_parts == NULL) {
-        shared_parts = malloc(sizeof(*shared_parts));
+parts_buffer(parts_t** held) {
+    if (*held == NULL) {
+        *held = malloc(sizeof(**held));
     }
-    TEST_ASSERT_NOT_NULL(shared_parts);
+    TEST_ASSERT_NOT_NULL(*held);
     suite_set_test_cleanup(release_fixture);
-    return shared_parts;
-}
-
-static parts_t*
-second_parts_buffer(void) {
-    if (other_parts == NULL) {
-        other_parts = malloc(sizeof(*other_parts));
-    }
-    TEST_ASSERT_NOT_NULL(other_parts);
-    suite_set_test_cleanup(release_fixture);
-    return other_parts;
+    return *held;
 }
 
 static void
@@ -1531,7 +1522,7 @@ static const uint8_t cut_colors[3][3] = {{0, 128, 128}, {255, 128, 128}, {255, 1
 
 static int
 draw_cut(const int16_t corners[3][3], bool double_sided) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     parts_begin(p);
     parts_add(p, corners, 3, cut_colors, double_sided);
     const r3d_lens_t lens = look_down_minus_z(0, 0, 100.0f);
@@ -1589,7 +1580,7 @@ build_floor_and_rects(parts_t* p) {
 
 static void
 test_drawing_a_window_with_cluster_rows_matches_a_full_draw(void) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_floor_and_rects(p);
     const r3d_lens_t lens = look_down_minus_z(50, 0, 1.0f);
     const r3d_span_target_t full = fixture();
@@ -1625,7 +1616,7 @@ test_a_triangle_over_any_side_of_the_screen_is_drawn(void) {
     };
     static const int16_t beyond_right[3][3] = {{80, 0, -100}, {120, -20, -100}, {120, 20, -100}};
     static const uint8_t white[3][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     const r3d_lens_t lens = look_down_minus_z(0, 0, 1.0f);
     for (int side = 0; side < 4; side++) {
         parts_begin(p);
@@ -1686,7 +1677,7 @@ typedef struct {
 
 static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     raster_t raster = {ONE_MESH(&p->mesh), .width = W, .height = H};
     const size_t bytes = raster_scratch_bytes(&raster);
@@ -1721,7 +1712,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
  * stale pixels. */
 static void
 test_the_two_core_frame_matches_one_full_draw(void) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
@@ -1847,7 +1838,7 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
 static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
     const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
@@ -1860,9 +1851,9 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
  * list starts after a list of a different length. */
 static void
 test_a_census_list_steps_by_each_instances_own_mesh(void) {
-    parts_t* const wall = parts_buffer();
+    parts_t* const wall = parts_buffer(&shared_parts);
     build_wall_and_stack(wall);
-    parts_t* const floor = second_parts_buffer();
+    parts_t* const floor = parts_buffer(&other_parts);
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
     const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
@@ -1875,7 +1866,7 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
  * the clear colour wherever nothing was drawn. */
 static void
 test_a_destination_of_the_same_size_is_a_copy(void) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     gfx_color_t* destination = malloc(sizeof(gfx_color_t) * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
@@ -1922,7 +1913,7 @@ static void
 test_a_fractional_destination_upscales_a_drawn_frame(void) {
     enum { OUT_W = 3 * W / 2, OUT_H = 3 * H / 2 };
 
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     uint16_t* destination = malloc(sizeof(*destination) * OUT_W * OUT_H);
     uint16_t* color = malloc(sizeof(*color) * W * H);
@@ -2214,7 +2205,7 @@ upscaled_at(const uint16_t* upscaled, int i) {
  * and the shaded one is the render untouched. */
 static void
 test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
-    parts_t* const p = parts_buffer();
+    parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
