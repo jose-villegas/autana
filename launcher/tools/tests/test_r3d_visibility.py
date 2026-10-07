@@ -166,9 +166,9 @@ class BetweenPoseTests(unittest.TestCase):
 class RegionTests(unittest.TestCase):
     BOX = ([-0.5, -0.5, 5.0], [0.5, 0.5, 6.0])
 
-    def kept(self, positions, tris, intersector, seed):
-        return visible_from_region(positions, tris, np.zeros(len(tris), dtype=bool), intersector, 4,
-                                   np.random.default_rng(seed), *self.BOX)
+    def kept(self, positions, tris, intersector, seed, double=None, rounds=4):
+        double = np.zeros(len(tris), dtype=bool) if double is None else double
+        return visible_from_region(positions, tris, double, intersector, rounds, np.random.default_rng(seed), *self.BOX)
 
     def test_a_large_face_seen_only_through_a_window_is_kept_every_time(self):
         # A wall of small cards with one missing in the middle, and a backdrop card behind it as large as the wall:
@@ -188,7 +188,29 @@ class RegionTests(unittest.TestCase):
         for seed in range(8):
             kept = self.kept(positions, tris, intersector, seed)
             self.assertFalse(kept[-4:].any(), f"seed {seed}: a face the box cannot see was kept")
-            self.assertTrue(kept[:-4].any(), f"seed {seed}: the wall the box faces was dropped")
+            self.assertTrue(kept[:-4].all(), f"seed {seed}: a wall face the box faces was dropped")
+
+    def test_a_large_double_sided_face_seen_from_behind_is_kept(self):
+        positions, tris, intersector = scene(card([0, 30, 2], half=10.5, away=True))
+        for seed in range(8):
+            self.assertTrue(self.kept(positions, tris, intersector, seed, double=np.ones(2, dtype=bool)).all())
+
+    def test_a_round_casts_at_most_twice_as_many_rays_as_triangles(self):
+        # Many small cards and one huge one: the huge one's share of the rays is bounded by the mean, not by its
+        # area over the smallest or the median card.
+        cards = [card([x, y, 0], half=0.1) for x in range(-5, 5) for y in range(-5, 5)]
+        positions, tris, intersector = scene(*cards, card([0, 0, -50], half=200.0))
+        counted = []
+
+        class Counting:
+            def first_hit(self, origin, direction):
+                counted.append(len(origin))
+                return intersector.first_hit(origin, direction)
+
+        visible_from_region(positions, tris, np.ones(len(tris), dtype=bool), Counting(), 1, np.random.default_rng(0),
+                            *self.BOX)
+        self.assertGreater(sum(counted), len(tris), "the huge card got no extra points: the test proves nothing")
+        self.assertLessEqual(sum(counted), 2 * len(tris))
 
 
 if __name__ == "__main__":

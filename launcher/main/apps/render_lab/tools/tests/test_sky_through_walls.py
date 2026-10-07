@@ -59,12 +59,14 @@ def sky_pixels(frame, sky):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyCount(unittest.TestCase):
-    def test_sky_enclosed_by_a_wall_counts_and_sky_open_to_the_top_does_not(self):
+    def test_sky_cut_off_from_the_top_row_counts_and_sky_open_to_it_does_not(self):
         sky = (156, 195, 231)
         frame = np.zeros((8, 8, 3), dtype=np.uint8)
         frame[:3] = sky  # open sky along the top
         frame[5:7, 2:5] = sky  # a hole in the wall below it
-        self.assertEqual(sky_pixels(frame, sky), (6, 24))
+        frame[4:6, 0] = sky  # a hole at the left edge
+        frame[7, 6:8] = sky  # a hole at the bottom edge
+        self.assertEqual(sky_pixels(frame, sky), (10, 24))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
