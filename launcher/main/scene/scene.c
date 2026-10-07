@@ -248,6 +248,17 @@ scene_loaded_at(int index) {
     return loaded[index];
 }
 
+int
+scene_entity_count(const scene_t* scene) {
+    return scene->asset.entity_count;
+}
+
+const char*
+scene_entity_name(const scene_t* scene, scene_entity_t entity) {
+    assert(entity < scene->asset.entity_count);
+    return scene->asset.names[entity];
+}
+
 scene_entity_t
 scene_find(const scene_t* scene, const char* name) {
     for (int i = 0; i < scene->asset.entity_count; i++) {
