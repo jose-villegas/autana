@@ -234,12 +234,23 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
     return count;
 }
 
+/* The scratch block's visible list and cluster rows, out of line so the
+ * carve's struct is not on the draw's stack. */
+static __attribute__((noinline)) uint16_t*
+scratch_visible(const raster_t* raster) {
+    return r3d_pipeline_carve(raster).visible;
+}
+
+static __attribute__((noinline)) const r3d_pipeline_rows_t*
+scratch_rows(const raster_t* raster) {
+    return r3d_pipeline_carve(raster).rows;
+}
+
 static inline __attribute__((always_inline)) void
 draw_visible(const raster_t* raster, int index, const camera_t* camera, int quarter, const uint16_t* visible,
              int count) {
     const r3d_instance_t* instance = &raster->instances[index];
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const bool clear = index == 0;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
     const int writer_count = instance_writers(raster, index, writers);
@@ -256,7 +267,7 @@ draw_visible(const raster_t* raster, int index, const camera_t* camera, int quar
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
-    const int mid = r3d_pipeline_draw_split(mesh, visible, b.rows, count, raster->height);
+    const int mid = r3d_pipeline_draw_split(mesh, visible, scratch_rows(raster), count, raster->height);
     mine.writers = other.writers = writers;
     mine.writer_count = other.writer_count = writer_count;
     mine.first = mid;
@@ -265,13 +276,6 @@ draw_visible(const raster_t* raster, int index, const camera_t* camera, int quar
     other.count = mid;
     run_split(draw_slice, &mine, &other);
     FRAME_COST_END(drawn_from, "r3d.draw");
-}
-
-/* The scratch block's visible list, out of line so the carve's struct is
- * not on the draw's stack. */
-static __attribute__((noinline)) uint16_t*
-scratch_visible(const raster_t* raster) {
-    return r3d_pipeline_carve(raster).visible;
 }
 
 /* Draws every instance: from `culled`, raster_census()'s list, or culling
