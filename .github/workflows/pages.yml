@@ -1,7 +1,8 @@
 name: Pages
 
-# Builds the GitHub Pages site: the sand app's browser build at the root and
-# the C4 architecture explorer under /architecture/. A Pages deploy replaces
+# Builds the GitHub Pages site: a front page from .github/pages/ in the stock
+# Jekyll theme, the sand app's browser build under /sand/ and the C4
+# architecture explorer under /architecture/. A Pages deploy replaces
 # the whole site, so everything on it is built here, in one artifact.
 #
 # The browser build lives on feature/web-pages, but the site has to show
@@ -46,8 +47,16 @@ jobs:
       - uses: mymindstorm/setup-emsdk@v14
         with:
           version: latest
+      - name: Front page
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: .github/pages
+          destination: _front
       - name: Sand, in the browser
-        run: sh launcher/main/apps/sand/tools/web/build_web.sh _site
+        run: |
+          mkdir -p _site
+          cp -r _front/. _site/
+          sh launcher/main/apps/sand/tools/web/build_web.sh _site/sand
       - name: Test the explorer's generator
         run: python3 .dev/launcher/tools/architecture/test_build.py
       - name: Architecture explorer

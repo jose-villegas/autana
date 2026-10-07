@@ -1,0 +1,4 @@
+# The site's front page, built with GitHub Pages' stock Jekyll theme.
+title: autana
+description: Software for the Waveshare ESP32-S3-Touch-AMOLED-1.8
+theme: jekyll-theme-cayman

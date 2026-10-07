@@ -1,0 +1,2 @@
+- [Sand simulation](sand/) — the sand app, running in the browser
+- [Architecture](architecture/) — the engine's C4 architecture explorer
