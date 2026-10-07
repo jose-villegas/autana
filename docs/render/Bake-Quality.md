@@ -197,12 +197,12 @@ other settings. The angle heatmaps show where geometry differs from the source.
 positions. The GPU stage scores it against the flat bake and the smooth fit at
 lite's budget, over the same held-out poses.
 
-<!-- generated: sponza-flat-fit sha256=1176c02e6e48c69f13c9a3dd52845f7b166a9b772102d32d1873ac6a687ac621 -->
-| Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
-|---|---|---|---|---|---|---|
-| lite-GI-fit | 8672 | 5.985 | 16.843 | 0.729 | 15.365 | 45.467 |
-| flat-GI-bake | 17371 | 12.423 | 43.179 | 0.451 | 21.393 | 58.343 |
-| flat-GI-fit | 17133 | 5.167 | 14.333 | 0.765 | 13.619 | 56.227 |
+<!-- generated: sponza-flat-fit sha256=d605f3e800fbcdfdfcdb3eec644404ba053a61d32681cace9dc88990dc6a5f6d -->
+| Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle |
+|---|---|---|---|---|---|
+| flat-GI-bake | 17371 | 12.423 | 43.179 | 0.451 | 21.393 |
+| lite-GI-fit | 8672 | 5.985 | 16.843 | 0.729 | 15.365 |
+| flat-GI-fit | 17133 | 5.167 | 14.333 | 0.765 | 13.619 |
 
 ![Flat bake, lite fit and flat fit](../images/render/gpu/appearance-indirect-flat.png)
 ![Flat bake, lite fit and flat fit.crops](../images/render/gpu/appearance-indirect-flat.crops.png)

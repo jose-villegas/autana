@@ -363,8 +363,9 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual(columns, [('flat bake', 'flat-GI-bake.avi'), ('lite fit', 'lite-GI-fit.avi'),
                                        ('flat fit', 'flat-GI-fit.avi')])
             table = (out / 'tables/sponza-flat-fit.md').read_text().splitlines()
-            self.assertCountEqual([line.split(' | ')[0].strip('| ') for line in table[2:5]],
-                                  ['flat-GI-bake', 'lite-GI-fit', 'flat-GI-fit'])
+            self.assertEqual([line.split(' | ')[0].strip('| ') for line in table[2:5]],
+                             ['flat-GI-bake', 'lite-GI-fit', 'flat-GI-fit'], "the sheet's column order")
+            self.assertNotIn('Predicted', table[0], "the cost model cannot price flat shading")
             self.assertEqual(sum(line.startswith('| ') for line in table), 4, "a header and exactly three rows")
             self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
                                 if owner in (stages.bake_worker, stages.measure_worker)))

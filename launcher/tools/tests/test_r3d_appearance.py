@@ -386,7 +386,6 @@ class AppearanceFitTests(unittest.TestCase):
         mesh = FitMesh(positions, start, tris, double, 64, vertex_point, True)
         _points, rgb, _history = optimise(mesh, [(matrix, target)], size, steps=400, batch=1, lr_position=0.0, lr_colour=0.05,
                                           laplacian=0.0, report=0)
-        coverage_pixels = np.zeros(count)
         with torch.no_grad():
             ids = truth.visible_ids(torch.as_tensor(positions, dtype=torch.float32, device="cuda"),
                                     torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).cpu().numpy()
