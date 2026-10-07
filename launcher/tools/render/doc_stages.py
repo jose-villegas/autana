@@ -458,7 +458,7 @@ def _gpu(args, out, work, executor):
         [row for row in rows if row[0].startswith("full-")]) + "\n" + "\n".join(
         f"![{prefix} GI bake and fit{suffix}](../images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
         for prefix in ("lite", "full") for suffix in ("", ".crops")) + "\n")
-    # The cost model has no shading term, so a flat mesh's predicted time is no frame cost; the board table measures it.
+    # The cost model has no shading term and cannot price a flat mesh; the board table times it.
     flat_sheet = next(entry.sheet for entry in FITTED if entry.prefix == "flat")
     measured = {row[0]: row for row in rows}
     (out / "tables/sponza-flat-fit.md").write_text(markdown(

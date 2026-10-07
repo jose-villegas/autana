@@ -56,7 +56,13 @@ class WriteBakedTests(unittest.TestCase):
         back, lit = self.write((4, 1, 4, None))
         lit.assert_called_once()
         self.assertIsNone(back.rgb)
-        self.assertEqual(sorted(map(tuple, back.face_colors.tolist())), [(0, 0, 255), (255, 0, 0)])
+        from r3d.lit_mesh import finest_triangles
+
+        q, _rgb, tris, _double, face = finest_triangles(back)
+        # Triangle (0, 1, 2) lies right of the diagonal and was given red; (0, 2, 3) left of it, blue.
+        right = q[tris].mean(axis=1)[:, 0] > q[tris].mean(axis=1)[:, 1]
+        self.assertEqual({tuple(c) for c in face[right].tolist()}, {(255, 0, 0)})
+        self.assertEqual({tuple(c) for c in face[~right].tolist()}, {(0, 0, 255)})
 
     def test_a_smooth_renderer_writes_vertex_colours(self):
         back, lit = self.write(None)

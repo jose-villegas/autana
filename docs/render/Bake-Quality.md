@@ -195,7 +195,8 @@ other settings. The angle heatmaps show where geometry differs from the source.
 
 [A flat fit](Scene-Files.md#a-flat-fit) fits a colour per triangle and the
 positions. The GPU stage scores it against the flat bake and the smooth fit at
-lite's budget, over the same held-out poses.
+lite's budget, over the same held-out poses. Predicted time is left out: the
+cost model has no shading term.
 
 <!-- generated: sponza-flat-fit sha256=d605f3e800fbcdfdfcdb3eec644404ba053a61d32681cace9dc88990dc6a5f6d -->
 | Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle |

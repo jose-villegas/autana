@@ -305,7 +305,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                 elif owner is stages.measure_worker:
                     label = args[0]
                     consumed.append(label)
-                    future.set_result(((label, 1, '0', '0', '0', '0', '0'), Path(f'{label}.avi'),
+                    future.set_result(((label, 1, '1.5', '2.5', '3.5', '4.5', '99.5'), Path(f'{label}.avi'),
                                        {'triangles': 1, 'mean_delta_e': 0., 'predicted_ms': 0.}))
                 else:
                     raise AssertionError(owner)
@@ -366,6 +366,9 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual([line.split(' | ')[0].strip('| ') for line in table[2:5]],
                              ['flat-GI-bake', 'lite-GI-fit', 'flat-GI-fit'], "the sheet's column order")
             self.assertNotIn('Predicted', table[0], "the cost model cannot price flat shading")
+            cells = [line.count('|') for line in table[:5]]
+            self.assertEqual(len(set(cells)), 1, "a row has more cells than the header")
+            self.assertNotIn('99.5', ' '.join(table), "a predicted time reached the flat table")
             self.assertEqual(sum(line.startswith('| ') for line in table), 4, "a header and exactly three rows")
             self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
                                 if owner in (stages.bake_worker, stages.measure_worker)))
