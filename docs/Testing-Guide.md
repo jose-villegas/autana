@@ -201,22 +201,32 @@ stack gate checks test code one function at a time. Its frames are the host
 compiler's; `check_stack_usage_device.sh` checks the target compiler's frames
 when a host frame nears the ceiling.
 
-`launcher/tools/quality/stack_chain_gate.py` sums the deepest path below each
-root an app declares in `stack_chain.txt`, using the self-test compiler's
-call graph. It compiles the app's sources and shares the graphs of all
-non-app engine sources, the test sources and the upstream task/test runners.
-An `indirect CALLER... : CALLEE...` line supplies pointer targets; an
-undeclared pointer caller reachable from a root fails. Private names may
-be qualified as `file.c:function`. Every possible target of a declared
-pointer still needs listing by hand.
+`launcher/tools/quality/stack_chain_gate.py` discovers `stack_chain.txt` under
+`launcher/`, excluding build directories. App roots belong in their app's
+spec; engine roots belong in the test spec. A `root FUNCTION KIND` line
+names a `test`, `frame` or `system` entry. The diagnostics compiler measures
+frames and calls in the engine, opted-in apps, tests and task/test runners.
 
-A `harness ROOT : ANCESTOR...` line lists the frames live above the root,
-including the suite runner for a test and the shell for a frame entry. The
-root's budget plus those measured frames and `timing.c`'s reserve must fit
-`DP_MAIN_TASK_STACK_BYTES`. A harness frame with no measurement fails.
-Library calls outside these graphs and compiler-generated copies are not
-summed. The chain gate runs in self-test CI and `autana build diag --check`;
-it predicts stack use without flashing.
+An `indirect CALLER... : CALLEE...` line supplies pointer targets; an
+undeclared pointer caller reachable below a root fails. Private names may be
+qualified as `file.c:function`. Suite registrations and Unity's wrapper
+supply runner pointer edges from their sources. The runner overhead is the
+deepest measured path from the main-task entry to the kind's dispatcher:
+`call_protected`, `shell_step_app` or `scene_shell_render`. There are no
+per-root ancestor lists or copied budgets. Missing paths and non-static
+frames fail.
+
+Every root uses the budget `DP_MAIN_TASK_STACK_BYTES` minus `timing.c`'s
+reserve, derived runner frames and target context. The compiler evaluates
+`XT_STK_FRMSZ` and the aligned `XT_CP_SIZE` from its configured headers;
+TLS storage comes from the ELF's linker symbols. Interrupt context includes
+window spills; coprocessor and TLS storage occupy the top of the task stack.
+Worker-task calls are separate; a dispatcher's synchronous fallback remains
+on its caller's stack. The conservative maximum includes clipping paths,
+which a device's high-water mark may not encounter with an interrupt.
+External library calls and compiler-generated copies are not summed. The
+chain gate runs in self-test CI and `autana build diag --check`; it predicts
+stack use without flashing.
 
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate

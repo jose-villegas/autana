@@ -1,0 +1,12 @@
+root scene_render system
+root test_the_two_core_frame_matches_one_full_draw test
+root test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front test
+root test_a_triangle_over_any_side_of_the_screen_is_drawn test
+root test_a_census_list_draws_what_raster_draw_draws_at_any_size test
+indirect writer_rows r3d_span_triangle_write : raster_attachment_tag
+indirect shell_systems_update : scene_shell_render
+indirect instance_writers : raster_motion.c:writer
+indirect raster_draw raster_draw_culled : raster_motion.c:begin
+indirect resolve_slice : raster_motion.c:resolve
+indirect draw_slice : clear_color clear_depth raster_motion.c:clear
+indirect raster_show : raster_motion.c:show

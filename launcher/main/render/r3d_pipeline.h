@@ -114,6 +114,7 @@ typedef struct {
     gfx_render_target_t picture;  /* raster_picture(), every row */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     uint16_t* culled;             /* raster_culled_length() entries */
+    void* draw;                   /* raster-owned instance and slice state */
 } r3d_pipeline_buffers_t;
 
 /* The census list's share of the scratch block: raster_culled_length()
@@ -143,5 +144,6 @@ r3d_pipeline_carve(const raster_t* raster) {
     p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
     b.work[0] = (r3d_pipeline_work_t*)p;
     b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
+    b.draw = p + 2 * r3d_pipeline_work_bytes();
     return b;
 }

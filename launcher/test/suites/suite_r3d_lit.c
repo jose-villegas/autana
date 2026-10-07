@@ -1210,6 +1210,16 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
     return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
+static int
+draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
+    uint16_t visible[1];
+    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work());
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
+    r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
+    return count;
+}
+
 /* The quad faces +z; this camera stands on +z looking back at it. */
 static int
 draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors) {
@@ -1217,12 +1227,8 @@ draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t
     const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, face_colors, &cluster);
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
-    uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work());
-    r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t, pipeline_work());
+    (void)draw_quad_mesh(&mesh, &lens, &t);
     return covered();
 }
 
@@ -1252,13 +1258,9 @@ test_a_lens_fitted_to_half_the_width_keeps_the_view(void) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     r3d_lens_fit(&lens, W / 2, H);
-    uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work());
-    r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     (void)fixture();
     const r3d_span_target_t t = r3d_span_target(color, depth, W / 2, 0, H);
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t, pipeline_work());
+    (void)draw_quad_mesh(&mesh, &lens, &t);
     TEST_ASSERT_EQUAL_INT(12 * 24, covered());
     for (int y = 12; y < 36; y++) {
         for (int x = 10; x < 22; x++) {
@@ -1295,13 +1297,8 @@ draw_floor(const uint16_t* face_colors) {
 
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
-    uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work());
-    TEST_ASSERT_EQUAL_INT(1, count);
-    r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t, pipeline_work());
+    TEST_ASSERT_EQUAL_INT(1, draw_quad_mesh(&mesh, &lens, &t));
 }
 
 /* The near clip keeps the part in front and nothing lands above the horizon row. */
@@ -1691,6 +1688,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         {(const char*)b.culled, r3d_pipeline_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
+        {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
         {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
         {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };

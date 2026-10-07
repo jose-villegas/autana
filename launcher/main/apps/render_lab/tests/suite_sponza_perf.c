@@ -151,7 +151,9 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
     half_job_t together_top = top;
     half_job_t together_bottom = bottom;
     const int64_t start = timing_now_us();
-    (void)job_run_core1(draw_half_on_core1, &together_top, sizeof together_top);
+    if (!job_try_core1(draw_half_on_core1, &together_top, sizeof together_top)) {
+        draw_half_on_core1(&together_top);
+    }
     draw_half(&together_bottom);
     TEST_ASSERT_TRUE(job_wait(1000));
     const int64_t wall = timing_now_us() - start;

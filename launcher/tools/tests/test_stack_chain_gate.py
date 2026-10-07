@@ -11,23 +11,33 @@ from quality import stack_chain_gate as gate
 
 
 class StackChainTests(unittest.TestCase):
-    def test_harness_and_reserve_cannot_overbook_the_main_task(self):
+    def test_derived_harness_and_interrupt_cannot_overbook_the_main_task(self):
         with tempfile.TemporaryDirectory() as directory:
             spec = pathlib.Path(directory) / "stack_chain.txt"
-            spec.write_text("root test_frame 2800\nharness test_frame : runner\n")
-            graph = ({"test_frame": 32, "runner": 400}, {}, set(), [])
+            spec.write_text("root test_frame test\n")
+            graph = ({"test_frame": 2400, "main_task": 400,
+                      "call_protected": 80}, {"main_task": {"call_protected"}}, set(), [])
             with patch.object(gate, "parse_graph", return_value=graph):
-                problems = gate.check_app("app", str(spec), [], 3584, 512)
-            self.assertTrue(any("budget 2800 + harness 400" in p for p in problems))
+                problems = gate.check_app("app", str(spec), [], 3584, 512, 224)
+            self.assertTrue(any("3104 bytes" in p for p in problems))
 
-    def test_an_unmeasured_harness_fails(self):
+    def test_an_unreachable_harness_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             spec = pathlib.Path(directory) / "stack_chain.txt"
-            spec.write_text("root test_frame 2000\nharness test_frame : missing\n")
-            graph = ({"test_frame": 32}, {}, set(), [])
+            spec.write_text("root test_frame test\n")
+            graph = ({"test_frame": 32, "main_task": 32,
+                      "call_protected": 48}, {}, set(), [])
             with patch.object(gate, "parse_graph", return_value=graph):
-                problems = gate.check_app("app", str(spec), [], 3584, 512)
-            self.assertIn("harness frame missing is not measured", problems)
+                problems = gate.check_app("app", str(spec), [], 3584, 512, 224)
+            self.assertTrue(any("no measured main_task path" in p for p in problems))
+
+    def test_harness_follows_the_deepest_live_path_only(self):
+        frames = {"main_task": 48, "a": 80, "b": 160,
+                  "call_protected": 48, "unrelated": 4096}
+        calls = {"main_task": {"a", "b", "unrelated"},
+                 "a": {"call_protected"}, "b": {"call_protected"}}
+        self.assertEqual(256, gate.deepest("main_task", frames, calls,
+                                         "call_protected")[0])
 
     def test_engine_jobs_include_every_non_app_source(self):
         with tempfile.TemporaryDirectory() as directory:
