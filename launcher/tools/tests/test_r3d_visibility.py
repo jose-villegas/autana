@@ -1,7 +1,9 @@
-"""Checks the camera-path visibility rule on small scenes: coincident faces,
-the view's frustum and margin, the import step that calls it, and that what
-it keeps covers poses between the sampled ones. Needs the pinned r3d
-environment (tools/r3d/requirements.txt)."""
+"""Checks the visibility rules on small scenes. The camera-path rule:
+coincident faces, the view's frustum and margin, the import step that calls
+it, and that what it keeps covers poses between the sampled ones. The region
+rule: a large face seen only through a window is kept, and one behind a solid
+wall or facing away is not. Needs the pinned r3d environment
+(tools/r3d/requirements.txt)."""
 
 import pathlib
 import sys
@@ -18,7 +20,7 @@ try:
     from tests import soup
 
     from r3d import mesh_import
-    from r3d.light import coincident_faces, visible_from_path
+    from r3d.light import coincident_faces, visible_from_path, visible_from_region
     from r3d.poses import camera_rays
 except ImportError:
     np = None
@@ -157,6 +159,58 @@ class BetweenPoseTests(unittest.TestCase):
             drawn = hit[(hit >= 0)]
             drawn = drawn[(normal[drawn] * direction[hit >= 0]).sum(axis=1) < 0]
             self.assertTrue(kept[drawn].all(), f"a face drawn from {pose[:3]} was culled")
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class RegionTests(unittest.TestCase):
+    BOX = ([-0.5, -0.5, 5.0], [0.5, 0.5, 6.0])
+
+    def kept(self, positions, tris, intersector, seed, double=None, rounds=4):
+        double = np.zeros(len(tris), dtype=bool) if double is None else double
+        return visible_from_region(positions, tris, double, intersector, rounds, np.random.default_rng(seed), *self.BOX)
+
+    def test_a_large_face_seen_only_through_a_window_is_kept_every_time(self):
+        # A wall of small cards with one missing in the middle, and a backdrop card behind it as large as the wall:
+        # from the box in front, the backdrop shows only through the window, a few percent of its area. card()
+        # emits two triangles, so the backdrop is the last two.
+        wall = [card([x, y, 0], half=0.5) for x in range(-10, 11) for y in range(-10, 11) if (x, y) != (0, 0)]
+        positions, tris, intersector = scene(*wall, card([0, 0, -10], half=10.5))
+        for seed in range(8):
+            self.assertTrue(self.kept(positions, tris, intersector, seed)[-2:].all(),
+                            f"seed {seed}: the backdrop behind the window was dropped")
+
+    def test_a_large_face_behind_a_solid_wall_or_facing_away_is_dropped(self):
+        # The same wall with no window: the backdrop behind it, and a second large card off to the side in open view
+        # that faces away from the box, get many points each, and none may count.
+        wall = [card([x, y, 0], half=0.5) for x in range(-10, 11) for y in range(-10, 11)]
+        positions, tris, intersector = scene(*wall, card([0, 0, -10], half=10.5), card([0, 30, 2], half=10.5, away=True))
+        for seed in range(8):
+            kept = self.kept(positions, tris, intersector, seed)
+            self.assertFalse(kept[-4:].any(), f"seed {seed}: a face the box cannot see was kept")
+            self.assertTrue(kept[:-4].all(), f"seed {seed}: a wall face the box faces was dropped")
+
+    def test_a_large_double_sided_face_seen_from_behind_is_kept(self):
+        positions, tris, intersector = scene(card([0, 30, 2], half=10.5, away=True))
+        for seed in range(8):
+            self.assertTrue(self.kept(positions, tris, intersector, seed, double=np.ones(2, dtype=bool)).all())
+
+    def test_a_round_casts_at_most_twice_as_many_rays_as_triangles(self):
+        # Many small cards and one huge one: the huge one's share of the rays is bounded by the mean, not by its
+        # area over the smallest or the median card.
+        cards = [card([x, y, 0], half=0.1) for x in range(-5, 5) for y in range(-5, 5)]
+        positions, tris, intersector = scene(*cards, card([0, 0, -50], half=200.0))
+        counted = []
+
+        class Counting:
+            def first_hit(self, origin, direction):
+                counted.append(len(origin))
+                return intersector.first_hit(origin, direction)
+
+        visible_from_region(positions, tris, np.ones(len(tris), dtype=bool), Counting(), 1, np.random.default_rng(0),
+                            *self.BOX)
+        self.assertGreater(sum(counted), len(tris), "the huge card got no extra points: the test proves nothing")
+        self.assertLessEqual(sum(counted), 2 * len(tris))
 
 
 if __name__ == "__main__":

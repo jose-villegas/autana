@@ -32,6 +32,7 @@
 #include "render/resolution/resolution.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
+#include "sponza_suite.h"
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -383,14 +384,11 @@ test_dynamic_resolution_policies_along_the_path(void) {
 
 void
 run_raster_scale_perf_suite(void) {
-    scene_failure_t why;
-    scene = scene_load(SPONZA_SCENE, &why);
-    if (scene == NULL) {
-        ESP_LOGE(TAG, "scene: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
-                 why.what);
-    } else {
-        pack = asset_store_pack(SPONZA_SCENE);
-        path = scene_camera_lens(scene, NULL);
+    sponza_suite_t loaded = sponza_suite_load();
+    scene = loaded.scene;
+    pack = loaded.pack;
+    path = loaded.path;
+    if (scene != NULL) {
         const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
@@ -401,10 +399,8 @@ run_raster_scale_perf_suite(void) {
     }
     RUN_TEST(test_raster_stage_split_by_size);
     RUN_TEST(test_dynamic_resolution_policies_along_the_path);
-    if (pack != NULL) {
-        asset_store_release(SPONZA_SCENE);
-    }
-    scene_unload(scene);
+    loaded = (sponza_suite_t){scene, pack, path};
+    sponza_suite_release(&loaded);
     scene = NULL;
     pack = NULL;
     path = NULL;

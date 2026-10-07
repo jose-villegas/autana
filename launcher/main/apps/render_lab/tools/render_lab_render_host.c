@@ -81,13 +81,13 @@ set_tunable(const char* name, int value) {
 
 static bool
 view_from_name(const char* name) {
-    static const char* const views[] = {"shaded", "depth", "tiles"};
+    static const char* const views[] = {"shaded", "depth", "tiles", "motion"};
     for (int i = 0; i < (int)(sizeof views / sizeof views[0]); i++) {
         if (strcmp(name, views[i]) == 0) {
             return set_tunable("view", i);
         }
     }
-    (void)fprintf(stderr, "render_lab_render_host: --view is shaded, depth or tiles, not %s\n", name);
+    (void)fprintf(stderr, "render_lab_render_host: --view is shaded, depth, tiles or motion, not %s\n", name);
     return false;
 }
 

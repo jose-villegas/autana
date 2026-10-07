@@ -26,7 +26,9 @@
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
+#include "render/raster_motion.h"
 #include "scene/scene.h"
+#include "sponza_suite.h"
 #include "util/runtime/job.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -58,7 +60,7 @@ typedef struct {
 } bench_t;
 
 static void
-bench_open(bench_t* b, const r3d_instance_t* instance) {
+bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t* const* attachments) {
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
     b->raster = (raster_t){
         .instances = instance,
@@ -69,6 +71,8 @@ bench_open(bench_t* b, const r3d_instance_t* instance) {
         .destination = b->panel,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
+        .attachments = attachments,
+        .attachment_count = attachments == NULL ? 0 : 1,
     };
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(b->scratch);
@@ -172,7 +176,7 @@ test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
     bench_t b;
     const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
-    bench_open(&b, &atrium);
+    bench_open(&b, &atrium, NULL);
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
     const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1);
@@ -202,11 +206,14 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_PASS();
 }
 
+/* `moving`, when not NULL, is the instance's placement, nudged every frame
+ * so an attached motion tags every triangle. */
 static void
-report_frame_cost(const char* label, const r3d_instance_t* instance) {
+report_frame_cost(const char* label, const r3d_instance_t* instance, const raster_attachment_t* const* attachments,
+                  r3d_placement_t* moving) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t b;
-    bench_open(&b, instance);
+    bench_open(&b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
@@ -215,6 +222,9 @@ report_frame_cost(const char* label, const r3d_instance_t* instance) {
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
+        if (moving != NULL) {
+            moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
+        }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
         raster_upscale(&b.raster);
@@ -239,28 +249,43 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     open_the_meshes();
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
-        report_frame_cost(sponza_bakes[i], &instance);
+        report_frame_cost(sponza_bakes[i], &instance, NULL, NULL);
     }
+    TEST_PASS();
+}
+
+/* The full bake with motion vectors attached: the camera's motion alone,
+ * then with the mesh moving too, so every triangle also tags its pixels. */
+void
+test_sponza_frame_cost_with_motion(void) {
+    open_the_meshes();
+    raster_motion_t* motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(motion);
+    *motion = (raster_motion_t){0};
+    const raster_attachment_t attachment = raster_motion_attachment(motion);
+    const raster_attachment_t* const attached[] = {&attachment};
+    const r3d_instance_t still = {&meshes[0], NULL};
+    report_frame_cost("motion", &still, attached, NULL);
+    raster_motion_forget(motion);
+    r3d_placement_t placement = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, {0.0F, 0.0F, 0.0F}};
+    const r3d_instance_t moving = {&meshes[0], &placement};
+    report_frame_cost("motion_moving", &moving, attached, &placement);
+    report_frame_cost("placed", &moving, NULL, &placement);
+    memory_free(motion);
     TEST_PASS();
 }
 
 void
 run_sponza_perf_suite(void) {
-    scene_failure_t why;
-    sponza = scene_load(SPONZA_SCENE, &why);
-    if (sponza == NULL) {
-        ESP_LOGE(TAG, "scene sponza: status %d, asset %s, about '%s'", (int)why.status, asset_status_text(why.asset),
-                 why.what);
-    } else {
-        pack = asset_store_pack(SPONZA_SCENE);
-        flythrough = scene_camera_lens(sponza, NULL);
-    }
+    sponza_suite_t loaded = sponza_suite_load();
+    sponza = loaded.scene;
+    pack = loaded.pack;
+    flythrough = loaded.path;
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
-    if (pack != NULL) {
-        asset_store_release(SPONZA_SCENE);
-    }
-    scene_unload(sponza);
+    RUN_TEST(test_sponza_frame_cost_with_motion);
+    loaded = (sponza_suite_t){sponza, pack, flythrough};
+    sponza_suite_release(&loaded);
     sponza = NULL;
     pack = NULL;
     flythrough = NULL;

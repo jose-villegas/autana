@@ -22,6 +22,7 @@
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "scene/scene.h"
+#include "sponza_suite.h"
 #include "util/runtime/memory.h"
 
 /* The scene, loaded for the suite, its pack, and the three bakes in it. */
@@ -360,15 +361,10 @@ test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path(vo
 
 static void
 run_sponza_suite(void) {
-    scene_failure_t why;
-    sponza = scene_load(SPONZA_SCENE, &why);
-    if (sponza == NULL) {
-        printf("scene sponza: status %d, asset %s, about '%s'\n", (int)why.status, asset_status_text(why.asset),
-               why.what);
-    } else {
-        pack = asset_store_pack(SPONZA_SCENE);
-        flythrough = scene_camera_lens(sponza, NULL);
-    }
+    sponza_suite_t loaded = sponza_suite_load();
+    sponza = loaded.scene;
+    pack = loaded.pack;
+    flythrough = loaded.path;
     RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
@@ -376,10 +372,8 @@ run_sponza_suite(void) {
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
-    if (pack != NULL) {
-        asset_store_release(SPONZA_SCENE);
-    }
-    scene_unload(sponza);
+    loaded = (sponza_suite_t){sponza, pack, flythrough};
+    sponza_suite_release(&loaded);
     sponza = NULL;
     pack = NULL;
     flythrough = NULL;

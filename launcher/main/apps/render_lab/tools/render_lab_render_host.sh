@@ -26,6 +26,7 @@ main/util/runtime/tune.c
 main/util/runtime/job.c
 main/render/raster.c
 main/render/raster_show.c
+main/render/raster_motion.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
 main/render/resolution/resolution.c
@@ -55,7 +56,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
 "
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
-# The lit-mesh scene's views (--view shaded|depth|tiles) are raster_show()
+# The lit-mesh scene's views (--view shaded|depth|tiles|motion) are raster_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.

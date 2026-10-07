@@ -11,8 +11,8 @@ regenerated from the source by the doc-images pipeline
 ## The Sponza variants
 
 The Sponza scene places renderers over the import's variants
-([Scene-Files.md](Scene-Files.md)): it records bakes
-and appearance-fit recipes, culled to the camera's path, at lite's and full's
+([Scene-Files.md](Scene-Files.md)): it records region-culled bakes
+and path-culled appearance-fit recipes, at lite's and full's
 budgets. Every row plays the same stretch of the flythrough, so the rows
 compare.
 
@@ -60,11 +60,11 @@ doc images. The generated fidelity table scores the committed bakes against
 that reference. Metric definitions are in
 [Mesh-Import.md](Mesh-Import.md#fidelity-against-a-reference).
 
-<!-- generated: sponza-fidelity sha256=38de2a9526ed535ee1bdbb017b19a37f148542e8977c103494d3f16b0999d2af -->
+<!-- generated: sponza-fidelity sha256=09072737b39c15733a636e9d2ea727fc55fa4ef392bde6f6e0ef50d34dc6cc83 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 9.101 | 28.242 | 0.5931 | 16.798 | 7.397 |
-| Lite smooth | 11.040 | 34.597 | 0.5363 | 19.361 | 9.178 |
+| Full smooth | 9.101 | 28.245 | 0.5931 | 16.799 | 7.397 |
+| Lite smooth | 11.040 | 34.597 | 0.5363 | 19.361 | 9.179 |
 | Flat, committed | 12.412 | 41.872 | 0.4454 | 22.516 | 10.152 |
 <!-- /generated: sponza-fidelity -->
 
@@ -85,31 +85,31 @@ Labels beginning with min or max change the auto bounds; area scales the
 median face area; sky changes the sky-ray count. Sampling changes bake
 quality without adding work to the runtime renderer.
 
-<!-- generated: sponza-flat-sampling sha256=806ea9d68e6a624d177deb10147b5a0550ea38ad33bc6a3852405139d6bb8a11 -->
+<!-- generated: sponza-flat-sampling sha256=e5cd81eac799755a4468a7c458ff7ef6b0122200169a5208bd2d7d890943d78f -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| fixed64 | 11.040 | 34.283 | 0.5096 | 19.462 | 9.163 |
-| fixed32 | 11.060 | 34.031 | 0.5083 | 19.450 | 9.188 |
-| fixed16 | 11.116 | 34.546 | 0.5038 | 19.591 | 9.226 |
-| fixed8 | 11.258 | 34.665 | 0.4934 | 19.942 | 9.329 |
-| area0.25 | 11.561 | 37.603 | 0.4844 | 20.939 | 9.471 |
-| min4 | 11.683 | 37.344 | 0.4706 | 20.669 | 9.672 |
-| fixed4 | 11.720 | 37.645 | 0.4676 | 20.698 | 9.713 |
-| area0.5 | 12.002 | 40.511 | 0.4666 | 21.930 | 9.777 |
-| min2 | 12.141 | 39.861 | 0.4542 | 21.631 | 10.022 |
-| declared | 12.494 | 42.823 | 0.4429 | 22.691 | 10.216 |
-| max32 | 12.494 | 42.823 | 0.4429 | 22.691 | 10.216 |
-| fixed2 | 12.501 | 42.783 | 0.4399 | 21.973 | 10.389 |
-| max8 | 12.505 | 42.803 | 0.4430 | 22.702 | 10.228 |
-| sky512 | 12.524 | 42.736 | 0.4429 | 22.693 | 10.251 |
-| sky64 | 12.525 | 42.828 | 0.4421 | 22.686 | 10.253 |
-| sky256 | 12.527 | 42.739 | 0.4424 | 22.700 | 10.254 |
-| max4 | 12.549 | 43.257 | 0.4406 | 22.721 | 10.274 |
-| sky32 | 12.656 | 42.833 | 0.4419 | 22.719 | 10.404 |
-| sky16 | 13.003 | 42.851 | 0.4382 | 22.738 | 10.819 |
-| area2 | 13.138 | 46.215 | 0.4197 | 23.428 | 10.843 |
-| centroid | 13.181 | 47.239 | 0.4064 | 23.602 | 10.863 |
-| fixed1 | 13.587 | 47.571 | 0.3950 | 23.896 | 11.290 |
+| fixed64 | 10.973 | 33.694 | 0.5114 | 19.312 | 9.108 |
+| fixed32 | 11.005 | 33.681 | 0.5100 | 19.374 | 9.133 |
+| fixed16 | 11.064 | 34.118 | 0.5038 | 19.485 | 9.179 |
+| fixed8 | 11.216 | 34.422 | 0.4950 | 19.861 | 9.289 |
+| area0.25 | 11.483 | 36.892 | 0.4861 | 20.781 | 9.400 |
+| min4 | 11.673 | 37.135 | 0.4723 | 20.672 | 9.658 |
+| fixed4 | 11.703 | 37.395 | 0.4685 | 20.713 | 9.687 |
+| area0.5 | 11.941 | 40.082 | 0.4679 | 21.869 | 9.716 |
+| min2 | 12.107 | 39.445 | 0.4550 | 21.582 | 9.989 |
+| declared | 12.412 | 41.872 | 0.4454 | 22.516 | 10.152 |
+| max32 | 12.413 | 41.872 | 0.4452 | 22.515 | 10.153 |
+| max8 | 12.420 | 41.871 | 0.4447 | 22.527 | 10.160 |
+| sky256 | 12.424 | 41.845 | 0.4449 | 22.500 | 10.170 |
+| sky512 | 12.430 | 41.847 | 0.4447 | 22.509 | 10.175 |
+| sky64 | 12.437 | 41.833 | 0.4451 | 22.505 | 10.184 |
+| fixed2 | 12.459 | 42.246 | 0.4396 | 21.875 | 10.362 |
+| max4 | 12.474 | 42.230 | 0.4421 | 22.537 | 10.222 |
+| sky32 | 12.533 | 41.878 | 0.4436 | 22.547 | 10.289 |
+| sky16 | 12.845 | 41.872 | 0.4408 | 22.570 | 10.660 |
+| area2 | 13.032 | 45.316 | 0.4211 | 23.397 | 10.721 |
+| centroid | 13.069 | 45.968 | 0.4077 | 23.342 | 10.774 |
+| fixed1 | 13.549 | 46.618 | 0.3931 | 23.817 | 11.261 |
 <!-- /generated: sponza-flat-sampling -->
 
 The sheet of the committed flat bake, left to right the reference,
@@ -128,14 +128,14 @@ heatmaps and enlarged differences. The generated comparison below reports
 appearance, normal error, path culling and predicted time. GPU fits are scratch
 recipe outputs; the board table measures the committed scene assets.
 
-<!-- generated: sponza-gpu sha256=c89201778d046d99060fb062744dd73a39dc7325097f36e59c8ea7a6925689e3 -->
+<!-- generated: sponza-gpu sha256=decf3f2d0a7a868846d254ab93e24c3921689a5ef137defdd1e4780ed0c243ad -->
 | Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
 |---|---|---|---|---|---|---|
 | lite-GI-bake | 8670 | 10.997 | 33.754 | 0.540 | 26.210 | 45.711 |
-| lite-GI-fit | 8672 | 5.618 | 15.175 | 0.752 | 15.741 | 45.791 |
+| lite-GI-fit | 8672 | 5.631 | 15.285 | 0.751 | 15.606 | 45.890 |
 | full-GI-bake | 17374 | 9.033 | 27.568 | 0.599 | 21.154 | 57.443 |
 | full-path-culled | 11974 | 9.025 | 27.501 | 0.600 | 19.118 | 51.326 |
-| full-GI-fit | 17287 | 5.170 | 13.436 | 0.787 | 13.279 | 57.356 |
+| full-GI-fit | 17287 | 5.143 | 13.330 | 0.788 | 13.248 | 57.478 |
 
 ![lite GI bake and fit](../images/render/gpu/appearance-indirect-lite.png)
 ![lite GI bake and fit.crops](../images/render/gpu/appearance-indirect-lite.crops.png)
@@ -155,16 +155,16 @@ held-out appearance against predicted time. These
 predictions use the cost weights; refresh the board stage before interpreting
 them as a model of current hardware performance.
 
-<!-- generated: sponza-budget sha256=fcca5f46ea169479c268f034a5751ca48000656ebf3ae6be5838e3161a9c2924 -->
+<!-- generated: sponza-budget sha256=8c988c841bb09f93077965842f52473777fb63cf111b3008df3367af5f3ec2ec -->
 | Budget | Cost weight | Triangles | Held-out dE76 | Predicted ms |
 |---|---|---|---|---|
-| 4000 | 0.0 | 4000 | 5.930 | 37.621 |
-| 4000 | 0.1 | 4000 | 6.042 | 36.226 |
-| 6000 | 0.0 | 6000 | 5.703 | 41.400 |
-| 6000 | 0.1 | 6000 | 5.872 | 38.980 |
-| 8672 | 0.0 | 8672 | 5.618 | 45.791 |
-| 8672 | 0.1 | 8672 | 5.764 | 41.970 |
-| 17381 | 0.0 | 17287 | 5.170 | 57.356 |
+| 4000 | 0.0 | 4000 | 5.918 | 37.585 |
+| 4000 | 0.1 | 4000 | 6.031 | 36.153 |
+| 6000 | 0.0 | 6000 | 5.721 | 41.321 |
+| 6000 | 0.1 | 6000 | 5.885 | 39.002 |
+| 8672 | 0.0 | 8672 | 5.631 | 45.890 |
+| 8672 | 0.1 | 8672 | 5.793 | 41.890 |
+| 17381 | 0.0 | 17287 | 5.143 | 57.478 |
 
 ![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)
 <!-- /generated: sponza-budget -->
@@ -172,13 +172,13 @@ them as a model of current hardware performance.
 The normal sweep varies the normal term while retaining the lite recipe's
 other settings. The angle heatmaps show where geometry differs from the source.
 
-<!-- generated: sponza-normal sha256=b1f9633bbdfb1a9a884d2c2613edc1046af46bd6fc26bb48b4ec97d536524084 -->
+<!-- generated: sponza-normal sha256=9a803746d1962ef11dcc7dde9f1ff47786829eb22c4109593fe7644679ceb088 -->
 | Normal weight | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
 |---|---|---|---|---|---|---|
-| normal-0 | 8672 | 5.655 | 15.382 | 0.750 | 19.932 | 45.506 |
-| normal-0.1 | 8672 | 5.659 | 15.393 | 0.749 | 18.781 | 45.519 |
-| normal-0.3 | 8672 | 5.623 | 15.182 | 0.751 | 17.828 | 45.663 |
-| normal-1 | 8672 | 5.618 | 15.175 | 0.752 | 15.741 | 45.791 |
+| normal-0 | 8672 | 5.622 | 15.169 | 0.751 | 19.802 | 45.447 |
+| normal-0.1 | 8672 | 5.609 | 15.152 | 0.751 | 18.576 | 45.465 |
+| normal-0.3 | 8672 | 5.639 | 15.205 | 0.750 | 17.618 | 45.559 |
+| normal-1 | 8672 | 5.631 | 15.285 | 0.751 | 15.606 | 45.890 |
 
 ![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)
 <!-- /generated: sponza-normal -->
