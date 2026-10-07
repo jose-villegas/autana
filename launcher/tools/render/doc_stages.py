@@ -401,7 +401,7 @@ def _gpu(args, out, work, executor):
                 normal_rows.append(rows[-1])
             (out / "tables/sponza-normal.md").write_text(markdown(
                 ["Normal weight", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], normal_rows) +
-                "\n![Normal angle heatmaps](../../../../../docs/images/render/gpu/appearance-normal-heat.png)\n")
+                "\n![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)\n")
             command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
                        out / "render/gpu/appearance-normal-heat.png"]
             for normal in normal_weights:
@@ -426,16 +426,16 @@ def _gpu(args, out, work, executor):
     (out / "tables/sponza-budget.md").write_text(markdown(
         ["Budget", "Cost weight", "Triangles", "Held-out dE76", "Predicted ms"],
         [(row["budget"], row["cost_weight"], row["triangles"], f'{row["mean_delta_e"]:.3f}', f'{row["predicted_ms"]:.3f}')
-         for row in sweep]) + "\n![Budget and cost sweep](../../../../../docs/images/render/gpu/appearance-pareto.png)\n")
+         for row in sweep]) + "\n![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)\n")
     (out / "tables/sponza-gpu.md").write_text(markdown(
         ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], rows[:2] +
         [row for row in rows if row[0].startswith("full-")]) + "\n" + "\n".join(
-        f"![{prefix} GI bake and fit{suffix}](../../../../../docs/images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
+        f"![{prefix} GI bake and fit{suffix}](../images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
         for prefix in ("lite", "full") for suffix in ("", ".crops")) + "\n")
     with (out / "tables/sponza-gpu.md").open("a") as output:
-        output.write("\n![Full bake and path cull](../../../../../docs/images/render/gpu/appearance-path-culled.png)\n")
+        output.write("\n![Full bake and path cull](../images/render/gpu/appearance-path-culled.png)\n")
         if (out / "render/gpu/appearance-path-culled.crops.png").exists():
-            output.write("\n![Path cull differences](../../../../../docs/images/render/gpu/appearance-path-culled.crops.png)\n")
+            output.write("\n![Path cull differences](../images/render/gpu/appearance-path-culled.crops.png)\n")
     (out / "measurements.json").write_text(json.dumps({"source": stamp, "rows": rows, "sweep": sweep}, indent=2) + "\n")
     apply_tables(ROOT, out / "tables")
     for image in (out / "render/gpu").glob("*.png"):
