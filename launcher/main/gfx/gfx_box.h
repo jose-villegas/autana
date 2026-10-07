@@ -29,6 +29,14 @@ gfx_box_extend(gfx_box_t* box, gfx_box_t addition) {
     box->y1 = mathi_max(box->y1, addition.y1);
 }
 
+static inline void
+gfx_box_clip_rect(const gfx_box_t* clip, int* x0, int* y0, int* x1, int* y1) {
+    *x0 = mathi_max(*x0, clip->x0);
+    *x1 = mathi_min(*x1, clip->x1);
+    *y0 = mathi_max(*y0, clip->y0);
+    *y1 = mathi_min(*y1, clip->y1);
+}
+
 /* Cohen-Sutherland outcodes: one bit per edge the point lies outside of. */
 enum { GFX_BOX_OUT_LEFT = 1, GFX_BOX_OUT_RIGHT = 2, GFX_BOX_OUT_TOP = 4, GFX_BOX_OUT_BOTTOM = 8 };
 

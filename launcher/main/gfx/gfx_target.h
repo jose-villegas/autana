@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "gfx/gfx_box.h"
 #include "gfx/gfx_color.h"
 
 typedef struct {
@@ -44,6 +45,13 @@ gfx_target_clip_y(gfx_target_t target, int clip_y0, int clip_y1, int* y0, int* y
     if (*y1 > target.y0 + target.height) {
         *y1 = target.y0 + target.height;
     }
+}
+
+static inline void
+gfx_target_clip_rect(gfx_target_t target, gfx_box_t clip, int* x0, int* y0, int* x1, int* y1) {
+    clip.y0 = mathi_max(clip.y0, target.y0);
+    clip.y1 = mathi_min(clip.y1, target.y0 + target.height);
+    gfx_box_clip_rect(&clip, x0, y0, x1, y1);
 }
 
 /* The row pointer for absolute row `y`, once it is known to lie inside
@@ -76,13 +84,7 @@ gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1,
                      int h, gfx_color_t color, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
     int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
 
-    if (x0 < clip_x0) {
-        x0 = clip_x0;
-    }
-    if (x1 > clip_x1) {
-        x1 = clip_x1;
-    }
-    gfx_target_clip_y(target, clip_y0, clip_y1, &y0, &y1);
+    gfx_target_clip_rect(target, (gfx_box_t){clip_x0, clip_y0, clip_x1, clip_y1}, &x0, &y0, &x1, &y1);
 
     for (int row = y0; row < y1; row++) {
         gfx_color_t* dst = gfx_target_row(target, row) + x0;
