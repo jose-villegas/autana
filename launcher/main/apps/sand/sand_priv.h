@@ -1125,20 +1125,30 @@ latch_content_flags(sand_t* s, cell_t cell) {
     }
 }
 
-/* The four cardinals every per-cell reaction pass walks - fire chemistry and
- * tree growth both need it, unlike ring_dir()'s 8-way table above.
- *
- * int8_t, not int, is what fs7 bought: 8 bytes a copy, not 32. `static` pays
- * one extra copy for the four `#pragma GCC unroll 4` walks in
- * sand_reactions.c - behind `extern` those pragmas are worth under half as
- * much. Neither form folds the offsets (objdump: `lb 0(a5)` survives every
- * unrolled copy), so `extern` is not a way to keep the win. */
+/* The static int8_t table costs eight bytes per translation unit: behind extern,
+ * the GCC unroll 4 walks in sand_reactions.c are worth under half as much.
+ * Neither form folds the offsets; lb 0(a5) survives every unrolled copy. */
 static const int8_t reaction_dirs[4][2] = {
     {0, -1},
     {0, 1},
     {-1, 0},
     {1, 0},
 };
+
+/* Bodies stay in the caller's loop so break, continue and return keep their
+ * meaning. A caller's GCC unroll pragma applies to the expanded loop. */
+#define SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, at, n, ...)                                                          \
+    for (int nx##_sand_direction = 0; nx##_sand_direction < 4; nx##_sand_direction++) {                                \
+        const int nx = (x) + reaction_dirs[nx##_sand_direction][0];                                                    \
+        const int ny = (y) + reaction_dirs[nx##_sand_direction][1];                                                    \
+        if ((unsigned)nx >= (unsigned)(w) || (unsigned)ny >= (unsigned)(h)) {                                          \
+            continue;                                                                                                  \
+        }                                                                                                              \
+        const size_t at = (size_t)ny * (size_t)(w) + (size_t)nx;                                                       \
+        const cell_t n = (s)->cells[at];                                                                               \
+        (void)n;                                                                                                       \
+        __VA_ARGS__                                                                                                    \
+    }
 
 /* Every cell creation goes through here, so it latches may_have_*; a missed
  * latch freezes the cell. */
