@@ -63,7 +63,9 @@ hooks_resolve(const raster_attachment_t* self, const raster_t* raster, const gfx
 
 static raster_rig_t*
 rig_open(const raster_attachment_t* const* attachments, int count) {
-    return raster_rig_open(wall_and_card, 2, 0, attachments, count, W, H);
+    raster_rig_t* r = raster_rig_open(wall_and_card, 2, 0, W, H, 0);
+    raster_rig_attach(r, attachments, count);
+    return r;
 }
 
 static void
@@ -116,7 +118,8 @@ static void
 test_every_attachment_is_carved_at_the_drawn_size(void) {
     const raster_attachment_t wide = {4, id_clear, NULL, NULL, NULL, NULL, NULL};
     const raster_attachment_t* const one[] = {&wide};
-    raster_rig_t* r = raster_rig_open(wall_and_card, 2, 0, one, 1, 2 * W, 2 * H);
+    raster_rig_t* r = raster_rig_open(wall_and_card, 2, 0, 2 * W, 2 * H, 0);
+    raster_rig_attach(r, one, 1);
     r->raster.width = W;
     r->raster.height = H;
     raster_t plain = r->raster;
