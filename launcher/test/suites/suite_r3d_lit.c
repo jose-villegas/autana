@@ -1761,13 +1761,16 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(upscaled);
 }
 
-/* The buffers a census test works in: freed by the cleanup, so a failed
+/* The buffers a frame test works in: freed by the cleanup, so a failed
  * assertion leaves nothing behind in the arena. */
 static struct {
     void* scratch;
     uint16_t* culled;
     uint16_t* want;
-} census_held;
+    uint16_t* destination;
+    uint16_t* color; /* copies of what was drawn */
+    uint16_t* depth;
+} frame_held;
 
 /* A raster of `instances` drawn as `W` by `H`, upscaled to twice that, with
  * its buffers. */
@@ -1781,14 +1784,14 @@ census_raster(const r3d_instance_t* instances, int count) {
                        .upscaled = true,
                        .destination_width = 2 * W,
                        .destination_height = 2 * H};
-    census_held.scratch = malloc(raster_scratch_bytes(&raster));
-    census_held.culled = malloc(sizeof(uint16_t) * raster_culled_length(&raster));
-    census_held.want = malloc(sizeof(uint16_t) * 2 * (size_t)W * H);
+    frame_held.scratch = malloc(raster_scratch_bytes(&raster));
+    frame_held.culled = malloc(sizeof(uint16_t) * raster_culled_length(&raster));
+    frame_held.want = malloc(sizeof(uint16_t) * 2 * (size_t)W * H);
     suite_set_test_cleanup(release_fixture);
-    TEST_ASSERT_NOT_NULL(census_held.scratch);
-    TEST_ASSERT_NOT_NULL(census_held.culled);
-    TEST_ASSERT_NOT_NULL(census_held.want);
-    raster.scratch = census_held.scratch;
+    TEST_ASSERT_NOT_NULL(frame_held.scratch);
+    TEST_ASSERT_NOT_NULL(frame_held.culled);
+    TEST_ASSERT_NOT_NULL(frame_held.want);
+    raster.scratch = frame_held.scratch;
     return raster;
 }
 
@@ -1796,7 +1799,7 @@ census_raster(const r3d_instance_t* instances, int count) {
  * taken at the next size: the same picture, depth and survivors. */
 static void
 expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int sizes[][2], int z) {
-    uint16_t* want = census_held.want;
+    uint16_t* want = frame_held.want;
     raster->width = sizes[z][0];
     raster->height = sizes[z][1];
     const size_t drawn = (size_t)raster->width * (size_t)raster->height;
@@ -1807,11 +1810,11 @@ expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int s
 
     raster->width = sizes[(z + 1) % 3][0]; /* the census at another size */
     raster->height = sizes[(z + 1) % 3][1];
-    const raster_stats_t counted = raster_census(raster, camera, 0, census_held.culled);
+    const raster_stats_t counted = raster_census(raster, camera, 0, frame_held.culled);
     raster->width = sizes[z][0];
     raster->height = sizes[z][1];
     memset(r3d_pipeline_carve(raster).color, 0xEE, sizeof(uint16_t) * drawn);
-    raster_draw_culled(raster, camera, 0, census_held.culled);
+    raster_draw_culled(raster, camera, 0, frame_held.culled);
 
     TEST_ASSERT_GREATER_THAN_INT(0, direct.clusters);
     TEST_ASSERT_EQUAL_INT(direct.clusters, counted.clusters);
@@ -1847,8 +1850,8 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
 }
 
 /* Each instance's list is as long as its own mesh's clusters: three
- * instances of two meshes with different cluster counts, so the third one's
- * list starts after a list of a different length. */
+ * instances of two meshes, the smaller first, so the list's length and the
+ * third one's start both depend on every mesh's own count. */
 static void
 test_a_census_list_steps_by_each_instances_own_mesh(void) {
     parts_t* const wall = parts_buffer(&shared_parts);
@@ -1857,8 +1860,10 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
     const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&wall->mesh, NULL}, {&floor->mesh, NULL}, {&wall->mesh, &moved}};
+    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, &moved}};
     raster_t raster = census_raster(instances, 3);
+    TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),
+                             (uint32_t)raster_culled_length(&raster));
     expect_census_draws_match_at_any_size(&raster);
 }
 
@@ -1868,9 +1873,9 @@ static void
 test_a_destination_of_the_same_size_is_a_copy(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    gfx_color_t* destination = malloc(sizeof(gfx_color_t) * W * H);
-    gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(
+    gfx_color_t* destination = frame_held.destination = malloc(sizeof(gfx_color_t) * W * H);
+    gfx_color_t* want = frame_held.want = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    char* scratch = frame_held.scratch = malloc(raster_scratch_bytes(
         &(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H, .destination_width = W, .destination_height = H}));
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(want);
@@ -1898,9 +1903,6 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
         }
     }
     TEST_ASSERT_TRUE_MESSAGE(sky > 0 && sky < W * H, "the view shows both the parts and the clear colour");
-    free(scratch);
-    free(want);
-    free(destination);
 }
 
 static int
@@ -1915,9 +1917,9 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
 
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    uint16_t* destination = malloc(sizeof(*destination) * OUT_W * OUT_H);
-    uint16_t* color = malloc(sizeof(*color) * W * H);
-    uint16_t* depth = malloc(sizeof(*depth) * W * H);
+    uint16_t* destination = frame_held.destination = malloc(sizeof(*destination) * OUT_W * OUT_H);
+    uint16_t* drawn = frame_held.color = malloc(sizeof(*drawn) * W * H);
+    uint16_t* drawn_depth = frame_held.depth = malloc(sizeof(*drawn_depth) * W * H);
     raster_t raster = {ONE_MESH(&p->mesh),
                        .width = W,
                        .height = H,
@@ -1926,29 +1928,26 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
                        .destination = destination,
                        .destination_width = OUT_W,
                        .destination_height = OUT_H};
-    raster.scratch = malloc(raster_scratch_bytes(&raster));
+    raster.scratch = frame_held.scratch = malloc(raster_scratch_bytes(&raster));
     TEST_ASSERT_NOT_NULL(destination);
-    TEST_ASSERT_NOT_NULL(color);
-    TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(drawn);
+    TEST_ASSERT_NOT_NULL(drawn_depth);
     TEST_ASSERT_NOT_NULL(raster.scratch);
 
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     raster_draw(&raster, &camera, 0);
-    memcpy(color, r3d_pipeline_carve(&raster).color, sizeof(*color) * W * H);
-    memcpy(depth, r3d_pipeline_carve(&raster).depth, sizeof(*depth) * W * H);
+    memcpy(drawn, r3d_pipeline_carve(&raster).color, sizeof(*drawn) * W * H);
+    memcpy(drawn_depth, r3d_pipeline_carve(&raster).depth, sizeof(*drawn_depth) * W * H);
     raster_upscale(&raster);
     for (int y = 0; y < OUT_H; y++) {
         for (int x = 0; x < OUT_W; x++) {
             const int source_x = nearest_source_index(x, OUT_W, W);
             const int source_y = nearest_source_index(y, OUT_H, H);
             const int source = source_y * W + source_x;
-            TEST_ASSERT_EQUAL_HEX16(depth[source] == R3D_DEPTH_EMPTY ? SKY : color[source], destination[y * OUT_W + x]);
+            TEST_ASSERT_EQUAL_HEX16(drawn_depth[source] == R3D_DEPTH_EMPTY ? SKY : drawn[source],
+                                    destination[y * OUT_W + x]);
         }
     }
-    free(raster.scratch);
-    free(depth);
-    free(color);
-    free(destination);
 }
 
 /* Views of the depth */
@@ -2276,12 +2275,13 @@ release_fixture(void) {
     shared_parts = NULL;
     free(other_parts);
     other_parts = NULL;
-    free(census_held.scratch);
-    free(census_held.culled);
-    free(census_held.want);
-    census_held.scratch = NULL;
-    census_held.culled = NULL;
-    census_held.want = NULL;
+    free(frame_held.scratch);
+    free(frame_held.culled);
+    free(frame_held.want);
+    free(frame_held.destination);
+    free(frame_held.color);
+    free(frame_held.depth);
+    memset(&frame_held, 0, sizeof frame_held);
     free(depth);
     depth = NULL;
     free(color);
