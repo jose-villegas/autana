@@ -23,7 +23,7 @@ test_two_times_matches_the_frame_doubling_reference(void) {
         source[i] = (uint16_t)(0x1200 + i);
     }
     upscale_t scale;
-    const gfx_render_target_t picture = {WIDTH, 0, HEIGHT, 1, {{source, sizeof(uint16_t)}}};
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, 2 * WIDTH, 2 * HEIGHT, columns, rows));
     upscale_rows(&scale, &picture, 0, actual, 0, 2 * HEIGHT);
     for (int y = 0; y < 2 * HEIGHT; y++) {
@@ -44,7 +44,7 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
     enum { WIDTH = 3, HEIGHT = 2 };
 
     uint16_t source[WIDTH * HEIGHT] = {1, 2, 3, 4, 5, 6};
-    const gfx_render_target_t picture = {WIDTH, 0, HEIGHT, 1, {{source, sizeof(uint16_t)}}};
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     for (size_t i = 0; i < sizeof(factors) / sizeof(factors[0]); i++) {
         const int factor = factors[i];
         const int out_width = factor * WIDTH;
@@ -104,7 +104,7 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
         source[i] = (uint16_t)i;
     }
     upscale_t scale;
-    const gfx_render_target_t picture = {WIDTH, 0, HEIGHT, 1, {{source, sizeof(uint16_t)}}};
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, OUT_WIDTH, OUT_HEIGHT, columns, rows));
     upscale_rows(&scale, &picture, 0, whole, 0, OUT_HEIGHT);
     upscale_rows(&scale, &picture, 0, split, 0, OUT_HEIGHT / 2);

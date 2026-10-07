@@ -62,7 +62,7 @@ report_case(const scale_case_t* test_case) {
         source[i] = (uint16_t)i;
     }
     upscale_t scale;
-    const gfx_render_target_t picture = {source_width, 0, source_height, 1, {{source, sizeof(uint16_t)}}};
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, source_width, source_height);
     TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, columns, rows));
     upscale_rows(&scale, &picture, 0, destination, 0, GFX_HEIGHT);
 

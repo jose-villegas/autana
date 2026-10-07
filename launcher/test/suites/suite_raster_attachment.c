@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "r3d_quad_mesh.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -22,26 +23,10 @@
  * front of it, each a mesh drawn as its own instance. */
 static const int16_t wall_positions[][3] = {{-400, -400, 0}, {400, -400, 0}, {400, 400, 0}, {-400, 400, 0}};
 static const int16_t card_positions[][3] = {{-40, -40, 100}, {40, -40, 100}, {40, 40, 100}, {-40, 40, 100}};
-static const uint8_t white[][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
-static const uint16_t facing_z[][3] = {{0, 1, 2}, {0, 2, 3}};
 static const r3d_lit_node_t wall_node = {{-400, -400, 0}, {400, 400, 0}, 0, 1, true};
 static const r3d_lit_node_t card_node = {{-40, -40, 100}, {40, 40, 100}, 0, 1, true};
 static const r3d_lit_cluster_t wall_cluster = {0, 4, 0, 2, {-400, -400, 0}, {400, 400, 0}, true};
 static const r3d_lit_cluster_t card_cluster = {0, 4, 0, 2, {-40, -40, 100}, {40, 40, 100}, true};
-
-static r3d_lit_mesh_t
-quad(const int16_t (*positions)[3], const r3d_lit_cluster_t* cluster, const r3d_lit_node_t* node) {
-    return (r3d_lit_mesh_t){.positions = positions,
-                            .colors = white,
-                            .triangles = facing_z,
-                            .clusters = cluster,
-                            .nodes = node,
-                            .vertex_count = 4,
-                            .triangle_count = 2,
-                            .cluster_count = 1,
-                            .node_count = 1,
-                            .position_scale = 1};
-}
 
 /* An attachment that writes, where a triangle won, its instance plus one
  * times its own `state` factor, so two of them write different values. */
@@ -117,8 +102,8 @@ rig_open(const raster_attachment_t* const* attachments, int count) {
     rig = calloc(1, sizeof(*rig));
     TEST_ASSERT_NOT_NULL(rig);
     suite_set_test_cleanup(release_rig);
-    rig->wall = quad(wall_positions, &wall_cluster, &wall_node);
-    rig->card = quad(card_positions, &card_cluster, &card_node);
+    rig->wall = r3d_quad_mesh(wall_positions, NULL, NULL, &wall_cluster, &wall_node);
+    rig->card = r3d_quad_mesh(card_positions, NULL, NULL, &card_cluster, &card_node);
     rig->instances[0] = (r3d_instance_t){&rig->wall, NULL};
     rig->instances[1] = (r3d_instance_t){&rig->card, NULL};
     rig->raster = (raster_t){.instances = rig->instances,

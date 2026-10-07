@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "r3d_quad_mesh.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -42,6 +43,12 @@ fixture(void) {
     memset(color, 0, sizeof(*color) * W * H);
     memset(depth, 0, sizeof(*depth) * W * H);
     return r3d_span_target(color, depth, W, 0, H);
+}
+
+/* Rows [row0, row1) of the fixture's colour and depth, as a window. */
+static r3d_span_target_t
+fixture_rows(int row0, int row1) {
+    return r3d_span_target(color + (row0 * W), depth + (row0 * W), W, row0, row1);
 }
 
 static r3d_span_vertex_t
@@ -361,8 +368,8 @@ test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
         memcpy(whole_color, color, sizeof(*color) * W * H);
         memcpy(whole_depth, depth, sizeof(*depth) * W * H);
         t = fixture();
-        const r3d_span_target_t top = r3d_span_target(color, depth, W, 0, split);
-        const r3d_span_target_t bottom = r3d_span_target(color + (split * W), depth + (split * W), W, split, H);
+        const r3d_span_target_t top = fixture_rows(0, split);
+        const r3d_span_target_t bottom = fixture_rows(split, H);
         r3d_span_triangle(&top, &v[0], &v[1], &v[2]);
         r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
         for (int y = 0; y < H; y++) {
@@ -462,8 +469,8 @@ test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
         memcpy(whole_color, color, sizeof(*color) * W * H);
         memcpy(whole_depth, depth, sizeof(*depth) * W * H);
         t = fixture();
-        const r3d_span_target_t top = r3d_span_target(color, depth, W, 0, split);
-        const r3d_span_target_t bottom = r3d_span_target(color + (split * W), depth + (split * W), W, split, H);
+        const r3d_span_target_t top = fixture_rows(0, split);
+        const r3d_span_target_t bottom = fixture_rows(split, H);
         draw_shaded(&top, &tri);
         draw_shaded(&bottom, &tri);
         shaded += !r3d_span_extent(&tri.v[0], &tri.v[1], &tri.v[2]).flat && covered() > 0;
@@ -978,8 +985,8 @@ test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does(v
     memcpy(whole_depth, depth, sizeof(*depth) * W * H);
     for (int split = 1; split <= 3; split++) {
         t = fixture();
-        const r3d_span_target_t top = r3d_span_target(color, depth, W, 0, split);
-        const r3d_span_target_t bottom = r3d_span_target(color + (split * W), depth + (split * W), W, split, H);
+        const r3d_span_target_t top = fixture_rows(0, split);
+        const r3d_span_target_t bottom = fixture_rows(split, H);
         r3d_span_triangle(&top, &a, &b, &c);
         r3d_span_triangle(&bottom, &a, &b, &c);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(whole_depth, depth, W * H, "a window changed a pixel's depth");
@@ -1042,8 +1049,8 @@ draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
     r3d_pipeline_rows_t rows[1];
     r3d_pipeline_transform(mesh, &lens, visible, 1, cs, rows);
     (void)fixture();
-    const r3d_span_target_t top = r3d_span_target(color, depth, W, 0, split);
-    const r3d_span_target_t bottom = r3d_span_target(color + (split * W), depth + (split * W), W, split, H);
+    const r3d_span_target_t top = fixture_rows(0, split);
+    const r3d_span_target_t bottom = fixture_rows(split, H);
     r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top);
     r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom);
 }
@@ -1132,7 +1139,7 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
         r3d_pipeline_rows_t rows[1];
         r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
         (void)fixture();
-        const r3d_span_target_t window = r3d_span_target(color + (row0 * W), depth + (row0 * W), W, row0, row1);
+        const r3d_span_target_t window = fixture_rows(row0, row1);
         r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
         TEST_ASSERT_NOT_EQUAL(0, depth[(spots[i][1] * W) + spots[i][0]]);
@@ -1180,7 +1187,6 @@ test_rebuilt_and_fast_triangles_sharing_edges_fill_every_pixel_once(void) {
 /* Camera and pipeline */
 
 static const int16_t quad_positions[][3] = {{-100, -100, 0}, {100, -100, 0}, {100, 100, 0}, {-100, 100, 0}};
-static const uint8_t quad_colors[][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
 static const uint16_t quad_front[][3] = {{0, 1, 2}, {0, 2, 3}};
 static const uint16_t quad_back[][3] = {{0, 2, 1}, {0, 3, 2}};
 
@@ -1190,17 +1196,7 @@ static const r3d_lit_node_t quad_node = {{-100, -100, 0}, {100, 100, 0}, 0, 1, t
 static r3d_lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors, r3d_lit_cluster_t* cluster) {
     *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {-100, -100, 0}, {100, 100, 0}, double_sided};
-    return (r3d_lit_mesh_t){.positions = quad_positions,
-                            .colors = face_colors == NULL ? quad_colors : NULL,
-                            .face_colors = face_colors,
-                            .triangles = triangles,
-                            .clusters = cluster,
-                            .nodes = &quad_node,
-                            .vertex_count = 4,
-                            .triangle_count = 2,
-                            .cluster_count = 1,
-                            .node_count = 1,
-                            .position_scale = 1};
+    return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
 /* The quad faces +z; this camera stands on +z looking back at it. */
@@ -1258,20 +1254,9 @@ static void
 draw_floor(const uint16_t* face_colors) {
     static const int16_t floor_positions[][3] = {
         {-1000, 0, 1000}, {1000, 0, 1000}, {1000, 0, -3000}, {-1000, 0, -3000}};
-    static const uint16_t floor_up[][3] = {{0, 1, 2}, {0, 2, 3}};
     r3d_lit_cluster_t cluster = {0, 4, 0, 2, {-1000, 0, -3000}, {1000, 0, 1000}, false};
     static const r3d_lit_node_t floor_node = {{-1000, 0, -3000}, {1000, 0, 1000}, 0, 1, true};
-    const r3d_lit_mesh_t mesh = {.positions = floor_positions,
-                                 .colors = face_colors == NULL ? quad_colors : NULL,
-                                 .face_colors = face_colors,
-                                 .triangles = floor_up,
-                                 .clusters = &cluster,
-                                 .nodes = &floor_node,
-                                 .vertex_count = 4,
-                                 .triangle_count = 2,
-                                 .cluster_count = 1,
-                                 .node_count = 1,
-                                 .position_scale = 1};
+    const r3d_lit_mesh_t mesh = r3d_quad_mesh(floor_positions, NULL, face_colors, &cluster, &floor_node);
 
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
