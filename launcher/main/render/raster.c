@@ -75,6 +75,18 @@ raster_picture(const raster_t* raster) {
     return picture;
 }
 
+void
+raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
+                      int32_t z, int32_t dz) {
+    const uint16_t* depth = gfx_render_target_depth(rows, y);
+    uint16_t* tag = gfx_render_target_row(rows, writer->attachment, y);
+    for (int x = x_first; x <= x_last; x++, z += dz) {
+        if ((uint16_t)(z >> 8) == depth[x]) {
+            tag[x] = (uint16_t)writer->value;
+        }
+    }
+}
+
 gfx_color_t*
 raster_color(const raster_t* raster) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
