@@ -71,8 +71,10 @@ scratch but there is nothing to upscale it into.
 `scene_render()` advances the clock of every loaded scene, then rebuilds the
 placement of each renderer whose entity moved, fills `instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized
-for the largest enabled mesh and the render size, and grown only when a bigger
-one is drawn.
+for the largest enabled mesh's working buffers, every enabled instance's
+census slot and the render size. Dynamic resolution reserves the finest
+step's raster block; the census list stays at the same offset across steps.
+The block grows only when the required storage exceeds its capacity.
 
 ## Ownership
 

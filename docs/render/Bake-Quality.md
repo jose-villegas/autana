@@ -60,12 +60,12 @@ doc images. The generated fidelity table scores the committed bakes against
 that reference. Metric definitions are in
 [Mesh-Import.md](Mesh-Import.md#fidelity-against-a-reference).
 
-<!-- generated: sponza-fidelity sha256=b29a6c8238437172006d94602ccc0a7390f682d258d2fb81fd0034f480145df4 -->
+<!-- generated: sponza-fidelity sha256=9cc1f473a301ab00c2aebcf4770593e3b87a5199261ea0ca35872279e42b327a -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 9.329 | 27.971 | 0.5871 | 16.596 | 7.717 |
-| Lite smooth | 11.071 | 34.131 | 0.5390 | 19.418 | 9.217 |
-| Flat, committed | 12.633 | 43.305 | 0.4473 | 22.484 | 10.448 |
+| Full smooth | 9.239 | 26.945 | 0.5989 | 16.153 | 7.691 |
+| Lite smooth | 11.346 | 33.239 | 0.5330 | 19.450 | 9.570 |
+| Flat, committed | 12.302 | 42.611 | 0.4517 | 21.852 | 10.163 |
 <!-- /generated: sponza-fidelity -->
 
 The flat and smooth bakes differ in how colour varies across a face. The
@@ -73,10 +73,10 @@ generated comparison scores the same fidelity poses. The sheet and enlarged
 crops in [The Sponza variants](#the-sponza-variants)
 show where that difference lies.
 
-<!-- generated: sponza-flat-smooth sha256=16217b2aa653ea025f38c3600ac2205263cfb2f5eb1d47507396dc48e4a4ac52 -->
+<!-- generated: sponza-flat-smooth sha256=8d2b2d946c40e9494dadb134c0b5f379c1fec74dfecea95bc3434b18c3b6e9be -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Flat against smooth, fidelity poses | 9.974 | 35.222 | 0.5536 | 17.662 | 8.760 |
+| Flat against smooth, fidelity poses | 9.789 | 32.787 | 0.5504 | 16.616 | 8.761 |
 <!-- /generated: sponza-flat-smooth -->
 
 The flat sampling sweep re-bakes the current scene over the same geometry
@@ -85,31 +85,31 @@ Labels beginning with min or max change the auto bounds; area scales the
 median face area; sky changes the sky-ray count. Sampling changes bake
 quality without adding work to the runtime renderer.
 
-<!-- generated: sponza-flat-sampling sha256=3a39a782aa8db7f47c5ef37affdbce34b3b5e97922c603ccf5db0de0a9e43613 -->
+<!-- generated: sponza-flat-sampling sha256=4c599d8437e1511a8458a344d1092db398f02def02963d039d2e62599ded762b -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| fixed64 | 11.319 | 36.563 | 0.5036 | 19.637 | 9.464 |
-| fixed32 | 11.357 | 36.804 | 0.5017 | 19.703 | 9.496 |
-| fixed16 | 11.422 | 36.319 | 0.4967 | 19.812 | 9.551 |
-| fixed8 | 11.595 | 36.718 | 0.4863 | 20.178 | 9.687 |
-| area0.25 | 11.694 | 37.980 | 0.4834 | 20.799 | 9.666 |
-| min4 | 11.972 | 39.144 | 0.4697 | 20.984 | 9.969 |
-| area0.5 | 12.061 | 40.238 | 0.4683 | 21.878 | 9.877 |
-| fixed4 | 12.115 | 40.294 | 0.4625 | 21.096 | 10.123 |
-| min2 | 12.310 | 40.794 | 0.4578 | 21.697 | 10.222 |
-| fixed2 | 12.462 | 40.639 | 0.4431 | 21.767 | 10.394 |
-| max32 | 12.642 | 43.225 | 0.4467 | 22.592 | 10.431 |
-| declared | 12.642 | 43.225 | 0.4467 | 22.592 | 10.431 |
-| max8 | 12.644 | 43.221 | 0.4468 | 22.590 | 10.434 |
-| sky64 | 12.649 | 43.205 | 0.4458 | 22.577 | 10.442 |
-| sky256 | 12.652 | 43.221 | 0.4472 | 22.594 | 10.442 |
-| sky512 | 12.654 | 43.231 | 0.4472 | 22.594 | 10.445 |
-| max4 | 12.721 | 44.633 | 0.4427 | 22.667 | 10.515 |
-| sky32 | 12.761 | 43.236 | 0.4454 | 22.621 | 10.568 |
-| sky16 | 13.094 | 43.237 | 0.4423 | 22.650 | 10.963 |
-| area2 | 13.552 | 48.076 | 0.4098 | 23.717 | 11.310 |
-| centroid | 13.648 | 48.899 | 0.4017 | 23.810 | 11.408 |
-| fixed1 | 13.953 | 48.836 | 0.3938 | 23.847 | 11.764 |
+| fixed32 | 10.893 | 34.205 | 0.5160 | 18.653 | 9.149 |
+| fixed64 | 10.917 | 34.293 | 0.5180 | 18.742 | 9.160 |
+| fixed16 | 11.058 | 35.000 | 0.5112 | 18.978 | 9.278 |
+| fixed8 | 11.237 | 35.801 | 0.5046 | 19.309 | 9.424 |
+| area0.25 | 11.421 | 36.902 | 0.4948 | 20.041 | 9.481 |
+| min4 | 11.439 | 36.961 | 0.4864 | 19.966 | 9.519 |
+| fixed4 | 11.460 | 37.079 | 0.4847 | 19.999 | 9.537 |
+| area0.5 | 11.746 | 40.070 | 0.4781 | 21.006 | 9.663 |
+| min2 | 11.891 | 39.655 | 0.4669 | 20.712 | 9.911 |
+| fixed2 | 12.261 | 42.387 | 0.4537 | 20.885 | 10.322 |
+| max8 | 12.305 | 42.628 | 0.4526 | 21.820 | 10.172 |
+| declared | 12.310 | 42.676 | 0.4527 | 21.858 | 10.172 |
+| max32 | 12.310 | 42.676 | 0.4528 | 21.858 | 10.172 |
+| sky64 | 12.312 | 42.649 | 0.4525 | 21.849 | 10.177 |
+| max4 | 12.330 | 42.804 | 0.4514 | 21.873 | 10.193 |
+| sky256 | 12.340 | 42.655 | 0.4522 | 21.872 | 10.206 |
+| sky512 | 12.341 | 42.649 | 0.4522 | 21.877 | 10.206 |
+| sky32 | 12.436 | 42.725 | 0.4520 | 21.894 | 10.316 |
+| sky16 | 12.771 | 42.743 | 0.4486 | 21.947 | 10.709 |
+| centroid | 12.909 | 46.634 | 0.4251 | 22.451 | 10.771 |
+| area2 | 13.120 | 46.903 | 0.4269 | 22.820 | 10.961 |
+| fixed1 | 13.316 | 46.121 | 0.4137 | 22.945 | 11.163 |
 <!-- /generated: sponza-flat-sampling -->
 
 The sheet of the committed flat bake, left to right the reference,
@@ -128,14 +128,14 @@ heatmaps and enlarged differences. The generated comparison below reports
 appearance, normal error, path culling and predicted time. GPU fits are scratch
 recipe outputs; the board table measures the committed scene assets.
 
-<!-- generated: sponza-gpu sha256=decf3f2d0a7a868846d254ab93e24c3921689a5ef137defdd1e4780ed0c243ad -->
+<!-- generated: sponza-gpu sha256=e6a32c68fe3c8bd6a638b145182444447be4f46e8ab997f1f8c9f95638031a14 -->
 | Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
 |---|---|---|---|---|---|---|
-| lite-GI-bake | 8670 | 10.997 | 33.754 | 0.540 | 26.210 | 45.711 |
-| lite-GI-fit | 8672 | 5.631 | 15.285 | 0.751 | 15.606 | 45.890 |
-| full-GI-bake | 17374 | 9.033 | 27.568 | 0.599 | 21.154 | 57.443 |
-| full-path-culled | 11974 | 9.025 | 27.501 | 0.600 | 19.118 | 51.326 |
-| full-GI-fit | 17287 | 5.143 | 13.330 | 0.788 | 13.248 | 57.478 |
+| lite-GI-bake | 8669 | 11.310 | 33.189 | 0.535 | 24.944 | 47.192 |
+| lite-GI-fit | 8672 | 5.673 | 15.353 | 0.749 | 15.390 | 45.473 |
+| full-GI-bake | 17378 | 9.249 | 27.057 | 0.602 | 21.417 | 58.479 |
+| full-path-culled | 10723 | 9.242 | 27.010 | 0.602 | 19.381 | 48.741 |
+| full-GI-fit | 17152 | 5.138 | 13.341 | 0.788 | 13.202 | 56.984 |
 
 ![lite GI bake and fit](../images/render/gpu/appearance-indirect-lite.png)
 ![lite GI bake and fit.crops](../images/render/gpu/appearance-indirect-lite.crops.png)
@@ -155,16 +155,16 @@ held-out appearance against predicted time. These
 predictions use the cost weights; refresh the board stage before interpreting
 them as a model of current hardware performance.
 
-<!-- generated: sponza-budget sha256=8c988c841bb09f93077965842f52473777fb63cf111b3008df3367af5f3ec2ec -->
+<!-- generated: sponza-budget sha256=86eff39d79bc44a2062ee0651d7d99686bf3651e0637a19c550fd402e01c0ade -->
 | Budget | Cost weight | Triangles | Held-out dE76 | Predicted ms |
 |---|---|---|---|---|
-| 4000 | 0.0 | 4000 | 5.918 | 37.585 |
-| 4000 | 0.1 | 4000 | 6.031 | 36.153 |
-| 6000 | 0.0 | 6000 | 5.721 | 41.321 |
-| 6000 | 0.1 | 6000 | 5.885 | 39.002 |
-| 8672 | 0.0 | 8672 | 5.631 | 45.890 |
-| 8672 | 0.1 | 8672 | 5.793 | 41.890 |
-| 17381 | 0.0 | 17287 | 5.143 | 57.478 |
+| 4000 | 0.0 | 4000 | 5.918 | 37.836 |
+| 4000 | 0.1 | 4000 | 6.032 | 36.242 |
+| 6000 | 0.0 | 6000 | 5.704 | 41.349 |
+| 6000 | 0.1 | 6000 | 5.858 | 39.010 |
+| 8672 | 0.0 | 8672 | 5.673 | 45.473 |
+| 8672 | 0.1 | 8672 | 5.791 | 41.727 |
+| 17381 | 0.0 | 17152 | 5.138 | 56.984 |
 
 ![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)
 <!-- /generated: sponza-budget -->
@@ -172,13 +172,13 @@ them as a model of current hardware performance.
 The normal sweep varies the normal term while retaining the lite recipe's
 other settings. The angle heatmaps show where geometry differs from the source.
 
-<!-- generated: sponza-normal sha256=9a803746d1962ef11dcc7dde9f1ff47786829eb22c4109593fe7644679ceb088 -->
+<!-- generated: sponza-normal sha256=074722bdb6056ba84a2ce228780f223740f461abd4501dd37d1e363b01c0ff39 -->
 | Normal weight | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
 |---|---|---|---|---|---|---|
-| normal-0 | 8672 | 5.622 | 15.169 | 0.751 | 19.802 | 45.447 |
-| normal-0.1 | 8672 | 5.609 | 15.152 | 0.751 | 18.576 | 45.465 |
-| normal-0.3 | 8672 | 5.639 | 15.205 | 0.750 | 17.618 | 45.559 |
-| normal-1 | 8672 | 5.631 | 15.285 | 0.751 | 15.606 | 45.890 |
+| normal-0 | 8672 | 5.669 | 15.233 | 0.751 | 18.924 | 45.396 |
+| normal-0.1 | 8672 | 5.662 | 15.363 | 0.749 | 18.239 | 45.528 |
+| normal-0.3 | 8672 | 5.661 | 15.303 | 0.750 | 17.056 | 45.543 |
+| normal-1 | 8672 | 5.673 | 15.353 | 0.749 | 15.390 | 45.473 |
 
 ![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)
 <!-- /generated: sponza-normal -->
@@ -229,15 +229,15 @@ the scene without its `[indirect]` table and its occlusion; the direct-light
 counterparts also drop `[bake].indirect`. The reference resolves bounce detail
 finer than a triangle, which contributes to the remaining error.
 
-<!-- generated: sponza-indirect sha256=4f6b227e0851581439ab768daec3c149bcbb2a4c94b71615e96c4728acad6fdf -->
+<!-- generated: sponza-indirect sha256=d44adbcf21aa19373f4b07e5393a41262cdde4cadfc10d66cd93573becff2378 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth, indirect light | 7.955 | 26.267 | 0.6460 | 16.992 | 6.258 |
-| Lite smooth, indirect light | 9.494 | 31.393 | 0.5890 | 19.638 | 7.587 |
-| Flat, indirect light | 10.483 | 41.319 | 0.5421 | 22.776 | 8.175 |
-| Full smooth, direct light | 10.636 | 27.605 | 0.5920 | 18.460 | 9.155 |
-| Lite smooth, direct light | 11.910 | 33.968 | 0.5471 | 21.155 | 10.167 |
-| Flat, direct light | 12.281 | 40.709 | 0.5345 | 22.958 | 10.273 |
+| Full smooth, indirect light | 7.968 | 25.166 | 0.6563 | 16.721 | 6.311 |
+| Lite smooth, indirect light | 9.759 | 32.179 | 0.5902 | 19.830 | 7.883 |
+| Flat, indirect light | 10.378 | 41.302 | 0.5463 | 21.984 | 8.200 |
+| Full smooth, direct light | 10.828 | 28.395 | 0.5945 | 18.552 | 9.359 |
+| Lite smooth, direct light | 11.972 | 32.382 | 0.5505 | 21.326 | 10.216 |
+| Flat, direct light | 12.346 | 40.781 | 0.5400 | 23.134 | 10.325 |
 <!-- /generated: sponza-indirect -->
 
 The reference beside the smooth bake with direct and indirect light, each
@@ -273,14 +273,14 @@ The generated table scores each look against both references over the
 doc-image poses. The physical-reference columns include the look's difference
 from physical lighting; the own-reference column isolates bake fidelity.
 
-<!-- generated: sponza-indirect-look sha256=28ba1903e2443ed226d5a7d624e9cd30dc9ecf9c07221bd82219f5655e381a9a -->
+<!-- generated: sponza-indirect-look sha256=0e0e214b163fde1b6958577b1f41305bd5b9e1e07615fc843a33fce1ebd986fa -->
 | Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
 |---|---:|---:|---:|---:|
-| Direct light only | 10.636 | | 27.605 | 0.5920 |
-| intensity 1 | 7.955 | 7.955 | 26.267 | 0.6460 |
-| intensity 2 | 8.688 | 9.118 | 26.165 | 0.6264 |
-| intensity 3 | 10.334 | 10.071 | 27.652 | 0.6010 |
-| albedo boost 2 | 9.077 | 9.275 | 26.117 | 0.6178 |
+| Direct light only | 10.828 | | 28.395 | 0.5945 |
+| intensity 1 | 7.968 | 7.968 | 25.166 | 0.6563 |
+| intensity 2 | 8.896 | 9.347 | 26.901 | 0.6365 |
+| intensity 3 | 10.733 | 10.223 | 28.633 | 0.6016 |
+| albedo boost 2 | 9.307 | 9.422 | 26.506 | 0.6267 |
 <!-- /generated: sponza-indirect-look -->
 
 ## Local occlusion

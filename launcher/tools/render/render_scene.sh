@@ -34,6 +34,8 @@
 #                   build, and that folder is built in as the default, so a
 #                   revision comparison running each build alone finds its
 #                   own; AUTANA_ASSET_DIR still overrides it per run.
+#   scene_asset_file OPTIONAL runtime root file, overriding scene_assets;
+#                   --asset-file PATH sets it when building a viewer.
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
@@ -86,9 +88,13 @@ render_scene_packs() {
     _rs_python=$(find_python) || return 1
     _rs_assets="$scene_out_dir/assets"
     set --
-    for _rs_folder in $scene_assets; do
-        set -- "$@" "$(to_native "$_rs_launcher/$_rs_folder")"
-    done
+    if [ -n "$scene_asset_file" ]; then
+        set -- "$(to_native "$scene_asset_file")"
+    else
+        for _rs_folder in $scene_assets; do
+            set -- "$@" "$(to_native "$_rs_launcher/$_rs_folder")"
+        done
+    fi
     "$_rs_python" "$(to_native "$_rs_tools/r3d/build_pack.py")" \
         -o "$(to_native "$_rs_assets")" "$@" > /dev/null || return 1
     if [ -z "$(find "$_rs_assets" -name '*.apak' | head -n 1)" ]; then
@@ -112,6 +118,7 @@ render_scene_build() {
     done
     : "${scene_includes:=}"
     : "${scene_assets:=}"
+    : "${scene_asset_file:=}"
     : "${scene_defines:=}"
     : "${scene_pin:=1}"
 
@@ -147,6 +154,9 @@ render_scene_build() {
             --update-baseline) _rs_repin=1; shift ;;
             --video) _rs_video=1; shift ;;
             --build-only) _rs_build_only=1; shift ;;
+            --asset-file)
+                [ $# -ge 2 ] || { echo "--asset-file needs a scene file" >&2; return 2; }
+                scene_asset_file="$2"; shift 2 ;;
             *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only]" >&2; return 2 ;;
         esac
     done
@@ -186,7 +196,7 @@ render_scene_build() {
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
     _rs_asset_flags=
-    if [ -n "$scene_assets" ]; then
+    if [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; then
         render_scene_packs || return 1
     fi
 
@@ -198,9 +208,13 @@ render_scene_build() {
     # where libm is already part of libc; run_tests.sh ends its own link
     # line the same way. The --wrap pairs hand every scene allocation to
     # render_watch.c.
+    set --
+    if [ -n "$_rs_asset_flags" ]; then
+        set -- "$_rs_asset_flags"
+    fi
     # shellcheck disable=SC2086
     "$_rs_cc" -std=c11 -Wall -Wextra -ffp-contract=off -Wno-unused-parameter -Wno-unused-function \
-        -Wno-unused-variable -O1 -g $_rs_flags $scene_defines $_rs_asset_flags $_rs_files -o "$_rs_bin" \
+        -Wno-unused-variable -O1 -g $_rs_flags $scene_defines "$@" $_rs_files -o "$_rs_bin" \
         -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm || return 1
 }
 
