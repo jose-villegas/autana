@@ -792,7 +792,7 @@ test_root_conduction_through_a_resting_bed_does_not_wake_it(void) {
         fx.loc.last_load_dy = 1;
         rng_seed(&fx.loc.rng, seed);
         fx.loc.rng_seed_base = seed;
-        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
         int moved = 0;
         for (int step = 0; step < 100 && !moved; step++) {
             step_one_conducting_cell(&fx.loc, x, y, LOC_W, LOC_H, reaction_of(MATX(MATX_ROOT)));
@@ -825,7 +825,7 @@ test_plant_drinking_into_a_resting_bed_only_wakes_the_liquid(void) {
         fx.loc.last_load_dy = 1;
         rng_seed(&fx.loc.rng, seed);
         fx.loc.rng_seed_base = seed;
-        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
         int drank = 0;
         const cell_t plant = sand_at(&fx.loc, x, plant_y);
         for (int step = 0; step < 100 && !drank; step++) {
@@ -853,15 +853,14 @@ test_heat_drying_a_resting_bed_does_not_wake_it(void) {
         }
         rng_seed(&fx.loc.rng, seed);
         fx.loc.rng_seed_base = seed;
-        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+        memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
         bool dried = false;
         int awake = 0;
         for (int step = 0; step < 100 && !dried; step++) {
             /* Spoiling changes material and must wake; only a retone tests drying. */
             sand_set(&fx.loc, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
             sand_set(&fx.loc, x, y + 1, CELL_SOIL(MAT_DIRT, 0, SOIL_MOISTURE_MAX));
-            memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER,
-                   (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+            memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER, sand_sleep_block_bytes(LOC_W, LOC_H));
             sand_step(&fx.loc, 0, 1, 0);
             const cell_t soil = sand_at(&fx.loc, x, y + 1);
             dried = reaction_of(soil)->soil != 0 && CELL_MOISTURE(soil) < SOIL_MOISTURE_MAX;
