@@ -34,6 +34,5 @@ typedef struct {
  * gfx_color_rgb888() undoes. */
 static inline int
 gfx_palette_index_of(gfx_color_t c, const uint8_t index_map[65536]) {
-    const uint16_t native = (uint16_t)((c >> 8) | (c << 8));
-    return index_map[native];
+    return index_map[gfx_color_swap(c)];
 }

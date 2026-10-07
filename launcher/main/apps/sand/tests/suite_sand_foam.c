@@ -29,7 +29,7 @@
 #include "apps/sand/sand_paint_row.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /*
  * WATER'S FOAM - gathered at crevices, never on a flat run. Curvature

@@ -22,7 +22,7 @@
 #include <stdint.h>
 
 #include "util/build/build_variant.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /* Mirrors gfx.h's GFX_WIDTH/GFX_HEIGHT (BSP_LCD_H_RES/V_RES) as plain
  * literals; this module must stay free of ESP-IDF/BSP headers to compile
@@ -407,8 +407,8 @@ dirty_band_extent(int y0, int y1, int* out_x0, int* out_x1) {
         return false;
     }
 
-    x0 = even_floor(x0);
-    x1 = even_ceil(x1);
+    x0 = mathi_even_floor(x0);
+    x1 = mathi_even_ceil(x1);
     *out_x0 = x0 < 0 ? 0 : x0;
     *out_x1 = x1 > GFX_DIRTY_WIDTH ? GFX_DIRTY_WIDTH : x1;
     return true;

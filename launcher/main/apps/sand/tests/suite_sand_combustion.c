@@ -29,7 +29,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 enum { GAS_RISE_TRIALS = 64, GAS_RISE_STEPS = 8, GAS_RISE_W = 64, GAS_RISE_H = 64 };
 
@@ -1341,8 +1341,7 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
     enum { GW = 56, GH = 40, X0 = 4, X1 = 52, DEPTH = 32 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1451,8 +1450,7 @@ test_snow_does_not_crust_against_open_air(void) {
     enum { GW = 32, GH = 32, X0 = 10, X1 = 22, YTOP = 18, YBOT = GH - 2 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1551,8 +1549,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
     enum { GW = 40, GH = 40, X0 = 8, X1 = 32, YTOP = 16, YBOT = GH - 2 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1615,8 +1612,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
 static void
 test_a_settled_snowbank_crusts_to_ice(void) {
     uint8_t* cells = calloc(W * H, 1);
-    uint8_t* blocks =
-        calloc((size_t)((W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((H + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(W, H), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1711,8 +1707,7 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
     enum { GW = 32, GH = 24, DEPTH = 14, WARMUP = 200, WATCH = 600 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 

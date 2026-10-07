@@ -26,7 +26,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 /*
  * 2D block locality
@@ -36,23 +36,21 @@
  * These exercise 2D locality whichever way gravity points, on a 3x3-block
  * grid, which is the smallest that gives "far apart" a meaning.
  */
-#define LOC_W_CAP      (((SAND_BLOCK_W + 2) > 128) ? (SAND_BLOCK_W + 2) : 128)
+#define LOC_W_CAP (((SAND_BLOCK_W + 2) > 128) ? (SAND_BLOCK_W + 2) : 128)
 /* Capped, and malloc'd per test rather than `static`: this file also
  * compiles into the device build, where a `static` array is permanent BSS
  * for the whole boot. A block-size tuning experiment (SAND_BLOCK_H=64) once
  * grew a `static loc_cells` from 2304 to 9216 bytes, and the already-tight
  * device heap (framebuffer alone claims 322 of ~424 KiB) could not spare it
  * for the rest of that boot. */
-#define LOC_H_CAP      (((SAND_BLOCK_H + 2) > 128) ? (SAND_BLOCK_H + 2) : 128)
+#define LOC_H_CAP (((SAND_BLOCK_H + 2) > 128) ? (SAND_BLOCK_H + 2) : 128)
 /* The cap can't be a flat 128 independent of block size:
  * test_a_block_wakes_when_disturbed_diagonally() needs LOC_H >=
  * SAND_BLOCK_H + 2 to exist on the grid at all, and sand_set() on an
  * out-of-range cell is a silent no-op, so a flat cap below that would fail
  * the test on unrelated grounds once SAND_BLOCK_H passed ~42. */
-#define LOC_W          (((SAND_BLOCK_W * 3) < LOC_W_CAP) ? (SAND_BLOCK_W * 3) : LOC_W_CAP)
-#define LOC_H          (((SAND_BLOCK_H * 3) < LOC_H_CAP) ? (SAND_BLOCK_H * 3) : LOC_H_CAP)
-#define LOC_BLOCK_COLS ((LOC_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define LOC_BLOCK_ROWS ((LOC_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define LOC_W     (((SAND_BLOCK_W * 3) < LOC_W_CAP) ? (SAND_BLOCK_W * 3) : LOC_W_CAP)
+#define LOC_H     (((SAND_BLOCK_H * 3) < LOC_H_CAP) ? (SAND_BLOCK_H * 3) : LOC_H_CAP)
 static uint8_t* loc_cells;
 static uint8_t* loc_sleep_blocks;
 
@@ -62,7 +60,7 @@ static uint8_t* loc_sleep_blocks;
 static void
 loc_fixture(void) {
     loc_cells = malloc((size_t)LOC_W * LOC_H);
-    loc_sleep_blocks = malloc((size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+    loc_sleep_blocks = malloc(sand_sleep_block_bytes(LOC_W, LOC_H));
     TEST_ASSERT_NOT_NULL(loc_cells);
     TEST_ASSERT_NOT_NULL(loc_sleep_blocks);
 
@@ -188,7 +186,7 @@ test_a_block_wakes_when_disturbed_diagonally(void) {
 static void
 test_an_interior_write_wakes_only_its_block(void) {
     loc_fixture();
-    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST, (size_t)LOC_BLOCK_COLS * LOC_BLOCK_ROWS);
+    memset(loc_sleep_blocks, BLOCK_SETTLED_NEAREST, sand_sleep_block_bytes(LOC_W, LOC_H));
 
     sand_set(&fx.loc, SAND_BLOCK_W + 2, SAND_BLOCK_H + 2, SAND_FIRST_SHADE);
     const int awake = count_awake_blocks(&fx.loc);
@@ -274,8 +272,6 @@ test_sideways_tilt_wakes_only_the_disturbed_column(void) {
 #define POOL_WALL_ROWS  3
 #define POOL_WATER_COLS (POOL_W / 8)
 #define POOL_WATER_H    (POOL_H - POOL_WALL_ROWS - 1)
-#define POOL_BLOCK_COLS ((POOL_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define POOL_BLOCK_ROWS ((POOL_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
 /* malloc'd/freed per-test rather than static - a static array here is
  * permanent BSS for the whole device boot in any build that links this
  * suite (diagnostics), not just while this test runs. See loc_fixture()'s
@@ -287,7 +283,7 @@ static sand_t* pool_p;
 static void
 pool_fixture(void) {
     pool_cells = malloc((size_t)POOL_W * POOL_H);
-    pool_sleep_blocks = malloc((size_t)POOL_BLOCK_COLS * POOL_BLOCK_ROWS);
+    pool_sleep_blocks = malloc(sand_sleep_block_bytes(POOL_W, POOL_H));
     pool_p = malloc(sizeof *pool_p);
     TEST_ASSERT_NOT_NULL(pool_cells);
     TEST_ASSERT_NOT_NULL(pool_sleep_blocks);
@@ -397,15 +393,13 @@ test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in(void) {
  * so nothing else covers the destination. Un-expanded, the pass finds no
  * liquid and switches itself off with the water still on screen.
  */
-#define CROSS_BLOCK_W    40
-#define CROSS_BLOCK_H    80
-#define CROSS_BLOCK_COLS ((CROSS_BLOCK_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define CROSS_BLOCK_ROWS ((CROSS_BLOCK_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define CROSS_BLOCK_W 40
+#define CROSS_BLOCK_H 80
 
 static void
 test_water_falling_into_the_next_block_down_still_spreads(void) {
     uint8_t* cells = malloc((size_t)CROSS_BLOCK_W * CROSS_BLOCK_H);
-    uint8_t* blocks = malloc((size_t)CROSS_BLOCK_COLS * CROSS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(CROSS_BLOCK_W, CROSS_BLOCK_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -509,15 +503,13 @@ test_water_crosses_a_block_boundary_sideways(void) {
  * all of them while still producing bad indices at the screen's true edges.
  * This drives grains into every block edge, the two partial ones included,
  * under every gravity direction the dithering can produce. */
-#define STRESS_W          184
-#define STRESS_H          224
-#define STRESS_BLOCK_COLS ((STRESS_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-#define STRESS_BLOCK_ROWS ((STRESS_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)
+#define STRESS_W 184
+#define STRESS_H 224
 
 static void
 test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc((size_t)STRESS_BLOCK_COLS * STRESS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -576,7 +568,7 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
 static void
 test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc((size_t)STRESS_BLOCK_COLS * STRESS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -610,7 +602,7 @@ test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(
 static void
 test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(void) {
     uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc((size_t)STRESS_BLOCK_COLS * STRESS_BLOCK_ROWS);
+    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 

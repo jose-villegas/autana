@@ -301,7 +301,7 @@ class StyleAuditTest(unittest.TestCase):
             self.util_tree(root)
             gate_tree.write(root, "launcher/main/util/runtime/job.c",
                             "".join(f'#include "util/{sub}/{sub}.h"\n' for sub in self.PURE_UTIL))
-            gate_tree.write(root, "launcher/main/util/math/mathx.h", '#include "util/scalar/scalar.h"\n')
+            gate_tree.write(root, "launcher/main/util/math/vec3x.h", '#include "util/scalar/scalar.h"\n')
             gate_tree.write(root, "launcher/main/util/scalar/fixed.h", '#include "util/math/math.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
@@ -415,6 +415,21 @@ class StyleAuditTest(unittest.TestCase):
             gate_tree.commit(root, "docs")
             findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
         self.assertEqual(findings, [])
+
+    def test_a_named_generated_block_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "docs/Guide.md",
+                            "<!-- generated: scores sha256=" + "0" * 64 + " -->\n| 2 |\n"
+                            "<!-- /generated: scores -->\n<!-- generated: notes -->\n")
+            gate_tree.commit(root, "docs")
+            findings = self.rule_hits(root, "STRAY-HTML-COMMENT")
+        self.assertEqual(findings, [])
+
+    def test_malformed_generated_marker_is_stray(self):
+        lines = ["<!-- generated: Bad_Name -->"]
+        self.assertEqual(1, len(list(check_style_audit.rule_stray_html_comment(
+            pathlib.Path("."), "doc.md", lines))))
 
     def test_a_bullet_right_after_unindented_prose_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp:

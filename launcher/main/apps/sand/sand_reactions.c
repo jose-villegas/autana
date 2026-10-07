@@ -1692,9 +1692,9 @@ acid_bubble(sand_t* s, int x, int y) {
     if ((rng_next(&s->rng) & 0xFF) >= SAND_ACID_BUBBLE_CHANCE) {
         return;
     }
-    const int i_up = (ring_of(dx, dy) + 4) & 7;
+    const int up_index = (ring_of(dx, dy) + 4) & 7;
     const int spread = (int)(rng_next(&s->rng) % 3) - 1; /* -1, 0 or 1 */
-    sand_impulse(s, x, y, (i_up + spread + 8) & 7, SAND_ACID_BUBBLE_SPEED);
+    sand_impulse(s, x, y, (up_index + spread + 8) & 7, SAND_ACID_BUBBLE_SPEED);
 }
 
 /* The dissolver's own evaporate roll; returns whether it turned to gas. */

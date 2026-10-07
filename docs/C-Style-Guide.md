@@ -100,6 +100,34 @@ is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
 a surprise six months later.
 
+### Shared helpers
+
+Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper and extend an existing owner when it fits.
+
+### Token clones
+
+`python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
+compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
+on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
+Extract a shared owner for each new clone that exceeds its file pair's allowance.
+Each sorted file pair has its own budget: new fragments may use only the
+tokens of base fragments that vanished from HEAD; a surviving shrink gives no
+headroom. Renames map to the base names; line shifts do not change a budget.
+Removing another file pair gives no headroom.
+
+Use `--report` to list every pair with file and line ranges, including both
+sides of each new pair. `--min-tokens N` reports a different threshold without
+checking new pairs; the gate's `MIN_TOKENS` defines the enforced threshold.
+
+The gate scans tracked C, C++ and Python under `launcher/`, `scripts/` and
+`editor/`. Vendored component and test-framework directories, generated-banner
+files and fixture-data directories are excluded by rule. Comments and
+whitespace are ignored; identifier names and literal values are abstracted
+for detection. Literal-only fragments and same-file, same-range self-matches
+are excluded. Short helpers below the threshold are missed; longer helpers
+and repeated test setup are detected, so a reported pair needs review before
+extraction. The Linux comment-rules workflow runs the gate.
+
 ## Judgment rules
 
 These rules need a reader who understands the code. Do not add scripts that

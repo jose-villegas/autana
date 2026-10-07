@@ -29,6 +29,8 @@ from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -398,7 +400,8 @@ def rule_personal_path(root, path, text):
 
 
 # RULE: an HTML comment in a doc renders as nothing. Only the gates' own
-# escape markers and a generator's BEGIN/END GENERATED pair are allowed;
+# escape markers, a generator's BEGIN/END GENERATED pair and
+# generated_blocks.py's named block markers are allowed;
 # anything else is a stray aside nobody will see. Scanned across the whole
 # file (not line by line) so a comment wrapped across two lines is still
 # caught, with fenced code blanked first so a shell transcript's own
@@ -407,7 +410,7 @@ def rule_personal_path(root, path, text):
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" +
-    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED")
+    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on

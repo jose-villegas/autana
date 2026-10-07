@@ -161,6 +161,11 @@ long acid_tank(int sand_rows, int acid_rows);
  * tests it was written for need the same unpacking math. */
 int panel_luminance(gfx_color_t c);
 
+/* How far apart two panel colours are: red and blue count twice, green
+ * once, in their own 5/6-bit steps. A rule of thumb for "clearly further
+ * apart", nothing finer. */
+int colour_gap(gfx_color_t x, gfx_color_t y);
+
 /* Count of cells in [x0,x1) x [y0,y1) on grid g that are a growing tree
  * body - an MATX_PLANT tip, or hardened MAT_WOOD - the shape every
  * root/lift/growth test in the split watches spread. */
@@ -231,3 +236,9 @@ void board_bookkeeping_close(void);
  * one hands the next a core still writing into memory about to be freed and
  * handed back. Waits it out before anything reads what it wrote. */
 void collect_core1_lane(void);
+
+/* The caller owns all three allocations and frees them after its last step. */
+sand_t* sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
+
+/* Stack-owned simulations share the same per-test buffers as heap-owned ones. */
+void sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h);

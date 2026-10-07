@@ -4,7 +4,7 @@
 #include <math.h>
 
 #include "ui/ui.h"
-#include "util/scalar/intmath.h"
+#include "util/scalar/mathi.h"
 
 ui_scroll_view_config_t
 ui_scroll_view_default(void) {
@@ -56,7 +56,7 @@ step_momentum(mu_Context* ctx, mu_Container* cnt, uint32_t dt_ms, uint32_t tau_m
         const float decay = expf(-dt / tau);
         const float distance = momentum_v * tau * (1.0f - decay);
         const int max_scroll = max_scroll_y(ctx, cnt);
-        cnt->scroll.y = im_clamp(cnt->scroll.y + lroundf(distance), 0, max_scroll);
+        cnt->scroll.y = mathi_clamp(cnt->scroll.y + lroundf(distance), 0, max_scroll);
         momentum_v *= decay;
         if (cnt->scroll.y == 0 || cnt->scroll.y == max_scroll
             || fabsf(momentum_v) < UI_SCROLL_MOMENTUM_STOP_PX_PER_MS) {
