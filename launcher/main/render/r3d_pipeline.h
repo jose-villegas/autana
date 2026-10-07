@@ -98,6 +98,10 @@ typedef struct {
     uint16_t* visible;           /* mesh->cluster_count entries */
 } r3d_pipeline_buffers_t;
 
+/* The lens `raster` draws through: framed on its picture's shape, fitted to
+ * the size it renders at, for a mesh of `position_scale`. */
+void raster_lens(const raster_t* raster, const camera_t* camera, int position_scale, int quarter, r3d_lens_t* lens);
+
 static inline r3d_pipeline_buffers_t
 r3d_pipeline_carve(const raster_t* raster) {
     char* p = raster->scratch;

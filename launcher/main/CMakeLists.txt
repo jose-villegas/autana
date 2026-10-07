@@ -85,7 +85,7 @@ endif()
 # The frame's view modes: a development tool, with nothing calling them in a
 # release build.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "render/raster_show.c")
+    list(APPEND app_srcs "render/raster_show.c" "render/raster_motion.c")
 endif()
 
 # The console listener: a release image has nobody watching the serial

@@ -83,6 +83,7 @@ sponza_gif sponza-fitted --scene sponza-fitted
 sponza_gif sponza-fitted-full --scene sponza-fitted-full
 sponza_gif sponza-depth --scene sponza --view depth
 sponza_gif sponza-tiles --scene sponza --view tiles
+sponza_gif sponza-motion-vectors --scene sponza --view motion
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
