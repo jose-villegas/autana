@@ -2,8 +2,9 @@
 
 A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
-first; the picture is always upscaled back to the panel by `render/upscale.h`,
-which takes any ratio in either axis. The code is
+first; `render_context_compose()` copies an exact-half draw into the half
+picture when available and otherwise upscales to the panel size with
+`render/upscale.h`, which takes any ratio in either axis. The code is
 `launcher/main/render/resolution/`. It is opt-in, a setting of the render
 context rather than of a scene or a camera: an app turns it on with
 `render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)),
@@ -14,7 +15,9 @@ and with no call every frame draws at the context's fixed scale.
 | Stepped controller | one step at a time, after the cost | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
 | Predictor | any step, before the cost | a linear model of the frame, priced at every step from the triangles culling kept this frame, corrected by measured frames | going finer needs a margin under the budget |
 
-The cost a policy holds is the part that scales: the draw and the upscale.
+The cost a policy holds is the part that scales: the draw and the compose
+each step pays. Calibration uses the render context's compose decision,
+including the copy into the half picture at the exactly-half step.
 The present and whatever an app draws over the scene are not in it. The
 predictor culls once with the picture's unfitted lens, before it chooses a
 size, and draws from the scratch block's census list with a fitted lens. The
