@@ -76,14 +76,13 @@ for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-ful
     [ -f "$RENDER/$crops.crops.png" ] || { echo "$0: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done
 
+. scripts/lib/python.sh
+R3D_PYTHON=$(run find_r3d_python "$PWD")
 # The fidelity sheet: two poses of the committed flat bake against the source
 # model lit per pixel. The reference skips the initial pose.
 # The source model lives in the demo folder and uses Git LFS.
-. scripts/lib/python.sh
-R3D_PYTHON=$(run find_r3d_python "$PWD")
 FIDELITY_FRAMES=5
 FIDELITY_DT=5000
-# The fitted renderer's visibility size matches the reference used to fit it.
 run "$R3D_PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; from r3d.mesh_import import fidelity_poses; sys.stdout.buffer.write(fidelity_poses(load_scene(Path(sys.argv[1])), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])).encode())' \
     "$SCENE" "$FULL" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/fidelity-poses.txt"
 MESH=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; print(next(job.asset_name for job in load_scene(Path(sys.argv[1])).renderers if job.object.name == sys.argv[2]))' "$SCENE" "$FULL")

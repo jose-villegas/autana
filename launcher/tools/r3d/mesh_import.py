@@ -126,13 +126,15 @@ def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True):
 
 
 def fidelity_poses(scene, object_name, frames, dt):
-    """The fidelity video's poses, including the initial reference pose,
-    at the fitted renderer's visibility size."""
+    """frames + 1 poses of the scene camera's path, dt ms apart from time zero,
+    at the visibility size of OBJECT_fitted, so the traced reference matches the
+    one that renderer was fitted against."""
     from anim import track_host
     job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
     camera = scene.camera.component
     return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.visibility.size,
-                            camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt)
+                            camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt,
+                            number_format=".9g")
 
 
 def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):

@@ -16,7 +16,6 @@ Usage:
     python tools/boot_anim/report_boot_anim_perf.py <raw_capture.txt> <out.md>
 
 Exit 2 means the capture has no checkpoint in it to report on.
-
 """
 import argparse
 import re

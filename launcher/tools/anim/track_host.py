@@ -132,11 +132,11 @@ def sample(animation, args):
         return run(["--pack", pack, "--clip", tracks_asset.clip_id(animation), *args])
 
 
-def poses(animation, node, every_ms, width, height, lens, near, until_ms=None):
+def poses(animation, node, every_ms, width, height, lens, near, until_ms=None, number_format=""):
     """The poses file text for camera node `node` of the clip a NAME.anim.toml
-    names, every `every_ms` over the clip, stopping before `until_ms` when given."""
+    names, every `every_ms` over the clip, stopping before `until_ms` when given;
+    lens and near are written with `number_format`."""
     bounds = [] if until_ms is None else ["--until", until_ms]
-    number_format = "" if until_ms is None else ".9g"
     return sample(animation, ["--every", every_ms, *bounds, "--poses", node, width, height,
                               format(lens, number_format), format(near, number_format)])
 
