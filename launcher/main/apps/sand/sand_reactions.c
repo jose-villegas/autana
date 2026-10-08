@@ -48,20 +48,20 @@
  * seen_materials is the same mask being rebuilt from what THIS pass actually
  * walks, so the board can narrow as well as widen - a latch alone only ever
  * grows. */
-static uint8_t present_pair_bits = 0xFFu;
+SAND_FACT static uint8_t present_pair_bits = 0xFFu;
 static uint16_t seen_materials;
 /* The walk's per-cell gates, read from these pass-start copies: the flags
  * themselves are cleared at pass start so a cell latched mid-pass - even
  * behind the scan - keeps its flag, and a gate must not see that clear. */
-static bool present_temperature;
-static bool present_moisture;
+SAND_FACT static bool present_temperature;
+SAND_FACT static bool present_moisture;
 
 /* Can an acid-rain quad exist at all? It needs all four cells to be steam or
  * gas with exactly two steam - so two of each - and a board missing either
  * material can never form one, wherever the cells happen to sit.
  *
  * True until the first pass has looked, since it gates work being skipped. */
-static bool acid_rain_possible = true;
+SAND_FACT static bool acid_rain_possible = true;
 
 /* The densest non-liquid anywhere on the board, from the same mask. A cell at
  * or above it has no possible smotherer, because neighbor_smothers() asks only
@@ -69,7 +69,7 @@ static bool acid_rain_possible = true;
  * the board, not of the cell asking, exactly as the pair bits are.
  *
  * 255 until the first pass has looked: it gates work being skipped. */
-static uint8_t max_smothering_density = 255u;
+SAND_FACT static uint8_t max_smothering_density = 255u;
 
 /* A 17th material would fall out of the mask silently, and a material missing
  * from it reads as absent - which SKIPS work rather than adding it. Wrong
@@ -91,13 +91,20 @@ static uint32_t percolate_accept_mask[8];
 
 /* Reads theirs-only bits. Used by try_heat_transform(), step_one_cold_cell(),
  * conduct_heat(). MAT_EMPTY stores theirs-only bits. */
-static inline uint8_t
+SAND_FACT static inline uint8_t
 pair_theirs_bits(uint8_t theirs) {
     return pair_bits[MAT_EMPTY][theirs];
 }
 
 static inline bool
 neighbor_quenches(const sand_t* s, int nx, int ny, int w, int h) {
+#ifdef SAND_FORCE_WORK
+    const uint8_t* row = dest_row(s, ny);
+    if (row == NULL || (unsigned)nx >= (unsigned)w || CELL_IS_EMPTY(row[nx])) {
+        return false;
+    }
+    const cell_t n = row[nx];
+#else
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
         return false;
     }
@@ -105,7 +112,14 @@ neighbor_quenches(const sand_t* s, int nx, int ny, int w, int h) {
     if (CELL_IS_EMPTY(n)) {
         return false;
     }
-    return (pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_QUENCHES) != 0;
+#endif
+    const bool quenches = !SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_QUENCHES) == 0);
+#ifdef SAND_FORCE_WORK
+    const reaction_t* r = reaction_of(n);
+    return quenches && material_of(n)->kind == KIND_LIQUID && r->flammability == 0 && r->burns == 0;
+#else
+    return quenches;
+#endif
 }
 
 /* Checks burial; returns false on failure. No cover_mask()/covered_at().
@@ -193,7 +207,7 @@ try_heat_transform(sand_t* s, int nx, int ny, int w, int h) {
     if (CELL_IS_EMPTY(n)) {
         return false;
     }
-    if ((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_HEAT_RESPONSIVE) == 0) {
+    if (SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_HEAT_RESPONSIVE) == 0)) {
         return false;
     }
     return try_heat_transform_given(s, nx, ny, w, h, at, n);
@@ -602,9 +616,15 @@ soak_from_liquid(sand_t* s, uint8_t* row, int x, int y, int w, int h, const reac
     SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         /* PAIR_WETS merges wets test into shift-and-test, covering
          * CELL_IS_EMPTY() without materials[] or reaction_of(n). */
-        if ((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_WETS) == 0) {
+        if (SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_WETS) == 0)) {
             continue;
         }
+#ifdef SAND_FORCE_WORK
+        /* The cached reject also avoids loading the liquid's wetting property. */
+        if (CELL_IS_EMPTY(n) || material_of(n)->kind != KIND_LIQUID || reaction_of(n)->wets == 0) {
+            continue;
+        }
+#endif
         *beside_liquid = true;
 
         if (!sand_rng_chance_at(s, nx, ny, SAND_RNG_SLOT_REACT_SOAK_WET_ROLL, soaks)) {
@@ -833,7 +853,7 @@ step_one_soaking_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h, const
      * excludes only `soaks_to == 0` (dirt): `soaks_to` materials (sand)
      * ignore `held` and must keep rolling toward their conversion. */
     const bool moisture_capped = r->soaks_to == 0 && held >= r->moist_max;
-    if (soaks != 0 && r->soaks != 0 && !moisture_capped && liquid_near(s, x, y)
+    if (soaks != 0 && r->soaks != 0 && !moisture_capped && !SAND_SKIP_IF(!liquid_near(s, x, y))
         && soak_from_liquid(s, row, x, y, w, h, r, c, held, soaks, &beside_liquid)) {
         return true;
     }
@@ -1100,7 +1120,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
      * whether this cell sends cold onward this step, and asking it four times
      * would make the rate four times what it reads as. */
     const bool carries =
-        (present_pair_bits & PAIR_CONDUCTS) != 0 && r->chills != 0
+        !SAND_SKIP_IF((present_pair_bits & PAIR_CONDUCTS) == 0) && r->chills != 0
         && (((unsigned)s->step_phase + (unsigned)x * 5u + (unsigned)y * 33u) & (COLD_CARRY_PERIOD - 1u)) == 0u;
     const bool spent_on_heat = carries && cold_carry_walk(s, x, y, w, h);
 
@@ -1177,8 +1197,12 @@ temper_spread_to_neighbors(sand_t* s, int x, int y, int w, int h, const reaction
             continue;
         }
         /* PAIR_QUENCHES avoids reaction_of(n) load. */
-        if ((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_QUENCHES) != 0) {
+        if (!SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_QUENCHES) == 0)) {
+#ifdef SAND_FORCE_WORK
+            wet |= neighbor_quenches(s, nx, ny, w, h);
+#else
             wet = true;
+#endif
         }
         temper_push_into(s, nx, ny, nat, n, r, temp);
     });
@@ -1470,7 +1494,7 @@ conduct_run_starts(const sand_t* s, int rx, int ry, int w, int h) {
      * SRAM: reactions[] is flash-resident DROM behind the i-cache and
      * its 61-byte stride costs a multiply, which measured as 18% of a
      * fire step for four rejects that do nothing. */
-    return (pair_theirs_bits(CELL_MATERIAL(first)) & PAIR_CONDUCTS) != 0;
+    return !SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(first)) & PAIR_CONDUCTS) == 0);
 }
 
 /* Walks the conductor run starting at (*rx, *ry) along (dx, dy), each cell
@@ -1580,7 +1604,7 @@ conduct_heat(sand_t* s, int x, int y, int w, int h) {
      * RNG-NEUTRAL: the conduction roll sits inside the depth loop, which is
      * only reached once a neighbour has passed the PAIR_CONDUCTS reject - so
      * a board with no conductor draws nothing and the stream is untouched. */
-    if ((present_pair_bits & PAIR_CONDUCTS) == 0) {
+    if (SAND_SKIP_IF((present_pair_bits & PAIR_CONDUCTS) == 0)) {
         return false;
     }
 
@@ -1660,7 +1684,7 @@ dissolver_bites(sand_t* s, cell_t n) {
     }
     /* PAIR_DISSOLVABLE: rejects neighbours with dissolvable figure 0 -
      * genuine acid cells only. */
-    if ((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_DISSOLVABLE) == 0) {
+    if (SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_DISSOLVABLE) == 0)) {
         return false;
     }
     /* Cullet is glass milled to grains, and MAT_GLASS has no
@@ -2160,9 +2184,9 @@ react_burning_neighbors(const burning_cell_t* cell, int lava_cooloff) {
             && !confined_blast_available(s)) {
             continue;
         }
-        const uint8_t pair = my_pair_row[CELL_MATERIAL(n)];
-        acted |= (pair & PAIR_IGNITABLE) != 0 && try_ignite_given(s, nx, ny, w, h, nat, n);
-        const burn_neighbor_result_t heat_result = (pair & PAIR_HEAT_RESPONSIVE) != 0
+        SAND_FACT const uint8_t pair = my_pair_row[CELL_MATERIAL(n)];
+        acted |= !SAND_SKIP_IF((pair & PAIR_IGNITABLE) == 0) && try_ignite_given(s, nx, ny, w, h, nat, n);
+        const burn_neighbor_result_t heat_result = !SAND_SKIP_IF((pair & PAIR_HEAT_RESPONSIVE) == 0)
                                                        ? react_burning_heat_neighbor(cell, nx, ny, n, lava_cooloff)
                                                        : BURN_NEIGHBOR_NONE;
         acted |= heat_result != BURN_NEIGHBOR_NONE;
@@ -2191,7 +2215,7 @@ step_one_burning_cell(const reaction_row_t* reaction_row, int x, cell_t grain, c
 
     const burning_cell_t cell = {s, rx, mat, grain, x, y};
 
-    if (s->may_have_liquid && quench_burning_cell(&cell, lit_state)) {
+    if (!SAND_SKIP_IF(!s->may_have_liquid) && quench_burning_cell(&cell, lit_state)) {
         return true;
     }
 
@@ -2207,9 +2231,10 @@ step_one_burning_cell(const reaction_row_t* reaction_row, int x, cell_t grain, c
     }
 
     const int lava_cooloff = is_lava ? ((s->lava_cooloff >= 0) ? s->lava_cooloff : SAND_LAVA_COOLOFF_CHANCE) : 0;
-    const burn_neighbor_result_t neighbor_result = (present_pair_bits & (PAIR_IGNITABLE | PAIR_HEAT_RESPONSIVE)) != 0
-                                                       ? react_burning_neighbors(&cell, lava_cooloff)
-                                                       : BURN_NEIGHBOR_NONE;
+    const burn_neighbor_result_t neighbor_result =
+        !SAND_SKIP_IF((present_pair_bits & (PAIR_IGNITABLE | PAIR_HEAT_RESPONSIVE)) == 0)
+            ? react_burning_neighbors(&cell, lava_cooloff)
+            : BURN_NEIGHBOR_NONE;
     acted |= neighbor_result != BURN_NEIGHBOR_NONE;
     if (neighbor_result == BURN_NEIGHBOR_SOURCE_QUENCHED) {
         return true;
@@ -2272,7 +2297,7 @@ step_one_acid_rain_cell(sand_t* s, int x, int y, int w, int h) {
      *
      * Measured: a screen of smoke and steam reaches this 204247 times a run
      * and forms a quad NEVER - it holds no gas at all. */
-    if (!acid_rain_possible) {
+    if (SAND_SKIP_IF(!acid_rain_possible)) {
         return false;
     }
     if (x + 1 >= w || y + 1 >= h) {
@@ -2343,6 +2368,22 @@ typedef struct {
     bool done;
     unsigned found;
 } reacting_cell_t;
+
+#ifdef SAND_FORCE_WORK
+#define SAND_FORCED_STAGE_SAVE(k)                                                                                      \
+    SAND_FORCED_STATE((k)->rr->s);                                                                                     \
+    const reacting_cell_t forced_cell = *(k)
+#define SAND_FORCED_STAGE_RESTORE(k)                                                                                   \
+    do {                                                                                                               \
+        sand_forced_restore((k)->rr->s, &forced_state);                                                                \
+        if (forced_state.skipped) {                                                                                    \
+            *(k) = forced_cell;                                                                                        \
+        }                                                                                                              \
+    } while (0)
+#else
+#define SAND_FORCED_STAGE_SAVE(k)
+#define SAND_FORCED_STAGE_RESTORE(k) ((void)0)
+#endif
 
 /* The reaction row and burn plan for cell c. */
 static inline __attribute__((always_inline)) const reaction_t*
@@ -2428,8 +2469,9 @@ crust_due(const reacting_cell_t* k) {
     sand_t* s = rr->s;
     const int x = k->x, y = rr->y;
     const reaction_t* r = k->r;
+    /* Rest is a rule here, so crust never forms with sleeping off. */
     const unsigned faces =
-        (r->crusts != 0 && cell_settled(s, x, y))
+        (r->crusts != 0 && SAND_FACT_RULE(cell_settled(s, x, y)))
             ? crust_faces(s, x, y, rr->w, rr->h, CELL_MATERIAL(k->c), CELL_MATERIAL((cell_t)r->crusts_to))
             : 0u;
     const unsigned phase = (unsigned)s->step_phase;
@@ -2484,13 +2526,16 @@ react_stage_chill(reacting_cell_t* k) {
 /* Gated on `may_have_heat_holder` to avoid unnecessary neighbour scans. */
 static inline __attribute__((always_inline)) void
 react_stage_warm(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     const reaction_row_t* rr = k->rr;
-    if (k->done || !(k->r->warms != 0 && present_temperature && rr->s->may_have_heat_holder)) {
+    if (k->done || k->r->warms == 0
+        || SAND_SKIP_IF(SAND_FORCED_IF(!present_temperature || !rr->s->may_have_heat_holder))) {
         return;
     }
     step_one_warming_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r);
     k->found |= FOUND_TEMPERATURE;
     k->done = true;
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Cheap tests first: field, may_have_liquid, then neighbour scan. */
@@ -2527,19 +2572,23 @@ react_stage_fall(reacting_cell_t* k) {
 
 static inline __attribute__((always_inline)) void
 react_stage_drink(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     if (k->done) {
         return;
     }
     const reaction_row_t* rr = k->rr;
-    if (k->r->drinks != 0 && rr->s->may_have_liquid
+    if (k->r->drinks != 0 && !SAND_SKIP_IF(SAND_FORCED_IF(!rr->s->may_have_liquid))
         && step_one_drinking_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r, k->c)) {
         k->found |= FOUND_MOISTURE;
     }
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 static inline __attribute__((always_inline)) void
 react_stage_root(reacting_cell_t* k) {
-    if (k->done || !(k->r->roots != 0 && k->c == (cell_t)k->r->roots_to && present_moisture)) {
+    SAND_FORCED_STAGE_SAVE(k);
+    if (k->done || k->r->roots == 0 || k->c != (cell_t)k->r->roots_to
+        || SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))) {
         return;
     }
     const reaction_row_t* rr = k->rr;
@@ -2551,6 +2600,7 @@ react_stage_root(reacting_cell_t* k) {
         k->found |= FOUND_MOISTURE;
     }
     k->done = true;
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* NEITHER THIS STAGE NOR react_stage_bud() REPORTS FOUND_MOISTURE: both
@@ -2560,37 +2610,44 @@ react_stage_root(reacting_cell_t* k) {
  * stage_soak_dry regardless. */
 static inline __attribute__((always_inline)) void
 react_stage_grow(reacting_cell_t* k) {
-    if (k->done || !(k->r->grows != 0 && present_moisture)) {
+    SAND_FORCED_STAGE_SAVE(k);
+    if (k->done || k->r->grows == 0 || SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))) {
         return;
     }
     const reaction_row_t* rr = k->rr;
     step_one_growing_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r);
     k->done = true;
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Same gate as growing; reached by unlit wood, which falls through every
  * stage above it. */
 static inline __attribute__((always_inline)) void
 react_stage_sprout(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     if (k->done) {
         return;
     }
     const reaction_row_t* rr = k->rr;
-    if (k->r->sprouts != 0 && present_moisture && step_one_sprouting_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r)) {
+    if (k->r->sprouts != 0 && !SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))
+        && step_one_sprouting_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r)) {
         k->found |= FOUND_MOISTURE;
     }
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Same gate again. */
 static inline __attribute__((always_inline)) void
 react_stage_bud(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     if (k->done) {
         return;
     }
     const reaction_row_t* rr = k->rr;
-    if (k->r->buds != 0 && present_moisture) {
+    if (k->r->buds != 0 && !SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))) {
         step_one_budding_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r);
     }
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Each cell enters the stage chain at its material's plan->stage, skipping
@@ -2768,7 +2825,8 @@ fill_burn_plan(burn_plan_t* p, const sand_t* s, const reaction_t* r, const mater
     p->tick_rate = (s->decay >= 0) ? (uint8_t)s->decay : own_rate;
     p->flare = r->flare;
     p->flags = (uint8_t)((lit ? BURN_LIT : 0u)
-                         | ((mat->kind != KIND_LIQUID && r->explodes == 0 && mat->density < max_smothering_density)
+                         | ((mat->kind != KIND_LIQUID && r->explodes == 0
+                             && !SAND_SKIP_IF(mat->density >= max_smothering_density))
                                 ? BURN_SMOTHERS
                                 : 0u)
                          | ((mat->kind == KIND_LIQUID && r->quench_to != 0) ? BURN_LAVA : 0u));
@@ -2781,12 +2839,12 @@ sand_burn_plan_of(cell_t c) {
     return (CELL_MATERIAL(c) == MAT_EXTENDED) ? &extended_plan[CELL_VARIANT(c)] : &material_plan[CELL_MATERIAL(c)];
 }
 
-uint8_t
+SAND_FACT_WRITER uint8_t
 sand_smothering_ceiling(void) {
     return max_smothering_density;
 }
 
-static bool reactions_force_full_walk;
+SAND_FACT static bool reactions_force_full_walk;
 
 void
 sand_reactions_force_full_walk(bool on) {
@@ -2820,14 +2878,14 @@ block_still_moist(const sand_t* s, int x_lo, int x_hi, int y_lo, int y_hi) {
  * whether it still holds one. Cost is bounded by cells in flagged blocks,
  * which is exactly the drying board's own shrinking active region, not
  * REAL_W * REAL_H. */
-static void
+SAND_FACT_WRITER static void
 refresh_moisture_blocks(sand_t* s) {
     for (int by = 0; by < s->block_rows; by++) {
         const int y_lo = by * SAND_BLOCK_H;
         const int y_hi = (y_lo + SAND_BLOCK_H < s->h) ? y_lo + SAND_BLOCK_H : s->h;
         for (int bx = 0; bx < s->block_cols; bx++) {
             uint8_t* const slot = &s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx];
-            if ((*slot & BLOCK_HAS_MOISTURE) == 0) {
+            if (SAND_SKIP_IF((*slot & BLOCK_HAS_MOISTURE) == 0)) {
                 continue;
             }
             const int x_lo = bx * SAND_BLOCK_W;
@@ -2848,8 +2906,9 @@ step_one_reacting_row_liquid_near(sand_t* s, int y, int w, int h) {
     unsigned found = 0;
     const int by = (int)((unsigned)y / SAND_BLOCK_H);
     for (int bx = 0; bx < s->block_cols; bx++) {
-        if ((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx] & (BLOCK_LIQUID_NEAR | BLOCK_HAS_MOISTURE))
-            == 0) {
+        if (SAND_SKIP_IF((s->block_state[(size_t)by * (size_t)s->block_cols + (size_t)bx]
+                          & (BLOCK_LIQUID_NEAR | BLOCK_HAS_MOISTURE))
+                         == 0)) {
             continue;
         }
         const int x_lo = bx * SAND_BLOCK_W;
@@ -3091,17 +3150,17 @@ sand_step_reaction_reach(sand_t* s) {
  * the one a chunk's halo covers, and their stages still draw from the
  * sequential stream. Kept apart from the board's own readiness below so a
  * serial walk can ask which draws a split would have hashed. */
-static bool
+SAND_FACT static bool
 reactions_rules_allow_split(const sand_t* s, bool soak_only) {
     return !soak_only && (s->may_have_materials & (grower_mask() | drinker_mask())) == 0;
 }
 
-static bool
+SAND_FACT_WRITER static bool
 reactions_may_split(const sand_t* s, bool soak_only) {
     return reactions_rules_allow_split(s, soak_only) && sand_chunk_pass_ready(s, SAND_SPLIT_REACTIONS, 0, -1);
 }
 
-static bool
+SAND_FACT_WRITER static bool
 reactions_hash_serial(const sand_t* s, bool soak_only) {
     return sand_rng_forced_hashed() && reactions_rules_allow_split(s, soak_only);
 }
@@ -3150,7 +3209,7 @@ run_reaction_rows(sand_t* s, bool soak_only, bool may_split, bool hash_serial) {
 /* Nothing on the board can react this step. A LIQUID WITH SOMEWHERE TO GO
  * counts: soaking and drinking are the only ways new moisture is made, so
  * water that has not landed yet keeps the pass running. */
-static bool
+SAND_FACT static bool
 reactions_quiet(const sand_t* s) {
     return !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature && !s->may_have_moisture
            && !(s->may_have_liquid && (s->may_have_materials & wettable_mask()) != 0)
@@ -3180,7 +3239,7 @@ smothering_density_of_present(int m, uint8_t densest) {
 
 /* Materials -> bits, once per step, after build_reaction_tables(); the row
  * passes read the result per cell. */
-static void
+SAND_FACT_WRITER static void
 note_present_materials(const sand_t* s) {
     present_pair_bits = 0;
     max_smothering_density = 0;
@@ -3212,7 +3271,7 @@ fill_burn_plans(const sand_t* s) {
  * is left, block-local via liquid_near(). may_have_moisture matters only
  * alongside grower_mask(): grow/sprout/bud/root-weld are its only readers,
  * unreachable with none present. */
-static bool
+SAND_FACT static bool
 reactions_soak_only(const sand_t* s) {
     return !reactions_force_full_walk && !s->may_have_burning && !s->may_have_dissolver && !s->may_have_temperature
            && !(s->may_have_moisture && (s->may_have_materials & grower_mask()) != 0)
@@ -3221,7 +3280,7 @@ reactions_soak_only(const sand_t* s) {
            && s->block_state != NULL;
 }
 
-static void
+SAND_FACT_WRITER static void
 clear_presence_flags(sand_t* s, bool soak_only) {
     present_temperature = s->may_have_temperature;
     present_moisture = s->may_have_moisture;
@@ -3246,7 +3305,7 @@ clear_presence_flags(sand_t* s, bool soak_only) {
     }
 }
 
-static void
+SAND_FACT_WRITER static void
 latch_found_flags(sand_t* s, unsigned found) {
     s->may_have_burning |= (found & FOUND_BURNING) != 0;
     s->may_have_dissolver |= (found & FOUND_DISSOLVER) != 0;
@@ -3273,7 +3332,7 @@ sand_step_reactions(sand_t* s) {
     if (s->fuse_blast_wait != 0) {
         s->fuse_blast_wait--;
     }
-    if (reactions_quiet(s)) {
+    if (SAND_SKIP_IF(reactions_quiet(s))) {
         return;
     }
 
@@ -3281,7 +3340,7 @@ sand_step_reactions(sand_t* s) {
     note_present_materials(s);
     fill_burn_plans(s);
 
-    const bool soak_only = reactions_soak_only(s);
+    const bool soak_only = SAND_SKIP_IF(reactions_soak_only(s));
     sand_reactions_last_was_soak_only = soak_only;
     const bool may_split = reactions_may_split(s, soak_only);
     const bool hash_serial = reactions_hash_serial(s, soak_only);

@@ -144,7 +144,7 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
     if (!neighbour_is_lower(n_row, w, x + px, id, mass, bias_q8)) {
         return false;
     }
-    if (s->may_have_viscous_liquid && !liquid_may_move(s, x, y, id)) {
+    if (!SAND_SKIP_IF(!s->may_have_viscous_liquid) && !liquid_may_move(s, x, y, id)) {
         return false; /* viscosity affects levelling; syrupy liquid would
                          * level instantly sideways, resembling "runny" */
     }
@@ -329,9 +329,9 @@ equalise_row_block(sand_t* s, uint8_t* row, int y, int lo, int hi, int x_step, c
      * already answered "nothing to find" here, 32 rows' worth of times
      * over one block, and the answer cannot have changed since. Skips
      * past rays_blocked() rediscovering the same thing every row. */
-    if (brow != NULL
-        && (brow[bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))
-               == (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) {
+    if (SAND_SKIP_IF(brow != NULL
+                     && (brow[bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))
+                            == (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER))) {
         return span_has_liquid(row, lo, hi, is_liquid);
     }
 
@@ -379,7 +379,7 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
     const int bx_to = (x_step > 0) ? bx_hi : bx_lo - 1;
 
     for (int bx = bx_from; bx != bx_to; bx += x_step) {
-        if (brow != NULL && (brow[bx] & BLOCK_LIQUID_NEAR) == 0) {
+        if (SAND_SKIP_IF(brow != NULL && (brow[bx] & BLOCK_LIQUID_NEAR) == 0)) {
             continue;
         }
         const int lo = mathi_max(bx * SAND_BLOCK_W, x0);
@@ -408,13 +408,13 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
  * reason as finalize_settling_range() (sand.c): every iteration only reads
  * BLOCK_HAS_LIQUID, which nothing here writes, and only writes its own
  * block's NEAR bit. */
-static void
+SAND_FACT_WRITER static void
 mark_liquid_neighbourhoods_range(sand_t* s, int by_from, int by_to) {
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
             uint8_t* slot = &s->block_state[by * s->block_cols + bx];
-            *slot = block_or_neighbour_has_liquid(s, bx, by) ? (uint8_t)(*slot | BLOCK_LIQUID_NEAR)
-                                                             : (uint8_t)(*slot & ~BLOCK_LIQUID_NEAR);
+            *slot = block_neighbourhood_has(s, bx, by, BLOCK_HAS_LIQUID, true) ? (uint8_t)(*slot | BLOCK_LIQUID_NEAR)
+                                                                               : (uint8_t)(*slot & ~BLOCK_LIQUID_NEAR);
         }
     }
 }
@@ -696,7 +696,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
     const uint16_t is_liquid = sort->is_liquid;
     const int dx = sort->dx, dy = sort->dy;
     const int ray_base = sort->ray_base;
-    const bool may_have_viscous_liquid = s->may_have_viscous_liquid;
+    const bool viscous_liquid = !SAND_SKIP_IF(!s->may_have_viscous_liquid);
     const int x0 = sort->x0, xstep = sort->xstep;
     const int xi_first = sort->xi_first, ray_step = sort->ray_step;
     const int uy = y - dy;
@@ -725,7 +725,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
         const bool can_swap =
             ((is_liquid >> mine) & 1u) != 0 && theirs != mine && ((is_liquid >> theirs) & 1u) != 0
             && material_by_id((material_id_t)theirs)->density > material_by_id((material_id_t)mine)->density
-            && (!may_have_viscous_liquid || liquid_may_move(s, x, y, mine));
+            && (!viscous_liquid || liquid_may_move(s, x, y, mine));
         if (!can_swap) {
             continue;
         }
@@ -765,7 +765,8 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
 
 void
 sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
-    if (!s->may_have_liquid) {
+    SAND_FORCED_STATE(s);
+    if (SAND_SKIP_IF(SAND_FORCED_IF(!s->may_have_liquid))) {
         return;
     }
 
@@ -797,10 +798,12 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquids to sort; with one, or none, every cell of this pass would reject
      * and the answer is the same for all of them. A screen of water - what a
      * liquid scene usually is - therefore pays a popcount, not a pass. */
-    const uint16_t liquids_here = s->may_have_materials & liquid_mask();
-    if ((liquids_here & (uint16_t)(liquids_here - 1u)) != 0u && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
+    SAND_FACT const uint16_t liquids_here = s->may_have_materials & liquid_mask();
+    if (!SAND_SKIP_IF((liquids_here & (uint16_t)(liquids_here - 1u)) == 0u)
+        && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
         SAND_PASS_BEGIN(float);
         (void)float_lighter_liquids(s, dx, dy);
         SAND_PASS_END(s, float);
     }
+    sand_forced_restore(s, &forced_state);
 }
