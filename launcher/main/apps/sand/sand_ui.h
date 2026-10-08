@@ -67,7 +67,7 @@ typedef struct {
 #define SAND_BRUSH_SPARSE(cell_, share_pct_) {(cell_), (share_pct_)}
 
 /* Which brush mode: pour, or a persistent source - toggled by tapping the
- * already-selected tile in the palette (see handle_palette_input() in
+ * already-selected tile in the palette (see sand_ui_tile_clicked() in
  * sand_ui.c) and read by app_sand.c's handle_pour_input(). */
 typedef enum { BRUSH_POUR, BRUSH_SPAWN } brush_mode_t;
 
@@ -109,6 +109,13 @@ typedef enum {
 #define SAND_UI_RADIUS_MIN 2
 #define SAND_UI_RADIUS_MAX 64
 
+/* A panel's selection: the choice (brush index or sand_mode_t) and its
+ * setting (that brush's brush_mode_t or that mode's radius). */
+typedef struct {
+    int choice;
+    int setting;
+} sand_ui_selection_t;
+
 typedef struct {
     /* Caller-owned, exactly as sand_t borrows `cells` - this module never
      * sees app_sand.c's tables, only points at them. */
@@ -127,7 +134,7 @@ typedef struct {
      * seeds the three defaults at startup. */
     uint8_t radius_px[SAND_MODE_COUNT];
 
-    /* Set by open_palette()/open_brush() when a finger is already down as
+    /* Set by open_panel() when a finger is already down as
      * the panel opens. Cleared on the first frame input->down goes false -
      * a genuine lift, not any particular click, since a click is no longer
      * seen directly here (see "WHO HIT-TESTS AND WHO DECIDES" above). While
@@ -135,18 +142,11 @@ typedef struct {
      * whatever they are told was clicked. */
     bool swallow_release;
 
-    /* The brush and its mode at the moment the palette opened - recorded on
-     * open, compared against the current brush/mode on close, so the mode
-     * label on the way out confirms a choice only when the choice actually
-     * changed while the panel was open. */
-    int opened_brush;
-    uint8_t opened_mode;
-
-    /* The SAND_UI_BRUSH counterpart to opened_brush/opened_mode above:
-     * mode and its radius at the moment the brush screen opened, compared
-     * on close for the same reason. */
-    sand_mode_t opened_sand_mode;
-    uint8_t opened_radius;
+    /* What the open panel's label confirms, as it stood when the panel
+     * opened: the palette's brush and its mode, the brush screen's mode and
+     * its radius. Compared on close, so the label confirms a choice only
+     * when it actually changed while the panel was open. */
+    sand_ui_selection_t opened;
 } sand_ui_t;
 
 /* One frame's input. Returns a sand_ui_action_t bitmask; this module draws

@@ -1080,21 +1080,6 @@ equalise_gas(sand_t* s, const int* perp, int rdx, int rdy) {
     return found_any;
 }
 
-static void
-choose_gas_sweep_order(const sand_t* s, int rdy, const int** slide_a, const int** slide_b, int* y_from, int* y_to,
-                       int* y_step) {
-    const bool landscape_safe_sweep = rdy == 0 && !s->gas_walk;
-
-    *y_step = (rdy != 0) ? -rdy : (landscape_safe_sweep && (s->step_phase & 1) ? -1 : 1);
-    *y_from = (*y_step > 0) ? 0 : s->h - 1;
-    *y_to = (*y_step > 0) ? s->h : -1;
-    if (landscape_safe_sweep) {
-        const int* const landscape_slide = ((*slide_a)[1] == -*y_step) ? *slide_a : *slide_b;
-        *slide_a = landscape_slide;
-        *slide_b = landscape_slide;
-    }
-}
-
 /* The whole step. */
 
 void
@@ -1115,7 +1100,7 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     const int* sweep_slide_a = rslide_a;
     const int* sweep_slide_b = rslide_b;
     int y_from, y_to, y_step;
-    choose_gas_sweep_order(s, rdy, &sweep_slide_a, &sweep_slide_b, &y_from, &y_to, &y_step);
+    sand_choose_sweep_order(s, rdy, !s->gas_walk, &sweep_slide_a, &sweep_slide_b, &y_from, &y_to, &y_step);
 
     /* driven_by_gravity()'s descent = m . g dot product is against real
      * gravity - feeding it gas's reversed slide vectors together with

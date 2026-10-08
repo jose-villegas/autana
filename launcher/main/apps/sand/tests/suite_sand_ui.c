@@ -46,11 +46,8 @@ fixture(sand_ui_t* ui) {
         .brush = 0,
         .mode = SAND_MODE_PAINT,
         .swallow_release = false,
-        .opened_brush = 0,
-        .opened_mode = BRUSH_POUR,
+        .opened = {0, BRUSH_POUR},
         .radius_px = {0},
-        .opened_sand_mode = SAND_MODE_PAINT,
-        .opened_radius = 0,
     };
 }
 
@@ -108,8 +105,7 @@ test_closing_the_palette_leaves_brush_exactly_as_it_was(void) {
     fixture(&ui);
     ui.brush = 2;
     ui.screen = SAND_UI_PALETTE;
-    ui.opened_brush = 2;
-    ui.opened_mode = BRUSH_POUR;
+    ui.opened = (sand_ui_selection_t){2, BRUSH_POUR};
 
     /* A BOOT press, not a release, while the panel is open: must close
      * nothing - closing on the press edge is the exact bug this guards. */
@@ -122,7 +118,7 @@ test_closing_the_palette_leaves_brush_exactly_as_it_was(void) {
     TEST_ASSERT_EQUAL_INT(2, ui.brush);
 
     /* Only the matching release actually closes it, and the brush is
-     * exactly what it was - close_palette() never assigns to ui->brush. */
+     * exactly what it was - close_panel() never assigns to ui->brush. */
     input_t release = no_input();
     release.boot.released = true;
     const unsigned close_actions = sand_ui_step(&ui, &release);
@@ -164,7 +160,7 @@ test_opening_with_no_finger_down_then_tapping_a_tile_selects_that_tile(void) {
  * BOOT is released leaves that touch's own release still outstanding, and
  * without swallowing it, it would land on whatever tile happens to be
  * under the finger the instant the panel appears - see
- * open_palette()/sand_ui_tile_clicked()'s own comments in sand_ui.c. */
+ * open_panel()/sand_ui_tile_clicked()'s own comments in sand_ui.c. */
 static void
 test_opening_with_a_finger_already_down_then_lifting_selects_nothing(void) {
     sand_ui_t ui;
@@ -268,12 +264,8 @@ test_tapping_a_different_tile_selects_it_and_preserves_its_mode(void) {
     TEST_ASSERT_EQUAL_INT(SAND_MODE_PAINT, ui.mode);
 }
 
-/* The same reset, but starting from DETONATE rather than ERASE - the third
- * leg of the cycle needs its own check rather than trusting that "resets
- * to PAINT" generalises from the ERASE case, since handle_running_input()
- * cycles all three but handle_palette_input() only ever assigns PAINT
- * directly - nothing proves it does that from EVERY starting mode until it
- * is exercised from each one. */
+/* The same reset from DETONATE: sand_ui_tile_clicked() assigns PAINT
+ * whatever the starting mode, and only a check from each mode proves it. */
 static void
 test_selecting_a_tile_while_detonating_resets_to_paint(void) {
     sand_ui_t ui;
@@ -320,7 +312,7 @@ test_tapping_the_selected_tile_toggles_pour_and_spawn(void) {
 /* Same toggle, checked from DETONATE too - the same reasoning as
  * test_selecting_a_tile_while_detonating_resets_to_paint above: a toggle
  * leaving ERASE alone does not by itself prove it leaves DETONATE alone,
- * since handle_palette_input()'s toggle branch never touches `mode` at all
+ * since sand_ui_tile_clicked()'s toggle branch never touches `mode` at all
  * and that has to be checked from each starting mode, not assumed. */
 static void
 test_tapping_the_selected_tile_is_untouched_by_detonate(void) {
@@ -433,8 +425,7 @@ test_a_later_pwr_press_closes_the_brush_screen(void) {
     fixture(&ui);
     ui.screen = SAND_UI_BRUSH;
     ui.mode = SAND_MODE_ERASE;
-    ui.opened_sand_mode = SAND_MODE_ERASE;
-    ui.opened_radius = ui.radius_px[SAND_MODE_ERASE];
+    ui.opened = (sand_ui_selection_t){SAND_MODE_ERASE, ui.radius_px[SAND_MODE_ERASE]};
 
     input_t in = no_input();
     in.power.pressed = true;
@@ -556,8 +547,7 @@ test_closing_the_brush_screen_without_changing_anything_requests_no_label(void) 
     ui.screen = SAND_UI_BRUSH;
     ui.mode = SAND_MODE_ERASE;
     ui.radius_px[SAND_MODE_ERASE] = 16;
-    ui.opened_sand_mode = SAND_MODE_ERASE;
-    ui.opened_radius = 16;
+    ui.opened = (sand_ui_selection_t){SAND_MODE_ERASE, 16};
 
     input_t close = no_input();
     close.power.pressed = true;
@@ -573,8 +563,7 @@ test_closing_the_brush_screen_after_a_real_change_requests_the_label(void) {
     fixture(&ui);
     ui.screen = SAND_UI_BRUSH;
     ui.mode = SAND_MODE_PAINT;
-    ui.opened_sand_mode = SAND_MODE_PAINT;
-    ui.opened_radius = ui.radius_px[SAND_MODE_PAINT];
+    ui.opened = (sand_ui_selection_t){SAND_MODE_PAINT, ui.radius_px[SAND_MODE_PAINT]};
 
     sand_ui_set_radius(&ui, 30); /* the real change - radius, not mode */
 
@@ -586,6 +575,47 @@ test_closing_the_brush_screen_after_a_real_change_requests_the_label(void) {
     TEST_ASSERT_TRUE(actions & SAND_UI_SHOW_LABEL);
 }
 
+typedef enum { CHANGE_NOTHING, CHANGE_CHOICE, CHANGE_SETTING } panel_change_t;
+
+/* Opens a panel through sand_ui_step() from a selection unlike the
+ * fixture's, makes `change`, and closes it with the same button edge. */
+static unsigned
+open_change_close(bool palette, panel_change_t change) {
+    sand_ui_t ui;
+    fixture(&ui);
+    ui.brush = 2;
+    stub_modes[1] = stub_modes[2] = BRUSH_SPAWN;
+    ui.mode = SAND_MODE_ERASE;
+    ui.radius_px[SAND_MODE_ERASE] = ui.radius_px[SAND_MODE_PAINT] = 20;
+
+    input_t edge = no_input();
+    edge.boot.released = palette;
+    edge.power.pressed = !palette;
+    TEST_ASSERT_TRUE(sand_ui_step(&ui, &edge) & (SAND_UI_OPEN_PALETTE | SAND_UI_OPEN_BRUSH));
+
+    if (change == CHANGE_CHOICE && palette) {
+        ui.brush = 1;
+    } else if (change == CHANGE_CHOICE) {
+        ui.mode = SAND_MODE_PAINT;
+    } else if (change == CHANGE_SETTING && palette) {
+        stub_modes[2] = BRUSH_POUR;
+    } else if (change == CHANGE_SETTING) {
+        ui.radius_px[SAND_MODE_ERASE] = 30;
+    }
+    return sand_ui_step(&ui, &edge);
+}
+
+/* Each panel records its own selection as it opens: the palette its brush
+ * and that brush's mode, the brush screen its mode and that mode's radius. */
+static void
+test_a_panel_labels_only_a_change_made_since_it_opened(void) {
+    for (int palette = 0; palette <= 1; palette++) {
+        TEST_ASSERT_FALSE(open_change_close(palette, CHANGE_NOTHING) & SAND_UI_SHOW_LABEL);
+        TEST_ASSERT_TRUE(open_change_close(palette, CHANGE_CHOICE) & SAND_UI_SHOW_LABEL);
+        TEST_ASSERT_TRUE(open_change_close(palette, CHANGE_SETTING) & SAND_UI_SHOW_LABEL);
+    }
+}
+
 static void
 test_closing_without_changing_anything_requests_no_label(void) {
     sand_ui_t ui;
@@ -593,8 +623,7 @@ test_closing_without_changing_anything_requests_no_label(void) {
     ui.brush = 1;
     ui.modes[1] = BRUSH_POUR;
     ui.screen = SAND_UI_PALETTE;
-    ui.opened_brush = 1;
-    ui.opened_mode = BRUSH_POUR;
+    ui.opened = (sand_ui_selection_t){1, BRUSH_POUR};
 
     input_t close = no_input();
     close.boot.released = true;
@@ -611,8 +640,6 @@ test_closing_after_selecting_a_different_tile_requests_the_label(void) {
     fixture(&ui);
     ui.brush = 0;
     ui.screen = SAND_UI_PALETTE;
-    ui.opened_brush = 0;
-    ui.opened_mode = BRUSH_POUR;
 
     sand_ui_tile_clicked(&ui, 2);
     TEST_ASSERT_EQUAL_INT(2, ui.brush);
@@ -632,8 +659,6 @@ test_closing_after_toggling_the_selected_tiles_mode_requests_the_label(void) {
     ui.brush = 0; /* MAT_SAND: emit-capable */
     ui.modes[0] = BRUSH_POUR;
     ui.screen = SAND_UI_PALETTE;
-    ui.opened_brush = 0;
-    ui.opened_mode = BRUSH_POUR;
 
     sand_ui_tile_clicked(&ui, 0);
     TEST_ASSERT_EQUAL_UINT8(BRUSH_SPAWN, ui.modes[0]);
@@ -661,6 +686,7 @@ run_sand_ui_suite(void) {
     RUN_TEST(test_tapping_the_selected_tile_when_it_cannot_emit_does_nothing);
     RUN_TEST(test_tapping_outside_every_tile_does_nothing);
     RUN_TEST(test_closing_without_changing_anything_requests_no_label);
+    RUN_TEST(test_a_panel_labels_only_a_change_made_since_it_opened);
     RUN_TEST(test_closing_after_selecting_a_different_tile_requests_the_label);
     RUN_TEST(test_closing_after_toggling_the_selected_tiles_mode_requests_the_label);
 

@@ -29,6 +29,10 @@ import argparse
 import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools" / "perf"))
+from phase_report import phase_stats, write_phase_report  # noqa: E402
 
 # "I (11692) cube_perf: === CUBE PERF hud_on_partial_on_interlace_off (274 frames over 10s) ==="
 HEADER_RE = re.compile(
@@ -69,19 +73,9 @@ def parse_capture(capture_path: str):
 
         pm = PHASE_RE.search(line)
         if pm and current_label is not None:
-            runs[current_label]["phases"][pm.group("phase")] = {
-                "min": int(pm.group("min")),
-                "max": int(pm.group("max")),
-                "avg": int(pm.group("avg")),
-                "med": int(pm.group("med")),
-                "p95": int(pm.group("p95")),
-            }
+            runs[current_label]["phases"][pm.group("phase")] = phase_stats(pm)
 
     return runs
-
-
-def fps(us: int) -> str:
-    return f"{1000000.0 / us:.1f}" if us > 0 else "?"
 
 
 # A label the suite itself generates, e.g. "hud_on_partial_on_interlace_off" -
@@ -132,47 +126,8 @@ def main() -> int:
             lines.append(f"| `{label}` | ? | ? | ? |")
     lines.append("")
 
-    lines.append("## Comparison (average, us)")
-    lines.append("")
-    lines.append("| Phase | " + " | ".join(f"`{label}`" for label in labels) + " |")
-    lines.append("|---|" + "---:|" * len(labels))
-    for phase in PHASE_ORDER:
-        row = [f"{phase} (us)"]
-        for label in labels:
-            p = runs[label]["phases"].get(phase)
-            row.append(str(p["avg"]) if p else "?")
-        lines.append("| " + " | ".join(row) + " |")
-    lines.append("")
-    lines.append("| | " + " | ".join(labels) + " |")
-    lines.append("|---|" + "---:|" * len(labels))
-    for stat, stat_label in (("avg", "avg"), ("med", "median"), ("p95", "p95")):
-        row = [f"**Total fps ({stat_label})**"]
-        for label in labels:
-            total = runs[label]["phases"].get("Total")
-            row.append(fps(total[stat]) if total else "?")
-        lines.append("| " + " | ".join(row) + " |")
-    lines.append("")
-
-    for label in labels:
-        run = runs[label]
-        lines.append(f"## `{label}` ({run['frames']} frames over {run['seconds']}s)")
-        lines.append("")
-        lines.append("| Phase | Min (us) | Max (us) | Avg (us) | Median (us) | P95 (us) |")
-        lines.append("|---|---:|---:|---:|---:|---:|")
-        for phase in PHASE_ORDER:
-            p = run["phases"].get(phase)
-            if p is None:
-                lines.append(f"| {phase} | ? | ? | ? | ? | ? |")
-                continue
-            bold = "**" if phase == "Total" else ""
-            lines.append(
-                f"| {bold}{phase}{bold} | {p['min']} | {p['max']} | "
-                f"{p['avg']} | {p['med']} | {p['p95']} |"
-            )
-        lines.append("")
-
-    with open(args.out_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    write_phase_report(args.out_path, lines, runs, labels, PHASE_ORDER,
+                       lambda label, run: f"## `{label}` ({run['frames']} frames over {run['seconds']}s)")
 
     print(f"{len(runs)} run(s) -> {args.out_path}")
     return 0

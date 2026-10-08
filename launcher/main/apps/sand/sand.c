@@ -959,21 +959,19 @@ sweep_x_order(sand_t* s, int dx) {
     return x_step;
 }
 
-/* Sweep against travel so a grain's destination is already swept and it
- * cannot move twice. With dy == 0 no row order gives that on its own, so a
- * liquid-free grid alternates the row order per step and keeps only the
- * diagonal pointing into swept rows. A grid holding liquid keeps the plain
- * ascending order: restricting its diagonals stopped poured water reaching
- * the floor, so there a grain can still slide twice in a step. */
-SAND_FACT_WRITER static void
-choose_sweep_order(const sand_t* s, int dy, const int** slide_a, const int** slide_b, int* y_from, int* y_to,
-                   int* y_step) {
-    const bool landscape_safe_sweep = dy == 0 && !s->may_have_liquid;
-
-    *y_step = (dy != 0) ? -dy : (landscape_safe_sweep && (s->step_phase & 1) ? -1 : 1);
+/* Sweep against travel so a grain cannot move twice. A level sweep has no
+ * such row order: with `restrict_level` it alternates rows per step and
+ * keeps only the diagonal into swept rows; without, it runs ascending and a
+ * grain can slide twice. Grains never restrict on a grid holding liquid:
+ * the restriction stopped poured water reaching the floor. */
+void
+sand_choose_sweep_order(const sand_t* s, int dy, bool restrict_level, const int** slide_a, const int** slide_b,
+                        int* y_from, int* y_to, int* y_step) {
+    const bool landscape_safe = dy == 0 && restrict_level;
+    *y_step = (dy != 0) ? -dy : (landscape_safe && (s->step_phase & 1) ? -1 : 1);
     *y_from = (*y_step > 0) ? 0 : s->h - 1;
     *y_to = (*y_step > 0) ? s->h : -1;
-    if (landscape_safe_sweep) {
+    if (landscape_safe) {
         const int* const landscape_slide = ((*slide_a)[1] == -*y_step) ? *slide_a : *slide_b;
         *slide_a = landscape_slide;
         *slide_b = landscape_slide;
@@ -1944,7 +1942,7 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     s->last_step_dy = dy;
 
     int y_from, y_to, y_step;
-    choose_sweep_order(s, dy, &slide_a, &slide_b, &y_from, &y_to, &y_step);
+    sand_choose_sweep_order(s, dy, !SAND_FACT_RULE(s->may_have_liquid), &slide_a, &slide_b, &y_from, &y_to, &y_step);
 
     compute_driven(sweep_driven, slide_a, slide_b, gx, gy);
 

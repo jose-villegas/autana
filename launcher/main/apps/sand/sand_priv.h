@@ -1390,6 +1390,11 @@ typedef struct {
  * gravity direction. */
 void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
+/* Row order and slide diagonals for a sweep against `dy`; the grain and gas
+ * steps differ only in whether a level sweep may `restrict_level`. In sand.c. */
+void sand_choose_sweep_order(const sand_t* s, int dy, bool restrict_level, const int** slide_a, const int** slide_b,
+                             int* y_from, int* y_to, int* y_step);
+
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
 
@@ -1587,7 +1592,7 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
 
     /* A shaken grain spreads sideways before dropping. Whether that
      * destination is already swept is the sweep order's business -
-     * choose_sweep_order() (sand.c) states where it holds. */
+     * sand_choose_sweep_order() (sand.c) states where it holds. */
     const bool shaken = jostle > 0 && (int)((r >> 8) & 0xFF) < jostle;
 
     if (!shaken && jostle > 0 && move_to(row, prow, x, x + dx, w, grain, density)) {

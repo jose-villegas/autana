@@ -201,8 +201,10 @@ test_a_grain_falls_one_cell_per_step(void) {
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 2), "and keeps falling on the next step");
 }
 
+/* `with_water` drops one water cell into the corner gravity holds it in,
+ * away from the staircase, so the grid holds liquid. */
 static int
-landscape_slide_y(cell_t grain, int gravity_x) {
+landscape_slide_y(cell_t grain, int gravity_x, bool with_water) {
     const int motion_x = CELL_MATERIAL(grain) == MAT_GAS ? -gravity_x : gravity_x;
     const int start_x = motion_x > 0 ? 1 : W - 2;
 
@@ -215,6 +217,9 @@ landscape_slide_y(cell_t grain, int gravity_x) {
         sand_set(&s, x - motion_x, y + 1, STONE);
     }
     sand_set(&s, start_x, 1, grain);
+    if (with_water) {
+        sand_set(&s, gravity_x > 0 ? W - 1 : 0, H - 1, WATER);
+    }
 
     if (CELL_MATERIAL(grain) == MAT_GAS) {
         sand_set_decay(&s, 0);
@@ -238,18 +243,22 @@ landscape_slide_y(cell_t grain, int gravity_x) {
 static void
 test_landscape_sand_slides_at_most_once(void) {
     for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
-        const int y = landscape_slide_y(SAND, gravity_x);
+        const int y = landscape_slide_y(SAND, gravity_x, false);
         TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, y,
                                               "a forced landscape slide must not take another turn in a later row");
     }
 }
 
+/* Gas restricts its level sweep on the random walk alone: liquid on the
+ * grid, which keeps grains from restricting, must not loosen it. */
 static void
 test_landscape_gas_slides_at_most_once(void) {
-    for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
-        const int y = landscape_slide_y(GAS, gravity_x);
-        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, y,
-                                              "a forced landscape gas slide must not take another turn in a later row");
+    for (int with_water = 0; with_water <= 1; with_water++) {
+        for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
+            const int y = landscape_slide_y(GAS, gravity_x, with_water);
+            TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(
+                2, y, "a forced landscape gas slide must not take another turn in a later row");
+        }
     }
 }
 
