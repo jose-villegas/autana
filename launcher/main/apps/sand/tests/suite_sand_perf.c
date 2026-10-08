@@ -429,7 +429,7 @@ perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceil
 }
 
 /* The REAL_W x REAL_H board a timed row runs on, sleeping. real_board_close()
- * frees all of it but the sand_t, which a row frees after its verdict. */
+ * frees all of it but the sand_t, which the row frees itself. */
 typedef struct {
     uint8_t* big;
     uint8_t* blocks;
