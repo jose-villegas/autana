@@ -463,6 +463,11 @@ keeps the brighter.
 
 #### camera
 
+A scene may hold many cameras; only one renders at a time, the active one
+selected by `scene_activate()`. Camera-region visibility, camera-path
+visibility and fitted variants read the scene's first camera. A region on
+any other camera is refused because no bake step reads it.
+
 `region = { min, max }` is the box the camera may occupy; region visibility
 casts from points inside it. `path = { animation, node }` names the clip the
 camera flies: `animation` is its `NAME.anim.toml`

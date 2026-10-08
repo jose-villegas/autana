@@ -124,6 +124,7 @@ fit_scratch(render_context_t* c) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const camera_t* camera,
                     uint16_t clear, int quarter, int width, int height) {
+    c->frame.predicted_us = 0;
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->instances = instances;
@@ -152,6 +153,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
             /* Culled once: the census prices the frame and the draw reuses its list. */
             c->frame.stats = raster_census(r, camera, quarter);
             const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
+            c->frame.predicted_us = (int32_t)c->predict.chosen_us;
             r->width = c->ladder.steps[chosen].width;
             r->height = c->ladder.steps[chosen].height;
             c->frame.width = r->width;

@@ -17,9 +17,16 @@
 /* The predictor goes finer only with this much of the budget to spare, so
  * a prediction at the edge does not flip between two steps. */
 #define PREDICT_FINER_MARGIN_PERCENT 8
-#define CORRECTION_MIN               0.5F
-#define CORRECTION_MAX               2.0F
-#define CORRECTION_GAIN              0.125F
+/* About 50 frames of memory tracks scene changes and leans back to the fit. */
+#define RHO                          0.98F
+/* Scene differences can change the fit's overall slope. */
+#define PRIOR_SCALE_SD               0.25F
+/* Fixed scene overhead can differ by a few milliseconds. */
+#define PRIOR_OFFSET_SD_US           3000.0F
+/* Observation noise rejects frame-time jitter. */
+#define NOISE_SHARE                  0.05F
+/* Cheap frames must not dominate the filter. */
+#define NOISE_FLOOR_US               100.0F
 
 resolution_config_t
 resolution_config(const resolution_step_t* steps, int count, int recovery_from, int32_t budget_us) {
@@ -213,16 +220,26 @@ resolution_model_predict_us(const resolution_model_t* model, const resolution_co
            + (model->per_pixel_share_us * x[3]) + model->upscale_us[step];
 }
 
+static void
+reset_refit(resolution_predict_t* p) {
+    p->scale = 1.0F;
+    p->offset_us = 0.0F;
+    p->covariance[0][0] = PRIOR_SCALE_SD * PRIOR_SCALE_SD;
+    p->covariance[1][1] = PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US;
+    p->covariance[0][1] = p->covariance[1][0] = 0.0F;
+}
+
 void
 resolution_predict_init(resolution_predict_t* predict, const resolution_config_t* config,
                         const resolution_model_t* model, int first_step) {
     assert(first_step >= 0 && first_step < config->step_count);
-    *predict = (resolution_predict_t){.model = *model, .step = first_step, .correction = 1.0F};
+    *predict = (resolution_predict_t){.model = *model, .step = first_step};
+    reset_refit(predict);
 }
 
 static float
 corrected_us(const resolution_predict_t* p, const resolution_config_t* config, int step, int triangles) {
-    return p->correction * resolution_model_predict_us(&p->model, config, step, triangles);
+    return (p->scale * resolution_model_predict_us(&p->model, config, step, triangles)) + p->offset_us;
 }
 
 /* The finest step whose corrected cost fits `share` of the budget, among
@@ -265,18 +282,41 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
         p->step = chosen;
         p->switches++;
     }
+    p->chosen_us = corrected_us(p, config, p->step, triangles);
     return p->step;
 }
 
 void
 resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* config, int triangles,
                             int32_t frame_us) {
-    const float predicted = resolution_model_predict_us(&p->model, config, p->step, triangles);
-    if (predicted <= 0.0F) {
+    /* The state is (scale, offset) and the frame's features are (fitted price, 1). */
+    const float base = resolution_model_predict_us(&p->model, config, p->step, triangles);
+    const float keep = RHO * RHO;
+    p->scale = 1.0F + (RHO * (p->scale - 1.0F));
+    p->offset_us *= RHO;
+    float(*c)[2] = p->covariance;
+    c[0][0] = (keep * c[0][0]) + ((1.0F - keep) * PRIOR_SCALE_SD * PRIOR_SCALE_SD);
+    c[1][1] = (keep * c[1][1]) + ((1.0F - keep) * PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US);
+    c[0][1] *= keep;
+    const float predicted = (p->scale * base) + p->offset_us;
+    const float noise = NOISE_SHARE * predicted;
+    const float px0 = (c[0][0] * base) + c[0][1];
+    const float px1 = (c[0][1] * base) + c[1][1];
+    const float variance = (noise * noise) + (NOISE_FLOOR_US * NOISE_FLOOR_US) + (base * px0) + px1;
+    if (!isfinite(predicted) || !isfinite(variance) || variance <= 0.0F) {
+        reset_refit(p);
         return;
     }
-    const float ratio = (float)frame_us / predicted;
-    float c = p->correction + (CORRECTION_GAIN * (ratio - p->correction));
-    c = c < CORRECTION_MIN ? CORRECTION_MIN : c;
-    p->correction = c > CORRECTION_MAX ? CORRECTION_MAX : c;
+    const float limit = 3.0F * sqrtf(variance);
+    const float innovation = fmaxf(-limit, fminf(limit, (float)frame_us - predicted));
+    p->scale += px0 / variance * innovation;
+    p->offset_us += px1 / variance * innovation;
+    c[0][0] -= px0 / variance * px0;
+    c[0][1] -= px0 / variance * px1;
+    c[1][1] -= px1 / variance * px1;
+    c[1][0] = c[0][1];
+    if (!isfinite(p->scale) || !isfinite(p->offset_us) || !isfinite(c[0][0]) || !isfinite(c[0][1]) || !isfinite(c[1][1])
+        || p->scale <= 0.0F) {
+        reset_refit(p);
+    }
 }

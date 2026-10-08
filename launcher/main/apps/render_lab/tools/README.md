@@ -51,7 +51,21 @@ float, so which pixels a triangle reaches can differ by compiler.
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 
-A pose of the flythrough is `--frames` times `--dt`:
+A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
+selects a scene camera; omitted, it draws the first camera.
+
+`dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
+against the reference along that camera's clip, at intervals taken from
+the script and over the clip's full period. Per-path results belong in
+`docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
+
+Author and regenerate the tour animation with:
+
+```sh
+python launcher/tools/anim/camera_keys.py launcher/demo/sponza/tour.keys.toml launcher/demo/sponza/tour.glb
+```
+
+A host pose can be drawn with:
 
 ```sh
 render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp

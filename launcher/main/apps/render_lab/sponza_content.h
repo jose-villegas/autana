@@ -35,6 +35,9 @@ typedef enum {
 /* The name of the entity that draws each bake, found at load. */
 extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];
 
+#define SPONZA_CAMERA_COUNT 2
+extern const char* const sponza_cameras[SPONZA_CAMERA_COUNT];
+
 /* Rows and span setup follow height, so the ladder reduces height before
  * width. Widths use fast upscale paths; the board fit from
  * suite_raster_scale_perf.c includes one upscale per step.
