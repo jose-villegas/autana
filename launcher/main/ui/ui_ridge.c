@@ -724,7 +724,7 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
                   changed_box_t* changed) {
     const bool masked = dissolving();
     for (int x = x0; x < x1; x++) {
-        if (y >= lo[x] && y < hi[x] && (!masked || dissolved(x, y))) {
+        if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
@@ -739,7 +739,7 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
     const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
     int y0;
     int y1;
-    group_rows(lo, hi, x0, x1, &y0, &y1);
+    group_rows(lo, hi, 0, x1 - x0, &y0, &y1);
     if (y0 >= y1) {
         return;
     }
@@ -773,13 +773,14 @@ column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
  * a group of columns row by row rather than each column top to bottom. */
 static void
 repaint_changed_columns(void) {
-    int16_t lo[GFX_WIDTH];
-    int16_t hi[GFX_WIDTH];
+    int16_t lo[COLUMN_GROUP];
+    int16_t hi[COLUMN_GROUP];
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            column_repaint_rows(layer, x, &lo[x], &hi[x]);
-        }
         for (int x0 = 0; x0 < GFX_WIDTH; x0 += COLUMN_GROUP) {
+            const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+            for (int x = x0; x < x1; x++) {
+                column_repaint_rows(layer, x, &lo[x - x0], &hi[x - x0]);
+            }
             repaint_column_group(lo, hi, x0);
         }
     }

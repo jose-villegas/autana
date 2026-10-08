@@ -218,7 +218,7 @@ when a host frame nears the ceiling.
 `launcher/tools/quality/stack_chain_gate.py` discovers `stack_chain.txt` under
 `launcher/`, excluding build directories. App roots belong in their app's
 spec; engine roots belong in the test spec. A `root FUNCTION KIND` line
-names a `test`, `frame` or `system` entry. The target compiler measures
+names a `test`, `frame`, `system` or `boot` entry. The target compiler measures
 frames and calls in the engine, opted-in apps, tests and task/test runners.
 
 An `indirect CALLER... : CALLEE...` line supplies pointer targets. Every
@@ -227,10 +227,11 @@ caller, with engine edges in the engine spec. An undeclared source-line
 pointer caller reachable below a root fails. Private names may be
 qualified as `file.c:function`. Suite registrations and Unity's wrapper
 supply runner pointer edges from their sources. The runner overhead is the
-deepest measured path from the main-task entry to the kind's dispatcher:
-`call_protected`, `shell_step_app` or `scene_shell_render`. There are no
-per-root ancestor lists or copied budgets. Missing paths and non-static
-frames fail.
+deepest measured path from the main-task entry to the kind's endpoint:
+`call_protected`, `shell_step_app`, `scene_shell_render` or `app_boot_init`.
+The boot root is `boot_anim_run`; its harness includes `app_main` and
+`app_boot_init`. There are no per-root ancestor lists or copied budgets.
+Missing paths and non-static frames fail.
 
 Every root uses the budget `DP_MAIN_TASK_STACK_BYTES` minus `timing.c`'s
 reserve, derived runner frames and target context. The compiler evaluates
@@ -264,8 +265,8 @@ symbols in the two `.elf` files rather than assumed.
 ### A diagnostics build can be scoped
 
 A diagnostics build compiles every suite; the perf scope compiles only the
-sources apps declare in their `scope_perf.cmake`, for a frame-budget
-capture. A scoped build is an instrument and never a
+sources the engine and apps declare in their `scope_perf.cmake`, for a
+frame-budget capture. A scoped build is an instrument and never a
 gate, and its numbers compare only with other scoped captures.
 [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
 
@@ -790,9 +791,10 @@ by a substring of the name, so treat it as a lookup, not an area map.
    `selftest.c`. Both runners discover `suite_*.c`, so a new suite joins the
    full scope automatically and can be run alone with
    `runsuite run_<name>_suite` on an already-flashed diagnostics build. If a
-   If a perf capture needs it, it must be an app's suite: declare it in that
-   app's `scope_perf.cmake`, together with every other source the run links.
-   The perf scope carries no shell suite (see "A diagnostics build can be scoped").
+   perf capture needs it, declare it in `launcher/test/scope_perf.cmake` for
+   an engine suite or the app's `scope_perf.cmake` for an app suite, together
+   with every other source the run links. The build discovers both kinds of
+   manifest (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section: `suite_job.c` runs every one of its tests on both, and fences

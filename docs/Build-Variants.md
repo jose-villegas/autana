@@ -84,8 +84,11 @@ SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
 
 A diagnostics build compiles **every** suite, and a full run takes the time
 [Testing-Guide.md](Testing-Guide.md#recommended-practice) gives.
-Perf-scoped compiles only the sources apps declare in their `scope_perf.cmake`
-file, so a performance capture does not pay for every other suite too.
+Perf-scoped compiles only the sources declared in
+`launcher/test/scope_perf.cmake` and `launcher/main/apps/*/scope_perf.cmake`,
+so a performance capture does not pay for every other suite too. The same
+glob discovers engine and app manifests; each appends its suite sources and
+link dependencies to `perf_scope_srcs` using `CMAKE_CURRENT_LIST_DIR` paths.
 
 `CONFIG_LAUNCHER_SELFTEST` says whether the suites are compiled in;
 `CONFIG_LAUNCHER_SELFTEST_SCOPE_*` says **which**. Excluding a suite removes
@@ -103,7 +106,7 @@ configured with.
 | scope | fragment | carries | for |
 |---|---|---|---|
 | Full: the default | none | every suite, shell-owned and app-owned | every gate: `autana selftest`, `report_test_results.sh` |
-| Perf | `sdkconfig.defaults.diag_perf` | sources each app declares in `scope_perf.cmake` | a performance capture |
+| Perf | `sdkconfig.defaults.diag_perf` | sources engine and apps declare in `scope_perf.cmake` | a performance capture |
 
 An app's own frame-budget capture script, in its `tools/`, passes the flag
 through; the image alone is:
@@ -121,7 +124,7 @@ sources it needs, so deleting its folder also removes its declaration.
 - **Full is the default and stays globbed.** A scope only ever narrows, and
   only when named, so coverage cannot shrink by accident.
 - **Every source a perf run links is declared there.** A builder or fixture
-  omitted from an app's list fails at link.
+  omitted from a manifest's list fails at link.
 - **Release is untouched.** Both scope symbols live under `LAUNCHER_SELFTEST`,
   itself under `LAUNCHER_DEVELOPMENT`; a release config resolves neither, and
   the suites were never in that image to scope.

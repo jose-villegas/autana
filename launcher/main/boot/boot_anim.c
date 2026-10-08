@@ -686,19 +686,12 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
     ending_backdrop = paint;
 }
 
-void
-boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms) {
-    const uint8_t ink = boot_anim_ink(now_ms);
+/* Keep scene scratch off the stack while the ending backdrop repaints. */
+static __attribute__((noinline)) void
+draw_scene(const boot_anim_motion_t* motion, uint32_t now_ms, uint8_t ink) {
     const uint8_t reveal = boot_anim_image_reveal(now_ms);
     const uint8_t scene = boot_anim_scene_reach(now_ms);
-
     const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
-
-    if (ending_backdrop != NULL && ink < 255) {
-        ending_backdrop();
-    } else {
-        boot_anim_clear_frame();
-    }
 
     /* Gated like title. Full coverage skips draw_image(). See boot_anim.h. */
     if (scene > 0) {
@@ -715,6 +708,17 @@ boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms) {
     if (now_ms >= BOOT_ANIM_TITLE_START_MS) {
         draw_title(now_ms, ink);
     }
+}
+
+void
+boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms) {
+    const uint8_t ink = boot_anim_ink(now_ms);
+    if (ending_backdrop != NULL && ink < 255) {
+        ending_backdrop();
+    } else {
+        boot_anim_clear_frame();
+    }
+    draw_scene(motion, now_ms, ink);
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

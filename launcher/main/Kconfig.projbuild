@@ -116,9 +116,10 @@ menu "Launcher"
                 want: a gate is only a gate if it runs everything.
 
         config LAUNCHER_SELFTEST_SCOPE_PERF
-            bool "Perf - suites apps declare for a performance capture"
+            bool "Perf - suites declared for a performance capture"
             help
-                Only the sources apps declare in scope_perf.cmake are compiled.
+                Only the sources engine and apps declare in scope_perf.cmake
+                are compiled.
                 No other suite's .text or .bss is in the image, which buys
                 back the static-RAM headroom a capture needs.
 
