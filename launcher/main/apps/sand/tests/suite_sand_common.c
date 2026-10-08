@@ -574,8 +574,7 @@ sand_test_grid_init(sand_t* g, uint8_t** grid, uint8_t** blocks, int w, int h, u
     init_sleeping(g, *grid, *blocks, w, h, seed);
 }
 
-/* The buffers before the sand_t, the heap order every timed row was
- * measured with. */
+/* Buffers before the sand_t: timed rows depend on this heap order. */
 sand_t*
 sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
     sand_test_grid_buffers_open(grid, blocks, w, h);

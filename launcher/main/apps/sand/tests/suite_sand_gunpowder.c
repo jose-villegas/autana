@@ -1276,12 +1276,9 @@ test_plants_do_not_sprout_in_gunpowder(void) {
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
     const int cx = W / 2, cy = 3;
-    /* A floor two cells wider than the candidates themselves, not flush
-     * with them - the same margin sheltered_root_fixture() uses and
-     * for the same reason: a powder blocked
-     * straight down still has an open diagonal-down to scatter into and
-     * escape the very cell this test means to watch, which a floor flush
-     * with the candidates does not close off. */
+    /* Stone from cx - 2 to cx + 1, so the left candidate has ledge past
+     * it: a powder blocked straight down still has an open diagonal-down
+     * to escape the very cell this test means to watch. */
     for (int x = cx - 2; x <= cx + 1; x++) {
         sand_set(&s, x, cy + 1, STONE);
     }

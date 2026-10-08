@@ -1037,7 +1037,7 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
     uint8_t* depth_test_cells = malloc((size_t)DEPTH_TEST_W * DEPTH_TEST_H);
     uint8_t* depth_test_dirty = malloc((size_t)DEPTH_TEST_H);
     /* Both checked together, then freed together on failure - see
-     * wake_test_run() above for why asserting on each in turn leaks. */
+     * repaint_rig_open() below for why asserting on each in turn leaks. */
     if (!depth_test_cells || !depth_test_dirty) {
         free(depth_test_cells);
         free(depth_test_dirty);
