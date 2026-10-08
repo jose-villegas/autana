@@ -436,10 +436,7 @@ poured_height(material_id_t m) {
     /* Self-contained: malloc, use, free, all within one call - the two
      * callers below each get their own fresh grid rather than sharing
      * one across both pours. */
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "poured-height comparison grid must fit in what the framebuffer "
-                                             "leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
 
     /* Measured shortly after the pour, not once everything has long since
      * settled. The mound is a TRANSIENT - water arriving faster than it can
@@ -505,10 +502,7 @@ test_a_large_body_of_water_levels(void) {
      * The volume here is deliberately much wider than a cell can see, which is
      * the whole point: it must level by looking further than one step's worth
      * of travel. */
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "large-body-of-water levelling grid must fit in what the "
-                                             "framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
 
     for (int i = 0; i < 90; i++) {
         sand_spawn(&wide, WIDE_W / 2, 1, 3, MAT_WATER);
@@ -567,9 +561,7 @@ test_a_settled_pool_does_not_flicker(void) {
      * straight off fill level, so the swing is visible as flicker. */
     const int gx = 60, gy = 1000;
 
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "settled-pool flicker grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     for (int i = 0; i < 90; i++) {
         sand_spawn(&wide, WIDE_W / 2, 1, 3, MAT_WATER);
         sand_step(&wide, gx, gy, 0);

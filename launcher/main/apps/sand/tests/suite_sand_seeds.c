@@ -311,9 +311,7 @@ check_the_fall_flag_is_honest(sand_t* g) {
 
 static void
 test_the_fall_flag_is_never_clear_while_a_plant_can_move(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "fall-flag honesty grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 7u);
+    wide_open(7u);
     sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
     sand_set_decay(&wide, SAND_DECAY_PER_MATERIAL);
 

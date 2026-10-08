@@ -301,9 +301,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
 
 static void
 test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "wet-dirt-spoils grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -572,10 +570,7 @@ steps_to_boil_through(int wall_len, cell_t wall_cell, int budget) {
     /* Self-contained, like steps_to_boil() above: malloc, use, free, all
      * within one call - the test below calls this twice and gets a
      * fresh grid each time. */
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "steps-to-boil-through grid must fit in what the framebuffer "
-                                             "leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_mobility(&wide, 0);
     /* This measures CONDUCTION speed, not water's own new resistance to
      * boiling once heat arrives - forced to 255 so a slow real `boils`

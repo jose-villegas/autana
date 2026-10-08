@@ -338,10 +338,7 @@ test_lava_beside_dry_gunpowder_lights_it_through_the_heat_path(void) {
 
 static void
 test_heat_conducted_through_stone_lights_gunpowder(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "heat-through-stone-lights-gunpowder grid must fit in what the "
-                                             "framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
@@ -519,9 +516,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
  * the lit code once the blast has actually happened. */
 static void
 test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "detonation board-wide grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 11u);
+    wide_open(11u);
     sand_set_decay(&wide, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&wide, 0); /* hold the 2x2 in place until burn-out -
                                     * see test_gunpowder_without_impulses_
@@ -571,9 +566,7 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
  * linking them; decay 255 forces all eight cells out on the same step. */
 static void
 test_fuse_blasts_are_capped_at_one_per_step(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "blast-cap grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
+    wide_open(5u);
     sand_set_decay(&wide, 255);
 
     impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
@@ -638,9 +631,7 @@ test_fuse_blasts_are_capped_at_one_per_step(void) {
  * its burn-out cannot race group A's inside one pass. */
 static void
 test_a_longer_fuse_cooldown_delays_the_next_blast(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "cooldown grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
+    wide_open(5u);
     sand_set_decay(&wide, 255);
     sand_set_fuse_cooldown(&wide, 3);
 

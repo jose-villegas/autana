@@ -67,6 +67,10 @@ extern uint8_t sleep_blocks[BLOCK_COLS * BLOCK_ROWS];
 extern uint8_t* wide_cells;
 extern sand_t wide;
 
+/* Mallocs wide_cells and sand_init()s `wide` over it. The caller frees
+ * wide_cells. */
+void wide_open(uint32_t seed);
+
 /* The real screen size. Must match app_sand.c - duplicated rather than
  * shared because sand.h has no business knowing the screen size (see the
  * note at the top of sand.h). */

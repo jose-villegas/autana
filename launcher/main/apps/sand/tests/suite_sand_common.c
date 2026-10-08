@@ -45,6 +45,13 @@ soaked_bed_fixture(cell_t bed) {
 }
 
 void
+wide_open(uint32_t seed) {
+    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "the wide grid must fit in what the framebuffer leaves");
+    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, seed);
+}
+
+void
 fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c) {
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {

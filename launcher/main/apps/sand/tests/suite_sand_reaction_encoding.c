@@ -1920,9 +1920,7 @@ static int
 build_boiler_room(int wall_len) {
     /* Ownership passes to caller of `wide`: see call sites
      * (test_a_thick_wall_still_conducts, steps_to_boil). */
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiler-room grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -2059,9 +2057,7 @@ test_a_thick_wall_conducts_more_slowly_than_a_thin_one(void) {
  * nowhere to send any mass while conduction does its work. */
 static void
 boiler_column(cell_t liquid, int top) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "the boiler grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
@@ -2169,9 +2165,7 @@ test_boiling_acid_produces_gas_not_steam(void) {
 
 static void
 test_the_boiler_end_to_end(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiler end-to-end grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
 
     const int x = 10;
     const int wood_y = 19;
