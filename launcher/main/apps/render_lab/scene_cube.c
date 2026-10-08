@@ -13,8 +13,10 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "gfx/draw/gfx_box.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_box.h"
+#include "gfx/present/gfx_present.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"

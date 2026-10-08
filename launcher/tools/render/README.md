@@ -6,6 +6,11 @@
 | [render_host.h](render_host.h) | Scene interface for host rendering. |
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
+| [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path. |
+| [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity and import images and measured CPU tables through the scene viewer. |
+| [doc_tables.py](doc_tables.py) | Writes the CPU tables from comparison logs, with scene and object names supplied as arguments. |
+| [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
+| [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings for isolated bake studies. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
 | [render_diff.sh](render_diff.sh) | Shell entry point for image comparisons. |
 | [render_compare.py](render_compare.py) | Builds the A, B and difference sheet, the side-by-side video, the zoomed crops and the change numbers; every panel is labelled by `--label-a` and `--label-b`, which stills require. |

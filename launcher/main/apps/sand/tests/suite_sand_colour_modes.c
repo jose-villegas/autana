@@ -5,7 +5,7 @@
  * at ordinary boot, since three present passes per scene at full grid size
  * is a deliberate, explicit measurement, not a startup check.
  *
- * Drives the real sand_t simulation and the real gfx.c present pipeline
+ * Drives the real sand_t simulation and the real gfx present pipeline
  * directly, at a fixed NORMAL-quality (4 px) cell size - not app_sand.c,
  * which owns quality/colour-mode state this file has no access to and is
  * not part of any library this can link against selectively. Every grid
@@ -30,6 +30,9 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 
@@ -273,7 +276,6 @@ measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, ui
                            const gfx_color_t** cell_table) {
     gfx_mode_request_t req = {0};
     req.layout = GFX_LAYOUT_INDEXED;
-    req.resolution = GFX_RESOLUTION_FULL;
     req.index_grid_w = CM_GRID_W;
     req.index_grid_h = CM_GRID_H;
     req.cell_size = CM_CELL;

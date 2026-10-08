@@ -11,7 +11,10 @@
 #include "app/app.h"
 #include "app/app_arena.h"
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "input/gesture.h"
 #include "input/imu.h"
 #include "input/imu_rotation.h"
@@ -19,6 +22,7 @@
 #include "input/tilt.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
+#include "shell/shell_frame.h"
 #include "shell/shell_system.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
@@ -135,8 +139,8 @@ draw_home_hint(gesture_edge_t edge) {
     gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
 }
 
-/* Band mode (gfx.h) has no framebuffer for draw_home_hint() to write into.
- * Queue it before frame(), so the app's ui_end_for_bands() call bins it. */
+/* Transient and expanded pictures need the hint in their overlay command
+ * list before frame() bins it. */
 static void
 queue_home_hint(gesture_edge_t edge) {
     int x, y, w, h;
@@ -169,7 +173,7 @@ app_band_active(const app_t* app) {
     return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS;
 }
 
-/* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
+/* The app half of gfx_request_full_redraw() (gfx_present.h): an app's own cache
  * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
  * cache while none is running. Consumes the pending flag before whichever
  * of the two draws next, not after: a request made inside that very
@@ -320,12 +324,8 @@ overlaps_present(const app_t* current) {
  * does nothing outside GFX_LAYOUT_BANDS. */
 static void
 step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
-    if (!overlaps_present(current)) {
-        current->frame(dt_ms, input);
-        gfx_band_run(current->draw_band, ui_replay_band);
-        return;
-    }
-    if (frame_ready) {
+    const bool overlap = overlaps_present(current);
+    if (overlap && frame_ready) {
         gfx_present_begin();
         if (current->update != NULL) {
             current->update(dt_ms, input);
@@ -333,12 +333,18 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
         shell_systems_update(dt_ms);
         gfx_present_wait();
     }
-    /* What the systems compose is in the framebuffer by the time frame()
-     * draws over it. */
-    shell_systems_compose(dt_ms);
+    ui_clear_band_overlay();
+    if (overlap) {
+        shell_systems_compose(dt_ms);
+    }
+    if (current->home_gesture && (app_band_active(current) || gfx_frame_expanded())) {
+        queue_home_hint(shell_exit_edge_for_quarter(display_quarter_now()));
+    }
     current->frame(dt_ms, input);
     gfx_band_run(current->draw_band, ui_replay_band);
-    frame_ready = true;
+    if (overlap) {
+        frame_ready = true;
+    }
 }
 
 void
@@ -374,23 +380,17 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
-    /* The band loop follows frame(), so queue the hint before the app builds
-     * the UI commands it will replay. The trailing draw_home_hint() covers
-     * every full-frame app unchanged. */
-    if ((*current)->home_gesture && app_band_active(*current)) {
-        queue_home_hint(exit_edge);
-    }
-
     apply_pending_full_redraw(*current);
     step_running_app(*current, input, dt_ms);
 
-    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
+    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
         draw_home_hint(exit_edge);
     }
 }
 
 void
 shell_apps_init(void) {
+    gfx_set_frame_overlay(shell_frame_overlay);
     system_navigation_init(&system_navigation);
     tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
 }

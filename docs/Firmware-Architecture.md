@@ -74,7 +74,7 @@ flowchart TB
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
     end
     subgraph R7b["drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer, render targets</i>"]:::hw
+        Gfx["gfx/<br/><i>the one framebuffer, draw/ into it, present/ it</i>"]:::hw
     end
     subgraph R8["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
@@ -95,7 +95,7 @@ flowchart TB
         Build["util/build/<br/><i>which build variant this is</i>"]
     end
     subgraph R13["board"]
-        Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
+        Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
 
     R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
@@ -451,8 +451,9 @@ the backdrop under it, re-scrims that region, then draws.
 ## Why microui, not LVGL
 
 The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
-LVGL interface removed; LVGL is not built. `gfx.c` drives the panel
-directly, and the BSP supplies board services and touch setup. Three
+LVGL interface removed; LVGL is not built. `board/board_panel.c` brings the
+panel up and `gfx/present/gfx_present.c` sends to it directly; the BSP
+supplies board services and touch setup. Three
 constraints point the same way:
 
 **Internal heap is tight even with the framebuffer in PSRAM.** A persistent

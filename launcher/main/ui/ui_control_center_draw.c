@@ -9,8 +9,8 @@
 
 #include <string.h>
 
-#include "gfx/gfx_font_roles.h"
-#include "gfx/icons_system.h"
+#include "gfx/draw/gfx_font_roles.h"
+#include "gfx/draw/icons_system.h"
 #include "ui/ui.h"
 #include "ui/ui_slider.h"
 

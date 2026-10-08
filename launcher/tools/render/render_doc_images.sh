@@ -15,7 +15,8 @@
 #
 # This makes the launcher and UI toolkit images itself and then runs every
 # launcher/main/apps/*/tools/doc_images.sh, which makes that app's images into
-# the out tree it is given. Everything is rendered into
+# the out tree it is given. It also runs doc_images_demo.sh for the demo scene.
+# Everything is rendered into
 # launcher/tools/results/doc_images/out/cpu/, laid out like docs/images/, first.
 #
 # --check compares each result with the committed image by decoded pixels
@@ -26,8 +27,9 @@
 # "orphan" and also exits 1. Exit 2 means the images or tables could not be
 # made or compared; failed commands and render-log tails are printed.
 #
-# App scripts also write out/tables/NAME.md. generated_blocks.py rewrites
-# the matching named blocks; --check compares them without writing.
+# doc_images_demo.sh and the dynamic-resolution report write out/tables/NAME.md.
+# generated_blocks.py rewrites the matching named blocks; --check compares
+# them without writing.
 #
 # The Cornell box is traced in float, and GIF palettes depend on the ffmpeg
 # version, so a --check on another OS or with another ffmpeg may report them
@@ -35,30 +37,23 @@
 
 set -eu
 
-run() {
-    if "$@"; then
-        return 0
-    else
-        code=$?
-        printf '%s: failed (exit %s):' "$0" "$code" >&2
-        printf ' %s' "$@" >&2
-        printf '\n' >&2
-        return "$code"
-    fi
-}
-
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
+. scripts/lib/run.sh
+
+DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
+DEMO_OBJECT=atrium
+
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ]; then
         shift 2
-        exec sh "$TOOLS_DIR/run_doc_gpu.sh" "$@"
+        exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
     fi
     . "$ROOT/scripts/lib/python.sh"
     PYTHON=$(find_python numpy scipy) || exit 2
-    exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" "$@"
+    exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
 fi
 
 IMAGES=docs/images
@@ -105,10 +100,24 @@ case "${1:-}" in
             case "$image" in render/gpu/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
-            if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh \
-                launcher/main/apps/*/tools/doc_images.sh launcher/main/apps/*/tools/doc_import_examples.py; then
-                orphan "$image"
-                status=1
+            if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
+                launcher/main/apps/*/tools/doc_images.sh; then
+                claimed=0
+                for scene in launcher/demo/*/*.scene.toml; do
+                    id=$(basename "$scene" .scene.toml)
+                    case "$stem" in
+                        "$id"-*)
+                            template='${ID}'${stem#"$id"}
+                            if grep -qF -- "$template" "$TOOLS_DIR/doc_images_demo.sh"; then
+                                claimed=1
+                                break
+                            fi ;;
+                    esac
+                done
+                if [ "$claimed" = 0 ]; then
+                    orphan "$image"
+                    status=1
+                fi
             fi
         done
         exit $status
@@ -173,11 +182,20 @@ for script in launcher/main/apps/*/tools/doc_images.sh; do
     run bash "$script" "$OUT" "$WORK/$app"
 done
 
+run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
+
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.
 run mkdir -p "$OUT/render" "$OUT/tables"
+set --
+for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
+    [ -f "$csv" ] || continue
+    camera=${csv##*/dynamic-resolution-quality-}
+    camera=${camera%.csv}
+    set -- "$@" --quality "$camera=$csv"
+done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    --quality docs/render/data/dynamic-resolution-quality.csv --tables "$OUT/tables" \
+    "$@" --tables "$OUT/tables" \
     --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
 
 table_status=0

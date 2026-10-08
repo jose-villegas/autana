@@ -1,10 +1,7 @@
 /*
- * raster_motion: a raster attachment holding, for each pixel, where the
- * point it shows was in the previous picture. Camera motion comes from the
- * exact previous pose through this picture's depth; an instance whose
- * placement changed adds its own, from its previous placement. Both are in
- * this picture's pixels, so a picture drawn at another size than the
- * previous one needs nothing special.
+ * raster_motion: previous-position offsets from camera depth and previous
+ * instance placements, in current-picture pixels so resolution changes
+ * need no conversion.
  */
 #pragma once
 

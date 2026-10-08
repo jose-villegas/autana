@@ -2,10 +2,9 @@
  * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
  * The scene manager owns the frame: this loads the scene, shows one of its
- * five bakes and draws the HUD, while the shell advances the camera and
- * draws it. Light is baked into the mesh, so a frame is only cull, transform,
- * clip and fill on both cores. Five scenes share this code, one per bake:
- * full, lite, flat, fitted and fitted full.
+ * bakes (sponza_bakes) and draws the HUD, while the shell advances the camera
+ * and draws it. Light is baked into the mesh, so a frame is only cull,
+ * transform, clip and fill on both cores. One scene per bake shares this code.
  */
 
 #include <assert.h>
@@ -16,7 +15,8 @@
 
 #include "esp_log.h"
 
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
@@ -71,7 +71,7 @@ record_failure(const scene_failure_t* why) {
     }
 }
 
-/* Loads the scene and shows sponza_bakes[shown], the one of its five bakes to draw. */
+/* Loads the scene and shows sponza_bakes[shown]. */
 static void
 enter_with(sponza_bake_t shown) {
     gfx_set_partial_clear(false);
@@ -94,7 +94,7 @@ enter_with(sponza_bake_t shown) {
         }
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
-    (void)scene_activate(sponza, NULL);
+    (void)scene_activate(sponza, render_lab_start_camera);
     render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
     applied_budget_ms = -1;
     apply_budget();
@@ -126,6 +126,11 @@ scene_sponza_fitted_enter(void) {
 static void
 scene_sponza_fitted_full_enter(void) {
     enter_with(SPONZA_BAKE_FITTED_FULL);
+}
+
+static void
+scene_sponza_flat_fitted_enter(void) {
+    enter_with(SPONZA_BAKE_FLAT_FITTED);
 }
 
 static void
@@ -168,72 +173,24 @@ sponza_status(void) {
     return buf;
 }
 
+/* What every bake's scene shares; each names itself, its key and its bake's enter. */
+#define SPONZA_SCENE_FIELDS                                                                                            \
+    .frame = scene_sponza_frame, .exit = scene_sponza_exit, .invalidate = scene_sponza_invalidate,                     \
+    .status = sponza_status, .needs_full_framebuffer = true, .shows_view_modes = true
+
 const render_lab_scene_t scene_sponza = {
-    .name = "Sponza",
-    .key = "sponza",
-    .enter = scene_sponza_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_lite = {
-    .name = "Sponza Lite",
-    .key = "sponza-lite",
-    .enter = scene_sponza_lite_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza Lite", .key = "sponza-lite", .enter = scene_sponza_lite_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_flat = {
-    .name = "Sponza Flat",
-    .key = "sponza-flat",
-    .enter = scene_sponza_flat_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza Flat", .key = "sponza-flat", .enter = scene_sponza_flat_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_fitted = {
-    .name = "Sponza Fitted",
-    .key = "sponza-fitted",
-    .enter = scene_sponza_fitted_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
-const render_lab_scene_t scene_sponza_fitted_full = {
-    .name = "Sponza Fitted Full",
-    .key = "sponza-fitted-full",
-    .enter = scene_sponza_fitted_full_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
+    .name = "Sponza Fitted", .key = "sponza-fitted", .enter = scene_sponza_fitted_enter, SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_fitted_full = {.name = "Sponza Fitted Full",
+                                                     .key = "sponza-fitted-full",
+                                                     .enter = scene_sponza_fitted_full_enter,
+                                                     SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_flat_fitted = {.name = "Sponza Flat Fitted",
+                                                     .key = "sponza-flat-fitted",
+                                                     .enter = scene_sponza_flat_fitted_enter,
+                                                     SPONZA_SCENE_FIELDS};

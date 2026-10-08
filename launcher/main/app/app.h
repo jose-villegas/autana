@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/gfx_band_run.h"
+#include "gfx/present/gfx_band_run.h"
 #include "input/input.h"
 
 /* An app's own console command: docs/tools/Autana-CLI.md's "Adding a
@@ -64,7 +64,7 @@ typedef struct app {
 
     /* Optional, NULL unless an app sets it. When present, the shell overlaps
      * it with sending the PREVIOUS frame() call's output on core 1
-     * (gfx_present_begin()/gfx_present_wait(), gfx.h). update() may change
+     * (gfx_present_begin()/gfx_present_wait(), gfx_present.h). update() may change
      * app state but MUST NOT call any gfx_* function or touch the
      * framebuffer: that buffer may still be mid-send. A development build
      * asserts this (see gfx_present_guard.h). Left NULL: frame(), then
@@ -77,7 +77,7 @@ typedef struct app {
     /* Opt-in, NULL unless an app keeps a draw cache of its own beyond the
      * framebuffer: row-run spans, a partial-clear bbox, and so on. The
      * shell calls this once, before the next frame() after
-     * gfx_request_full_redraw() (gfx.h) was called by the shell or by the
+     * gfx_request_full_redraw() (gfx_present.h) was called by the shell or by the
      * app itself, so that cache can be reset the same way the framebuffer
      * already was. An app with no such cache needs no implementation. */
     void (*invalidate)(void);

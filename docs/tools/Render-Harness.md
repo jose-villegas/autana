@@ -49,7 +49,13 @@ every frame through the shared harness's video writer.
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
-repository root. It makes the launcher's and the UI toolkit's images itself and runs each app's
+repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
+bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
+`scene_viewer.sh`, selecting one renderer with `--object NAME`.
+`render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
+name of the scene's full renderer; the scene must also place `OBJECT_lite`,
+`OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
+The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
 `tools/doc_images.sh` for the app's own:
 
 ```sh
@@ -64,7 +70,7 @@ It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 ```
 
-An app's `tools/doc_images.sh` may also need the packages in
+The demo image script needs the packages in
 `launcher/tools/r3d/requirements.txt`. Demo source models live in
 `launcher/demo/*/source/` under Git LFS; fetch them with
 `git lfs pull --exclude=""` before a reference render. The CPU workflow caches
@@ -88,13 +94,14 @@ requests".
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
-Measured CPU tables are refreshed with the images. App scripts write Markdown
-to out/tables/NAME.md. The shared writer replaces the body between an HTML
-comment containing `generated: NAME sha256=HASH` and one containing
+Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
+the dynamic-resolution report write one Markdown table per block name into
+the output tree's tables folder. The shared writer replaces the body between
+an HTML comment containing `generated: NAME sha256=HASH` and one containing
 `/generated: NAME`, preserving the document's other text and line endings.
-Names use lowercase letters, digits and hyphens and are unique
-across documents. The SHA-256 covers the body,
-including its boundary newlines, with CRLF normalized to LF.
+Names use lowercase letters, digits and hyphens and are unique across
+documents. The SHA-256 covers the body, including its boundary newlines, with
+CRLF normalized to LF.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
 fails on a body hash mismatch or malformed boundaries, without rendering.
 Change a measurement's source or generator and regenerate its block; a hash
@@ -104,6 +111,14 @@ changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
 the WSL CUDA environment; the board stage consumes a perf capture. Both use
 this writer.
+
+`--stage board` takes one `--capture PATH` per board run, all from the same
+diagnostics image, and uses their median; `--check` reports without writing.
+It rejects missing variants, missing or repeated per-pose timings, failed
+suites and mismatched build identities, and rewrites the board tables and
+`launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
+weights change. `--build-commit SHA` accepts a capture from that commit while
+the firmware sources still match.
 
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
@@ -269,7 +284,7 @@ passes, so a new scene is not blocked on one.
 
 **A pin only holds where the pixels are integer-exact**, since CI renders on
 a different compiler and C library than anyone's desk. The self-test report
-and the home screen are pinned: `gfx.c` does no float maths, and the scroll
+and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called. The
 wire and cube scenes project in float (`util/math/`) and are pinned too:

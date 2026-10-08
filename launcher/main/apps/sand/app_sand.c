@@ -45,8 +45,11 @@
 #include "app/app.h"
 #include "apps/sand/app_sand_test.h"
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "icons_dither.h"
 #include "icons_sand.h"
 #include "input/imu.h"
@@ -164,8 +167,7 @@ static sand_paint_frame_t paint_frame = {
  * turned) can leave the index image already holding the value about to be
  * recomputed while the panel shows something else entirely (the overlay,
  * the wrong turn's pixels). Captured once per draw_dirty_rows() pass and
- * cleared there, the same idiom gfx.c's own band_force_all_dirty uses for
- * gfx_invalidate(). */
+ * cleared there, as gfx_band_force_all_dirty is for gfx_invalidate(). */
 static bool indexed_force_full_repaint;
 
 /* Once per start_sim(), not once per frame, see the emitter-marker/mode-
@@ -370,7 +372,6 @@ static void
 apply_gfx_enter_indexed(void) {
     gfx_mode_request_t req = {0};
     req.layout = GFX_LAYOUT_INDEXED;
-    req.resolution = GFX_RESOLUTION_FULL;
     req.index_grid_w = grid_w;
     req.index_grid_h = grid_h;
     req.cell_size = cell;
@@ -1088,7 +1089,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
     /* Captured once, then cleared, so a request made mid-frame (the next
      * mark_sand_fully_dirty()) affects the NEXT pass, not this one - see
-     * indexed_force_full_repaint's own comment and gfx.c's identical
+     * indexed_force_full_repaint's own comment and gfx_full_redraw.h's identical
      * band_force_all_dirty idiom. */
     const bool force_full = indexed_force_full_repaint;
     indexed_force_full_repaint = false;

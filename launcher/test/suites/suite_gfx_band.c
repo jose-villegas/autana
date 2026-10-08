@@ -1,15 +1,15 @@
 /*
  * Portable suite: the band-ring state machine (gfx_band.h) behind
- * gfx_band_next()/gfx_band_submit() (gfx.c), driven directly since the
+ * gfx_band_next()/gfx_band_submit() (gfx_mode.c), driven directly since the
  * header carries no ESP-IDF dependency. The real DMA send and buffer
- * allocation gfx.c wires around this need real device memory and are not
+ * allocation gfx_mode.c wires around this need real device memory and are not
  * covered here.
  */
 
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_band.h"
+#include "gfx/present/gfx_band.h"
 
 #define BAND_HEIGHT 32
 #define BAND_COUNT  (448 / BAND_HEIGHT)
@@ -97,7 +97,7 @@ test_the_ring_is_done_only_after_every_band_was_handed_out(void) {
     TEST_ASSERT_TRUE(gfx_band_ring_done(&ring));
 }
 
-/* gfx_band_next() (gfx.c) waits for the final band's send, then settles the
+/* gfx_band_next() (gfx_mode.c) waits for the final band's send, then settles the
  * ring exactly once: gfx_band_ring_settled() has to go from false to true
  * across that, and stay true without a further wait if asked again. */
 static void

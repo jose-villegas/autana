@@ -109,11 +109,18 @@ flowchart LR
 
 A caller fills a camera, then calls `raster_draw()`, which culls and draws
 each instance in turn with one fitted lens shared by culling and drawing,
-and `raster_upscale()` when it set `upscaled`. A
+and `raster_upscale()` with the destination width and height to compose
+that picture. A
 caller that picks the render size from what culling kept, as the render
 context does, calls `raster_census()`, sets the size, then
 `raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
 or tool that schedules them itself.
+
+Culling and clipping use caller-owned workspace sized by
+`r3d_pipeline_work_bytes()`. The raster's arena, sized by
+`raster_scratch_bytes()`, holds one workspace per row slice. Culling reuses
+the first workspace before drawing starts. Direct pipeline callers supply
+the workspace explicitly; simultaneous draws need distinct blocks.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the

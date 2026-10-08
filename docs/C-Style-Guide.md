@@ -87,14 +87,26 @@ banner they carry ([Generated-Files.md](tools/Generated-Files.md)); so the
 hook and CI cannot disagree about what is in scope.
 
 ```sh
-scripts/install-git-hooks.sh          # opt in to the pre-commit hook
+scripts/install-git-hooks.sh          # opt in to pre-commit and pre-push hooks
 scripts/install-git-hooks.sh --status # is it active in this clone?
 scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check  # what CI runs
 ```
 
 The pre-commit hook checks the *staged content* of the C and header files in a
 commit, so a partially staged file is judged by what is actually being
-committed. It is feedback and not a gate: `--no-verify` skips it, `.git/hooks`
+committed. It also checks executable bits and file-scoped text rules. Install
+the Python dependencies with `python -m pip install -r scripts/gates/requirements.txt`.
+Run `scripts/gates/check-text-rules-staged.sh` by hand for the same text checks.
+The commands and flags come from steps marked `STAGED_TEXT_GATE` in
+`.github/workflows/comment-rules.yml`; the hook adds `--paths` to select files
+in a temporary index snapshot. Header companions and citation vocabulary
+also come from the index. Without ESP-IDF, the citation check reports which
+external names it cannot verify; CI requires the SDK.
+
+Pre-push checks target branch names and runs sanitized host tests when a
+pushed range changes `.c` or `.h`; see [Testing Guide](Testing-Guide.md#running-them).
+The hooks are feedback: `git commit --no-verify` or `git push --no-verify`
+skips them, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
 is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not
@@ -107,13 +119,15 @@ Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper 
 ### Token clones
 
 `python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
-compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
-on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
+compared with the merge-base with `--base` (`origin/main` unless a pull
+request targets another branch), or `HEAD~1` when HEAD is on that branch. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
 Extract a shared owner for each new clone that exceeds its file pair's allowance.
 Each sorted file pair has its own budget: new fragments may use only the
 tokens of base fragments that vanished from HEAD; a surviving shrink gives no
 headroom. Renames map to the base names; line shifts do not change a budget.
-Removing another file pair gives no headroom.
+Code moved out of a file the change deletes keeps the fragments it held there,
+and a block of `#include` or `RUN_TEST` lines is not a clone. Removing another
+file pair gives no headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without
@@ -241,7 +255,7 @@ functions start with their module name and then say what they do:
 prefix stable because it is the C namespace for that module.
 
 Static functions do not need a synthetic prefix. Give them the shortest clear
-verb or predicate in their file's context, such as `panel_bring_up()`. Do not
+verb or predicate in their file's context, such as `qspi_bus_up()`. Do not
 add `prv_`, type-encoded Hungarian prefixes, or another naming layer whose only
 purpose is to restate linkage or type information.
 
