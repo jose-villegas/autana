@@ -87,9 +87,8 @@ gfx_color_t gfx_rgb(uint32_t rgb);
  * writes here directly rather than going through gfx_pixel per fragment). */
 gfx_color_t* gfx_framebuffer(void);
 
-/* Exact-half picture storage, or NULL outside GFX_LAYOUT_FULL_FB.
- * Development knob gfx.half_separate selects fb's first quarter (0) or a
- * lazy PSRAM allocation (1, freed on mode exit). Allocation failure uses fb. */
+/* Exact-half PSRAM picture, allocated lazily and freed on mode exit.
+ * Returns NULL outside GFX_LAYOUT_FULL_FB or when allocation fails. */
 gfx_color_t* gfx_half_picture(void);
 
 /* Presents the half picture doubled in both axes, with every strip dirty.

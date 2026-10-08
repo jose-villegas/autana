@@ -100,11 +100,8 @@ shell queues its home hint before the app builds the UI, then its frame
 overlay replays the bin and the development build mark into each strip.
 Readback uses the same expansion and overlay path.
 
-The development tunable `gfx.half_separate` selects the picture's placement:
-`0` uses the framebuffer's first quarter; `1` lazily allocates a half-size
-PSRAM picture and frees it on mode exit. Allocation failure uses the
-framebuffer. Release uses the framebuffer placement. Other render sizes
-compose directly into the full framebuffer.
+The half picture lives in gfx's own PSRAM buffer and costs 82 KB while a
+full-framebuffer app runs.
 
 ## Dirty tracking
 

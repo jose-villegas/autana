@@ -52,11 +52,7 @@ static gfx_color_t* fb;
 static gfx_color_t* half_image;
 static bool frame_expanded;
 static gfx_band_overlay_fn frame_overlay;
-#if TUNE_ENABLED
-static gfx_color_t* half_separate_image;
-#endif
 TUNE_OWNER(gfx);
-TUNE(gfx, half_separate, 0, 0, 1);
 
 /* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry below, or an app's
  * gfx_mode_enter() grants something else.
@@ -651,21 +647,9 @@ gfx_half_picture(void) {
     if (current_mode.layout != GFX_LAYOUT_FULL_FB) {
         return NULL;
     }
-    if (frame_expanded) {
-        return half_image;
+    if (half_image == NULL) {
+        half_image = memory_alloc(sizeof(*half_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
     }
-    half_image = fb;
-#if TUNE_ENABLED
-    if (half_separate) {
-        if (half_separate_image == NULL) {
-            half_separate_image =
-                memory_alloc(sizeof(*half_separate_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
-        }
-        if (half_separate_image != NULL) {
-            half_image = half_separate_image;
-        }
-    }
-#endif
     return half_image;
 }
 
@@ -694,10 +678,7 @@ clear_expanded_frame(bool free_picture) {
     frame_expanded = false;
     gfx_fb_guard_set_available(current_mode.layout == GFX_LAYOUT_FULL_FB && fb != NULL);
     if (free_picture) {
-#if TUNE_ENABLED
-        memory_free(half_separate_image);
-        half_separate_image = NULL;
-#endif
+        memory_free(half_image);
         half_image = NULL;
     }
 }

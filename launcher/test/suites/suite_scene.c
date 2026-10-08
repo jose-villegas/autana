@@ -22,7 +22,6 @@
 #include "gfx/gfx_test.h"
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
-#include "util/runtime/tune.h"
 #endif
 #include "render/context/render_context.h"
 #include "scene/scene.h"
@@ -325,10 +324,6 @@ release_fixture(void) {
     scene_unload_all();
 #ifndef DEVICE_BUILD
     gfx_reset_for_test();
-    const tune_entry_t* placement = tune_find(tune_shared(), "gfx.half_separate");
-    if (placement != NULL) {
-        *placement->value = placement->initial;
-    }
 #endif
     test_free_aligned(fx.raw);
     free(fx.pixels);
@@ -1134,18 +1129,16 @@ expanded_fixture(void) {
 }
 
 static void
-expanded_picture(int separate) {
+expanded_picture(void) {
     expanded_fixture();
-    const tune_entry_t* placement = tune_find(tune_shared(), "gfx.half_separate");
-    TEST_ASSERT_NOT_NULL(placement);
-    *placement->value = separate;
     render_context_set_scale(render_context_main(), 50);
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     raster_t* raster = &render_context_main()->raster;
     raster_upscale(raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
     const size_t before_half = memory_free_bytes(MEMORY_PSRAM);
     const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
-    TEST_ASSERT_TRUE(separate ? half.half_pixels != half.pixels : half.half_pixels == half.pixels);
+    TEST_ASSERT_NOT_NULL(half.half_pixels);
+    TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
     TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
     gfx_expand_frame();
     TEST_ASSERT_TRUE(gfx_frame_expanded());
@@ -1160,13 +1153,8 @@ expanded_picture(int separate) {
 }
 
 static void
-test_expanded_scene_in_framebuffer_matches_upscale(void) {
-    expanded_picture(0);
-}
-
-static void
 test_expanded_scene_in_separate_picture_matches_upscale(void) {
-    expanded_picture(1);
+    expanded_picture();
 }
 
 static void
@@ -1201,9 +1189,27 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
 }
 
 static void
+test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 50);
+    scene_shell_render(16);
+    raster_upscale(&render_context_main()->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    gfx_color_t* full = gfx_framebuffer();
+    void* pressure = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
+    const size_t remaining = memory_largest_block(MEMORY_PSRAM);
+    gfx_color_t* half = gfx_half_picture();
+    scene_shell_compose(16);
+    memory_free(pressure);
+    TEST_ASSERT_TRUE(remaining < sizeof(gfx_color_t) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2));
+    TEST_ASSERT_NULL(half);
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
-    *tune_find(tune_shared(), "gfx.half_separate")->value = 1;
     render_context_set_scale(render_context_main(), 75);
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     render_context_t* context = render_context_main();
@@ -1232,7 +1238,7 @@ build_expanded_ui(ui_text_style_t style) {
 
 static void
 test_ui_replay_over_expanded_scene_matches_full_frame(void) {
-    expanded_picture(0);
+    expanded_picture();
     for (int style = UI_TEXT_PLAIN; style <= UI_TEXT_SHADOWED; style++) {
         for (int quarter = 0; quarter < 4; quarter++) {
             raster_upscale(&render_context_main()->raster, gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT);
@@ -1286,41 +1292,38 @@ test_shell_expanded_pass_replays_build_mark_without_raw_writes(void) {
 
 static void
 test_paused_or_empty_expanded_scene_retains_its_picture(void) {
-    for (int separate = 0; separate <= 1; separate++) {
-        expanded_picture(separate);
-        gfx_present();
-        for (int pause = 1; pause >= 0; pause--) {
-            scene_set_paused(pause != 0);
-            if (!pause) {
-                scene_t* scene = scene_loaded_at(0);
-                scene_entity_set_enabled(scene, scene_find(scene, "red"), false);
-                scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
-            }
-            scene_shell_render(16);
-            scene_shell_compose(16);
-            TEST_ASSERT_TRUE(gfx_frame_expanded());
-            for (int y = 0; y < GFX_HEIGHT; y++) {
-                gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
-            }
-            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
-            gfx_present();
+    expanded_picture();
+    gfx_present();
+    for (int pause = 1; pause >= 0; pause--) {
+        scene_set_paused(pause != 0);
+        if (!pause) {
+            scene_t* scene = scene_loaded_at(0);
+            scene_entity_set_enabled(scene, scene_find(scene, "red"), false);
+            scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
         }
-        const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
-        TEST_ASSERT_FALSE(scene_compose(16, 0, &full));
-        const scene_target_t half = {full.pixels, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
-        TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
-        scene_t* scene = scene_loaded_at(0);
-        scene_entity_set_enabled(scene, scene_find(scene, "red"), true);
-        TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
-        scene_unload(scene);
-        TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
-        suite_run_test_cleanup();
+        scene_shell_render(16);
+        scene_shell_compose(16);
+        TEST_ASSERT_TRUE(gfx_frame_expanded());
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+        }
+        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+        gfx_present();
     }
+    const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &full));
+    const scene_target_t half = {full.pixels, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
+    scene_t* scene = scene_loaded_at(0);
+    scene_entity_set_enabled(scene, scene_find(scene, "red"), true);
+    TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
+    scene_unload(scene);
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
 }
 
 static void
 test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
-    expanded_picture(0);
+    expanded_picture();
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
     const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
     TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
@@ -1346,11 +1349,11 @@ run_scene_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_shell_expanded_pass_replays_build_mark_without_raw_writes);
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
-    RUN_TEST(test_expanded_scene_in_framebuffer_matches_upscale);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
+    RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
 #endif
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
