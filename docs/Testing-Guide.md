@@ -43,6 +43,20 @@ from compilation and the gates, including the stack check. The full stream is
 saved in `launcher/test/build/run_tests.log`, whose path is printed before
 the run; `--verbose` streams it while saving it there too.
 
+`--sanitize` probes the compiler by linking a program with UBSan. When the
+runtime is available, undefined behaviour is reported with recovery enabled;
+Linux also uses ASan. Without the UBSan runtime, including WinLibs GCC on
+Windows, the build uses `-fsanitize-undefined-trap-on-error`. Undefined
+behaviour then stops the process, and the failure summary names the active
+test. Any UBSan finding, sanitizer error or trap fails the run.
+
+Install the local hooks with `scripts/install-git-hooks.sh`. Pre-push runs
+`run_tests.sh --sanitize` once if any pushed range changes `.c` or `.h`, and
+refuses the push on failure. Run the same command by hand to diagnose it;
+`git push --no-verify` skips the hook. The hook resolves scripts from the
+current worktree. A new remote branch is compared against its merge base
+with `origin/main`, or against the empty tree when that ref is unavailable.
+
 A host build is incremental. `run_tests.sh` writes a Makefile into
 `launcher/test/build/` and lets GNU make (`make`, or `mingw32-make` beside
 WinLibs' gcc) compile one object per source, in parallel, from the compiler's
