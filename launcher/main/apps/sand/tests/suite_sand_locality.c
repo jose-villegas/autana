@@ -79,12 +79,8 @@ test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other(void
     loc_fixture();
 
     /* A small heap, settled on the floor in the leftmost block-column. */
-    for (int x = 0; x < SAND_BLOCK_W; x++) {
-        sand_set(&fx.loc, x, LOC_H - 1, SAND_FIRST_SHADE);
-    }
-    for (int i = 0; i < 100; i++) {
-        sand_step(&fx.loc, 0, 1000, 0);
-    }
+    fill_box(&fx.loc, 0, SAND_BLOCK_W, LOC_H - 1, LOC_H, SAND_FIRST_SHADE);
+    run_steps(&fx.loc, 100, 0, 1000);
 
     /* Heap, not a stack array: at the shipped SAND_BLOCK_W (16) this is a
      * harmless 2 KB, but it scales with the tunable (see loc_fixture()'s
@@ -156,9 +152,7 @@ test_a_block_wakes_when_disturbed_diagonally(void) {
     sand_set(&fx.loc, gx - 2, gy + 2, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     sand_set(&fx.loc, gx, gy + 2, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
 
-    for (int i = 0; i < 100; i++) {
-        sand_step(&fx.loc, 0, 1000, 0);
-    }
+    run_steps(&fx.loc, 100, 0, 1000);
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_FIRST_SHADE, sand_at(&fx.loc, gx, gy),
                                     "the grain must still be boxed in and asleep before the test begins,"
                                     " or freeing the down-left slide below proves nothing");
@@ -168,9 +162,7 @@ test_a_block_wakes_when_disturbed_diagonally(void) {
      * easy bug could special-case by mistake. */
     sand_erase(&fx.loc, gx - 1, gy + 1, 0);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&fx.loc, 0, 1000, 0);
-    }
+    run_steps(&fx.loc, 20, 0, 1000);
 
     const cell_t old_cell = sand_at(&fx.loc, gx, gy);
     const cell_t new_cell = sand_at(&fx.loc, gx - 1, gy + 1);
@@ -218,9 +210,7 @@ test_sideways_tilt_wakes_only_the_disturbed_column(void) {
     sand_set(&fx.loc, 19, 11, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     sand_set(&fx.loc, 19, 9, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
 
-    for (int i = 0; i < 100; i++) {
-        sand_step(&fx.loc, 1000, 0, 0);
-    }
+    run_steps(&fx.loc, 100, 1000, 0);
 
     uint8_t right_before[8 * 4]; /* a small window around the right grain */
     for (int y = 8; y < 12; y++) {
@@ -231,9 +221,7 @@ test_sideways_tilt_wakes_only_the_disturbed_column(void) {
 
     /* Free only the left grain's fall. */
     sand_erase(&fx.loc, 3, 10, 0);
-    for (int i = 0; i < 20; i++) {
-        sand_step(&fx.loc, 1000, 0, 0);
-    }
+    run_steps(&fx.loc, 20, 1000, 0);
 
     const cell_t left_moved = sand_at(&fx.loc, 3, 10);
 
@@ -321,9 +309,7 @@ test_liquid_cross_flow_wakes_only_the_blocks_it_touches_by_range(void) {
         }
     }
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(pool_p, 0, 1000, 0);
-    }
+    run_steps(pool_p, 600, 0, 1000);
 
     const int far_end_material = CELL_MATERIAL(sand_at(pool_p, POOL_W - 2, POOL_H - 1));
 
@@ -355,21 +341,13 @@ test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in(void) {
      * under test. */
     /* A full pool, two rows deep. Full matters: nothing in it has anywhere
      * to flow, so it settles and every row above it is genuinely dry. */
-    for (int y = H - 2; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    fill_box(&s, 0, W, H - 2, H, CELL_MAKE(MAT_WATER, MASS_MAX));
+    run_steps(&s, 60, 0, 1000);
 
     /* Spelled out rather than the SAND shorthand, which this file does not
      * define until the material tests further down. */
     sand_set(&s, 1, 0, CELL_MAKE(MAT_SAND, 8));
-    for (int i = 0; i < 90; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 90, 0, 1000);
 
     int water_cells_in_the_row_above_the_pool = 0;
     for (int x = 0; x < W; x++) {
@@ -398,27 +376,19 @@ test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in(void) {
 
 static void
 test_water_falling_into_the_next_block_down_still_spreads(void) {
-    uint8_t* cells = malloc((size_t)CROSS_BLOCK_W * CROSS_BLOCK_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(CROSS_BLOCK_W, CROSS_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t g;
-    sand_init(&g, cells, CROSS_BLOCK_W, CROSS_BLOCK_H, 3u);
-    sand_enable_sleeping(&g, blocks);
+    sand_test_grid_init(&g, &cells, &blocks, CROSS_BLOCK_W, CROSS_BLOCK_H, 3u);
 
     /* A stone shelf one row below the block boundary, so the water comes to
      * rest inside the LOWER block with nowhere gravity-ward left to go -
      * only cross-flow can move it after that. */
-    for (int x = 0; x < CROSS_BLOCK_W; x++) {
-        sand_set(&g, x, SAND_BLOCK_H + 1, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-    }
+    fill_box(&g, 0, CROSS_BLOCK_W, SAND_BLOCK_H + 1, SAND_BLOCK_H + 2, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     /* One full cell of water, in the last row of the UPPER block. */
     sand_set(&g, 5, SAND_BLOCK_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
-    for (int i = 0; i < 90; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 90, 0, 1000);
 
     int water_cells = 0;
     for (int x = 0; x < CROSS_BLOCK_W; x++) {
@@ -471,13 +441,9 @@ test_water_crosses_a_block_boundary_sideways(void) {
     /* Every cell full, filling the first block column exactly - so the block
      * holds no empty cell and no partly-filled liquid, and the skip's own test
      * passes on everything except the one cell beyond its edge. */
-    for (int x = 0; x < SAND_BLOCK_W; x++) {
-        sand_set(&g, x, channel_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&g, 0, SAND_BLOCK_W, channel_y, channel_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
-    for (int i = 0; i < 120; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 120, 0, 1000);
 
     int crossed = 0;
     for (int x = SAND_BLOCK_W; x < XSPAN_W; x++) {
@@ -508,14 +474,10 @@ test_water_crosses_a_block_boundary_sideways(void) {
 
 static void
 test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
-    uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t stress;
-    sand_init(&stress, cells, STRESS_W, STRESS_H, 4242u);
-    sand_enable_sleeping(&stress, blocks);
+    sand_test_grid_init(&stress, &cells, &blocks, STRESS_W, STRESS_H, 4242u);
 
     /* A checkerboard over the whole grid, including the last column and
      * last row exactly - the two partial blocks - not just somewhere
@@ -538,9 +500,7 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
     const int gx[] = {0, 100, 100, 100, 0, -100, -100, -100};
     const int gy[] = {100, 100, 0, -100, -100, -100, 0, 100};
     for (int dir = 0; dir < 8; dir++) {
-        for (int i = 0; i < 5; i++) {
-            sand_step(&stress, gx[dir], gy[dir], 0);
-        }
+        run_steps(&stress, 5, gx[dir], gy[dir]);
     }
     /* A hard shake at the end, the same jostle path the flip/undermining
      * tests use - it is what reaches try_slide()'s jostle-fall calls, the
@@ -567,28 +527,16 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
  * cycle above, which never fully settles before changing direction. */
 static void
 test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(void) {
-    uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t real;
-    sand_init(&real, cells, STRESS_W, STRESS_H, 13u);
-    sand_enable_sleeping(&real, blocks);
+    sand_test_grid_init(&real, &cells, &blocks, STRESS_W, STRESS_H, 13u);
 
-    for (int y = STRESS_H / 2; y < STRESS_H; y++) {
-        for (int x = STRESS_W / 4; x < (STRESS_W * 3) / 4; x++) {
-            sand_set(&real, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    fill_box(&real, STRESS_W / 4, (STRESS_W * 3) / 4, STRESS_H / 2, STRESS_H, SAND_FIRST_SHADE);
     const int grains = sand_count(&real);
 
-    for (int i = 0; i < 300; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
-    for (int i = 0; i < 20; i++) {
-        sand_step(&real, 0, -1000, 0);
-    }
+    run_steps(&real, 300, 0, 1000);
+    run_steps(&real, 20, 0, -1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(grains, sand_count(&real), "flipping gravity must conserve grains too");
 
@@ -601,24 +549,14 @@ test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(
  * untested by the two tests above, which only ever place plain sand. */
 static void
 test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(void) {
-    uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t real;
-    sand_init(&real, cells, STRESS_W, STRESS_H, 11u);
-    sand_enable_sleeping(&real, blocks);
+    sand_test_grid_init(&real, &cells, &blocks, STRESS_W, STRESS_H, 11u);
 
-    for (int y = 0; y < STRESS_H / 2; y++) {
-        for (int x = STRESS_W / 4; x < (STRESS_W * 3) / 4; x++) {
-            sand_set(&real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&real, STRESS_W / 4, (STRESS_W * 3) / 4, 0, STRESS_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, 60, 0, 1000);
 
     free(cells);
     free(blocks);
@@ -665,9 +603,7 @@ test_scatter_spreads_a_falling_stream(void) {
         sand_set(&s, 3, 0, SAND_FIRST_SHADE);
         sand_set(&s, 3, 1, SAND_FIRST_SHADE);
         sand_set(&s, 3, 2, SAND_FIRST_SHADE);
-        for (int i = 0; i < 4; i++) {
-            sand_step(&s, 0, 1, 0);
-        }
+        run_steps(&s, 4, 0, 1);
         narrow += occupied_columns();
 
         sand_init(&s, cells, W, H, 400u + (uint32_t)trial);
@@ -675,9 +611,7 @@ test_scatter_spreads_a_falling_stream(void) {
         sand_set(&s, 3, 0, SAND_FIRST_SHADE);
         sand_set(&s, 3, 1, SAND_FIRST_SHADE);
         sand_set(&s, 3, 2, SAND_FIRST_SHADE);
-        for (int i = 0; i < 4; i++) {
-            sand_step(&s, 0, 1, 0);
-        }
+        run_steps(&s, 4, 0, 1);
         spread += occupied_columns();
     }
 
@@ -689,11 +623,7 @@ static void
 test_scatter_conserves_grains(void) {
     fixture();
     sand_set_scatter(&s, 128);
-    for (int y = 0; y < 3; y++) {
-        for (int x = 2; x < 6; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    fill_box(&s, 2, 6, 0, 3, SAND_FIRST_SHADE);
     const int expected = sand_count(&s);
 
     for (int i = 0; i < 60; i++) {
@@ -715,9 +645,7 @@ test_a_lagging_grain_is_not_left_asleep(void) {
         sand_set_scatter(&s, 200); /* lags constantly */
         sand_set(&s, 3, 0, SAND_FIRST_SHADE);
 
-        for (int i = 0; i < 200; i++) {
-            sand_step(&s, 0, 1, 0);
-        }
+        run_steps(&s, 200, 0, 1);
 
         /* Scanned across the whole grid, not just the column it started in:
          * scatter drifts sideways as well as lagging, so where it lands is
@@ -757,9 +685,7 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
             moist_before += moisture_of(fx.loc.cells[(y * LOC_W) + x], dirt);
         }
     }
-    for (int i = 0; i < 40; i++) {
-        sand_step(&fx.loc, 0, 1, 0);
-    }
+    run_steps(&fx.loc, 40, 0, 1);
     int moist_after = 0;
     int changed = 0;
     for (int y = 0; y < LOC_H; y++) {
@@ -778,11 +704,7 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
 static void
 loc_filled_fixture(cell_t cell) {
     loc_fixture();
-    for (int y = 0; y < LOC_H; y++) {
-        for (int x = 0; x < LOC_W; x++) {
-            sand_set(&fx.loc, x, y, cell);
-        }
-    }
+    fill_box(&fx.loc, 0, LOC_W, 0, LOC_H, cell);
 }
 
 static void

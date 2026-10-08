@@ -52,20 +52,14 @@ gas_rows_teardown(void) {
 
 static void
 lay_gas_row_floor(void) {
-    for (int x = 0; x < GASROW_W; x++) {
-        sand_set(&gr, x, GASROW_H - 1, CELL_MAKE(MAT_STONE, 0));
-    }
+    fill_box(&gr, 0, GASROW_W, GASROW_H - 1, GASROW_H, CELL_MAKE(MAT_STONE, 0));
 }
 
 /* Water for try_bubble() and the walk's buoyancy fallback to push
  * through. */
 static void
 lay_gas_row_water_bed(void) {
-    for (int y = GASROW_H - 8; y < GASROW_H - 1; y++) {
-        for (int x = 4; x < GASROW_W - 4; x++) {
-            sand_set(&gr, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&gr, 4, GASROW_W - 4, GASROW_H - 8, GASROW_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* Stone/wood-or-sand pillar pairs for a mover to be BLOCKED BY. */
@@ -116,9 +110,7 @@ test_the_walk_arms_every_row_it_lands_in(void) {
     gas_rows_fixture();
     build_mixed_gas_board(false);
 
-    for (int i = 0; i < 80; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 80, 0, 1);
 
     assert_no_stranded_gas("the spread pass was about to skip a row that holds gas - a rise "
                            "sweep mover moved a cell without arming the row it landed in");
@@ -133,18 +125,10 @@ static void
 test_a_downward_walk_cascade_arms_every_row(void) {
     gas_rows_fixture();
 
-    for (int x = 0; x < GASROW_W; x++) {
-        sand_set(&gr, x, GASROW_H - 1, CELL_MAKE(MAT_STONE, 0));
-    }
-    for (int y = 2; y < 8; y++) {
-        for (int x = 2; x < GASROW_W - 2; x++) {
-            sand_set(&gr, x, y, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
-        }
-    }
+    fill_box(&gr, 0, GASROW_W, GASROW_H - 1, GASROW_H, CELL_MAKE(MAT_STONE, 0));
+    fill_box(&gr, 2, GASROW_W - 2, 2, 8, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 200, 0, 1);
 
     assert_no_stranded_gas("a gas cell walked down into a row the rise sweep had not reached, "
                            "took another turn there, and ended up in a row the spread pass was "
@@ -161,9 +145,7 @@ test_the_exhaustive_mover_arms_every_row_it_lands_in(void) {
     sand_set_gas_walk(&gr, false);
     build_mixed_gas_board(false);
 
-    for (int i = 0; i < 80; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 80, 0, 1);
 
     assert_no_stranded_gas("the exhaustive mover moved gas without arming the row it landed in");
     gas_rows_teardown();
@@ -175,16 +157,12 @@ test_the_exhaustive_mover_arms_every_row_it_lands_in(void) {
  * would only reach them by accident. */
 static void
 test_tilted_and_shaken_boards_leave_no_gas_stranded(void) {
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-
     for (int d = 0; d < 8; d++) {
         gas_rows_fixture();
         build_mixed_gas_board(false);
 
         for (int i = 0; i < 30; i++) {
-            sand_step(&gr, dirs[d][0], dirs[d][1], (i % 4 == 0) ? 200 : 0);
+            sand_step(&gr, gravity_dirs[d][0], gravity_dirs[d][1], (i % 4 == 0) ? 200 : 0);
         }
 
         assert_no_stranded_gas("a tilted or shaken board left gas in a row the spread pass was "
@@ -202,9 +180,7 @@ test_reaction_made_gas_is_never_stranded(void) {
     gas_rows_fixture();
     build_mixed_gas_board(true);
 
-    for (int i = 0; i < 120; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 120, 0, 1);
 
     assert_no_stranded_gas("gas minted by a reaction after the gas pass was still unaccounted "
                            "for when the next step's spread pass ran");
@@ -222,9 +198,7 @@ test_the_skip_actually_fires_and_the_audit_sees_it(void) {
     build_mixed_gas_board(false);
     sand_gas_row_audit_skippable = 0;
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 20, 0, 1);
 
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, sand_gas_row_audit_skippable,
                                           "no row was ever skippable, so the audit checked nothing and the "

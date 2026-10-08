@@ -608,9 +608,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
     const split_passes_scope_t split = split_passes_scope_begin(0u);
     sand_set_two_core_step(true);
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
     sand_set_two_core_step(false);
     split_passes_scope_end(split);
     tc_assert_split_arm_swept_split(swept_before, true);
@@ -688,28 +686,16 @@ worst_row_deltas(const int* occupied, int h, int side, int* interior_worst, int*
  * render. */
 static void
 test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 9u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 9u);
 
-    for (int x = 0; x < TC_W; x++) {
-        sand_set(&s, x, TC_H - 1, STONE);
-    }
-    for (int y = 4; y < TC_H / 2; y++) {
-        for (int x = 2; x < TC_W - 2; x++) {
-            sand_set(&s, x, y, SAND);
-        }
-    }
+    fill_box(&s, 0, TC_W, TC_H - 1, TC_H, STONE);
+    fill_box(&s, 2, TC_W - 2, 4, TC_H / 2, SAND);
 
     sand_set_two_core_step(true);
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
     sand_set_two_core_step(false);
 
     int* occupied = malloc(sizeof(int) * (size_t)TC_H);
@@ -1109,11 +1095,7 @@ tc_build_solid_body(sand_t* s, int side, cell_t fill, int* out_x0, int* out_y0) 
     const int x0 = side - TC_BODY_SIDE / 2;
     const int y0 = side - TC_BODY_SIDE / 2;
 
-    for (int y = y0; y < y0 + TC_BODY_SIDE; y++) {
-        for (int x = x0; x < x0 + TC_BODY_SIDE; x++) {
-            sand_set(s, x, y, fill);
-        }
-    }
+    fill_box(s, x0, x0 + TC_BODY_SIDE, y0, y0 + TC_BODY_SIDE, fill);
     *out_x0 = x0;
     *out_y0 = y0;
 }
@@ -1355,25 +1337,11 @@ tc_fuse_blast_impulses(bool two_core) {
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
     sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
 
-    for (int x = 0; x < TC_W; x++) {
-        sand_set(&s, x, TC_H - 1, STONE);
-    }
-    sand_set(&s, 2, TC_H - 2, STONE);
-    sand_set(&s, 5, TC_H - 2, STONE);
-    sand_set(&s, 2, TC_H - 3, STONE);
-    sand_set(&s, 5, TC_H - 3, STONE);
-    sand_set(&s, 3, TC_H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, TC_H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 3, TC_H - 2, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, TC_H - 2, GUNPOWDER_LIT_CELL);
+    fill_box(&s, 0, TC_W, TC_H - 1, TC_H, STONE);
+    boxed_lit_square(&s);
 
     sand_set_two_core_step(two_core);
-    bool burned = false;
-    for (int i = 0; i < 200 && !burned; i++) {
-        sand_step(&s, 0, 1000, 0);
-        burned = !cell_is_gunpowder(sand_at(&s, 3, TC_H - 3)) || !cell_is_gunpowder(sand_at(&s, 4, TC_H - 3))
-                 || !cell_is_gunpowder(sand_at(&s, 3, TC_H - 2)) || !cell_is_gunpowder(sand_at(&s, 4, TC_H - 2));
-    }
+    const bool burned = step_until_square_burns(&s, 200);
     const int impulses = s.impulse_count;
     sand_set_two_core_step(false);
 
@@ -1403,16 +1371,8 @@ tc_lava_burst_impulses(bool two_core) {
      * many fit in the deferred queue. */
     sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
 
-    for (int y = TC_H - 40; y < TC_H; y++) {
-        for (int x = 0; x < TC_W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
-    for (int y = TC_H - 36; y < TC_H - 6; y++) {
-        for (int x = 4; x < TC_W - 4; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
-        }
-    }
+    fill_box(&s, 0, TC_W, TC_H - 40, TC_H, STONE);
+    fill_box(&s, 4, TC_W - 4, TC_H - 36, TC_H - 6, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     sand_set_two_core_step(two_core);
     int peak = 0;
@@ -1459,20 +1419,12 @@ test_a_fuse_blast_throws_grains_on_both_cores(void) {
 
 static void
 test_a_settled_chunk_does_no_row_work(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 1u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
     void* scratch = lane_scratch_open(&s);
-    for (int y = 0; y < TC_H; y++) {
-        for (int x = 0; x < TC_W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, TC_W, 0, TC_H, STONE);
 
     sand_set_two_core_step(true);
     sand_step(&s, 0, 1000, 0);
@@ -1522,32 +1474,22 @@ tc_build_falling_column(sand_t* s) {
 static void
 tc_build_dense_pile(sand_t* s) {
     tc_build_bordered_box(s);
-    for (int y = TC_H / 4; y < 3 * TC_H / 4; y++) {
-        for (int x = TC_W / 4; x < 3 * TC_W / 4; x++) {
-            sand_set(s, x, y, SAND);
-        }
-    }
+    fill_box(s, TC_W / 4, 3 * TC_W / 4, TC_H / 4, 3 * TC_H / 4, SAND);
 }
 
 static uint32_t
 tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int offset, bool two_core, int* out_n) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 1u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
     void* scratch = lane_scratch_open(&s);
     sand_set_scatter(&s, 0);
     tc_prime_phase(&s, offset);
     build(&s);
 
     sand_set_two_core_step(two_core);
-    for (int i = 0; i < steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, steps, gx, gy);
     sand_set_two_core_step(false);
     tc_collect_core1();
 
@@ -2228,14 +2170,10 @@ test_a_board_without_lane_scratch_steps_its_fluids_serially(void) {
  * route back to the board. Every flag the board carries has to take it. */
 static void
 test_a_lane_merge_carries_every_content_flag_back(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 3u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 3u);
     void* scratch = lane_scratch_open(&s);
     clear_content_flags(&s);
     s.may_have_materials = 0;
@@ -2645,19 +2583,11 @@ test_no_split_pass_draws_from_the_sequential_stream(void) {
  * what gives cross-flow anything to roll for. */
 static uint32_t
 tc_run_crossflow_and_hash(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 5u);
-    sand_enable_sleeping(&s, blocks);
-    for (int y = TC_H / 3; y < TC_H; y++) {
-        for (int x = 0; x < TC_W; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_OIL, MASS_MAX));
-        }
-    }
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 5u);
+    fill_box(&s, 0, TC_W, TC_H / 3, TC_H, CELL_MAKE(MAT_OIL, MASS_MAX));
     for (int x = 0; x < TC_W; x++) {
         sand_set(&s, x, TC_H / 3 - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + (x * 7) % MASS_MAX)));
     }
@@ -2790,9 +2720,7 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
 
     tc_dispatch_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(true);
-    for (int i = 0; i < settle_steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, settle_steps, gx, gy);
     memset(sand_split_dispatches, 0, sizeof sand_split_dispatches);
     sand_step(&s, gx, gy, 0);
     for (int slot = 0; slot < SAND_SPLIT_SLOTS; slot++) {
@@ -2818,11 +2746,7 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
 static void
 tc_build_settled_slab_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
-    for (int y = TC_H / 3; y < TC_H; y++) {
-        for (int x = TC_W / 4; x < (TC_W * 3) / 4; x++) {
-            sand_set(s, x, y, STONE);
-        }
-    }
+    fill_box(s, TC_W / 4, (TC_W * 3) / 4, TC_H / 3, TC_H, STONE);
 }
 
 /* One narrow column of sand falling down an otherwise empty board - awake
@@ -2831,11 +2755,7 @@ tc_build_settled_slab_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 static void
 tc_build_falling_column_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
-    for (int y = 0; y < TC_H / 8; y++) {
-        for (int x = TC_W / 2 - 2; x < TC_W / 2 + 2; x++) {
-            sand_set(s, x, y, SAND);
-        }
-    }
+    fill_box(s, (TC_W / 2) - 2, (TC_W / 2) + 2, 0, TC_H / 8, SAND);
 }
 
 static void
