@@ -1338,22 +1338,10 @@ tc_fuse_blast_impulses(bool two_core) {
     sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
 
     fill_box(&s, 0, TC_W, TC_H - 1, TC_H, STONE);
-    sand_set(&s, 2, TC_H - 2, STONE);
-    sand_set(&s, 5, TC_H - 2, STONE);
-    sand_set(&s, 2, TC_H - 3, STONE);
-    sand_set(&s, 5, TC_H - 3, STONE);
-    sand_set(&s, 3, TC_H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, TC_H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 3, TC_H - 2, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, TC_H - 2, GUNPOWDER_LIT_CELL);
+    boxed_lit_square(&s);
 
     sand_set_two_core_step(two_core);
-    bool burned = false;
-    for (int i = 0; i < 200 && !burned; i++) {
-        sand_step(&s, 0, 1000, 0);
-        burned = !cell_is_gunpowder(sand_at(&s, 3, TC_H - 3)) || !cell_is_gunpowder(sand_at(&s, 4, TC_H - 3))
-                 || !cell_is_gunpowder(sand_at(&s, 3, TC_H - 2)) || !cell_is_gunpowder(sand_at(&s, 4, TC_H - 2));
-    }
+    const bool burned = step_until_square_burns(&s, 200);
     const int impulses = s.impulse_count;
     sand_set_two_core_step(false);
 

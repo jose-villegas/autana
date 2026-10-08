@@ -423,26 +423,12 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
      * burn_decay for burn-out to happen at all. */
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    for (int x = 1; x <= 6; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    sand_set(&s, 2, H - 2, STONE);
-    sand_set(&s, 5, H - 2, STONE);
-    sand_set(&s, 2, H - 3, STONE);
-    sand_set(&s, 5, H - 3, STONE);
-    sand_set(&s, 3, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 2, GUNPOWDER_LIT_CELL);
+    fill_box(&s, 1, 7, H - 1, H, STONE);
+    boxed_lit_square(&s);
 
     impulse_t* square_buf = impulses_open(&s, W * H);
 
-    bool square_burned = false;
-    for (int i = 0; i < 200 && !square_burned; i++) {
-        sand_step(&s, 0, 1000, 0);
-        square_burned = !cell_is_gunpowder(sand_at(&s, 3, H - 3)) || !cell_is_gunpowder(sand_at(&s, 4, H - 3))
-                        || !cell_is_gunpowder(sand_at(&s, 3, H - 2)) || !cell_is_gunpowder(sand_at(&s, 4, H - 2));
-    }
+    const bool square_burned = step_until_square_burns(&s, 200);
     const int square_impulses = s.impulse_count;
     free(square_buf);
 
@@ -459,9 +445,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
      * fire. */
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    for (int x = 1; x <= 6; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 1, 7, H - 1, H, STONE);
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 5, H - 2, STONE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
@@ -774,17 +758,8 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
     sand_set_mobility(&s, 0);                    /* keep an earlier-resolved corner's
                                  * fresh fire from drifting off before
                                  * the last corner is checked */
-    for (int x = 1; x <= 6; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    sand_set(&s, 2, H - 2, STONE);
-    sand_set(&s, 5, H - 2, STONE);
-    sand_set(&s, 2, H - 3, STONE);
-    sand_set(&s, 5, H - 3, STONE);
-    sand_set(&s, 3, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 2, GUNPOWDER_LIT_CELL);
+    fill_box(&s, 1, 7, H - 1, H, STONE);
+    boxed_lit_square(&s);
     /* No sand_enable_impulses() - s->impulse_buf stays NULL, the default. */
 
     /* WHAT EACH CORNER BECOMES AT THE MOMENT IT BURNS OUT, not what sits

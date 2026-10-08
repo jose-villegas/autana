@@ -87,6 +87,30 @@ impulses_open(sand_t* g, int max) {
 }
 
 void
+boxed_lit_square(sand_t* g) {
+    const int h = g->h;
+    fill_box(g, 2, 3, h - 3, h - 1, STONE);
+    fill_box(g, 5, 6, h - 3, h - 1, STONE);
+    fill_box(g, 3, 5, h - 3, h - 1, GUNPOWDER_LIT_CELL);
+}
+
+bool
+step_until_square_burns(sand_t* g, int max_steps) {
+    const int h = g->h;
+    for (int i = 0; i < max_steps; i++) {
+        sand_step(g, 0, 1000, 0);
+        for (int y = h - 3; y < h - 1; y++) {
+            for (int x = 3; x < 5; x++) {
+                if (!cell_is_gunpowder(sand_at(g, x, y))) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void
 fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c) {
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {

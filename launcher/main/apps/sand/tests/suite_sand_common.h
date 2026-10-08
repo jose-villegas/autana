@@ -125,6 +125,12 @@ void use_app_rates(sand_t* g);
 /* Mallocs a queue of max impulses and enables it on g. The caller frees it. */
 impulse_t* impulses_open(sand_t* g, int max);
 
+/* A lit gunpowder 2x2 at columns 3-4 of the two rows above g's bottom row,
+ * stone either side of it; step_until_square_burns() steps g until one of
+ * its corners stops being gunpowder, and says whether one did. */
+void boxed_lit_square(sand_t* g);
+bool step_until_square_burns(sand_t* g, int max_steps);
+
 /* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
 void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
 
