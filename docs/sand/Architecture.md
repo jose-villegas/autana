@@ -293,7 +293,8 @@ state across the row's full width (the state chain crosses columns and
 rows) but only writes pixels inside that span.
 
 What gets marked is a row's runs, not one span: `draw_one_row()` splits the
-row with `row_runs_find()` (`row_runs.c`, at most `ROW_MAX_RUNS`), so two
+row with `row_runs_find_or_span()` (`row_runs.h`): up to `ROW_MAX_RUNS` runs,
+or one span over every non-empty cell when the row holds more, so two
 separate blobs in one grid row reach `gfx_mark_dirty()` as two runs with the
 gap skipped. `row_runs_reconcile()` diffs this frame's runs against last
 frame's: a current run absorbs every previous run it overlaps, and a
