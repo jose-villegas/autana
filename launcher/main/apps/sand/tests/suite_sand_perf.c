@@ -484,28 +484,28 @@ real_board_close(real_board_t* b) {
 }
 
 /* The end of a plain row: times `steps` steps under (0, gy), logs them under
- * `scene`, closes b and holds the row to goal_us and ceiling_us. */
-static void
-finish_timed_row(sand_t* real, real_board_t* b, int steps, int gy, const char* scene, const char* name, int64_t goal_us,
-                 int64_t ceiling_us) {
+ * `scene` and frees the board. Returns the mean, which the row holds to its
+ * budget itself - report_performance.py reads each row's ceiling from the
+ * perf_target() call in its own body. */
+static int64_t
+finish_timed_row(sand_t* real, real_board_t* b, int steps, int gy, const char* scene) {
     const int64_t per_step = time_steps(real, steps, 0, gy, 0);
     log_step_time(scene, per_step);
     real_board_close(b);
-    perf_target(name, per_step, goal_us, ceiling_us);
     free(real);
+    return per_step;
 }
 
 /* finish_timed_row() for a row fed before each step, under ordinary gravity,
  * that logs its worst step too. */
-static void
-finish_fed_row(sand_t* real, real_board_t* b, int steps, step_feed_fn feed, const char* scene, const char* name,
-               int64_t goal_us, int64_t ceiling_us) {
+static int64_t
+finish_fed_row(sand_t* real, real_board_t* b, int steps, step_feed_fn feed, const char* scene) {
     int64_t worst = 0;
     const int64_t per_step = time_fed_steps(real, steps, 0, 1000, feed, &worst);
     log_step_and_worst(scene, per_step, worst);
     real_board_close(b);
-    perf_target(name, per_step, goal_us, ceiling_us);
     free(real);
+    return per_step;
 }
 
 /* A row that differs from others only by data: `build` painted on a fresh
@@ -520,12 +520,9 @@ typedef struct {
     int steps;
     step_feed_fn feed;
     const char* scene;
-    const char* name;
-    int64_t goal_us;
-    int64_t ceiling_us;
 } settled_row_t;
 
-static void
+static int64_t
 run_settled_row(const settled_row_t* row) {
     real_board_t b;
     sand_t* const real = real_board_open(&b, row->seed);
@@ -539,10 +536,9 @@ run_settled_row(const settled_row_t* row) {
     run_steps(real, row->settle_steps, 0, 1000);
 
     if (row->feed != NULL) {
-        finish_fed_row(real, &b, row->steps, row->feed, row->scene, row->name, row->goal_us, row->ceiling_us);
-    } else {
-        finish_timed_row(real, &b, row->steps, 1000, row->scene, row->name, row->goal_us, row->ceiling_us);
+        return finish_fed_row(real, &b, row->steps, row->feed, row->scene);
     }
+    return finish_timed_row(real, &b, row->steps, 1000, row->scene);
 }
 
 /* The gas rows run on both paths and the app runs one core at lower
@@ -1683,7 +1679,8 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     build_plant_bed_scene(real);
     plant_bed_settle(real);
 
-    finish_timed_row(real, &b, 20, 1000, "growing plant bed", "growing plant bed", 37180, 52840);
+    const int64_t per_step = finish_timed_row(real, &b, 20, 1000, "growing plant bed");
+    perf_target("growing plant bed", per_step, 37180, 52840);
 }
 
 static void
@@ -1691,14 +1688,12 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     /* Settled so the sand lands and the fire catches, and the timed steps are
      * a burning campfire rather than a scene still falling into place.
      * Perf-scoped, with the block at 16x32. */
-    run_settled_row(&(const settled_row_t){.seed = 23u,
-                                           .build = build_campfire_scene,
-                                           .settle_steps = 30,
-                                           .steps = 20,
-                                           .scene = "campfire on a sand bed",
-                                           .name = "campfire on sand",
-                                           .goal_us = 23520,
-                                           .ceiling_us = 30010});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 23u,
+                                                                    .build = build_campfire_scene,
+                                                                    .settle_steps = 30,
+                                                                    .steps = 20,
+                                                                    .scene = "campfire on a sand bed"});
+    perf_target("campfire on sand", per_step, 23520, 30010);
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -1777,8 +1772,8 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
      * check: water's model can spread mass across cells, so sand_count()
      * legitimately changes; test_a_screen_of_water_fits_in_the_frame_budget
      * skips this same check for the same reason. */
-    finish_timed_row(real, &b, 20, -1000, "gravity flip on a mixed sand/water/stone-X scene",
-                     "mixed-scene gravity flip", 13800, 16860);
+    const int64_t per_step = finish_timed_row(real, &b, 20, -1000, "gravity flip on a mixed sand/water/stone-X scene");
+    perf_target("mixed-scene gravity flip", per_step, 13800, 16860);
 }
 
 /* Counter 0 is cycles, seeded the way xtensa_perfmon_exec() seeds it (select
@@ -1947,8 +1942,8 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
      * scene rather than a freshly painted one. */
     run_steps(real, 120, 0, 1000);
 
-    finish_timed_row(real, &b, 20, -1000, "gravity flip with every material at once", "all-material gravity flip",
-                     80780, 94790);
+    const int64_t per_step = finish_timed_row(real, &b, 20, -1000, "gravity flip with every material at once");
+    perf_target("all-material gravity flip", per_step, 80780, 94790);
 }
 
 static void
@@ -2124,15 +2119,13 @@ static void
 test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
     /* Settled first - the same "let it get going" step as the every-material
      * flip test above, so the measured window lands on a live scene. */
-    run_settled_row(&(const settled_row_t){.seed = 29u,
-                                           .app_rates = true,
-                                           .build = build_four_liquid_scene,
-                                           .settle_steps = 10,
-                                           .steps = 20,
-                                           .scene = "four liquids reacting at once",
-                                           .name = "four reacting liquids",
-                                           .goal_us = 64630,
-                                           .ceiling_us = 75190});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 29u,
+                                                                    .app_rates = true,
+                                                                    .build = build_four_liquid_scene,
+                                                                    .settle_steps = 10,
+                                                                    .steps = 20,
+                                                                    .scene = "four liquids reacting at once"});
+    perf_target("four reacting liquids", per_step, 64630, 75190);
 }
 
 static void
@@ -2196,27 +2189,23 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
      * comment covers the cullet timeline); the ceiling is chosen against
      * the device's 5-second task watchdog at that fixed count - raising the
      * count without minding the ceiling needs re-doing the bet. */
-    run_settled_row(&(const settled_row_t){.seed = 41u,
-                                           .app_rates = true,
-                                           .build = build_thermal_shock_scene,
-                                           .steps = 10,
-                                           .scene = "thermal shock lattice",
-                                           .name = "thermal shock",
-                                           .goal_us = 83240,
-                                           .ceiling_us = 97690});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 41u,
+                                                                    .app_rates = true,
+                                                                    .build = build_thermal_shock_scene,
+                                                                    .steps = 10,
+                                                                    .scene = "thermal shock lattice"});
+    perf_target("thermal shock", per_step, 83240, 97690);
 }
 
 static void
 test_the_boiler_scene_fits_in_the_frame_budget(void) {
-    run_settled_row(&(const settled_row_t){.seed = 43u,
-                                           .app_rates = true,
-                                           .build = build_boiler_scene,
-                                           .settle_steps = 20,
-                                           .steps = 30,
-                                           .scene = "boiler scene",
-                                           .name = "boiler",
-                                           .goal_us = 19890,
-                                           .ceiling_us = 26380});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 43u,
+                                                                    .app_rates = true,
+                                                                    .build = build_boiler_scene,
+                                                                    .settle_steps = 20,
+                                                                    .steps = 30,
+                                                                    .scene = "boiler scene"});
+    perf_target("boiler", per_step, 19890, 26380);
 }
 
 /* Sand and dirt poured in equal amounts, water dropped over both until
@@ -2229,16 +2218,14 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     /* Perf-scoped, with the block at 16x32. */
-    run_settled_row(&(const settled_row_t){.seed = 53u,
-                                           .app_rates = true,
-                                           .soak = true,
-                                           .build = build_wet_earth_scene,
-                                           .settle_steps = 35,
-                                           .steps = 30,
-                                           .scene = "wet earth scene",
-                                           .name = "wet earth",
-                                           .goal_us = 29860,
-                                           .ceiling_us = 37620});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 53u,
+                                                                    .app_rates = true,
+                                                                    .soak = true,
+                                                                    .build = build_wet_earth_scene,
+                                                                    .settle_steps = 35,
+                                                                    .steps = 30,
+                                                                    .scene = "wet earth scene"});
+    perf_target("wet earth", per_step, 29860, 37620);
 }
 
 /* The water-over-lava scene from this file's own section above, run as a
@@ -2256,7 +2243,8 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
 
     build_water_over_lava_scene(real);
 
-    finish_timed_row(real, &b, 20, 1000, "water over lava scene", "water over lava", 133350, 154000);
+    const int64_t per_step = finish_timed_row(real, &b, 20, 1000, "water over lava scene");
+    perf_target("water over lava", per_step, 133350, 154000);
 }
 
 static void
@@ -2371,8 +2359,9 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     /* THE INTERACTION IS THE FINDING: the same bed, grown the same way, is
      * 68,076 us a step while it is merely drinking rain and 83,173 once acid
      * and lava arrive - 22% for the pours alone. */
-    finish_fed_row(real, &b, PLANT_RUIN_MEASURED_STEPS, feed_plant_ruin_acid, "plant ruin scene", "plant ruin",
-                   PLANT_RUIN_BUDGET_US, 71850);
+    const int64_t per_step =
+        finish_fed_row(real, &b, PLANT_RUIN_MEASURED_STEPS, feed_plant_ruin_acid, "plant ruin scene");
+    perf_target("plant ruin", per_step, PLANT_RUIN_BUDGET_US, 71850);
 }
 
 /* Water running down a ramp into a pool (build_filling_basin_scene(), shared
@@ -2394,8 +2383,9 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
      * A third more for the same board of water, purely for settling rather
      * than dropping into vacuum - so the row the water work is tuned on is
      * the cheaper of the two cases by 33%. */
-    finish_fed_row(real, &b, FILLING_BASIN_MEASURED_STEPS, feed_filling_basin, "filling basin scene", "filling basin",
-                   FILLING_BASIN_BUDGET_US, 18100);
+    const int64_t per_step =
+        finish_fed_row(real, &b, FILLING_BASIN_MEASURED_STEPS, feed_filling_basin, "filling basin scene");
+    perf_target("filling basin", per_step, FILLING_BASIN_BUDGET_US, 18100);
 }
 
 /* Snow falling onto a bank that has already crusted, over sand and dirt
@@ -2415,8 +2405,8 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
 
     /* 63,371 us a step from a material that had no scene at all: about what
      * a growing plant bed costs, and dearer than a campfire. */
-    finish_fed_row(real, &b, SNOWFALL_MEASURED_STEPS, feed_snowfall_drift, "snowfall scene", "snowfall",
-                   SNOWFALL_BUDGET_US, 40530);
+    const int64_t per_step = finish_fed_row(real, &b, SNOWFALL_MEASURED_STEPS, feed_snowfall_drift, "snowfall scene");
+    perf_target("snowfall", per_step, SNOWFALL_BUDGET_US, 40530);
 }
 
 /* The plant brush poured onto damp earth (build_plant_pour_scene()), which no
@@ -2427,16 +2417,14 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
  * the plant bed row over again. */
 static void
 test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
-    run_settled_row(&(const settled_row_t){.seed = 11u,
-                                           .soak = true,
-                                           .build = build_plant_pour_scene,
-                                           .settle_steps = PLANT_POUR_SETTLE_STEPS,
-                                           .steps = PLANT_POUR_MEASURED_STEPS,
-                                           .feed = plant_pour_stamp,
-                                           .scene = "plant pour",
-                                           .name = "plant pour",
-                                           .goal_us = PLANT_POUR_BUDGET_US,
-                                           .ceiling_us = 78730});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 11u,
+                                                                    .soak = true,
+                                                                    .build = build_plant_pour_scene,
+                                                                    .settle_steps = PLANT_POUR_SETTLE_STEPS,
+                                                                    .steps = PLANT_POUR_MEASURED_STEPS,
+                                                                    .feed = plant_pour_stamp,
+                                                                    .scene = "plant pour"});
+    perf_target("plant pour", per_step, PLANT_POUR_BUDGET_US, 78730);
 }
 
 /* The same heap once it has stopped: the state a poured garden spends almost
@@ -2453,7 +2441,8 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     run_fed_steps(real, PLANT_POUR_MEASURED_STEPS, 0, 1000, plant_pour_stamp);
     run_steps(real, PLANT_IDLE_SETTLE_STEPS, 0, 1000);
 
-    finish_timed_row(real, &b, 200, 1000, "settled plant garden", "settled plant garden", PLANT_IDLE_BUDGET_US, 170);
+    const int64_t per_step = finish_timed_row(real, &b, 200, 1000, "settled plant garden");
+    perf_target("settled plant garden", per_step, PLANT_IDLE_BUDGET_US, 170);
 }
 
 /* The maintainer's own case: a tree grown from seed on damp earth, with wood,
@@ -2463,15 +2452,13 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
  * what a garden does for all but the first few hundred steps of its life. */
 static void
 test_a_finished_tree_fits_in_the_frame_budget(void) {
-    run_settled_row(&(const settled_row_t){.seed = 11u,
-                                           .soak = true,
-                                           .build = build_plant_bed_scene,
-                                           .settle_steps = MATURE_TREE_SETTLE_STEPS,
-                                           .steps = 200,
-                                           .scene = "finished tree",
-                                           .name = "finished tree",
-                                           .goal_us = MATURE_TREE_BUDGET_US,
-                                           .ceiling_us = 25040});
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 11u,
+                                                                    .soak = true,
+                                                                    .build = build_plant_bed_scene,
+                                                                    .settle_steps = MATURE_TREE_SETTLE_STEPS,
+                                                                    .steps = 200,
+                                                                    .scene = "finished tree"});
+    perf_target("finished tree", per_step, MATURE_TREE_BUDGET_US, 25040);
 }
 
 /* Every row above holds the board portrait, and the block shape behind the
@@ -2504,10 +2491,9 @@ landscape_scene_us_per_step(sand_t* real, bool water, int64_t* worst_out) {
 }
 
 /* One landscape pour row: `build` at the app's rates, primed and timed by
- * landscape_scene_us_per_step(), then held to goal_us and ceiling_us. */
-static void
-landscape_pour_row(void (*build)(sand_t*), bool water, const char* scene, const char* name, int64_t goal_us,
-                   int64_t ceiling_us) {
+ * landscape_scene_us_per_step(). Returns the mean. */
+static int64_t
+landscape_pour_row(void (*build)(sand_t*), bool water, const char* scene) {
     real_board_t b;
     sand_t* const real = real_board_open(&b, 29u);
     use_app_rates(real);
@@ -2518,8 +2504,8 @@ landscape_pour_row(void (*build)(sand_t*), bool water, const char* scene, const 
 
     log_step_and_worst(scene, per_step, worst);
     real_board_close(&b);
-    perf_target(name, per_step, goal_us, ceiling_us);
     free(real);
+    return per_step;
 }
 
 /* Water poured into a settled sand bed, held the way the board is played
@@ -2528,8 +2514,8 @@ landscape_pour_row(void (*build)(sand_t*), bool water, const char* scene, const 
  * of the three, and the pairing the palette puts first. */
 static void
 test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
-    landscape_pour_row(build_landscape_bed_scene, true, "landscape water onto a sand bed", "landscape water",
-                       LANDSCAPE_WATER_BUDGET_US, 27700);
+    const int64_t per_step = landscape_pour_row(build_landscape_bed_scene, true, "landscape water onto a sand bed");
+    perf_target("landscape water", per_step, LANDSCAPE_WATER_BUDGET_US, 27700);
 }
 
 /* The same pour onto a bed holding 65% of the board rather than 40%: a
@@ -2537,8 +2523,9 @@ test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
  * arena's other priced landscape depth. */
 static void
 test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
-    landscape_pour_row(build_landscape_deep_bed_scene, true, "landscape water onto a deep sand bed",
-                       "deep landscape water", LANDSCAPE_DEEP_WATER_BUDGET_US, 29310);
+    const int64_t per_step =
+        landscape_pour_row(build_landscape_deep_bed_scene, true, "landscape water onto a deep sand bed");
+    perf_target("deep landscape water", per_step, LANDSCAPE_DEEP_WATER_BUDGET_US, 29310);
 }
 
 /* The liquid-free landscape row. Without it a geometry change that moved
@@ -2546,8 +2533,8 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
  * passes, since every other liquid-free scene in this file is portrait. */
 static void
 test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
-    landscape_pour_row(build_landscape_bed_scene, false, "landscape sand onto a sand bed", "landscape sand",
-                       LANDSCAPE_SAND_BUDGET_US, 7960);
+    const int64_t per_step = landscape_pour_row(build_landscape_bed_scene, false, "landscape sand onto a sand bed");
+    perf_target("landscape sand", per_step, LANDSCAPE_SAND_BUDGET_US, 7960);
 }
 
 /*
