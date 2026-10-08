@@ -23,6 +23,9 @@ class SkipFactsTest(unittest.TestCase):
     def test_wrapped_read_passes(self):
         self.assertEqual(self.problems("if (SAND_SKIP_IF(!s->may_have_x)) return;"), [])
 
+    def test_rule_read_passes(self):
+        self.assertEqual(self.problems("if (SAND_FACT_RULE(s->may_have_x)) act();"), [])
+
     def test_bare_read_fails(self):
         self.assertTrue(any("may_have_x read outside SAND_SKIP_IF" in p
                             for p in self.problems("if (!s->may_have_x) return;")))

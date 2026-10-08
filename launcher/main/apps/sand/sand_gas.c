@@ -1100,8 +1100,8 @@ choose_gas_sweep_order(const sand_t* s, int rdy, const int** slide_a, const int*
 void
 sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
               const int* perp_b, int load_dx, int load_dy, int x_step, int jostle) {
-    /* The forced pass includes gas_flip even when no gas cell is present. */
-    if (SAND_SKIP_IF(!s->may_have_gas)) {
+    SAND_FORCED_STATE(s);
+    if (SAND_SKIP_IF(SAND_FORCED_IF(!s->may_have_gas))) {
         return;
     }
     build_gas_tables();
@@ -1168,4 +1168,5 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     if (!found_any) {
         s->may_have_gas = false;
     }
+    sand_forced_restore(s, &forced_state);
 }

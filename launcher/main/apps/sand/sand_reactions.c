@@ -98,19 +98,27 @@ pair_theirs_bits(uint8_t theirs) {
 
 static inline bool
 neighbor_quenches(const sand_t* s, int nx, int ny, int w, int h) {
+#ifdef SAND_FORCE_WORK
     const uint8_t* row = dest_row(s, ny);
     if (row == NULL || (unsigned)nx >= (unsigned)w || CELL_IS_EMPTY(row[nx])) {
         return false;
     }
     const cell_t n = row[nx];
-    if (SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_QUENCHES) == 0)) {
+#else
+    if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
         return false;
     }
+    const cell_t n = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+    if (CELL_IS_EMPTY(n)) {
+        return false;
+    }
+#endif
+    const bool quenches = !SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_QUENCHES) == 0);
 #ifdef SAND_FORCE_WORK
     const reaction_t* r = reaction_of(n);
-    return material_of(n)->kind == KIND_LIQUID && r->flammability == 0 && r->burns == 0;
+    return quenches && material_of(n)->kind == KIND_LIQUID && r->flammability == 0 && r->burns == 0;
 #else
-    return true;
+    return quenches;
 #endif
 }
 
@@ -2361,6 +2369,22 @@ typedef struct {
     unsigned found;
 } reacting_cell_t;
 
+#ifdef SAND_FORCE_WORK
+#define SAND_FORCED_STAGE_SAVE(k)                                                                                      \
+    SAND_FORCED_STATE((k)->rr->s);                                                                                     \
+    const reacting_cell_t forced_cell = *(k)
+#define SAND_FORCED_STAGE_RESTORE(k)                                                                                   \
+    do {                                                                                                               \
+        sand_forced_restore((k)->rr->s, &forced_state);                                                                \
+        if (forced_state.skipped) {                                                                                    \
+            *(k) = forced_cell;                                                                                        \
+        }                                                                                                              \
+    } while (0)
+#else
+#define SAND_FORCED_STAGE_SAVE(k)
+#define SAND_FORCED_STAGE_RESTORE(k) ((void)0)
+#endif
+
 /* The reaction row and burn plan for cell c. */
 static inline __attribute__((always_inline)) const reaction_t*
 reacting_cell_rule(cell_t c, const burn_plan_t** plan) {
@@ -2445,9 +2469,9 @@ crust_due(const reacting_cell_t* k) {
     sand_t* s = rr->s;
     const int x = k->x, y = rr->y;
     const reaction_t* r = k->r;
-    /* Rest constrains crust formation; forcing it permits crust on moving cells. */
+    /* Rest is a rule here, so crust never forms with sleeping off. */
     const unsigned faces =
-        (r->crusts != 0 && !SAND_SKIP_IF(!cell_settled(s, x, y)))
+        (r->crusts != 0 && SAND_FACT_RULE(cell_settled(s, x, y)))
             ? crust_faces(s, x, y, rr->w, rr->h, CELL_MATERIAL(k->c), CELL_MATERIAL((cell_t)r->crusts_to))
             : 0u;
     const unsigned phase = (unsigned)s->step_phase;
@@ -2502,13 +2526,16 @@ react_stage_chill(reacting_cell_t* k) {
 /* Gated on `may_have_heat_holder` to avoid unnecessary neighbour scans. */
 static inline __attribute__((always_inline)) void
 react_stage_warm(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     const reaction_row_t* rr = k->rr;
-    if (k->done || k->r->warms == 0 || SAND_SKIP_IF(!present_temperature || !rr->s->may_have_heat_holder)) {
+    if (k->done || k->r->warms == 0
+        || SAND_SKIP_IF(SAND_FORCED_IF(!present_temperature || !rr->s->may_have_heat_holder))) {
         return;
     }
     step_one_warming_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r);
     k->found |= FOUND_TEMPERATURE;
     k->done = true;
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Cheap tests first: field, may_have_liquid, then neighbour scan. */
@@ -2545,19 +2572,23 @@ react_stage_fall(reacting_cell_t* k) {
 
 static inline __attribute__((always_inline)) void
 react_stage_drink(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     if (k->done) {
         return;
     }
     const reaction_row_t* rr = k->rr;
-    if (k->r->drinks != 0 && !SAND_SKIP_IF(!rr->s->may_have_liquid)
+    if (k->r->drinks != 0 && !SAND_SKIP_IF(SAND_FORCED_IF(!rr->s->may_have_liquid))
         && step_one_drinking_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r, k->c)) {
         k->found |= FOUND_MOISTURE;
     }
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 static inline __attribute__((always_inline)) void
 react_stage_root(reacting_cell_t* k) {
-    if (k->done || k->r->roots == 0 || k->c != (cell_t)k->r->roots_to || SAND_SKIP_IF(!present_moisture)) {
+    SAND_FORCED_STAGE_SAVE(k);
+    if (k->done || k->r->roots == 0 || k->c != (cell_t)k->r->roots_to
+        || SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))) {
         return;
     }
     const reaction_row_t* rr = k->rr;
@@ -2569,6 +2600,7 @@ react_stage_root(reacting_cell_t* k) {
         k->found |= FOUND_MOISTURE;
     }
     k->done = true;
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* NEITHER THIS STAGE NOR react_stage_bud() REPORTS FOUND_MOISTURE: both
@@ -2578,39 +2610,44 @@ react_stage_root(reacting_cell_t* k) {
  * stage_soak_dry regardless. */
 static inline __attribute__((always_inline)) void
 react_stage_grow(reacting_cell_t* k) {
-    /* Entering growth can consume draws and finish this cell's stage chain. */
-    if (k->done || k->r->grows == 0 || SAND_SKIP_IF(!present_moisture)) {
+    SAND_FORCED_STAGE_SAVE(k);
+    if (k->done || k->r->grows == 0 || SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))) {
         return;
     }
     const reaction_row_t* rr = k->rr;
     step_one_growing_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r);
     k->done = true;
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Same gate as growing; reached by unlit wood, which falls through every
  * stage above it. */
 static inline __attribute__((always_inline)) void
 react_stage_sprout(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     if (k->done) {
         return;
     }
     const reaction_row_t* rr = k->rr;
-    if (k->r->sprouts != 0 && !SAND_SKIP_IF(!present_moisture)
+    if (k->r->sprouts != 0 && !SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))
         && step_one_sprouting_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r)) {
         k->found |= FOUND_MOISTURE;
     }
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Same gate again. */
 static inline __attribute__((always_inline)) void
 react_stage_bud(reacting_cell_t* k) {
+    SAND_FORCED_STAGE_SAVE(k);
     if (k->done) {
         return;
     }
     const reaction_row_t* rr = k->rr;
-    if (k->r->buds != 0 && !SAND_SKIP_IF(!present_moisture)) {
+    if (k->r->buds != 0 && !SAND_SKIP_IF(SAND_FORCED_IF(!present_moisture))) {
         step_one_budding_cell(rr->s, k->x, rr->y, rr->w, rr->h, k->r);
     }
+    SAND_FORCED_STAGE_RESTORE(k);
 }
 
 /* Each cell enters the stage chain at its material's plan->stage, skipping

@@ -645,12 +645,6 @@ liquid_mask(void) {
     return mask;
 }
 
-SAND_FACT static inline bool
-liquids_may_sort(const sand_t* s) {
-    const uint16_t liquids_here = s->may_have_materials & liquid_mask();
-    return (liquids_here & (uint16_t)(liquids_here - 1u)) != 0u;
-}
-
 /* What a liquid could still put moisture INTO: something that drinks it
  * directly, or ground that soaks. A board holding a liquid and none of these
  * has no way to make moisture at all, which is what lets the reaction pass
@@ -758,6 +752,30 @@ block_of(const sand_t* s, int x, int y) {
 }
 
 #ifdef SAND_FORCE_WORK
+typedef struct {
+    rng_t rng;
+    bool gas_flip;
+    bool liquid_flip;
+    bool skipped;
+} sand_forced_state_t;
+
+static inline sand_forced_state_t
+sand_forced_save(const sand_t* s) {
+    return (sand_forced_state_t){.rng = s->rng, .gas_flip = s->gas_flip, .liquid_flip = s->liquid_flip};
+}
+
+static inline void
+sand_forced_restore(sand_t* s, const sand_forced_state_t* snap) {
+    if (snap->skipped) {
+        s->rng = snap->rng;
+        s->gas_flip = snap->gas_flip;
+        s->liquid_flip = snap->liquid_flip;
+    }
+}
+
+#define SAND_FORCED_STATE(s) sand_forced_state_t forced_state = sand_forced_save(s)
+#define SAND_FORCED_IF(cond) (forced_state.skipped = (cond))
+
 typedef struct sand_skip_site {
     const char* file;
     int line;
@@ -776,7 +794,12 @@ void sand_skip_sites_report(void);
     })
 #else
 #define SAND_SKIP_IF(cond) (cond)
+#define SAND_FORCED_STATE(s)
+#define SAND_FORCED_IF(cond)         (cond)
+#define sand_forced_restore(s, snap) ((void)0)
 #endif
+
+#define SAND_FACT_RULE(expr) (expr)
 
 /* Has this cell's block come to rest? The same test sand_block_settled()
  * makes, by cell rather than by block index. False when sleeping is off,
@@ -811,15 +834,6 @@ liquid_near(const sand_t* s, int x, int y) {
 }
 
 SAND_FACT_WRITER static inline void
-clear_settled_blocks(sand_t* s, int x0, int y0, int x1, int y1) {
-    for (int by = y0; by <= y1; by++) {
-        for (int bx = x0; bx <= x1; bx++) {
-            s->block_state[by * s->block_cols + bx] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
-        }
-    }
-}
-
-SAND_FACT_WRITER static inline void
 wake_blocks_range(sand_t* s, int bx0, int by0, int bx1, int by1) {
     if (s->block_state == NULL) {
         return;
@@ -843,7 +857,11 @@ wake_blocks_range(sand_t* s, int bx0, int by0, int bx1, int by1) {
         hi_y = s->block_rows - 1;
     }
 
-    clear_settled_blocks(s, lo_x, lo_y, hi_x, hi_y);
+    for (int by = lo_y; by <= hi_y; by++) {
+        for (int bx = lo_x; bx <= hi_x; bx++) {
+            s->block_state[by * s->block_cols + bx] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
+        }
+    }
     s->block_state[by0 * s->block_cols + bx0] |= BLOCK_ACTIVE;
     s->block_state[by1 * s->block_cols + bx1] |= BLOCK_ACTIVE;
 }
@@ -907,7 +925,11 @@ wake_block_and_neighbors(sand_t* s, int x, int y) {
     const int lo_y = (y > 0) ? (y - 1) / SAND_BLOCK_H : by;
     const int hi_y = (y + 1 < s->h) ? (y + 1) / SAND_BLOCK_H : by;
 
-    clear_settled_blocks(s, lo_x, lo_y, hi_x, hi_y);
+    for (int ny = lo_y; ny <= hi_y; ny++) {
+        for (int nx = lo_x; nx <= hi_x; nx++) {
+            s->block_state[ny * s->block_cols + nx] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
+        }
+    }
     s->block_state[by * s->block_cols + bx] |= BLOCK_ACTIVE;
 }
 

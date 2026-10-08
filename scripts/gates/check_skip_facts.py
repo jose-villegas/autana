@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require declared simulation facts to be read through SAND_SKIP_IF.
+"""Require declared simulation facts to be read through SAND_SKIP_IF or SAND_FACT_RULE.
 
 Markers on declarations define the vocabulary. Predicate and writer bodies
 may inspect facts; assignment targets may maintain them. Comments, literals,
@@ -58,7 +58,7 @@ def sources(root):
         directives = list(re.finditer(r"^[ \t]*#(?:[^\n]*\\\n)*[^\n]*", code, re.M))
         for directive in reversed(directives):
             declaration = re.match(r"[ \t]*#\s*define\s+(\w+)(?:\([^\n)]*\))?", directive[0])
-            keep_body = declaration and declaration[1] != "SAND_SKIP_IF"
+            keep_body = declaration and declaration[1] not in {"SAND_SKIP_IF", "SAND_FACT_RULE", "SAND_FORCED_IF"}
             end = directive.start() + declaration.end() if keep_body else directive.end()
             code = code[:directive.start()] + "".join("\n" if c == "\n" else " "
                                                     for c in code[directive.start():end]) + code[end:]
@@ -106,7 +106,7 @@ def problems(root=ROOT):
 
     for path, raw, code in files:
         spans = list(exemptions[path])
-        for site in re.finditer(r"\bSAND_SKIP_IF\s*\(", code):
+        for site in re.finditer(r"\b(?:SAND_SKIP_IF|SAND_FACT_RULE)\s*\(", code):
             spans.append((site.start(), balanced_end(code, site.end() - 1, "(", ")")))
         for token in IDENTIFIER.finditer(code):
             if token[0] not in facts or any(a <= token.start() < b for a, b in spans):
@@ -119,7 +119,7 @@ def problems(root=ROOT):
             if re.fullmatch(r"\s*(?:(?:static|extern|const|inline|bool|uint\d+_t|int)\s+)+", before):
                 continue
             found.append((path, raw.count("\n", 0, token.start()) + 1,
-                          token[0] + " read outside SAND_SKIP_IF"))
+                          token[0] + " read outside SAND_SKIP_IF or SAND_FACT_RULE"))
     return [f"{p.as_posix()}:{line}: {message}" for p, line, message in sorted(set(found))]
 
 

@@ -765,8 +765,8 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
 
 void
 sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
-    /* An empty forced pass still advances the alternating cross-flow direction. */
-    if (SAND_SKIP_IF(!s->may_have_liquid)) {
+    SAND_FORCED_STATE(s);
+    if (SAND_SKIP_IF(SAND_FORCED_IF(!s->may_have_liquid))) {
         return;
     }
 
@@ -798,9 +798,12 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquids to sort; with one, or none, every cell of this pass would reject
      * and the answer is the same for all of them. A screen of water - what a
      * liquid scene usually is - therefore pays a popcount, not a pass. */
-    if (!SAND_SKIP_IF(!liquids_may_sort(s)) && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
+    SAND_FACT const uint16_t liquids_here = SAND_FACT_RULE(s->may_have_materials) & liquid_mask();
+    if (!SAND_SKIP_IF((liquids_here & (uint16_t)(liquids_here - 1u)) == 0u)
+        && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
         SAND_PASS_BEGIN(float);
         (void)float_lighter_liquids(s, dx, dy);
         SAND_PASS_END(s, float);
     }
+    sand_forced_restore(s, &forced_state);
 }

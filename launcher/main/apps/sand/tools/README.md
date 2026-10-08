@@ -18,13 +18,15 @@ that a skip is untested and do not fail the check.
 With no argument the tool prints both fingerprints. `--update` records
 only the normal build and requires an accepted behaviour change.
 `scripts/gates/check_skip_facts.py` requires declared facts to be read
-through the gate, except in fact predicates and writers. Scheduling and
-fact-maintenance functions retain their normal decisions.
+through `SAND_SKIP_IF` or `SAND_FACT_RULE`, except in fact predicates and
+writers. Scheduling and fact-maintenance functions retain their normal
+decisions.
 
-A mismatch also exposes skipped RNG draws and pass-direction bookkeeping
-such as `gas_flip` and `liquid_flip`. The rest predicate `cell_settled`
-constrains crust formation. Hash differences require investigating these
-effects alongside the correctness of absence facts.
+When a fact says skip, forced work preserves cell writes and restores the
+sequential RNG, pass-direction flips, and reaction stage bookkeeping.
+`SAND_FACT_RULE` preserves facts that constrain behaviour in both builds,
+such as the rest predicate governing crust formation. A forced mismatch
+therefore identifies cell-changing work omitted by a skip.
 
 ## Host renders
 

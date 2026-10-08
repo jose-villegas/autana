@@ -1265,13 +1265,15 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
  * settled_bit 0, no skips, same as cell-by-cell walk. */
 static void
 step_one_row(const sweep_ctx_t* ctx) {
-    /* Visiting settled grains can consume movement RNG draws. */
     for (int bx = ctx->bx_from; bx != ctx->bx_to; bx += ctx->bx_step) {
-        if (SAND_SKIP_IF(ctx->settled_bit != 0
-                         && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit))) {
+        SAND_FORCED_STATE(ctx->s);
+        if (SAND_SKIP_IF(
+                SAND_FORCED_IF(ctx->settled_bit != 0
+                               && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)))) {
             continue;
         }
         step_one_block(ctx, bx);
+        sand_forced_restore(ctx->s, &forced_state);
     }
 }
 
@@ -1482,12 +1484,13 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
 
     for (int y = y0; y != y1; y += y_step, row_at += row_step) {
         const int by = y / SAND_BLOCK_H;
+        SAND_FORCED_STATE(s);
         if (settled_bit != 0) {
             if (by != scanned_by) {
                 scanned_by = by;
-                block_row_settled = SAND_SKIP_IF(blocks_settled_over(s, x0, x1, y, y + 1, settled_bit));
+                block_row_settled = SAND_FACT_RULE(blocks_settled_over(s, x0, x1, y, y + 1, settled_bit));
             }
-            if (SAND_SKIP_IF(block_row_settled)) {
+            if (SAND_SKIP_IF(SAND_FORCED_IF(block_row_settled))) {
                 continue;
             }
         }
@@ -1502,6 +1505,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
         ctx.y = y;
         ctx.by = by;
         step_one_row(&ctx);
+        sand_forced_restore(s, &forced_state);
     }
 }
 
@@ -1998,12 +2002,13 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * here, not via sand_step_gas()'s early return. Called every step,
      * skipping avoids marshalling nine arguments if no gas. Flash layout
      * cost. */
-    /* An empty forced pass still advances the alternating gas spread direction. */
-    if (!SAND_SKIP_IF(!s->may_have_gas)) {
+    SAND_FORCED_STATE(s);
+    if (!SAND_SKIP_IF(SAND_FORCED_IF(!s->may_have_gas))) {
         SAND_PASS_BEGIN(gas);
         sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
         SAND_PASS_END(s, gas);
     }
+    sand_forced_restore(s, &forced_state);
 
     /* Same slot for burning cell reactions; ignition/extinguish/burn-out are
      * not gravity-ward or movement. Must finish before finalize_settling().
