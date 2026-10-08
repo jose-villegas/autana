@@ -407,7 +407,7 @@ Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-get
 The docs generator, `launcher/tools/render/render_doc_images.sh`, refreshes
 this page's measured blocks from the committed captures and GPU stage.
 
-The generator also writes the `pipeline-frame-stages` table from frame-cost
+The generator writes the `pipeline-frame-stages` table from frame-cost
 report windows: every bracket of the scene as shipped, plus the resolve row
 from a capture with motion vectors attached. Capture both from the same build:
 
