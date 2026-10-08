@@ -97,6 +97,27 @@ test_gas_rises_diagonally_under_tilted_gravity(void) {
  * proves nothing about that; only the MEAN of many cells over many steps
  * does, which is what these three tests check instead of an exact cell. */
 
+/* How many gas cells the default fixture holds, and the sums of their rows
+ * and columns - a mean, cross-multiplied. */
+typedef struct {
+    int count, row_sum, col_sum;
+} gas_spread_t;
+
+static gas_spread_t
+gas_spread(void) {
+    gas_spread_t g = {0, 0, 0};
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
+                g.count++;
+                g.row_sum += y;
+                g.col_sum += x;
+            }
+        }
+    }
+    return g;
+}
+
 static void
 test_gas_drifts_upward_under_ordinary_gravity(void) {
     fixture();
@@ -105,16 +126,8 @@ test_gas_drifts_upward_under_ordinary_gravity(void) {
 
     run_steps(&s, 12, 0, 1000);
 
-    int count = 0;
-    int row_sum = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                count++;
-                row_sum += y;
-            }
-        }
-    }
+    const gas_spread_t g = gas_spread();
+    const int count = g.count, row_sum = g.row_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -133,16 +146,8 @@ test_gas_drifts_downward_when_the_board_is_inverted(void) {
 
     run_steps(&s, 12, 0, -1000);
 
-    int count = 0;
-    int row_sum = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                count++;
-                row_sum += y;
-            }
-        }
-    }
+    const gas_spread_t g = gas_spread();
+    const int count = g.count, row_sum = g.row_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -165,18 +170,8 @@ test_gas_drifts_against_tilted_gravity(void) {
 
     run_steps(&s, 12, 1000, 1000);
 
-    int count = 0;
-    int row_sum = 0;
-    int col_sum = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                count++;
-                row_sum += y;
-                col_sum += x;
-            }
-        }
-    }
+    const gas_spread_t g = gas_spread();
+    const int count = g.count, row_sum = g.row_sum, col_sum = g.col_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -260,10 +255,17 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
  * disagree about it. */
 enum { POCKET_INSIDE_X = 3, POCKET_INSIDE_Y = 3, POCKET_WALL = 1 };
 
-/* A gas grain sealed in stone on every side but one - shared by every
- * pocket-exit escape probe in this section, portrait or landscape. */
+/* The default fixture, reset with `seed`, every cell free to move and no
+ * scatter: a gas grain sealed in stone on every side but one - shared by
+ * every pocket-exit escape probe in this section, portrait or landscape. */
 static void
-build_sealed_gas_pocket(sand_t* g, int exit_x, int exit_y) {
+build_sealed_gas_pocket(uint32_t seed, int exit_x, int exit_y) {
+    sand_t* const g = &s;
+    sand_init(g, cells, W, H, seed);
+    sand_clear(g);
+    sand_set_mobility(g, 255);
+    sand_set_scatter(g, 0);
+
     sand_set(g, POCKET_INSIDE_X, POCKET_INSIDE_Y, GAS);
     for (int y = POCKET_INSIDE_Y - POCKET_WALL; y <= POCKET_INSIDE_Y + POCKET_WALL; y++) {
         for (int x = POCKET_INSIDE_X - POCKET_WALL; x <= POCKET_INSIDE_X + POCKET_WALL; x++) {
@@ -333,12 +335,7 @@ test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
     static char failure_message[64];
     int escaped_seeds = 0;
     for (uint32_t seed = 1; seed <= 16; seed++) {
-        sand_init(&s, cells, W, H, seed);
-        sand_clear(&s);
-        sand_set_mobility(&s, 255);
-        sand_set_scatter(&s, 0);
-
-        build_sealed_gas_pocket(&s, 2, 4);
+        build_sealed_gas_pocket(seed, 2, 4);
 
         escaped_seeds += (steps_until_gas_leaves_the_pocket(&s, 0, 1000, POCKET_ESCAPE_STEPS) != 0) ? 1 : 0;
     }
@@ -378,30 +375,31 @@ test_gas_disperses_across_a_ceiling(void) {
                                      "spread pass (equalise_gas()) is missing or broken");
 }
 
+/* Drops `faller` onto four rows of `medium` and asserts it reaches the
+ * bottom of its column within sixty steps. */
 static void
-test_sand_sinks_through_gas(void) {
+assert_sinks_through(cell_t faller, cell_t medium, const char* why) {
     fixture();
-    fill_box(&s, 0, W, 4, H, GAS);
-    sand_set(&s, 3, 3, SAND);
+    fill_box(&s, 0, W, 4, H, medium);
+    sand_set(&s, 3, 3, faller);
 
     run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "sand is denser than gas, so it must sink all the way through "
-                                  "rather than float on it");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(CELL_MATERIAL(faller), CELL_MATERIAL(sand_at(&s, 3, H - 1)), why);
+}
+
+static void
+test_sand_sinks_through_gas(void) {
+    assert_sinks_through(SAND, GAS,
+                         "sand is denser than gas, so it must sink all the way through "
+                         "rather than float on it");
 }
 
 static void
 test_water_sinks_through_gas(void) {
-    fixture();
-    fill_box(&s, 0, W, 4, H, GAS);
-    sand_set(&s, 3, 3, WATER);
-
-    run_steps(&s, 60, 0, 1000);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "water is denser than gas too, so it must sink through it the same "
-                                  "way sand does");
+    assert_sinks_through(WATER, GAS,
+                         "water is denser than gas too, so it must sink through it the same "
+                         "way sand does");
 }
 
 static void
@@ -870,26 +868,30 @@ test_fire_rises_and_disperses_like_gas(void) {
  * completely, via smothering rather than contact. */
 static void
 test_sand_sinks_through_fire(void) {
-    fixture();
-    fill_box(&s, 0, W, 4, H, FIRE);
-    sand_set(&s, 3, 3, SAND);
+    assert_sinks_through(SAND, FIRE,
+                         "sand is denser than fire (60 > 15), so it must sink all the "
+                         "way through rather than be blocked by it - a single touch does "
+                         "not smother fire, it just passes through uneventfully");
+}
 
-    run_steps(&s, 60, 0, 1000);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "sand is denser than fire (60 > 15), so it must sink all the "
-                                  "way through rather than be blocked by it - a single touch does "
-                                  "not smother fire, it just passes through uneventfully");
+/* Fire at (3,3) on the default fixture, with the given cardinal
+ * neighbours - SAND_EMPTY leaves that side open. */
+static void
+surround_fire(cell_t above, cell_t below, cell_t left, cell_t right) {
+    sand_set(&s, 3, 3, FIRE);
+    const cell_t sides[4] = {above, below, left, right};
+    static const int at[4][2] = {{3, 2}, {3, 4}, {2, 3}, {4, 3}};
+    for (int i = 0; i < 4; i++) {
+        if (sides[i] != SAND_EMPTY) {
+            sand_set(&s, at[i][0], at[i][1], sides[i]);
+        }
+    }
 }
 
 static void
 test_fire_is_smothered_when_fully_buried(void) {
     fixture();
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, STONE); /* above */
-    sand_set(&s, 3, 4, STONE); /* below */
-    sand_set(&s, 2, 3, STONE); /* left */
-    sand_set(&s, 4, 3, STONE); /* right */
+    surround_fire(STONE, STONE, STONE, STONE);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -903,10 +905,7 @@ test_fire_is_smothered_when_fully_buried(void) {
 static void
 test_fire_is_not_smothered_with_a_gap(void) {
     fixture();
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, STONE); /* above */
-    sand_set(&s, 2, 3, STONE); /* left */
-    sand_set(&s, 4, 3, STONE); /* right */
+    surround_fire(STONE, SAND_EMPTY, STONE, STONE);
     /* Diagonal-up neighbours also need blocking, not just the straight
      * cardinal ones - try_slide()'s own fallback would otherwise carry
      * fire diagonally out of (3,3) via the two open corners before
@@ -937,11 +936,7 @@ test_fire_is_not_smothered_by_gas(void) {
                                  * never touches these neighbours anyway
                                  * (different material, not empty), so
                                  * this alone is enough to pin fire */
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, GAS);
-    sand_set(&s, 3, 4, GAS);
-    sand_set(&s, 2, 3, GAS);
-    sand_set(&s, 4, 3, GAS);
+    surround_fire(GAS, GAS, GAS, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -955,10 +950,7 @@ test_fire_is_not_smothered_by_gas(void) {
 static void
 test_liquid_wins_over_smothering(void) {
     fixture();
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 4, 3, STONE);
+    surround_fire(STONE, SAND_EMPTY, STONE, STONE);
     /* The two upward diagonals also need blocking, not just the three
      * cardinal sides - leaving the straight-up cell blocked alone still
      * leaves try_slide()'s diagonal fallback free to carry fire out to
@@ -2417,12 +2409,7 @@ test_gas_escapes_a_pocket_through_a_lower_diagonal_in_landscape(void) {
     static char failure_message[64];
     int escaped_seeds = 0;
     for (uint32_t seed = 1; seed <= 16; seed++) {
-        sand_init(&s, cells, W, H, seed);
-        sand_clear(&s);
-        sand_set_mobility(&s, 255);
-        sand_set_scatter(&s, 0);
-
-        build_sealed_gas_pocket(&s, 4, 2);
+        build_sealed_gas_pocket(seed, 4, 2);
 
         escaped_seeds += step_until_gas_escapes(&s, 1000, 0, 10000, 4, W, 0, H) ? 1 : 0;
     }
