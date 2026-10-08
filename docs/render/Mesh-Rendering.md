@@ -282,7 +282,7 @@ The motion view along a flythrough, red for x and green for y:
 to one before each draw. Its writer reserves each instance's cluster count
 and writes the reserved base plus the mesh's cluster index. The `show` hook
 maps IDs to hues through a multiplicative hash; zero takes the clear colour.
-IDs are distinct per draw for up to 65535 clusters; zero is reserved for empty.
+IDs are distinct per draw for up to 65535 clusters.
 It needs no resolve pass.
 
 ## Coverage and small triangles

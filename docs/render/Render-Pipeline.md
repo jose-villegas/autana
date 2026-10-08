@@ -210,8 +210,9 @@ culls and draws.
 
 Cost: `meshlets` and `write` in the bake-steps table.
 
-The meshlets debug view gives each cluster a flat hue. Each instance owns a
-disjoint ID range, reset on every draw; empty pixels keep the clear colour.
+The meshlets debug view gives each cluster a flat hue, shown here for the
+full, lite and fitted meshes. Each instance owns a disjoint ID range, reset on
+every draw; empty pixels keep the clear colour.
 
 ![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
 
