@@ -9,7 +9,7 @@
 #include <string.h>
 
 /* Current clip rectangle, as inclusive-exclusive bounds. */
-static gfx_box_t clip;
+gfx_box_t clip;
 
 TUNE_OWNER(gfx);
 

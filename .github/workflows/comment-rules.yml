@@ -66,17 +66,25 @@ jobs:
         run: python3 scripts/gates/check_self_hosted_workflows.py
 
       - name: Length beside code, and header height
+        env:
+          STAGED_TEXT_GATE: "true"
         run: >
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
       - name: Every firmware module opens with a header comment
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_file_headers.py
 
       - name: No comment or engine document below apps/ names an app
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_comment_layers.py
 
       - name: No comment records where code moved
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
       - name: Generated document bodies match their recorded hashes
@@ -109,6 +117,8 @@ jobs:
         run: python3 scripts/gates/check_shell_firmware.py
 
       - name: No tracker id, personal path, or misdirected include is tracked
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_style_audit.py
 
       # Warns, never fails: a changed function a document cites is a reason
@@ -154,6 +164,8 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Every name, file and heading a comment cites exists
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_comment_symbols.py --require-idf
 
       - name: Every documentation citation resolves

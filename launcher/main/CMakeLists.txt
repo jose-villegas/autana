@@ -60,6 +60,7 @@ set(app_srcs
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
+    "shell/shell_frame.c"
     "shell/shell_system.c"
     "util/runtime/frame_cost.c"
     "util/runtime/frame_watch.c"

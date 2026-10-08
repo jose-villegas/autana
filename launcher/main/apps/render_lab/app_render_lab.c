@@ -43,12 +43,23 @@ extern const render_lab_scene_t scene_sponza_lite;
 extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
 extern const render_lab_scene_t scene_sponza_fitted_full;
+extern const render_lab_scene_t scene_sponza_flat_fitted;
 bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube,         &scene_wire_plane,  &scene_wire_cube,     &scene_wire_sphere,
-    &scene_wire_capsule, &scene_raytrace,    &scene_pathtrace,     &scene_sponza,
-    &scene_sponza_lite,  &scene_sponza_flat, &scene_sponza_fitted, &scene_sponza_fitted_full,
+    &scene_cube,
+    &scene_wire_plane,
+    &scene_wire_cube,
+    &scene_wire_sphere,
+    &scene_wire_capsule,
+    &scene_raytrace,
+    &scene_pathtrace,
+    &scene_sponza,
+    &scene_sponza_lite,
+    &scene_sponza_flat,
+    &scene_sponza_fitted,
+    &scene_sponza_fitted_full,
+    &scene_sponza_flat_fitted,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -61,6 +72,7 @@ static size_t scene_arena_mark;
  * by default. Read only at enter(), the same contract render_lab_band_mode
  * below documents. */
 const char* render_lab_start_scene_key;
+const char* render_lab_start_camera;
 
 /* Unknown or unset resolves to the first scene, never a hard error. */
 static int
@@ -179,7 +191,7 @@ enter_layout(void) {
     const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
     const gfx_mode_request_t mode_request = {
         .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
-        .resolution = GFX_RESOLUTION_FULL,
+
         .interlace_x = false,
         .interlace_y = false,
     };

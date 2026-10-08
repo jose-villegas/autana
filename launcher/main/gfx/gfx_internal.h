@@ -21,20 +21,25 @@
 #include "freertos/semphr.h"
 #endif
 
-/* gfx_mode.c: the framebuffer, the mode it is held in, and the band being
- * rendered. band_render_active is true only between a successful
- * gfx_band_next() and the matching gfx_band_submit(); outside that window
- * band mode has no valid target at all, matching gfx_fb_guard.h. */
+/* gfx_mode.c: the framebuffer, the mode it is held in, and the strip being
+ * rendered (a band, or an expanded frame's overlay replay). band_render_active
+ * is true only while one is; outside it band mode has no valid target at
+ * all, matching gfx_fb_guard.h. */
 extern gfx_color_t* fb;
 extern gfx_mode_t current_mode;
-extern gfx_color_t* band_buf[GFX_BAND_SLOTS];
-extern int band_current_slot;
 extern bool band_render_active;
-extern int band_render_row0;
-extern int band_render_height;
+extern gfx_target_t strip_target;
 
 bool alloc_full_framebuffer(void);
 gfx_indexed_frame_t indexed_frame(void);
+
+/* An expanded frame: the half picture doubled into rows [y0, y1), with the
+ * frame overlay replayed over them; and its end, after the present. */
+void expand_rows(int y0, int y1, gfx_color_t* destination);
+void clear_expanded_frame(bool free_picture);
+
+/* gfx_draw.c: the clip rectangle an overlay replay saves around itself. */
+extern gfx_box_t clip;
 
 /* True for the whole GFX_LAYOUT_BANDS mode. */
 static inline bool
@@ -49,7 +54,7 @@ band_is_transient(void) {
 static inline gfx_target_t
 current_target(void) {
     if (band_render_active) {
-        return (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
+        return strip_target;
     }
     return (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
 }
@@ -97,7 +102,7 @@ void mark_rect_border(gfx_color_t* buf, int stride, int w, int h, gfx_color_t co
 void mark_band_overlay(gfx_color_t* buf, int row0, int height);
 #ifdef ESP_PLATFORM
 extern uint32_t overlay_bordered_rows;
-void mark_indexed_strip_overlay(gfx_color_t* slot, int row);
+void mark_strip_overlay(gfx_color_t* slot, int row);
 bool send_row_with_overlays(int row, int y);
 void send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued);
 void send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf);

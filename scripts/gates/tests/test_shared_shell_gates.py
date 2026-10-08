@@ -1,25 +1,14 @@
 """Formatting and asset gates exercised in isolated scratch trees."""
-import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
-import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / 'scripts/lib'))
-sys.path.insert(0, str(ROOT / 'scripts/device'))
-import device
+from gate_tree import ShellGateTestCase
 
 
-class ShellGateTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.shell = device.git_bash() if os.name == 'nt' else shutil.which('sh')
-
+class ShellGateTests(ShellGateTestCase):
     def run_shell(self, path, *args):
         return subprocess.run([self.shell, str(path), *map(str, args)],
                               capture_output=True, text=True, timeout=60)

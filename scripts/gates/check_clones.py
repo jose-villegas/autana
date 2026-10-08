@@ -2,10 +2,10 @@
 """Reject growing jscpd file-pair budgets in tracked first-party C/C++ and Python.
 
 Compare HEAD with its merge-base with --base (origin/main unless a pull
-request targets another branch), or HEAD~1 when HEAD is on that branch. New fragments in each sorted file pair may spend only the tokens of
-base fragments that vanished from HEAD, or a fragment a file this change
-deleted already held (code moved out of it). A surviving shrink gives no
-headroom.
+request targets another branch), or HEAD~1 when HEAD is on that branch.
+New fragments in each sorted file pair may spend only the tokens of base
+fragments that vanished from HEAD, or a fragment a file this change deleted
+already held (code moved out of it). A surviving shrink gives no headroom.
 --report lists all pairs. --min-tokens N reports another threshold without
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
@@ -69,24 +69,23 @@ PYTHON_TOKENS = re.compile(
 )
 
 
-# A suite's list of RUN_TEST lines, or a file's block of #include lines,
-# matches any other long list once identifiers are ignored, and has no
-# shared owner to extract; a pair counts only if what remains without them
-# is still a clone's length in itself.
-LIST_LINES = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|^[ \t]*#[ \t]*include[ \t]*[<\"][^>\"\n]*[>\"]",
-                        re.MULTILINE)
+# A suite's list of RUN_TEST lines matches any other long list once
+# identifiers are ignored, and has no shared owner to extract; a pair counts
+# only if what remains without them is still a clone's length in itself.
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;")
+INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 
 
-def list_only(pair):
+def registration_only(pair):
     if pair["format"] == "python":
         return False
-    rest = LIST_LINES.sub(" ", pair["fragment"])
+    rest = TEST_REGISTRATION.sub(" ", pair["fragment"])
     return pair["fragment"] != rest and len(C_TOKENS.findall(rest)) < MIN_TOKENS // 2
 
 
 def filter_pairs(pairs):
     def keep(pair):
-        if list_only(pair):
+        if registration_only(pair):
             return False
         first, second = pair["firstFile"], pair["secondFile"]
         same_range = (first["name"] == second["name"]
@@ -139,6 +138,9 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
                 continue
             target = tree / name
             target.parent.mkdir(parents=True, exist_ok=True)
+            if target.suffix != ".py":
+                content = INCLUDE_DIRECTIVE.sub(lambda match: "\n" * match[0].count("\n"),
+                                                content.decode("utf-8")).encode("utf-8")
             target.write_bytes(content)
         config = scratch / "config.json"
         config.write_text(json.dumps({"minTokens": minimum, "minLines": 0,

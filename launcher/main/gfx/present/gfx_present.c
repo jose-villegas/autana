@@ -42,6 +42,7 @@ uint16_t leaf_dirty[STRIP_COUNT * LEAF_SUB];
 bool gfx_band_force_all_dirty = true;
 bool gfx_full_redraw_latched;
 bool gfx_present_guard_in_flight;
+bool gfx_present_guard_replaying;
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 unsigned gfx_present_guard_trips;
 #endif
@@ -511,28 +512,30 @@ send_fb_rows(int y0, int y1) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* The strip row send_indexed_rows() should border, or -1 for a clean send.
+/* The strip row send_picture_rows() should border, or -1 for a clean send.
  * A file static rather than a parameter: send_heal_strips() takes
- * send_indexed_rows() as a callback with send_fb_rows()'s signature. */
-static int indexed_overlay_row = -1;
+ * send_picture_rows() as a callback with send_fb_rows()'s signature. */
+static int strip_overlay_row = -1;
 #endif
 
-/* send_fb_rows()'s GFX_LAYOUT_INDEXED counterpart: expands rows [y0, y1)
- * from the index image through the installed LUT, into the same bounce
- * slots, instead of copying pixels already sitting in `fb`. Same return
- * contract as send_fb_rows(). */
+/* Compact pictures expand into the same bounce slots as framebuffer
+ * sends. Same return contract as send_fb_rows(). */
 static bool
-send_indexed_rows(int y0, int y1) {
+send_picture_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
 
-    const gfx_indexed_frame_t frame = indexed_frame();
-    for (int y = y0; y < y1; y++) {
-        gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
+    if (gfx_frame_expanded()) {
+        expand_rows(y0, y1, slot);
+    } else {
+        const gfx_indexed_frame_t frame = indexed_frame();
+        for (int y = y0; y < y1; y++) {
+            gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
+        }
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    if (indexed_overlay_row >= 0) {
-        mark_indexed_strip_overlay(slot, indexed_overlay_row);
+    if (strip_overlay_row >= 0) {
+        mark_strip_overlay(slot, strip_overlay_row);
     }
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
@@ -668,14 +671,10 @@ send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
     }
 }
 
-/* GFX_LAYOUT_INDEXED's own send loop, whole dirty STRIP_HEIGHT strips,
- * full width, rather than send_one_row()'s per-run gathering: the index
- * image is small enough that expanding a strip nothing changed in costs
- * little, and every dirty strip still goes through gfx_dirty.h's own
- * tracker unmodified. No interlace or partial-clear here: both are
- * independent app opt-ins the RGB565 path alone offers. */
+/* Persistent compact pictures send whole dirty strips. Interlace and
+ * partial clear require a full-resolution framebuffer. */
 static void
-run_present_indexed(void) {
+run_present_strips(bool (*send_rows)(int y0, int y1)) {
     int queued = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A dirty row is about to be sent whole anyway, so only rows that went
@@ -685,7 +684,7 @@ run_present_indexed(void) {
             overlay_bordered_rows &= ~(1u << row);
         }
     }
-    send_overlay_bordered_rows_clean(send_indexed_rows, &queued);
+    send_overlay_bordered_rows_clean(send_rows, &queued);
 #endif
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (!dirty_row_is_dirty(row)) {
@@ -694,19 +693,19 @@ run_present_indexed(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
             overlay_bordered_rows |= 1u << row;
-            indexed_overlay_row = row;
+            strip_overlay_row = row;
         }
 #endif
-        if (send_indexed_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+        if (send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             queued++;
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        indexed_overlay_row = -1;
+        strip_overlay_row = -1;
 #endif
         dirty_row_sent(row);
     }
     dirty_frame_sent();
-    send_heal_strips(send_indexed_rows, &queued);
+    send_heal_strips(send_rows, &queued);
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
@@ -751,8 +750,8 @@ static void
 run_present_normal(void) {
     panel_clock_apply();
     present_send_failed = false;
-    if (current_mode.layout == GFX_LAYOUT_INDEXED) {
-        run_present_indexed();
+    if (gfx_frame_expanded() || current_mode.layout == GFX_LAYOUT_INDEXED) {
+        run_present_strips(send_picture_rows);
         return;
     }
 
@@ -849,6 +848,7 @@ gfx_present_wait(void) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
     }
     gfx_present_guard_end();
+    clear_expanded_frame(false);
 }
 
 #else /* !ESP_PLATFORM */
@@ -868,6 +868,7 @@ gfx_present_wait(void) {
         dirty_frame_sent();
     }
     gfx_present_guard_end();
+    clear_expanded_frame(false);
 }
 
 #endif /* ESP_PLATFORM: the presentation pipeline */

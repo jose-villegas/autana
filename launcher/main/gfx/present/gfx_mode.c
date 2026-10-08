@@ -26,6 +26,9 @@ unsigned gfx_fb_guard_trips;
 #endif
 
 gfx_color_t* fb;
+static gfx_color_t* half_image;
+static bool frame_expanded;
+static gfx_band_overlay_fn frame_overlay;
 
 /* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry, or an app's
  * gfx_mode_enter() grants something else.
@@ -34,16 +37,17 @@ gfx_color_t* fb;
 gfx_mode_t current_mode;
 
 /* The band ring's own buffers; current_target() (gfx_internal.h) reads
- * them for every primitive. */
-gfx_color_t* band_buf[GFX_BAND_SLOTS];
+ * strip_target for every primitive. */
+static gfx_color_t* band_buf[GFX_BAND_SLOTS];
 static gfx_band_ring_t band_ring;
-int band_current_slot;
+static int band_current_slot;
 bool band_render_active;
-int band_render_row0;
-int band_render_height;
+gfx_target_t strip_target;
+static int band_render_row0;
+static int band_render_height;
 
 /* GFX_LAYOUT_INDEXED's own state: the app writes indices,
- * run_present_indexed() (gfx_present.c) expands them through whichever LUT is
+ * run_present_strips() (gfx_present.c) expands them through whichever LUT is
  * installed. Not a gfx_target.h render target: no drawing primitive writes
  * through it. */
 static uint8_t* indexed_image;
@@ -215,7 +219,6 @@ free_band_buffers(void) {
 static void
 reset_mode_to_full_fb(void) {
     current_mode.layout = GFX_LAYOUT_FULL_FB;
-    current_mode.resolution = GFX_RESOLUTION_FULL;
     current_mode.interlace_x = false;
     current_mode.interlace_y = false;
     current_mode.width = GFX_WIDTH;
@@ -271,13 +274,86 @@ gfx_framebuffer(void) {
     /* fb is already NULL in band mode, the right answer for a caller that
      * checks. This call is only the loud dev-time signal that one reached
      * for the framebuffer at all while it does not exist. */
-    (void)GFX_REQUIRE_FRAMEBUFFER();
-    return fb;
+    return GFX_REQUIRE_FRAMEBUFFER() ? fb : NULL;
+}
+
+gfx_color_t*
+gfx_half_picture(void) {
+    GFX_PRESENT_GUARD();
+    if (current_mode.layout != GFX_LAYOUT_FULL_FB) {
+        return NULL;
+    }
+    if (half_image == NULL) {
+        half_image = memory_alloc(sizeof(*half_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
+    }
+    return half_image;
+}
+
+void
+gfx_expand_frame(void) {
+    GFX_PRESENT_GUARD();
+    assert(current_mode.layout == GFX_LAYOUT_FULL_FB && half_image != NULL);
+    frame_expanded = true;
+    gfx_fb_guard_set_available(false);
+    gfx_mark_all_dirty();
+}
+
+bool
+gfx_frame_expanded(void) {
+    return frame_expanded;
+}
+
+void
+gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
+    GFX_PRESENT_GUARD();
+    frame_overlay = overlay;
+}
+
+void
+clear_expanded_frame(bool free_picture) {
+    frame_expanded = false;
+    gfx_fb_guard_set_available(current_mode.layout == GFX_LAYOUT_FULL_FB && fb != NULL);
+    if (free_picture) {
+        memory_free(half_image);
+        half_image = NULL;
+    }
+}
+
+void
+expand_rows(int y0, int y1, gfx_color_t* destination) {
+    const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
+    gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
+    if (frame_overlay != NULL) {
+        const gfx_box_t saved_clip = clip;
+        strip_target = target;
+        band_render_active = true;
+        gfx_fb_guard_set_available(true);
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        gfx_present_guard_replaying = true;
+#endif
+        gfx_clear_clip();
+        frame_overlay(y0, y1);
+        clip = saved_clip;
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+        gfx_present_guard_replaying = false;
+#endif
+        band_render_active = false;
+        gfx_fb_guard_set_available(false);
+    }
 }
 
 #ifndef ESP_PLATFORM
+unsigned
+gfx_fb_guard_trips_for_test(void) {
+    return gfx_fb_guard_trips;
+}
+
 void
 gfx_reset_for_test(void) {
+    clear_expanded_frame(true);
+    frame_overlay = NULL;
+    band_render_active = false;
+    strip_target = (gfx_target_t){0};
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         free_indexed_image();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
@@ -291,16 +367,13 @@ gfx_reset_for_test(void) {
 }
 #endif
 
-/* Only GFX_RESOLUTION_FULL is wired to real rendering, so the system-wide
- * resolution cap a future Settings app would own (roadmap section 8,
- * decision 1) is not a variable yet; hardcoding it here is the one place
- * that changes once it is. */
 const gfx_mode_t*
 gfx_mode_enter(const gfx_mode_request_t* request) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_FULL_FB);
 
-    const gfx_mode_t granted = gfx_mode_resolve(request, GFX_RESOLUTION_FULL, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
+    clear_expanded_frame(true);
+    const gfx_mode_t granted = gfx_mode_resolve(request, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
 
     if (granted.layout == GFX_LAYOUT_INDEXED) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
@@ -334,6 +407,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
 void
 gfx_mode_exit(void) {
     GFX_PRESENT_GUARD();
+    clear_expanded_frame(true);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         free_indexed_image();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
@@ -366,6 +440,7 @@ gfx_mode_exit(void) {
         gfx_mark_all_dirty();
     }
     reset_mode_to_full_fb();
+    gfx_fb_guard_set_available(fb != NULL);
 }
 
 const gfx_mode_t*
@@ -469,6 +544,7 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
+    strip_target = (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -596,7 +672,9 @@ gfx_readback_begin(void) {
 void
 gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
-    if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
+    if (frame_expanded) {
+        expand_rows(y, y + 1, out_row);
+    } else if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
         memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         const gfx_indexed_frame_t frame = indexed_frame();

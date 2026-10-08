@@ -77,3 +77,38 @@ gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1,
     *out_x1 = rect.x1;
     *out_y1 = rect.y1;
 }
+
+/* A source pixel as shown: `clear` where nothing was drawn. */
+static inline uint16_t
+gfx_target_shown_pixel(const uint16_t* input, const uint16_t* input_depth, int x, uint16_t clear) {
+    return input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
+}
+
+/* Paired 32-bit stores share a source row across repeated output rows.
+ * NULL rows selects exact 2x expansion; target.y0 addresses a strip. */
+static inline __attribute__((always_inline)) void
+gfx_target_paired_rows(gfx_target_t target, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                       int source_width, const uint16_t* rows, int first_row, int row_count, bool doubled) {
+    const int end = first_row + row_count;
+    const int stores = target.stride / 2;
+    for (int y = first_row; y < end;) {
+        const int source_y = rows == NULL ? y / 2 : rows[y];
+        const size_t row = (size_t)source_y * source_width;
+        const uint16_t* input = source + row;
+        const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
+        uint32_t* top = (uint32_t*)gfx_target_row(target, y);
+        uint32_t* bottom = top + stores;
+        const bool both = y + 1 < end && (rows == NULL ? (y + 1) / 2 : rows[y + 1]) == source_y;
+        for (int x = 0; x < stores; x++) {
+            const uint32_t pair =
+                doubled ? 0x10001U * gfx_target_shown_pixel(input, input_depth, x, clear)
+                        : gfx_target_shown_pixel(input, input_depth, 2 * x, clear)
+                              | ((uint32_t)gfx_target_shown_pixel(input, input_depth, (2 * x) + 1, clear) << 16);
+            top[x] = pair;
+            if (both) {
+                bottom[x] = pair;
+            }
+        }
+        y += both ? 2 : 1;
+    }
+}

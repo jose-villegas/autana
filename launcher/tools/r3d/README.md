@@ -28,7 +28,7 @@ mesh. Nothing here runs on the board.
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
-| [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
+| [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
@@ -183,9 +183,9 @@ triangles stay as the simplifier left them, so the budget holds.
 
 | | |
 |---|---|
-| Start | a smooth `NAME.mesh`, welded so the vertices of a colour seam share one position |
-| Fitted | every welded position, and every vertex's sRGB colour |
-| Forward model | nvdiffrast draws what the device draws: Gouraud colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
+| Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
+| Forward model | nvdiffrast draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates from the start's |
 | Schedule | Adam; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
@@ -250,8 +250,10 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
 ```
 
+`NAME` is the fitted scene object, or its variant when only one object fits that variant.
+
 `prepare` bakes the start (the import's geometry steps at the variant's
-`triangles`, lit by the scene's bake), samples the camera's path every
+`triangles`, lit by the scene's bake, flat when the renderer's shading is), samples the camera's path every
 `fit.poses.train_every_ms`, holds out the multiples of
 `fit.poses.held_out_every_ms`, samples it again every
 `fit.prune.coverage_every_ms` for pruning, and renders the training references

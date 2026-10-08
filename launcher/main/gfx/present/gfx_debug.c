@@ -317,7 +317,7 @@ send_audit_check(void) {
  * never need restoring. Must run before dirty_row_sent() clears the row's
  * leaf bits. */
 void
-mark_indexed_strip_overlay(gfx_color_t* slot, int row) {
+mark_strip_overlay(gfx_color_t* slot, int row) {
     const int y = row * STRIP_HEIGHT;
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {

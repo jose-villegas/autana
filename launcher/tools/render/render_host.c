@@ -1,18 +1,7 @@
 /*
- * render_host: the one procedure behind every host render. See
- * render_host.h for what a scene declares and which options land here.
- *
- * Not built by idf.py, not part of test/run_tests.sh: standalone binaries,
- * one per scene, built by render_scene.sh from the real firmware
- * translation units the scene names.
- *
- * No device, no serial, no file the firmware knows about: gfx_init()
- * mallocs a plain framebuffer, the scene draws into it exactly as it would
- * on the real panel, and this reads gfx_framebuffer() straight back out.
- * The BMP encoding is util/encode/screenshot.h's, already pure, already
- * host-portable, already tested (test/suites/suite_screenshot.c). --video
- * appends every drawn frame through render_video.c instead of keeping only
- * the last.
+ * render_host: the shared host render procedure. Real scene code draws into
+ * gfx-owned pictures; gfx_read_panel_row() supplies completed output.
+ * BMP and AVI encoding use util/encode/screenshot.h. No device access.
  */
 
 #include "render_host.h"
@@ -24,6 +13,8 @@
 #include "gfx/draw/gfx_color.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "render_video.h"
 #include "render_watch.h"
 #include "ui/ui_transform.h"
@@ -42,25 +33,6 @@
  * before that wraps, so a run past this is refused instead of written. */
 #define VIDEO_MAX_BYTES ((int64_t)1024 * 1024 * 1024)
 
-/* Where the pixel read at (x, y) of the output image lives in the
- * framebuffer. For a panel-native dump that is the same pixel; otherwise
- * the output is the UPRIGHT LOGICAL canvas, and each of its pixels is
- * mapped through the very transform the scene drew with. */
-static gfx_color_t
-sample(const gfx_color_t* fb, ui_transform_t t, bool panel, int x, int y) {
-    int px = x;
-    int py = y;
-    if (!panel) {
-        const mu_Rect mapped = ui_transform_rect(t, (mu_Rect){x, y, 1, 1});
-        px = mapped.x;
-        py = mapped.y;
-    }
-    if (px < 0 || px >= GFX_WIDTH || py < 0 || py >= GFX_HEIGHT) {
-        return gfx_rgb(0x000000);
-    }
-    return fb[(size_t)py * GFX_WIDTH + px];
-}
-
 /* The output canvas for `quarter`/`panel`, decided before gfx_init(): both
  * GFX_WIDTH and GFX_HEIGHT are compile-time, so a --video run can be sized
  * and refused, if it must be, before anything is drawn. */
@@ -76,14 +48,24 @@ output_size(int quarter, bool panel, int* out_w, int* out_h) {
  * chunk both carry unchanged, so the BMP write and every --video frame
  * share this instead of each walking the framebuffer on its own. */
 static void
-convert_frame(const gfx_color_t* fb, ui_transform_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
-    for (int y = out_h - 1, row = 0; y >= 0; y--, row++) {
-        uint8_t* dst = buf + (size_t)row * stride;
-        for (int x = 0; x < out_w; x++) {
-            const uint32_t rgb = gfx_color_rgb888(sample(fb, t, panel, x, y));
-            dst[x * 3 + 0] = (uint8_t)(rgb);       /* B */
-            dst[x * 3 + 1] = (uint8_t)(rgb >> 8);  /* G */
-            dst[x * 3 + 2] = (uint8_t)(rgb >> 16); /* R */
+convert_frame(ui_transform_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
+    ui_transform_t inverse = ui_transform_identity();
+    if (!panel) {
+        (void)ui_transform_invert(t, &inverse);
+    }
+    gfx_color_t pixels[GFX_WIDTH];
+    for (int py = 0; py < GFX_HEIGHT; py++) {
+        gfx_read_panel_row(py, pixels);
+        for (int px = 0; px < GFX_WIDTH; px++) {
+            const mu_Rect mapped = ui_transform_rect(inverse, (mu_Rect){px, py, 1, 1});
+            if (mapped.x < 0 || mapped.x >= out_w || mapped.y < 0 || mapped.y >= out_h) {
+                continue;
+            }
+            uint8_t* dst = buf + (size_t)(out_h - 1 - mapped.y) * stride + mapped.x * 3;
+            const uint32_t rgb = gfx_color_rgb888(pixels[px]);
+            dst[0] = (uint8_t)rgb;
+            dst[1] = (uint8_t)(rgb >> 8);
+            dst[2] = (uint8_t)(rgb >> 16);
         }
     }
 }
@@ -230,8 +212,7 @@ main(int argc, char** argv) {
         return 1;
     }
 
-    const gfx_color_t* fb = gfx_framebuffer();
-    if (fb == NULL) {
+    if (gfx_readback_begin() != GFX_READBACK_READY) {
         /* Band mode keeps no retained frame to read back, so there is
          * nothing to write; the same refusal a device capture makes. A
          * scene wanting an image asks for the full-framebuffer layout. */
@@ -280,7 +261,8 @@ main(int argc, char** argv) {
         scene->draw(&frame);
         render_watch_frame_end();
 
-        convert_frame(fb, t, panel, out_w, out_h, stride, frame_buf);
+        convert_frame(t, panel, out_w, out_h, stride, frame_buf);
+        gfx_present();
         if (video_path != NULL && video_ok) {
             video_ok = render_video_write_frame(&video, frame_buf, stride * out_h);
         }
@@ -296,8 +278,10 @@ main(int argc, char** argv) {
         render_watch_frame_begin();
         scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
+        gfx_present();
         render_watch_frame_end();
     }
+    gfx_readback_end();
 
     const frame_watch_verdict_t verdict = render_watch_finish();
     free(console_path);

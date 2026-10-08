@@ -23,6 +23,7 @@
 #include "unity.h"
 
 #include "apps/sand/palette.h"
+#include "gfx/draw/gfx_draw.h"
 
 /* palette_cols(): the derivation itself */
 

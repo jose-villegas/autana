@@ -1,5 +1,6 @@
 #include <stdbool.h>
 
+#include "gfx/draw/gfx_draw.h"
 #include "palette.h"
 
 /* Defined in terms of PALETTE_COLS_FOR() (palette.h) rather than

@@ -28,3 +28,25 @@ host_jobs() {
     [ "$n" -le 8 ] || n=8
     echo "$n"
 }
+
+# Linking decides whether this compiler has the UBSan runtime. Trap mode
+# still checks undefined behaviour when no runtime library is installed.
+host_sanitizer_flags() {
+    _hs_probe=$(mktemp -d) || return 1
+    _hs_flags='-fsanitize=undefined -fsanitize-recover=undefined'
+    if ! printf 'int main(void) { return 0; }\n' | "$1" -x c - $_hs_flags -o "$_hs_probe/probe" >/dev/null 2>&1; then
+        _hs_flags='-fsanitize=undefined -fsanitize-undefined-trap-on-error'
+        if ! printf 'int main(void) { return 0; }\n' | "$1" -x c - $_hs_flags -o "$_hs_probe/probe"; then
+            rm -f "$_hs_probe/probe" "$_hs_probe/probe.exe"
+            rmdir "$_hs_probe"
+            return 1
+        fi
+    else
+        case "$(uname -s)" in
+            Linux) _hs_flags="$_hs_flags -fsanitize=address -fno-omit-frame-pointer" ;;
+        esac
+    fi
+    rm -f "$_hs_probe/probe" "$_hs_probe/probe.exe"
+    rmdir "$_hs_probe"
+    printf '%s\n' "$_hs_flags"
+}

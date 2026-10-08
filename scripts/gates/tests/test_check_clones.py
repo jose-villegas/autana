@@ -62,6 +62,19 @@ class CloneTests(unittest.TestCase):
         self.assertTrue(pairs)
         self.assertGreaterEqual(pairs[0]["tokens"], 80)
 
+    def test_include_directives_do_not_count_towards_code_clones(self):
+        includes = ''.join(f'#include "owner/header_{index}.h"\n' for index in range(32))
+        includes += '# include <stdint.h>\n#include \\\n    "owner/continued.h"\n'
+        for suffix in ('c', 'h', 'cc', 'cpp', 'cxx', 'hpp'):
+            with self.subTest(suffix=suffix):
+                names = ('launcher/main/a.c', f'launcher/main/b.{suffix}')
+                self.assertEqual(self.scan(dict.fromkeys(names, includes), 80), [])
+                short = 'int value(void) { return 0; }\n'
+                self.assertEqual(self.scan(dict.fromkeys(names, includes + short), 80), [])
+                pairs = self.scan(dict.fromkeys(names, includes + BLOCK), 80)
+                self.assertTrue(pairs)
+                self.assertGreaterEqual(pairs[0]['firstFile']['start'], includes.count('\n'))
+
     def test_header_and_cpp_are_compared(self):
         for suffix in ("h", "cpp", "hpp"):
             with self.subTest(suffix=suffix):
@@ -250,12 +263,6 @@ class CloneTests(unittest.TestCase):
         listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(f"    RUN_TEST(test_{i});\n" for i in range(24)) + "}\n"
         self.assertEqual(gate.filter_pairs([self.pair(fragment=listing)]), [])
         copied = self.pair(fragment=BLOCK + listing)
-        self.assertEqual(gate.filter_pairs([copied]), [copied])
-
-    def test_an_include_block_is_ignored_but_a_copy_beside_it_is_not(self):
-        block = "".join(f'#include "layer/header_{i}.h"\n' for i in range(24))
-        self.assertEqual(gate.filter_pairs([self.pair(fragment=block)]), [])
-        copied = self.pair(fragment=block + BLOCK)
         self.assertEqual(gate.filter_pairs([copied]), [copied])
 
     def test_code_moved_out_of_a_deleted_file_spends_its_clone(self):

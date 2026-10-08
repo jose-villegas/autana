@@ -18,6 +18,9 @@
  * of the whole screen. A developer toggle, so it survives leaving the app. */
 extern bool render_lab_partial_updates;
 
+/* Optional camera selected when a loaded scene is entered; NULL chooses its first. */
+extern const char* render_lab_start_camera;
+
 /* A band has no retained frame to erase a box out of, so the app fills each
  * touched band before the scene draws into it. */
 void render_lab_clear_band(gfx_color_t* buf, int height);

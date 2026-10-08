@@ -43,7 +43,21 @@ float, so which pixels a triangle reaches can differ by compiler.
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 
-A pose of the flythrough is `--frames` times `--dt`:
+A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
+selects a scene camera; omitted, it draws the first camera.
+
+`dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
+against the reference along that camera's clip, at intervals taken from
+the script and over the clip's full period. Per-path results belong in
+`docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
+
+Author and regenerate the tour animation with:
+
+```sh
+python launcher/tools/anim/camera_keys.py launcher/demo/sponza/tour.keys.toml launcher/demo/sponza/tour.glb
+```
+
+A host pose can be drawn with:
 
 ```sh
 render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
@@ -77,7 +91,7 @@ be checked to have measured the same thing.
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
-| `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
+| `render/sponza-{full,lite,flat,fitted,fitted-full,flat-fitted}.gif` | the same three seconds of the flythrough, one GIF per bake |
 | `render/sponza-{depth,tiles,motion-vectors}.gif` | those three seconds as the depth, depth-tile and motion-vector views of the full bake |
 | `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#fidelity-against-the-source)) |
 | `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the physical reference beside the smooth bake without and with indirect light (the scene's physical look, bakes made without and with that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#indirect-light)) |
@@ -86,6 +100,7 @@ be checked to have measured the same thing.
 | `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
 | `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
 | `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
+| `render/compare-flat-flat-fitted.png`, `.crops.png` | flat against the flat fitted mesh, the same way |
 | `render/appearance-{chosen,fitted-full}-heat.png`, `-reference.crops.png` | each fitted mesh against the reference: its heatmap sheet and the places it differs most (fitted full also its `-reference.png` sheet) |
 | `render/import-light.png`, `render/import-face-samples.png` | CPU albedo against baked light, and fixed face sampling against adaptive |
 | `render/gpu/*.png` | GPU recipe comparisons, path-cull differences, normal heatmaps and the budget/cost Pareto sheet |
@@ -94,8 +109,8 @@ be checked to have measured the same thing.
 
 The measured comparisons of bakes are in
 [Bake-Quality.md](../../../../../docs/render/Bake-Quality.md); these commands
-regenerate its images and tables. The scenes `sponza`, `sponza-lite`,
-`sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one variant.
+regenerate its images and tables. Each `sponza*` scene draws one of the bakes
+`sponza_bakes` lists in sponza_content.c.
 `tests/test_sky_through_walls.py` flies the full, flat and lite bakes and fails
 when more frames show sky through a wall than its ceiling allows.
 `autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`

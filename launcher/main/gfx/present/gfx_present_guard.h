@@ -24,6 +24,8 @@
 #endif
 
 extern bool gfx_present_guard_in_flight;
+/* Set while a frame overlay replays during the send, which may draw. */
+extern bool gfx_present_guard_replaying;
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 extern unsigned gfx_present_guard_trips;
@@ -50,7 +52,7 @@ gfx_present_guard_end(void) {
  * deliberately provokes this must keep running afterward to check it fired. */
 static inline void
 gfx_present_guard_check(void) {
-    if (!gfx_present_guard_in_flight) {
+    if (!gfx_present_guard_in_flight || gfx_present_guard_replaying) {
         return;
     }
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT

@@ -372,7 +372,6 @@ static void
 apply_gfx_enter_indexed(void) {
     gfx_mode_request_t req = {0};
     req.layout = GFX_LAYOUT_INDEXED;
-    req.resolution = GFX_RESOLUTION_FULL;
     req.index_grid_w = grid_w;
     req.index_grid_h = grid_h;
     req.cell_size = cell;
