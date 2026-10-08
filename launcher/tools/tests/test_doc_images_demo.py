@@ -23,29 +23,63 @@ class DocImageFailureTest(unittest.TestCase):
     def test_scene_poses_equal_track_host_for_the_video_frame_count(self):
         from anim import track_host
         from anim_probe import write_camera_clip
+        from r3d.import_settings import load_scene
+        from r3d.mesh_import import fidelity_poses
         from test_r3d_import import HEAD, renderer, sun_object, write_import
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            clip = write_camera_clip(work, name="orbit", reach=2.0, degrees=90.0)
+            clip = write_camera_clip(work, name="orbit", reach=2.0, degrees=90.0, node="orbit_view")
             write_import(work)
-            scene = work / "gallery.scene.toml"
-            scene.write_text(HEAD + sun_object() + renderer(name="painting_fitted", extra=
+            scene_path = work / "gallery.scene.toml"
+            scene_path.write_text(HEAD + sun_object() + renderer(name="painting", extra=
+                'bake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [16, 12] }\n') +
+                renderer(name="painting_fitted", extra=
                 'bake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [8, 6] }\n') +
                 '[[objects]]\nname = "view"\n[objects.camera]\nhalf_fov_short_tan = 0.62\nnear_z = 6\n'
-                'path = { animation = "orbit.anim.toml", node = "camera" }\n')
-            source = APP_SCRIPT.read_text()
-            block = source[source.index('run "$PYTHON" - "$SCENE"'):source.index("\nPYPOSES") + len("\nPYPOSES")]
+                'path = { animation = "orbit.anim.toml", node = "orbit_view" }\n')
+            scene = load_scene(scene_path)
             for frames in (2, 5):
                 with self.subTest(frames=frames):
-                    script = (ROOT / "scripts/lib/run.sh").read_text() + \
-                        '\nSCENE=$1\nW=$2\nPYTHON=$3\nFULL=painting\nFIDELITY_FRAMES=$4\nFIDELITY_DT=250\n' + block
-                    done = subprocess.run(["sh", "-c", script, "poses", scene.as_posix(), work.as_posix(),
-                                           pathlib.Path(sys.executable).as_posix(), str(frames)],
-                                          cwd=ROOT, capture_output=True, text=True, timeout=60)
-                    self.assertEqual(done.returncode, 0, done.stderr)
                     expected = track_host.sample(clip, ["--every", 250, "--until", (frames + 1) * 250,
-                                                       "--poses", "camera", 8, 6, "0.62", "6"])
-                    self.assertEqual((work / "fidelity-poses.txt").read_bytes(), expected.encode())
+                                                       "--poses", "orbit_view", 8, 6, "0.62", "6"])
+                    self.assertEqual(fidelity_poses(scene, "painting", frames, 250).encode(), expected.encode())
+                    self.assertTrue(expected.startswith("size 8 6\nlens 0.62 6\n"), expected)
+
+    def test_import_examples_use_the_callers_scene_object_pack_and_timing(self):
+        import importlib.util
+        path = ROOT / "launcher/tools/render/doc_import_examples.py"
+        spec = importlib.util.spec_from_file_location("doc_import_examples", path)
+        examples = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(examples)
+        scene_path = pathlib.Path("gallery.scene.toml")
+        job = SimpleNamespace(object=SimpleNamespace(name="painting"), asset_name="gallery.paint",
+                              renderer=SimpleNamespace(variant=SimpleNamespace(name="paint")), bake=True)
+        geometry = SimpleNamespace(positions=[], rgb=[], tris=[], tri_double=[], scale={})
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            with mock.patch.object(examples, "load_scene", return_value=SimpleNamespace(renderers=[job])), \
+                    mock.patch.object(examples, "bake_geometry", return_value=geometry), \
+                    mock.patch.object(examples, "write_lit_mesh"), \
+                    mock.patch("r3d.bake_fidelity.pack_bytes", return_value={}) as pack, \
+                    mock.patch("r3d.bake_fidelity.write_packs"), \
+                    mock.patch.object(examples.subprocess, "run") as run:
+                examples.main(scene_path, "painting", pathlib.Path("viewer"), work, work, 3, 17)
+            pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.mesh'}"])
+            args = run.call_args_list[0].args[0]
+            for flag, value in (("--scene", "gallery"), ("--object", "painting"), ("--frames", "3"), ("--dt", "17")):
+                self.assertEqual(args[args.index(flag) + 1], value)
+            self.assertEqual(run.call_args_list[0].kwargs["env"]["AUTANA_ASSET_DIR"], str(work / "albedo/assets"))
+            source = APP_SCRIPT.read_text()
+            call = next(line for line in source.splitlines() if '"launcher/tools/render/doc_import_examples.py"' in line)
+            script = (ROOT / "scripts/lib/run.sh").read_text() + \
+                '\nR3D_PYTHON=sh\nSCENE=gallery.scene.toml\nFULL=painting\nHOST=viewer\nW=.\nRENDER=out\nFIDELITY_FRAMES=3\nFIDELITY_DT=17\n' + call
+            stub = work / "launcher/tools/render/doc_import_examples.py"
+            stub.parent.mkdir(parents=True)
+            stub.write_text('printf "%s\\n" "$@" > argv\n')
+            done = subprocess.run(["sh", "-c", script], cwd=work, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual((work / "argv").read_text().splitlines(),
+                             ["gallery.scene.toml", "painting", "viewer", ".", "out", "3", "17"])
 
     def test_tables_use_the_callers_scene_and_object(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -108,7 +142,7 @@ class DocImageFailureTest(unittest.TestCase):
             for stem in ("gallery-full", "gallery-missing", "unknown-full"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
-                                  cwd=root, capture_output=True, text=True)
+                                  cwd=images, capture_output=True, text=True)
             self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
             self.assertNotIn("orphan render/gallery-full.gif", done.stdout)
             self.assertIn("orphan render/gallery-missing.gif", done.stdout)
@@ -128,7 +162,7 @@ class DocImageFailureTest(unittest.TestCase):
             source = APP_SCRIPT.read_text()
             function = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\n}", 1)[0] + "\n}\n"
             script = (ROOT / "scripts/lib/run.sh").read_text() + \
-                'PYTHON=sh\nR3D_PYTHON=sh\nHOST=./host.sh\nSCENE=gallery.scene.toml\nID=gallery\nDEMO=.\n' + \
+                'PYTHON=sh\nR3D_PYTHON=sh\nHOST=./host.sh\nSCENE=gallery.scene.toml\nID=gallery\nDEMO=.\nFIDELITY_FRAMES=5\nFIDELITY_DT=5000\n' + \
                 function + 'bake_and_render scratch gallery.paint painting\n'
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
@@ -156,7 +190,7 @@ class DocImageFailureTest(unittest.TestCase):
             functions = "\n".join(line for line in functions.splitlines() if "physical_scene.py" not in line)
             script = root / "stage.sh"
             script.write_text(
-                'set -e\nW=work\nID=sponza\nFULL=atrium\nR3D_PYTHON=sh\nmkdir -p work\n'
+                'set -e\nW=work\nID=sponza\nFULL=atrium\nMESH=sponza.atrium\nR3D_PYTHON=sh\nmkdir -p work\n'
                 f'DEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
                 f'cp "$DEMO/{DEMO_SCENE.name}" work/physical.scene.toml\n'
                 + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct none ''\n", encoding="utf-8")

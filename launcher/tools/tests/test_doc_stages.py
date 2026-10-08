@@ -57,6 +57,48 @@ class DocStagesTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.tmp = Path(directory.name)
 
+    def test_board_uses_the_callers_scene_and_object(self):
+        from types import SimpleNamespace as NS
+        from r3d import cost_model, import_settings, mesh_import, fitted_variant
+        import numpy as np
+        scene_path = Path("gallery.scene.toml")
+        job = NS(renderer=NS(fit=NS(held_out_every_ms=1000), visibility=object()))
+        scene = NS(renderers=[NS(object=NS(name=name), asset_path=Path(name + ".mesh"))
+                              for name in ("painting", "painting_lite")])
+        capture = self.tmp / "capture.txt"
+        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\n" +
+            "".join(f"{name} both cores: mean {value}us\n" for name, value in
+                    (("painting", 51000), ("painting_lite", 42000), ("painting_flat", 43000),
+                     ("painting_fitted", 44000), ("painting_fitted_full", 45000))) +
+            "painting t= 0s clusters=4 | both cores: frame 51000us\n"
+            "painting_lite t= 0s clusters=4 | both cores: frame 42000us\n")
+        out, work = self.tmp / "out", self.tmp / "work"
+        (out / "tables").mkdir(parents=True)
+        work.mkdir()
+        weights = self.tmp / "weights.txt"
+        weights.write_text("")
+        features = np.ones((1, len(cost_model.FEATURES)))
+        with mock.patch.object(stages.subprocess, "check_output", return_value=b"abcdef123456"), \
+                mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
+                mock.patch.object(import_settings, "load_scene", return_value=scene), \
+                mock.patch.object(fitted_variant, "placed_variant", return_value=job) as placed, \
+                mock.patch.object(mesh_import, "camera_path_poses", return_value=(8, 6, .62, 6, [[0]*7])), \
+                mock.patch.object(fitted_variant, "poses_text", return_value="poses"), \
+                mock.patch.object(cost_model, "mesh_rows", return_value=features) as rows, \
+                mock.patch.object(cost_model, "fit", return_value=np.ones(len(cost_model.FEATURES))) as fit, \
+                mock.patch.object(stages, "current_stamp", return_value="stamp"), \
+                mock.patch.object(stages, "apply_tables"), mock.patch.object(stages, "WEIGHTS", weights), \
+                mock.patch.object(stages, "ROOT", self.tmp):
+            self.assertEqual(stages.board(NS(scene=scene_path, object="painting", capture=[capture],
+                                             build_commit=None, check=False), out, work), 0)
+        placed.assert_called_once_with(scene, "painting_fitted")
+        self.assertEqual([call.args[0] for call in rows.call_args_list],
+                         [Path("painting.mesh"), Path("painting_lite.mesh")])
+        self.assertEqual(fit.call_args.args[1], [51.0, 42.0])
+        self.assertEqual({path.name for path in (out / "tables").iterdir()},
+                         {"gallery-board.md", "gallery-board-model.md"})
+        self.assertIn("| gallery | 51.000 |", (out / "tables/gallery-board.md").read_text())
+
     def test_current_stamp_needs_no_numeric_dependencies(self):
         launcher = self.tmp / "launcher"
         launcher.mkdir()
@@ -337,7 +379,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                                           'mean_delta_e': 0., 'predicted_ms': 0.}))
             before = resume.read_bytes()
             with mock.patch.object(import_settings, 'load_scene', return_value=object()), \
-                    mock.patch.object(fitted, 'placed_variant', side_effect=jobs), \
+                    mock.patch.object(fitted, 'placed_variant', side_effect=jobs) as placed, \
                     mock.patch.object(bake_fidelity, 'build_host', return_value='host') as build_host, \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
@@ -345,6 +387,12 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(fitted, 'plot_pareto'):
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
             build_host.assert_called_once_with(stages.HOST_SCRIPT, work / 'host', Path('other.scene.toml'))
+            self.assertEqual(placed.call_args_list, [mock.call(mock.ANY, "hall_fitted"),
+                                                    mock.call(mock.ANY, "hall_fitted_full")])
+            self.assertEqual([args[4] for owner, args, _, _ in calls if owner is stages.bake_worker],
+                             ["hall_lite", "hall"])
+            self.assertEqual({path.name for path in (out / "tables").iterdir()},
+                             {"other-normal.md", "other-budget.md", "other-gpu.md"})
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
                              'full-GI-bake', 'full-path-culled', 'full-GI-fit']

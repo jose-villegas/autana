@@ -109,8 +109,8 @@ def has_compiler():
     return True
 
 
-def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=()):
-    """NAME.anim.toml and NAME.glb beside it: node `camera` moving from x 0 to
+def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=(), node="camera"):
+    """NAME.anim.toml and NAME.glb beside it: node `node` moving from x 0 to
     `reach` over a second while turning `degrees` about +y from facing glTF's
     -Z, linearly. `props` names nodes the clip does not animate, which change
     the file and not the clip. Returns the .anim.toml's path."""
@@ -118,7 +118,7 @@ def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=()):
     rotation = [turn((0, 1, 0), 0)] if not degrees else [turn((0, 1, 0), 0), turn((0, 1, 0), degrees)]
     channels = [channel(0, "translation", [0.0, 1.0], [(0.0, 0.0, 0.0), (reach, 0.0, 0.0)]),
                 channel(0, "rotation", [0.0, 1.0][:len(rotation)], rotation)]
-    nodes = [{"name": "camera"}] + [{"name": prop} for prop in props]
+    nodes = [{"name": node}] + [{"name": prop} for prop in props]
     (directory / (name + ".glb")).write_bytes(gltf_write.build_glb(nodes, [{"name": name, "channels": channels}]))
     clip = directory / (name + tracks_asset.SUFFIX)
     clip.write_text('source = "%s.glb"\nanimation = "%s"\n' % (name, name))

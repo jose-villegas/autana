@@ -1,6 +1,5 @@
 # Render Lab tools
 
-
 Host-only scripts; the firmware build skips this folder. The render harness
 itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
@@ -98,9 +97,8 @@ checks the app flythrough against its sky-through-wall ceilings.
 
 ## Sponza poses
 
-The flythrough is a glTF camera animation,
-`launcher/demo/sponza/flythrough.glb`, named by
-`launcher/demo/sponza/flythrough.anim.toml`. Its poses for
+The flythrough is a glTF camera animation, `launcher/demo/sponza/flythrough.glb`,
+named by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
 [`report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses

@@ -17,9 +17,6 @@ Usage:
 
 Exit 2 means the capture has no checkpoint in it to report on.
 
-Lives in tools/, not test/suites/, the same convention gen_boot_anim_
-timeline.py and gen_boot_anim_image.py already follow for boot_anim's own
-host-side tooling; it is not app-owned the way cube's report generator is.
 """
 import argparse
 import re

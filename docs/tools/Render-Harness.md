@@ -52,8 +52,9 @@ The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
 bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
-It takes a scene file and the object name of its full renderer; the scene
-must also place OBJECT_lite, OBJECT_flat, OBJECT_fitted and OBJECT_fitted_full.
+`render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
+name of the scene's full renderer; the scene must also place `OBJECT_lite`,
+`OBJECT_flat`, `OBJECT_fitted` and `OBJECT_fitted_full`.
 The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
 `tools/doc_images.sh` for the app's own:
 
@@ -95,13 +96,12 @@ requests".
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into
-the output tree's tables folder. The shared writer
-replaces the body between an HTML
-comment containing `generated: NAME sha256=HASH` and one containing
+the output tree's tables folder. The shared writer replaces the body between
+an HTML comment containing `generated: NAME sha256=HASH` and one containing
 `/generated: NAME`, preserving the document's other text and line endings.
-Names use lowercase letters, digits and hyphens and are unique
-across documents. The SHA-256 covers the body,
-including its boundary newlines, with CRLF normalized to LF.
+Names use lowercase letters, digits and hyphens and are unique across
+documents. The SHA-256 covers the body, including its boundary newlines, with
+CRLF normalized to LF.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
 fails on a body hash mismatch or malformed boundaries, without rendering.
 Change a measurement's source or generator and regenerate its block; a hash
@@ -112,9 +112,10 @@ and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparis
 the WSL CUDA environment; the board stage consumes a perf capture. Both use
 this writer.
 
-`--stage board --capture PATH` takes one capture per run, from the same
-diagnostics image. It rejects missing variants, failed suites and mismatched
-build identities, and rewrites the board tables and
+`--stage board` takes one `--capture PATH` per board run, all from the same
+diagnostics image, and uses their median; `--check` reports without writing.
+It rejects missing variants, missing or repeated per-pose timings, failed
+suites and mismatched build identities, and rewrites the board tables and
 `launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
 weights change. `--build-commit SHA` accepts a capture from that commit while
 the firmware sources still match.

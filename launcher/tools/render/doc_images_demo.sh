@@ -77,26 +77,16 @@ for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-ful
 done
 
 # The fidelity sheet: two poses of the committed flat bake against the source
-# model lit per pixel. The reference skips the initial pose; the sheet shows
-# video frames 2 and 4. The source model lives in the demo folder and uses Git LFS.
+# model lit per pixel. The reference skips the initial pose.
+# The source model lives in the demo folder and uses Git LFS.
+. scripts/lib/python.sh
+R3D_PYTHON=$(run find_r3d_python "$PWD")
 FIDELITY_FRAMES=5
 FIDELITY_DT=5000
-run "$PYTHON" - "$SCENE" "$FULL" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/fidelity-poses.txt" <<'PYPOSES'
-import sys
-from pathlib import Path
-sys.path.insert(0, "launcher/tools")
-from r3d.import_settings import load_scene
-from anim import track_host
-scene = load_scene(Path(sys.argv[1]))
-job = next(item for item in scene.renderers if item.object.name == sys.argv[2] + "_fitted")
-camera = scene.camera.component
-width, height = job.renderer.visibility.size
-frames, dt = map(int, sys.argv[3:])
-text = track_host.sample(camera.path.animation, [
-    "--every", dt, "--until", (frames + 1) * dt, "--poses", camera.path.node,
-    width, height, format(camera.half_fov_short_tan, ".9g"), format(camera.near_z, ".9g")])
-sys.stdout.buffer.write(text.encode())
-PYPOSES
+# The fitted renderer's visibility size matches the reference used to fit it.
+run "$R3D_PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; from r3d.mesh_import import fidelity_poses; sys.stdout.buffer.write(fidelity_poses(load_scene(Path(sys.argv[1])), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])).encode())' \
+    "$SCENE" "$FULL" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/fidelity-poses.txt"
+MESH=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; print(next(job.asset_name for job in load_scene(Path(sys.argv[1])).renderers if job.object.name == sys.argv[2]))' "$SCENE" "$FULL")
 # render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
 # their inputs, so only a change to the scene, tracer or poses traces again.
 REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
@@ -107,19 +97,15 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
-. scripts/lib/python.sh
-R3D_PYTHON=$(run find_r3d_python "$PWD")
-# The committed smooth bake at the same five poses, scored against the committed
+# The committed smooth bake at the fidelity poses, scored against the committed
 # reference, for the fidelity table and the import-light image.
 run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
     -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
     --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
-# Scratch bakes keep the import and scene beside their source link so their
-# dependencies resolve. The pack overrides one mesh without changing its source.
-
-# bake_and_render DIR MESH OBJECT: link the mesh source into DIR, bake the scene file in DIR,
-# pack the mesh in place of the committed one and render the five poses to DIR.avi.
+# bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
+# import beside a link to the mesh source, pack MESH in place of the committed
+# one and render the fidelity poses to DIR.avi.
 bake_and_render() {
     dir=$1 mesh=$2 object=$3
     run ln -sfn "$PWD/$DEMO/source" "$dir/source"
@@ -140,7 +126,7 @@ variant_bake() {
     run awk -v table="$3" -v direct="$2" '/^\[\[objects\]\]/ && !done { if (table != "") print table "\n"; done = 1 }
         direct == "none" && /^indirect = \{/ { next } { print }' \
         "$W/physical.scene.toml" > "$W/indirect-$1/$ID.scene.toml"
-    bake_and_render "$W/indirect-$1" "${4:-$ID.$FULL}" "${5:-$FULL}"
+    bake_and_render "$W/indirect-$1" "${4:-$MESH}" "${5:-$FULL}"
 }
 variant_bake smooth keep ''
 variant_bake direct none ''
@@ -188,7 +174,7 @@ ao_bake() {
     run awk -v ao="$2" '/^\[/ { ambient = ($0 == "[ambient]") } ambient && /^intensity = / { print "intensity = 0.25"; next }
         { print } /^indirect = \{/ && ao != "" { print ao }' \
         "$W/physical.scene.toml" > "$W/ao-$1/$ID.scene.toml"
-    bake_and_render "$W/ao-$1" "$ID.$FULL" "$FULL"
+    bake_and_render "$W/ao-$1" "$MESH" "$FULL"
 }
 ao_bake flat ''
 ao_bake occluded 'ao = { distance = 80.0, rays = 32 }'
@@ -297,4 +283,4 @@ tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
 
-"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$HOST" "$W" "$RENDER" > "$W/import-examples.log" 2>&1
+"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1

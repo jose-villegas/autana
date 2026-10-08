@@ -1,6 +1,5 @@
 # Sand tools
 
-
 Host-only scripts; the firmware build skips this folder. Each `report_*.sh`
 names what it measures in its own header. The render harness the
 `*_render_host.sh` scenes use is

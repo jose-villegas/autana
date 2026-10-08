@@ -129,6 +129,18 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.pixels("--object", "card", "--video", str(video))
         self.assertEqual(video.read_bytes()[:4], b"RIFF")
 
+    def test_wrapper_build_only_uses_the_requested_directory_and_never_renders(self):
+        out = self.root / "build only"
+        wrapper = TOOLS / "render/scene_viewer.sh"
+        done = subprocess.run([shutil.which("sh"), str(wrapper), str(self.scene), "--build-only", "-o", str(out)],
+                              cwd=self.root, capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        binary = out / self.binary.name
+        self.assertTrue(binary.is_file())
+        self.assertEqual(done.stdout.replace("\\", "/").splitlines(), ["built " + binary.as_posix()])
+        self.assertFalse(list(out.rglob("*.bmp")))
+        self.assertFalse((self.root / "out.bmp").exists())
+
     def test_wrapper_builds_the_pack_from_a_scene_outside_the_repository(self):
         target = self.root / "wrapper.bmp"
         wrapper = TOOLS / "render/scene_viewer.sh"

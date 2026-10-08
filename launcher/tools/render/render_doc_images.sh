@@ -28,8 +28,8 @@
 # made or compared; failed commands and render-log tails are printed.
 #
 # doc_images_demo.sh and the dynamic-resolution report write out/tables/NAME.md.
-# generated_blocks.py rewrites
-# the matching named blocks; --check compares them without writing.
+# generated_blocks.py rewrites the matching named blocks; --check compares
+# them without writing.
 #
 # The Cornell box is traced in float, and GIF palettes depend on the ffmpeg
 # version, so a --check on another OS or with another ffmpeg may report them
@@ -37,11 +37,11 @@
 
 set -eu
 
-. scripts/lib/run.sh
-
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
+
+. scripts/lib/run.sh
 
 DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
