@@ -35,6 +35,26 @@ def image(rows):
     return picture
 
 
+class StillColumnsTest(unittest.TestCase):
+    def test_still_columns_preserve_pixels_and_label_each_panel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            columns = []
+            for label, color in (("full", (255, 0, 0)), ("lite", (0, 255, 0)), ("fitted", (0, 0, 255))):
+                path = Path(tmp) / (label + ".bmp")
+                Image.new("RGB", (80, 40), color).save(path)
+                columns.extend(["--still-column", label, str(path)])
+            out = Path(tmp) / "sheet.png"
+            run = subprocess.run([sys.executable, render_compare.__file__, "--out", str(out), *columns],
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            with Image.open(out) as picture:
+                self.assertEqual(picture.size, (240, 40 + render_compare.LABEL_BAR))
+                for column, color in enumerate(((255, 0, 0), (0, 255, 0), (0, 0, 255))):
+                    self.assertEqual(picture.getpixel((column * 80 + 40, render_compare.LABEL_BAR + 20)), color)
+                    self.assertGreater(len(set(picture.crop((column * 80, 0, (column + 1) * 80,
+                                                            render_compare.LABEL_BAR)).getdata())), 1)
+
+
 class AngleSheetTest(unittest.TestCase):
     def test_each_panel_is_labelled_and_the_scale_sits_below(self):
         with tempfile.TemporaryDirectory() as tmp:

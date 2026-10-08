@@ -76,11 +76,11 @@ path = { animation = "fly.anim.toml", node = "camera" }
             return image.copy()
 
     def test_every_declared_view_name_is_accepted(self):
-        header = (TOOLS.parent / "main/render/context/render_context.c").read_text()
-        import re
-        names = re.findall(r'\{"([a-z]+)", (?:0|sizeof\([^)]*\)), raster_', header)
-        self.assertEqual(names, ["depth", "tiles", "motion", "meshlets"])
-        for name in ["shaded", *names]:
+        run, _ = self.render("--view", "invalid")
+        self.assertNotEqual(run.returncode, 0)
+        names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
+        self.assertEqual(names[0], "shaded")
+        for name in names:
             with self.subTest(name=name):
                 run, out = self.render("--view", name)
                 self.assertEqual(run.returncode, 0, run.stderr)
@@ -92,10 +92,14 @@ path = { animation = "fly.anim.toml", node = "camera" }
         colours = dict((rgb, count) for count, rgb in picture.getcolors(picture.width * picture.height))
         self.assertGreater(colours.get((255, 40, 16), 0), 1000, "fixture triangle was not drawn")
 
-    def test_depth_differs_from_shaded(self):
-        shaded = self.pixels("--object", "card")
-        depth = self.pixels("--object", "card", "--view", "depth")
-        self.assertNotEqual(shaded.tobytes(), depth.tobytes())
+    def test_each_view_differs_from_shaded(self):
+        run, _ = self.render("--view", "invalid")
+        names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
+        shaded = self.pixels("--object", "card", "--view", "shaded")
+        for name in names[1:]:
+            with self.subTest(name=name):
+                picture = self.pixels("--object", "card", "--view", name)
+                self.assertNotEqual(shaded.tobytes(), picture.tobytes())
 
     def test_unknown_object_names_it_and_lists_renderers(self):
         run, out = self.render("--object", "missing")

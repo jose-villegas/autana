@@ -47,20 +47,14 @@ renderer's resolution, half the panel's each way, upscaled like the shaded
 one. They are `|nopin`, like the shaded Sponza renders: the camera path is
 float, so which pixels a triangle reaches can differ by compiler.
 `--view` sets the tunable `render_lab.view`, so on a development build
-`autana tune render_lab.view 1` selects tiles; shaded is -1, depth 0,
-motion 2 and meshlets 3. `--view` on a
+`autana tune render_lab.view N` selects row N of the render_view_t table in
+render/context/render_context.c; -1 is shaded. `--view` on a
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
 cluster a flat hue, with disjoint IDs across instances.
 
-The demo's meshlet still is generated through the documentation-image path:
-
-```sh
-PYTHON=python sh launcher/tools/render/doc_images_demo.sh docs/images launcher/tools/results/meshlet-view/still launcher/demo/sponza/sponza.scene.toml atrium --meshlets-only
-```
-
-![The meshlets view](../../../../../docs/images/render/sponza-meshlets.png)
+![The meshlets view: full, lite and fitted](../../../../../docs/images/render/sponza-meshlets.png)
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.

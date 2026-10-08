@@ -55,6 +55,7 @@ bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
 `doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
 meshlet still; its normal run also writes that image beside the view GIFs.
+Run alone, it needs `PYTHON` set to an interpreter with Pillow. The comparison sheet also needs NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
 `OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.

@@ -76,14 +76,3 @@ void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quar
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
-
-/* The tile a hierarchical depth test would cull by. */
-#define RASTER_SHOW_TILE 8
-
-raster_attachment_t raster_depth_view(void* state);
-raster_attachment_t raster_depth_tiles_view(void* state);
-
-/* Development builds only: paints attached views before upscale. */
-void raster_show(const raster_t* raster);
-void raster_show_map(const gfx_render_target_t* picture, int index, uint16_t clear,
-                     gfx_color_t (*color_of)(const void* pixel, uint16_t clear));

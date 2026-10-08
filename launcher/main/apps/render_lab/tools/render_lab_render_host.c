@@ -84,13 +84,9 @@ set_tunable(const char* name, int value) {
 
 static bool
 view_from_name(const char* name) {
-    if (strcmp(name, "shaded") == 0) {
-        return set_tunable("view", RENDER_VIEW_SHADED);
-    }
-    for (int i = 0; i < RENDER_VIEW_COUNT; i++) {
-        if (strcmp(name, render_context_view(i)->name) == 0) {
-            return set_tunable("view", i);
-        }
+    const int view = render_context_view_named(name);
+    if (view != RENDER_VIEW_UNKNOWN) {
+        return set_tunable("view", view);
     }
     fprintf(stderr, "render_lab_render_host: --view is shaded");
     for (int i = 0; i < RENDER_VIEW_COUNT; i++) {

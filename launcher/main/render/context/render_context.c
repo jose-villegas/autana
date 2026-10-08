@@ -7,16 +7,10 @@
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 
-/* raster_show() is linked only where a development build or a host has it. */
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-#define DEBUG_VIEW 1
-#else
-#define DEBUG_VIEW 0
-#endif
-
-#if DEBUG_VIEW
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/raster_meshlets.h"
 #include "render/raster_motion.h"
+#include "render/raster_show.h"
 
 static const render_view_t views[] = {
     {"depth", 0, raster_depth_view},
@@ -29,7 +23,7 @@ _Static_assert(RENDER_VIEW_COUNT == sizeof views / sizeof views[0], "view table 
 
 const render_view_t*
 render_context_view(int view) {
-#if DEBUG_VIEW
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     return view >= 0 && view < RENDER_VIEW_COUNT ? &views[view] : NULL;
 #else
     (void)view;
@@ -37,9 +31,22 @@ render_context_view(int view) {
 #endif
 }
 
+int
+render_context_view_named(const char* name) {
+    if (strcmp(name, "shaded") == 0) {
+        return RENDER_VIEW_SHADED;
+    }
+    for (int i = 0; i < RENDER_VIEW_COUNT; i++) {
+        const render_view_t* row = render_context_view(i);
+        if (row != NULL && strcmp(name, row->name) == 0) {
+            return i;
+        }
+    }
+    return RENDER_VIEW_UNKNOWN;
+}
+
 static render_context_t main_context = {
     .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-    .view = RENDER_VIEW_SHADED,
     .frame = {.step = -1},
 };
 
@@ -54,7 +61,6 @@ render_context_release(render_context_t* c) {
     memory_free(c->view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-        .view = RENDER_VIEW_SHADED,
         .frame = {.step = -1},
     };
 }
@@ -83,17 +89,17 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
 
 void
 render_context_set_view(render_context_t* c, int view) {
-#if DEBUG_VIEW
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const render_view_t* row = render_context_view(view);
     if (view != RENDER_VIEW_SHADED && row == NULL) {
         return;
     }
-    if (c->view == view && (view == RENDER_VIEW_SHADED || c->raster.attachment_count != 0)) {
+    if (c->view == view + 1 && (view == RENDER_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
     memory_free(c->view_state);
     c->view_state = NULL;
-    c->view = RENDER_VIEW_SHADED;
+    c->view = 0;
     c->raster.attachment_count = 0;
     c->raster.attachments = NULL;
     if (row == NULL) {
@@ -110,7 +116,7 @@ render_context_set_view(render_context_t* c, int view) {
     c->view_attached[0] = &c->view_attachment;
     c->raster.attachments = c->view_attached;
     c->raster.attachment_count = 1;
-    c->view = view;
+    c->view = view + 1;
 #else
     (void)c;
     (void)view;
@@ -187,7 +193,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     }
     c->frame.step = current_step(c);
-#if DEBUG_VIEW
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (r->attachment_count != 0) {
         raster_show(r);
     }

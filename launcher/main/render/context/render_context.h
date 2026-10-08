@@ -42,8 +42,9 @@ typedef struct {
     raster_attachment_t (*attachment)(void* state);
 } render_view_t;
 
-#define RENDER_VIEW_SHADED -1
-#define RENDER_VIEW_COUNT  4
+#define RENDER_VIEW_UNKNOWN -2
+#define RENDER_VIEW_SHADED  -1
+#define RENDER_VIEW_COUNT   4
 
 typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
@@ -56,7 +57,7 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    int view;
+    int view; /* row index plus one; zero is shaded */
     void* view_state;
     raster_attachment_t view_attachment;
     const raster_attachment_t* view_attached[1];
@@ -81,7 +82,11 @@ void render_context_set_dynamic_resolution(render_context_t* context, const reso
 
 /* Development views, or RENDER_VIEW_SHADED to detach the view. */
 void render_context_set_view(render_context_t* context, int view);
+/* The declared row, or NULL for shaded, an unknown index or a release build. */
 const render_view_t* render_context_view(int view);
+
+/* A row index, RENDER_VIEW_SHADED, or RENDER_VIEW_UNKNOWN for an unknown name. */
+int render_context_view_named(const char* name);
 
 /* Draws `count` instances through `camera` for a destination of `width` by
  * `height`, turned for `quarter`; false when there is no scratch for it. */

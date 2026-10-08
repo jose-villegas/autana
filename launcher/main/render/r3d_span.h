@@ -39,9 +39,9 @@ r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int ro
 struct r3d_span_writer {
     void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                  int32_t z, int32_t dz);
-    int attachment; /* the index it writes, in `rows` */
-    bool per_cluster;
-    uint32_t value; /* what this draw writes, in the attachment's own meaning */
+    int attachment;   /* the index it writes, in `rows` */
+    bool per_cluster; /* adds the drawn cluster's index to `value` */
+    uint32_t value;   /* what this draw writes, in the attachment's own meaning */
 };
 
 /* The depth encoding: inverse depth scaled to 16 bits, so a larger value is

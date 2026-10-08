@@ -33,10 +33,14 @@ run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
 
-run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets.bmp" \
-    --scene "$ID" --object "$FULL" --view meshlets 2> "$W/meshlets.log"
-run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-    "$W/meshlets.bmp" "$RENDER/${ID}-meshlets.png"
+for object in "$FULL" "${FULL}_lite" "${FULL}_fitted"; do
+    run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets-$object.bmp" \
+        --scene "$ID" --object "$object" --view meshlets 2> "$W/meshlets-$object.log"
+done
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/${ID}-meshlets.png" \
+    --still-column full "$W/meshlets-$FULL.bmp" \
+    --still-column lite "$W/meshlets-${FULL}_lite.bmp" \
+    --still-column fitted "$W/meshlets-${FULL}_fitted.bmp"
 [ "${5:-}" != --meshlets-only ] || exit 0
 
 # One looping flythrough per demo target and view, the same three seconds of

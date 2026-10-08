@@ -20,7 +20,7 @@ typedef struct raster_attachment raster_attachment_t;
 
 struct raster_attachment {
     int bytes_per_pixel; /* zero for a view without its own pixels */
-    /* A new picture's `count` pixels, before anything is drawn on them. */
+    /* Optional. A new picture's `count` pixels, before anything is drawn on them. */
     void (*clear)(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
     /* Optional. Once per raster_draw(), before the first instance. */
     void (*begin)(const raster_attachment_t* self, const raster_t* raster, const camera_t* camera, int quarter);

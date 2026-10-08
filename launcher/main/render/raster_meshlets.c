@@ -1,8 +1,10 @@
 #include "render/raster_meshlets.h"
 
+#include <assert.h>
 #include <string.h>
 
 #include "render/raster.h"
+#include "render/raster_show.h"
 
 static void
 clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
@@ -16,6 +18,11 @@ begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* c
     (void)camera;
     (void)quarter;
     raster_meshlets_t* state = self->state;
+    uint32_t clusters = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        clusters += (uint32_t)raster->instances[i].mesh->cluster_count;
+        assert(clusters <= UINT16_MAX);
+    }
     state->next = 1;
     state->raster = raster;
 }
@@ -23,8 +30,10 @@ begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* c
 static bool
 writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     raster_meshlets_t* state = self->state;
+    const uint32_t clusters = (uint32_t)state->raster->instances[instance].mesh->cluster_count;
+    assert(state->next > 0 && state->next + clusters <= (uint32_t)UINT16_MAX + 1);
     *out = (r3d_span_writer_t){.span = raster_attachment_tag, .per_cluster = true, .value = state->next};
-    state->next += (uint32_t)state->raster->instances[instance].mesh->cluster_count;
+    state->next += clusters;
     return true;
 }
 

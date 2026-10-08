@@ -2,6 +2,7 @@
  * raster_motion: previous-position offsets from camera depth and previous
  * instance placements, in current-picture pixels so resolution changes
  * need no conversion.
+ * This experiment is removable as its files plus its view table row.
  */
 #pragma once
 

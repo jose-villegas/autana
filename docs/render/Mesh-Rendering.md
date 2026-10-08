@@ -31,7 +31,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
-| `raster_show()` | Development builds: shows the depth, or an attachment, instead of the colour, as a [view mode](#view-modes) |
+| `raster_show()` | Development builds: the attached [view](#view-modes) paints the colour before the upscale |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
@@ -64,7 +64,8 @@ would see the scene mirrored.
 | `camera.h` | The camera |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
-| `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
+| `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
+| `raster_show.h` | Development views paint colour from the raster maps |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
 | `raster_motion.h` | The motion-vector attachment: where each pixel's point was in the previous picture |
 | `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
@@ -281,6 +282,7 @@ The motion view along a flythrough, red for x and green for y:
 to one before each draw. Its writer reserves each instance's cluster count
 and writes the reserved base plus the mesh's cluster index. The `show` hook
 maps IDs to hues through a multiplicative hash; zero takes the clear colour.
+IDs are distinct per draw for up to 65535 clusters; zero is reserved for empty.
 It needs no resolve pass.
 
 ## Coverage and small triangles

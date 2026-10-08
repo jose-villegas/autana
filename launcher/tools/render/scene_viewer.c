@@ -40,17 +40,14 @@ options(int argc, char** argv) {
                 return false;
             }
         } else if (strcmp(flag, "--view") == 0) {
-            view = RENDER_VIEW_SHADED;
-            if (strcmp(value, "shaded") != 0) {
-                while (++view < RENDER_VIEW_COUNT && strcmp(value, render_context_view(view)->name) != 0) {}
-                if (view == RENDER_VIEW_COUNT) {
-                    fprintf(stderr, "scene_viewer: --view is shaded");
-                    for (int k = 0; k < RENDER_VIEW_COUNT; k++) {
-                        fprintf(stderr, ", %s", render_context_view(k)->name);
-                    }
-                    fprintf(stderr, ", not %s\n", value);
-                    return false;
+            view = render_context_view_named(value);
+            if (view == RENDER_VIEW_UNKNOWN) {
+                fprintf(stderr, "scene_viewer: --view is shaded");
+                for (int k = 0; k < RENDER_VIEW_COUNT; k++) {
+                    fprintf(stderr, ", %s", render_context_view(k)->name);
                 }
+                fprintf(stderr, ", not %s\n", value);
+                return false;
             }
         } else {
             fprintf(stderr, "scene_viewer: unknown option %s\n", flag);
