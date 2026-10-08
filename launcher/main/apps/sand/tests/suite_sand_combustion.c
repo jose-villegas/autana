@@ -578,10 +578,7 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
      * not empty air standing in for one. */
     fire_room(3, 4);
     sand_set_mobility(&s, 0);
-    impulse_t* confined_gas_impulse_buf = malloc((size_t)(W * H) * sizeof *confined_gas_impulse_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(confined_gas_impulse_buf, "confined-gas-pocket impulse queue must fit in what the "
-                                                           "framebuffer leaves");
-    sand_enable_impulses(&s, confined_gas_impulse_buf, W * H);
+    impulse_t* confined_gas_impulse_buf = impulses_open(&s, W * H);
     sand_set(&s, 3, 3, FIRE);
     sand_set(&s, 4, 3, GAS);
 
@@ -776,11 +773,7 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
 static void
 test_an_open_gas_pocket_still_just_catches_fire(void) {
     fixture();
-    impulse_t* confined_gas_impulse_buf = malloc((size_t)(W * H) * sizeof *confined_gas_impulse_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(confined_gas_impulse_buf,
-                                 "open-gas-pocket impulse queue must fit in what the framebuffer "
-                                 "leaves");
-    sand_enable_impulses(&s, confined_gas_impulse_buf, W * H);
+    impulse_t* confined_gas_impulse_buf = impulses_open(&s, W * H);
     sand_set_mobility(&s, 0); /* keep the gas from rising away before
                                  * reactions gets a turn at it this same
                                  * step, see test_fire_is_not_smothered_

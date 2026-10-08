@@ -78,6 +78,14 @@ sheltered_root_fixture(void) {
     sand_set(&s, ROOT_X, ROOT_Y, MATX(MATX_ROOT));
 }
 
+impulse_t*
+impulses_open(sand_t* g, int max) {
+    impulse_t* buf = malloc((size_t)max * sizeof *buf);
+    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "the impulse queue must fit in what the framebuffer leaves");
+    sand_enable_impulses(g, buf, max);
+    return buf;
+}
+
 void
 fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c) {
     for (int y = y0; y < y1; y++) {

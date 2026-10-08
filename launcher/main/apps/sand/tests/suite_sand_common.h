@@ -122,6 +122,9 @@ void sheltered_root_fixture(void);
 /* The per-material scatter, decay and mobility app_sand.c runs with. */
 void use_app_rates(sand_t* g);
 
+/* Mallocs a queue of max impulses and enables it on g. The caller frees it. */
+impulse_t* impulses_open(sand_t* g, int max);
+
 /* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
 void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
 

@@ -380,10 +380,7 @@ test_a_lit_gunpowder_trail_burns_along_itself(void) {
         sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
     }
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "trail-propagation impulse queue must fit in what the "
-                                      "framebuffer leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
 
     bool reached_far_end = false;
     bool all_gone = false;
@@ -438,10 +435,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
     sand_set(&s, 4, H - 2, GUNPOWDER_LIT_CELL);
 
-    impulse_t* square_buf = malloc((size_t)(W * H) * sizeof *square_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(square_buf, "2x2-detonates impulse queue must fit in what the framebuffer "
-                                             "leaves");
-    sand_enable_impulses(&s, square_buf, W * H);
+    impulse_t* square_buf = impulses_open(&s, W * H);
 
     bool square_burned = false;
     for (int i = 0; i < 200 && !square_burned; i++) {
@@ -472,10 +466,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
     sand_set(&s, 5, H - 2, STONE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
 
-    impulse_t* lone_buf = malloc((size_t)(W * H) * sizeof *lone_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(lone_buf, "lone-lit-cell impulse queue must fit in what the framebuffer "
-                                           "leaves");
-    sand_enable_impulses(&s, lone_buf, W * H);
+    impulse_t* lone_buf = impulses_open(&s, W * H);
 
     bool lone_resolved = false;
     for (int i = 0; i < 200 && !lone_resolved; i++) {
@@ -511,10 +502,7 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
                                     * see test_gunpowder_without_impulses_
                                     * burns_to_fire's own use of this */
 
-    impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "detonation board-wide impulse queue must fit in what the "
-                                      "framebuffer leaves");
-    sand_enable_impulses(&wide, buf, WIDE_W * WIDE_H);
+    impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
     const int cx = WIDE_W / 2, cy = WIDE_H / 2;
     sand_set(&wide, cx, cy, GUNPOWDER_LIT_CELL);
@@ -548,6 +536,32 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
                                        "the blast step anywhere on the board");
 }
 
+/* Stone either side of the 2x2 at columns x, x + 1, rows 2-3 of `wide` - a
+ * room whose walls only a real blast's core reaches. */
+static void
+fuse_room(int x) {
+    fill_box(&wide, x - 1, x, 2, 4, STONE);
+    fill_box(&wide, x + 2, x + 3, 2, 4, STONE);
+}
+
+static void
+lit_square(int x) {
+    fill_box(&wide, x, x + 2, 2, 4, GUNPOWDER_LIT_CELL);
+}
+
+/* Whether no cell of the 2x2 at columns x, x + 1, rows 2-3 is gunpowder. */
+static bool
+square_gone(int x) {
+    for (int y = 2; y < 4; y++) {
+        for (int dx = 0; dx < 2; dx++) {
+            if (cell_is_gunpowder(sand_at(&wide, x + dx, y))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* SAND_GUNPOWDER_BLAST_COOLDOWN caps detonations at one per step
  * board-wide at its shipped value of 1. The two lit 2x2s sit further
  * apart than SAND_GUNPOWDER_BLAST_RADIUS, so neither blast can reach the
@@ -558,39 +572,23 @@ test_fuse_blasts_are_capped_at_one_per_step(void) {
     wide_open(5u);
     sand_set_decay(&wide, 255);
 
-    impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "blast-cap impulse queue must fit in what the framebuffer leaves");
-    sand_enable_impulses(&wide, buf, WIDE_W * WIDE_H);
+    impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
     fill_box(&wide, 0, WIDE_W, 4, 5, STONE);
     /* Group A: columns 2-3. */
-    sand_set(&wide, 1, 2, STONE);
-    sand_set(&wide, 1, 3, STONE);
-    sand_set(&wide, 4, 2, STONE);
-    sand_set(&wide, 4, 3, STONE);
-    sand_set(&wide, 2, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 2, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 3, GUNPOWDER_LIT_CELL);
+    fuse_room(2);
+    lit_square(2);
     /* Group B: columns 26-27 - 24 cells from group A, past
      * SAND_GUNPOWDER_BLAST_RADIUS (20), so neither blast can physically
      * touch the other's room. */
-    sand_set(&wide, 25, 2, STONE);
-    sand_set(&wide, 25, 3, STONE);
-    sand_set(&wide, 28, 2, STONE);
-    sand_set(&wide, 28, 3, STONE);
-    sand_set(&wide, 26, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 26, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 3, GUNPOWDER_LIT_CELL);
+    fuse_room(26);
+    lit_square(26);
 
     sand_step(&wide, 0, 1000, 0);
 
     const int impulses_after_one_step = wide.impulse_count;
-    const bool a_all_gone = !cell_is_gunpowder(sand_at(&wide, 2, 2)) && !cell_is_gunpowder(sand_at(&wide, 3, 2))
-                            && !cell_is_gunpowder(sand_at(&wide, 2, 3)) && !cell_is_gunpowder(sand_at(&wide, 3, 3));
-    const bool b_all_gone = !cell_is_gunpowder(sand_at(&wide, 26, 2)) && !cell_is_gunpowder(sand_at(&wide, 27, 2))
-                            && !cell_is_gunpowder(sand_at(&wide, 26, 3)) && !cell_is_gunpowder(sand_at(&wide, 27, 3));
+    const bool a_all_gone = square_gone(2);
+    const bool b_all_gone = square_gone(26);
     /* A real blast's core (radius / SAND_EXPLODE_CORE_DIVISOR) fills
      * unconditionally, reaching the walls at distance 1; a CAPPED
      * burn-out only ever writes fire into its own single cell (or, if it
@@ -624,37 +622,22 @@ test_a_longer_fuse_cooldown_delays_the_next_blast(void) {
     sand_set_decay(&wide, 255);
     sand_set_fuse_cooldown(&wide, 3);
 
-    impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "cooldown impulse queue must fit in what the framebuffer leaves");
-    sand_enable_impulses(&wide, buf, WIDE_W * WIDE_H);
+    impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
     fill_box(&wide, 0, WIDE_W, 4, 5, STONE);
-    sand_set(&wide, 1, 2, STONE);
-    sand_set(&wide, 1, 3, STONE);
-    sand_set(&wide, 4, 2, STONE);
-    sand_set(&wide, 4, 3, STONE);
-    sand_set(&wide, 2, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 2, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 25, 2, STONE);
-    sand_set(&wide, 25, 3, STONE);
-    sand_set(&wide, 28, 2, STONE);
-    sand_set(&wide, 28, 3, STONE);
+    fuse_room(2);
+    lit_square(2);
+    fuse_room(26);
 
     sand_step(&wide, 0, 1000, 0); /* group A detonates, wait := 3 */
 
     const bool a_breached = CELL_MATERIAL(sand_at(&wide, 1, 2)) != MAT_STONE;
 
-    sand_set(&wide, 26, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 26, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 3, GUNPOWDER_LIT_CELL);
+    lit_square(26);
 
     sand_step(&wide, 0, 1000, 0); /* wait ticks 3 -> 2: still refused */
 
-    const bool b_gone = !cell_is_gunpowder(sand_at(&wide, 26, 2)) && !cell_is_gunpowder(sand_at(&wide, 27, 2))
-                        && !cell_is_gunpowder(sand_at(&wide, 26, 3)) && !cell_is_gunpowder(sand_at(&wide, 27, 3));
+    const bool b_gone = square_gone(26);
     const uint8_t b_wall = CELL_MATERIAL(sand_at(&wide, 25, 2));
 
     free(buf);
@@ -688,10 +671,7 @@ test_a_one_wide_lit_trail_never_detonates(void) {
         sand_set(&s, x, H - 2, GUNPOWDER_LIT_CELL);
     }
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "edge-trail impulse queue must fit in what the framebuffer "
-                                      "leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
 
     bool all_gone = false;
     for (int i = 0; i < 300 && !all_gone; i++) {

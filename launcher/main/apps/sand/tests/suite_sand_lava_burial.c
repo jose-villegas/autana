@@ -75,10 +75,7 @@ test_buried_lava_bursts_into_stone_and_fire(void) {
     const int cx = W / 2, cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "buried-lava-burst impulse queue must fit in what the framebuffer "
-                                      "leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     bool burst = false;
@@ -210,9 +207,7 @@ test_lava_in_a_wall_notch_never_bursts(void) {
         }
     }
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "wall-notch impulse queue must fit in what the framebuffer leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     run_steps(&s, 500, 0, 1000);
@@ -331,10 +326,7 @@ test_a_wide_pool_under_a_crust_bursts(void) {
                        "fixture check: and more lava directly below it - this cell has "
                        "no support of its own, only the crust above seals it in");
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "wide-pool-burst impulse queue must fit in what the framebuffer "
-                                      "leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     bool burst = false;
@@ -384,10 +376,7 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
                        "gravity-relative up in this scene");
     ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty + 1, "fixture check: and more lava below it too");
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "sideways-pool-burst impulse queue must fit in what the "
-                                      "framebuffer leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     bool burst = false;
