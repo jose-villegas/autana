@@ -149,7 +149,7 @@ setup(int quarter) {
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
     if (render_lab_start_camera != NULL && !scene_has_active_camera()) {
-        fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);
+        (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);
         return false;
     }
     if (size_width > 0) {

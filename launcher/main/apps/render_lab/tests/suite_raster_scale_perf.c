@@ -415,7 +415,8 @@ test_dynamic_resolution_refit_cost(void) {
     TEST_ASSERT_NOT_NULL(config);
     configure(&ladders[0], budgets_us[0], config);
     resolution_predict_init(predict, config, &prior, 0);
-    int64_t total_us = 0, max_us = 0;
+    int64_t total_us = 0;
+    int64_t max_us = 0;
     for (int i = 0; i < 1000; i++) {
         predict->step = i % config->step_count;
         const int triangles = 1000 + (i * 137 % 19000);

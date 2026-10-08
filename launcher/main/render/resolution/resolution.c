@@ -239,7 +239,7 @@ resolution_predict_init(resolution_predict_t* predict, const resolution_config_t
 
 static float
 corrected_us(const resolution_predict_t* p, const resolution_config_t* config, int step, int triangles) {
-    return p->scale * resolution_model_predict_us(&p->model, config, step, triangles) + p->offset_us;
+    return (p->scale * resolution_model_predict_us(&p->model, config, step, triangles)) + p->offset_us;
 }
 
 /* The finest step whose corrected cost fits `share` of the budget, among
@@ -291,20 +291,20 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
                             int32_t frame_us) {
     const float prior_variance[2] = {PRIOR_SCALE_SD * PRIOR_SCALE_SD, PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US};
     const float x[2] = {resolution_model_predict_us(&p->model, config, p->step, triangles), 1.0F};
-    p->scale = 1.0F + RHO * (p->scale - 1.0F);
+    p->scale = 1.0F + (RHO * (p->scale - 1.0F));
     p->offset_us *= RHO;
     for (int i = 0; i < 2; i++) {
         for (int j = 0; j < 2; j++) {
             p->covariance[i][j] =
-                RHO * RHO * p->covariance[i][j] + (i == j ? (1.0F - RHO * RHO) * prior_variance[i] : 0.0F);
+                (RHO * RHO * p->covariance[i][j]) + (i == j ? (1.0F - (RHO * RHO)) * prior_variance[i] : 0.0F);
         }
     }
-    const float predicted = p->scale * x[0] + p->offset_us;
+    const float predicted = (p->scale * x[0]) + p->offset_us;
     const float noise = NOISE_SHARE * predicted;
-    float variance = noise * noise + NOISE_FLOOR_US * NOISE_FLOOR_US;
+    float variance = (noise * noise) + (NOISE_FLOOR_US * NOISE_FLOOR_US);
     float px[2];
     for (int i = 0; i < 2; i++) {
-        px[i] = p->covariance[i][0] * x[0] + p->covariance[i][1];
+        px[i] = (p->covariance[i][0] * x[0]) + p->covariance[i][1];
         variance += x[i] * px[i];
     }
     if (!isfinite(predicted) || !isfinite(variance) || variance <= 0.0F) {
@@ -324,7 +324,7 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
             }
         }
     }
-    p->covariance[0][1] = p->covariance[1][0] = 0.5F * p->covariance[0][1] + 0.5F * p->covariance[1][0];
+    p->covariance[0][1] = p->covariance[1][0] = (0.5F * p->covariance[0][1]) + (0.5F * p->covariance[1][0]);
     if (!isfinite(p->scale) || !isfinite(p->offset_us) || p->scale <= 0.0F) {
         reset_refit(p);
     }
