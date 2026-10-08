@@ -329,6 +329,14 @@ class CloneTests(unittest.TestCase):
             self.assertEqual(gate.scan(root, 80, revision="HEAD"), [])
             git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
             self.assertEqual(gate.comparison_base(root), base)
+            stacked = git("rev-parse", "HEAD")
+            git("update-ref", "refs/remotes/origin/feature/base", stacked)
+            git("update-ref", "refs/remotes/origin/main", base)
+            git("checkout", "-q", "-b", "feature/stacked")
+            (root / "launcher/main/c.c").write_text("int stacked;", encoding="utf-8")
+            git("add", ".")
+            git("commit", "-m", "test: stacked")
+            self.assertEqual(gate.comparison_base(root, against="origin/feature/base"), stacked)
 
     def test_unrelated_branch_change_skips_base_scan(self):
         pair = self.pair()

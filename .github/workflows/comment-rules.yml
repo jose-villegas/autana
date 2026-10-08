@@ -118,7 +118,7 @@ jobs:
         run: python3 scripts/gates/doc_citers.py --changed "origin/${{ github.base_ref }}"
 
       - name: No new token clone pairs
-        run: python3 scripts/gates/check_clones.py
+        run: python3 scripts/gates/check_clones.py --base "origin/${{ github.base_ref || 'main' }}"
 
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.

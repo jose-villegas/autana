@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Reject growing jscpd file-pair budgets in tracked first-party C/C++ and Python.
 
-Compare HEAD with its merge-base with origin/main, or HEAD~1 when HEAD is
-on main. New fragments in each sorted file pair may spend only the tokens of
+Compare HEAD with its merge-base with --base (origin/main unless a pull
+request targets another branch), or HEAD~1 when HEAD is on that branch. New fragments in each sorted file pair may spend only the tokens of
 base fragments that vanished from HEAD, or a fragment a file this change
 deleted already held (code moved out of it). A surviving shrink gives no
 headroom.
@@ -42,9 +42,9 @@ def git(root, *args):
                           capture_output=True).stdout
 
 
-def comparison_base(root, head="HEAD"):
+def comparison_base(root, head="HEAD", against="origin/main"):
     head = git(root, "rev-parse", head).decode().strip()
-    base = git(root, "merge-base", head, "origin/main").decode().strip()
+    base = git(root, "merge-base", head, against).decode().strip()
     return git(root, "rev-parse", f"{head}~1").decode().strip() if base == head else base
 
 
@@ -242,6 +242,7 @@ def main(argv=None, root=ROOT):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--min-tokens", type=int, default=MIN_TOKENS)
+    parser.add_argument("--base", default="origin/main", help="the branch a pull request targets")
     args = parser.parse_args(argv)
     if args.min_tokens < 1:
         parser.error("--min-tokens must be positive")
@@ -255,7 +256,7 @@ def main(argv=None, root=ROOT):
         if args.min_tokens != MIN_TOKENS:
             print(f"{len(pairs)} clone pairs at {args.min_tokens} tokens; {time.perf_counter() - started:.2f}s.")
             return 0
-        base = comparison_base(root, head)
+        base = comparison_base(root, head, args.base)
         changed, renames, deleted = changed_paths(root, base, head)
         candidates = [pair for pair in pairs
                       if any(pair[side]["name"] in changed for side in ("firstFile", "secondFile"))]
