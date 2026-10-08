@@ -8,11 +8,11 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_heal.h"
+#include "gfx/present/gfx_heal.h"
 
 #define WIDTH    368
 #define STRIP_PX (WIDTH * GFX_HEAL_STRIP_ROWS)
-#define ROOMY    (WIDTH * GFX_HEAL_SCREEN_ROWS)
+#define ROOMY    (WIDTH * GFX_HEIGHT)
 
 static gfx_heal_t heal;
 static gfx_heal_strip_t strips[GFX_HEAL_MAX_STRIPS];
@@ -62,12 +62,12 @@ test_queued_rows_come_back_as_strips_covering_them_then_are_forgotten(void) {
 static void
 test_strips_are_even_edged_and_on_screen(void) {
     fixture();
-    gfx_heal_queue_rows(&heal, -20, GFX_HEAL_SCREEN_ROWS + 20);
+    gfx_heal_queue_rows(&heal, -20, GFX_HEIGHT + 20);
 
     for (int round = 0; round < 4 && gfx_heal_pending(&heal); round++) {
         const int n = plan(ROOMY);
         for (int i = 0; i < n; i++) {
-            TEST_ASSERT_TRUE(strips[i].y0 >= 0 && strips[i].y1 <= GFX_HEAL_SCREEN_ROWS);
+            TEST_ASSERT_TRUE(strips[i].y0 >= 0 && strips[i].y1 <= GFX_HEIGHT);
             TEST_ASSERT_TRUE(strips[i].y0 < strips[i].y1);
             TEST_ASSERT_LESS_OR_EQUAL_INT(GFX_HEAL_STRIP_ROWS, strips[i].y1 - strips[i].y0);
             TEST_ASSERT_EQUAL_INT_MESSAGE(0, strips[i].y0 % 2, "the panel takes windows on even edges");
@@ -123,11 +123,11 @@ test_the_same_rows_healed_again_are_cut_differently(void) {
 static void
 test_rolling_reaches_every_row_and_wraps(void) {
     fixture();
-    static uint8_t covered[GFX_HEAL_SCREEN_ROWS];
+    static uint8_t covered[GFX_HEIGHT];
     memset(covered, 0, sizeof covered);
 
     const int slice = GFX_HEAL_STRIP_ROWS;
-    const int presents = GFX_HEAL_SCREEN_ROWS / slice + 2;
+    const int presents = GFX_HEIGHT / slice + 2;
     for (int present = 0; present < presents; present++) {
         gfx_heal_queue_rolling(&heal, slice);
         const int n = plan(STRIP_PX * 2);
@@ -137,11 +137,10 @@ test_rolling_reaches_every_row_and_wraps(void) {
             }
         }
     }
-    for (int y = 0; y < GFX_HEAL_SCREEN_ROWS; y++) {
+    for (int y = 0; y < GFX_HEIGHT; y++) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered[y], "a rolling heal must reach every row");
     }
-    TEST_ASSERT_EQUAL_INT_MESSAGE((presents * slice) % GFX_HEAL_SCREEN_ROWS, heal.rolling_row,
-                                  "the sweep wraps back to the top");
+    TEST_ASSERT_EQUAL_INT_MESSAGE((presents * slice) % GFX_HEIGHT, heal.rolling_row, "the sweep wraps back to the top");
 }
 
 void

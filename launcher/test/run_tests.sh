@@ -158,7 +158,6 @@ $MAIN_DIR/scene/scene_shell.c
 $MAIN_DIR/util/runtime/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
-$MAIN_DIR/gfx/gfx.c
 $MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
@@ -169,11 +168,16 @@ $MAIN_DIR/ui/ui_ridge.c
 $MAIN_DIR/ui/ui_snap.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
-$MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gen/gfx_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 $TEST_DIR/../components/microui/src/microui.c
 "
+
+# Every gfx source but the device-only *_device.c, found rather than listed.
+for gfx_src in $(find "$MAIN_DIR/gfx" -name '*.c' ! -name '*_device.c' | sort); do
+    SOURCES="$SOURCES
+$gfx_src"
+done
 
 for suite_src in "$TEST_DIR"/suites/suite_*.c; do
     [ -e "$suite_src" ] || continue

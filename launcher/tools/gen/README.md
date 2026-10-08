@@ -17,18 +17,17 @@
 ## The rules every generator follows
 
 Apps keep their own generators in `apps/<name>/tools/`; the rules are the
-same. Engine outputs are listed here from their banners; each app's tools
-README lists its own generated outputs.
+same. Every checked-in output, from the banner each one carries:
 
-<!-- generated: generated-files sha256=83779ceed0381dd0c699e0a0b08de01106e57d832ce5854344c71883f4552e9d -->
+<!-- generated: generated-files sha256=e65448642cfc35e527d28ea71ae57f1bdd80486508e717e2c862b6d7b7f13907 -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
 | [boot_anim_image.h](../../main/boot/boot_anim_image.h) | [gen_boot_anim_image.py](gen_boot_anim_image.py) | `launcher/` | `python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h` |
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
-| [gfx_dither_patterns_generated.h](../../main/gfx/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/gfx/gfx_dither_patterns_generated.h` |
-| [gfx_palette_standard_generated.h](../../main/gfx/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/gfx/gfx_palette_standard_generated.h` |
-| [icons_system.h](../../main/gfx/icons_system.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py ../design/icons/system.png ../design/icons/system.json > main/gfx/icons_system.h` |
+| [gfx_dither_patterns_generated.h](../../main/gfx/draw/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h` |
+| [gfx_palette_standard_generated.h](../../main/gfx/draw/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/gfx/draw/gfx_palette_standard_generated.h` |
+| [icons_system.h](../../main/gfx/draw/icons_system.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py ../design/icons/system.png ../design/icons/system.json > main/gfx/draw/icons_system.h` |
 | [control_center_layout_generated.h](../../main/ui/control_center_layout_generated.h) | [bake_ui_layout.py](bake_ui_layout.py) | `launcher/` | `python tools/gen/bake_ui_layout.py "main/ui/control_center_layout.json" "main/ui/control_center_layout_generated.h"` |
 | [ridge_curve_generated.h](../../main/ui/ridge_curve_generated.h) | [gen_ridge_curve.py](gen_ridge_curve.py) | `launcher/` | `python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h` |
 <!-- /generated: generated-files -->

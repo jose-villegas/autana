@@ -4,9 +4,8 @@
  * material palette (SAND_UI_PALETTE, opened by BOOT) and the brush screen
  * (SAND_UI_BRUSH, opened by PWR) - and what a tap on either panel does.
  *
- * Pure decision logic, no gfx and no touch/IMU driver behind it - not even
- * gfx.h, which drags in bsp/esp-bsp.h - so it links on the host and can be
- * tested there, the same reasoning palette.h gives for keeping its own grid
+ * Pure decision logic, no gfx and no touch/IMU driver behind it, so it
+ * links on the host and can be tested there, the same reasoning palette.h gives for keeping its own grid
  * arithmetic hardware-free. See suite_sand_ui.c.
  *
  * WHY THIS MODULE EXISTS

@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "gfx/gfx_indexed.h"
+#include "gfx/present/gfx_indexed.h"
 #include "material.h"
 #include "material_palette.h"
 #include "sand.h"
@@ -215,7 +215,7 @@ run_scene_step(sand_t* sim, scene_step_fn step, int step_i, const uint8_t* grid,
     memcpy(prev_idx256, cur_idx256, (size_t)(GRID_W * GRID_H));
 }
 
-/* RGB565 bytes per cell at NORMAL quality - what gfx.c's present path would
+/* RGB565 bytes per cell at NORMAL quality - what gfx_present.c's send path would
  * actually queue for a box this size, whichever pixel format the mode
  * expands to (INDEXED8 still sends RGB565 once expanded). */
 static void

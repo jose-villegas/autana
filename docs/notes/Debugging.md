@@ -145,7 +145,7 @@ sends, and lets go.
 ## Rendering looks wrong: gfx debug overlays
 
 `--dev`/`--diag` builds carry runtime overlays, switched by
-`gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/gfx.h`),
+`gfx_set_debug_overlay()` / `gfx_set_leaf_overlay()` (`main/gfx/present/gfx_debug.h`),
 which a development-only app's toggle page calls:
 
 - **Dirty-region overlay**: draws a border around whatever rectangle

@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "apps/render_lab/render_lab.h"
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_draw.h"
 #include "ui/ui.h"
 
 /* The panel's bezel hides about 15 px along every edge. */

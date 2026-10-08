@@ -1,6 +1,6 @@
 /*
  * post_ui_render_host, the power-on self-test screen, drawn by the REAL
- * firmware code (post_ui.c + post_layout.c + gfx.c, unmodified) on a host
+ * firmware code (post_ui.c + post_layout.c + gfx/, unmodified) on a host
  * build, so the layout can be judged without a flash cycle.
  *
  *     post_ui_render_host [--quarter N] [--panel] [--failures]  > frame.bmp

@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#include "gfx/gfx_palette.h"
+#include "gfx/draw/gfx_palette.h"
 
 /* CGA/EGA share one array: EGA's default 16-colour text-mode palette is
  * bit-identical to CGA's (both IBM, early 1980s); see

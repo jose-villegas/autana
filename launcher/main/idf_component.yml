@@ -1,12 +1,12 @@
 version: "1.0.0"
 dependencies:
   idf: ">=5.5"
-  # The V2 (CO5300 panel) revision; see main/gfx/gfx.c. A private
+  # The V2 (CO5300 panel) revision; see main/board/board_panel.c. A private
   # dependency of the vendored BSP in components/, so it needs its own
   # declaration here too for main to see its headers directly.
   espressif/esp_lcd_co5300:
     version: "^2.1.0"
-  # The original (pre-V2) revision's panel; see main/gfx/gfx.c. Also only
+  # The original (pre-V2) revision's panel; see main/board/board_panel.c. Also only
   # a private dependency of the vendored BSP.
   waveshare/esp_lcd_sh8601:
     version: "^2.0.0"

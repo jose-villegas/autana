@@ -16,10 +16,13 @@
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #ifndef DEVICE_BUILD
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #endif

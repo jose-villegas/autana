@@ -481,7 +481,7 @@ test_a_clear_stays_full_width_after_a_later_narrow_mark(void) {
 
 /* The realistic case: a row already narrowed by ordinary sim activity
  * before the request, not the fresh sentinel every other test in this
- * group starts from - gfx_request_full_redraw() (gfx.h) reaches sand
+ * group starts from - gfx_request_full_redraw() (gfx_present.h) reaches sand
  * through exactly this sand_clear()-shaped reset. */
 static void
 test_a_clear_widens_an_already_narrowed_row_back_to_full_width(void) {

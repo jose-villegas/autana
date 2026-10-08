@@ -4,7 +4,7 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 typedef struct {
     float l;
