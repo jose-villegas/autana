@@ -748,16 +748,20 @@ def run_audit(root, rule_filter=None, file_filter=None, files=None):
         line, message = item
         findings.append(Finding(rel, line, rule.id, rule.severity, message, rule.fixer is not None))
 
-    doc_rules = [r for r in active if r.kind == "doc"]
-    if doc_rules:
-        for path, raw in _doc_walk(root, files):
+    def audit_walk(kind, walker):
+        rules = [r for r in active if r.kind == kind]
+        if not rules:
+            return
+        for path, text in walker(root, files):
             if not keep(path):
                 continue
             rel = relpath(root, path)
             scanned.add(rel)
-            for r in doc_rules:
-                for item in (r.func(root, path, raw) or ()):
+            for r in rules:
+                for item in (r.func(root, path, text) or ()):
                     add(rel, r, item)
+
+    audit_walk("doc", _doc_walk)
 
     c_rules = [r for r in active if r.kind in ("c_comment", "c_line")]
     if c_rules:
@@ -777,16 +781,7 @@ def run_audit(root, rule_filter=None, file_filter=None, files=None):
                 for item in (items or ()):
                     add(rel, r, item)
 
-    text_rules = [r for r in active if r.kind == "text"]
-    if text_rules:
-        for path, text in _text_walk(root, files):
-            if not keep(path):
-                continue
-            rel = relpath(root, path)
-            scanned.add(rel)
-            for r in text_rules:
-                for item in (r.func(root, path, text) or ()):
-                    add(rel, r, item)
+    audit_walk("text", _text_walk)
 
     findings.sort(key=lambda f: (f.path, f.line))
     return findings, len(scanned)

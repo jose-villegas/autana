@@ -1,23 +1,16 @@
 """Local hooks judge index content and the refs supplied by git."""
-import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
-import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / 'scripts/device'))
-import device
+from gate_tree import ShellGateTestCase
 
 
-class LocalHookTests(unittest.TestCase):
+class LocalHookTests(ShellGateTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.shell = device.git_bash() if os.name == 'nt' else shutil.which('sh')
+        super().setUp()
         shutil.copytree(ROOT / 'scripts', self.root / 'scripts',
                         ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copytree(ROOT / 'launcher/tools/build', self.root / 'launcher/tools/build')
