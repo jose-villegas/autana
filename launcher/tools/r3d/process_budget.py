@@ -11,6 +11,7 @@ import traceback
 import signal
 import sys
 import ctypes
+import contextlib
 from collections import deque
 
 GIB = 1024 ** 3
@@ -150,6 +151,70 @@ def parent_death_signal(parent_pid):
 
 def peak_rss(pid=None):
     return status_bytes(pid or os.getpid(), "VmHWM")
+
+
+def step_memory(gpu):
+    ram = status_bytes(os.getpid(), "VmRSS") or None
+    vram = None
+    if gpu:
+        try:
+            vram = gpu_resident_bytes().get(os.getpid())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        torch = sys.modules.get("torch")
+        cuda = getattr(torch, "cuda", None)
+        if cuda and getattr(cuda, "is_initialized", lambda: False)():
+            reserved = cuda.max_memory_reserved()
+            vram = max(vram or 0, reserved)
+    return ram, vram
+
+
+class StepRecorder:
+    """Wall time and sampled process resident peaks, accumulated by stage name.
+    RAM is RSS during the step, not the process's lifetime high-water mark.
+    GPU steps also include PyTorch's reserved high-water mark when available."""
+
+    def __init__(self, clock=time.monotonic, probe=step_memory, interval=0.1):
+        self.clock, self.probe, self.interval = clock, probe, interval
+        self.rows = []
+
+    @contextlib.contextmanager
+    def step(self, name, triangles_in, gpu=False):
+        row = next((row for row in self.rows if row["step"] == name), None)
+        if row is None:
+            row = {"step": name, "triangles_in": triangles_in, "triangles_out": triangles_in,
+                   "wall_s": 0.0, "peak_ram_bytes": None, "peak_vram_bytes": None}
+            self.rows.append(row)
+        torch = sys.modules.get("torch")
+        cuda = getattr(torch, "cuda", None)
+        if gpu and cuda and getattr(cuda, "is_initialized", lambda: False)():
+            cuda.reset_peak_memory_stats()
+        stopped = threading.Event()
+
+        def sample():
+            for key, value in zip(("peak_ram_bytes", "peak_vram_bytes"), self.probe(gpu)):
+                if value is not None:
+                    row[key] = max(row[key] or 0, value)
+
+        def poll():
+            while not stopped.wait(self.interval):
+                sample()
+
+        sample()
+        thread = None
+        if self.interval is not None:
+            thread = threading.Thread(target=poll)
+            thread.start()
+        started = self.clock()
+        try:
+            yield row
+        finally:
+            elapsed = self.clock() - started
+            stopped.set()
+            if thread is not None:
+                thread.join()
+            sample()
+            row["wall_s"] += elapsed
 
 
 def function_name(function):

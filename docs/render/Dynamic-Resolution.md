@@ -197,3 +197,17 @@ it rejects an existing capture with no such windows. An absent capture
 leaves that row `not in capture`. `pipeline-frame-stages`, `bake-machine`
 and `bake-steps` may have no document owner; the block writer checks their
 owner normally when a document includes their generated markers.
+
+The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
+rebakes and fits. Refresh them on the GPU runner with:
+
+```sh
+sh launcher/tools/render/render_doc_images.sh --stage gpu
+```
+
+Steps follow execution order. Alpha masking precedes visibility; thinning
+follows it. RAM peaks are sampled process RSS; GPU steps also read GPU
+resident memory and PyTorch's reserved-memory peak. CPU steps have no VRAM
+measurement. Each fitted input's rebake is labelled `fit-start`, and its fit
+has a separate row. The machine table reads the runner's hardware and
+software versions during that run.

@@ -139,6 +139,7 @@ def prepare(scene_path, scene, job, work):
         reference_main([str(scene_path), "--object", job.object.name, "--poses",
                         str(work / poses), "--out", str(work / reference), "--normals"])
     log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
+    return {"measurements": getattr(start, "measurements", [])}
 
 
 def reference_digest(scene_path, job, scene):
@@ -189,17 +190,24 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     return target
 
 
-def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, target=None):
+def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, target=None, measured=False):
     import contextlib
     import traceback
+    from r3d.process_budget import StepRecorder
+    from r3d.lit_mesh import read_lit_mesh
     target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.mesh" if target is None else target
     log_path = pathlib.Path(point_dir) / "fit.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    recorder = StepRecorder() if measured else None
+    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.mesh").tris) if measured else 0
     try:
-        with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-            mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
+        with recorder.step("fit", triangles, gpu=True) if recorder else contextlib.nullcontext() as step:
+            with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
                        cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs)
-        return {"mesh": str(mesh)}
+            if step is not None:
+                step["triangles_out"] = len(read_lit_mesh(mesh).tris)
+        return {"mesh": str(mesh), **({"measurements": recorder.rows} if recorder else {})}
     except Exception as error:
         with log_path.open("a") as output:
             traceback.print_exc(file=output)

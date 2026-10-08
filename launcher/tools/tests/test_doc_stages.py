@@ -355,7 +355,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                         future.set_result(None)
                     for future, directory, target in reversed(fit_futures):
                         completed.append(directory.name)
-                        future.set_result({'mesh': str(target)})
+                        future.set_result({'mesh': str(target), 'measurements': []})
 
         class Executor:
             def submit(self, function, *args, **kwargs):
@@ -375,7 +375,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     target = args[7] if len(args) > 7 else directory.parent / f'{directory.name}.mesh'
                     fit_futures.append((future, directory, target))
                 elif owner is stages.bake_worker:
-                    future.set_result((Path('baked.mesh'), Path('culled.mesh')))
+                    future.set_result((Path('baked.mesh'), Path('culled.mesh'), []))
                 elif owner is stages.measure_worker:
                     label = args[0]
                     consumed.append(label)
@@ -402,7 +402,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
                     mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
-                    mock.patch.object(fitted, 'plot_pareto'):
+                    mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'):
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
             build_host.assert_called_once_with(stages.HOST_SCRIPT, work / 'host', Path('other.scene.toml'))
             self.assertEqual(placed.call_args_list, [mock.call(mock.ANY, "hall_fitted"),
@@ -411,7 +411,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual([args[4] for owner, args, _, _ in calls if owner is stages.bake_worker],
                              ["hall_lite", "hall", "hall_flat"])
             self.assertEqual({path.name for path in (out / "tables").iterdir()},
-                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md"})
+                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-machine.md", "bake-steps.md"})
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
                              'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'flat-GI-bake', 'flat-GI-fit']

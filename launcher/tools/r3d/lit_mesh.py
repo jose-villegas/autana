@@ -7,6 +7,7 @@ quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
 
+import contextlib
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -181,14 +182,20 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, **options):
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, **options):
     """Writes <name>.mesh into out_dir, the pack entry main/render/
     r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
     (None for a flat mesh), tris counter-clockwise seen from the front,
     double one flag per triangle; options, face_rgb among them, go to
     bake_lit_mesh. Returns the baked mesh."""
-    mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
-    (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
+    with recorder.step("meshlets", len(tris)) if recorder else contextlib.nullcontext() as step:
+        mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
+        if step is not None:
+            step["triangles_out"] = len(mesh.tris)
+    with recorder.step("write", len(mesh.tris)) if recorder else contextlib.nullcontext():
+        (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
+    if recorder is not None:
+        mesh.measurements = recorder.rows
     return mesh
 
 
