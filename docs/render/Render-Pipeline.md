@@ -10,64 +10,81 @@ image under `docs/images/`, is generated from the source by the doc-images pipel
 demo scene in the [demo assets](../../launcher/demo/README.md).
 
 - [Offline, on the host](#offline-on-the-host)
-  - [Source model](#source-model)
-  - [Alpha mask](#alpha-mask)
-  - [Visibility](#visibility)
-  - [Thin](#thin)
+  - [Geometry](#geometry)
+    - [Source model](#source-model)
+    - [Alpha mask](#alpha-mask)
+    - [Visibility](#visibility)
+    - [Thin](#thin)
   - [Light](#light)
-  - [Simplify](#simplify)
-  - [Fit](#fit)
-  - [Meshlets](#meshlets)
-  - [Asset pack](#asset-pack)
+  - [Shape](#shape)
+    - [Simplify](#simplify)
+    - [Fit](#fit)
+  - [Output](#output)
+    - [Meshlets](#meshlets)
+    - [Asset pack](#asset-pack)
 - [Every frame, on the board](#every-frame-on-the-board)
   - [Scene and camera](#scene-and-camera)
   - [Render size](#render-size)
-  - [Cull](#cull)
-  - [Transform](#transform)
-  - [Clip](#clip)
-  - [Span fill](#span-fill)
-  - [Resolve](#resolve)
-  - [View modes](#view-modes)
-  - [Upscale](#upscale)
-  - [Present](#present)
+  - [Update](#update)
+    - [Cull](#cull)
+    - [Transform](#transform)
+    - [Clip](#clip)
+    - [Span fill](#span-fill)
+    - [Resolve](#resolve)
+    - [View modes](#view-modes)
+  - [After the send](#after-the-send)
+    - [Compose](#compose)
+    - [Present](#present)
 - [Refreshing](#refreshing)
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 20, 'rankSpacing': 20, 'padding': 10}}}%%
 flowchart LR
-    subgraph Host["Offline, on the host: tools/r3d"]
+    subgraph Pipeline[" "]
         direction TB
-        subgraph Geometry["Geometry"]
-            direction LR
-            Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
+        subgraph Host["Offline, on the host: tools/r3d"]
+            direction TB
+            subgraph Geometry["Geometry"]
+                direction LR
+                Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
+            end
+            Light["Light<br/><i>direct · occlusion · bounce</i>"]
+            subgraph Shape["Shape"]
+                direction LR
+                Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
+            end
+            subgraph Output["Output"]
+                direction LR
+                Mesh["Meshlets"] --> Pack["Asset pack"]
+            end
+            Geometry --> Light --> Shape --> Output
         end
-        Light["Light<br/><i>direct · occlusion · bounce</i>"]
-        subgraph Shape["Shape"]
-            direction LR
-            Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
+        subgraph Board["Every frame, on the board"]
+            direction TB
+            subgraph SceneOwner[" "]
+                Scene["scene/<br/><i>scene and camera</i>"]
+            end
+            SceneOwner --> Size["render/context<br/><i>render size</i>"]
+            subgraph Update["Update while the last frame is sent: render/raster, both cores"]
+                direction LR
+                subgraph Census[" "]
+                    Cull["Cull"]
+                end
+                Census --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
+            end
+            subgraph After["After the send"]
+                direction LR
+                Up["Compose: upscale,<br/><i>or copy into a half picture</i>"] --> Present["gfx/present<br/><i>dirty rows, or a half<br/>picture doubled</i>"]
+            end
+            Size --> Census
+            Census -. "predicted: census first" .-> Size
+            Update --> After
         end
-        subgraph Output["Output"]
-            direction LR
-            Mesh["Meshlets"] --> Pack["Asset pack"]
-        end
-        Thin --> Light --> Simp
-        Fit --> Mesh
+        Output --> SceneOwner
     end
-    subgraph Board["Every frame, on the board"]
-        direction TB
-        Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size</i>"]
-        subgraph Update["Update, while the last frame is sent: render/raster, both cores"]
-            direction LR
-            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
-        end
-        subgraph After["After the send"]
-            direction LR
-            Up["Compose: upscale,<br/><i>or copy into a half picture</i>"] --> Present["gfx/present<br/><i>dirty rows, or a half<br/>picture doubled</i>"]
-        end
-        Size --> Cull
-        Cull -. "predicted: census first" .-> Size
-        View --> Up
-    end
-    Pack --> Scene
+    style Pipeline fill:none,stroke:none
+    style SceneOwner fill:none,stroke:none
+    style Census fill:none,stroke:none
 ```
 
 ## Offline, on the host
@@ -87,7 +104,11 @@ it peaked at:
 The GPU stage's next run on the self-hosted runner fills this table.
 <!-- /generated: bake-steps -->
 
-### Source model
+### Geometry
+
+These stages select the triangles carried into the light bake.
+
+#### Source model
 
 The import file names an OBJ with its materials and textures; the importer
 loads it whole.
@@ -105,7 +126,7 @@ in the [fidelity sheet](Bake-Quality.md#fidelity-against-the-source)):
 
 Reference: [Mesh-Import.md](Mesh-Import.md#source).
 
-### Alpha mask
+#### Alpha mask
 
 Drops alpha-tested triangles that are mostly transparent; the board does not alpha-test.
 
@@ -119,7 +140,7 @@ Cost: `alpha mask` in the bake-steps table.
 
 Reference: [Mesh-Import.md](Mesh-Import.md#alpha_mask).
 
-### Visibility
+#### Visibility
 
 Keeps only the triangles the camera can see, from anywhere in its region or
 along its path, so the triangle budget goes to what is drawn.
@@ -134,7 +155,7 @@ Cost: `visibility` in the bake-steps table.
 
 Reference: [Scene-Files.md](Scene-Files.md#visibility-camera_region).
 
-### Thin
+#### Thin
 
 Keeps a random share of one material's seen triangles, for foliage too dense
 to draw whole. It runs after visibility so the share is of what is seen.
@@ -167,7 +188,11 @@ What occlusion and bounced light buy is measured in
 [Bake-Quality.md](Bake-Quality.md#indirect-light). Reference:
 [Scene-Files.md](Scene-Files.md#bake).
 
-### Simplify
+### Shape
+
+These stages reduce and fit the lit mesh for the board.
+
+#### Simplify
 
 Reduces each variant to its triangle budget, weighing the baked colours per
 part, with a share kept for small props and touching pieces joined first so
@@ -183,7 +208,7 @@ Cost: `simplify` in the bake-steps table.
 
 Reference: [Mesh-Import.md](Mesh-Import.md#simplify).
 
-### Fit
+#### Fit
 
 Optional: moves a variant's vertices and colours to match the reference from
 the camera's poses.
@@ -203,7 +228,11 @@ Cost: `fit` in the bake-steps table.
 Reference: [Scene-Files.md](Scene-Files.md#fitprune); measured in
 [Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
 
-### Meshlets
+### Output
+
+These stages package the mesh for loading and drawing on the board.
+
+#### Meshlets
 
 Cuts the mesh into clusters under a tree of bounding nodes, the units the board
 culls and draws.
@@ -218,7 +247,7 @@ Picture: none yet.
 
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
 
-### Asset pack
+#### Asset pack
 
 Packs each root (a scene with its meshes and camera clip, or a lone import or
 clip) into one pack; `launcher/demo/` content ships only where an app's
@@ -281,7 +310,11 @@ Cost: part of `frame.rest` in the frame-stages table.
 
 Reference: [Dynamic-Resolution.md](Dynamic-Resolution.md).
 
-### Cull
+### Update
+
+These stages run on both cores while the last frame is sent.
+
+#### Cull
 
 The cull walks each mesh's node tree against the camera's frustum, roughly
 nearest first, and keeps the clusters that may be on screen. At a fixed or stepped
@@ -300,7 +333,7 @@ Picture: none yet.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#one-frame).
 
-### Transform
+#### Transform
 
 Each vertex of the kept clusters is projected once, the two cores taking
 halves of the vertex work; each cluster also records the screen rows it spans.
@@ -313,7 +346,7 @@ Cost: `r3d.transform` in the frame-stages table.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#on-both-cores).
 
-### Clip
+#### Clip
 
 Inside the draw, a triangle with a corner behind the near plane or far off
 screen is rebuilt and clipped; the rest pass straight on. Its cost is part of
@@ -327,7 +360,7 @@ Cost: part of `r3d.draw` in the frame-stages table.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
-### Span fill
+#### Span fill
 
 Each triangle is filled span by span into colour and depth by the top-left
 rule; after each span, every attachment's writer marks the pixels that
@@ -343,7 +376,7 @@ Cost: `r3d.draw` in the frame-stages table.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
-### Resolve
+#### Resolve
 
 Once every instance is drawn, each attachment turns what was written into its
 final map, the two cores on disjoint rows.
@@ -358,7 +391,7 @@ Cost: `r3d.resolve, with motion vectors attached` in the frame-stages table.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#attachments).
 
-### View modes
+#### View modes
 
 Development builds can repaint the colour from depth, depth tiles or an
 attachment before the upscale, so the frame shows what the renderer holds.
@@ -373,7 +406,11 @@ Cost: part of `frame.rest` in the frame-stages table when enabled.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#view-modes).
 
-### Upscale
+### After the send
+
+These stages wait for the last frame's send to finish.
+
+#### Compose
 
 After the frame waits for the previous send, the render context picks a half
 picture or the panel's framebuffer; raster fills it through precomputed row
@@ -388,7 +425,7 @@ Cost: `r3d.upscale` in the frame-stages table.
 
 Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#expanded-frames).
 
-### Present
+#### Present
 
 The framebuffer's dirty rows, or a half picture doubled on the way, go to the
 panel over QSPI while the next frame is prepared; the frame-stages table shows
