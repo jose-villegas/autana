@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import threading
+import time
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -39,6 +40,8 @@ class PipelineMeasuresTests(unittest.TestCase):
                 entered.set()
                 if not released.wait(5):
                     raise RuntimeError("probe not released")
+                # Still sampling after the step body ends, so only the step's own join can have ended it.
+                time.sleep(0.2)
                 return 100, None
             return 1, None
         recorder = process_budget.StepRecorder(probe=probe)
@@ -47,11 +50,12 @@ class PipelineMeasuresTests(unittest.TestCase):
                 self.assertTrue(entered.wait(5))
             finally:
                 released.set()
-        self.assertEqual(recorder.rows[0]["peak_ram_bytes"], 100)
-        self.assertTrue(threads)
+        alive = [thread.is_alive() for thread in threads]
         for thread in threads:
             thread.join(timeout=5)
-        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertTrue(threads)
+        self.assertEqual(alive, [False] * len(threads))
+        self.assertEqual(recorder.rows[0]["peak_ram_bytes"], 100)
 
     def test_default_gpu_poll_never_launches_a_subprocess(self):
         sampled = threading.Event()
