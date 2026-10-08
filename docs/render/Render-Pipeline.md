@@ -38,53 +38,40 @@ demo scene in the [demo assets](../../launcher/demo/README.md).
 - [Refreshing](#refreshing)
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 20, 'rankSpacing': 20, 'padding': 10}}}%%
-flowchart LR
-    subgraph Pipeline[" "]
+flowchart TB
+    subgraph Host["Offline, on the host: tools/r3d"]
         direction TB
-        subgraph Host["Offline, on the host: tools/r3d"]
-            direction TB
-            subgraph Geometry["Geometry"]
-                direction LR
-                Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
-            end
-            Light["Light<br/><i>direct · occlusion · bounce</i>"]
-            subgraph Shape["Shape"]
-                direction LR
-                Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
-            end
-            subgraph Output["Output"]
-                direction LR
-                Mesh["Meshlets"] --> Pack["Asset pack"]
-            end
-            Geometry --> Light --> Shape --> Output
+        subgraph Geometry["Geometry"]
+            direction LR
+            Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
         end
-        subgraph Board["Every frame, on the board"]
-            direction TB
-            subgraph SceneOwner[" "]
-                Scene["scene/<br/><i>scene and camera</i>"]
-            end
-            SceneOwner --> Size["render/context<br/><i>render size</i>"]
-            subgraph Update["Update while the last frame is sent: render/raster, both cores"]
-                direction LR
-                subgraph Census[" "]
-                    Cull["Cull"]
-                end
-                Census --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
-            end
-            subgraph After["After the send"]
-                direction LR
-                Up["Compose: upscale,<br/><i>or copy into a half picture</i>"] --> Present["gfx/present<br/><i>dirty rows, or a half<br/>picture doubled</i>"]
-            end
-            Size --> Census
-            Census -. "predicted: census first" .-> Size
-            Update --> After
+        Light["Light<br/><i>direct · occlusion · bounce</i>"]
+        subgraph Shape["Shape"]
+            direction LR
+            Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
         end
-        Output --> SceneOwner
+        subgraph Output["Output"]
+            direction LR
+            Mesh["Meshlets"] --> Pack["Asset pack"]
+        end
+        Geometry --> Light --> Shape --> Output
     end
-    style Pipeline fill:none,stroke:none
-    style SceneOwner fill:none,stroke:none
-    style Census fill:none,stroke:none
+    subgraph Board["Every frame, on the board"]
+        direction TB
+        Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size</i>"]
+        subgraph Update["Update while the last frame is sent: render/raster, both cores"]
+            direction LR
+            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
+        end
+        subgraph After["After the send"]
+            direction LR
+            Up["Compose: upscale,<br/><i>or copy into a half picture</i>"] --> Present["gfx/present<br/><i>dirty rows, or a half<br/>picture doubled</i>"]
+        end
+        Size --> Update
+        Update -. "predicted: census first" .-> Size
+        Update --> After
+    end
+    Output --> Board
 ```
 
 ## Offline, on the host
