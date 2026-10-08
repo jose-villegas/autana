@@ -115,7 +115,8 @@ test_span_fallback_reports_empty_range_for_an_empty_row(void) {
 static void
 test_find_or_span_lists_the_runs_within_the_cap(void) {
     uint8_t row[10] = {1, 1, 0, 0, 0, 0, 1, 1, 1, 0};
-    uint16_t x0[ROW_MAX_RUNS], x1[ROW_MAX_RUNS];
+    uint16_t x0[ROW_MAX_RUNS] = {0};
+    uint16_t x1[ROW_MAX_RUNS] = {0};
 
     TEST_ASSERT_EQUAL_INT(2, row_runs_find_or_span(row, 10, EMPTY, x0, x1));
     TEST_ASSERT_EQUAL_UINT16(0, x0[0]);
@@ -130,7 +131,8 @@ test_find_or_span_falls_back_to_one_span_past_the_cap(void) {
     for (int i = 0; i <= ROW_MAX_RUNS; i++) {
         row[(2 * i) + 1] = FULL;
     }
-    uint16_t x0[ROW_MAX_RUNS], x1[ROW_MAX_RUNS];
+    uint16_t x0[ROW_MAX_RUNS] = {0};
+    uint16_t x1[ROW_MAX_RUNS] = {0};
 
     TEST_ASSERT_EQUAL_INT(1, row_runs_find_or_span(row, (int)sizeof row, EMPTY, x0, x1));
     TEST_ASSERT_EQUAL_UINT16(1, x0[0]);
