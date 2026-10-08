@@ -5,6 +5,37 @@ names what it measures in its own header. The render harness the
 `*_render_host.sh` scenes use is
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
+## Grid fingerprint
+
+`report_fingerprint.sh` hashes fixed scenes in two builds. The normal build
+is the program as it ships. The host-only `SAND_FORCE_WORK` build never
+takes a `SAND_SKIP_IF` skip: every skip does its work, and where the fact
+said skip, any non-cell state that work touched (the sequential RNG, the
+pass-direction flips, the reaction stage bookkeeping) is put back.
+
+| Check | Fails when |
+|---|---|
+| normal build vs `fingerprint_baseline.txt` | behaviour changed |
+| forced build vs normal build | a skip dropped work that changes cells |
+
+`--check` runs both, and CI runs it on every pull request. `--update`
+records the normal build and refuses while the forced build differs from
+it, so a baseline is never recorded with a skip that drops work. A fact that is only too strict, skipping less than it
+could, changes no output; neither check sees it, and neither needs to.
+
+Both builds also count how often each `SAND_SKIP_IF` site's skip condition
+held, across all scenes, and the tool lists every site with the sum. A site
+at 0 was never exercised, so the comparison says nothing about it, and
+`--check` fails until a row of `grid_fingerprint.c` reaches it.
+
+`scripts/gates/check_skip_facts.py` keeps the list complete. Facts are
+marked `SAND_FACT` where declared; a read of one must sit inside
+`SAND_SKIP_IF` or, where the fact is a behaviour rule rather than a skip
+(crust forms only on resting cells), inside `SAND_FACT_RULE`. Functions
+that compute facts are marked `SAND_FACT_WRITER` and may read them freely;
+a local a fact is derived into is marked `SAND_FACT` too, so its own reads
+are checked.
+
 ## Generated files
 
 <!-- generated: generated-files-sand sha256=bed1e804bdc4a2730410835527645a3c08ffd6bb2030cdd3f9aab5523bee7a4a -->

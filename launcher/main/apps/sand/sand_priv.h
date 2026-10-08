@@ -610,9 +610,9 @@ typedef enum {
 
 void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
 
-#define BLOCK_SETTLED_NEAREST 0x1
-#define BLOCK_SETTLED_OTHER   0x2
-#define BLOCK_ACTIVE          0x4
+#define BLOCK_SETTLED_NEAREST 0x1 /* SAND_FACT */
+#define BLOCK_SETTLED_OTHER   0x2 /* SAND_FACT */
+#define BLOCK_ACTIVE          0x4 /* SAND_FACT */
 
 /* THE INVARIANT the skip rests on: every liquid cell sits in a block
  * whose NEAR bit is set. Either the sweep saw it, or it arrived from
@@ -622,8 +622,8 @@ void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
  * latch_content_flags() for this to hold. Contrapositive:
  * equalise_liquids() sees NEAR clear as provably no liquid, so skipping
  * those cells changes nothing. */
-#define BLOCK_HAS_LIQUID      0x8
-#define BLOCK_LIQUID_NEAR     0x10
+#define BLOCK_HAS_LIQUID      0x8  /* SAND_FACT */
+#define BLOCK_LIQUID_NEAR     0x10 /* SAND_FACT */
 
 /* A block holding a cell whose moisture is currently nonzero - the soak-
  * only walk's alternative to BLOCK_LIQUID_NEAR once the liquid that put the
@@ -632,7 +632,7 @@ void sand_chunk_pass_set_driver_for_test(sand_chunk_pass_driver_t driver);
  * liquid nor NEAR to keep running. Set wherever a write grants moisture;
  * cleared only by refresh_moisture_blocks() actually finding none left,
  * the same "trust it until disproven" shape BLOCK_HAS_LIQUID uses. */
-#define BLOCK_HAS_MOISTURE    0x20
+#define BLOCK_HAS_MOISTURE    0x20 /* SAND_FACT */
 
 static inline uint16_t
 liquid_mask(void) {
@@ -751,11 +751,66 @@ block_of(const sand_t* s, int x, int y) {
     return (y / SAND_BLOCK_H) * s->block_cols + (x / SAND_BLOCK_W);
 }
 
+#ifdef SAND_FORCE_WORK
+typedef struct {
+    rng_t rng;
+    bool gas_flip;
+    bool liquid_flip;
+    bool skipped;
+} sand_forced_state_t;
+
+static inline sand_forced_state_t
+sand_forced_save(const sand_t* s) {
+    return (sand_forced_state_t){.rng = s->rng, .gas_flip = s->gas_flip, .liquid_flip = s->liquid_flip};
+}
+
+static inline void
+sand_forced_restore(sand_t* s, const sand_forced_state_t* snap) {
+    if (snap->skipped) {
+        s->rng = snap->rng;
+        s->gas_flip = snap->gas_flip;
+        s->liquid_flip = snap->liquid_flip;
+    }
+}
+
+#define SAND_FORCED_STATE(s) sand_forced_state_t forced_state = sand_forced_save(s)
+#define SAND_FORCED_IF(cond) (forced_state.skipped = (cond))
+#else
+#define SAND_FORCED_STATE(s)
+#define SAND_FORCED_IF(cond)         (cond)
+#define sand_forced_restore(s, snap) ((void)0)
+#endif
+
+/* The fingerprint's two counting builds: SAND_COUNT_SKIPS counts each site's
+ * skips and still takes them, SAND_FORCE_WORK counts and never takes them. */
+#if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
+typedef struct sand_skip_site {
+    const char* file;
+    int line;
+    unsigned long long skipped;
+    bool registered;
+    struct sand_skip_site* next;
+} sand_skip_site_t;
+
+bool sand_skip_site_note(sand_skip_site_t* site, bool allowed);
+void sand_skip_sites_report(void);
+
+#define SAND_SKIP_IF(cond)                                                                                             \
+    ({                                                                                                                 \
+        static sand_skip_site_t sand_skip_site_record = {.file = __FILE__, .line = __LINE__};                          \
+        sand_skip_site_note(&sand_skip_site_record, (cond));                                                           \
+    })
+#else
+#define SAND_SKIP_IF(cond) (cond)
+#endif
+
+#define SAND_FACT_RULE(expr) (expr)
+
 /* Has this cell's block come to rest? The same test sand_block_settled()
  * makes, by cell rather than by block index. False when sleeping is off,
  * because then nothing is ever known to be settled and a rule gated on rest
  * must not fire. */
-static inline bool
+SAND_FACT static inline bool
 cell_settled(const sand_t* s, int x, int y) {
     if (s->block_state == NULL) {
         return false;
@@ -772,7 +827,7 @@ cell_settled(const sand_t* s, int x, int y) {
  * SOUND FOR ANY FOUR-NEIGHBOUR TEST: a neighbour is one cell away, so it
  * lies in this block or one touching it, and NEAR covers exactly that.
  * Falls back to the flag when block state is off. */
-static inline bool
+SAND_FACT static inline bool
 liquid_near(const sand_t* s, int x, int y) {
     if (!s->may_have_liquid) {
         return false;
@@ -783,7 +838,7 @@ liquid_near(const sand_t* s, int x, int y) {
     return (s->block_state[block_of(s, x, y)] & BLOCK_LIQUID_NEAR) != 0;
 }
 
-static inline void
+SAND_FACT_WRITER static inline void
 wake_blocks_range(sand_t* s, int bx0, int by0, int bx1, int by1) {
     if (s->block_state == NULL) {
         return;
@@ -816,8 +871,12 @@ wake_blocks_range(sand_t* s, int bx0, int by0, int bx1, int by1) {
     s->block_state[by1 * s->block_cols + bx1] |= BLOCK_ACTIVE;
 }
 
-static inline bool
-any_neighbor_active(const sand_t* s, int bx, int by) {
+/* Whether a block in (bx, by)'s 3x3 block neighbourhood has any of `bits`
+ * set; `count_self` includes (bx, by) itself. Settling asks it of
+ * BLOCK_ACTIVE about the neighbours only, liquid reach of BLOCK_HAS_LIQUID
+ * about all nine. */
+SAND_FACT static inline bool
+block_neighbourhood_has(const sand_t* s, int bx, int by, uint8_t bits, bool count_self) {
     const int lo_x = (bx > 0) ? bx - 1 : bx;
     const int hi_x = (bx + 1 < s->block_cols) ? bx + 1 : bx;
     const int lo_y = (by > 0) ? by - 1 : by;
@@ -825,28 +884,10 @@ any_neighbor_active(const sand_t* s, int bx, int by) {
 
     for (int ny = lo_y; ny <= hi_y; ny++) {
         for (int nx = lo_x; nx <= hi_x; nx++) {
-            if (nx == bx && ny == by) {
+            if (!count_self && nx == bx && ny == by) {
                 continue;
             }
-            if (s->block_state[ny * s->block_cols + nx] & BLOCK_ACTIVE) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-/* Expands BLOCK_HAS_LIQUID, counts itself too */
-static inline bool
-block_or_neighbour_has_liquid(const sand_t* s, int bx, int by) {
-    const int lo_x = (bx > 0) ? bx - 1 : bx;
-    const int hi_x = (bx + 1 < s->block_cols) ? bx + 1 : bx;
-    const int lo_y = (by > 0) ? by - 1 : by;
-    const int hi_y = (by + 1 < s->block_rows) ? by + 1 : by;
-
-    for (int ny = lo_y; ny <= hi_y; ny++) {
-        for (int nx = lo_x; nx <= hi_x; nx++) {
-            if (s->block_state[ny * s->block_cols + nx] & BLOCK_HAS_LIQUID) {
+            if (s->block_state[ny * s->block_cols + nx] & bits) {
                 return true;
             }
         }
@@ -857,7 +898,7 @@ block_or_neighbour_has_liquid(const sand_t* s, int bx, int by) {
 /* For touches OUTSIDE the gravity sweep, which leave no moved_here record
  * (sand.c) for the next step to find. A one-cell write reaches only cells
  * sharing its 3x3 cell neighbourhood; larger moves use wake_blocks_range(). */
-static inline void
+SAND_FACT_WRITER static inline void
 wake_block_and_neighbors(sand_t* s, int x, int y) {
     if (s->block_state == NULL) {
         return;
@@ -885,7 +926,7 @@ wake_block_and_neighbors(sand_t* s, int x, int y) {
 
 /* Called wherever step_one_soaking_cell() (sand_reactions.c) grants a cell
  * moisture, at that cell's own coordinates - see BLOCK_HAS_MOISTURE. */
-static inline void
+SAND_FACT_WRITER static inline void
 mark_block_has_moisture(sand_t* s, int x, int y) {
     if (s->block_state == NULL) {
         return;
@@ -1059,7 +1100,7 @@ impulse_drag_of(cell_t displaced) {
     return (uint8_t)(d > 255u ? 255u : d);
 }
 
-static inline void
+SAND_FACT_WRITER static inline void
 clear_content_flags(sand_t* s) {
     s->may_have_liquid = false;
     s->may_have_gas = false;
@@ -1084,7 +1125,7 @@ clear_content_flags(sand_t* s) {
     s->may_have_materials = 0xFFFFu;
 }
 
-static inline void
+SAND_FACT_WRITER static inline void
 latch_content_flags(sand_t* s, cell_t cell) {
     if (CELL_IS_EMPTY(cell)) {
         return;
@@ -1354,6 +1395,11 @@ typedef struct {
  * gravity direction. */
 void sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy);
 
+/* Row order and slide diagonals for a sweep against `dy`; the grain and gas
+ * steps differ only in whether a level sweep may `restrict_level`. In sand.c. */
+void sand_choose_sweep_order(const sand_t* s, int dy, bool restrict_level, const int** slide_a, const int** slide_b,
+                             int* y_from, int* y_to, int* y_step);
+
 void sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, const int* slide_b, const int* perp_a,
                    const int* perp_b, int load_dx, int load_dy, int x_step, int jostle);
 
@@ -1551,7 +1597,7 @@ try_slide_impl(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
 
     /* A shaken grain spreads sideways before dropping. Whether that
      * destination is already swept is the sweep order's business -
-     * choose_sweep_order() (sand.c) states where it holds. */
+     * sand_choose_sweep_order() (sand.c) states where it holds. */
     const bool shaken = jostle > 0 && (int)((r >> 8) & 0xFF) < jostle;
 
     if (!shaken && jostle > 0 && move_to(row, prow, x, x + dx, w, grain, density)) {
