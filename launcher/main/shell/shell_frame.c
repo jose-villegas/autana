@@ -6,9 +6,10 @@
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
+#include "util/build/build_variant.h"
 #include "util/runtime/build_id.h"
 
-#if CONFIG_LAUNCHER_DEVELOPMENT || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #define BUILD_MARK_GLYPH        8
 #define BUILD_MARK_CHARS        (1 + BUILD_ID_SHORT_CHARS)
 #define BUILD_MARK_SIZE         (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
@@ -39,7 +40,7 @@ draw_build_mark(void) {
 
 void
 shell_frame_init(const char* short_id) {
-#if CONFIG_LAUNCHER_DEVELOPMENT || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const int length = snprintf(build_mark_text, sizeof(build_mark_text), "D%s", short_id);
     if (length < 0 || (size_t)length >= sizeof(build_mark_text)) {
         build_mark_text[0] = '\0';
@@ -52,14 +53,14 @@ shell_frame_init(const char* short_id) {
 void
 shell_frame_overlay(int row0, int row1) {
     ui_replay_band(row0, row1);
-#if CONFIG_LAUNCHER_DEVELOPMENT || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     draw_build_mark();
 #endif
 }
 
 void
 shell_frame_extras(void) {
-#if CONFIG_LAUNCHER_DEVELOPMENT || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
         draw_build_mark();
     }
