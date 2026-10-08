@@ -23,6 +23,7 @@ compare.
 | ![Sponza flythrough, flat](../images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `sponza.atrium_flat` |
 | ![Sponza flythrough, fitted](../images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | `sponza.atrium_fitted` |
 | ![Sponza flythrough, fitted full](../images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | `sponza.atrium_fitted_full` |
+| ![Sponza flythrough, flat fitted](../images/render/sponza-flat-fitted.gif) | **Flat fitted**: flat's budget, one colour per face, its vertices and face colours fitted together | `sponza.atrium_flat_fitted` |
 
 Where the variants differ, at the pose the GIFs end on: each sheet is the two
 renders and their amplified difference, and the crops below it are the places
@@ -52,6 +53,13 @@ come back.
 
 The fitted full mesh is the same recipe at full's budget, so the same edges
 and colours come back on full's finer geometry.
+
+![Flat against flat fitted](../images/render/compare-flat-flat-fitted.png)
+![Flat against flat fitted, the places they differ most](../images/render/compare-flat-flat-fitted.crops.png)
+
+The flat fitted mesh keeps one colour per face but fits those colours and its
+positions to the reference: the banners, arches and floor take their colours
+back.
 
 ## Fidelity against the source
 
@@ -182,6 +190,24 @@ other settings. The angle heatmaps show where geometry differs from the source.
 
 ![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)
 <!-- /generated: sponza-normal -->
+
+### Appearance fit of the flat mesh
+
+[A flat fit](Scene-Files.md#a-flat-fit) fits a colour per triangle and the
+positions. The GPU stage scores it against the flat bake and the smooth fit at
+lite's budget, over the same held-out poses. Predicted time is left out: the
+cost model has no shading term.
+
+<!-- generated: sponza-flat-fit sha256=d605f3e800fbcdfdfcdb3eec644404ba053a61d32681cace9dc88990dc6a5f6d -->
+| Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle |
+|---|---|---|---|---|---|
+| flat-GI-bake | 17371 | 12.423 | 43.179 | 0.451 | 21.393 |
+| lite-GI-fit | 8672 | 5.985 | 16.843 | 0.729 | 15.365 |
+| flat-GI-fit | 17133 | 5.167 | 14.333 | 0.765 | 13.619 |
+
+![Flat bake, lite fit and flat fit](../images/render/gpu/appearance-indirect-flat.png)
+![Flat bake, lite fit and flat fit.crops](../images/render/gpu/appearance-indirect-flat.crops.png)
+<!-- /generated: sponza-flat-fit -->
 
 ### Board measurements
 

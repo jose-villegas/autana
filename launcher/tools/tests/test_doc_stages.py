@@ -92,6 +92,24 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         with self.assertRaisesRegex(ValueError, "missing"):
             stages.board_means([capture], "abcdef123456")
 
+    def test_a_capture_of_all_six_bake_entities_yields_every_board_variant(self):
+        names = ("atrium", "atrium_flat", "atrium_lite", "atrium_fitted", "atrium_fitted_full", "atrium_flat_fitted")
+        capture = self.tmp / "capture.txt"
+        lines = [f"{name} both cores: mean {1000 * (k + 1)}us" for k, name in enumerate(names)]
+        capture.write_text("\n".join(["abcdef123456-diag", *lines]) + "\n")
+        means = stages.board_means([capture], "abcdef123456")
+        self.assertEqual(set(means), set(stages.VARIANTS))
+        self.assertEqual(means, {"sponza": 1.0, "flat": 2.0, "lite": 3.0, "fitted": 4.0, "fitted-full": 5.0,
+                                 "flat-fitted": 6.0})
+
+    def test_a_capture_without_the_flat_fitted_entity_is_refused(self):
+        names = ("atrium", "atrium_flat", "atrium_lite", "atrium_fitted", "atrium_fitted_full")
+        capture = self.tmp / "capture.txt"
+        lines = [f"{name} both cores: mean 42000us" for name in names]
+        capture.write_text("\n".join(["abcdef123456-diag", *lines]) + "\n")
+        with self.assertRaisesRegex(ValueError, "flat-fitted"):
+            stages.board_means([capture], "abcdef123456")
+
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"
         capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us\n"
@@ -252,13 +270,13 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
         jobs = [NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
-                               variant=NS(triangles=10000))) for _ in range(2)]
+                               variant=NS(triangles=10000))) for _ in range(3)]
         calls, consumed, completed, prepare_futures, fit_futures = [], [], [], [], []
 
         class PrepareFuture(Future):
             def add_done_callback(self, callback):
                 super().add_done_callback(callback)
-                if len(prepare_futures) == 2 and all(f._done_callbacks for f in prepare_futures):
+                if len(prepare_futures) == 3 and all(f._done_callbacks for f in prepare_futures):
                     for future in reversed(prepare_futures):
                         future.set_result(None)
                     for future, directory, target in reversed(fit_futures):
@@ -287,7 +305,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                 elif owner is stages.measure_worker:
                     label = args[0]
                     consumed.append(label)
-                    future.set_result(((label, 1, '0', '0', '0', '0', '0'), Path('frames.avi'),
+                    future.set_result(((label, 1, '1.5', '2.5', '3.5', '4.5', '99.5'), Path(f'{label}.avi'),
                                        {'triangles': 1, 'mean_delta_e': 0., 'predicted_ms': 0.}))
                 else:
                     raise AssertionError(owner)
@@ -309,12 +327,12 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(bake_fidelity, 'build_host', return_value='host'), \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
-                    mock.patch.object(stages, 'run'), mock.patch.object(stages, 'apply_tables'), \
+                    mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
                     mock.patch.object(fitted, 'plot_pareto'):
                 stages._gpu(NS(smoke=False), out, root / 'work', Executor())
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
-                             'full-GI-bake', 'full-path-culled', 'full-GI-fit']
+                             'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'flat-GI-bake', 'flat-GI-fit']
             self.assertEqual(consumed, expected_rows)
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
@@ -332,9 +350,26 @@ class FullGpuSchedulingTests(unittest.TestCase):
                                   job.renderer.fit.normal_weight))
             self.assertCountEqual(arguments, [
                 ('fit-lite', 'lite.mesh', None, 0., .3), ('fit-full', 'full.mesh', None, 0., .3),
+                ('fit-flat', 'flat.mesh', None, 0., .3),
                 ('normal-0', 'normal-0.mesh', None, 0., 0.), ('normal-0.1', 'normal-0.1.mesh', None, 0., .1),
                 ('budget-4000-cost-0.1', 'budget-4000-cost-0.1.mesh', 4000, .1, .3),
                 ('budget-6000-cost-0.1', 'budget-6000-cost-0.1.mesh', 6000, .1, .3)])
+            baked_names = {call[1][3]: call[1][4] for call in calls if call[0] is stages.bake_worker}
+            self.assertEqual(baked_names, {'lite': 'atrium_lite', 'full': 'atrium', 'flat': 'atrium_flat'})
+            flat_sheet = [call.args[0] for call in run.call_args_list if call.args[1].name == 'sheet-flat.log']
+            self.assertEqual(len(flat_sheet), 1)
+            command = [str(word) for word in flat_sheet[0]]
+            columns = [(command[i + 1], command[i + 2]) for i, word in enumerate(command) if word == '--bake']
+            self.assertEqual(columns, [('flat bake', 'flat-GI-bake.avi'), ('lite fit', 'lite-GI-fit.avi'),
+                                       ('flat fit', 'flat-GI-fit.avi')])
+            table = (out / 'tables/sponza-flat-fit.md').read_text().splitlines()
+            self.assertEqual([line.split(' | ')[0].strip('| ') for line in table[2:5]],
+                             ['flat-GI-bake', 'lite-GI-fit', 'flat-GI-fit'], "the sheet's column order")
+            self.assertNotIn('Predicted', table[0], "the cost model cannot price flat shading")
+            cells = [line.count('|') for line in table[:5]]
+            self.assertEqual(len(set(cells)), 1, "a row has more cells than the header")
+            self.assertNotIn('99.5', ' '.join(table), "a predicted time reached the flat table")
+            self.assertEqual(sum(line.startswith('| ') for line in table), 4, "a header and exactly three rows")
             self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
                                 if owner in (stages.bake_worker, stages.measure_worker)))
 

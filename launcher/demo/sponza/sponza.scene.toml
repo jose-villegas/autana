@@ -128,3 +128,31 @@ normal_weight = 1.0
 [objects.mesh_renderer.fit.hashes]
 sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
 recipe_sha256 = "8a8adbfce7367f3e1afbe4af92b460c8b3ab2602b9951c2bb89326a88da9ac0f"
+
+[[objects]]
+name = "atrium_flat_fitted"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_fitted_full"
+bake = true
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+
+[objects.mesh_renderer.fit.prune]
+budget = 17381
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "429c686bb58052cf62b46f42213f7caf2fec3fb33b9079880aa502d64b6c0d04"
+recipe_sha256 = "44cf6658939ae18a4f71911620b64f04cca9d5e59eddbed287af6a189170257a"
