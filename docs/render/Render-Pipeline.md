@@ -7,7 +7,8 @@ stage reads and writes, its settings, its cost and what it looks like, and
 links to the page that documents it in full. Every number here, and every
 image under `docs/images/`, is generated from the source by the doc-images pipeline
 ([Render-Harness.md](../tools/Render-Harness.md#images-in-these-docs)), on the
-demo scene in the [demo assets](../../launcher/demo/README.md).
+demo scene in the [demo assets](../../launcher/demo/README.md);
+[Refreshing](#refreshing) says how to take new board captures and rerun it.
 
 | [Offline, on the host](#offline-on-the-host) | [Every frame, on the board](#every-frame-on-the-board) |
 |---|---|
@@ -15,8 +16,6 @@ demo scene in the [demo assets](../../launcher/demo/README.md).
 | **[Light](#light)** | **[Render size](#render-size)** |
 | **[Shape](#shape)**<br/>[Simplify](#simplify) → [Fit](#fit) | **[Update](#update)**<br/>[Cull](#cull) → [Transform](#transform) → [Clip](#clip) → [Span fill](#span-fill) → [Resolve](#resolve) → [View modes](#view-modes) |
 | **[Output](#output)**<br/>[Meshlets](#meshlets) → [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>[Compose](#compose) → [Present](#present) |
-
-[Refreshing](#refreshing) the generated tables.
 
 ```mermaid
 flowchart TB
