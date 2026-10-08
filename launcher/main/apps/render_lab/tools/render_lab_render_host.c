@@ -84,13 +84,19 @@ set_tunable(const char* name, int value) {
 
 static bool
 view_from_name(const char* name) {
-    static const char* const views[] = {"shaded", "depth", "tiles", "motion"};
-    for (int i = 0; i < (int)(sizeof views / sizeof views[0]); i++) {
-        if (strcmp(name, views[i]) == 0) {
+    if (strcmp(name, "shaded") == 0) {
+        return set_tunable("view", RENDER_VIEW_SHADED);
+    }
+    for (int i = 0; i < RENDER_VIEW_COUNT; i++) {
+        if (strcmp(name, render_context_view(i)->name) == 0) {
             return set_tunable("view", i);
         }
     }
-    (void)fprintf(stderr, "render_lab_render_host: --view is shaded, depth, tiles or motion, not %s\n", name);
+    fprintf(stderr, "render_lab_render_host: --view is shaded");
+    for (int i = 0; i < RENDER_VIEW_COUNT; i++) {
+        fprintf(stderr, ", %s", render_context_view(i)->name);
+    }
+    fprintf(stderr, ", not %s\n", name);
     return false;
 }
 
@@ -159,7 +165,7 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    if (render_lab_view() != RASTER_SHOW_SHADED && !render_lab_scene_shows_views()) {
+    if (render_lab_view() != RENDER_VIEW_SHADED && !render_lab_scene_shows_views()) {
         (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
         return false;
     }

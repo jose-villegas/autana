@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "gfx/gfx_render_target.h"
@@ -39,6 +40,7 @@ struct r3d_span_writer {
     void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                  int32_t z, int32_t dz);
     int attachment; /* the index it writes, in `rows` */
+    bool per_cluster;
     uint32_t value; /* what this draw writes, in the attachment's own meaning */
 };
 

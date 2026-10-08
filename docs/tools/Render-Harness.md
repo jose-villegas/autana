@@ -35,8 +35,9 @@ Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion` selects the render
-context's view, with shaded as the default. A debug view needs an enabled mesh.
+30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
+context's view, with shaded as the default. The names match the declared
+`render_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
 `--size WxH` fixes the internal render resolution through a one-step ladder;
 the output still has the panel's dimensions. Each render axis must fit the
 panel framebuffer, 368 by 448.
@@ -52,6 +53,8 @@ The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
 bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
+`doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
+meshlet still; its normal run also writes that image beside the view GIFs.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
 `OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.

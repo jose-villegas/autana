@@ -557,9 +557,20 @@ static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
+    r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
+    r3d_span_target_t writing = *target;
+    writing.writers = writers;
+    for (int k = 0; k < target->writer_count; k++) {
+        writers[k] = target->writers[k];
+    }
     for (int i = 0; i < count; i++) {
+        for (int k = 0; k < target->writer_count; k++) {
+            if (writers[k].per_cluster) {
+                writers[k].value = target->writers[k].value + clusters[i];
+            }
+        }
         if (rows == NULL || !rows_miss_target(&rows[clusters[i]], target)) {
-            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, true, work);
+            draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, &writing, true, work);
         }
     }
 }

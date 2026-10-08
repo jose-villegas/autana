@@ -75,6 +75,17 @@ path = { animation = "fly.anim.toml", node = "camera" }
         with Image.open(out) as image:
             return image.copy()
 
+    def test_every_declared_view_name_is_accepted(self):
+        header = (TOOLS.parent / "main/render/context/render_context.c").read_text()
+        import re
+        names = re.findall(r'\{"([a-z]+)", (?:0|sizeof\([^)]*\)), raster_', header)
+        self.assertEqual(names, ["depth", "tiles", "motion", "meshlets"])
+        for name in ["shaded", *names]:
+            with self.subTest(name=name):
+                run, out = self.render("--view", name)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertTrue(out.is_file())
+
     def test_selected_renderer_is_nonblank_and_has_declared_size(self):
         picture = self.pixels("--object", "card")
         self.assertEqual(picture.size, (448, 368))

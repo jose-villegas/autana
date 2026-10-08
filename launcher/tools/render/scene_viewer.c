@@ -14,12 +14,11 @@ static char** object_names;
 static int object_count;
 static int shell_quarter;
 static int size_width, size_height;
-static raster_show_t view;
+static int view = RENDER_VIEW_SHADED;
 
 static bool
 options(int argc, char** argv) {
     object_names = argv;
-    static const char* const views[] = {"shaded", "depth", "tiles", "motion"};
     for (int i = 0; i < argc; i += 2) {
         const char* flag = argv[i];
         if (i + 1 >= argc) {
@@ -41,15 +40,18 @@ options(int argc, char** argv) {
                 return false;
             }
         } else if (strcmp(flag, "--view") == 0) {
-            int index = 0;
-            while (index < 4 && strcmp(value, views[index]) != 0) {
-                index++;
+            view = RENDER_VIEW_SHADED;
+            if (strcmp(value, "shaded") != 0) {
+                while (++view < RENDER_VIEW_COUNT && strcmp(value, render_context_view(view)->name) != 0) {}
+                if (view == RENDER_VIEW_COUNT) {
+                    fprintf(stderr, "scene_viewer: --view is shaded");
+                    for (int k = 0; k < RENDER_VIEW_COUNT; k++) {
+                        fprintf(stderr, ", %s", render_context_view(k)->name);
+                    }
+                    fprintf(stderr, ", not %s\n", value);
+                    return false;
+                }
             }
-            if (index == 4) {
-                fprintf(stderr, "scene_viewer: --view is shaded, depth, tiles or motion, not %s\n", value);
-                return false;
-            }
-            view = (raster_show_t)index;
         } else {
             fprintf(stderr, "scene_viewer: unknown option %s\n", flag);
             return false;
@@ -120,7 +122,7 @@ setup(int quarter) {
         scene_unload(scene);
         return false;
     }
-    if (view != RASTER_SHOW_SHADED) {
+    if (view != RENDER_VIEW_SHADED) {
         bool has_mesh = false;
         for (int i = 0; i < scene_entity_count(scene); i++) {
             const scene_entity_t entity = (scene_entity_t)i;
@@ -133,7 +135,7 @@ setup(int quarter) {
         }
     }
     render_context_t* context = render_context_main();
-    render_context_set_debug_view(context, view);
+    render_context_set_view(context, view);
     if (size_width > 0) {
         const resolution_step_t size = {size_width, size_height};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);

@@ -146,7 +146,7 @@ manager draws the active camera through the engine's one context,
 |---|---|
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
 | `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
-| `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_set_view()` | a [view mode](#view-modes), development builds only |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
 ### On both cores
@@ -180,23 +180,29 @@ sequenceDiagram
 
 ### View modes
 
-Development builds can look at the depth a frame drew instead of its
-colour. `raster_show()` runs after the draw and before
-`raster_upscale()`, and overwrites the raster's colour buffer from its
-depth buffer, which it reads as the render left it and never writes.
+Development builds select one row from the `render_view_t` table in
+`render/context/render_context.c`: depth, tiles, motion or meshlets.
+`render_context_set_view()` attaches that row and owns its zeroed PSRAM state.
+Switching frees the previous state; `RENDER_VIEW_SHADED` detaches it, and
+`render_context_release()` frees it. `render_context_view()` exposes the row's
+name and constructor to tools.
+
+`raster_show()` runs the attached view's `show` hook after drawing and before
+`raster_upscale()`. It repaints colour while leaving depth intact.
 
 ```mermaid
 flowchart LR
     Render["the draw<br/><i>colour and depth</i>"] --> Show
-    Show["raster_show(mode)<br/><i>colour from depth</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Show["raster_show()<br/><i>attached view paints colour</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-| Mode | The colour buffer becomes |
+| View | The colour buffer becomes |
 |---|---|
-| `RASTER_SHOW_SHADED` | untouched: the baked colours as drawn |
-| `RASTER_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
-| `RASTER_SHOW_DEPTH_TILES` | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
-| `RASTER_SHOW_ATTACHMENT` + k | further attachment k's own view, painted by its `show` hook; for motion, mid-grey for none, red for x and green for y |
+| shaded | untouched: the baked colours as drawn |
+| depth | the depth as a grey ramp, nearest white and farthest black |
+| tiles | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth |
+| motion | mid-grey for none, red for x and green for y |
+| meshlets | a flat hue for each cluster, with disjoint IDs for each instance |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
@@ -215,9 +221,11 @@ The depth and depth-tile views along a flythrough:
 A raster's picture is a render target
 ([Gfx-and-Presentation.md](../Gfx-and-Presentation.md#render-targets)):
 colour and depth, then any further attachment the caller lists in
-`raster_t.attachments`. Every attachment is carved from the scratch block at
+`raster_t.attachments`. An attachment with pixels is carved from the scratch block at
 the drawn size, so a picture drawn at a new size carves anew, and none keeps
-pixels from one picture to the next.
+pixels from one picture to the next. A view with `bytes_per_pixel == 0`
+reserves no scratch pixels and is never cleared. Its `clear` hook may be NULL;
+depth and tiles use only colour and depth in their `show` hooks.
 
 ```mermaid
 flowchart LR
@@ -232,12 +240,12 @@ flowchart LR
 | `begin` | once per `raster_draw()`, before anything is drawn | read the camera and the instances, keep its own state |
 | `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
 | `resolve` | once every instance is drawn | turn what was written into the final map |
-| `show` | `RASTER_SHOW_ATTACHMENT` | paint the colour from it |
+| `show` | `raster_show()` | paint the colour from it |
 
 A writer finds the pixels its triangle won by their depth equalling the
 triangle's, so where two instances meet at exactly the same depth the pixel
-takes the later one's write. A writer sees only depth and one value per
-instance; a map that needs more, such as normals, rebuilds it from depth in
+takes the later one's write. A writer sees depth and one value per instance, or its base plus the
+mesh cluster index when `r3d_span_writer_t.per_cluster` is true; a map that needs more, such as normals, rebuilds it from depth in
 its `resolve`.
 
 ### Motion vectors
@@ -264,22 +272,16 @@ The motion view along a flythrough, red for x and green for y:
   drawing. A raster with motion attached draws at most
   `RASTER_MOTION_INSTANCES_MAX` instances.
 - **The caller** owns a zeroed `raster_motion_t`, attaches
-  `raster_motion_attachment()`, and calls `raster_motion_forget()` after a
-  cut. The render context attaches it while the attachment view shows it.
+  `raster_motion_view()`, and calls `raster_motion_forget()` after a
+  cut. The render context attaches it while the motion view is selected.
 
-Motion stays only while an experiment shows a gain. Nothing outside these
-places names it, and the attachment seam does not change when it goes:
+### Meshlet IDs
 
-| Remove | What |
-|---|---|
-| `render/raster_motion.{c,h}`, `test/suites/suite_raster_motion.c`, `docs/images/render/sponza-motion-vectors.gif` | the files |
-| `render/context/render_context.c` | the include, `attach_motion()` and its state, its call, and the free in `render_context_release()` |
-| `CMakeLists.txt`, `test/run_tests.sh` | one source line each |
-| the app that measures and shows motion | its perf test with motion, its host renderer's source line, `motion` view name and error text, and its doc-image GIF line and README row |
-| this page | the `raster_motion.h` file row, this section, the motion note under the views |
-
-With no further attachment left, `RASTER_SHOW_ATTACHMENT` shows nothing
-and an app's view tunable can end at `RASTER_SHOW_DEPTH_TILES`.
+`raster_meshlets_view()` clears a 16-bit map to zero and resets its next ID
+to one before each draw. Its writer reserves each instance's cluster count
+and writes the reserved base plus the mesh's cluster index. The `show` hook
+maps IDs to hues through a multiplicative hash; zero takes the clear colour.
+It needs no resolve pass.
 
 ## Coverage and small triangles
 

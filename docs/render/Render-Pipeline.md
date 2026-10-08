@@ -210,7 +210,10 @@ culls and draws.
 
 Cost: `meshlets` and `write` in the bake-steps table.
 
-Picture: none yet.
+The meshlets debug view gives each cluster a flat hue. Each instance owns a
+disjoint ID range, reset on every draw; empty pixels keep the clear colour.
+
+![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
 
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
 
@@ -360,8 +363,9 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#attachments).
 
 #### View modes
 
-Development builds can repaint the colour from depth, depth tiles or an
-attachment before the upscale, so the frame shows what the renderer holds.
+Development builds select depth, tiles, motion or meshlets from the declared
+view table in `render/context/render_context.c`. Before upscale, the selected
+attachment paints colour from the renderer's maps.
 
 | Reads | Writes | Settings |
 |---|---|---|
@@ -369,7 +373,10 @@ attachment before the upscale, so the frame shows what the renderer holds.
 
 Cost: part of `frame.rest` in the frame-stages table when enabled.
 
-![The depth-tile view](../images/render/sponza-tiles.gif)
+Pictures: [depth](../images/render/sponza-depth.gif),
+[tiles](../images/render/sponza-tiles.gif),
+[motion](../images/render/sponza-motion-vectors.gif),
+[meshlets](#meshlets).
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#view-modes).
 

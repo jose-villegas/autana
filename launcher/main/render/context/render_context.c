@@ -1,8 +1,8 @@
 #include "render/context/render_context.h"
 
 #include <assert.h>
+#include <string.h>
 
-#include "render/raster_motion.h"
 #include "util/build/build_variant.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -15,34 +15,31 @@
 #endif
 
 #if DEBUG_VIEW
-/* Motion vectors, attached while the attachment view shows them, their state
- * in PSRAM; one set, as the main context is the one that shows views. */
-static raster_motion_t* motion;
-static raster_attachment_t motion_attachment;
-static const raster_attachment_t* const motion_attached[] = {&motion_attachment};
+#include "render/raster_meshlets.h"
+#include "render/raster_motion.h"
 
-static void
-attach_motion(render_context_t* c) {
-    const bool wanted = c->debug_view >= RASTER_SHOW_ATTACHMENT;
-    if (wanted && motion == NULL) {
-        motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
-    }
-    if (!wanted || motion == NULL) {
-        c->raster.attachment_count = 0;
-        return;
-    }
-    if (c->raster.attachment_count == 0) {
-        *motion = (raster_motion_t){0};
-        motion_attachment = raster_motion_attachment(motion);
-    }
-    c->raster.attachments = motion_attached;
-    c->raster.attachment_count = 1;
-}
+static const render_view_t views[] = {
+    {"depth", 0, raster_depth_view},
+    {"tiles", 0, raster_depth_tiles_view},
+    {"motion", sizeof(raster_motion_t), raster_motion_view},
+    {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view},
+};
+_Static_assert(RENDER_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
+
+const render_view_t*
+render_context_view(int view) {
+#if DEBUG_VIEW
+    return view >= 0 && view < RENDER_VIEW_COUNT ? &views[view] : NULL;
+#else
+    (void)view;
+    return NULL;
+#endif
+}
 
 static render_context_t main_context = {
     .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-    .debug_view = RASTER_SHOW_SHADED,
+    .view = RENDER_VIEW_SHADED,
     .frame = {.step = -1},
 };
 
@@ -54,13 +51,10 @@ render_context_main(void) {
 void
 render_context_release(render_context_t* c) {
     memory_free(c->scratch);
-#if DEBUG_VIEW
-    memory_free(motion);
-    motion = NULL;
-#endif
+    memory_free(c->view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-        .debug_view = RASTER_SHOW_SHADED,
+        .view = RENDER_VIEW_SHADED,
         .frame = {.step = -1},
     };
 }
@@ -88,8 +82,39 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
 }
 
 void
-render_context_set_debug_view(render_context_t* c, raster_show_t mode) {
-    c->debug_view = mode;
+render_context_set_view(render_context_t* c, int view) {
+#if DEBUG_VIEW
+    const render_view_t* row = render_context_view(view);
+    if (view != RENDER_VIEW_SHADED && row == NULL) {
+        return;
+    }
+    if (c->view == view && (view == RENDER_VIEW_SHADED || c->raster.attachment_count != 0)) {
+        return;
+    }
+    memory_free(c->view_state);
+    c->view_state = NULL;
+    c->view = RENDER_VIEW_SHADED;
+    c->raster.attachment_count = 0;
+    c->raster.attachments = NULL;
+    if (row == NULL) {
+        return;
+    }
+    if (row->state_bytes != 0) {
+        c->view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
+        if (c->view_state == NULL) {
+            return;
+        }
+        memset(c->view_state, 0, row->state_bytes);
+    }
+    c->view_attachment = row->attachment(c->view_state);
+    c->view_attached[0] = &c->view_attachment;
+    c->raster.attachments = c->view_attached;
+    c->raster.attachment_count = 1;
+    c->view = view;
+#else
+    (void)c;
+    (void)view;
+#endif
 }
 
 /* The step the policy last chose, or -1 at the fixed scale. */
@@ -135,9 +160,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = width;
     r->destination_height = height;
-#if DEBUG_VIEW
-    attach_motion(c);
-#endif
     fit_scratch(c);
     if (c->scratch == NULL) {
         return false;
@@ -166,7 +188,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.step = current_step(c);
 #if DEBUG_VIEW
-    raster_show(r, c->debug_view);
+    if (r->attachment_count != 0) {
+        raster_show(r);
+    }
 #endif
     return true;
 }

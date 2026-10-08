@@ -19,20 +19,20 @@ typedef struct raster raster_t;
 typedef struct raster_attachment raster_attachment_t;
 
 struct raster_attachment {
-    int bytes_per_pixel;
+    int bytes_per_pixel; /* zero for a view without its own pixels */
     /* A new picture's `count` pixels, before anything is drawn on them. */
     void (*clear)(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
     /* Optional. Once per raster_draw(), before the first instance. */
     void (*begin)(const raster_attachment_t* self, const raster_t* raster, const camera_t* camera, int quarter);
-    /* Optional. Fills `out->span` and `out->value` for instance `instance`,
-     * or returns false to write nothing while it is drawn. */
+    /* Optional. Chooses `out->span`, `out->value` and `out->per_cluster` for
+     * this instance, or returns false to leave this attachment unwritten. */
     bool (*writer)(const raster_attachment_t* self, int instance, r3d_span_writer_t* out);
     /* Optional. Once every instance is drawn, `rows` of the picture, both
      * cores at once on disjoint rows; `index` is this attachment's in it. */
     void (*resolve)(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* rows,
                     int index);
     /* Optional. Development builds: paints `picture`'s colour from this
-     * attachment, for RASTER_SHOW_ATTACHMENT. */
+     * attachment. */
     void (*show)(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture,
                  int index);
     void* state; /* the attachment's own */

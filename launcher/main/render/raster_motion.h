@@ -43,7 +43,7 @@ typedef struct {
 } raster_motion_t;
 
 /* The attachment, storing its state in `state`. */
-raster_attachment_t raster_motion_attachment(raster_motion_t* state);
+raster_attachment_t raster_motion_view(void* state);
 
 /* The next picture has no previous one, as after a cut. */
 void raster_motion_forget(raster_motion_t* state);

@@ -156,6 +156,7 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     if (m->first_moved < 0 || instance < m->first_moved) {
         return false;
     }
+    out->per_cluster = false;
     out->span = raster_attachment_tag;
     out->value = m->moved[instance] ? (uint32_t)instance + 1U : 0U;
     return true;
@@ -251,22 +252,21 @@ channel(int8_t half_pixels) {
 
 /* Red for x and green for y; unknown pixels take the clear colour, as empty
  * ones do in the depth view. */
+static gfx_color_t
+pixel_color(const void* pixel, uint16_t clear_color) {
+    const raster_motion_px_t* motion = pixel;
+    return motion->dx == RASTER_MOTION_UNKNOWN ? clear_color
+                                               : r3d_span_pack(channel(motion->dx), channel(motion->dy), 128 << 8);
+}
+
 static void
 show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
     (void)self;
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const raster_motion_px_t* motion = gfx_render_target_row(picture, index, y);
-        gfx_color_t* color = gfx_render_target_color(picture, y);
-        for (int x = 0; x < picture->width; x++) {
-            color[x] = motion[x].dx == RASTER_MOTION_UNKNOWN
-                           ? raster->clear
-                           : r3d_span_pack(channel(motion[x].dx), channel(motion[x].dy), 128 << 8);
-        }
-    }
+    raster_show_map(picture, index, raster->clear, pixel_color);
 }
 
 raster_attachment_t
-raster_motion_attachment(raster_motion_t* state) {
+raster_motion_view(void* state) {
     return (raster_attachment_t){sizeof(raster_motion_px_t), clear, begin, writer, resolve, show, state};
 }
 

@@ -3,7 +3,7 @@
 # The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only]
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
@@ -18,7 +18,10 @@ set -eu
 
 . scripts/lib/run.sh
 
-[ "$#" = 4 ] || { echo "$0: needs OUT WORK SCENE OBJECT" >&2; exit 2; }
+[ "$#" = 4 ] || { [ "$#" = 5 ] && [ "$5" = --meshlets-only ]; } || {
+    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only]" >&2
+    exit 2
+}
 SCENE=$3
 DEMO=$(dirname "$SCENE")
 ID=$(basename "$SCENE" .scene.toml)
@@ -29,6 +32,12 @@ W=$2
 run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
+
+run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets.bmp" \
+    --scene "$ID" --object "$FULL" --view meshlets 2> "$W/meshlets.log"
+run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
+    "$W/meshlets.bmp" "$RENDER/${ID}-meshlets.png"
+[ "${5:-}" != --meshlets-only ] || exit 0
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare, small enough to sit side by side in a table.

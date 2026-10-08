@@ -37,6 +37,15 @@ typedef struct {
 } render_context_frame_t;
 
 typedef struct {
+    const char* name;
+    size_t state_bytes;
+    raster_attachment_t (*attachment)(void* state);
+} render_view_t;
+
+#define RENDER_VIEW_SHADED -1
+#define RENDER_VIEW_COUNT  4
+
+typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
@@ -47,7 +56,10 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    raster_show_t debug_view;
+    int view;
+    void* view_state;
+    raster_attachment_t view_attachment;
+    const raster_attachment_t* view_attached[1];
     render_context_frame_t frame;
 } render_context_t;
 
@@ -67,8 +79,9 @@ void render_context_set_scale(render_context_t* context, int percent);
 void render_context_set_dynamic_resolution(render_context_t* context, const resolution_config_t* config,
                                            const resolution_model_t* model, int first_step);
 
-/* Between draw and upscale, shows the frame as `mode` says; development only. */
-void render_context_set_debug_view(render_context_t* context, raster_show_t mode);
+/* Development views, or RENDER_VIEW_SHADED to detach the view. */
+void render_context_set_view(render_context_t* context, int view);
+const render_view_t* render_context_view(int view);
 
 /* Draws `count` instances through `camera` for a destination of `width` by
  * `height`, turned for `quarter`; false when there is no scratch for it. */

@@ -2005,6 +2005,16 @@ shown_frame(int width, int height) {
 }
 
 static void
+show_view(raster_t* raster, raster_attachment_t view) {
+    const raster_attachment_t* attached[] = {&view};
+    raster->attachments = attached;
+    raster->attachment_count = 1;
+    raster_show(raster);
+    raster->attachments = NULL;
+    raster->attachment_count = 0;
+}
+
+static void
 fill_depth(const raster_t* f, uint16_t d) {
     for (int i = 0; i < f->width * f->height; i++) {
         raster_depth(f)[i] = d;
@@ -2057,7 +2067,7 @@ test_a_tile_holds_its_minimum_depth_not_its_maximum(void) {
         }
     }
     *depth_at(f, 3, 3) = 10000; /* one far pixel in the first tile, the rest near */
-    raster_show(f, RASTER_SHOW_DEPTH_TILES);
+    show_view(f, raster_depth_tiles_view(NULL));
 
     const uint16_t far_tile = color_at(f, RASTER_SHOW_TILE, 0);
     const uint16_t near_tile = color_at(f, 2 * RASTER_SHOW_TILE, 0);
@@ -2077,7 +2087,7 @@ test_one_empty_pixel_empties_its_tile_at_any_position_and_only_its_tile(void) {
         raster_t* f = shown_frame(w, h);
         fill_depth(f, 30000);
         *depth_at(f, RASTER_SHOW_TILE + corners[c][0], RASTER_SHOW_TILE + corners[c][1]) = R3D_DEPTH_EMPTY;
-        raster_show(f, RASTER_SHOW_DEPTH_TILES);
+        show_view(f, raster_depth_tiles_view(NULL));
 
         for (int ty = 0; ty < 3; ty++) {
             for (int tx = 0; tx < 3; tx++) {
@@ -2106,7 +2116,7 @@ test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void
             *depth_at(f, x, y) = 60000; /* the right tile, nearest */
         }
     }
-    raster_show(f, RASTER_SHOW_DEPTH_TILES);
+    show_view(f, raster_depth_tiles_view(NULL));
 
     const uint16_t corner = color_at(f, w - 1, h - 1);
     assert_tile_is(f, 2 * RASTER_SHOW_TILE, RASTER_SHOW_TILE, corner,
@@ -2126,7 +2136,7 @@ test_the_partial_tiles_at_the_right_and_bottom_are_reduced_within_the_frame(void
     }
 
     *depth_at(f, w - 1, h - 1) = R3D_DEPTH_EMPTY;
-    raster_show(f, RASTER_SHOW_DEPTH_TILES);
+    show_view(f, raster_depth_tiles_view(NULL));
     assert_tile_is(f, 2 * RASTER_SHOW_TILE, RASTER_SHOW_TILE, SKY, "an empty pixel in a partial tile left it drawn");
     TEST_ASSERT_TRUE_MESSAGE(color_at(f, 0, h - 1) != SKY, "the empty pixel reached the bottom-left tile");
 }
@@ -2140,7 +2150,7 @@ test_the_nearest_depth_is_the_brightest_and_the_farthest_the_darkest(void) {
         for (int x = 0; x < 64; x++) {
             *depth_at(f, x, 0) = (uint16_t)(1000 + ((reversed ? 63 - x : x) * 900));
         }
-        raster_show(f, RASTER_SHOW_DEPTH);
+        show_view(f, raster_depth_view(NULL));
         const int far_x = reversed ? 63 : 0;
         const int near_x = 63 - far_x;
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, far_x, 0)), "the farthest pixel is not black");
@@ -2160,7 +2170,7 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
     raster_t* f = shown_frame(16, 4);
     fill_depth(f, 777);
     *depth_at(f, 5, 2) = R3D_DEPTH_EMPTY;
-    raster_show(f, RASTER_SHOW_DEPTH);
+    show_view(f, raster_depth_view(NULL));
     const uint16_t grey = color_at(f, 0, 0);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, grey, "a frame of one depth is not the nearest end of the ramp");
     for (int i = 0; i < 16 * 4; i++) {
@@ -2172,7 +2182,7 @@ test_a_frame_of_one_depth_is_one_grey_and_empty_is_no_grey(void) {
     for (int x = 0; x < 256; x++) {
         *depth_at(f, x, 0) = (uint16_t)(1 + (x * 200));
     }
-    raster_show(f, RASTER_SHOW_DEPTH);
+    show_view(f, raster_depth_view(NULL));
     for (int x = 0; x < 256; x++) {
         TEST_ASSERT_TRUE_MESSAGE(is_grey(color_at(f, x, 0)), "a drawn depth is not a grey");
         TEST_ASSERT_TRUE_MESSAGE(color_at(f, x, 0) != SKY, "a drawn depth reads as empty");
@@ -2185,24 +2195,24 @@ test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn(void) {
     raster_t* f = shown_frame(8, 8);
     *depth_at(f, 1, 1) = 30000;
     *depth_at(f, 6, 6) = 60000;
-    raster_show(f, RASTER_SHOW_DEPTH);
+    show_view(f, raster_depth_view(NULL));
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, level(color_at(f, 1, 1)), "the empty pixels stretched the range");
     TEST_ASSERT_EQUAL_INT(LEVEL_MAX, level(color_at(f, 6, 6)));
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 0, 0));
 
     f = shown_frame(8, 8);
-    raster_show(f, RASTER_SHOW_DEPTH);
+    show_view(f, raster_depth_view(NULL));
     for (int i = 0; i < 64; i++) {
         TEST_ASSERT_EQUAL_HEX16(SKY, raster_color(f)[i]);
     }
-    raster_show(f, RASTER_SHOW_DEPTH_TILES);
+    show_view(f, raster_depth_tiles_view(NULL));
     for (int i = 0; i < 64; i++) {
         TEST_ASSERT_EQUAL_HEX16(SKY, raster_color(f)[i]);
     }
 
     f = shown_frame(8, 8);
     *depth_at(f, 3, 4) = 4242;
-    raster_show(f, RASTER_SHOW_DEPTH);
+    show_view(f, raster_depth_view(NULL));
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(WHITE, color_at(f, 3, 4),
                                     "a single drawn pixel is not the nearest end of the ramp");
     TEST_ASSERT_EQUAL_HEX16(SKY, color_at(f, 4, 4));
@@ -2242,11 +2252,11 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
         memcpy(depth_before, raster_depth(&raster), sizeof(uint16_t) * W * H);
         memcpy(shaded, raster_color(&raster), sizeof(uint16_t) * W * H);
 
-        raster_show(&raster, RASTER_SHOW_SHADED);
+        raster_show(&raster);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(shaded, raster_color(&raster), W * H,
                                               "the shaded view changed the render");
 
-        raster_show(&raster, RASTER_SHOW_DEPTH);
+        show_view(&raster, raster_depth_view(NULL));
         raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, raster_depth(&raster), W * H,
                                               "showing the depth changed it");

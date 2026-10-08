@@ -127,7 +127,9 @@ draw_slice(void* ctx) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
         for (int i = 0; i < target->rows.count; i++) {
             const raster_attachment_t* a = attachment_at(r, i);
-            a->clear(a, r, target->rows.attachment[i].pixels, pixels);
+            if (a->bytes_per_pixel != 0 && a->clear != NULL) {
+                a->clear(a, r, target->rows.attachment[i].pixels, pixels);
+            }
         }
     }
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
