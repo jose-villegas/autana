@@ -174,9 +174,8 @@ sponza_status(void) {
 
 /* What every bake's scene shares; each names itself, its key and its bake's enter. */
 #define SPONZA_SCENE_FIELDS                                                                                            \
-    .frame = scene_sponza_frame, .update = NULL, .frame_band = NULL, .exit = scene_sponza_exit,                        \
-    .invalidate = scene_sponza_invalidate, .status = sponza_status, .needs_full_framebuffer = true,                    \
-    .shows_view_modes = true
+    .frame = scene_sponza_frame, .exit = scene_sponza_exit, .invalidate = scene_sponza_invalidate,                     \
+    .status = sponza_status, .needs_full_framebuffer = true, .shows_view_modes = true
 
 const render_lab_scene_t scene_sponza = {
     .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
