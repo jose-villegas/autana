@@ -62,9 +62,32 @@ fixture_rows(int row0, int row1) {
     return r3d_span_target(color + (row0 * W), depth + (row0 * W), W, row0, row1);
 }
 
+static void
+draw_fixture_split(int split, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    (void)fixture();
+    const r3d_span_target_t top = fixture_rows(0, split);
+    const r3d_span_target_t bottom = fixture_rows(split, H);
+    r3d_span_triangle(&top, a, b, c);
+    r3d_span_triangle(&bottom, a, b, c);
+}
+
+static r3d_span_target_t
+draw_fixture_triangle(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    const r3d_span_target_t target = fixture();
+    r3d_span_triangle(&target, a, b, c);
+    return target;
+}
+
 static r3d_span_vertex_t
 sv(float x, float y, float z, float r, float g, float b) {
     return (r3d_span_vertex_t){r3d_span_snap(x), r3d_span_snap(y), z, r, g, b};
+}
+
+static void
+grey_triangle(const float points[3][3], r3d_span_vertex_t vertices[3]) {
+    for (int i = 0; i < 3; i++) {
+        vertices[i] = sv(points[i][0], points[i][1], points[i][2], 9, 9, 9);
+    }
 }
 
 static int
@@ -86,8 +109,7 @@ test_two_triangles_sharing_an_edge_cover_a_square_exactly_once(void) {
     TEST_ASSERT_NOT_NULL(hits);
     memset(hits, 0, W * H);
 
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &a, &b, &c);
+    r3d_span_target_t t = draw_fixture_triangle(&a, &b, &c);
     for (int i = 0; i < W * H; i++) {
         hits[i] += depth[i] != 0;
     }
@@ -126,8 +148,7 @@ test_tiny_and_large_triangles_tile_without_gaps_or_overlap(void) {
             const r3d_span_vertex_t p00 = sv(x, y, 0.5f, 90, 90, 90), p10 = sv(x + cell, y, 0.5f, 90, 90, 90);
             const r3d_span_vertex_t p01 = sv(x, y + cell, 0.5f, 90, 90, 90);
             const r3d_span_vertex_t p11 = sv(x + cell, y + cell, 0.5f, 90, 90, 90);
-            r3d_span_target_t t = fixture();
-            r3d_span_triangle(&t, &p00, &p10, &p11);
+            r3d_span_target_t t = draw_fixture_triangle(&p00, &p10, &p11);
             r3d_span_triangle(&t, &p00, &p11, &p01);
             for (int k = 0; k < W * H; k++) {
                 hits[k] += depth[k] != 0;
@@ -139,8 +160,7 @@ test_tiny_and_large_triangles_tile_without_gaps_or_overlap(void) {
     const float bottom = y0 + 12.0f * cell, right = x0 + 20.0f * cell;
     const r3d_span_vertex_t la = sv(x0, bottom, 0.5f, 90, 90, 90), lb = sv(right, bottom, 0.5f, 90, 90, 90);
     const r3d_span_vertex_t lc = sv(x0, 46.0f, 0.5f, 90, 90, 90);
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &la, &lb, &lc);
+    (void)draw_fixture_triangle(&la, &lb, &lc);
     for (int k = 0; k < W * H; k++) {
         hits[k] += depth[k] != 0;
         TEST_ASSERT_TRUE_MESSAGE(hits[k] <= 1, "a pixel was filled by two triangles");
@@ -161,8 +181,7 @@ test_the_nearer_triangle_wins_in_either_order(void) {
     const r3d_span_vertex_t na = sv(0, 0, 0.8f, 0, 0, 255), nb = sv(60, 0, 0.8f, 0, 0, 255),
                             nc = sv(0, 45, 0.8f, 0, 0, 255);
 
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &fa, &fb, &fc);
+    r3d_span_target_t t = draw_fixture_triangle(&fa, &fb, &fc);
     r3d_span_triangle(&t, &na, &nb, &nc);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), color[5 * W + 5]);
 
@@ -205,8 +224,7 @@ test_a_window_of_rows_matches_the_same_rows_of_a_full_draw(void) {
     const r3d_span_vertex_t a = sv(3.2f, -20.0f, 0.3f, 10, 200, 30), b = sv(70.0f, 12.5f, 0.9f, 250, 20, 90);
     const r3d_span_vertex_t c = sv(-5.0f, 60.0f, 0.6f, 90, 90, 250);
 
-    r3d_span_target_t full = fixture();
-    r3d_span_triangle(&full, &a, &b, &c);
+    (void)draw_fixture_triangle(&a, &b, &c);
     gfx_color_t* whole = malloc(sizeof(*whole) * W * H);
     TEST_ASSERT_NOT_NULL(whole);
     memcpy(whole, color, sizeof(*whole) * W * H);
@@ -229,8 +247,7 @@ static void
 test_colours_stay_within_the_vertex_range_even_at_the_edges(void) {
     const r3d_span_vertex_t a = sv(0.4f, 0.4f, 0.5f, 255, 255, 255), b = sv(63.6f, 1.0f, 0.5f, 255, 255, 255);
     const r3d_span_vertex_t c = sv(2.0f, 47.6f, 0.5f, 0, 0, 0);
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &a, &b, &c);
+    (void)draw_fixture_triangle(&a, &b, &c);
     for (int i = 0; i < W * H; i++) {
         if (depth[i] == 0) {
             continue;
@@ -249,8 +266,7 @@ static void
 test_an_axis_aligned_square_fills_exactly_the_centres_inside_it(void) {
     const r3d_span_vertex_t a = sv(10.5f, 5.5f, 0.5f, 90, 90, 90), b = sv(30.5f, 5.5f, 0.5f, 90, 90, 90);
     const r3d_span_vertex_t c = sv(30.5f, 25.5f, 0.5f, 90, 90, 90), d = sv(10.5f, 25.5f, 0.5f, 90, 90, 90);
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &a, &b, &c);
+    r3d_span_target_t t = draw_fixture_triangle(&a, &b, &c);
     r3d_span_triangle(&t, &a, &c, &d);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
@@ -266,8 +282,7 @@ static void
 test_a_tiny_triangle_takes_the_average_of_its_corners(void) {
     const r3d_span_vertex_t a = sv(20.2f, 10.2f, 0.2f, 255, 0, 0), b = sv(22.8f, 10.2f, 0.5f, 0, 255, 0);
     const r3d_span_vertex_t c = sv(21.5f, 11.9f, 0.8f, 0, 0, 255);
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &a, &b, &c);
+    (void)draw_fixture_triangle(&a, &b, &c);
     TEST_ASSERT_GREATER_THAN_INT(0, covered());
     for (int i = 0; i < W * H; i++) {
         if (depth[i] != 0) {
@@ -297,8 +312,7 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
             v[k] = sv(f[0], f[1], f[2], f[3], f[4], f[5]);
         }
         const float nearest = fmaxf(v[0].z, fmaxf(v[1].z, v[2].z));
-        r3d_span_target_t t = fixture();
-        r3d_span_triangle(&t, &v[0], &v[1], &v[2]);
+        (void)draw_fixture_triangle(&v[0], &v[1], &v[2]);
         for (int p = 0; p < W * H; p++) {
             TEST_ASSERT_TRUE_MESSAGE(depth[p] <= nearest * 65535.0f + 256.0f,
                                      "a pixel came out nearer than any corner");
@@ -374,15 +388,10 @@ test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives(void) {
             v[k].y = random_subpixel(&state, cy - size, 2.0f * size);
         }
         const int split = (int)(next_random(&state) % (unsigned)(H + 1));
-        r3d_span_target_t t = fixture();
-        r3d_span_triangle(&t, &v[0], &v[1], &v[2]);
+        (void)draw_fixture_triangle(&v[0], &v[1], &v[2]);
         memcpy(whole_color, color, sizeof(*color) * W * H);
         memcpy(whole_depth, depth, sizeof(*depth) * W * H);
-        t = fixture();
-        const r3d_span_target_t top = fixture_rows(0, split);
-        const r3d_span_target_t bottom = fixture_rows(split, H);
-        r3d_span_triangle(&top, &v[0], &v[1], &v[2]);
-        r3d_span_triangle(&bottom, &v[0], &v[1], &v[2]);
+        draw_fixture_split(split, &v[0], &v[1], &v[2]);
         for (int y = 0; y < H; y++) {
             for (int x = 0; x < W; x++) {
                 const int p = (y * W) + x;
@@ -532,8 +541,7 @@ jittered_grid(uint32_t* state, const float* xs, int nx, const float* ys, int ny,
  * its bounding box holds at most 2 x 2 centres and it covered one. */
 static bool
 draw_counting(const r3d_span_vertex_t* const tri[3], uint8_t* hits) {
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, tri[0], tri[1], tri[2]);
+    (void)draw_fixture_triangle(tri[0], tri[1], tri[2]);
     for (int p = 0; p < W * H; p++) {
         hits[p] += depth[p] != 0;
     }
@@ -776,21 +784,18 @@ assert_the_bound_is_exact(const canvas_t* c, int split, const r3d_span_vertex_t 
 static void
 test_the_bound_is_the_greatest_depth_whichever_way_the_plane_slopes(void) {
     const canvas_t* c = canvas_open(W, H);
-    const r3d_span_vertex_t nearer_down[3] = {sv(8.3f, 4.2f, 0.3f, 9, 9, 9), sv(56.6f, 4.2f, 0.3f, 9, 9, 9),
-                                              sv(31.7f, 44.1f, 0.8f, 9, 9, 9)};
-    const r3d_span_vertex_t nearer_up[3] = {sv(8.3f, 44.1f, 0.3f, 9, 9, 9), sv(56.6f, 44.1f, 0.3f, 9, 9, 9),
-                                            sv(31.7f, 4.2f, 0.8f, 9, 9, 9)};
-    const r3d_span_vertex_t nearer_right[3] = {sv(4.2f, 6.3f, 0.3f, 9, 9, 9), sv(4.2f, 42.6f, 0.3f, 9, 9, 9),
-                                               sv(60.1f, 24.4f, 0.8f, 9, 9, 9)};
-    const r3d_span_vertex_t nearer_left[3] = {sv(60.1f, 6.3f, 0.3f, 9, 9, 9), sv(60.1f, 42.6f, 0.3f, 9, 9, 9),
-                                              sv(4.2f, 24.4f, 0.8f, 9, 9, 9)};
-    /* Three centres across and two down: one depth for all. */
-    const r3d_span_vertex_t flat[3] = {sv(10.2f, 10.2f, 0.3f, 9, 9, 9), sv(13.1f, 10.4f, 0.5f, 9, 9, 9),
-                                       sv(11.0f, 12.1f, 0.8f, 9, 9, 9)};
-    const r3d_span_vertex_t* const all[] = {nearer_down, nearer_up, nearer_right, nearer_left, flat};
-    for (size_t i = 0; i < sizeof all / sizeof all[0]; i++) {
-        assert_the_bound_is_exact(c, 0, all[i]);
-        assert_the_bound_is_exact(c, c->h / 2, all[i]);
+    static const float points[][3][3] = {
+        {{8.3f, 4.2f, 0.3f}, {56.6f, 4.2f, 0.3f}, {31.7f, 44.1f, 0.8f}},
+        {{8.3f, 44.1f, 0.3f}, {56.6f, 44.1f, 0.3f}, {31.7f, 4.2f, 0.8f}},
+        {{4.2f, 6.3f, 0.3f}, {4.2f, 42.6f, 0.3f}, {60.1f, 24.4f, 0.8f}},
+        {{60.1f, 6.3f, 0.3f}, {60.1f, 42.6f, 0.3f}, {4.2f, 24.4f, 0.8f}},
+        {{10.2f, 10.2f, 0.3f}, {13.1f, 10.4f, 0.5f}, {11.0f, 12.1f, 0.8f}},
+    };
+    r3d_span_vertex_t triangle[3];
+    for (size_t i = 0; i < sizeof points / sizeof points[0]; i++) {
+        grey_triangle(points[i], triangle);
+        assert_the_bound_is_exact(c, 0, triangle);
+        assert_the_bound_is_exact(c, c->h / 2, triangle);
     }
 }
 
@@ -841,19 +846,17 @@ static void
 test_one_open_pixel_anywhere_in_the_box_draws_the_triangle(void) {
     const canvas_t* c = canvas_open(W, H);
     /* Edges on pixel edges, so the box's last row and column are covered. */
-    const r3d_span_vertex_t upper[3] = {sv(4.0f, 4.0f, 0.5f, 9, 9, 9), sv(40.0f, 4.0f, 0.5f, 9, 9, 9),
-                                        sv(40.0f, 30.0f, 0.6f, 9, 9, 9)};
-    const r3d_span_vertex_t lower[3] = {sv(4.0f, 4.0f, 0.5f, 9, 9, 9), sv(4.0f, 30.0f, 0.5f, 9, 9, 9),
-                                        sv(40.0f, 30.0f, 0.6f, 9, 9, 9)};
-    const r3d_span_vertex_t past_both_sides[3] = {sv(-20.0f, 5.0f, 0.5f, 9, 9, 9),
-                                                  sv((float)W + 20.0f, 8.0f, 0.6f, 9, 9, 9),
-                                                  sv(10.0f, (float)H + 10.0f, 0.4f, 9, 9, 9)};
-    const r3d_span_vertex_t guard_band[3] = {sv(-900.0f, -800.0f, 0.5f, 9, 9, 9), sv(900.0f, 10.0f, 0.6f, 9, 9, 9),
-                                             sv(-800.0f, 900.0f, 0.4f, 9, 9, 9)};
-    const r3d_span_vertex_t* const all[] = {upper, lower, past_both_sides, guard_band};
-    for (size_t i = 0; i < sizeof all / sizeof all[0]; i++) {
-        assert_each_extreme_pixel_is_found(c, 0, all[i]);
-        assert_each_extreme_pixel_is_found(c, c->h / 2, all[i]);
+    static const float points[][3][3] = {
+        {{4.0f, 4.0f, 0.5f}, {40.0f, 4.0f, 0.5f}, {40.0f, 30.0f, 0.6f}},
+        {{4.0f, 4.0f, 0.5f}, {4.0f, 30.0f, 0.5f}, {40.0f, 30.0f, 0.6f}},
+        {{-20.0f, 5.0f, 0.5f}, {(float)W + 20.0f, 8.0f, 0.6f}, {10.0f, (float)H + 10.0f, 0.4f}},
+        {{-900.0f, -800.0f, 0.5f}, {900.0f, 10.0f, 0.6f}, {-800.0f, 900.0f, 0.4f}},
+    };
+    r3d_span_vertex_t triangle[3];
+    for (size_t i = 0; i < sizeof points / sizeof points[0]; i++) {
+        grey_triangle(points[i], triangle);
+        assert_each_extreme_pixel_is_found(c, 0, triangle);
+        assert_each_extreme_pixel_is_found(c, c->h / 2, triangle);
     }
 }
 
@@ -986,8 +989,7 @@ static void
 test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does(void) {
     const r3d_span_vertex_t a = sv(10.4f, 0.2f, 0.2f, 255, 0, 0), b = sv(12.4f, 0.2f, 0.9f, 0, 255, 0);
     const r3d_span_vertex_t c = sv(11.4f, 20.0f, 0.5f, 0, 0, 255);
-    r3d_span_target_t t = fixture();
-    r3d_span_triangle(&t, &a, &b, &c);
+    (void)draw_fixture_triangle(&a, &b, &c);
     gfx_color_t* whole_color = malloc(sizeof(*whole_color) * W * H);
     uint16_t* whole_depth = malloc(sizeof(*whole_depth) * W * H);
     TEST_ASSERT_NOT_NULL(whole_color);
@@ -995,11 +997,7 @@ test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does(v
     memcpy(whole_color, color, sizeof(*color) * W * H);
     memcpy(whole_depth, depth, sizeof(*depth) * W * H);
     for (int split = 1; split <= 3; split++) {
-        t = fixture();
-        const r3d_span_target_t top = fixture_rows(0, split);
-        const r3d_span_target_t bottom = fixture_rows(split, H);
-        r3d_span_triangle(&top, &a, &b, &c);
-        r3d_span_triangle(&bottom, &a, &b, &c);
+        draw_fixture_split(split, &a, &b, &c);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(whole_depth, depth, W * H, "a window changed a pixel's depth");
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(whole_color, color, W * H, "a window changed a pixel's colour");
     }
