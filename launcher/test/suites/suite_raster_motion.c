@@ -1,10 +1,5 @@
-/*
- * Portable suite: raster_motion.h's attachment against motion worked out
- * apart from it. Each expected vector comes from a ray cast through the
- * pixel at the analytic quads the meshes are, the point it hits carried to
- * where it was and projected through the previous camera's own basis: no
- * depth buffer and none of the attachment's matrices.
- */
+/* Independent motion expectations use analytic ray intersections projected
+ * through the previous camera, without depth buffers or attachment matrices. */
 
 #include <math.h>
 #include <stdbool.h>

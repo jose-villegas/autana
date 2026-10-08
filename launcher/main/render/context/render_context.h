@@ -74,8 +74,9 @@ void render_context_set_debug_view(render_context_t* context, raster_show_t mode
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count, const camera_t* camera,
                          uint16_t clear, int quarter, int width, int height);
 
-/* Upscales the last draw into `destination`, of the size it was drawn for,
- * and feeds the frame's cost to dynamic resolution. */
-void render_context_compose(render_context_t* context, uint16_t* destination);
+/* With `half`, copies an exact-half draw there at its drawn size and
+ * returns true; otherwise upscales into `destination` at the camera's
+ * destination size. Either path feeds its cost to dynamic resolution. */
+bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);
 
 render_context_frame_t render_context_frame(const render_context_t* context);

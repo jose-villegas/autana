@@ -22,6 +22,7 @@ Options:
   --header-limit N  also fail if any file header is taller than N lines
   --changed REF check only files that differ from REF (the enforcement gate)
   --staged      check only files staged for commit
+  --paths FILE...  check complete files with the default source exclusions
   --exit-zero   always exit 0, even with violations
 
   --comments-only REF   check nothing about length: assert instead that every
@@ -137,6 +138,10 @@ def relative_to_root(path):
 
 
 def main(argv):
+    selected = None
+    if "--paths" in argv:
+        at = argv.index("--paths")
+        selected, argv = argv[at + 1:], argv[:at]
     limit, top, per_file, include_all, exit_zero = 300, 20, False, False, False
     no_banners, header_limit = False, None
     changed_ref, staged, comments_only_ref = None, False, None
@@ -179,7 +184,10 @@ def main(argv):
     if comments_only_ref is not None:
         return verify_comments_only(comments_only_ref, paths)
 
-    if explicit:
+    if selected is not None:
+        paths = [p for p in selected if p.endswith((".c", ".h", ".cpp", ".hpp"))
+                 and not p.startswith(EXCLUDED) and pathlib.Path(p).is_file()]
+    elif explicit:
         pass
     elif changed_ref is not None or staged:
         paths = changed_files(changed_ref or "")
