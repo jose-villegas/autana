@@ -6,6 +6,14 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
+## Generated files
+
+<!-- generated: generated-files-render-lab sha256=d4251689721ad9a1de4306e41c402135d1c1365636be9b6b88c038de6d290d90 -->
+| Output | Generator | Run in | Command |
+|---|---|---|---|
+| [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
+<!-- /generated: generated-files-render-lab -->
+
 ## Host renders
 
 ```sh
@@ -71,7 +79,7 @@ its scene by name rather than through the menu:
 | Command | Does |
 |---|---|
 | `autana render scenes` | every scene's key and name, and which one is showing |
-| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza` or `sponza-lite` |
+| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana render partial on\|off` | partial updates, as the menu's toggle sets them |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
@@ -82,7 +90,7 @@ be checked to have measured the same thing.
 
 ## Images in the docs
 
-`doc_images.sh` here makes these in `docs/images/overview/` and `docs/images/render/`, run by
+`doc_images.sh` here makes these in `docs/images/overview/`, run by
 `launcher/tools/render/render_doc_images.sh`; see "Images in these docs" in
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
@@ -91,80 +99,20 @@ be checked to have measured the same thing.
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
-| `render/sponza-{full,lite,flat,fitted,fitted-full,flat-fitted}.gif` | the same three seconds of the flythrough, one GIF per bake |
-| `render/sponza-{depth,tiles,motion-vectors}.gif` | those three seconds as the depth, depth-tile and motion-vector views of the full bake |
-| `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#fidelity-against-the-source)) |
-| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the physical reference beside the smooth bake without and with indirect light (the scene's physical look, bakes made without and with that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#indirect-light)) |
-| `render/bake-indirect-look.png` | the physical reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#indirect-look)) |
-| `render/bake-ao-compare.png`, `render/bake-ao-crops.png`, `render/bake-ao-map.png` | the reference beside the smooth bake without and with local occlusion at two poses with error heatmaps, the places they differ most, and the occlusion factor alone beside the reference ([Bake-Quality.md](../../../../../docs/render/Bake-Quality.md#local-occlusion)) |
-| `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
-| `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
-| `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
-| `render/compare-flat-flat-fitted.png`, `.crops.png` | flat against the flat fitted mesh, the same way |
-| `render/appearance-{chosen,fitted-full}-heat.png`, `-reference.crops.png` | each fitted mesh against the reference: its heatmap sheet and the places it differs most (fitted full also its `-reference.png` sheet) |
-| `render/import-light.png`, `render/import-face-samples.png` | CPU albedo against baked light, and fixed face sampling against adaptive |
-| `render/gpu/*.png` | GPU recipe comparisons, path-cull differences, normal heatmaps and the budget/cost Pareto sheet |
 
-## Refreshing the bake comparisons
-
-The measured comparisons of bakes are in
-[Bake-Quality.md](../../../../../docs/render/Bake-Quality.md); these commands
-regenerate its images and tables. Each `sponza*` scene draws one of the bakes
-`sponza_bakes` lists in sponza_content.c.
-`tests/test_sky_through_walls.py` flies the full, flat and lite bakes and fails
-when more frames show sky through a wall than its ceiling allows.
-`autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
-line (`test_sponza_frame_cost_along_the_flythrough`), the reading the board
-stage below takes.
-
-The import-light and face-sampling examples are regenerated by the CPU stage
-with its albedo bake and flat-sampling sweep.
-
-The `doc-images-gpu` workflow runs the full GPU stage on the self-hosted
-Linux GPU runner and opens or updates its own refresh PR,
-"docs: refresh GPU-rendered images", on `feature/refresh-doc-images-gpu`.
-It runs weekly, on manual dispatch, and on main pushes affecting its inputs.
-
-For a local run from Git Bash, use the documented WSL Ubuntu CUDA environment
-with both r3d requirements files installed. Host C/C++ compilers are needed
-for scoring. Run one GPU job at a time. The guard checks memory at stage
-start; later workers are admitted against live memory, as described in
-[Render-Harness](../../../../../docs/tools/Render-Harness.md#images-in-these-docs).
+Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
 ```sh
-DOC_PROJECT=$(pwd -W)
-MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 --cd "$DOC_PROJECT" -- bash -lc 'sh launcher/tools/render/run_doc_gpu.sh'
-MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 --cd "$DOC_PROJECT" -- bash -lc 'sh launcher/tools/render/run_doc_gpu.sh --check'
+PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out /path/to/work
 ```
 
-`--smoke` fits a few steps on a small reference set and writes scratch data
-only. It cannot update or check doc images. Full output is under
-`launcher/tools/results/doc_images/out/gpu/`; GPU images publish to
-`docs/images/render/gpu/`. CPU refreshes neither check nor remove GPU output.
-`--check` verifies the full stage's saved source stamp, tables and pixels,
-without training a second stochastic fit.
-
-Collect the perf-suite captures from the same diagnostics image, retaining
-its build identity in each capture. Pass one `--capture` per run:
-
-```sh
-python launcher/tools/render/doc_stages.py --stage board --capture /path/to/run1.txt --capture /path/to/run2.txt
-python launcher/tools/render/doc_stages.py --stage board --capture /path/to/run1.txt --capture /path/to/run2.txt --check
-```
-
-The stage rejects missing variants, per-pose timings, failed suites and
-mismatched build identities. `--build-commit SHA` accepts a capture from that commit only when the firmware
-sources still match; this lets a documentation-only commit retain its captures.
-It rewrites the board tables and
-`launcher/tools/r3d/board_cost_weights.txt`. Refresh GPU predictions after
-changing those weights. Board readings for scratch budget-sweep meshes need
-a firmware capture of those meshes; predicted ms is labelled separately.
+`tests/test_sky_through_walls.py`
+checks the app flythrough against its sky-through-wall ceilings.
 
 ## Sponza poses
 
-The flythrough is a glTF camera animation,
-`launcher/demo/sponza/flythrough.glb`, named by
-`launcher/demo/sponza/flythrough.anim.toml`. Its poses for
+The flythrough is a glTF camera animation, `launcher/demo/sponza/flythrough.glb`,
+named by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
 [`report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses

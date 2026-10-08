@@ -2,10 +2,8 @@
 """Score scratch bakes of one flat mesh against a source reference.
 
     python launcher/tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh NAME \\
-        --script HOST_RENDER.sh --render-args "ARGS" --reference DIR --work DIR \\
+        --host EXECUTABLE --render-args "ARGS" --reference DIR --work DIR \\
         [--variant LABEL=SPEC ...]
-
---host EXECUTABLE reuses an existing renderer instead of building --script.
 
 Each variant re-lights the mesh's simplified geometry, which is baked once,
 writes the result under --work (nothing tracked is touched), packs it in
@@ -80,18 +78,19 @@ def declared_samples(renderer, median):
     return samples, low, high, median if samples == "auto" and area is None else area
 
 
-def build_host(script, out_dir):
+def build_host(script, out_dir, scene):
     """The scene's host renderer; returns its path."""
-    done = subprocess.run(["sh", script.as_posix(), "--build-only", "-o", out_dir.as_posix()], capture_output=True, text=True,
+    inputs = [scene.as_posix()]
+    done = subprocess.run(["sh", script.as_posix(), *inputs, "--build-only", "-o", out_dir.as_posix()], capture_output=True, text=True,
                           check=True)
     return pathlib.Path(done.stdout.split("built ", 1)[1].strip())
 
 
-def write_assets(name, mesh_file, out):
-    """The asset packs of every root in the tree, mesh `name` taken from
-    `mesh_file`, written to out/assets; returns that folder."""
+def write_assets(name, mesh_file, out, scene):
+    """Pack the supplied scene with one scratch mesh;
+    returns out/assets."""
     assets = out / "assets"
-    write_packs(assets, pack_bytes([LAUNCHER / "main"], [f"{name}={mesh_file}"]))
+    write_packs(assets, pack_bytes([scene], [f"{name}={mesh_file}"]))
     return assets
 
 
@@ -132,9 +131,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene")
     parser.add_argument("--mesh", required=True, help="the scene object, a flat renderer, to re-bake")
-    host_group = parser.add_mutually_exclusive_group(required=True)
-    host_group.add_argument("--host", help="an already built host renderer")
-    host_group.add_argument("--script", help="the scene's host-render script")
+    parser.add_argument("--host", required=True, help="an already built host renderer")
     parser.add_argument("--render-args", required=True, help="the host renderer's arguments, without -o and --video")
     parser.add_argument("--reference", required=True, help="reference_render.py's output directory")
     parser.add_argument("--reference-scale", type=int, default=2, help="host render pixels per reference pixel")
@@ -151,14 +148,14 @@ def main(argv=None):
     log(f"geometry of {variant.name}")
     geometry = bake_geometry(job, scene)
     work = pathlib.Path(args.work).resolve()
-    host = pathlib.Path(args.host).resolve() if args.host else build_host(pathlib.Path(args.script).resolve(), work / "host")
+    host = pathlib.Path(args.host).resolve()
     rows = []
     for item in args.variant or ["declared="]:
         label, _, spec = item.partition("=")
         out = work / label
         log(f"variant {label}")
         mesh_file = write_variant(job, scene, geometry, spec, out)
-        rows.append((label, score(args, host, write_assets(job.asset_name, mesh_file, out), out)))
+        rows.append((label, score(args, host, write_assets(job.asset_name, mesh_file, out, pathlib.Path(args.scene)), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
     (work / "table.md").write_text(table(rows) + "\n")

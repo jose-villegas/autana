@@ -19,13 +19,9 @@
 Apps keep their own generators in `apps/<name>/tools/`; the rules are the
 same. Every checked-in output, from the banner each one carries:
 
-<!-- generated: generated-files sha256=a224beefccab4bd1f59de7915a3c1b887f1da7eefbabd376ab8350009e807975 -->
+<!-- generated: generated-files sha256=e65448642cfc35e527d28ea71ae57f1bdd80486508e717e2c862b6d7b7f13907 -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
-| [wire_primitives_generated.h](../../main/apps/render_lab/wire_primitives_generated.h) | [gen_wire_primitives.py](../../main/apps/render_lab/tools/gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
-| [icons_dither.h](../../main/apps/sand/icons_dither.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h` |
-| [icons_sand.h](../../main/apps/sand/icons_sand.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/sand.png main/apps/sand/icons/sand.json > main/apps/sand/icons_sand.h` |
-| [sand_palette256.h](../../main/apps/sand/sand_palette256.h) | [report_shading_palette.sh](../../main/apps/sand/tools/report_shading_palette.sh) | `launcher/` | `main/apps/sand/tools/report_shading_palette.sh main/apps/sand/sand_palette256.h` |
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
 | [boot_anim_image.h](../../main/boot/boot_anim_image.h) | [gen_boot_anim_image.py](gen_boot_anim_image.py) | `launcher/` | `python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h` |
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |

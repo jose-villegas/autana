@@ -18,6 +18,9 @@ class EngineDocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             script = root / "launcher/tools/render/render_doc_images.sh"
             script.parent.mkdir(parents=True)
+            helper = root / "scripts/lib/run.sh"
+            helper.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
             setup = SCRIPT.read_text(encoding="utf-8").split("# The one orphan report:")[0]
             script.write_text(setup + command, encoding="utf-8")
             return subprocess.run(["sh", script.as_posix()], capture_output=True, text=True)

@@ -129,6 +129,18 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.pixels("--object", "card", "--video", str(video))
         self.assertEqual(video.read_bytes()[:4], b"RIFF")
 
+    def test_wrapper_build_only_uses_the_requested_directory_and_never_renders(self):
+        out = self.root / "build only"
+        wrapper = TOOLS / "render/scene_viewer.sh"
+        done = subprocess.run([shutil.which("sh"), str(wrapper), str(self.scene), "--build-only", "-o", str(out)],
+                              cwd=self.root, capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        binary = out / self.binary.name
+        self.assertTrue(binary.is_file())
+        self.assertEqual(done.stdout.replace("\\", "/").splitlines(), ["built " + binary.as_posix()])
+        self.assertFalse(list(out.rglob("*.bmp")))
+        self.assertFalse((self.root / "out.bmp").exists())
+
     def test_wrapper_builds_the_pack_from_a_scene_outside_the_repository(self):
         target = self.root / "wrapper.bmp"
         wrapper = TOOLS / "render/scene_viewer.sh"
@@ -141,3 +153,31 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertEqual(image.size, (448, 368))
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0),
                                1000)
+
+    def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
+        scratch = self.root / "scratch mesh"
+        scratch.mkdir()
+        positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
+        write_lit_mesh(scratch, "replacement", positions, np.array([[16, 40, 255]] * 3),
+                       np.array([[0, 1, 2]]), np.array([True]))
+        original = (self.root / "card.mesh").read_bytes()
+        out = self.root / "replacement host"
+        built = subprocess.run([sys.executable, str(TOOLS / "r3d/build_pack.py"), "-o", str(out / "assets"),
+                                str(self.scene), "--replace", f"card={scratch / 'replacement.mesh'}"],
+                               capture_output=True, text=True, timeout=120)
+        self.assertEqual(built.returncode, 0, built.stderr)
+        target = out / "frame.bmp"
+        env = dict(os.environ, AUTANA_ASSET_DIR=str(out / "assets"))
+        rendered = subprocess.run([str(self.binary), "--scene", "room",
+                                   "--object", "card", "--frames", "2", "-o", str(target)],
+                                  env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(rendered.returncode, 0, rendered.stderr)
+        with Image.open(target) as image:
+            self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((16, 40, 255), 0),
+                               1000)
+        self.assertEqual((self.root / "card.mesh").read_bytes(), original)
+
+        original_run, original_frame = self.render("--object", "card")
+        self.assertEqual(original_run.returncode, 0, original_run.stderr)
+        with Image.open(original_frame) as image:
+            self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0), 1000)
