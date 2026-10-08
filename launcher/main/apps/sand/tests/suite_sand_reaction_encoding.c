@@ -89,24 +89,26 @@ assert_reaction_field_never_bare_extended(uint8_t v, const char* field, const ch
  * count) on one reaction row - shared by both halves of the loop below so
  * the same sixteen fields are never checked by two verbatim copies that
  * could drift apart. */
+#define ASSERT_NEVER_BARE_EXTENDED(field) assert_reaction_field_never_bare_extended(r->field, #field, owner)
+
 static void
 assert_reaction_row_never_mints_bare_extended(const reaction_t* r, const char* owner) {
-    assert_reaction_field_never_bare_extended(r->ignites_to, "ignites_to", owner);
-    assert_reaction_field_never_bare_extended(r->boils_to, "boils_to", owner);
-    assert_reaction_field_never_bare_extended(r->quench_to, "quench_to", owner);
-    assert_reaction_field_never_bare_extended(r->condenses_to, "condenses_to", owner);
-    assert_reaction_field_never_bare_extended(r->heats_to, "heats_to", owner);
-    assert_reaction_field_never_bare_extended(r->flaw_to, "flaw_to", owner);
-    assert_reaction_field_never_bare_extended(r->spoils_to, "spoils_to", owner);
-    assert_reaction_field_never_bare_extended(r->soaks_to, "soaks_to", owner);
-    assert_reaction_field_never_bare_extended(r->soaked_to, "soaked_to", owner);
-    assert_reaction_field_never_bare_extended(r->hardens_to, "hardens_to", owner);
-    assert_reaction_field_never_bare_extended(r->clings_to, "clings_to", owner);
-    assert_reaction_field_never_bare_extended(r->roots_to, "roots_to", owner);
-    assert_reaction_field_never_bare_extended(r->canopy_to, "canopy_to", owner);
-    assert_reaction_field_never_bare_extended(r->sprouts_to, "sprouts_to", owner);
-    assert_reaction_field_never_bare_extended(r->buds_to, "buds_to", owner);
-    assert_reaction_field_never_bare_extended(r->shatters_to, "shatters_to", owner);
+    ASSERT_NEVER_BARE_EXTENDED(ignites_to);
+    ASSERT_NEVER_BARE_EXTENDED(boils_to);
+    ASSERT_NEVER_BARE_EXTENDED(quench_to);
+    ASSERT_NEVER_BARE_EXTENDED(condenses_to);
+    ASSERT_NEVER_BARE_EXTENDED(heats_to);
+    ASSERT_NEVER_BARE_EXTENDED(flaw_to);
+    ASSERT_NEVER_BARE_EXTENDED(spoils_to);
+    ASSERT_NEVER_BARE_EXTENDED(soaks_to);
+    ASSERT_NEVER_BARE_EXTENDED(soaked_to);
+    ASSERT_NEVER_BARE_EXTENDED(hardens_to);
+    ASSERT_NEVER_BARE_EXTENDED(clings_to);
+    ASSERT_NEVER_BARE_EXTENDED(roots_to);
+    ASSERT_NEVER_BARE_EXTENDED(canopy_to);
+    ASSERT_NEVER_BARE_EXTENDED(sprouts_to);
+    ASSERT_NEVER_BARE_EXTENDED(buds_to);
+    ASSERT_NEVER_BARE_EXTENDED(shatters_to);
 }
 
 /* Every "_to"-shaped field must never hold 15. GUNPOWDER_LIT_CELL (0xFF) is
@@ -347,20 +349,14 @@ test_dropping_the_acid_rain_identity_flag_dispatches_late(void) {
 
 static void
 test_ice_cracks_hot_glass_and_stays_where_it_is_put(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     for (int x = 1; x < W - 1; x++) {
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
         sand_set(&s, x, H - 3, MATX(MATX_ICE));
     }
     const int ice_x = 1, ice_y = H - 3;
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_GLASS),
                                   "ice against glass at the top of its ramp must crack it, the same "
@@ -410,21 +406,11 @@ snow_float_scan(void) {
 static void
 test_snow_floats_on_water(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int y = H - 4; y < H - 1; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-    for (int x = 2; x < W - 2; x++) {
-        sand_set(&s, x, 0, SNOW);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 0, W, H - 4, H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(&s, 2, W - 2, 0, 1, SNOW);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     const snow_float_extents_t e = snow_float_scan();
 
@@ -449,15 +435,11 @@ test_glass_conducts_heat_like_stone(void) {
     /* And in the simulation, not only in the table: a sealed vessel with
      * water in it and fire underneath. */
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
+    fill_box(&s, 0, W, H - 1, H, GLASS);
     for (int x = 1; x < W - 1; x++) {
         sand_set(&s, x, H - 3, GLASS); /* the vessel's base */
     }
-    for (int x = 2; x < W - 2; x++) {
-        sand_set(&s, x, H - 4, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&s, 2, W - 2, H - 4, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     bool boiled = false;
     for (int i = 0; i < 400 && !boiled; i++) {
@@ -481,12 +463,8 @@ test_glass_conducts_heat_like_stone(void) {
 static void
 test_sand_turns_to_glass_under_sustained_heat(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
+    fill_box(&s, 0, W, H - 1, H, GLASS);
+    fill_box(&s, 1, W - 1, H - 2, H - 1, CELL_MAKE(MAT_SAND, 8));
 
     /* A flame held against it, re-laid each step: fire is KIND_GAS and
      * rises away during the same step it is placed, so a single spark
@@ -513,9 +491,7 @@ test_acid_spends_at_least_a_unit_of_itself_per_cell_dissolved(void) {
     const long acid_before = acid_tank(2, 2);
     const int sand_before = count_cells_of(MAT_SAND);
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     const int eaten = sand_before - count_cells_of(MAT_SAND);
     const long spent = acid_before - mass_held_by(MAT_ACID);
@@ -535,9 +511,7 @@ static void
 test_acid_dissolves_dune_sand_but_not_cullet(void) {
     fixture();
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
+    fill_box(&s, 0, W, H - 1, H, GLASS);
     for (int y = 0; y < H - 1; y++) {
         sand_set(&s, 4, y, GLASS); /* keeps the two acid columns from ever meeting */
     }
@@ -550,9 +524,7 @@ test_acid_dissolves_dune_sand_but_not_cullet(void) {
         sand_set(&s, cullet_x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
     }
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, dune_x, H - 2)),
                                   "control: acid must still dissolve ordinary dune sand, or this test "
@@ -588,16 +560,8 @@ acid_fizz_fixture(uint8_t* cells) {
     sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5u);
     sand_set_evaporates(&fx.fizz_sim, 0); /* isolate fizz, see the tests'
                                           * own comments for why */
-    for (int y = 4; y < FIZZ_H; y++) {
-        for (int x = 0; x < FIZZ_W; x++) {
-            sand_set(&fx.fizz_sim, x, y, CELL_MAKE(MAT_SAND, 8));
-        }
-    }
-    for (int y = 0; y < 3; y++) {
-        for (int x = 0; x < FIZZ_W; x++) {
-            sand_set(&fx.fizz_sim, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
-        }
-    }
+    fill_box(&fx.fizz_sim, 0, FIZZ_W, 4, FIZZ_H, CELL_MAKE(MAT_SAND, 8));
+    fill_box(&fx.fizz_sim, 0, FIZZ_W, 0, 3, CELL_MAKE(MAT_ACID, MASS_MAX));
 }
 
 static void
@@ -986,9 +950,9 @@ test_acid_evaporates_into_gas_when_forced(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "a cell of acid with evaporates forced to 255 must turn to gas "
-                                  "in a single step");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, 3,
+                       "a cell of acid with evaporates forced to 255 must turn to gas "
+                       "in a single step");
 }
 
 /* SAND_ACID_DILUTE_MASS_BIAS's point, proven by comparing the pour with
@@ -1016,22 +980,15 @@ acid_water_pour_fixture(uint8_t* cells, material_id_t pool) {
                                                 * evaporates roll - same
                                                 * reasoning as the other
                                                 * dilution fixtures above. */
-    for (int x = 0; x < DILUTE_POUR_W; x++) {
-        sand_set(&fx.dilute_pour_sim, x, DILUTE_POUR_H - 1, STONE);
-    }
-    for (int y = DILUTE_POUR_H - 1 - DILUTE_POUR_POOL_DEPTH; y < DILUTE_POUR_H - 1; y++) {
-        for (int x = 0; x < DILUTE_POUR_W; x++) {
-            sand_set(&fx.dilute_pour_sim, x, y, CELL_MAKE(pool, MASS_MAX));
-        }
-    }
+    fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_W, DILUTE_POUR_H - 1, DILUTE_POUR_H, STONE);
+    fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_W, DILUTE_POUR_H - 1 - DILUTE_POUR_POOL_DEPTH, DILUTE_POUR_H - 1,
+             CELL_MAKE(pool, MASS_MAX));
 }
 
 static void
 pour_and_count(material_id_t tap, int* out_pool_mat, int* out_tap_mat) {
     for (int i = 0; i < DILUTE_POUR_STEPS; i++) {
-        for (int x = 0; x < DILUTE_POUR_W; x++) {
-            sand_set(&fx.dilute_pour_sim, x, 0, CELL_MAKE(tap, MASS_MAX));
-        }
+        fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_W, 0, 1, CELL_MAKE(tap, MASS_MAX));
         sand_step(&fx.dilute_pour_sim, 0, 1000, 0);
     }
 
@@ -1072,9 +1029,7 @@ pour_and_measure_tap_gain(material_id_t pool, material_id_t tap, int bias) {
 /* The two side walls and floor the contest pours into. */
 static void
 acid_water_contest_build_walls(sand_t* g, int gw, int gh) {
-    for (int x = 0; x < gw; x++) {
-        sand_set(g, x, gh - 1, STONE);
-    }
+    fill_box(g, 0, gw, gh - 1, gh, STONE);
     for (int y = 6; y < gh; y++) {
         sand_set(g, 4, y, STONE);
         sand_set(g, gw - 5, y, STONE);
@@ -1131,9 +1086,7 @@ acid_water_contest(int water_pct, int* water_left, int* acid_left) {
     for (int i = 0; i < POUR; i++) {
         acid_water_contest_pour(&g, TAPW, TAP0, wcols);
     }
-    for (int i = 0; i < SETTLE; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, SETTLE, 0, 1000);
 
     acid_water_contest_count(&g, GW, GH, water_left, acid_left);
     free(cells);
@@ -1207,22 +1160,14 @@ static void
 test_a_little_acid_cannot_eat_an_unlimited_amount(void) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int y = 2; y < H - 1; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_SAND, 8));
-        }
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 0, W, 2, H - 1, CELL_MAKE(MAT_SAND, 8));
     const int sand_before = count_cells_of(MAT_SAND);
     /* One cell of acid: MASS_MAX units, so at one unit a cell it can
      * account for at most MASS_MAX cells however long it is left. */
     sand_set(&s, W / 2, 1, CELL_MAKE(MAT_ACID, MASS_MAX));
 
-    for (int i = 0; i < 2000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 2000, 0, 1000);
 
     const int eaten = sand_before - count_cells_of(MAT_SAND);
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(MASS_MAX, eaten,
@@ -1324,12 +1269,8 @@ test_water_does_not_drill_into_oil_when_tilted(void) {
     for (int k = 0; k < seeds; k++) {
         drag_test_build_scene(&g, drag_cells, (uint32_t)(11 + k));
 
-        for (int i = 0; i < 60; i++) {
-            sand_step(&g, 0, 1000, 0);
-        }
-        for (int i = 0; i < 300; i++) {
-            sand_step(&g, 700, 700, 0);
-        }
+        run_steps(&g, 60, 0, 1000);
+        run_steps(&g, 300, 700, 700);
         total += water_inside_oil(&g);
     }
 
@@ -1359,9 +1300,7 @@ test_oil_flows_more_slowly_than_water(void) {
     for (int k = 0; k < 2; k++) {
         sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
         sand_set_mobility(&wide, SAND_MOBILITY_PER_MATERIAL);
-        for (int x = 0; x < WIDE_W; x++) {
-            sand_set(&wide, x, WIDE_H - 1, STONE);
-        }
+        fill_box(&wide, 0, WIDE_W, WIDE_H - 1, WIDE_H, STONE);
         for (int y = 1; y <= WIDE_H - 2; y++) {
             for (int x = 1; x <= 4; x++) {
                 sand_set(&wide, x, y, CELL_MAKE(liquids[k], MASS_MAX));
@@ -1428,9 +1367,7 @@ test_oil_trapped_under_water_floats_to_the_surface(void) {
         sand_set(&s, x, 6, OIL); /* underneath the whole column */
     }
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     /* Oil must be above water, not strictly by row, due to half-full cells
      * and non-mixing liquids. */
@@ -1452,20 +1389,14 @@ test_oil_trapped_under_water_floats_to_the_surface(void) {
 static void
 test_sand_floats_on_oil(void) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, OIL);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, OIL);
     sand_set(&s, 3, 3, SAND);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, 4)),
-                                  "sand must rest on top of an oil pool rather than sink into it, "
-                                  "despite being denser");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, 4,
+                       "sand must rest on top of an oil pool rather than sink into it, "
+                       "despite being denser");
 }
 
 /* The exception is named by material id, not by kind or density band, so
@@ -1475,21 +1406,15 @@ test_sand_floats_on_oil(void) {
 static void
 test_dirt_still_sinks_through_oil(void) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, OIL);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, OIL);
     sand_set(&s, 3, 3, CELL_SOIL(MAT_DIRT, 1, 0));
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_DIRT, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "dirt is not sand, and the sand/oil exception must not have "
-                                  "spread to it - dirt is denser than oil and must still sink "
-                                  "all the way through the pool");
+    ASSERT_MATERIAL_AT(MAT_DIRT, 3, H - 1,
+                       "dirt is not sand, and the sand/oil exception must not have "
+                       "spread to it - dirt is denser than oil and must still sink "
+                       "all the way through the pool");
 }
 
 /* Lava is the first material that is a liquid AND a heat source, so it
@@ -1503,21 +1428,17 @@ test_lava_does_not_decay_away(void) {
      * 0, so tick_decay() never reads its variant nibble and never eats the
      * cell's mass. A one-cell-wide well. Penning lava in tests DECAY, not
      * flow. */
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 4, H - 2, STONE);
     sand_set(&s, 3, H - 2, LAVA);
 
-    for (int i = 0; i < 4 * MATERIAL_VARIANTS; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 4 * MATERIAL_VARIANTS, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "lava must be immortal - its variant nibble is a FILL LEVEL, "
-                                  "not life remaining, so any decay at all would consume the "
-                                  "cell's own mass");
+    ASSERT_MATERIAL_AT(MAT_LAVA, 3, H - 2,
+                       "lava must be immortal - its variant nibble is a FILL LEVEL, "
+                       "not life remaining, so any decay at all would consume the "
+                       "cell's own mass");
     TEST_ASSERT_EQUAL_INT_MESSAGE(CELL_VARIANT(LAVA), CELL_VARIANT(sand_at(&s, 3, H - 2)),
                                   "and at exactly the mass it was placed with, not merely present "
                                   "- a decay tick reads the variant nibble as life and would show "
@@ -1535,10 +1456,10 @@ test_water_freezes_lava_into_stone(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "lava quenched by water must become stone, not vanish - "
-                                  "reaction_t.quench_to, the same field that turns a quenched "
-                                  "fire into steam");
+    ASSERT_MATERIAL_AT(MAT_STONE, 3, 3,
+                       "lava quenched by water must become stone, not vanish - "
+                       "reaction_t.quench_to, the same field that turns a quenched "
+                       "fire into steam");
 }
 
 /* Guards may_have_heat_holder's arm-only design (sand.h/sand_priv.h):
@@ -1680,11 +1601,7 @@ static void
 test_a_lava_pool_in_a_dry_stone_bowl_does_not_freeze_itself(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     sand_set(&s, W / 2, H / 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_cooloff(&s, 255);
     /* Same reasoning as test_lava_buried_in_stone_is_not_deleted's own
@@ -1694,9 +1611,7 @@ test_a_lava_pool_in_a_dry_stone_bowl_does_not_freeze_itself(void) {
     sand_set_lava_burst(&s, 0);
     const int before = liquid_mass_of(MAT_LAVA);
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "lava buried in dry stone, with the cool-off chance pinned to its "
@@ -1721,12 +1636,12 @@ test_lava_that_melts_sand_into_glass_sometimes_freezes_itself(void) {
     TEST_ASSERT_TRUE_MESSAGE(melted, "setup: sand beside lava must melt to glass within this budget, "
                                      "or this test never reached the event trigger A exists to charge "
                                      "for");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "with the cool-off chance pinned to its maximum, lava that just "
-                                  "did the WORK of a genuine melt must pay for it - the lava cell "
-                                  "itself must become stone in that same step, or trigger A is "
-                                  "dead code the negative guard above would never catch on its "
-                                  "own");
+    ASSERT_MATERIAL_AT(MAT_STONE, 3, 3,
+                       "with the cool-off chance pinned to its maximum, lava that just "
+                       "did the WORK of a genuine melt must pay for it - the lava cell "
+                       "itself must become stone in that same step, or trigger A is "
+                       "dead code the negative guard above would never catch on its "
+                       "own");
 
     fire_room(3, 4);
     sand_set(&s, 3, 3, LAVA);
@@ -1742,9 +1657,9 @@ test_lava_that_melts_sand_into_glass_sometimes_freezes_itself(void) {
     TEST_ASSERT_TRUE_MESSAGE(melted, "setup: sand beside lava must melt to glass within this budget "
                                      "with the cool-off chance pinned OFF too, or the two halves of "
                                      "this test are not actually comparable");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "with the cool-off chance pinned to zero, the exact same melt "
-                                  "must cost lava nothing - it must still be lava, not stone");
+    ASSERT_MATERIAL_AT(MAT_LAVA, 3, 3,
+                       "with the cool-off chance pinned to zero, the exact same melt "
+                       "must cost lava nothing - it must still be lava, not stone");
 }
 
 static void
@@ -1835,9 +1750,7 @@ test_steam_bubbles_up_through_standing_water(void) {
                                   "setup: the steam must start at the BOTTOM of the water column, "
                                   "with the full depth of it to climb through");
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     const int reached = first_row_holding(MAT_STEAM);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(-1, reached,
@@ -1880,9 +1793,7 @@ test_plain_gas_bubbles_up_through_water_too(void) {
     water_column();
     sand_set(&s, 3, 6, GAS);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(2, first_row_holding(MAT_GAS),
                                       "gas is lighter than water too, so it must bubble out of a "
@@ -1903,15 +1814,12 @@ test_a_bubble_does_not_push_through_a_solid(void) {
     }
     sand_set(&s, 3, 4, CELL_MAKE(MAT_STEAM, MATERIAL_VARIANTS - 1));
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "the stone ceiling must still be stone - a bubble displaces "
-                                  "liquid only, never a solid");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 4)),
-                                  "and the steam must still be under it, not through it");
+    ASSERT_MATERIAL_AT(MAT_STONE, 3, 3,
+                       "the stone ceiling must still be stone - a bubble displaces "
+                       "liquid only, never a solid");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 4, "and the steam must still be under it, not through it");
 }
 
 static void
@@ -1922,9 +1830,9 @@ test_quenching_makes_steam_but_burning_out_makes_smoke(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "a fire put out by water must leave STEAM - water that got hot, "
-                                  "which is exactly what happened");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 4, 3,
+                       "a fire put out by water must leave STEAM - water that got hot, "
+                       "which is exactly what happened");
 
     /* Same fire, no water anywhere, forced to burn out and forced to
      * smoke: the residue must be the OTHER material. sand_set_decay()
@@ -1934,9 +1842,7 @@ test_quenching_makes_steam_but_burning_out_makes_smoke(void) {
     fixture();
     sand_set_decay(&s, 255);
     sand_set_mobility(&s, 0);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, FIRE);
-    }
+    fill_box(&s, 0, W, H - 1, H, FIRE);
 
     bool found_smoke = false, found_steam = false;
     for (int i = 0; i < 2 * (MATERIAL_VARIANTS - 1); i++) {
@@ -1985,10 +1891,10 @@ test_stone_conducts_heat_into_water_beyond_it(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 5, 3)),
-                                  "a fire beside a single cell of stone must boil water sitting "
-                                  "on the OTHER side of that stone - the whole boiler mechanism - "
-                                  "without fire ever crossing the stone itself");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 5, 3,
+                       "a fire beside a single cell of stone must boil water sitting "
+                       "on the OTHER side of that stone - the whole boiler mechanism - "
+                       "without fire ever crossing the stone itself");
 }
 
 static void
@@ -2000,9 +1906,7 @@ test_stone_does_not_conduct_fire_into_empty_space(void) {
     sand_set(&s, 4, 3, STONE);
     /* (5, 3) deliberately left empty. */
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 5, 3)),
                              "conduction must never create fire in empty space on the far "
@@ -2015,9 +1919,7 @@ static int
 build_boiler_room(int wall_len) {
     /* Ownership passes to caller of `wide`: see call sites
      * (test_a_thick_wall_still_conducts, steps_to_boil). */
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiler-room grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -2080,24 +1982,10 @@ test_conduction_stops_at_the_reach_cap(void) {
     sand_set_mobility(&cap, 0);
     sand_set_conduction(&cap, 255);
 
-    const int y = 2;
-    const int wall_x0 = 2;
-    const int wall_len = CONDUCT_REACH_TEST + 8;
-    const int water_x = wall_x0 + wall_len;
+    const int water_x = heat_conductor_row(&cap, CONDUCT_REACH_TEST + 8, WATER);
 
-    sand_set(&cap, water_x - 1, y + 1, STONE);
-    sand_set(&cap, water_x, y + 1, STONE);
-    sand_set(&cap, water_x + 1, y + 1, STONE);
-    sand_set(&cap, 1, y, FIRE);
-    for (int i = 0; i < wall_len; i++) {
-        sand_set(&cap, wall_x0 + i, y, STONE);
-    }
-    sand_set(&cap, water_x, y, WATER);
-
-    for (int i = 0; i < 50; i++) {
-        sand_step(&cap, 0, 1000, 0);
-    }
-    const uint8_t result_material = CELL_MATERIAL(sand_at(&cap, water_x, 2));
+    run_steps(&cap, 50, 0, 1000);
+    const uint8_t result_material = CELL_MATERIAL(sand_at(&cap, water_x, HEAT_ROW_Y));
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
      * free() after one never runs, see drop_impulse_buf's own comment
@@ -2147,30 +2035,30 @@ test_a_thick_wall_conducts_more_slowly_than_a_thin_one(void) {
                                   "attenuating walk itself, not a second constant");
 }
 
+#define BOILER_X      5
+#define BOILER_BOTTOM 4
+
+/* Allocates `wide` with conduction forced and nothing moving: fire under a
+ * stone lid at BOILER_X, `liquid` from row top down to BOILER_BOTTOM above
+ * the lid, and stone walls the height of the column, so cross-flow has
+ * nowhere to send any mass while conduction does its work. */
 static void
-test_boiling_converts_the_cell_nearest_the_heat(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boil-nearest-the-heat grid must fit in what the framebuffer "
-                                             "leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+boiler_column(cell_t liquid, int top) {
+    wide_open(3u);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, water_top = 1, water_bottom = 4;
+    sand_set(&wide, BOILER_X, BOILER_BOTTOM + 2, FIRE);
+    sand_set(&wide, BOILER_X, BOILER_BOTTOM + 1, STONE);
+    fill_box(&wide, BOILER_X, BOILER_X + 1, top, BOILER_BOTTOM + 1, liquid);
+    fill_box(&wide, BOILER_X - 1, BOILER_X, top, BOILER_BOTTOM + 3, STONE);
+    fill_box(&wide, BOILER_X + 1, BOILER_X + 2, top, BOILER_BOTTOM + 3, STONE);
+}
 
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    for (int y = water_top; y <= water_bottom; y++) {
-        sand_set(&wide, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
-    /* Side walls the height of the column, so cross-flow has nowhere to
-     * send any mass and the column stays exactly this shape while
-     * conduction does its work. */
-    for (int y = water_top; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
+static void
+test_boiling_converts_the_cell_nearest_the_heat(void) {
+    const int x = BOILER_X, water_top = 1, water_bottom = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_top);
 
     bool boiled = false;
     for (int i = 0; i < 10 && !boiled; i++) {
@@ -2200,27 +2088,11 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
  * other chance fields. */
 static void
 test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boils-disabled grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
-    sand_set_conduction(&wide, 255);
+    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 0);
-    sand_set_mobility(&wide, 0);
 
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, water_y = 4;
-
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    for (int y = water_y; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
-
-    for (int i = 0; i < 50; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 50, 0, 1000);
     const uint8_t result_material = CELL_MATERIAL(sand_at(&wide, x, water_y));
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
@@ -2236,23 +2108,9 @@ test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
 
 static void
 test_boiled_steam_starts_at_full_life(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiled-steam-life grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
-    sand_set_conduction(&wide, 255);
+    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 255);
-    sand_set_mobility(&wide, 0);
-
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, water_y = 4;
-
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    for (int y = water_y; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
 
     sand_step(&wide, 0, 1000, 0);
 
@@ -2274,24 +2132,9 @@ test_boiled_steam_starts_at_full_life(void) {
 
 static void
 test_boiling_acid_produces_gas_not_steam(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiling-acid-produces-gas grid must fit in what the framebuffer "
-                                             "leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
-    sand_set_conduction(&wide, 255);
+    const int x = BOILER_X, acid_y = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_ACID, MASS_MAX), acid_y);
     sand_set_boils(&wide, 255);
-    sand_set_mobility(&wide, 0);
-
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, acid_y = 4;
-
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    sand_set(&wide, x, acid_y, CELL_MAKE(MAT_ACID, MASS_MAX));
-    for (int y = acid_y; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
 
     sand_step(&wide, 0, 1000, 0);
     const uint8_t result_material = CELL_MATERIAL(sand_at(&wide, x, acid_y));
@@ -2309,9 +2152,7 @@ test_boiling_acid_produces_gas_not_steam(void) {
 
 static void
 test_the_boiler_end_to_end(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiler end-to-end grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
 
     const int x = 10;
     const int wood_y = 19;
@@ -2356,9 +2197,7 @@ test_the_boiler_end_to_end(void) {
     sand_set_flammability(&wide, SAND_FLAMMABILITY_PER_MATERIAL);
     sand_set_mobility(&wide, SAND_MOBILITY_PER_MATERIAL);
 
-    for (int i = 0; i < 300; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 300, 0, 1000);
 
     bool steam_above_basin = false;
     for (int y = 0; y < water_top && !steam_above_basin; y++) {

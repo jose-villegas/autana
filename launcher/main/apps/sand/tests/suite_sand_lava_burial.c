@@ -40,11 +40,7 @@ static void
 test_lava_buried_in_stone_is_not_deleted(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     sand_set(&s, W / 2, H / 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
     /* This scene puts a complete lid over the lava -
      * pinned off so this test still isolates smothered()'s
@@ -55,9 +51,7 @@ test_lava_buried_in_stone_is_not_deleted(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(MASS_MAX, before,
                                   "fixture check: one full cell of lava, walled in on all four sides");
 
-    for (int i = 0; i < 90; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 90, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "lava walled in by stone must still be there - smothering puts a "
@@ -77,18 +71,11 @@ static void
 test_buried_lava_bursts_into_stone_and_fire(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     const int cx = W / 2, cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "buried-lava-burst impulse queue must fit in what the framebuffer "
-                                      "leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     bool burst = false;
@@ -163,9 +150,7 @@ test_lava_under_a_lid_with_gaps_never_bursts(void) {
                                   "fixture check: a full-width row of lava, floored throughout and "
                                   "ceiled only on every other column");
 
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "a lava cell under a lid with a gap in it - both diagonals covered "
@@ -222,14 +207,10 @@ test_lava_in_a_wall_notch_never_bursts(void) {
         }
     }
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "wall-notch impulse queue must fit in what the framebuffer leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
 
     int stone_after = 0;
     for (int y = 0; y < H; y++) {
@@ -336,21 +317,16 @@ test_a_wide_pool_under_a_crust_bursts(void) {
     const int tx = 3, ty = 2; /* interior: not touching the pool's own
                                   * left/right edge, so both diagonal
                                   * neighbours above it are genuine crust */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty)),
-                                  "fixture check: lava at the cell under test");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx - 1, ty)),
-                                  "fixture check: more lava to its left, not stone or open air - a "
-                                  "genuine pool interior, not an isolated cell in a solid pocket");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx + 1, ty)),
-                                  "fixture check: more lava to its right too");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty + 1)),
-                                  "fixture check: and more lava directly below it - this cell has "
-                                  "no support of its own, only the crust above seals it in");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty, "fixture check: lava at the cell under test");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx - 1, ty,
+                       "fixture check: more lava to its left, not stone or open air - a "
+                       "genuine pool interior, not an isolated cell in a solid pocket");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx + 1, ty, "fixture check: more lava to its right too");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty + 1,
+                       "fixture check: and more lava directly below it - this cell has "
+                       "no support of its own, only the crust above seals it in");
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "wide-pool-burst impulse queue must fit in what the framebuffer "
-                                      "leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     bool burst = false;
@@ -394,18 +370,13 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
                                   * top/bottom edge, so both diagonal
                                   * neighbours toward the crust are
                                   * genuine crust too */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty)),
-                                  "fixture check: lava at the cell under test");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty - 1)),
-                                  "fixture check: more lava above it - screen-up is NOT "
-                                  "gravity-relative up in this scene");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty + 1)),
-                                  "fixture check: and more lava below it too");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty, "fixture check: lava at the cell under test");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty - 1,
+                       "fixture check: more lava above it - screen-up is NOT "
+                       "gravity-relative up in this scene");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty + 1, "fixture check: and more lava below it too");
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "sideways-pool-burst impulse queue must fit in what the "
-                                      "framebuffer leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
     sand_set_lava_burst(&s, 255);
 
     bool burst = false;
@@ -429,21 +400,13 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
  * it must not touch at all, not just against the threshold being wrong. */
 static void
 test_an_open_lava_pool_never_bursts(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 2; x < W - 2; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
-    }
+    stone_floor_fixture();
+    fill_box(&s, 2, W - 2, H - 2, H - 1, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_burst(&s, 255);
     const int before = liquid_mass_of(MAT_LAVA);
     TEST_ASSERT_TRUE_MESSAGE(before > 0, "fixture check: an open pool of lava sitting on a floor");
 
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "an ordinary open lava pool - a floor beneath it, open air above "
@@ -460,11 +423,7 @@ static void
 test_buried_lava_still_becomes_stone_with_impulses_off(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     const int cx = W / 2, cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_burst(&s, 255);
@@ -477,10 +436,10 @@ test_buried_lava_still_becomes_stone_with_impulses_off(void) {
 
     TEST_ASSERT_TRUE_MESSAGE(converted, "a covered lava cell must still convert away from lava within "
                                         "this budget even with impulses never enabled");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, cx, cy)),
-                                  "with no impulse buffer, sand_explode() is a pure no-op - the "
-                                  "centre cell must become stone and stay stone, not fire, since "
-                                  "nothing was thrown to fill any core with");
+    ASSERT_MATERIAL_AT(MAT_STONE, cx, cy,
+                       "with no impulse buffer, sand_explode() is a pure no-op - the "
+                       "centre cell must become stone and stay stone, not fire, since "
+                       "nothing was thrown to fill any core with");
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             if (dx == 0 && dy == 0) {
@@ -503,11 +462,7 @@ test_buried_lava_still_becomes_stone_with_impulses_off(void) {
  * of its lava in 200 steps where a flat-floored one lost none. */
 static void
 test_lava_is_not_boiled_by_its_own_conducted_heat(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     /* Two pools of lava with a single conducting wall between them. */
     const int wall = W / 2;
     for (int y = H - 3; y < H - 1; y++) {
@@ -520,9 +475,7 @@ test_lava_is_not_boiled_by_its_own_conducted_heat(void) {
     }
     const int before = liquid_mass_of(MAT_LAVA);
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "lava must not be boiled into steam by heat conducted from other "

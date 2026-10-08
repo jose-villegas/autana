@@ -65,9 +65,7 @@ test_a_gunpowder_grain_keeps_its_tone_as_it_falls(void) {
     const cell_t grain = GUNPOWDER_CELL(2);
     sand_set(&s, 3, 0, grain);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 3, 0, 1);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(grain, sand_at(&s, 3, 3),
                                     "a gunpowder grain's dry tone must travel with it as it falls, "
@@ -155,9 +153,7 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
     fixture();
     sand_set(&s, 3, 0, GUNPOWDER_CELL(0));
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 10, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(sand_at(&s, 3, H - 1)),
                              "a single grain of gunpowder must fall straight down onto the "
@@ -174,9 +170,7 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
     }
     const int expected = count_cells_gunpowder();
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 1, 0, 0);
-    }
+    run_steps(&s, 60, 1, 0);
 
     int touching_wall = 0;
     for (int y = 0; y < H; y++) {
@@ -204,15 +198,9 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
 static void
 drop_grain_onto_bed(uint8_t bed, cell_t dropped) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, bed);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, bed);
     sand_set(&s, 3, 3, dropped);
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 }
 
 /* True if column x=3, rows [0,4), holds a cell whose material is `m` - the
@@ -282,17 +270,9 @@ test_gunpowder_is_conserved_under_every_gravity(void) {
     const int expected = count_cells_gunpowder();
     TEST_ASSERT_EQUAL_INT(15, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, count_cells_gunpowder(),
-                                          "a step must conserve gunpowder grains in every gravity "
-                                          "direction");
-        }
-    }
+    assert_count_kept_in_every_direction(count_cells_gunpowder, expected,
+                                         "a step must conserve gunpowder grains in every gravity "
+                                         "direction");
 }
 
 /* ignition and the heat path */
@@ -337,11 +317,7 @@ test_fire_beside_dry_gunpowder_lights_it(void) {
 
 static void
 test_lava_beside_dry_gunpowder_lights_it_through_the_heat_path(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 3, H - 3, STONE);
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -362,26 +338,12 @@ test_lava_beside_dry_gunpowder_lights_it_through_the_heat_path(void) {
 
 static void
 test_heat_conducted_through_stone_lights_gunpowder(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "heat-through-stone-lights-gunpowder grid must fit in what the "
-                                             "framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
-    const int y = 2;
-    const int wall_x0 = 2;
-    const int wall_len = 5;
-    const int gp_x = wall_x0 + wall_len;
-
-    sand_set(&wide, gp_x - 1, y + 1, STONE);
-    sand_set(&wide, gp_x, y + 1, STONE);
-    sand_set(&wide, gp_x + 1, y + 1, STONE);
-    sand_set(&wide, 1, y, FIRE);
-    for (int i = 0; i < wall_len; i++) {
-        sand_set(&wide, wall_x0 + i, y, STONE);
-    }
-    sand_set(&wide, gp_x, y, GUNPOWDER_CELL(0));
+    const int y = HEAT_ROW_Y;
+    const int gp_x = heat_conductor_row(&wide, 5, GUNPOWDER_CELL(0));
 
     bool lit = false;
     for (int i = 0; i < 150 && !lit; i++) {
@@ -412,18 +374,13 @@ test_a_lit_gunpowder_trail_burns_along_itself(void) {
                                  * is immortal (decay 0); the trail must
                                  * actually burn down behind the fuse
                                  * front, not just light up and stay lit */
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     sand_set(&s, 1, H - 2, GUNPOWDER_LIT_CELL);
     for (int x = 2; x <= 5; x++) {
         sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
     }
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "trail-propagation impulse queue must fit in what the "
-                                      "framebuffer leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
 
     bool reached_far_end = false;
     bool all_gone = false;
@@ -466,29 +423,12 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
      * burn_decay for burn-out to happen at all. */
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    for (int x = 1; x <= 6; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    sand_set(&s, 2, H - 2, STONE);
-    sand_set(&s, 5, H - 2, STONE);
-    sand_set(&s, 2, H - 3, STONE);
-    sand_set(&s, 5, H - 3, STONE);
-    sand_set(&s, 3, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 2, GUNPOWDER_LIT_CELL);
+    fill_box(&s, 1, 7, H - 1, H, STONE);
+    boxed_lit_square(&s);
 
-    impulse_t* square_buf = malloc((size_t)(W * H) * sizeof *square_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(square_buf, "2x2-detonates impulse queue must fit in what the framebuffer "
-                                             "leaves");
-    sand_enable_impulses(&s, square_buf, W * H);
+    impulse_t* square_buf = impulses_open(&s, W * H);
 
-    bool square_burned = false;
-    for (int i = 0; i < 200 && !square_burned; i++) {
-        sand_step(&s, 0, 1000, 0);
-        square_burned = !cell_is_gunpowder(sand_at(&s, 3, H - 3)) || !cell_is_gunpowder(sand_at(&s, 4, H - 3))
-                        || !cell_is_gunpowder(sand_at(&s, 3, H - 2)) || !cell_is_gunpowder(sand_at(&s, 4, H - 2));
-    }
+    const bool square_burned = step_until_square_burns(&s, 200);
     const int square_impulses = s.impulse_count;
     free(square_buf);
 
@@ -505,17 +445,12 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
      * fire. */
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    for (int x = 1; x <= 6; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 1, 7, H - 1, H, STONE);
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 5, H - 2, STONE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
 
-    impulse_t* lone_buf = malloc((size_t)(W * H) * sizeof *lone_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(lone_buf, "lone-lit-cell impulse queue must fit in what the framebuffer "
-                                           "leaves");
-    sand_enable_impulses(&s, lone_buf, W * H);
+    impulse_t* lone_buf = impulses_open(&s, W * H);
 
     bool lone_resolved = false;
     for (int i = 0; i < 200 && !lone_resolved; i++) {
@@ -545,18 +480,13 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
  * the lit code once the blast has actually happened. */
 static void
 test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "detonation board-wide grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 11u);
+    wide_open(11u);
     sand_set_decay(&wide, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&wide, 0); /* hold the 2x2 in place until burn-out -
                                     * see test_gunpowder_without_impulses_
                                     * burns_to_fire's own use of this */
 
-    impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "detonation board-wide impulse queue must fit in what the "
-                                      "framebuffer leaves");
-    sand_enable_impulses(&wide, buf, WIDE_W * WIDE_H);
+    impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
     const int cx = WIDE_W / 2, cy = WIDE_H / 2;
     sand_set(&wide, cx, cy, GUNPOWDER_LIT_CELL);
@@ -590,6 +520,32 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
                                        "the blast step anywhere on the board");
 }
 
+/* Stone either side of the 2x2 at columns x, x + 1, rows 2-3 of `wide` - a
+ * room whose walls only a real blast's core reaches. */
+static void
+fuse_room(int x) {
+    fill_box(&wide, x - 1, x, 2, 4, STONE);
+    fill_box(&wide, x + 2, x + 3, 2, 4, STONE);
+}
+
+static void
+lit_square(int x) {
+    fill_box(&wide, x, x + 2, 2, 4, GUNPOWDER_LIT_CELL);
+}
+
+/* Whether no cell of the 2x2 at columns x, x + 1, rows 2-3 is gunpowder. */
+static bool
+square_gone(int x) {
+    for (int y = 2; y < 4; y++) {
+        for (int dx = 0; dx < 2; dx++) {
+            if (cell_is_gunpowder(sand_at(&wide, x + dx, y))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* SAND_GUNPOWDER_BLAST_COOLDOWN caps detonations at one per step
  * board-wide at its shipped value of 1. The two lit 2x2s sit further
  * apart than SAND_GUNPOWDER_BLAST_RADIUS, so neither blast can reach the
@@ -597,46 +553,26 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
  * linking them; decay 255 forces all eight cells out on the same step. */
 static void
 test_fuse_blasts_are_capped_at_one_per_step(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "blast-cap grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
+    wide_open(5u);
     sand_set_decay(&wide, 255);
 
-    impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "blast-cap impulse queue must fit in what the framebuffer leaves");
-    sand_enable_impulses(&wide, buf, WIDE_W * WIDE_H);
+    impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
-    for (int x = 0; x < WIDE_W; x++) {
-        sand_set(&wide, x, 4, STONE);
-    }
+    fill_box(&wide, 0, WIDE_W, 4, 5, STONE);
     /* Group A: columns 2-3. */
-    sand_set(&wide, 1, 2, STONE);
-    sand_set(&wide, 1, 3, STONE);
-    sand_set(&wide, 4, 2, STONE);
-    sand_set(&wide, 4, 3, STONE);
-    sand_set(&wide, 2, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 2, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 3, GUNPOWDER_LIT_CELL);
+    fuse_room(2);
+    lit_square(2);
     /* Group B: columns 26-27 - 24 cells from group A, past
      * SAND_GUNPOWDER_BLAST_RADIUS (20), so neither blast can physically
      * touch the other's room. */
-    sand_set(&wide, 25, 2, STONE);
-    sand_set(&wide, 25, 3, STONE);
-    sand_set(&wide, 28, 2, STONE);
-    sand_set(&wide, 28, 3, STONE);
-    sand_set(&wide, 26, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 26, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 3, GUNPOWDER_LIT_CELL);
+    fuse_room(26);
+    lit_square(26);
 
     sand_step(&wide, 0, 1000, 0);
 
     const int impulses_after_one_step = wide.impulse_count;
-    const bool a_all_gone = !cell_is_gunpowder(sand_at(&wide, 2, 2)) && !cell_is_gunpowder(sand_at(&wide, 3, 2))
-                            && !cell_is_gunpowder(sand_at(&wide, 2, 3)) && !cell_is_gunpowder(sand_at(&wide, 3, 3));
-    const bool b_all_gone = !cell_is_gunpowder(sand_at(&wide, 26, 2)) && !cell_is_gunpowder(sand_at(&wide, 27, 2))
-                            && !cell_is_gunpowder(sand_at(&wide, 26, 3)) && !cell_is_gunpowder(sand_at(&wide, 27, 3));
+    const bool a_all_gone = square_gone(2);
+    const bool b_all_gone = square_gone(26);
     /* A real blast's core (radius / SAND_EXPLODE_CORE_DIVISOR) fills
      * unconditionally, reaching the walls at distance 1; a CAPPED
      * burn-out only ever writes fire into its own single cell (or, if it
@@ -666,45 +602,26 @@ test_fuse_blasts_are_capped_at_one_per_step(void) {
  * its burn-out cannot race group A's inside one pass. */
 static void
 test_a_longer_fuse_cooldown_delays_the_next_blast(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "cooldown grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
+    wide_open(5u);
     sand_set_decay(&wide, 255);
     sand_set_fuse_cooldown(&wide, 3);
 
-    impulse_t* buf = malloc((size_t)(WIDE_W * WIDE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "cooldown impulse queue must fit in what the framebuffer leaves");
-    sand_enable_impulses(&wide, buf, WIDE_W * WIDE_H);
+    impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
-    for (int x = 0; x < WIDE_W; x++) {
-        sand_set(&wide, x, 4, STONE);
-    }
-    sand_set(&wide, 1, 2, STONE);
-    sand_set(&wide, 1, 3, STONE);
-    sand_set(&wide, 4, 2, STONE);
-    sand_set(&wide, 4, 3, STONE);
-    sand_set(&wide, 2, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 2, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 3, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 25, 2, STONE);
-    sand_set(&wide, 25, 3, STONE);
-    sand_set(&wide, 28, 2, STONE);
-    sand_set(&wide, 28, 3, STONE);
+    fill_box(&wide, 0, WIDE_W, 4, 5, STONE);
+    fuse_room(2);
+    lit_square(2);
+    fuse_room(26);
 
     sand_step(&wide, 0, 1000, 0); /* group A detonates, wait := 3 */
 
     const bool a_breached = CELL_MATERIAL(sand_at(&wide, 1, 2)) != MAT_STONE;
 
-    sand_set(&wide, 26, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 2, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 26, 3, GUNPOWDER_LIT_CELL);
-    sand_set(&wide, 27, 3, GUNPOWDER_LIT_CELL);
+    lit_square(26);
 
     sand_step(&wide, 0, 1000, 0); /* wait ticks 3 -> 2: still refused */
 
-    const bool b_gone = !cell_is_gunpowder(sand_at(&wide, 26, 2)) && !cell_is_gunpowder(sand_at(&wide, 27, 2))
-                        && !cell_is_gunpowder(sand_at(&wide, 26, 3)) && !cell_is_gunpowder(sand_at(&wide, 27, 3));
+    const bool b_gone = square_gone(26);
     const uint8_t b_wall = CELL_MATERIAL(sand_at(&wide, 25, 2));
 
     free(buf);
@@ -732,18 +649,13 @@ test_a_one_wide_lit_trail_never_detonates(void) {
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL); /* sand_init()'s default
                                  * is immortal (decay 0) - this test needs
                                  * the whole trail to actually burn out */
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     sand_set(&s, 6, H - 2, STONE);
     for (int x = 0; x <= 5; x++) {
         sand_set(&s, x, H - 2, GUNPOWDER_LIT_CELL);
     }
 
-    impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "edge-trail impulse queue must fit in what the framebuffer "
-                                      "leaves");
-    sand_enable_impulses(&s, buf, W * H);
+    impulse_t* buf = impulses_open(&s, W * H);
 
     bool all_gone = false;
     for (int i = 0; i < 300 && !all_gone; i++) {
@@ -794,9 +706,7 @@ test_a_buried_lit_gunpowder_cell_is_not_smothered(void) {
     }
     sand_set(&s, x, y, GUNPOWDER_LIT_CELL);
 
-    for (int i = 0; i < 100; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 100, 0, 1000);
 
     const cell_t c = sand_at(&s, x, y);
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(c) && cell_code(c) == GUNPOWDER_LIT,
@@ -816,9 +726,7 @@ test_water_quenches_lit_gunpowder_to_soaked(void) {
     fixture();
     sand_clear(&s);
     sand_set_decay(&s, 0);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
     sand_set(&s, 4, H - 2, WATER);
 
@@ -850,17 +758,8 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
     sand_set_mobility(&s, 0);                    /* keep an earlier-resolved corner's
                                  * fresh fire from drifting off before
                                  * the last corner is checked */
-    for (int x = 1; x <= 6; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    sand_set(&s, 2, H - 2, STONE);
-    sand_set(&s, 5, H - 2, STONE);
-    sand_set(&s, 2, H - 3, STONE);
-    sand_set(&s, 5, H - 3, STONE);
-    sand_set(&s, 3, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 3, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
-    sand_set(&s, 4, H - 2, GUNPOWDER_LIT_CELL);
+    fill_box(&s, 1, 7, H - 1, H, STONE);
+    boxed_lit_square(&s);
     /* No sand_enable_impulses() - s->impulse_buf stays NULL, the default. */
 
     /* WHAT EACH CORNER BECOMES AT THE MOMENT IT BURNS OUT, not what sits
@@ -907,11 +806,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
  * the only accepted exit. */
 static void
 test_soaked_gunpowder_never_lights_beside_lava(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 3, H - 3, STONE);
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -957,11 +852,7 @@ test_soaked_gunpowder_never_lights_beside_lava(void) {
  * once it is genuinely dry - that is a different claim, not this one. */
 static void
 test_heat_dries_wet_gunpowder_one_level_with_steam(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     sand_set(&s, 2, H - 2, STONE);
     /* BOXED IN ON THE DIAGONALS TOO, not just straight up. This test
      * measures conduction drying a wet cell, so the lava must heat without
@@ -1043,9 +934,7 @@ ignite_trial_row(sand_t* g, uint8_t* cells, int w, int trials, cell_t gp_byte) {
         sand_set(g, base + 1, 0, gp_byte);
         sand_set(g, base + 2, 0, STONE);
     }
-    for (int x = 0; x < w; x++) {
-        sand_set(g, x, 1, STONE);
-    }
+    fill_box(g, 0, w, 1, 2, STONE);
 }
 
 static void
@@ -1217,14 +1106,7 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
  * to more gunpowder. */
 static void
 test_gunpowder_moisture_never_multiplies_as_it_spreads(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
-    }
+    soaked_bed_fixture(GUNPOWDER_CELL(0));
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
     sand_set(&s, 0, H - 2, with_moisture(GUNPOWDER_CELL(0), r->moist_max, r));
     const int placed = (int)r->moist_max;
@@ -1284,9 +1166,7 @@ test_soaked_gunpowder_can_turn_into_oil_and_dry_never_does(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
     }
-    for (int i = 0; i < 6000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 6000, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_OIL),
                                   "bone-dry gunpowder must never roll the saturated-to-oil chance "
                                   "- it only ever fires once held reaches moist_max, and a dry "
@@ -1297,9 +1177,7 @@ static void
 test_acid_dissolves_gunpowder(void) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
+    fill_box(&s, 1, W - 1, H - 1, H, GLASS);
     for (int y = 1; y < H; y++) {
         sand_set(&s, 1, y, GLASS);
         sand_set(&s, W - 2, y, GLASS);
@@ -1316,9 +1194,7 @@ test_acid_dissolves_gunpowder(void) {
     }
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, count_cells_gunpowder(), "setup: there must be gunpowder to eat");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_gunpowder(),
                                   "acid must eat the gunpowder it settles onto, the same rate "
@@ -1348,9 +1224,7 @@ test_a_wet_neighbour_does_not_put_out_a_lit_fuse(void) {
     sand_clear(&s);
     sand_set_decay(&s, 0);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
     sand_set(&s, 4, H - 2, with_moisture(GUNPOWDER_CELL(0), r->moist_max, r));
@@ -1373,25 +1247,15 @@ test_a_wet_neighbour_does_not_put_out_a_lit_fuse(void) {
  * the only thing asserted below is that the cell is never CONVERTED. */
 static void
 test_a_root_does_not_drink_from_or_eat_gunpowder(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    const int cx = W / 2, cy = 3;
-    for (int x = cx - 2; x <= cx + 2; x++) {
-        sand_set(&s, x, cy + 1, STONE);
-    }
-    sand_set(&s, cx, cy - 1, CELL_MAKE(MAT_WOOD, 0)); /* shelter, up */
-    sand_set(&s, cx, cy, MATX(MATX_ROOT));
+    const int cx = ROOT_X, cy = ROOT_Y;
+    sheltered_root_fixture();
     const reaction_t* gp_r = reaction_of(GUNPOWDER_BASE);
     const uint8_t gp_moisture = 2;
     const cell_t soaked = with_moisture(GUNPOWDER_CELL(0), gp_moisture, gp_r);
     sand_set(&s, cx + 1, cy, soaked); /* right: moist gunpowder, the one
                                          * candidate this test is about */
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 3000, 0, 1000);
 
     const cell_t c = sand_at(&s, cx + 1, cy);
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(c), "a root must never convert gunpowder into a root cell, whatever "
@@ -1412,12 +1276,9 @@ test_plants_do_not_sprout_in_gunpowder(void) {
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
     const int cx = W / 2, cy = 3;
-    /* A floor two cells wider than the candidates themselves, not flush
-     * with them - the same margin test_a_root_never_eats_dry_dirt_sand_
-     * or_empty_space uses and for the same reason: a powder blocked
-     * straight down still has an open diagonal-down to scatter into and
-     * escape the very cell this test means to watch, which a floor flush
-     * with the candidates does not close off. */
+    /* Stone from cx - 2 to cx + 1, so the left candidate has ledge past
+     * it: a powder blocked straight down still has an open diagonal-down
+     * to escape the very cell this test means to watch. */
     for (int x = cx - 2; x <= cx + 1; x++) {
         sand_set(&s, x, cy + 1, STONE);
     }
@@ -1429,9 +1290,7 @@ test_plants_do_not_sprout_in_gunpowder(void) {
     /* (cx + 1, cy) stays SAND_EMPTY from sand_clear() above - the
      * candidate cell a real sprout would seed a leaf into. */
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 3000, 0, 1000);
 
     bool any_leaf = false;
     for (int y = 0; y < H && !any_leaf; y++) {
@@ -1485,9 +1344,7 @@ test_a_lit_fuse_is_not_re_placed_by_heat(void) {
     const cell_t before = sand_at(&s, 4, H - 2);
     memset(dirty, 0, H);
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(before, sand_at(&s, 4, H - 2),
                                     "a lit fuse beside a heat source must stay the identical byte - "
