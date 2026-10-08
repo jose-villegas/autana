@@ -28,9 +28,6 @@
 /* Cheap frames must not dominate the filter. */
 #define NOISE_FLOOR_US               100.0F
 
-/* Thousands of triangles and unit shares need comparable feature units. */
-static const float feature_scale[4] = {1.0F, 1e-3F, 1e-3F, 1.0F};
-
 resolution_config_t
 resolution_config(const resolution_step_t* steps, int count, int recovery_from, int32_t budget_us) {
     assert(count > 0 && count <= RESOLUTION_STEPS_MAX && recovery_from > 0 && recovery_from <= count);
@@ -180,6 +177,9 @@ solve4(float a[4][5]) {
 bool
 resolution_model_fit(resolution_model_t* model, const resolution_config_t* config, const resolution_sample_t* samples,
                      int count) {
+    /* Triangles are thousands, shares are one: scaled to one size so the
+     * normal equations stay well conditioned. */
+    const float scale[4] = {1.0F, 1e-3F, 1e-3F, 1.0F};
     float a[4][5] = {{0}};
     float upscale_sum[RESOLUTION_STEPS_MAX] = {0};
     int upscale_n[RESOLUTION_STEPS_MAX] = {0};
@@ -189,9 +189,9 @@ resolution_model_fit(resolution_model_t* model, const resolution_config_t* confi
         features(config, s->step, s->triangles, x);
         for (int r = 0; r < 4; r++) {
             for (int k = 0; k < 4; k++) {
-                a[r][k] += x[r] * feature_scale[r] * x[k] * feature_scale[k];
+                a[r][k] += x[r] * scale[r] * x[k] * scale[k];
             }
-            a[r][4] += x[r] * feature_scale[r] * (float)s->draw_us;
+            a[r][4] += x[r] * scale[r] * (float)s->draw_us;
         }
         upscale_sum[s->step] += (float)s->upscale_us;
         upscale_n[s->step]++;
@@ -200,10 +200,10 @@ resolution_model_fit(resolution_model_t* model, const resolution_config_t* confi
         return false;
     }
     *model = (resolution_model_t){
-        .base_us = a[0][4] * feature_scale[0],
-        .per_triangle_us = a[1][4] * feature_scale[1],
-        .per_triangle_row_us = a[2][4] * feature_scale[2],
-        .per_pixel_share_us = a[3][4] * feature_scale[3],
+        .base_us = a[0][4] * scale[0],
+        .per_triangle_us = a[1][4] * scale[1],
+        .per_triangle_row_us = a[2][4] * scale[2],
+        .per_pixel_share_us = a[3][4] * scale[3],
     };
     for (int step = 0; step < config->step_count; step++) {
         model->upscale_us[step] = upscale_n[step] > 0 ? upscale_sum[step] / (float)upscale_n[step] : 0.0F;
@@ -242,7 +242,7 @@ corrected_us(const resolution_predict_t* p, const resolution_config_t* config, i
     return p->scale * resolution_model_predict_us(&p->model, config, step, triangles) + p->offset_us;
 }
 
-/* The finest step whose model cost fits `share` of the budget, among
+/* The finest step whose corrected cost fits `share` of the budget, among
  * the first `count`; -1 when none does. */
 static int
 finest_fitting(const resolution_predict_t* p, const resolution_config_t* config, int triangles, int count,
