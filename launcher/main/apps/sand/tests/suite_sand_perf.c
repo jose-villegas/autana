@@ -638,7 +638,9 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
         sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     const int steps = 20;
     const int64_t start = timing_now_us();
-    run_steps(real, steps, 0, gy);
+    for (int i = 0; i < steps; i++) {
+        sand_step(real, 0, gy, 0);
+    }
     *out_per_step = (timing_now_us() - start) / steps;
     (void)sand_chunk_share_for_test(share);
     two_core_scope_end(core);
@@ -1168,7 +1170,9 @@ sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) 
     const two_core_scope_t core = two_core_scope_begin(two_core);
     const int settled_in = sweep_floor_settle(&b, (size_t)q->w * (size_t)q->h);
     const int64_t start = timing_now_us();
-    run_steps(&b.s, SWEEP_FLOOR_STEPS, 0, 1000);
+    for (int i = 0; i < SWEEP_FLOOR_STEPS; i++) {
+        sand_step(&b.s, 0, 1000, 0);
+    }
     const int64_t per_step = (timing_now_us() - start) / SWEEP_FLOOR_STEPS;
     two_core_scope_end(core);
     collect_core1_lane();
@@ -1600,12 +1604,16 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
      * the pour first would leave the steady rows a wetter bed than the one
      * the other row times. */
     int64_t start = timing_now_us();
-    run_steps(real, steps, 0, 1000);
+    for (int i = 0; i < steps; i++) {
+        sand_step(real, 0, 1000, 0);
+    }
     const int64_t steady = (timing_now_us() - start) / steps;
 
     plant_bed_rain(real);
     start = timing_now_us();
-    run_steps(real, steps, 0, 1000);
+    for (int i = 0; i < steps; i++) {
+        sand_step(real, 0, 1000, 0);
+    }
     const int64_t poured = (timing_now_us() - start) / steps;
     two_core_scope_end(core);
 
@@ -2155,7 +2163,9 @@ test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget(void) {
     const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = timing_now_us();
     const int steps = 10;
-    run_steps(real, steps, LANDSCAPE_GX, 0);
+    for (int i = 0; i < steps; i++) {
+        sand_step(real, LANDSCAPE_GX, 0, 0);
+    }
     const int64_t per_step = (timing_now_us() - start) / steps;
     two_core_scope_end(core);
 
