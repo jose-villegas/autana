@@ -18,9 +18,9 @@ pass-direction flips, the reaction stage bookkeeping) is put back.
 | normal build vs `fingerprint_baseline.txt` | behaviour changed |
 | forced build vs normal build | a skip dropped work that changes cells |
 
-`--check` runs both. `--update` records the normal build and refuses while
-the forced build differs from it, so a baseline is never recorded with a
-skip that drops work. A fact that is only too strict, skipping less than it
+`--check` runs both, and CI runs it on every pull request. `--update`
+records the normal build and refuses while the forced build differs from
+it, so a baseline is never recorded with a skip that drops work. A fact that is only too strict, skipping less than it
 could, changes no output; neither check sees it, and neither needs to.
 
 After the forced run the tool lists every `SAND_SKIP_IF` site with how often
