@@ -117,6 +117,9 @@ int grain_count(void);
  * directions, failing with msg the first time count() is not expected. */
 void assert_count_kept_in_every_direction(int (*count)(void), int expected, const char* msg);
 
+/* stone_floor_fixture() with soaking on and a full row of bed on the floor. */
+void soaked_bed_fixture(cell_t bed);
+
 /* Steps g `steps` times under (gx, gy), no jostle. */
 void run_steps(sand_t* g, int steps, int gx, int gy);
 

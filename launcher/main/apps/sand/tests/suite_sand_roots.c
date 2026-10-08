@@ -66,14 +66,7 @@ grow_plant_until_rooted(int cx, int reseed_x0, int reseed_x1, int x0, int x1, in
 /* see test_a_rooted_collar_survives_the_bed_shifting_away's own scene 1 */
 static void
 test_a_watered_plant_roots_into_the_soil_it_drinks_from(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
 
     const bool rooted = grow_plant_until_rooted(W / 2, 0, W, 0, W, 0, H, 200);
     TEST_ASSERT_TRUE_MESSAGE(rooted, "a plant growing on watered soil must eventually weld a root "
@@ -427,13 +420,7 @@ test_a_rooted_collar_survives_the_bed_shifting_away(void) {
 
     /* see test_a_watered_plant_roots_into_the_soil_it_drinks_from's own top
      * comment */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
 
     /* Reseeding and watching only the collar column itself, unlike the
      * wider-board version above - the collar rooting is the setup here,
@@ -450,13 +437,7 @@ test_a_rooted_collar_survives_the_bed_shifting_away(void) {
 
     /* Scene 2: the collar erased before a root could ever have formed -
      * the deterministic stand-in for `roots` never having existed. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set(&s, cx, H - 3, MATX(MATX_PLANT));
     /* find_water()'s logic for handling gravity-ward cells */
     sand_set(&s, cx - 1, H - 2, SAND_EMPTY);
@@ -500,14 +481,8 @@ test_a_root_is_inert(void) {
 
     /* And on a board with water, wet soil, and no plant anywhere - the
      * only way a root can ever be created - none ever appears. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        sand_set(&s, x, 0, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
+    fill_box(&s, 0, W, 0, 1, CELL_MAKE(MAT_WATER, MASS_MAX));
     run_steps(&s, 500, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_EXTENDED),
                                   "a board with wet soil and standing water but no plant or wood "
@@ -533,14 +508,7 @@ total_soil_moisture(void) {
 
 static void
 test_root_conversion_never_creates_moisture(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     const int initial = total_soil_moisture();

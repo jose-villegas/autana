@@ -396,15 +396,9 @@ touches_any_neighbor(int x, int y) {
  * step it appeared. */
 static void
 test_a_growing_tree_does_not_shed_what_it_grows(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     int grown = 0;
@@ -479,16 +473,10 @@ test_a_buried_seed_comes_up_through_the_soil(void) {
  * under a flagstone lifts it. */
 static void
 test_a_seed_under_stone_stays_put(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        sand_set(&s, x, H - 4, STONE); /* a lid */
-    }
+    fill_box(&s, 0, W, H - 4, H - 3, STONE);
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     /* Kept watered - not load-bearing for the shove rule this test checks,
@@ -543,15 +531,9 @@ test_a_limb_hangs_on_to_a_wooden_trunk(void) {
  * second run of its own. */
 static void
 test_a_tree_grows_wider_than_one_column(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     run_steps(&s, 600, 0, 1000);
@@ -656,14 +638,7 @@ test_a_plant_rooted_on_stone_does_not_drink(void) {
      * same rule as soaking and the same reason: only the liquid knows
      * whether it is wet, and a plant asking for "any adjacent liquid"
      * would siphon a slick into the soil as moisture. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 0));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, 0));
     sand_set(&s, cx - 1, H - 3, STONE);
     sand_set(&s, cx + 1, H - 3, STONE);
     sand_set(&s, cx - 1, H - 4, STONE);
@@ -690,15 +665,9 @@ test_a_plant_rooted_on_stone_does_not_drink(void) {
  * Reported as branches spawning "and many times just be wood". */
 static void
 test_a_hardened_trunk_is_left_with_foliage(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     int leafed = 0;
@@ -761,15 +730,9 @@ update_trunk_taper(const sand_t* g, int w, int h, trunk_taper_t* t) {
 
 static void
 test_a_hardened_trunk_is_thicker_at_the_foot(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     trunk_taper_t taper = {0, 0};
@@ -882,13 +845,7 @@ test_a_limb_travels_outward_instead_of_climbing(void) {
  * `moisture` - leafed at (cx+1, H-5) if `leafed`. */
 static void
 build_trunk_scene(int cx, bool leafed, uint8_t moisture) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, moisture));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, moisture));
     fill_box(&s, cx, cx + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
     if (leafed) {
         sand_set(&s, cx + 1, H - 5, MATX(MATX_LEAF));
@@ -979,14 +936,7 @@ test_a_leaf_neither_spreads_nor_falls(void) {
     /* One: on watered soil with NO wood anywhere. Nothing else in the
      * scene can produce foliage - so any second leaf would have to have
      * come from the first. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set(&s, W / 2, H - 3, MATX(MATX_LEAF));
 
     for (int i = 0; i < 2000; i++) {
@@ -1078,14 +1028,7 @@ test_a_leaf_drains_standing_water_into_the_soil(void) {
  * reach of the ground and nothing further could happen. */
 static void
 test_a_plant_on_wet_soil_grows_upward(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     run_steps(&s, 200, 0, 1000);
@@ -1165,15 +1108,9 @@ test_a_plant_on_dry_soil_stays_where_it_is(void) {
  * on a board with no flame on it. */
 static void
 test_a_tall_plant_hardens_into_wood_that_is_not_alight(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     sand_set(&s, W / 2, H - 3, MATX(MATX_PLANT));
 
     run_steps(&s, 400, 0, 1000);
@@ -1290,15 +1227,9 @@ test_a_tilt_between_two_directions_is_dithered_not_snapped(void) {
  * a straight line sees a run of two and this never becomes a trunk. */
 static void
 test_a_stem_that_wanders_still_hardens(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     /* up, up, up-left, up, up-left, up */
     static const int stem[6][2] = {
         {4, 5}, {4, 4}, {3, 3}, {3, 2}, {2, 1}, {2, 0},
@@ -1350,15 +1281,9 @@ board_has_leaf(void) {
  * out of nothing would mean a wooden wall sprouts a hedge. */
 static void
 test_a_bare_trunk_in_wet_ground_buds_again(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    }
     fill_box(&s, W / 2, W / 2 + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
 
     /* Specifically FOLIAGE, not MAT_EXTENDED alone: a plant at the foot
@@ -1376,15 +1301,9 @@ test_a_bare_trunk_in_wet_ground_buds_again(void) {
                                      "its foliage leaves a post that can never recover");
 
     /* And on dry ground, nothing. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, 0));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 0));
-    }
     fill_box(&s, W / 2, W / 2 + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
     run_steps(&s, 1500, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_EXTENDED),
@@ -1397,15 +1316,9 @@ test_a_bare_trunk_in_wet_ground_buds_again(void) {
      * build that budded for free passes unchanged - checked by mutation.
      * What it pins is that one level of moisture is not a licence to keep
      * budding. */
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, 0));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 0));
-    }
     sand_set(&s, W / 2, H - 2, CELL_SOIL(MAT_DIRT, 1, 1)); /* one level */
     fill_box(&s, W / 2, W / 2 + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
     run_steps(&s, 1500, 0, 1000);

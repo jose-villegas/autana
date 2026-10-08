@@ -1171,14 +1171,7 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
  * to more gunpowder. */
 static void
 test_gunpowder_moisture_never_multiplies_as_it_spreads(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
-    }
+    soaked_bed_fixture(GUNPOWDER_CELL(0));
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
     sand_set(&s, 0, H - 2, with_moisture(GUNPOWDER_CELL(0), r->moist_max, r));
     const int placed = (int)r->moist_max;
