@@ -1,21 +1,16 @@
 /*
  * palette - grid arithmetic and hit-testing for the material picker overlay.
  *
- * Pure logic, no gfx and no touch state: a tile index in, a rectangle out, or
+ * Pure logic, no drawing and no touch state: a tile index in, a rectangle out, or
  * a screen point in and a tile index out. No ESP-IDF or hardware header may
- * be included here - not even gfx.h, which drags in bsp/esp-bsp.h - and that
- * is what lets the geometry be tested on a host. See row_runs.h beside it for
- * the same pattern.
+ * be included here, which is what lets the geometry be tested on a host. See
+ * row_runs.h beside it for the same pattern.
  *
  * The tile size is a touch target rather than a taste. At this panel's ~322
  * ppi a fingertip's contact patch is about 89 px, so four columns give a
  * 92 px (7.2 mm) tile and five would give 74 px (5.8 mm), under any guideline
  * going. That is what PALETTE_TILE is for; palette_cols() derives the count
  * from whichever width is actually being filled rather than fixing it at four.
- *
- * PALETTE_SCREEN_W/H duplicate gfx.h's dimensions under different names
- * deliberately, since gfx.h cannot be included here. A panel of a different
- * size needs both places changed.
  *
  * palette_tile_rect() and palette_hit() must never disagree - a point inside
  * tile i's rect hits i, a point outside every rect hits -1. They are two
@@ -24,10 +19,8 @@
  */
 #pragma once
 
-/* Duplicated from gfx.h's GFX_WIDTH/GFX_HEIGHT, see this file's own top
- * comment for why this module cannot simply include that header. */
-#define PALETTE_SCREEN_W 368
-#define PALETTE_SCREEN_H 448
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/gfx.h"
 
 /* WHY DERIVED, NOT FIXED: fixing the column count at compile time bakes
  * in the assumption the panel is always 368 px wide, which a quarter
@@ -68,14 +61,6 @@
  * hidden global. */
 int palette_cols(int screen_w);
 
-/* Duplicated from gfx.h's GFX_CHAR_W/GFX_CHAR_H, see the PALETTE_SCREEN_W/H
- * paragraph of this file's top comment for why: gfx.h
- * drags in bsp/esp-bsp.h, which this host-testable module cannot
- * include. Both are 16 (an 8x8 font glyph at GFX_GLYPH_SCALE 2) and must
- * stay in step with gfx.h's own definitions by hand. */
-#define PALETTE_CHAR_W              16
-#define PALETTE_CHAR_H              16
-
 /* Rows a `count`-brush palette needs at `cols` columns, ceiling-divided so a
  * partial last row still gets counted. Both are compile-time constants at
  * PALETTE_FITS's only call site (BRUSH_COUNT and PALETTE_COLS_FOR(...) in
@@ -92,12 +77,12 @@ int palette_cols(int screen_w);
  * DIFFERENT column counts, each checked against its own paired dimension
  * - hence both pairings, not one shared minimum. At today's PALETTE_TILE
  * both derive 4 (92 divides 368/448 equally by coincidence), and the
- * turned pairing (368 tall == PALETTE_SCREEN_W) pins that fit with NO
+ * turned pairing (368 tall == GFX_WIDTH) pins that fit with NO
  * margin. Assert against the real brush count so growth fails the
  * BUILD, not the screen. */
 #define PALETTE_FITS(count)                                                                                            \
-    (PALETTE_HEIGHT(count, PALETTE_COLS_FOR(PALETTE_SCREEN_W)) <= PALETTE_SCREEN_H                                     \
-     && PALETTE_HEIGHT(count, PALETTE_COLS_FOR(PALETTE_SCREEN_H)) <= PALETTE_SCREEN_W)
+    (PALETTE_HEIGHT(count, PALETTE_COLS_FOR(GFX_WIDTH)) <= GFX_HEIGHT                                                  \
+     && PALETTE_HEIGHT(count, PALETTE_COLS_FOR(GFX_HEIGHT)) <= GFX_WIDTH)
 
 /* Where tile `index` sits, in screen pixels - grid is `cols` wide,
  * PALETTE_ROWS(count, cols) tall, centred on `screen_w` x `screen_h`.

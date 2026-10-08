@@ -2,6 +2,8 @@
 
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 
 void
 scene_shell_render(uint32_t dt_ms) {

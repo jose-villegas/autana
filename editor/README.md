@@ -14,7 +14,7 @@ host-only and never enter an ESP-IDF component graph.
 flowchart LR
     JSON["launcher/main/ui/<br/>&lt;screen&gt;_layout.json"] -->|load / save| DOC["LayoutDocument<br/><i>src/layout_document</i>"]
     DOC -->|rects, every edit| RT["editor_runtime_render()<br/><i>runtime/runtime.c</i>"]
-    RT -->|"real ui/ + gfx.c"| PREVIEW["both orientations,<br/>side by side"]
+    RT -->|"real ui/ + gfx/"| PREVIEW["both orientations,<br/>side by side"]
     DOC -->|"Bake: bake_header()"| HEADER["&lt;screen&gt;_layout_generated.h"]
     HEADER --> FW["firmware build"]
 ```
@@ -42,7 +42,7 @@ editor/
 │   ├── layout_document.*     one document type for every authored screen
 │   └── core/                 reusable: dockspace, edit history, RGB565 texture
 ├── include/editor/runtime.h  the C boundary the editor renders through
-├── runtime/runtime.c         firmware ui/ + gfx.c on the host; never an IDF component
+├── runtime/runtime.c         firmware ui/ + gfx/ on the host; never an IDF component
 └── tests/                    CTest: GoogleTest and C runtime tests
 ```
 

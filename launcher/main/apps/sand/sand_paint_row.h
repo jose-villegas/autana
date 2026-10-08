@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_indexed.h"
+#include "gfx/present/gfx_indexed.h"
 #include "material_palette.h"
 #include "sand_limits.h"
 #include "sand_paint.h"

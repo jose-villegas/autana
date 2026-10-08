@@ -11,7 +11,7 @@
  * as occupied too, and whatever consumes the report (gfx's own dirty
  * tracking) can never recover that gap, because it was never told about it
  * in the first place. Reporting up to ROW_MAX_RUNS separate runs instead
- * lets a consumer that CAN use the extra precision - gfx.c's per-cell
+ * lets a consumer that CAN use the extra precision - gfx_dirty.h's per-cell
  * tracking and its own contiguous-run merging - actually benefit from it.
  *
  * A single previous/current min/max union is enough to guarantee a cell
@@ -27,7 +27,7 @@
 /* Fixed cap on how many separate runs one row tracks, for both detection
  * and reconciliation - a row can never grow arbitrarily many small sends.
  * Changing it needs device measurement, as do GATHER_MAX_PIXELS and
- * LEAF_REFINE_MAX_RUNS in gfx/gfx_dirty.h. */
+ * LEAF_REFINE_MAX_RUNS in gfx/present/gfx_dirty.h. */
 #define ROW_MAX_RUNS 2
 
 /* Collects `row`'s contiguous non-`empty` bytes into up to ROW_MAX_RUNS

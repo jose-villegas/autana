@@ -21,7 +21,6 @@ scene_name=render_lab
 scene_sources="
 main/app/app_arena.c
 main/app/app_registry.c
-main/gfx/gfx.c
 main/util/runtime/tune.c
 main/util/runtime/job.c
 main/render/raster.c

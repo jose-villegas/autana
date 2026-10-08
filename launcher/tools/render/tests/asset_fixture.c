@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 #include "asset/asset_store.h"
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_draw.h"
 #include "render_host.h"
 
 static bool

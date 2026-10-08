@@ -1,6 +1,6 @@
 /*
  * launcher_home_render_host, the home screen, drawn on a host through the
- * real ui layer: ui_begin(), microui, ui_end() and gfx.c, unmodified.
+ * real ui layer: ui_begin(), microui, ui_end() and gfx/, unmodified.
  *
  * A render_host.h scene, and the one that exercises the general path
  * rather than a bespoke one: several frames, a synthetic touch declared

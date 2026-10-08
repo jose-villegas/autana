@@ -14,7 +14,7 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "display/panel_clock.h"
-#include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "unity.h"
 #include "util/runtime/settings.h"
 

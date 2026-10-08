@@ -7,7 +7,7 @@
 
 #include <stdbool.h>
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 typedef void (*gfx_band_draw_fn)(int row0, int row1, gfx_color_t* target);
 typedef void (*gfx_band_overlay_fn)(int row0, int row1);

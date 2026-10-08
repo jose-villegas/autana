@@ -3,9 +3,9 @@
 `launcher/tools/gen/gen_icons.py` bakes icons from an atlas; the rules below
 are the generator's. Reads a PNG atlas cell or an integer-grid SVG path per
 icon (pixelarticons' shape: `M`/`H`/`V`/`h`/`v`/`Z` only) and emits one
-`icons_<name>.h` per manifest: `gfx/icons_system.h` for the shared set,
+`icons_<name>.h` per manifest: `gfx/draw/icons_system.h` for the shared set,
 `apps/<name>/icons_<name>.h` for an app's own. The shared type both
-instantiate is `icon_t` (`gfx/icon.h`); drawing is `icon_walk_blocks()`
+instantiate is `icon_t` (`gfx/draw/icon.h`); drawing is `icon_walk_blocks()`
 (streamed runs, not a collected buffer) and `ui_draw_icon()` (`ui/ui.h`).
 
 ## Ownership: one generator, two homes
@@ -14,7 +14,7 @@ Split by ownership, not by mechanism:
 
 | | |
 |---|---|
-| `design/icons/system.png` → `gfx/icons_system.h` | vocabulary any app means the same way: check, close, chevrons, info, back |
+| `design/icons/system.png` → `gfx/draw/icons_system.h` | vocabulary any app means the same way: check, close, chevrons, info, back |
 | `apps/<name>/icons/<name>.png` → `apps/<name>/icons_<name>.h` | that app's own artwork; deleting the folder takes the art, the manifest and the baked header with it |
 
 Same generator, same format, same tests.

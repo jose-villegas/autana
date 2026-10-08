@@ -95,7 +95,7 @@ The green-bordered nodes above are already in the tree, not proposed:
 `frameTime` ([`util/runtime/frame_cost.{h,c}`](../tools/Frame-Cost.md)), `cubePerf`
 (`apps/render_lab/tools/report_cube_perf.sh`), `busRoot` (`GFX_QSPI_HZ`,
 `gfx_heal.h`), `corePresent` (the present task pinned to core 1,
-`gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/gfx_band.h`,
+`gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/present/gfx_band.h`,
 already what render lab draws into), `hostHarness`
 (`docs/tools/Render-Harness.md`'s `*_render_host.sh` + `render_diff.sh`),
 `s3lExtract` (`render/r3d_project.h`, `r3d_line_camera.h`, `ray.h`), and
@@ -448,7 +448,7 @@ replace it, chosen by app kind:
    rows each (a Kconfig choice of 16/32/64, default 32 pending a device
    sweep: `tools/sweeps/band_height_sweep.sh`, section 8 decision 2),
    rendered and sent in turn, PSRAM never written. **The ring itself is built**: `gfx_mode_enter()`
-   grants `GFX_LAYOUT_BANDS`; `gfx_band_run()` (`gfx/gfx_band_run.h`) hands
+   grants `GFX_LAYOUT_BANDS`; `gfx_band_run()` (`gfx/present/gfx_band_run.h`) hands
    each dirty band to `draw_band` and sends it, and render_lab's cube scene ports onto it by projecting
    the scene once per frame, binning each triangle by its own screen-space
    row range, and per band drawing only the triangles that overlap it with

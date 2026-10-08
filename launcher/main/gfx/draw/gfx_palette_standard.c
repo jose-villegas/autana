@@ -1,8 +1,8 @@
-#include "gfx/gfx_palette_standard.h"
+#include "gfx/draw/gfx_palette_standard.h"
 
 #include <string.h>
 
-#include "gfx/gfx_palette_standard_generated.h"
+#include "gfx/draw/gfx_palette_standard_generated.h"
 
 /* IBM CGA/EGA 16-colour palette. Index 6 (brown, not the sequential dark
  * yellow) is deliberate CGA hardware behaviour, not a typo; see the

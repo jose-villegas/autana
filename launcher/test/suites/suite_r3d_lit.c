@@ -13,8 +13,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx/draw/gfx_color.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_color.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"

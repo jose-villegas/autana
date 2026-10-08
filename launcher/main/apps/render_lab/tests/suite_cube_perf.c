@@ -25,7 +25,7 @@
 #include "esp_log.h"
 
 #include "app/app.h"
-#include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -164,7 +164,7 @@ cube_perf_teardown(void) {
     render_lab_exit();
     render_lab_band_mode = saved_band_mode;
 
-    /* gfx_set_interlace() is gfx.c-global state, not app-scoped like
+    /* gfx_set_interlace() is gfx-global state, not app-scoped like
      * partial_clear - left on, it leaks into every suite that runs after
      * this one in the same boot, where its carried-over dirty bits make an
      * otherwise-unchanged frame look like it still has pixels to send. */

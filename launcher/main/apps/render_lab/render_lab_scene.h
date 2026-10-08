@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_color.h"
 
 typedef struct {
     const char* name;    /* shown on the HUD and the menu's scene picker */

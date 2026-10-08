@@ -11,7 +11,9 @@
 #include <stdio.h>
 
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "render/r3d_line_camera.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
@@ -175,7 +177,7 @@ wire_clear_frame(void) {
 
 /* Exposed for suite_wire_perf.c to time separately - full-framebuffer clear
  * plus every segment gfx_line() draws. gfx_line() clips and marks dirty
- * itself (gfx.c), so nothing here needs its own gfx_mark_dirty() call. */
+ * itself (gfx_draw.c), so nothing here needs its own gfx_mark_dirty() call. */
 void
 wire_draw_full(void) {
     wire_clear_frame();
@@ -192,7 +194,7 @@ wire_draw_full(void) {
 
 /* Exposed for suite_wire_perf.c to time separately - draws only the
  * segments overlapping [row0, row1). gfx_line() writes through gfx's current
- * target, which is `buf` while a band is open (gfx.c's current_target()), so
+ * target, which is `buf` while a band is open (gfx_internal.h's current_target()), so
  * nothing here touches `buf` directly. */
 void
 wire_draw_band(gfx_color_t* buf, int row0, int row1) {
@@ -227,7 +229,7 @@ wire_segment_count(void) {
 
 /* A cheap host-side-equivalent pixel estimate for the whole frame's drawn
  * segments: max(|dx|,|dy|)+1 per segment, the same count a Bresenham walk
- * would take (gfx.c's own walk()) without re-running it. */
+ * would take (gfx_draw.c's own walk()) without re-running it. */
 int64_t
 wire_line_pixel_estimate(void) {
     int64_t total = 0;

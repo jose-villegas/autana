@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 /* Indices 0-15 are reserved for UI (the shell's own chrome, drawn through
  * whichever palette an app installed) in any palette meant for
