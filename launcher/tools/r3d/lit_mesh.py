@@ -16,6 +16,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
 from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
@@ -181,14 +182,18 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, **options):
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, **options):
     """Writes <name>.mesh into out_dir, the pack entry main/render/
     r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
     (None for a flat mesh), tris counter-clockwise seen from the front,
     double one flag per triangle; options, face_rgb among them, go to
     bake_lit_mesh. Returns the baked mesh."""
-    mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
-    (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
+    recorder = NULL_RECORDER if recorder is None else recorder
+    with recorder.step("meshlets", len(tris)) as step:
+        mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
+        step["triangles_out"] = len(mesh.tris)
+    with recorder.step("write", len(mesh.tris)):
+        (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
     return mesh
 
 
