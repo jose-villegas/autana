@@ -866,8 +866,12 @@ wake_blocks_range(sand_t* s, int bx0, int by0, int bx1, int by1) {
     s->block_state[by1 * s->block_cols + bx1] |= BLOCK_ACTIVE;
 }
 
+/* Whether a block in (bx, by)'s 3x3 block neighbourhood has any of `bits`
+ * set; `count_self` includes (bx, by) itself. Settling asks it of
+ * BLOCK_ACTIVE about the neighbours only, liquid reach of BLOCK_HAS_LIQUID
+ * about all nine. */
 SAND_FACT static inline bool
-any_neighbor_active(const sand_t* s, int bx, int by) {
+block_neighbourhood_has(const sand_t* s, int bx, int by, uint8_t bits, bool count_self) {
     const int lo_x = (bx > 0) ? bx - 1 : bx;
     const int hi_x = (bx + 1 < s->block_cols) ? bx + 1 : bx;
     const int lo_y = (by > 0) ? by - 1 : by;
@@ -875,28 +879,10 @@ any_neighbor_active(const sand_t* s, int bx, int by) {
 
     for (int ny = lo_y; ny <= hi_y; ny++) {
         for (int nx = lo_x; nx <= hi_x; nx++) {
-            if (nx == bx && ny == by) {
+            if (!count_self && nx == bx && ny == by) {
                 continue;
             }
-            if (s->block_state[ny * s->block_cols + nx] & BLOCK_ACTIVE) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-/* Expands BLOCK_HAS_LIQUID, counts itself too */
-SAND_FACT static inline bool
-block_or_neighbour_has_liquid(const sand_t* s, int bx, int by) {
-    const int lo_x = (bx > 0) ? bx - 1 : bx;
-    const int hi_x = (bx + 1 < s->block_cols) ? bx + 1 : bx;
-    const int lo_y = (by > 0) ? by - 1 : by;
-    const int hi_y = (by + 1 < s->block_rows) ? by + 1 : by;
-
-    for (int ny = lo_y; ny <= hi_y; ny++) {
-        for (int nx = lo_x; nx <= hi_x; nx++) {
-            if (s->block_state[ny * s->block_cols + nx] & BLOCK_HAS_LIQUID) {
+            if (s->block_state[ny * s->block_cols + nx] & bits) {
                 return true;
             }
         }

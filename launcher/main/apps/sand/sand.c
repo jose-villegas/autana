@@ -1293,7 +1293,7 @@ finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) 
             if (s->block_state[i] & BLOCK_ACTIVE) {
                 continue;
             }
-            if (any_neighbor_active(s, bx, by)) {
+            if (block_neighbourhood_has(s, bx, by, BLOCK_ACTIVE, false)) {
                 s->block_state[i] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
             } else {
                 s->block_state[i] |= settled_bit;

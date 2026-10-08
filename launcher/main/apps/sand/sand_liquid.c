@@ -413,8 +413,8 @@ mark_liquid_neighbourhoods_range(sand_t* s, int by_from, int by_to) {
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
             uint8_t* slot = &s->block_state[by * s->block_cols + bx];
-            *slot = block_or_neighbour_has_liquid(s, bx, by) ? (uint8_t)(*slot | BLOCK_LIQUID_NEAR)
-                                                             : (uint8_t)(*slot & ~BLOCK_LIQUID_NEAR);
+            *slot = block_neighbourhood_has(s, bx, by, BLOCK_HAS_LIQUID, true) ? (uint8_t)(*slot | BLOCK_LIQUID_NEAR)
+                                                                               : (uint8_t)(*slot & ~BLOCK_LIQUID_NEAR);
         }
     }
 }
