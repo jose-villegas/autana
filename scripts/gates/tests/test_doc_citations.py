@@ -217,13 +217,11 @@ class DocCitationTest(unittest.TestCase):
         with gate_tree.temporary_tree() as root:
             gate_tree.write(root, "launcher/main/example.c", "void old_name(void) {}\n")
             gate_tree.write(root, "docs/Guide.md", "Use `old_name()`.\n")
-            base = gate_tree.commit(root, ".", message='base',
-                             identity=("Test", "test@example.com"))
-            result = self.touched_after(root,
-                                        base,
-                                        'rename',
-                                        "launcher/main/example.c",
-                                        "void new_name(void) {}\n")
+            base = gate_tree.commit(root, ".", message="base",
+                                    identity=("Test", "test@example.com"))
+            result = self.touched_after(
+                root, base, "rename", "launcher/main/example.c",
+                "void new_name(void) {}\n")
         self.assertEqual(json.loads(result.stdout)["citations"], [{
             "doc": "docs/Guide.md", "kind": "function", "line": 1,
             "symbol": "old_name",
@@ -234,9 +232,13 @@ class DocCitationTest(unittest.TestCase):
             gate_tree.write(root, "docs/Guide.md", "Guide\n")
             gate_tree.write(root, "launcher/main/example.c", "void live_function(void) {}\n")
             committed = "2026-09-10T12:00:00+0000"
-            gate_tree.commit(root, ".", message='base',
-                             identity=("Test", "test@example.com"), environment={**os.environ, "GIT_AUTHOR_DATE": committed,
-                                "GIT_COMMITTER_DATE": committed})
+            gate_tree.commit(
+                root, ".", message="base", identity=("Test", "test@example.com"),
+                environment={
+                    **os.environ,
+                    "GIT_AUTHOR_DATE": committed,
+                    "GIT_COMMITTER_DATE": committed,
+                })
             gate_tree.write(root, "docs/doc_review_ledger.txt", "docs/Guide.md\t2026-09-17\tchecked\n")
             rows = doc_drift.report(root, today=__import__("datetime").date(2026, 9, 18))
         guide = next(row for row in rows if row["doc"] == "docs/Guide.md")
@@ -246,10 +248,10 @@ class DocCitationTest(unittest.TestCase):
         with gate_tree.temporary_tree() as root:
             gate_tree.write(root, "docs/Guide.md", "See `launcher/main/example.c`.\n")
             gate_tree.write(root, "launcher/main/example.c", "int example = 1;\n")
-            gate_tree.commit(root, ".", message='base',
+            gate_tree.commit(root, ".", message="base",
                              identity=("Test", "test@example.com"))
             gate_tree.write(root, "launcher/main/example.c", "int example = 2;\n")
-            gate_tree.commit(root, ".", message='change',
+            gate_tree.commit(root, ".", message="change",
                              identity=("Test", "test@example.com"))
             row = next(row for row in doc_drift.report(root) if row["doc"] == "docs/Guide.md")
         self.assertEqual((len(row["files"]), row["rank"] - row["age"]), (1, 30))
@@ -569,13 +571,11 @@ class DocCitationTest(unittest.TestCase):
             gate_tree.write(root, "launcher/main/b.c", "void fixture(void) {}\n")
             gate_tree.write(root, "docs/Guide.md", "Use `fixture()`.\n")
             gate_tree.write(root, "docs/Bound.md", "Use `fixture()` from `launcher/main/a.c`.\n")
-            base = gate_tree.commit(root, ".", message='base',
-                             identity=("Test", "test@example.com"))
-            result = self.touched_after(root,
-                                        base,
-                                        'change',
-                                        "launcher/main/a.c",
-                                        "void fixture(void) { int changed = 1; }\n")
+            base = gate_tree.commit(root, ".", message="base",
+                                    identity=("Test", "test@example.com"))
+            result = self.touched_after(
+                root, base, "change", "launcher/main/a.c",
+                "void fixture(void) { int changed = 1; }\n")
         self.assertEqual(json.loads(result.stdout)["citations"], [{
             "doc": "docs/Bound.md", "kind": "function", "line": 1,
             "symbol": "fixture",

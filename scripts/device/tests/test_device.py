@@ -469,13 +469,13 @@ class DeviceTests(unittest.TestCase):
         completes as soon as that prefix's own _END arrives rather than
         waiting out the window."""
         status, connection, printed = self.send_response([b"EXAMPLE status=ok\n", b"EXAMPLE_END\n"],
-                                                          self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True))
+                                                          self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))
         self.assertEqual(status, 0)
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
 
     def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
         status, connection, printed = self.send_response([b"EXAMPLE_ERR not running\n"],
-                                                          self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True))
+                                                          self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))
         self.assertEqual(status, 1)
 
     def test_send_optional_treats_silence_as_success(self):
@@ -495,7 +495,7 @@ class DeviceTests(unittest.TestCase):
     def test_send_without_optional_still_raises_on_silence(self):
         connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
         store = mock_store()
-        args = self.send_args("TUNE", reply="TUNE", until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=0.05, optional=False)
+        args = self.send_args("TUNE", seconds=0.05)
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "no reply"):
                 device.send(args, store, BOARD)

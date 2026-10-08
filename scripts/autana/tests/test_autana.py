@@ -46,6 +46,7 @@ def project_call(git_output=None):
           if git_output is not None else contextlib.nullcontext()):
         yield called
 
+
 @contextlib.contextmanager
 def sent_reply(result):
     with mock.patch.object(autana, "send", return_value=result) as sent, mock.patch("builtins.print"):
@@ -58,6 +59,16 @@ def status_command(argv, environ, handler):
          mock.patch.dict(autana.COMMANDS, {"status": handler}), \
          mock.patch.object(autana.sys, "argv", ["autana", *argv]):
         yield
+
+
+def run_main(argv, environ=None, handler=None):
+    handler = handler or mock.Mock(return_value=0)
+    with status_command(argv, environ or {}, handler), \
+         mock.patch.object(autana, "idf_python", return_value="python"), \
+         mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
+        with unittest.TestCase().assertRaises(SystemExit) as stop:
+            autana.main()
+    return stop.exception.code, handler
 
 
 @contextlib.contextmanager
@@ -1412,15 +1423,6 @@ class GlobalWaitTests(unittest.TestCase):
     main() hands it to device_command() and every child process through
     one private variable, and a caller's AUTANA_DEVICE_WAIT is ignored."""
 
-    def run_main(self, argv, environ=None, handler=None):
-        handler = handler or mock.Mock(return_value=0)
-        with status_command(argv, environ or {}, handler), \
-             mock.patch.object(autana, "idf_python", return_value="python"), \
-             mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
-            with self.assertRaises(SystemExit) as stop:
-                autana.main()
-        return stop.exception.code, handler
-
     def wait_seen_by_device_step(self, argv, environ=None):
         seen = []
 
@@ -1428,7 +1430,7 @@ class GlobalWaitTests(unittest.TestCase):
             seen.append(autana.device_command("status"))
             return 0
 
-        self.run_main(argv, environ, handler)
+        run_main(argv, environ, handler)
         command = seen[0]
         return command[command.index("--wait") + 1] if "--wait" in command else None
 
@@ -1453,7 +1455,7 @@ class GlobalWaitTests(unittest.TestCase):
         self.assertEqual(seen, "5")
 
     def test_the_command_receives_its_own_arguments_only(self):
-        _, handler = self.run_main(["--wait", "0", "status", "x"])
+        _, handler = run_main(["--wait", "0", "status", "x"])
         handler.assert_called_once_with(["x"])
 
     def test_a_nested_process_inherits_the_wait(self):
@@ -1466,19 +1468,19 @@ class GlobalWaitTests(unittest.TestCase):
                 text=True).strip())
             return 0
 
-        self.run_main(["--wait", "0", "status"], {"AUTANA_DEVICE_WAIT": "90"}, handler)
+        run_main(["--wait", "0", "status"], {"AUTANA_DEVICE_WAIT": "90"}, handler)
         self.assertEqual(seen, ["0"])
 
 
     def test_an_invalid_value_is_rejected(self):
         for value in ("-1", "abc", "1.5", ""):
             with self.subTest(value=value):
-                code, handler = self.run_main(["--wait", value, "status"])
+                code, handler = run_main(["--wait", value, "status"])
                 self.assertIn("non-negative integer number of seconds", str(code))
                 handler.assert_not_called()
 
     def test_a_missing_value_is_rejected(self):
-        code, _ = self.run_main(["--wait"])
+        code, _ = run_main(["--wait"])
         self.assertIn("non-negative integer number of seconds", str(code))
 
     def test_help_lists_the_option_once_as_a_global_option(self):
@@ -1494,7 +1496,7 @@ class GlobalOwnerTests(unittest.TestCase):
 
     def run_main(self, argv, environ=None, handler=None):
         with mock.patch.object(autana.os, "getpid", return_value=4242):
-            return GlobalWaitTests.run_main(self, argv, environ, handler)
+            return run_main(argv, environ, handler)
 
     def owner_seen_by_device_step(self, argv, environ=None):
         seen = []
