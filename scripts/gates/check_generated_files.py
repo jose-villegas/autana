@@ -168,16 +168,17 @@ def check(root, name):
 
 def table_documents(names):
     """Generated outputs belong to their engine or app owner's tool index."""
-    documents = {TABLE_DOC: []}
+    documents = {TABLE_DOC: (TABLE_BLOCK, [])}
     for name in names:
         parts = pathlib.PurePosixPath(name).parts
         doc = "/".join((*parts[:4], "tools", "README.md")) if parts[:3] == ("launcher", "main", "apps") else TABLE_DOC
-        documents.setdefault(doc, []).append(name)
+        block = TABLE_BLOCK if doc == TABLE_DOC else f"{TABLE_BLOCK}-{parts[3].replace('_', '-')}"
+        documents.setdefault(doc, (block, []))[1].append(name)
     return documents
 
 
 def table(root, names, doc=TABLE_DOC):
-    """The Markdown table of `names` for TABLE_DOC: each output, the script
+    """The Markdown table of `names` for `doc`: each output, the script
     its banner runs, the folder it runs in and the banner's command, linked
     from that document."""
     here = (root / doc).parent
@@ -207,9 +208,12 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     if args.write_table:
-        for doc, names in table_documents(generated_files(root)).items():
-            block = TABLE_BLOCK if doc == TABLE_DOC else f"{TABLE_BLOCK}-{pathlib.PurePosixPath(doc).parts[3].replace('_', '-')}"
-            replace_block(root / doc, block, table(root, names, doc))
+        for doc, (block, names) in table_documents(generated_files(root)).items():
+            try:
+                replace_block(root / doc, block, table(root, names, doc))
+            except (ValueError, OSError) as error:
+                print(f"FAIL {doc}: {error}")
+                return 1
         return 0
     names = [pathlib.Path(p).resolve().relative_to(root).as_posix() for p in args.paths] or generated_files(root)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
@@ -218,9 +222,14 @@ def main():
         print(f"ok   {name}" if problem is None else f"FAIL {name}: {problem}")
     failed = sum(problem is not None for problem in results)
     if not args.paths:
-        for doc, outputs in table_documents(names).items():
-            block = TABLE_BLOCK if doc == TABLE_DOC else f"{TABLE_BLOCK}-{pathlib.PurePosixPath(doc).parts[3].replace('_', '-')}"
-            if replace_block(root / doc, block, table(root, outputs, doc), check=True):
+        for doc, (block, outputs) in table_documents(names).items():
+            try:
+                stale = replace_block(root / doc, block, table(root, outputs, doc), check=True)
+            except (ValueError, OSError) as error:
+                print(f"FAIL {doc}: {error}")
+                failed += 1
+                continue
+            if stale:
                 print(f"FAIL {doc}: its table of generated files is stale; run this gate with --write-table")
                 failed += 1
     print(f"generated files: {len(names)} checked, {failed} failed")

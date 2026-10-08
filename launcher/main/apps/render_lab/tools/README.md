@@ -1,5 +1,12 @@
 # Render Lab tools
 
+
+Host-only scripts; the firmware build skips this folder. The render harness
+itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
+
+Before a source bake or reference render, pull the
+[mesh source files](../../../../tools/r3d/README.md).
+
 ## Generated files
 
 <!-- generated: generated-files-render-lab sha256=d4251689721ad9a1de4306e41c402135d1c1365636be9b6b88c038de6d290d90 -->
@@ -7,12 +14,6 @@
 |---|---|---|---|
 | [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
 <!-- /generated: generated-files-render-lab -->
-
-Host-only scripts; the firmware build skips this folder. The render harness
-itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
-
-Before a source bake or reference render, pull the
-[mesh source files](../../../../tools/r3d/README.md).
 
 ## Host renders
 
@@ -92,7 +93,7 @@ Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg
 PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out /path/to/work
 ```
 
-The host harness also renders the HUD views. `tests/test_sky_through_walls.py`
+`tests/test_sky_through_walls.py`
 checks the app flythrough against its sky-through-wall ceilings.
 
 ## Sponza poses
