@@ -30,6 +30,7 @@ demo scene in the [demo assets](../../launcher/demo/README.md).
   - [View modes](#view-modes)
   - [Upscale](#upscale)
   - [Present](#present)
+- [Refreshing](#refreshing)
 
 ```mermaid
 flowchart LR
@@ -71,8 +72,7 @@ flowchart LR
 
 ## Offline, on the host
 
-Every step runs on the CPU except the fit, which needs a CUDA GPU; the light
-bake uses one when present.
+Every step runs on the CPU except the fit, which needs a CUDA GPU.
 The doc-images GPU stage rebakes the demo scene's meshes on the machine in
 the table below:
 
@@ -153,7 +153,7 @@ Reference: [Mesh-Import.md](Mesh-Import.md#thin).
 
 Bakes each vertex's colour: direct sun and sky, local occlusion, and
 path-traced bounced light. Rays are traced by Mitsuba on the CPU (its LLVM
-backend), on CUDA when a device is available.
+backend).
 
 | Reads | Writes | Settings |
 |---|---|---|
@@ -234,9 +234,9 @@ Reference: [the asset packs](../assets/README.md#packs).
 
 ## Every frame, on the board
 
-Each stage of the scene as shipped, both cores:
+Each stage of the scene as shipped:
 
-<!-- generated: pipeline-frame-stages sha256=225bbf06bddfb0a82916e7b5e083d653aecd42a848c10498ede40f7efd8866e7 -->
+<!-- generated: pipeline-frame-stages sha256=866982c25d43099be4e7a5d0afac643e454c551f6de1930496a3590a742e50c3 -->
 | Stage | Board ms/frame |
 |---|---|
 | r3d.cull | 0.72 |
@@ -247,7 +247,7 @@ Each stage of the scene as shipped, both cores:
 | r3d.upscale | 2.88 |
 | frame.rest | 1.13 |
 
-Source: the scene as shipped, mean of 20 windows.
+Source: the scene as shipped, mean of 20 windows; the resolve row is from the scene with the motion attachment shown.
 <!-- /generated: pipeline-frame-stages -->
 
 ### Scene and camera
@@ -283,17 +283,18 @@ Reference: [Dynamic-Resolution.md](Dynamic-Resolution.md).
 
 ### Cull
 
-The cull walks each mesh's node tree against the camera's frustum, nearest
-first, and keeps the clusters that may be on screen. At a fixed or stepped
+The cull walks each mesh's node tree against the camera's frustum, roughly
+nearest first, and keeps the clusters that may be on screen. At a fixed or stepped
 size the draw culls each instance just before drawing it; when the size is
 predicted, the census culls every instance first, the size is priced from its
 list, and the draw reuses it.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| node and cluster bounds, the camera | the census list | none |
+| node and cluster bounds, the camera | the kept clusters | none |
 
-Cost: `r3d.cull`, or `r3d.census` when predicted, in the frame-stages table.
+Cost: `r3d.cull` in the frame-stages table; a predicted size is charged to
+`r3d.census` instead.
 
 Picture: none yet.
 
@@ -395,8 +396,41 @@ what the frame waits for it.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| the framebuffer or expanded picture, its dirty rows | the panel | partial updates, the mode |
+| the framebuffer or half picture, its dirty rows | the panel | the framebuffer layout (`gfx_mode.h`) |
 
 Cost: `present.wait` in the frame-stages table.
 
 Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-gets-sent).
+
+## Refreshing
+
+The docs generator, `launcher/tools/render/render_doc_images.sh`, refreshes
+this page's measured blocks from the committed captures and GPU stage.
+
+The generator also writes the `pipeline-frame-stages` table from frame-cost
+report windows: every bracket of the scene as shipped, plus the resolve row
+from a capture with motion vectors attached. Capture both from the same build:
+
+```sh
+autana monitor 30 --out docs/render/data/pipeline-present-board.log
+autana monitor 30 --out docs/render/data/pipeline-resolve-board.log
+```
+
+The first runs with the scene as shipped; the second with the scene's debug
+view set to the motion attachment (a development-build tunable; `autana tune`
+lists it). Check `autana status` and `autana buildid` before and after each
+capture. A missing capture leaves its row `not in capture`; a capture without
+report windows fails the run.
+
+The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
+rebakes and fits. Refresh them on the GPU runner with:
+
+```sh
+sh launcher/tools/render/render_doc_images.sh --stage gpu
+```
+
+RAM peaks are sampled process RSS; GPU steps also read GPU
+resident memory and PyTorch's reserved-memory peak. CPU steps have no VRAM
+measurement. Each fitted input's rebake is labelled `fit-start`, and its fit
+has a separate row. The machine table reads the runner's hardware and
+software versions during that run.

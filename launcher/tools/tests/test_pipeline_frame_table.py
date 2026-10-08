@@ -44,6 +44,13 @@ class PipelineFrameTableTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 dynres_report.frame_cost_means(capture)
 
+    def test_frame_cost_line_without_brackets_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "frame.log"
+            capture.write_text("ms/frame avg/worst: | total 45\n")
+            with self.assertRaises(ValueError):
+                dynres_report.frame_cost_means(capture)
+
     def test_every_table_needs_a_document_owner(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

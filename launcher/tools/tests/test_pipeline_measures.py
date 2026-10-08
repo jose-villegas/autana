@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import threading
 from unittest.mock import patch
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -48,6 +49,8 @@ class PipelineMeasuresTests(unittest.TestCase):
                 released.set()
         self.assertEqual(recorder.rows[0]["peak_ram_bytes"], 100)
         self.assertTrue(threads)
+        for thread in threads:
+            thread.join(timeout=5)
         self.assertTrue(all(not thread.is_alive() for thread in threads))
 
     def test_default_gpu_poll_never_launches_a_subprocess(self):
@@ -62,6 +65,52 @@ class PipelineMeasuresTests(unittest.TestCase):
             with recorder.step("fit", 12, gpu=True):
                 self.assertTrue(sampled.wait(5))
         self.assertEqual(gpu.call_count, 2)
+
+    def test_injected_gpu_probe_polls_cpu_memory_only(self):
+        sampled = threading.Event()
+        calls = []
+        def probe(gpu):
+            calls.append((threading.current_thread() is threading.main_thread(), gpu))
+            if not calls[-1][0]:
+                sampled.set()
+            return 10, 20 if gpu else None
+        recorder = process_budget.StepRecorder(probe=probe)
+        with recorder.step("fit", 12, gpu=True):
+            self.assertTrue(sampled.wait(5))
+        self.assertEqual([gpu for main, gpu in calls if main], [True, True])
+        self.assertTrue(all(not gpu for main, gpu in calls if not main))
+
+    def test_gpu_memory_uses_larger_reserved_or_resident_peak(self):
+        for reserved, expected in ((300, 300), (100, 200)):
+            with self.subTest(reserved=reserved):
+                cuda = SimpleNamespace(is_initialized=lambda: True, max_memory_reserved=lambda: reserved)
+                with patch.dict(sys.modules, torch=SimpleNamespace(cuda=cuda)), \
+                        patch.object(process_budget, "gpu_resident_bytes", return_value={process_budget.os.getpid(): 200}), \
+                        patch.object(process_budget, "status_bytes", return_value=10):
+                    self.assertEqual(process_budget.step_memory(True), (10, expected))
+
+    def test_gpu_step_resets_reserved_peak_before_entry_probe(self):
+        events = []
+        cuda = SimpleNamespace(is_initialized=lambda: True, reset_peak_memory_stats=lambda: events.append("reset"))
+        def probe(gpu):
+            events.append("probe")
+            return 10, 20 if gpu else None
+        recorder = process_budget.StepRecorder(probe=probe, interval=None)
+        with patch.dict(sys.modules, torch=SimpleNamespace(cuda=cuda)):
+            with recorder.step("cpu", 1):
+                pass
+            self.assertEqual(events, ["probe", "probe"])
+            events.clear()
+            with recorder.step("gpu", 1, gpu=True):
+                self.assertEqual(events, ["reset", "probe"])
+        self.assertEqual(events, ["reset", "probe", "probe"])
+
+    def test_machine_cores_distinguish_sockets_and_merge_hyperthreads(self):
+        cpuinfo = "\n\n".join(f"model name : Fixture CPU\nphysical id : {socket}\ncore id : {core}\n"
+                                 for socket in (0, 1) for core in (0, 1) for thread in (0, 1))
+        probes = doc_stages.machine_probes(cpuinfo, "MemTotal: 1024 kB\n", "GPU, 4096, 123\n",
+                                          dict(threads=8, CUDA="12", OS="host", Python="3", Mitsuba="1", PyTorch="2"))
+        self.assertEqual(probes["Cores/threads"], "4/8")
 
     def test_null_recorder_starts_no_thread_or_probe(self):
         with patch.object(process_budget.threading, "Thread") as thread, \

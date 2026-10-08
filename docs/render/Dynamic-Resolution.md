@@ -174,31 +174,5 @@ autana suite run_raster_scale_perf_suite --flash --out docs/render/data/dynamic-
 sh launcher/tools/render/render_doc_images.sh
 ```
 
-The generator also writes the `pipeline-frame-stages` table from frame-cost
-report windows: every bracket of the scene as shipped, plus the resolve row
-from a capture with motion vectors attached. Capture both from the same build:
-
-```sh
-autana monitor 30 --out docs/render/data/pipeline-present-board.log
-autana monitor 30 --out docs/render/data/pipeline-resolve-board.log
-```
-
-The first runs with the scene as shipped; the second with the scene's debug
-view set to the motion attachment (a development-build tunable; `autana tune`
-lists it). Check `autana status` and `autana buildid` before and after each
-capture. A missing capture leaves its row `not in capture`; a capture without
-report windows fails the run.
-
-The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
-rebakes and fits. Refresh them on the GPU runner with:
-
-```sh
-sh launcher/tools/render/render_doc_images.sh --stage gpu
-```
-
-Steps follow execution order. Alpha masking precedes visibility; thinning
-follows it. RAM peaks are sampled process RSS; GPU steps also read GPU
-resident memory and PyTorch's reserved-memory peak. CPU steps have no VRAM
-measurement. Each fitted input's rebake is labelled `fit-start`, and its fit
-has a separate row. The machine table reads the runner's hardware and
-software versions during that run.
+For the pipeline captures and GPU-stage tables, see
+[Render-Pipeline.md](Render-Pipeline.md#refreshing).

@@ -117,16 +117,11 @@ def pipeline_table(present, resolve):
     shipped, attached = frame_cost_means(present), frame_cost_means(resolve)
     rows = list(shipped or [])
     resolve_ms = dict(attached or []).get("r3d.resolve")
-    names = [name for name, _ in rows]
-    if "r3d.resolve" in names:
-        index = names.index("r3d.resolve")
-        rows.pop(index)
-    else:
-        report = [name for name, _ in attached or []]
-        index = len(rows)
-        if "r3d.resolve" in report:
-            after = report[report.index("r3d.resolve") + 1:]
-            index = next((i for i, (name, _) in enumerate(rows) if name in after), len(rows))
+    report = [name for name, _ in attached or []]
+    index = len(rows)
+    if "r3d.resolve" in report:
+        after = report[report.index("r3d.resolve") + 1:]
+        index = next((i for i, (name, _) in enumerate(rows) if name in after), len(rows))
     rows.insert(index, ("r3d.resolve, with motion vectors attached", resolve_ms))
     lines = ["| Stage | Board ms/frame |", "|---|---|"]
     if shipped is None:
@@ -134,7 +129,8 @@ def pipeline_table(present, resolve):
     lines.extend(f"| {name} | {value:.2f} |" if value is not None else f"| {name} | not in capture |"
                  for name, value in rows)
     count = len(frame_cost_windows(present) or [])
-    return "\n".join(lines) + f"\n\nSource: the scene as shipped, mean of {count} windows."
+    return "\n".join(lines) + f"\n\nSource: the scene as shipped, mean of {count} windows; " \
+        "the resolve row is from the scene with the motion attachment shown."
 
 
 def stages_table(splits, spans):

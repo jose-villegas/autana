@@ -230,7 +230,7 @@ class StepRecorder:
         cuda = getattr(torch, "cuda", None)
         if gpu and cuda and getattr(cuda, "is_initialized", lambda: False)():
             cuda.reset_peak_memory_stats()
-        poll_probe = (lambda: self.probe(False)) if self.probe is step_memory else lambda: self.probe(gpu)
+        poll_probe = lambda: self.probe(False)
         sampler = PeakSampler(lambda: self.probe(gpu), self.interval, poll_probe)
         try:
             with sampler:

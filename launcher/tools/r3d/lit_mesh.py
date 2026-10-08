@@ -7,7 +7,6 @@ quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
 order first, so the same triangles always bake to the same bytes."""
 
-import contextlib
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -17,6 +16,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
 from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
@@ -188,11 +188,11 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, *
     (None for a flat mesh), tris counter-clockwise seen from the front,
     double one flag per triangle; options, face_rgb among them, go to
     bake_lit_mesh. Returns the baked mesh."""
-    with recorder.step("meshlets", len(tris)) if recorder else contextlib.nullcontext() as step:
+    recorder = NULL_RECORDER if recorder is None else recorder
+    with recorder.step("meshlets", len(tris)) as step:
         mesh = bake_lit_mesh(positions, rgb, tris, double, **options)
-        if step is not None:
-            step["triangles_out"] = len(mesh.tris)
-    with recorder.step("write", len(mesh.tris)) if recorder else contextlib.nullcontext():
+        step["triangles_out"] = len(mesh.tris)
+    with recorder.step("write", len(mesh.tris)):
         (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
     return mesh
 

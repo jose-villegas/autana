@@ -7,7 +7,7 @@
 Per spp it renders `--seeds` independent seeds and reports the relative per-pixel noise of the linear image and the
 mean CIE76 dE between two device pictures of the same setting; per depth it reports how much a deeper cap changes
 the picture against the shallowest cap at the same seeds. Times separate the export, the first (cold) render,
-which compiles kernels, and the warm ones; GPU memory is sampled from nvidia-smi at the block boundaries. Writes sweep.json and
+which compiles kernels, and the warm ones; GPU memory is sampled from nvidia-smi throughout each block. Writes sweep.json and
 sweep.md to the output folder.
 """
 
@@ -73,10 +73,10 @@ def guard_memory(floor):
 
 
 class VramPeak:
-    """Device-wide GPU memory in MiB, sampled at the block boundaries."""
+    """Device-wide GPU memory in MiB, sampled throughout the block."""
 
     def __init__(self, probe=None):
-        self.sampler = PeakSampler(lambda: ((probe or self.used)(),), interval=None)
+        self.sampler = PeakSampler(lambda: ((probe or self.used)(),), interval=0.1)
         self.peak = None
 
     @staticmethod
