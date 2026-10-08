@@ -77,25 +77,31 @@ for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-ful
 done
 
 # The fidelity sheet: two poses of the committed flat bake against the source
-# model lit per pixel. Poses at 0 to 25000 ms every 5000 give render frames 0 to 4,
-# and the sheet shows frames 2 and 4. The source model lives in
-# the demo folder and uses Git LFS.
-run "$PYTHON" - "$SCENE" "$FULL" > "$W/fidelity-poses.txt" <<'PYPOSES'
+# model lit per pixel. The reference skips the initial pose; the sheet shows
+# video frames 2 and 4. The source model lives in the demo folder and uses Git LFS.
+FIDELITY_FRAMES=5
+FIDELITY_DT=5000
+run "$PYTHON" - "$SCENE" "$FULL" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/fidelity-poses.txt" <<'PYPOSES'
 import sys
 from pathlib import Path
 sys.path.insert(0, "launcher/tools")
 from r3d.import_settings import load_scene
-from r3d.mesh_import import camera_path_poses
-from r3d.fitted_variant import poses_text
+from anim import track_host
 scene = load_scene(Path(sys.argv[1]))
 job = next(item for item in scene.renderers if item.object.name == sys.argv[2] + "_fitted")
-print(poses_text(*camera_path_poses(scene, job.renderer.visibility, 5000, either_way_up=False)), end="")
+camera = scene.camera.component
+width, height = job.renderer.visibility.size
+frames, dt = map(int, sys.argv[3:])
+text = track_host.sample(camera.path.animation, [
+    "--every", dt, "--until", (frames + 1) * dt, "--poses", camera.path.node,
+    width, height, format(camera.half_fov_short_tan, ".9g"), format(camera.near_z, ".9g")])
+sys.stdout.buffer.write(text.encode())
 PYPOSES
 # render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
 # their inputs, so only a change to the scene, tracer or poses traces again.
 REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference "$DEMO/$ID.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
-run "$HOST" --quarter 0 --scene "$ID" --object "${FULL}_flat" --frames 5 --dt 5000 \
+run "$HOST" --quarter 0 --scene "$ID" --object "${FULL}_flat" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
     -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
@@ -105,7 +111,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 # The committed smooth bake at the same five poses, scored against the committed
 # reference, for the fidelity table and the import-light image.
-run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames 5 --dt 5000 \
+run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
     -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
     --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
@@ -119,7 +125,7 @@ bake_and_render() {
     run ln -sfn "$PWD/$DEMO/source" "$dir/source"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/$ID.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
     run "$PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" "$SCENE" --replace "$mesh=$dir/$mesh.mesh"
-    AUTANA_ASSET_DIR="$dir/assets" run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames 5 --dt 5000 \
+    AUTANA_ASSET_DIR="$dir/assets" run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
 # The indirect-light and occlusion studies start from the physical look: the
@@ -231,7 +237,7 @@ against_reference() {
         esac
         shift
     done
-    run "$HOST" --quarter 0 --scene "$ID" --object "$scene" --frames 5 --dt 5000 \
+    run "$HOST" --quarter 0 --scene "$ID" --object "$scene" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
         -o "$W/fidelity-$scene.bmp" --video "$W/fidelity-$scene.avi" 2> "$W/fidelity-$scene.log"
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$scene-unused.png" \
         --reference-video "$W/fidelity-$scene.avi" "$REFERENCE" --reference-scale 2 \
@@ -271,7 +277,7 @@ done
 sweep_start=$(date +%s)
 "$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$DEMO/$ID.scene.toml" --mesh "${FULL}_flat" \
     --host "$HOST" \
-    --render-args "--quarter 0 --scene $ID --object ${FULL}_flat --frames 5 --dt 5000" \
+    --render-args "--quarter 0 --scene $ID --object ${FULL}_flat --frames $FIDELITY_FRAMES --dt $FIDELITY_DT" \
     --reference "$REFERENCE" --work "$W/sampling" \
     --variant declared= --variant fixed1=samples=fixed:1 --variant fixed2=samples=fixed:2 \
     --variant fixed4=samples=fixed:4 --variant fixed8=samples=fixed:8 --variant fixed16=samples=fixed:16 \

@@ -20,6 +20,33 @@ APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
 class DocImageFailureTest(unittest.TestCase):
+    def test_scene_poses_equal_track_host_for_the_video_frame_count(self):
+        from anim import track_host
+        from anim_probe import write_camera_clip
+        from test_r3d_import import HEAD, renderer, sun_object, write_import
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            clip = write_camera_clip(work, name="orbit", reach=2.0, degrees=90.0)
+            write_import(work)
+            scene = work / "gallery.scene.toml"
+            scene.write_text(HEAD + sun_object() + renderer(name="painting_fitted", extra=
+                'bake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [8, 6] }\n') +
+                '[[objects]]\nname = "view"\n[objects.camera]\nhalf_fov_short_tan = 0.62\nnear_z = 6\n'
+                'path = { animation = "orbit.anim.toml", node = "camera" }\n')
+            source = APP_SCRIPT.read_text()
+            block = source[source.index('run "$PYTHON" - "$SCENE"'):source.index("\nPYPOSES") + len("\nPYPOSES")]
+            for frames in (2, 5):
+                with self.subTest(frames=frames):
+                    script = (ROOT / "scripts/lib/run.sh").read_text() + \
+                        '\nSCENE=$1\nW=$2\nPYTHON=$3\nFULL=painting\nFIDELITY_FRAMES=$4\nFIDELITY_DT=250\n' + block
+                    done = subprocess.run(["sh", "-c", script, "poses", scene.as_posix(), work.as_posix(),
+                                           pathlib.Path(sys.executable).as_posix(), str(frames)],
+                                          cwd=ROOT, capture_output=True, text=True, timeout=60)
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                    expected = track_host.sample(clip, ["--every", 250, "--until", (frames + 1) * 250,
+                                                       "--poses", "camera", 8, 6, "0.62", "6"])
+                    self.assertEqual((work / "fidelity-poses.txt").read_bytes(), expected.encode())
+
     def test_tables_use_the_callers_scene_and_object(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
