@@ -46,7 +46,7 @@
 
 #include "material.h"
 #include "sand.h"
-#ifdef SAND_FORCE_WORK
+#if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
 #include "sand_priv.h"
 #endif
 
@@ -692,6 +692,86 @@ scene_two_core_big(sand_t* s) {
     }
 }
 
+/* SKIP COVERAGE. The rows below exist to make a skip fire that no row above
+ * reaches, so report_fingerprint.sh's forced-work comparison says something
+ * about it - its coverage table names the site each one is for. Most leave
+ * the stone floor out on purpose: stone is a conductor and carries heat, and
+ * either is enough to keep the skip they test from ever applying. */
+
+/* Fire with nothing to burn and nothing that conducts: the burning cell's
+ * neighbour scan and conduction are skipped, board-wide. */
+static void
+scene_lone_flame(sand_t* s) {
+    for (int y = 20; y < 26; y++) {
+        for (int x = 20; x < 40; x++) {
+            sand_set(s, x, y, FP_FIRE);
+        }
+    }
+}
+
+/* Snow on water with no conductor: the cold cell never carries cold on. */
+static void
+scene_bare_snow(sand_t* s) {
+    for (int y = FP_H - 10; y < FP_H; y++) {
+        for (int x = 0; x < FP_W; x++) {
+            sand_set(s, x, y, FP_WATER);
+        }
+    }
+    for (int y = 6; y < 20; y++) {
+        for (int x = 10; x < 50; x++) {
+            sand_set(s, x, y, FP_SNOW);
+        }
+    }
+}
+
+/* Plants, wood and roots in dry dirt, and no liquid anywhere: drinking and
+ * rooting are skipped for want of anything to draw. */
+static void
+scene_dry_garden(sand_t* s) {
+    for (int y = FP_H - 10; y < FP_H; y++) {
+        for (int x = 0; x < FP_W; x++) {
+            sand_set(s, x, y, FP_DIRT);
+        }
+    }
+    for (int x = 8; x < 56; x += 6) {
+        sand_set(s, x, FP_H - 11, FP_PLANT);
+        sand_set(s, x + 2, FP_H - 11, FP_WOOD);
+        sand_set(s, x, FP_H - 8, FP_ROOT);
+    }
+}
+
+/* A little water soaking into a dirt bed with sleeping on, and nothing else
+ * that reacts: the reaction pass takes its soak-only walk, and soaking skips
+ * dirt with no liquid near. Dirt, not sand: wet sand keeps slumping, and a
+ * grain that may still fall rules the soak-only walk out. */
+static void
+scene_soak_asleep(sand_t* s) {
+    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
+    for (int y = FP_H - 20; y < FP_H; y++) {
+        for (int x = 0; x < FP_W; x++) {
+            sand_set(s, x, y, FP_DIRT);
+        }
+    }
+    for (int y = FP_H - 24; y < FP_H - 20; y++) {
+        for (int x = 4; x < 10; x++) {
+            sand_set(s, x, y, FP_WATER);
+        }
+    }
+}
+
+/* A packed water column under gravity off the axis, on a board tall enough
+ * for its bottom block row to rest with no restless neighbour. Off-axis
+ * gravity dithers between two fall directions, so a resting block collects
+ * both settled bits, and cross-flow skips such a block outright. */
+static void
+scene_tilted_pool(sand_t* s) {
+    for (int y = s->h - 80; y < s->h; y++) {
+        for (int x = 0; x < s->w; x++) {
+            sand_set(s, x, y, FP_WATER);
+        }
+    }
+}
+
 /* GRAVITY IS PER SCENE, and the six original rows keep the straight-down
  * vector they were baselined with - their hashes must not move.
  *
@@ -707,10 +787,10 @@ typedef struct {
     int gx;
     int gy;
     int sleeping; /* 0 for every original row, see the two at the end */
-    int w;        /* 0 means FP_W - overridden only by the two-core row */
+    int w;        /* 0 means FP_W - overridden where a row needs its own board */
     int h;        /* 0 means FP_H */
     int two_core; /* 1 runs this row's steps through the two-core split -
-                    * 0 for every other row, which pins the serial step */
+                    * 0 pins the serial step */
 } fp_scene_t;
 
 static const fp_scene_t SCENES[] = {
@@ -774,9 +854,19 @@ static const fp_scene_t SCENES[] = {
      * above is 0 or 1000, so sweep_x_order()'s dx<0 branch has never run. */
     {"gas_land_inv", scene_fire_gas, 31u, -1000, 0, 0, 0, 0, 0},
 
-    /* The only row run through the two-core split, see the builder for
-     * why it needs its own board size. */
+    /* The two-core split's row, see the builder for why it needs its own
+     * board size. */
     {"two_core_big", scene_two_core_big, 101u, 0, 1000, 0, 256, 192, 1},
+
+    /* Skip coverage, see SKIP COVERAGE above the builders. two_core_big's own
+     * board with sleeping on is the only row whose split can skip a resting
+     * chunk. */
+    {"lone_flame", scene_lone_flame, 107u, 0, 1000, 0, 0, 0, 0},
+    {"bare_snow", scene_bare_snow, 109u, 0, 1000, 0, 0, 0, 0},
+    {"dry_garden", scene_dry_garden, 113u, 0, 1000, 0, 0, 0, 0},
+    {"soak_asleep", scene_soak_asleep, 127u, 0, 1000, 1, 0, 0, 0},
+    {"tilted_pool", scene_tilted_pool, 131u, 300, 1000, 1, 64, 128, 0},
+    {"two_core_asleep", scene_two_core_big, 101u, 0, 1000, 1, 256, 192, 1},
 };
 
 /* What one scene's sand_t points into, owned here and freed together. */
@@ -899,7 +989,7 @@ main(void) {
         }
     }
 
-#ifdef SAND_FORCE_WORK
+#if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
     sand_skip_sites_report();
 #endif
     return 0;

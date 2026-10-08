@@ -23,9 +23,10 @@ the forced build differs from it, so a baseline is never recorded with a
 skip that drops work. A fact that is only too strict, skipping less than it
 could, changes no output; neither check sees it, and neither needs to.
 
-After the forced run the tool lists every `SAND_SKIP_IF` site with how often
-it would have skipped across the scenes. A site at 0 was never exercised:
-a warning, not a failure, since the comparison says nothing about it.
+Both builds also count how often each `SAND_SKIP_IF` site's skip condition
+held, across all scenes, and the tool lists every site with the sum. A site
+at 0 was never exercised, so the comparison says nothing about it, and
+`--check` fails until a row of `grid_fingerprint.c` reaches it.
 
 `scripts/gates/check_skip_facts.py` keeps the list complete. Facts are
 marked `SAND_FACT` where declared; a read of one must sit inside
