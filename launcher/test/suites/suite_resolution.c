@@ -277,17 +277,25 @@ assert_prices(const resolution_predict_t* p, const resolution_config_t* cfg, flo
     }
 }
 
+/* A predictor started at `held_step` (0 when frames roam), fed `warmup_frames`
+ * of the prior's own cost and then `frames` of 1.3x it plus 2 ms. */
+static void
+refit_from_seed(resolution_predict_t* p, const resolution_config_t* cfg, unsigned seed, int warmup_frames, int frames,
+                int held_step) {
+    rng_t random;
+    rng_seed(&random, seed);
+    resolution_predict_init(p, cfg, &model, held_step >= 0 ? held_step : 0);
+    feed_frames(p, cfg, 1.0F, 0.0F, warmup_frames, held_step, &random);
+    feed_frames(p, cfg, 1.3F, 2000.0F, frames, held_step, &random);
+}
+
 static void
 check_refit_prices(int warmup_frames, int frames, int held_step, float error_share) {
     const resolution_config_t cfg = config();
     resolution_predict_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     for (unsigned seed_start = 1; seed_start <= 4; seed_start++) {
-        rng_t random;
-        rng_seed(&random, seed_start);
-        resolution_predict_init(p, &cfg, &model, 0);
-        feed_frames(p, &cfg, 1.0F, 0.0F, warmup_frames, held_step, &random);
-        feed_frames(p, &cfg, 1.3F, 2000.0F, frames, held_step, &random);
+        refit_from_seed(p, &cfg, seed_start, warmup_frames, frames, held_step);
         assert_prices(p, &cfg, 1.3F, 2000.0F, error_share);
     }
     free(p);
@@ -309,10 +317,7 @@ test_refit_held_step_does_not_drift(void) {
     resolution_predict_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     for (unsigned seed_start = 1; seed_start <= 4; seed_start++) {
-        rng_t random;
-        rng_seed(&random, seed_start);
-        resolution_predict_init(p, &cfg, &model, 3);
-        feed_frames(p, &cfg, 1.0F, 0.0F, 10000, 3, &random);
+        refit_from_seed(p, &cfg, seed_start, 10000, 0, 3);
         TEST_ASSERT_FLOAT_WITHIN(0.05F, 1.0F, p->scale);
         TEST_ASSERT_FLOAT_WITHIN(1000.0F, 0.0F, p->offset_us);
         TEST_ASSERT_LESS_OR_EQUAL_FLOAT(0.25F * 0.25F, p->covariance[0][0]);
