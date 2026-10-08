@@ -38,6 +38,60 @@ def busy_status(owner="someone-else@0001", port="COM3"):
         "estimated_free": None, "lapsed": None, "waiting": []}]})
 
 
+@contextlib.contextmanager
+def project_call(git_output=None):
+    with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
+         mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+         (mock.patch.object(autana, "git", return_value=git_output)
+          if git_output is not None else contextlib.nullcontext()):
+        yield called
+
+@contextlib.contextmanager
+def sent_reply(result):
+    with mock.patch.object(autana, "send", return_value=result) as sent, mock.patch("builtins.print"):
+        yield sent
+
+
+@contextlib.contextmanager
+def status_command(argv, environ, handler):
+    with mock.patch.dict(autana.os.environ, environ), \
+         mock.patch.dict(autana.COMMANDS, {"status": handler}), \
+         mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+        yield
+
+
+@contextlib.contextmanager
+def project_directory():
+    with tempfile.TemporaryDirectory() as directory:
+        marker = Path(directory) / autana.PROJECT_MARKER
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+        yield directory
+
+
+@contextlib.contextmanager
+def user_identity(environ, **user):
+    with mock.patch.dict(autana.os.environ, environ, clear=True), \
+         mock.patch.object(getpass, "getuser", **user), \
+         mock.patch.object(socket, "gethostname", return_value="devbox"), \
+         mock.patch.object(autana.os, "getpid", return_value=4242):
+        yield
+
+
+@contextlib.contextmanager
+def device_call(status):
+    with mock.patch.object(autana.subprocess, "run", return_value=status), \
+         mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        yield called
+
+
+@contextlib.contextmanager
+def without_environment(key):
+    environ = {name: value for name, value in autana.os.environ.items() if name != key}
+    with mock.patch.dict(autana.os.environ, environ, clear=True):
+        yield
+
+
 class SendCommandBuildingTests(unittest.TestCase):
     """send() is the one place that actually shells out to `device.py send`;
     every device-verb command (freeze, touch, tune, ...) goes through it,
@@ -96,9 +150,7 @@ class SendCommandBuildingTests(unittest.TestCase):
         self.assertEqual(replies, [])
 
     def test_the_short_fail_fast_wait_is_used_by_default(self):
-        environ = {key: value for key, value in autana.os.environ.items()
-                  if key != autana.WAIT_ENV}
-        with mock.patch.dict(autana.os.environ, environ, clear=True):
+        with without_environment(autana.WAIT_ENV):
             autana.send("TUNE")
         command = self.last_send_command()
         self.assertEqual(command[command.index("--wait") + 1], str(autana.SEND_WAIT_S))
@@ -173,8 +225,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
     one asks send() for."""
 
     def test_freeze_sends_the_bare_verb(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["FREEZE_STATE frozen=1 steps=0"])) as sent, \
-             mock.patch("builtins.print"):
+        with sent_reply((0, ["FREEZE_STATE frozen=1 steps=0"])) as sent:
             code = autana.freeze([])
         sent.assert_called_once_with("FREEZE", reply="FREEZE_STATE")
         self.assertEqual(code, 0)
@@ -184,17 +235,17 @@ class DeviceVerbCommandTests(unittest.TestCase):
             autana.freeze(["extra"])
 
     def test_resume_sends_the_bare_verb(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.resume([])
         sent.assert_called_once_with("RESUME", reply="FREEZE_STATE")
 
     def test_step_with_no_count_sends_a_bare_step(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.step([])
         sent.assert_called_once_with("STEP", reply="FREEZE_STATE")
 
     def test_step_with_a_count_appends_it(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.step(["5"])
         sent.assert_called_once_with("STEP 5", reply="FREEZE_STATE")
 
@@ -207,7 +258,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
             autana.step(["5", "6"])
 
     def test_touch_passes_its_arguments_through_and_is_optional(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.touch(["down", "10", "20"])
         sent.assert_called_once_with("TOUCH down 10 20", reply="TOUCH",
                                      optional=True, seconds=0.5)
@@ -221,7 +272,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
             autana.touch(["down", "x", "2"])
 
     def test_imu_passes_its_arguments_through_and_is_optional(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.imu(["100", "-200", "16384"])
         sent.assert_called_once_with("IMU 100 -200 16384", reply="IMU",
                                      optional=True, seconds=0.5)
@@ -231,17 +282,17 @@ class DeviceVerbCommandTests(unittest.TestCase):
             autana.imu(["1", "two", "3"])
 
     def test_tap_sends_the_default_screenshot_point_in_the_panel_frame(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.tap(["10", "20"])
         sent.assert_called_once_with("TAP 347 10", reply="TAP", until=["TAP_OK"])
 
     def test_press_turns_its_point_and_keeps_its_duration(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.press(["10", "20", "300"])
         sent.assert_called_once_with("PRESS 347 10 300", reply="PRESS", until=["PRESS_OK"])
 
     def test_drag_turns_both_points_and_keeps_its_duration(self):
-        with mock.patch.object(autana, "send", return_value=(0, [])) as sent, mock.patch("builtins.print"):
+        with sent_reply((0, [])) as sent:
             autana.drag(["0", "0", "447", "367", "200"])
         sent.assert_called_once_with("DRAG 367 0 0 447 200", reply="DRAG", until=["DRAG_OK"])
 
@@ -271,8 +322,7 @@ class DeviceVerbCommandTests(unittest.TestCase):
         printed.assert_called_once_with("APPS name=Star Chart running=0")
 
     def test_open_sends_the_app_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["OPEN_OK name=Star Chart"])) as sent, \
-             mock.patch("builtins.print"):
+        with sent_reply((0, ["OPEN_OK name=Star Chart"])) as sent:
             autana.open_app(["star"])
         sent.assert_called_once_with("OPEN star", reply="OPEN")
 
@@ -284,8 +334,7 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_builds_the_device_screenshot_invocation_with_out(self):
         status = mock.Mock(stdout="")
-        with mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with device_call(status) as called:
             code = autana.screenshot(["-o", "out.png"])
         self.assertEqual(code, 0)
         command = called.call_args[0][0]
@@ -294,23 +343,20 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_no_path_omits_out(self):
         status = mock.Mock(stdout="")
-        with mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with device_call(status) as called:
             autana.screenshot([])
         command = called.call_args[0][0]
         self.assertNotIn("--out", command)
 
     def test_as_shown_is_forwarded_to_device(self):
         status = mock.Mock(stdout="")
-        with mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with device_call(status) as called:
             autana.screenshot(["--as-shown"])
         self.assertIn("--as-shown", called.call_args[0][0])
 
     def test_framebuffer_is_forwarded_to_device(self):
         status = mock.Mock(stdout="")
-        with mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with device_call(status) as called:
             autana.screenshot(["--framebuffer"])
         self.assertIn("--framebuffer", called.call_args[0][0])
 
@@ -409,24 +455,15 @@ class OwnerTests(unittest.TestCase):
             self.assertEqual(autana.owner(), "env-owner:4242")
 
     def test_the_shape_is_user_at_host_colon_pid(self):
-        with mock.patch.dict(autana.os.environ, {}, clear=True), \
-             mock.patch.object(getpass, "getuser", return_value="sam"), \
-             mock.patch.object(socket, "gethostname", return_value="devbox"), \
-             mock.patch.object(autana.os, "getpid", return_value=4242):
+        with user_identity({}, return_value="sam"):
             self.assertEqual(autana.owner(), "sam@devbox:4242")
 
     def test_a_callers_autana_device_owner_is_ignored(self):
-        with mock.patch.dict(autana.os.environ, {"AUTANA_DEVICE_OWNER": "ci-7"}, clear=True), \
-             mock.patch.object(getpass, "getuser", return_value="sam"), \
-             mock.patch.object(socket, "gethostname", return_value="devbox"), \
-             mock.patch.object(autana.os, "getpid", return_value=4242):
+        with user_identity({"AUTANA_DEVICE_OWNER": "ci-7"}, return_value="sam"):
             self.assertEqual(autana.owner(), "sam@devbox:4242")
 
     def test_getpass_failure_falls_back_to_user(self):
-        with mock.patch.dict(autana.os.environ, {}, clear=True), \
-             mock.patch.object(getpass, "getuser", side_effect=OSError("no username")), \
-             mock.patch.object(socket, "gethostname", return_value="devbox"), \
-             mock.patch.object(autana.os, "getpid", return_value=4242):
+        with user_identity({}, side_effect=OSError("no username")):
             self.assertEqual(autana.owner(), "user@devbox:4242")
 
 
@@ -449,9 +486,7 @@ class DeviceCommandTests(unittest.TestCase):
         self.assertLess(command.index("--owner"), command.index("status"))
 
     def test_no_wait_is_added_by_default(self):
-        environ = {key: value for key, value in autana.os.environ.items()
-                  if key != autana.WAIT_ENV}
-        with mock.patch.dict(autana.os.environ, environ, clear=True):
+        with without_environment(autana.WAIT_ENV):
             command = autana.device_command("status")
         self.assertNotIn("--wait", command)
 
@@ -462,9 +497,7 @@ class DeviceCommandTests(unittest.TestCase):
         self.assertLess(command.index("--wait"), command.index("status"))
 
     def test_a_callers_own_wait_is_used_when_the_environment_gives_none(self):
-        environ = {key: value for key, value in autana.os.environ.items()
-                  if key != autana.WAIT_ENV}
-        with mock.patch.dict(autana.os.environ, environ, clear=True):
+        with without_environment(autana.WAIT_ENV):
             command = autana.device_command("send", wait=5)
         self.assertEqual(command[command.index("--wait") + 1], "5")
 
@@ -542,45 +575,37 @@ class RunCommandTests(unittest.TestCase):
 
 class FlashCommandTests(unittest.TestCase):
     def test_perf_scope_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet", "--perf-scope"])
         command = called.call_args[0][0]
         self.assertIn("--perf-scope", command)
 
     def test_no_variant_flashes_dev(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+        with project_call(git_output="") as called, \
              mock.patch("builtins.print"):
             autana.flash(["--quiet"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--variant") + 1], "dev")
 
     def test_no_perf_scope_flag_is_not_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet"])
         command = called.call_args[0][0]
         self.assertNotIn("--perf-scope", command)
 
     def test_layout_seed_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"),              mock.patch.object(autana, "git", return_value=""),              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet", "--layout-seed", "4"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--layout-seed") + 1], "4")
 
     def test_no_layout_seed_is_not_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"),              mock.patch.object(autana, "git", return_value=""),              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet"])
         self.assertNotIn("--layout-seed", called.call_args[0][0])
 
     def test_the_owner_is_this_processs_own_name(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana, "git", return_value=""), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--owner") + 1], autana.owner())
@@ -593,10 +618,7 @@ class FlashCommandTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "autana flash: unknown flag --owner")
 
     def test_project_is_resolved_and_used_for_both_the_banner_and_the_flash(self):
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / autana.PROJECT_MARKER
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.touch()
+        with project_directory() as directory:
             with mock.patch.object(autana, "git", return_value=""), \
                  mock.patch.object(autana.subprocess, "call", return_value=0) as called:
                 autana.run_command(autana.flash, ["diag", "--quiet"], flags={"--project": directory})
@@ -669,10 +691,7 @@ class BuildCommandTests(unittest.TestCase):
 
     def test_project_is_resolved_and_built(self):
         device = autana.device_module()
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / autana.PROJECT_MARKER
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.touch()
+        with project_directory() as directory:
             with mock.patch.object(autana, "git", return_value=""), \
                  mock.patch.object(device, "build_worktree", return_value=0) as built, \
                  mock.patch("builtins.print"):
@@ -863,14 +882,12 @@ class ResetCommandTests(unittest.TestCase):
 
 class SelftestCommandTests(unittest.TestCase):
     def test_verbose_reaches_device(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.selftest(["--verbose"])
         self.assertIn("--verbose", called.call_args.args[0])
 
     def test_builds_the_device_selftest_invocation(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             code = autana.selftest([])
         self.assertEqual(code, 0)
         command = called.call_args[0][0]
@@ -879,25 +896,20 @@ class SelftestCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("--max-seconds") + 1], "3000.0")
 
     def test_a_seconds_argument_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.selftest(["120"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--max-seconds") + 1], "120.0")
 
     def test_an_unknown_flag_is_named_and_rejected(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+        with project_call() as called, \
              self.assertRaises(SystemExit) as caught:
             autana.selftest(["--owner", "delegate-1"])
         self.assertEqual(str(caught.exception), "autana selftest: unknown flag --owner")
         called.assert_not_called()
 
     def test_project_is_resolved_and_used(self):
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / autana.PROJECT_MARKER
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.touch()
+        with project_directory() as directory:
             with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
                 autana.run_command(autana.selftest, [], flags={"--project": directory})
             command = called.call_args[0][0]
@@ -906,35 +918,30 @@ class SelftestCommandTests(unittest.TestCase):
     def test_out_is_forwarded(self):
         """A report script (launcher/tools/device/device_report.sh) needs its own
         capture path, not the command's default `records/`-rooted one."""
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.selftest(["--out", "C:/report/raw.log"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--out") + 1], "C:/report/raw.log")
 
     def test_out_is_omitted_when_not_given(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.selftest([])
         self.assertNotIn("--out", called.call_args[0][0])
 
     def test_perf_scope_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.selftest(["--perf-scope"])
         self.assertIn("--perf-scope", called.call_args[0][0])
 
 
 class BatchCommandTests(unittest.TestCase):
     def test_verbose_reaches_device(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.batch(["run_gfx_suite", "--verbose"])
         self.assertIn("--verbose", called.call_args.args[0])
 
     def test_one_suite_defaults_runs_and_is_always_diag(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             code = autana.batch(["run_sand_perf_suite"])
         self.assertEqual(code, 0)
         command = called.call_args[0][0]
@@ -944,8 +951,7 @@ class BatchCommandTests(unittest.TestCase):
         self.assertNotIn("--perf-scope", command)
 
     def test_several_suites_each_get_their_own_flag(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.batch(["run_sand_perf_suite", "run_gfx_suite", "--runs", "5", "--perf-scope"])
         command = called.call_args[0][0]
         self.assertEqual(command.count("--suite"), 2)
@@ -967,24 +973,19 @@ class BatchCommandTests(unittest.TestCase):
             autana.batch(["run_sand_perf_suite", "--bogus"])
 
     def test_out_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.batch(["run_sand_perf_suite", "--runs", "1", "--out", "capture.log"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--out") + 1], "capture.log")
 
     def test_expect_build_id_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.batch(["run_sand_perf_suite", "--expect-build-id", "abc123-diag"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
 
     def test_project_is_resolved_and_used(self):
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / autana.PROJECT_MARKER
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.touch()
+        with project_directory() as directory:
             with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
                 autana.run_command(autana.batch, ["run_sand_perf_suite"], flags={"--project": directory})
             command = called.call_args[0][0]
@@ -993,8 +994,7 @@ class BatchCommandTests(unittest.TestCase):
 
 class SuiteCommandTests(unittest.TestCase):
     def test_verbose_reaches_device(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "--verbose"])
         self.assertIn("--verbose", called.call_args.args[0])
 
@@ -1006,15 +1006,13 @@ class SuiteCommandTests(unittest.TestCase):
         called.assert_not_called()
 
     def test_out_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "--out", "capture.log"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--out") + 1], "capture.log")
 
     def test_expect_build_id_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "--expect-build-id", "abc123-diag"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
@@ -1151,8 +1149,8 @@ class TuneCommandTests(unittest.TestCase):
         self.assertEqual(printed.call_count, 2)
 
     def test_two_arguments_set_the_resolved_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=200"])) as sent, \
-             mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
+        with sent_reply((0, ["TUNE_OK ridge.trail=200"])) as sent, \
+             mock.patch.object(autana, "tunables", return_value=self.ROWS):
             code = autana.tune(["trail", "200"])
         self.assertEqual(code, 0)
         sent.assert_called_once_with("SET ridge.trail 200")
@@ -1162,8 +1160,8 @@ class TuneCommandTests(unittest.TestCase):
             autana.tune(["reset"])
 
     def test_reset_resets_the_resolved_name(self):
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=226"])) as sent, \
-             mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
+        with sent_reply((0, ["TUNE_OK ridge.trail=226"])) as sent, \
+             mock.patch.object(autana, "tunables", return_value=self.ROWS):
             autana.tune(["reset", "trail"])
         sent.assert_called_once_with("RESET ridge.trail")
 
@@ -1180,8 +1178,8 @@ class TuneCommandTests(unittest.TestCase):
     def test_reset_as_a_value_is_a_set_not_the_reset_subcommand(self):
         # "reset"/"save" are only ever a subcommand in first position; here
         # "trail" is first, so "reset" is just the value being set.
-        with mock.patch.object(autana, "send", return_value=(0, ["TUNE_OK ridge.trail=reset"])) as sent, \
-             mock.patch.object(autana, "tunables", return_value=self.ROWS), mock.patch("builtins.print"):
+        with sent_reply((0, ["TUNE_OK ridge.trail=reset"])) as sent, \
+             mock.patch.object(autana, "tunables", return_value=self.ROWS):
             autana.tune(["trail", "reset"])
         sent.assert_called_once_with("SET ridge.trail reset")
 
@@ -1416,7 +1414,9 @@ class GlobalWaitTests(unittest.TestCase):
 
     def run_main(self, argv, environ=None, handler=None):
         handler = handler or mock.Mock(return_value=0)
-        with mock.patch.dict(autana.os.environ, environ or {}),              mock.patch.dict(autana.COMMANDS, {"status": handler}),              mock.patch.object(autana.sys, "argv", ["autana", *argv]),              mock.patch.object(autana, "idf_python", return_value="python"),              mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
+        with status_command(argv, environ or {}, handler), \
+             mock.patch.object(autana, "idf_python", return_value="python"), \
+             mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
             with self.assertRaises(SystemExit) as stop:
                 autana.main()
         return stop.exception.code, handler
@@ -1493,16 +1493,8 @@ class GlobalOwnerTests(unittest.TestCase):
     variable, and a caller's AUTANA_DEVICE_OWNER is ignored."""
 
     def run_main(self, argv, environ=None, handler=None):
-        handler = handler or mock.Mock(return_value=0)
-        with mock.patch.dict(autana.os.environ, environ or {}), \
-             mock.patch.dict(autana.COMMANDS, {"status": handler}), \
-             mock.patch.object(autana.sys, "argv", ["autana", *argv]), \
-             mock.patch.object(autana, "idf_python", return_value="python"), \
-             mock.patch.object(autana, "device_tool", return_value=Path("device.py")), \
-             mock.patch.object(autana.os, "getpid", return_value=4242):
-            with self.assertRaises(SystemExit) as stop:
-                autana.main()
-        return stop.exception.code, handler
+        with mock.patch.object(autana.os, "getpid", return_value=4242):
+            return GlobalWaitTests.run_main(self, argv, environ, handler)
 
     def owner_seen_by_device_step(self, argv, environ=None):
         seen = []
@@ -1714,8 +1706,7 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
     own `batch` subcommand, never `run-suite` directly any more."""
 
     def test_default_is_one_run_with_no_flash(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite"])
         command = called.call_args[0][0]
         self.assertIn("batch", command)
@@ -1723,15 +1714,13 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
         self.assertIn("--no-flash", command)
 
     def test_flash_drops_no_flash_and_needs_no_worktree_error(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "--flash"])
         command = called.call_args[0][0]
         self.assertNotIn("--no-flash", command)
 
     def test_several_suite_names_each_get_their_own_flag(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "run_sand_perf_suite", "--runs", "5"])
         command = called.call_args[0][0]
         self.assertEqual(command.count("--suite"), 2)
@@ -1749,23 +1738,19 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
         self.assertEqual(command[command.index("--worktree") + 1], "/anywhere")
 
     def test_project_with_flash_is_resolved_and_used(self):
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / autana.PROJECT_MARKER
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.touch()
+        with project_directory() as directory:
             with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
                 autana.run_command(autana.suite, ["run_gfx_suite", "--flash"], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
     def test_perf_scope_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "--flash", "--perf-scope"])
         self.assertIn("--perf-scope", called.call_args[0][0])
 
     def test_layout_seed_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"),              mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "--flash", "--layout-seed", "5"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--layout-seed") + 1], "5")
@@ -1785,30 +1770,26 @@ class SuiteSecondsTests(unittest.TestCase):
     1800 s stands."""
 
     def test_no_seconds_leaves_the_window_to_device_py(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite"])
         self.assertNotIn("--max-seconds", called.call_args[0][0])
 
     def test_a_trailing_seconds_argument_is_forwarded(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "120"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--max-seconds") + 1], "120.0")
         self.assertEqual(command.count("--suite"), 1)
 
     def test_seconds_after_several_suite_names(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "run_sand_perf_suite", "45"])
         command = called.call_args[0][0]
         self.assertEqual(command.count("--suite"), 2)
         self.assertEqual(command[command.index("--max-seconds") + 1], "45.0")
 
     def test_seconds_survives_alongside_flash_and_runs(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(["run_gfx_suite", "90", "--flash", "--runs", "2"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--max-seconds") + 1], "90.0")
@@ -1819,8 +1800,7 @@ class SuiteTestFilterTests(unittest.TestCase):
     """`suite --test` reaches device.py's batch, which sends it to the board."""
 
     def run_suite(self, *args):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with project_call() as called:
             autana.suite(list(args))
         return called.call_args[0][0]
 
@@ -1865,8 +1845,7 @@ class BatchAliasTests(unittest.TestCase):
         self.assertIn("autana batch: use `autana suite", stream.getvalue())
 
     def test_defaults_to_three_runs_and_flashes(self):
-        with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+        with project_call() as called, \
              mock.patch("builtins.print"):
             autana.batch(["run_gfx_suite"])
         command = called.call_args[0][0]
@@ -1981,14 +1960,13 @@ class BoardOnlyCommandsTests(unittest.TestCase):
         status = mock.Mock(stdout='{"boards": []}', stderr="", returncode=0)
         popen = mock.Mock()
         popen.wait.return_value = 0
-        with mock.patch.object(autana, "resolve_project",
+        with sent_reply((0, ["OK"])), \
+             mock.patch.object(autana, "resolve_project",
                                side_effect=AssertionError("must not resolve a project")), \
-             mock.patch.object(autana, "send", return_value=(0, ["OK"])), \
              mock.patch.object(autana.subprocess, "call", return_value=0), \
              mock.patch.object(autana.subprocess, "run", return_value=status), \
              mock.patch.object(autana.subprocess, "Popen", return_value=popen), \
-             mock.patch.object(autana.sys.stdout, "isatty", return_value=False), \
-             mock.patch("builtins.print"):
+             mock.patch.object(autana.sys.stdout, "isatty", return_value=False):
             return autana.run_command(handler, args)
 
     def test_board_only_commands_never_resolve_a_project(self):
@@ -2025,9 +2003,7 @@ class GlobalBoardTests(unittest.TestCase):
 
     def run_main(self, argv, handler=None, environ=None):
         handler = handler or mock.Mock(return_value=0)
-        with mock.patch.dict(autana.os.environ, environ or {}), \
-             mock.patch.dict(autana.COMMANDS, {"status": handler}), \
-             mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+        with status_command(argv, environ or {}, handler):
             with self.assertRaises(SystemExit) as stop:
                 autana.main()
         return stop.exception.code, handler
