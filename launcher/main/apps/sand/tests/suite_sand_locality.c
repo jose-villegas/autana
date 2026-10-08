@@ -382,14 +382,10 @@ test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in(void) {
 
 static void
 test_water_falling_into_the_next_block_down_still_spreads(void) {
-    uint8_t* cells = malloc((size_t)CROSS_BLOCK_W * CROSS_BLOCK_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(CROSS_BLOCK_W, CROSS_BLOCK_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t g;
-    sand_init(&g, cells, CROSS_BLOCK_W, CROSS_BLOCK_H, 3u);
-    sand_enable_sleeping(&g, blocks);
+    sand_test_grid_init(&g, &cells, &blocks, CROSS_BLOCK_W, CROSS_BLOCK_H, 3u);
 
     /* A stone shelf one row below the block boundary, so the water comes to
      * rest inside the LOWER block with nowhere gravity-ward left to go -
@@ -488,14 +484,10 @@ test_water_crosses_a_block_boundary_sideways(void) {
 
 static void
 test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
-    uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t stress;
-    sand_init(&stress, cells, STRESS_W, STRESS_H, 4242u);
-    sand_enable_sleeping(&stress, blocks);
+    sand_test_grid_init(&stress, &cells, &blocks, STRESS_W, STRESS_H, 4242u);
 
     /* A checkerboard over the whole grid, including the last column and
      * last row exactly - the two partial blocks - not just somewhere
@@ -545,14 +537,10 @@ test_block_indices_stay_in_range_at_the_real_screens_partial_edge_blocks(void) {
  * cycle above, which never fully settles before changing direction. */
 static void
 test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(void) {
-    uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t real;
-    sand_init(&real, cells, STRESS_W, STRESS_H, 13u);
-    sand_enable_sleeping(&real, blocks);
+    sand_test_grid_init(&real, &cells, &blocks, STRESS_W, STRESS_H, 13u);
 
     for (int y = STRESS_H / 2; y < STRESS_H; y++) {
         for (int x = STRESS_W / 4; x < (STRESS_W * 3) / 4; x++) {
@@ -575,14 +563,10 @@ test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(
  * untested by the two tests above, which only ever place plain sand. */
 static void
 test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(void) {
-    uint8_t* cells = malloc((size_t)STRESS_W * STRESS_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(STRESS_W, STRESS_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t real;
-    sand_init(&real, cells, STRESS_W, STRESS_H, 11u);
-    sand_enable_sleeping(&real, blocks);
+    sand_test_grid_init(&real, &cells, &blocks, STRESS_W, STRESS_H, 11u);
 
     for (int y = 0; y < STRESS_H / 2; y++) {
         for (int x = STRESS_W / 4; x < (STRESS_W * 3) / 4; x++) {

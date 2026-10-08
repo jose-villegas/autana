@@ -243,6 +243,10 @@ void board_bookkeeping_close(void);
  * handed back. Waits it out before anything reads what it wrote. */
 void collect_core1_lane(void);
 
+/* Allocates g's grid and block map, then sand_init()s g with sleeping on.
+ * The caller frees both. */
+void sand_test_grid_init(sand_t* g, uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
+
 /* The caller owns all three allocations and frees them after its last step. */
 sand_t* sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
 

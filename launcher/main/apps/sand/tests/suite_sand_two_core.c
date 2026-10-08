@@ -686,14 +686,10 @@ worst_row_deltas(const int* occupied, int h, int side, int* interior_worst, int*
  * render. */
 static void
 test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 9u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 9u);
 
     for (int x = 0; x < TC_W; x++) {
         sand_set(&s, x, TC_H - 1, STONE);
@@ -1455,14 +1451,10 @@ test_a_fuse_blast_throws_grains_on_both_cores(void) {
 
 static void
 test_a_settled_chunk_does_no_row_work(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 1u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
     void* scratch = lane_scratch_open(&s);
     for (int y = 0; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
@@ -1527,14 +1519,10 @@ tc_build_dense_pile(sand_t* s) {
 
 static uint32_t
 tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int offset, bool two_core, int* out_n) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 1u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
     void* scratch = lane_scratch_open(&s);
     sand_set_scatter(&s, 0);
     tc_prime_phase(&s, offset);
@@ -2222,14 +2210,10 @@ test_a_board_without_lane_scratch_steps_its_fluids_serially(void) {
  * route back to the board. Every flag the board carries has to take it. */
 static void
 test_a_lane_merge_carries_every_content_flag_back(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 3u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 3u);
     void* scratch = lane_scratch_open(&s);
     clear_content_flags(&s);
     s.may_have_materials = 0;
@@ -2639,14 +2623,10 @@ test_no_split_pass_draws_from_the_sequential_stream(void) {
  * what gives cross-flow anything to roll for. */
 static uint32_t
 tc_run_crossflow_and_hash(void) {
-    uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(blocks);
-
+    uint8_t* cells;
+    uint8_t* blocks;
     sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 5u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 5u);
     for (int y = TC_H / 3; y < TC_H; y++) {
         for (int x = 0; x < TC_W; x++) {
             sand_set(&s, x, y, CELL_MAKE(MAT_OIL, MASS_MAX));

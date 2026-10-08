@@ -463,6 +463,13 @@ sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h) {
     }
 }
 
+void
+sand_test_grid_init(sand_t* g, uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
+    sand_test_grid_buffers_open(grid, blocks, w, h);
+    sand_init(g, *grid, w, h, seed);
+    sand_enable_sleeping(g, *blocks);
+}
+
 sand_t*
 sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
     sand_test_grid_buffers_open(grid, blocks, w, h);
