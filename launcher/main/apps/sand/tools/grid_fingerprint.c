@@ -118,6 +118,16 @@ typedef void (*scene_fn)(sand_t* s);
 #define FP_LEAF          MATX(MATX_LEAF)
 #define FP_ROOT          MATX(MATX_ROOT)
 
+/* Fills columns [x0, x1) of rows [y0, y1) with `cell`. */
+static void
+fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t cell) {
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            sand_set(s, x, y, cell);
+        }
+    }
+}
+
 /* Scene 1: dry grains over a floor. The main sweep and nothing else - no
  * liquid, no reactions, no gas. This is the control: a change that alters
  * THIS hash altered the core movement rule, whatever else it claimed to
@@ -702,37 +712,21 @@ scene_two_core_big(sand_t* s) {
  * neighbour scan and conduction are skipped, board-wide. */
 static void
 scene_lone_flame(sand_t* s) {
-    for (int y = 20; y < 26; y++) {
-        for (int x = 20; x < 40; x++) {
-            sand_set(s, x, y, FP_FIRE);
-        }
-    }
+    fill_rect(s, 20, 20, 40, 26, FP_FIRE);
 }
 
 /* Snow on water with no conductor: the cold cell never carries cold on. */
 static void
 scene_bare_snow(sand_t* s) {
-    for (int y = FP_H - 10; y < FP_H; y++) {
-        for (int x = 0; x < FP_W; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
-    for (int y = 6; y < 20; y++) {
-        for (int x = 10; x < 50; x++) {
-            sand_set(s, x, y, FP_SNOW);
-        }
-    }
+    fill_rect(s, 0, FP_H - 10, FP_W, FP_H, FP_WATER);
+    fill_rect(s, 10, 6, 50, 20, FP_SNOW);
 }
 
 /* Plants, wood and roots in dry dirt, and no liquid anywhere: drinking and
  * rooting are skipped for want of anything to draw. */
 static void
 scene_dry_garden(sand_t* s) {
-    for (int y = FP_H - 10; y < FP_H; y++) {
-        for (int x = 0; x < FP_W; x++) {
-            sand_set(s, x, y, FP_DIRT);
-        }
-    }
+    fill_rect(s, 0, FP_H - 10, FP_W, FP_H, FP_DIRT);
     for (int x = 8; x < 56; x += 6) {
         sand_set(s, x, FP_H - 11, FP_PLANT);
         sand_set(s, x + 2, FP_H - 11, FP_WOOD);
@@ -747,16 +741,8 @@ scene_dry_garden(sand_t* s) {
 static void
 scene_soak_asleep(sand_t* s) {
     sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
-    for (int y = FP_H - 20; y < FP_H; y++) {
-        for (int x = 0; x < FP_W; x++) {
-            sand_set(s, x, y, FP_DIRT);
-        }
-    }
-    for (int y = FP_H - 24; y < FP_H - 20; y++) {
-        for (int x = 4; x < 10; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
+    fill_rect(s, 0, FP_H - 20, FP_W, FP_H, FP_DIRT);
+    fill_rect(s, 4, FP_H - 24, 10, FP_H - 20, FP_WATER);
 }
 
 /* A packed water column under gravity off the axis, on a board tall enough
@@ -765,11 +751,7 @@ scene_soak_asleep(sand_t* s) {
  * both settled bits, and cross-flow skips such a block outright. */
 static void
 scene_tilted_pool(sand_t* s) {
-    for (int y = s->h - 80; y < s->h; y++) {
-        for (int x = 0; x < s->w; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
+    fill_rect(s, 0, s->h - 80, s->w, s->h, FP_WATER);
 }
 
 /* GRAVITY IS PER SCENE, and the six original rows keep the straight-down
