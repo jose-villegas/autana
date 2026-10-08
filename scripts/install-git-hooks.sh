@@ -14,8 +14,8 @@
 # wholesale, so any hook you have there stops running: this script says so
 # if it finds one.
 #
-# The hooks report format errors and non-executable scripts before commits and invalid branch names before
-# pushes. CI enforces both checks on pull requests.
+# The hooks check staged formatting, executable bits and text rules before
+# commits, then branch names and sanitized host tests before C/header pushes.
 
 set -eu
 
@@ -33,7 +33,8 @@ case "${1:-}" in
             if [ "$current" != "$HOOKS_DIR" ]; then
                 echo "  (not this repository's $HOOKS_DIR - pre-commit and pre-push hooks are NOT active)"
             else
-                echo "  pre-commit checks formatting and exec bits; pre-push checks target branch names."
+                echo "  pre-commit checks staged formatting, exec bits and text rules."
+                echo "  pre-push checks branch names and runs sanitized host tests for C/header changes."
             fi
         else
             echo "core.hooksPath is unset; git uses .git/hooks, so pre-commit and pre-push hooks are NOT active."
@@ -94,8 +95,9 @@ for hook in "$HOOKS_DIR"/*; do
     echo "  $(basename "$hook")"
 done
 echo ""
-echo "The pre-commit hook checks that staged C and header files are formatted"
-echo "(scripts/gates/check-format-staged.sh). It needs clang-format 19 - see"
-echo "docs/C-Style-Guide.md. The pre-push hook checks target branch names with"
-echo "scripts/gates/check-branch-name.sh."
+echo "Pre-commit checks staged formatting, executable bits and CI's file-scoped text rules."
+echo "It needs clang-format 19 and Python with scripts/gates/requirements.txt installed."
+echo "See docs/C-Style-Guide.md. Pre-push checks branch names and runs host tests"
+echo "with --sanitize when a pushed range changes C or headers. See docs/Testing-Guide.md."
+echo "Skip a hook with git commit --no-verify or git push --no-verify."
 echo "Undo with: scripts/install-git-hooks.sh --remove"

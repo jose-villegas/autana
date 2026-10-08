@@ -174,12 +174,14 @@ def file_header(path, source):
     return comments[0] if comments else None
 
 
-def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True):
+def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True, files=None):
     """C sources eligible for comment gates, with tracked-only selection optional."""
     root = pathlib.Path(root)
     paths = (root / name for name in tracked_files(root)) if tracked else committable(root)
     for path in paths:
         rp = path.relative_to(root).as_posix() if tracked else path.as_posix()
+        if files is not None and path.as_posix() not in files:
+            continue
         if path.suffix in extensions and (not excluded or not rp.startswith(EXCLUDED)):
             yield path
 

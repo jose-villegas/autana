@@ -1,8 +1,9 @@
 #!/bin/sh
 
 ROOT=$(git rev-parse --show-toplevel) || exit 1
+updates=$(cat)
 
-while read -r _local_ref local_sha remote_ref _remote_sha; do
+printf '%s\n' "$updates" | while read -r _local_ref local_sha remote_ref _remote_sha; do
     case "$remote_ref" in
         refs/heads/*)
             case "$local_sha" in
@@ -11,4 +12,8 @@ while read -r _local_ref local_sha remote_ref _remote_sha; do
             "$ROOT/scripts/gates/check-branch-name.sh" "${remote_ref#refs/heads/}" || exit 1
             ;;
     esac
-done
+done || exit 1
+
+if [ -x "$ROOT/scripts/gates/check-host-tests-push.sh" ]; then
+    printf '%s\n' "$updates" | "$ROOT/scripts/gates/check-host-tests-push.sh" || exit 1
+fi
