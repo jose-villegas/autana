@@ -858,17 +858,26 @@ test_wood_and_steam_grain_count_is_conserved(void) {
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(12, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, sand_count(&s),
-                                          "a step must conserve wood and steam grains in every "
-                                          "gravity direction, the same as every other material");
-        }
-    }
+    assert_count_kept_in_every_direction(grain_count, expected,
+                                         "a step must conserve wood and steam grains in every "
+                                         "gravity direction, the same as every other material");
+}
+
+/* Stone on every side of the 2x2 pocket at (3,3)-(4,4) that the gas pass
+ * could move a cell out by, then the pocket: top row, then bottom row. */
+static void
+sealed_pocket(cell_t top_left, cell_t top_right, cell_t bottom_left, cell_t bottom_right) {
+    sand_set(&s, 3, 2, STONE);
+    sand_set(&s, 4, 2, STONE);
+    sand_set(&s, 2, 3, STONE);
+    sand_set(&s, 2, 4, STONE);
+    sand_set(&s, 5, 3, STONE);
+    sand_set(&s, 5, 4, STONE);
+
+    sand_set(&s, 3, 3, top_left);
+    sand_set(&s, 4, 3, top_right);
+    sand_set(&s, 3, 4, bottom_left);
+    sand_set(&s, 4, 4, bottom_right);
 }
 
 /* reaction_t.condenses is a rare per-step chance in real play, forced to 255
@@ -882,17 +891,7 @@ test_a_2x2_block_of_steam_condenses_into_one_water_cell(void) {
     sand_set_condenses(&s, 255);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 4, 3, STEAM);
-    sand_set(&s, 3, 4, STEAM);
-    sand_set(&s, 4, 4, STEAM);
+    sealed_pocket(STEAM, STEAM, STEAM, STEAM);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -917,17 +916,7 @@ test_condensation_needs_a_genuine_2x2_square(void) {
     sand_set_condenses(&s, 255);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 4, 3, STEAM);
-    sand_set(&s, 3, 4, STEAM);
-    sand_set(&s, 4, 4, STONE);
+    sealed_pocket(STEAM, STEAM, STEAM, STONE);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -950,17 +939,7 @@ test_a_qualifying_gas_steam_pocket_collapses_into_one_cell(void) {
     sand_set_condenses(&s, 0);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 3, 4, STEAM);
-    sand_set(&s, 4, 3, GAS);
-    sand_set(&s, 4, 4, GAS);
+    sealed_pocket(STEAM, GAS, STEAM, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -1066,17 +1045,7 @@ test_acid_rain_needs_at_least_two_of_each_species(void) {
     sand_set_condenses(&s, 0);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 4, 3, GAS);
-    sand_set(&s, 3, 4, GAS);
-    sand_set(&s, 4, 4, GAS);
+    sealed_pocket(STEAM, GAS, GAS, GAS);
 
     sand_step(&s, 0, 1000, 0);
 

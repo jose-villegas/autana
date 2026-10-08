@@ -107,6 +107,13 @@ void stone_floor_fixture(void);
 /* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
 void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
 
+/* sand_count() of the default fixture. */
+int grain_count(void);
+
+/* Steps the default fixture 20 times under each of the eight gravity
+ * directions, failing with msg the first time count() is not expected. */
+void assert_count_kept_in_every_direction(int (*count)(void), int expected, const char* msg);
+
 /* Steps g `steps` times under (gx, gy), no jostle. */
 void run_steps(sand_t* g, int steps, int gx, int gy);
 

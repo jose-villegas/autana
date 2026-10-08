@@ -270,17 +270,9 @@ test_gunpowder_is_conserved_under_every_gravity(void) {
     const int expected = count_cells_gunpowder();
     TEST_ASSERT_EQUAL_INT(15, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, count_cells_gunpowder(),
-                                          "a step must conserve gunpowder grains in every gravity "
-                                          "direction");
-        }
-    }
+    assert_count_kept_in_every_direction(count_cells_gunpowder, expected,
+                                         "a step must conserve gunpowder grains in every gravity "
+                                         "direction");
 }
 
 /* ignition and the heat path */

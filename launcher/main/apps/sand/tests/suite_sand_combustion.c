@@ -411,17 +411,9 @@ test_gas_grain_count_is_conserved(void) {
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(15, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, sand_count(&s),
-                                          "a step must conserve gas grains in every gravity "
-                                          "direction, the same as it does for sand");
-        }
-    }
+    assert_count_kept_in_every_direction(grain_count, expected,
+                                         "a step must conserve gas grains in every gravity "
+                                         "direction, the same as it does for sand");
 }
 
 static void
