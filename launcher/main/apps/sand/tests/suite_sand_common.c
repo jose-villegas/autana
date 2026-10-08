@@ -69,6 +69,16 @@ use_app_rates(sand_t* g) {
 }
 
 void
+sheltered_root_fixture(void) {
+    fixture();
+    sand_clear(&s);
+    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    fill_box(&s, ROOT_X - 2, ROOT_X + 3, ROOT_Y + 1, ROOT_Y + 2, STONE);
+    sand_set(&s, ROOT_X, ROOT_Y - 1, CELL_MAKE(MAT_WOOD, 0));
+    sand_set(&s, ROOT_X, ROOT_Y, MATX(MATX_ROOT));
+}
+
+void
 fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c) {
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {

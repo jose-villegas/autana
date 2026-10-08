@@ -107,6 +107,19 @@ test_a_trunk_standing_on_its_own_root_is_anchored(void) {
                                     "come down");
 }
 
+/* Allocates *grid and builds t over it, soaking on: a stone floor along the
+ * bottom row and saturated dirt from row wet_top down to it. The caller
+ * frees *grid. */
+static void
+wet_soil_bed(sand_t* t, uint8_t** grid, int w, int h, int wet_top) {
+    *grid = malloc((size_t)w * h);
+    TEST_ASSERT_NOT_NULL_MESSAGE(*grid, "the soil bed must fit in what the framebuffer leaves");
+    sand_init(t, *grid, w, h, 12345u);
+    sand_set_soak(t, SAND_SOAK_PER_MATERIAL);
+    fill_box(t, 0, w, h - 1, h, STONE);
+    fill_box(t, 0, w, wet_top, h - 1, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
+}
+
 /* test_a_root_column_reaches_below_the_collar */
 
 /* The cross-reference points to the test that verifies the mechanism by which
@@ -120,23 +133,12 @@ test_a_trunk_standing_on_its_own_root_is_anchored(void) {
  * measured across the grid. */
 static bool
 lift_boundary_grows(int stem, int roots) {
-    uint8_t* grid = malloc((size_t)LIFT_TEST_W * LIFT_TEST_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "lift-boundary grid must fit in what the framebuffer leaves");
-
+    uint8_t* grid;
     sand_t t;
-    sand_init(&t, grid, LIFT_TEST_W, LIFT_TEST_H, 12345u);
-    sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
-
     const int cx = LIFT_TEST_W / 2;
     const int floor_y = LIFT_TEST_H - 1;
     const int bed_top = floor_y - 3;
-
-    for (int x = 0; x < LIFT_TEST_W; x++) {
-        sand_set(&t, x, floor_y, STONE);
-        for (int y = bed_top; y < floor_y; y++) {
-            sand_set(&t, x, y, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-    }
+    wet_soil_bed(&t, &grid, LIFT_TEST_W, LIFT_TEST_H, bed_top);
     fill_box(&t, cx, cx + 1, bed_top - roots, bed_top, MATX(MATX_ROOT));
     const int stem_top = bed_top - roots - stem;
     fill_box(&t, cx, cx + 1, stem_top + 1, bed_top - roots, CELL_MAKE(MAT_WOOD, 0));
@@ -185,27 +187,16 @@ test_a_root_column_does_not_spend_the_trees_lift(void) {
 
 static void
 test_a_buried_root_does_not_cut_off_the_water_below_it(void) {
-    uint8_t* grid = malloc((size_t)BURIED_ROOT_TEST_W * BURIED_ROOT_TEST_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "buried-root grid must fit in what the framebuffer leaves");
-
+    uint8_t* grid;
     sand_t t;
-    sand_init(&t, grid, BURIED_ROOT_TEST_W, BURIED_ROOT_TEST_H, 12345u);
-    sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
-
     const int cx = BURIED_ROOT_TEST_W / 2;
     const int floor_y = BURIED_ROOT_TEST_H - 1;
     const int wet_top = floor_y - BURIED_ROOT_WET_ROWS; /* the real water */
     const int root_y = wet_top - 1;                     /* buried */
     const int dry_y = root_y - 1;                       /* piled back on later */
     const int plant_y = dry_y - 1;
-
-    for (int x = 0; x < BURIED_ROOT_TEST_W; x++) {
-        sand_set(&t, x, floor_y, STONE);
-        for (int y = wet_top; y < floor_y; y++) {
-            sand_set(&t, x, y, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_set(&t, x, dry_y, CELL_SOIL(MAT_DIRT, 1, 0));
-    }
+    wet_soil_bed(&t, &grid, BURIED_ROOT_TEST_W, BURIED_ROOT_TEST_H, wet_top);
+    fill_box(&t, 0, BURIED_ROOT_TEST_W, dry_y, dry_y + 1, CELL_SOIL(MAT_DIRT, 1, 0));
     sand_set(&t, cx, root_y, MATX(MATX_ROOT));
     sand_set(&t, cx, plant_y, MATX(MATX_PLANT));
 
@@ -264,13 +255,8 @@ measure_root_reach(const sand_t* g, int w, int h, int cx, int collar_y) {
 
 static void
 test_a_root_column_reaches_below_the_collar(void) {
-    uint8_t* grid = malloc((size_t)REACH_TEST_W * REACH_TEST_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "root-reach grid must fit in what the framebuffer leaves");
-
+    uint8_t* grid;
     sand_t t;
-    sand_init(&t, grid, REACH_TEST_W, REACH_TEST_H, 12345u);
-    sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
-
     const int cx = REACH_TEST_W / 2;
     const int floor_y = REACH_TEST_H - 1;
     const int collar_y = floor_y - 8; /* eight rows of saturated dirt
@@ -278,13 +264,7 @@ test_a_root_column_reaches_below_the_collar(void) {
                                           * full width beside it, so the
                                           * system has real room to grow
                                           * both ways */
-
-    for (int x = 0; x < REACH_TEST_W; x++) {
-        sand_set(&t, x, floor_y, STONE);
-        for (int y = collar_y; y < floor_y; y++) {
-            sand_set(&t, x, y, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-    }
+    wet_soil_bed(&t, &grid, REACH_TEST_W, REACH_TEST_H, collar_y);
     sand_set(&t, cx, collar_y - 1, CELL_MAKE(MAT_WOOD, 0)); /* shelters
                                                               * the seed
                                                               * root so
@@ -576,17 +556,9 @@ test_a_root_eats_a_moist_neighbour_and_only_spends_its_own_moisture(void) {
 /* CELL_IS_EMPTY() */
 static void
 test_a_root_never_eats_dry_dirt_sand_or_empty_space(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    const int cx = W / 2, cy = 3;
+    const int cx = ROOT_X, cy = ROOT_Y;
     /* see previous test */
-    for (int x = cx - 2; x <= cx + 2; x++) {
-        sand_set(&s, x, cy + 1, STONE);
-    }
-    sand_set(&s, cx, cy - 1, CELL_MAKE(MAT_WOOD, 0)); /* shelter, up */
-    sand_set(&s, cx, cy, MATX(MATX_ROOT));
+    sheltered_root_fixture();
     /* Three candidates, one per guard in gather_root_cands()'s
      * neighbour scan - all beside the root rather than below it, since
      * the row below is now the floor. */
@@ -840,11 +812,7 @@ test_a_thickly_rooted_cell_stops_growing(void) {
  * moist candidates; they never make a dry cell one. */
 static void
 test_roots_grow_toward_the_wet_side_only(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    const int cx = W / 2, cy = 3;
+    const int cx = ROOT_X, cy = ROOT_Y;
     /* Both dirt candidates are KIND_POWDER - a floor under the whole
      * candidate row, or neither survives long enough to be eaten OR to
      * stay put and prove it was not. Two cells wider than the candidates
@@ -852,11 +820,7 @@ test_roots_grow_toward_the_wet_side_only(void) {
      * space's own comment on why a floor flush with its edge cells is
      * not actually a floor; a powder resting right at the edge still has
      * an open diagonal to slide off into. */
-    for (int x = cx - 2; x <= cx + 2; x++) {
-        sand_set(&s, x, cy + 1, STONE);
-    }
-    sand_set(&s, cx, cy - 1, CELL_MAKE(MAT_WOOD, 0)); /* shelter, up */
-    sand_set(&s, cx, cy, MATX(MATX_ROOT));
+    sheltered_root_fixture();
     sand_set(&s, cx - 1, cy, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX)); /* wet,
                                                                           * left
                                                                           */
@@ -891,23 +855,12 @@ test_roots_grow_toward_the_wet_side_only(void) {
 
 static void
 test_a_continuously_watered_root_system_still_saturates(void) {
-    uint8_t* grid = malloc((size_t)RUNAWAY_TEST_W * RUNAWAY_TEST_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(grid, "runaway grid must fit in what the framebuffer leaves");
-
+    uint8_t* grid;
     sand_t t;
-    sand_init(&t, grid, RUNAWAY_TEST_W, RUNAWAY_TEST_H, 12345u);
-    sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
-
     const int cx = RUNAWAY_TEST_W / 2;
     const int floor_y = RUNAWAY_TEST_H - 1;
     const int bed_top = floor_y - 8;
-
-    for (int x = 0; x < RUNAWAY_TEST_W; x++) {
-        sand_set(&t, x, floor_y, STONE);
-        for (int y = bed_top; y < floor_y; y++) {
-            sand_set(&t, x, y, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-    }
+    wet_soil_bed(&t, &grid, RUNAWAY_TEST_W, RUNAWAY_TEST_H, bed_top);
     sand_set(&t, cx, bed_top - 1, CELL_MAKE(MAT_WOOD, 0));
     /* One row INTO the bed, not ON bed_top - the rewater loop below
      * overwrites bed_top's own 13 cells every single step, which would

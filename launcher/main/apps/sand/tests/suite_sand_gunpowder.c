@@ -1292,16 +1292,8 @@ test_a_wet_neighbour_does_not_put_out_a_lit_fuse(void) {
  * the only thing asserted below is that the cell is never CONVERTED. */
 static void
 test_a_root_does_not_drink_from_or_eat_gunpowder(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    const int cx = W / 2, cy = 3;
-    for (int x = cx - 2; x <= cx + 2; x++) {
-        sand_set(&s, x, cy + 1, STONE);
-    }
-    sand_set(&s, cx, cy - 1, CELL_MAKE(MAT_WOOD, 0)); /* shelter, up */
-    sand_set(&s, cx, cy, MATX(MATX_ROOT));
+    const int cx = ROOT_X, cy = ROOT_Y;
+    sheltered_root_fixture();
     const reaction_t* gp_r = reaction_of(GUNPOWDER_BASE);
     const uint8_t gp_moisture = 2;
     const cell_t soaked = with_moisture(GUNPOWDER_CELL(0), gp_moisture, gp_r);

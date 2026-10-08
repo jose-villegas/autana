@@ -111,6 +111,14 @@ void fixture(void);
 /* fixture(), cleared, with a stone floor along the bottom row. */
 void stone_floor_fixture(void);
 
+/* The default fixture, cleared, soaking on: a root at (ROOT_X, ROOT_Y)
+ * sheltered by wood above it, on a stone floor two cells wider than its
+ * neighbours either side - a powder at the edge of a flush floor still has
+ * a diagonal to slide off into. */
+#define ROOT_X (W / 2)
+#define ROOT_Y 3
+void sheltered_root_fixture(void);
+
 /* The per-material scatter, decay and mobility app_sand.c runs with. */
 void use_app_rates(sand_t* g);
 
