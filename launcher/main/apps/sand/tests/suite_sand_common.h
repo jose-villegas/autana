@@ -74,33 +74,37 @@ void wide_open(uint32_t seed);
 /* The real screen size. Must match app_sand.c - duplicated rather than
  * shared because sand.h has no business knowing the screen size (see the
  * note at the top of sand.h). */
-#define REAL_W             184
-#define REAL_H             224
+#define REAL_W                           184
+#define REAL_H                           224
 
 /* A deliberately over-long grid, for reach-cap tests that cannot share
  * `wide`. CONDUCT_REACH_TEST mirrors sand_reactions.c's own
  * CONDUCT_REACH, which is private to that file; if the two ever drift
  * apart the tests that use this stop proving anything, so keep them
  * together. */
-#define CONDUCT_REACH_TEST 32
-#define CAP_W              (CONDUCT_REACH_TEST + 16)
-#define CAP_H              8
+#define CONDUCT_REACH_TEST               32
+#define CAP_W                            (CONDUCT_REACH_TEST + 16)
+#define CAP_H                            8
 
 /* Material shorthand. */
-#define WATER              CELL_MAKE(MAT_WATER, 8)
-#define STONE              CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
-#define SAND               CELL_MAKE(MAT_SAND, 8)
-#define GAS                CELL_MAKE(MAT_GAS, 8)
-#define FIRE               CELL_MAKE(MAT_FIRE, 8)
-#define WOOD               CELL_MAKE(MAT_WOOD, 0)
-#define STEAM              CELL_MAKE(MAT_STEAM, 8)
-#define SMOKE              CELL_MAKE(MAT_SMOKE, 8)
-#define EMBER              CELL_MAKE(MAT_WOOD, MATERIAL_VARIANTS - 1)
-#define OIL                CELL_MAKE(MAT_OIL, 8)
-#define LAVA               CELL_MAKE(MAT_LAVA, 8)
-#define GLASS              CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)
-#define SNOW               CELL_MAKE(MAT_SNOW, 8)
-#define ACID               CELL_MAKE(MAT_ACID, 8)
+#define WATER                            CELL_MAKE(MAT_WATER, 8)
+#define STONE                            CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
+#define SAND                             CELL_MAKE(MAT_SAND, 8)
+#define GAS                              CELL_MAKE(MAT_GAS, 8)
+#define FIRE                             CELL_MAKE(MAT_FIRE, 8)
+#define WOOD                             CELL_MAKE(MAT_WOOD, 0)
+#define STEAM                            CELL_MAKE(MAT_STEAM, 8)
+#define SMOKE                            CELL_MAKE(MAT_SMOKE, 8)
+#define EMBER                            CELL_MAKE(MAT_WOOD, MATERIAL_VARIANTS - 1)
+#define OIL                              CELL_MAKE(MAT_OIL, 8)
+#define LAVA                             CELL_MAKE(MAT_LAVA, 8)
+#define GLASS                            CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)
+#define SNOW                             CELL_MAKE(MAT_SNOW, 8)
+#define ACID                             CELL_MAKE(MAT_ACID, 8)
+
+/* Asserts the default fixture's cell (x, y) holds material m. A macro, so a
+ * failure reports the test's own line. */
+#define ASSERT_MATERIAL_AT(m, x, y, msg) TEST_ASSERT_EQUAL_INT_MESSAGE((m), CELL_MATERIAL(sand_at(&s, (x), (y))), (msg))
 
 /* Resets the default fixture (s/cells) via sand_init(). */
 void fixture(void);

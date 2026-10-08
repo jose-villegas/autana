@@ -275,8 +275,7 @@ test_a_pane_that_refuses_the_push_stays_a_pane(void) {
     sand_impulse(&s, 1, 1, ring_of(1, 0), SAND_EXPLODE_INITIAL_SPEED);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, s.impulse_count, "sand_impulse() has to have refused the KIND_STATIC pane");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GLASS, CELL_MATERIAL(sand_at(&s, 1, 1)),
-                                  "and a pane that was never thrown must still be a pane");
+    ASSERT_MATERIAL_AT(MAT_GLASS, 1, 1, "and a pane that was never thrown must still be a pane");
 }
 
 static void

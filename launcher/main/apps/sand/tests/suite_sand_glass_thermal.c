@@ -674,9 +674,9 @@ test_lava_one_side_snow_the_other_cracks_the_wall(void) {
      * wrong thing. */
     const int face = H - 2;
     soak_wall_face_to_shock_heat(wall, face, 4000);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GLASS, CELL_MATERIAL(sand_at(&s, wall, face)),
-                                  "fixture check: the wall cell being tested must survive the soak - "
-                                  "if lava melted it there is nothing left to shatter");
+    ASSERT_MATERIAL_AT(MAT_GLASS, wall, face,
+                       "fixture check: the wall cell being tested must survive the soak - "
+                       "if lava melted it there is nothing left to shatter");
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_SHOCK_HEAT, CELL_VARIANT(sand_at(&s, wall, face)),
                                              "fixture check: lava held against a glass wall has to drive THAT "
                                              "cell past the shock threshold on its own, or the rest proves "

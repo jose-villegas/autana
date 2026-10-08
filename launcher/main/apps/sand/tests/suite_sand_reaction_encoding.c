@@ -950,9 +950,9 @@ test_acid_evaporates_into_gas_when_forced(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "a cell of acid with evaporates forced to 255 must turn to gas "
-                                  "in a single step");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, 3,
+                       "a cell of acid with evaporates forced to 255 must turn to gas "
+                       "in a single step");
 }
 
 /* SAND_ACID_DILUTE_MASS_BIAS's point, proven by comparing the pour with
@@ -1394,9 +1394,9 @@ test_sand_floats_on_oil(void) {
 
     run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, 4)),
-                                  "sand must rest on top of an oil pool rather than sink into it, "
-                                  "despite being denser");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, 4,
+                       "sand must rest on top of an oil pool rather than sink into it, "
+                       "despite being denser");
 }
 
 /* The exception is named by material id, not by kind or density band, so
@@ -1411,10 +1411,10 @@ test_dirt_still_sinks_through_oil(void) {
 
     run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_DIRT, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "dirt is not sand, and the sand/oil exception must not have "
-                                  "spread to it - dirt is denser than oil and must still sink "
-                                  "all the way through the pool");
+    ASSERT_MATERIAL_AT(MAT_DIRT, 3, H - 1,
+                       "dirt is not sand, and the sand/oil exception must not have "
+                       "spread to it - dirt is denser than oil and must still sink "
+                       "all the way through the pool");
 }
 
 /* Lava is the first material that is a liquid AND a heat source, so it
@@ -1435,10 +1435,10 @@ test_lava_does_not_decay_away(void) {
 
     run_steps(&s, 4 * MATERIAL_VARIANTS, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "lava must be immortal - its variant nibble is a FILL LEVEL, "
-                                  "not life remaining, so any decay at all would consume the "
-                                  "cell's own mass");
+    ASSERT_MATERIAL_AT(MAT_LAVA, 3, H - 2,
+                       "lava must be immortal - its variant nibble is a FILL LEVEL, "
+                       "not life remaining, so any decay at all would consume the "
+                       "cell's own mass");
     TEST_ASSERT_EQUAL_INT_MESSAGE(CELL_VARIANT(LAVA), CELL_VARIANT(sand_at(&s, 3, H - 2)),
                                   "and at exactly the mass it was placed with, not merely present "
                                   "- a decay tick reads the variant nibble as life and would show "
@@ -1456,10 +1456,10 @@ test_water_freezes_lava_into_stone(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "lava quenched by water must become stone, not vanish - "
-                                  "reaction_t.quench_to, the same field that turns a quenched "
-                                  "fire into steam");
+    ASSERT_MATERIAL_AT(MAT_STONE, 3, 3,
+                       "lava quenched by water must become stone, not vanish - "
+                       "reaction_t.quench_to, the same field that turns a quenched "
+                       "fire into steam");
 }
 
 /* Guards may_have_heat_holder's arm-only design (sand.h/sand_priv.h):
@@ -1636,12 +1636,12 @@ test_lava_that_melts_sand_into_glass_sometimes_freezes_itself(void) {
     TEST_ASSERT_TRUE_MESSAGE(melted, "setup: sand beside lava must melt to glass within this budget, "
                                      "or this test never reached the event trigger A exists to charge "
                                      "for");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "with the cool-off chance pinned to its maximum, lava that just "
-                                  "did the WORK of a genuine melt must pay for it - the lava cell "
-                                  "itself must become stone in that same step, or trigger A is "
-                                  "dead code the negative guard above would never catch on its "
-                                  "own");
+    ASSERT_MATERIAL_AT(MAT_STONE, 3, 3,
+                       "with the cool-off chance pinned to its maximum, lava that just "
+                       "did the WORK of a genuine melt must pay for it - the lava cell "
+                       "itself must become stone in that same step, or trigger A is "
+                       "dead code the negative guard above would never catch on its "
+                       "own");
 
     fire_room(3, 4);
     sand_set(&s, 3, 3, LAVA);
@@ -1657,9 +1657,9 @@ test_lava_that_melts_sand_into_glass_sometimes_freezes_itself(void) {
     TEST_ASSERT_TRUE_MESSAGE(melted, "setup: sand beside lava must melt to glass within this budget "
                                      "with the cool-off chance pinned OFF too, or the two halves of "
                                      "this test are not actually comparable");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "with the cool-off chance pinned to zero, the exact same melt "
-                                  "must cost lava nothing - it must still be lava, not stone");
+    ASSERT_MATERIAL_AT(MAT_LAVA, 3, 3,
+                       "with the cool-off chance pinned to zero, the exact same melt "
+                       "must cost lava nothing - it must still be lava, not stone");
 }
 
 static void
@@ -1816,11 +1816,10 @@ test_a_bubble_does_not_push_through_a_solid(void) {
 
     run_steps(&s, 20, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "the stone ceiling must still be stone - a bubble displaces "
-                                  "liquid only, never a solid");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 4)),
-                                  "and the steam must still be under it, not through it");
+    ASSERT_MATERIAL_AT(MAT_STONE, 3, 3,
+                       "the stone ceiling must still be stone - a bubble displaces "
+                       "liquid only, never a solid");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 4, "and the steam must still be under it, not through it");
 }
 
 static void
@@ -1831,9 +1830,9 @@ test_quenching_makes_steam_but_burning_out_makes_smoke(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "a fire put out by water must leave STEAM - water that got hot, "
-                                  "which is exactly what happened");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 4, 3,
+                       "a fire put out by water must leave STEAM - water that got hot, "
+                       "which is exactly what happened");
 
     /* Same fire, no water anywhere, forced to burn out and forced to
      * smoke: the residue must be the OTHER material. sand_set_decay()
@@ -1892,10 +1891,10 @@ test_stone_conducts_heat_into_water_beyond_it(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 5, 3)),
-                                  "a fire beside a single cell of stone must boil water sitting "
-                                  "on the OTHER side of that stone - the whole boiler mechanism - "
-                                  "without fire ever crossing the stone itself");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 5, 3,
+                       "a fire beside a single cell of stone must boil water sitting "
+                       "on the OTHER side of that stone - the whole boiler mechanism - "
+                       "without fire ever crossing the stone itself");
 }
 
 static void

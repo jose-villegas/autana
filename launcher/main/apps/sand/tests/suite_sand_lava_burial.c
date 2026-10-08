@@ -322,16 +322,14 @@ test_a_wide_pool_under_a_crust_bursts(void) {
     const int tx = 3, ty = 2; /* interior: not touching the pool's own
                                   * left/right edge, so both diagonal
                                   * neighbours above it are genuine crust */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty)),
-                                  "fixture check: lava at the cell under test");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx - 1, ty)),
-                                  "fixture check: more lava to its left, not stone or open air - a "
-                                  "genuine pool interior, not an isolated cell in a solid pocket");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx + 1, ty)),
-                                  "fixture check: more lava to its right too");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty + 1)),
-                                  "fixture check: and more lava directly below it - this cell has "
-                                  "no support of its own, only the crust above seals it in");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty, "fixture check: lava at the cell under test");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx - 1, ty,
+                       "fixture check: more lava to its left, not stone or open air - a "
+                       "genuine pool interior, not an isolated cell in a solid pocket");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx + 1, ty, "fixture check: more lava to its right too");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty + 1,
+                       "fixture check: and more lava directly below it - this cell has "
+                       "no support of its own, only the crust above seals it in");
 
     impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "wide-pool-burst impulse queue must fit in what the framebuffer "
@@ -380,13 +378,11 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
                                   * top/bottom edge, so both diagonal
                                   * neighbours toward the crust are
                                   * genuine crust too */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty)),
-                                  "fixture check: lava at the cell under test");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty - 1)),
-                                  "fixture check: more lava above it - screen-up is NOT "
-                                  "gravity-relative up in this scene");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_LAVA, CELL_MATERIAL(sand_at(&s, tx, ty + 1)),
-                                  "fixture check: and more lava below it too");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty, "fixture check: lava at the cell under test");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty - 1,
+                       "fixture check: more lava above it - screen-up is NOT "
+                       "gravity-relative up in this scene");
+    ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty + 1, "fixture check: and more lava below it too");
 
     impulse_t* buf = malloc((size_t)(W * H) * sizeof *buf);
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "sideways-pool-burst impulse queue must fit in what the "
@@ -451,10 +447,10 @@ test_buried_lava_still_becomes_stone_with_impulses_off(void) {
 
     TEST_ASSERT_TRUE_MESSAGE(converted, "a covered lava cell must still convert away from lava within "
                                         "this budget even with impulses never enabled");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, cx, cy)),
-                                  "with no impulse buffer, sand_explode() is a pure no-op - the "
-                                  "centre cell must become stone and stay stone, not fire, since "
-                                  "nothing was thrown to fill any core with");
+    ASSERT_MATERIAL_AT(MAT_STONE, cx, cy,
+                       "with no impulse buffer, sand_explode() is a pure no-op - the "
+                       "centre cell must become stone and stay stone, not fire, since "
+                       "nothing was thrown to fill any core with");
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             if (dx == 0 && dy == 0) {

@@ -478,12 +478,12 @@ test_heat_through_a_stone_wall_smelts_the_dirt_beyond_it(void) {
          * the fire and the dirt) staying MAT_STONE means dirt's one
          * downward neighbour was stone on every step, never flame. */
         for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, x, H - 3)),
-                                          "the wall must stay intact and unlit - if it changes, "
-                                          "either the fire reached it directly or the far-side hit "
-                                          "is landing on the conductor instead of past it, and "
-                                          "either way this test can no longer tell a conducted "
-                                          "smelt from a contact one");
+            ASSERT_MATERIAL_AT(MAT_STONE, x, H - 3,
+                               "the wall must stay intact and unlit - if it changes, "
+                               "either the fire reached it directly or the far-side hit "
+                               "is landing on the conductor instead of past it, and "
+                               "either way this test can no longer tell a conducted "
+                               "smelt from a contact one");
         }
     }
 
@@ -890,9 +890,9 @@ test_a_2x2_block_of_steam_condenses_into_one_water_cell(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "a forced roll must condense the square into water at its own "
-                                  "top-left corner");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, 3,
+                       "a forced roll must condense the square into water at its own "
+                       "top-left corner");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 3)), "and clear the other three corners of the square");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 4)), "and clear the other three corners of the square");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 4)), "and clear the other three corners of the square");
@@ -915,9 +915,9 @@ test_condensation_needs_a_genuine_2x2_square(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "three steam cells beside one that is not steam must never "
-                                  "condense, even with the roll forced to succeed every time");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "three steam cells beside one that is not steam must never "
+                       "condense, even with the roll forced to succeed every time");
 }
 
 /* Acid rain - SAND_ACID_RAIN_CHANCE (sand.h), step_one_acid_rain_cell()
@@ -1051,15 +1051,12 @@ test_acid_rain_needs_at_least_two_of_each_species(void) {
      * "not MAT_WATER"). A future bug that cleared the block without
      * placing a residue - or picked the wrong corner - would pass the
      * weaker check and fail this one. */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "one steam cell short of the two-steam/two-gas requirement must "
-                                  "never collapse, even with the roll forced to succeed every time");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "and must leave the rest of the pocket exactly as it was");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, 4)),
-                                  "and must leave the rest of the pocket exactly as it was");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 4, 4)),
-                                  "and must leave the rest of the pocket exactly as it was");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "one steam cell short of the two-steam/two-gas requirement must "
+                       "never collapse, even with the roll forced to succeed every time");
+    ASSERT_MATERIAL_AT(MAT_GAS, 4, 3, "and must leave the rest of the pocket exactly as it was");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, 4, "and must leave the rest of the pocket exactly as it was");
+    ASSERT_MATERIAL_AT(MAT_GAS, 4, 4, "and must leave the rest of the pocket exactly as it was");
 }
 
 /* SAND_ACID_RAIN_CHANCE's own comment (sand.h): the surviving cell is a

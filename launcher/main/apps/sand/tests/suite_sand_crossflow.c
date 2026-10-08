@@ -100,8 +100,8 @@ test_liquid_density_sort_moves_one_landscape_cell(void) {
         sand_set(&s, x, SORT_H / 2, WATER);
         sort_liquids(&s, dx, 0);
 
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, x + dx, SORT_H / 2)),
-                                      "a denser liquid may sink only one landscape cell per sort pass");
+        ASSERT_MATERIAL_AT(MAT_WATER, x + dx, SORT_H / 2,
+                           "a denser liquid may sink only one landscape cell per sort pass");
     }
 }
 
@@ -115,8 +115,7 @@ test_liquid_density_sort_swaps_a_landscape_boundary_in_every_row(void) {
     sort_liquids(&s, 1, 0);
 
     for (int y = 1; y < SORT_H - 1; y++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 2, y)),
-                                      "every row along a landscape density boundary must swap");
+        ASSERT_MATERIAL_AT(MAT_WATER, 2, y, "every row along a landscape density boundary must swap");
     }
 }
 
@@ -129,8 +128,7 @@ test_liquid_density_sort_moves_one_cell_along_a_diagonal(void) {
 
     sort_liquids(&s, 1, 1);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 2, 2)),
-                                  "a diagonal density sort must stop the displaced liquid after one ray cell");
+    ASSERT_MATERIAL_AT(MAT_WATER, 2, 2, "a diagonal density sort must stop the displaced liquid after one ray cell");
 }
 
 static void
@@ -143,8 +141,7 @@ test_liquid_density_sort_keeps_the_portrait_rate(void) {
     sort_liquids(&s, 0, 1);
 
     for (int x = 1; x < SORT_W - 1; x++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, x, 2)),
-                                      "portrait density sorting must retain its one-cell rate");
+        ASSERT_MATERIAL_AT(MAT_WATER, x, 2, "portrait density sorting must retain its one-cell rate");
     }
 }
 

@@ -49,9 +49,9 @@ test_gas_rises_straight_up_under_ordinary_gravity(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with ordinary gravity pointing down, gas moves up - the opposite "
-                                  "direction from every other material");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, H - 2,
+                       "with ordinary gravity pointing down, gas moves up - the opposite "
+                       "direction from every other material");
 }
 
 static void
@@ -65,10 +65,10 @@ test_gas_falls_when_the_board_is_inverted(void) {
 
     sand_step(&s, 0, -1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, 1)),
-                                  "gas always moves AGAINST gravity, whatever direction that "
-                                  "currently is - inverted gravity means gas falls, not a hardcoded "
-                                  "upward move");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, 1,
+                       "gas always moves AGAINST gravity, whatever direction that "
+                       "currently is - inverted gravity means gas falls, not a hardcoded "
+                       "upward move");
 }
 
 static void
@@ -85,10 +85,10 @@ test_gas_rises_diagonally_under_tilted_gravity(void) {
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 5, H - 1)),
                                   "the grain must have left its starting cell");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 2, H - 4)),
-                                  "with gravity down-and-right, anti-gravity is up-and-left - three "
-                                  "steps of (-1,-1) should land it exactly three columns left and "
-                                  "three rows up from where it started");
+    ASSERT_MATERIAL_AT(MAT_GAS, 2, H - 4,
+                       "with gravity down-and-right, anti-gravity is up-and-left - three "
+                       "steps of (-1,-1) should land it exactly three columns left and "
+                       "three rows up from where it started");
 }
 
 /* The walk (the new default) trades away the exhaustive mover's exact
@@ -202,8 +202,7 @@ test_gas_is_blocked_by_a_stone_ceiling(void) {
      * is not "still at column 3", it is "the ceiling was never displaced,
      * and the grain is still one row below it, not through it". */
     for (int x = 0; x < W; x++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, x, 0)),
-                                      "a solid ceiling with no gap must never be displaced");
+        ASSERT_MATERIAL_AT(MAT_STONE, x, 0, "a solid ceiling with no gap must never be displaced");
     }
 
     bool found_gas_below_ceiling = false;
@@ -445,9 +444,9 @@ test_gas_scatter_can_be_disabled(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with scatter off, gas rises exactly one cell per step in a "
-                                  "straight line - the same guarantee sand's own fall makes");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, H - 2,
+                       "with scatter off, gas rises exactly one cell per step in a "
+                       "straight line - the same guarantee sand's own fall makes");
 }
 
 static void
@@ -517,15 +516,15 @@ test_tilted_equalise_still_spreads_a_packed_row_under_the_sight_bound(void) {
 
     sand_step(&s, 1000, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 0, 2)),
-                                  "column 0's ray runs off the left edge on its first step and has "
-                                  "nowhere to go - it must stay put");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 0, 2,
+                       "column 0's ray runs off the left edge on its first step and has "
+                       "nowhere to go - it must stay put");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 2)),
                              "column 3 must have left row 2 - if the tilted skip fired here, "
                              "the whole row's equalise body never ran and nothing would move");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 2, 3)),
-                                  "column 3's grain must land one diagonal step down-left, in the "
-                                  "row that was open");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 2, 3,
+                       "column 3's grain must land one diagonal step down-left, in the "
+                       "row that was open");
     TEST_ASSERT_EQUAL_INT_MESSAGE(W, count_of(MAT_FIRE),
                                   "whole-grain gas conserves its count - this is a move, not a loss");
 }
@@ -549,8 +548,7 @@ test_fire_ignites_an_adjacent_flammable_neighbour(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "a flammable neighbour touching fire must ignite");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 4, 3, "a flammable neighbour touching fire must ignite");
 }
 
 /* An igniting gas cell touching a KIND_STATIC neighbour bursts instead of
@@ -815,13 +813,13 @@ test_extinguishing_wins_over_igniting(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "fire touching water must be extinguished, and now becomes steam "
-                                  "rather than simply vanishing - see reaction_t.quench_to");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "extinguishing must win outright over igniting - a gas neighbour "
-                                  "must not catch fire in the same step the fire that would have "
-                                  "lit it was put out");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "fire touching water must be extinguished, and now becomes steam "
+                       "rather than simply vanishing - see reaction_t.quench_to");
+    ASSERT_MATERIAL_AT(MAT_GAS, 4, 3,
+                       "extinguishing must win outright over igniting - a gas neighbour "
+                       "must not catch fire in the same step the fire that would have "
+                       "lit it was put out");
 }
 
 static void
@@ -856,10 +854,10 @@ test_fire_rises_and_disperses_like_gas(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with ordinary gravity pointing down, fire moves up - the same "
-                                  "kind = KIND_GAS movement gas already has, replacing the "
-                                  "immobile-ember behaviour this test used to assert");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, H - 2,
+                       "with ordinary gravity pointing down, fire moves up - the same "
+                       "kind = KIND_GAS movement gas already has, replacing the "
+                       "immobile-ember behaviour this test used to assert");
 }
 
 /* Mirrors test_sand_sinks_through_gas exactly - fire's displacement rules
@@ -921,9 +919,9 @@ test_fire_is_not_smothered_with_a_gap(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "one open side is enough for air to reach it - smothered() "
-                                  "requires ALL four neighbours to be denser, not just three");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, 3,
+                       "one open side is enough for air to reach it - smothered() "
+                       "requires ALL four neighbours to be denser, not just three");
 }
 
 static void
@@ -940,11 +938,11 @@ test_fire_is_not_smothered_by_gas(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "gas is not denser than fire (10 < 15), so a gas-only surround "
-                                  "must not smother it - otherwise any sufficiently large, dense "
-                                  "pocket of fire/gas would extinguish itself from the inside "
-                                  "out");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, 3,
+                       "gas is not denser than fire (10 < 15), so a gas-only surround "
+                       "must not smother it - otherwise any sufficiently large, dense "
+                       "pocket of fire/gas would extinguish itself from the inside "
+                       "out");
 }
 
 static void
@@ -974,14 +972,14 @@ test_liquid_wins_over_smothering(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "fire touching water on even one side must extinguish via the "
-                                  "liquid rule (becoming steam, not simply vanishing - see "
-                                  "reaction_t.quench_to) - smothered() itself would have said no "
-                                  "here too (it explicitly excludes liquid neighbours from "
-                                  "counting towards a smother, even though water is denser than "
-                                  "fire), so this confirms that exclusion does not accidentally "
-                                  "block the liquid path from still working");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "fire touching water on even one side must extinguish via the "
+                       "liquid rule (becoming steam, not simply vanishing - see "
+                       "reaction_t.quench_to) - smothered() itself would have said no "
+                       "here too (it explicitly excludes liquid neighbours from "
+                       "counting towards a smother, even though water is denser than "
+                       "fire), so this confirms that exclusion does not accidentally "
+                       "block the liquid path from still working");
 }
 
 static void
@@ -1009,8 +1007,7 @@ test_igniting_a_neighbour_marks_its_row_dirty(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "setup: the gas neighbour must have ignited");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, 3, "setup: the gas neighbour must have ignited");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[3],
                                     "the row the newly-ignited neighbour is in must be marked dirty, "
                                     "or its cell changes colour on the panel without ever being "
@@ -1050,14 +1047,14 @@ test_fire_spreads_through_a_connected_pocket_in_one_step(void) {
     sand_step(&s, 0, 1000, 0);
 
     for (int x = 1; x < W; x++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, x, 0)),
-                                      "a straight line of gas laid out AHEAD of the reactions "
-                                      "pass's own fixed scan direction (row-major, left to right) "
-                                      "must ignite all the way through in a single step - the "
-                                      "confirmed explosion-like cascade, not creeping spread. A "
-                                      "line laid out BEHIND the scan direction would need several "
-                                      "steps instead - a documented, accepted scan-order artifact, "
-                                      "not a bug (see sand_reactions.c's own top comment)");
+        ASSERT_MATERIAL_AT(MAT_FIRE, x, 0,
+                           "a straight line of gas laid out AHEAD of the reactions "
+                           "pass's own fixed scan direction (row-major, left to right) "
+                           "must ignite all the way through in a single step - the "
+                           "confirmed explosion-like cascade, not creeping spread. A "
+                           "line laid out BEHIND the scan direction would need several "
+                           "steps instead - a documented, accepted scan-order artifact, "
+                           "not a bug (see sand_reactions.c's own top comment)");
     }
 }
 
@@ -1815,11 +1812,11 @@ test_wood_does_not_catch_instantly(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WOOD, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "at the real per-material flammability (6 in 256), wood touching "
-                                  "fire for a single step must almost always still be wood - a fire "
-                                  "that catches instantly defeats the whole point of a slow-burning "
-                                  "fuel");
+    ASSERT_MATERIAL_AT(MAT_WOOD, 4, 3,
+                       "at the real per-material flammability (6 in 256), wood touching "
+                       "fire for a single step must almost always still be wood - a fire "
+                       "that catches instantly defeats the whole point of a slow-burning "
+                       "fuel");
 }
 
 static void
@@ -2030,9 +2027,9 @@ test_steam_rises_and_disperses(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with ordinary gravity pointing down, steam rises - the same "
-                                  "KIND_GAS movement gas and fire already have");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, H - 2,
+                       "with ordinary gravity pointing down, steam rises - the same "
+                       "KIND_GAS movement gas and fire already have");
 }
 
 static void
@@ -2060,10 +2057,10 @@ test_creating_steam_arms_the_gas_pass(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "setup: quenching must have produced steam, with no other gas "
-                                  "anywhere on the grid that could accidentally arm may_have_gas "
-                                  "some OTHER way and mask the bug this test exists to catch");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "setup: quenching must have produced steam, with no other gas "
+                       "anywhere on the grid that could accidentally arm may_have_gas "
+                       "some OTHER way and mask the bug this test exists to catch");
 
     sand_set_mobility(&s, 255); /* steam's own turn to rise, forced
                                    * deterministic the same way every
@@ -2071,13 +2068,13 @@ test_creating_steam_arms_the_gas_pass(void) {
                                    * in this suite is */
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 2)),
-                                  "steam created by place_reacted() must actually be able to rise "
-                                  "on its very next chance - if may_have_gas was not latched for "
-                                  "it, sand_step_gas() early-returns and the cell sits frozen on "
-                                  "the grid forever, a bug this test's empty-grid setup is built "
-                                  "specifically to catch (see place_reacted()'s own comment in "
-                                  "sand_reactions.c)");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 2,
+                       "steam created by place_reacted() must actually be able to rise "
+                       "on its very next chance - if may_have_gas was not latched for "
+                       "it, sand_step_gas() early-returns and the cell sits frozen on "
+                       "the grid forever, a bug this test's empty-grid setup is built "
+                       "specifically to catch (see place_reacted()'s own comment in "
+                       "sand_reactions.c)");
 }
 
 static void
@@ -2267,10 +2264,10 @@ test_only_the_exposed_surface_of_an_oil_pool_can_ignite(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_OIL, CELL_MATERIAL(sand_at(&s, 3, surface + 2)),
-                                  "an oil cell buried under more oil must NOT ignite, however "
-                                  "much of the surface is alight - a pool burns off its top, it "
-                                  "does not go up all at once");
+    ASSERT_MATERIAL_AT(MAT_OIL, 3, surface + 2,
+                       "an oil cell buried under more oil must NOT ignite, however "
+                       "much of the surface is alight - a pool burns off its top, it "
+                       "does not go up all at once");
 }
 
 /* Air has to include gases, not just EMPTY cells: a flame sitting on the
@@ -2335,9 +2332,9 @@ test_water_still_puts_fire_out(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "water is neither fuel nor a heat source, so it must still "
-                                  "quench on one touch - and still turn the fire to steam");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "water is neither fuel nor a heat source, so it must still "
+                       "quench on one touch - and still turn the fire to steam");
 }
 
 /* Liquids sink/float by density via float_lighter_liquids(): room_in()

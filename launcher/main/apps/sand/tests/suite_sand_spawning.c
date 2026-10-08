@@ -472,8 +472,7 @@ test_an_emitter_fills_its_own_cell_when_empty(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "an emitter must fill its own point once that point is empty");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, H - 1, "an emitter must fill its own point once that point is empty");
 }
 
 static void
@@ -485,10 +484,10 @@ test_an_emitter_does_not_overwrite_an_occupied_cell(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "an emitter must never overwrite whatever is already sitting on "
-                                  "its own point - that is the entire rate control, and an emitter "
-                                  "that ignored it would be a firehose");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, H - 1,
+                       "an emitter must never overwrite whatever is already sitting on "
+                       "its own point - that is the entire rate control, and an emitter "
+                       "that ignored it would be a firehose");
 }
 
 /* The failure mode this test exists to catch: a write that places material
@@ -775,8 +774,7 @@ test_adding_an_emitter_over_an_occupied_cell_still_registers(void) {
                                   "landing on something");
 
     sand_step(&s, 0, 1000, 0);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "and it must not emit while the cell stays occupied");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, H - 1, "and it must not emit while the cell stays occupied");
 
     /* Cleared directly, not via sand_erase() - erase would also remove the
      * emitter itself (see test_erase_stops_an_emitter_from_emitting below)
@@ -785,9 +783,9 @@ test_adding_an_emitter_over_an_occupied_cell_still_registers(void) {
     sand_set(&s, 3, H - 1, SAND_EMPTY);
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "once the cell clears, the already-registered emitter must start "
-                                  "emitting into it");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, H - 1,
+                       "once the cell clears, the already-registered emitter must start "
+                       "emitting into it");
 }
 
 static void

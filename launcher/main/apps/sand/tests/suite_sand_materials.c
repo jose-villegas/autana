@@ -85,9 +85,9 @@ test_sand_sinks_through_water(void) {
 
     run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "sand is denser than water, so it must sink all the way through the "
-                                  "pool rather than float on it");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, H - 1,
+                       "sand is denser than water, so it must sink all the way through the "
+                       "pool rather than float on it");
 }
 
 static void
@@ -101,9 +101,9 @@ test_water_does_not_sink_through_sand(void) {
 
     run_steps(&s, 60, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "water is lighter than sand, so it must sit on top rather than sink "
-                                  "into it");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, 3,
+                       "water is lighter than sand, so it must sit on top rather than sink "
+                       "into it");
 }
 
 static void
@@ -268,9 +268,9 @@ test_water_poured_into_a_basin_reaches_both_ends(void) {
 
     run_steps(&s, 400, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, W - 2, H - 1)),
-                                  "water poured in at one end must travel to the other - if it cannot, "
-                                  "the pressure rule has been made too strict to flow at all");
+    ASSERT_MATERIAL_AT(MAT_WATER, W - 2, H - 1,
+                       "water poured in at one end must travel to the other - if it cannot, "
+                       "the pressure rule has been made too strict to flow at all");
 }
 
 /* A basin needs room around it, so these get a grid of their own. */
