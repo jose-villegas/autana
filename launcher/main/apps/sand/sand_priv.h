@@ -775,7 +775,15 @@ sand_forced_restore(sand_t* s, const sand_forced_state_t* snap) {
 
 #define SAND_FORCED_STATE(s) sand_forced_state_t forced_state = sand_forced_save(s)
 #define SAND_FORCED_IF(cond) (forced_state.skipped = (cond))
+#else
+#define SAND_FORCED_STATE(s)
+#define SAND_FORCED_IF(cond)         (cond)
+#define sand_forced_restore(s, snap) ((void)0)
+#endif
 
+/* The fingerprint's two counting builds: SAND_COUNT_SKIPS counts each site's
+ * skips and still takes them, SAND_FORCE_WORK counts and never takes them. */
+#if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
 typedef struct sand_skip_site {
     const char* file;
     int line;
@@ -794,9 +802,6 @@ void sand_skip_sites_report(void);
     })
 #else
 #define SAND_SKIP_IF(cond) (cond)
-#define SAND_FORCED_STATE(s)
-#define SAND_FORCED_IF(cond)         (cond)
-#define sand_forced_restore(s, snap) ((void)0)
 #endif
 
 #define SAND_FACT_RULE(expr) (expr)

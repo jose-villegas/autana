@@ -132,11 +132,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", nargs="?", type=pathlib.Path, default=ROOT)
     parser.add_argument("--sites", action="store_true")
-    parser.add_argument("--coverage", type=pathlib.Path)
+    parser.add_argument("--coverage", type=pathlib.Path, action="append")
     args = parser.parse_args()
     if args.coverage:
-        coverage(args.root, args.coverage)
-        return 0
+        return coverage(args.root, args.coverage)
     if args.sites:
         for path, line in skip_sites(args.root):
             print(f"{path}:{line}")
@@ -146,18 +145,26 @@ def main():
     return bool(found)
 
 
-def coverage(root, capture):
+def coverage(root, captures):
+    """A site counts once its skip condition held in any capture: a skip the
+    normal build took is one the forced build did the work for, and a
+    condition only the forced build reached (a check its caller already
+    makes) was still worked through there."""
     counts = {}
-    for row in capture.read_text(encoding="utf-8").splitlines():
+    rows = [row for capture in captures for row in capture.read_text(encoding="utf-8").splitlines()]
+    for row in rows:
         match = re.fullmatch(r"SAND_SKIP (.*):(\d+) (\d+)", row)
         if match:
             key = (match[1].replace("\\", "/").split("/sand/", 1)[-1], int(match[2]))
             counts[key] = counts.get(key, 0) + int(match[3])
     print("skip coverage: file:line would-skip")
+    untested = 0
     for path, line in skip_sites(root):
         name = pathlib.Path(path).relative_to(root).as_posix()
         count = counts.get((name, line), 0)
-        print(f"{name}:{line} {count}" + (" WARNING: untested skip" if count == 0 else ""))
+        untested += count == 0
+        print(f"{name}:{line} {count}" + (" UNTESTED: no scene reaches this skip" if count == 0 else ""))
+    return 1 if untested else 0
 
 
 if __name__ == "__main__":

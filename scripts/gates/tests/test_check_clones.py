@@ -265,6 +265,14 @@ class CloneTests(unittest.TestCase):
         copied = self.pair(fragment=BLOCK + listing)
         self.assertEqual(gate.filter_pairs([copied]), [copied])
 
+    def test_initializer_table_rows_are_ignored_but_statements_are_not(self):
+        rows = "".join(f'    {{"row_{i}", build_{i}, {i}u, 0, 1000, 0}},\n' for i in range(16))
+        self.assertEqual(gate.filter_pairs([self.pair(fragment=rows)]), [])
+        copied = self.pair(fragment=BLOCK + rows)
+        self.assertEqual(gate.filter_pairs([copied]), [copied])
+        loops = "".join(f"    for (int y = {i}; y < 9; y++) {{ set(s, x, y, CELL); }}\n" for i in range(16))
+        self.assertEqual(len(gate.filter_pairs([self.pair(fragment=loops)])), 1)
+
     def test_code_moved_out_of_a_deleted_file_spends_its_clone(self):
         base = self.scan({"launcher/main/old.c": BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta")}, 80)
         head = self.scan({"launcher/main/new.c": BLOCK + "int pad_new;\n" + BLOCK.replace("alpha", "beta")}, 80)

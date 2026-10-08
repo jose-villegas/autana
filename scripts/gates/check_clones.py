@@ -69,10 +69,12 @@ PYTHON_TOKENS = re.compile(
 )
 
 
-# A suite's list of RUN_TEST lines matches any other long list once
-# identifiers are ignored, and has no shared owner to extract; a pair counts
-# only if what remains without them is still a clone's length in itself.
-TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;")
+# A suite's list of RUN_TEST lines, or the rows of a data table, matches any
+# other long list once identifiers are ignored, and has no shared owner to
+# extract; a pair counts only if what remains without them is still a
+# clone's length in itself. A table row is a braced initializer holding no
+# statement, so a block of code never passes for one.
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,")
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 
 

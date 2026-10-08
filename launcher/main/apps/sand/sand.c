@@ -19,7 +19,7 @@
 
 #include "sand_priv.h"
 
-#ifdef SAND_FORCE_WORK
+#if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
 #include <stdio.h>
 
 static sand_skip_site_t* skip_sites;
@@ -35,7 +35,11 @@ sand_skip_site_note(sand_skip_site_t* site, bool allowed) {
     if (allowed) {
         __atomic_fetch_add(&site->skipped, 1ULL, __ATOMIC_RELAXED);
     }
+#ifdef SAND_FORCE_WORK
     return false;
+#else
+    return allowed;
+#endif
 }
 
 void

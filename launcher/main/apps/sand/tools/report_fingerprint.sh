@@ -16,10 +16,11 @@
 # merely too strict - skipping less than it could - changes no output and
 # costs only time; nothing here sees it, and nothing needs to.
 #
-# Coverage: after the forced run, every SAND_SKIP_IF site in the sources is
-# listed with how often it would have skipped across all scenes. A site at
-# 0 was never exercised, so the comparison says nothing about it: an
-# untested-skip WARNING, not a failure.
+# Coverage: both builds count, per SAND_SKIP_IF site, how often its skip
+# condition held across all scenes (the normal one with -DSAND_COUNT_SKIPS,
+# which counts and still skips), and every site in the sources is listed
+# with the sum. A site at 0 was never exercised, so the comparison says
+# nothing about it, and --check fails until a scene reaches it.
 #
 # Usage:
 #   main/apps/sand/tools/report_fingerprint.sh            # print
@@ -79,7 +80,7 @@ PYTHON=$(command -v python3 || command -v python) || {
 mkdir -p "$BUILD_DIR"
 for MODE in normal forced; do
     OUT_BIN="$BUILD_DIR/grid_fingerprint"
-    FORCE_FLAG=""
+    FORCE_FLAG="-DSAND_COUNT_SKIPS"
     if [ "$MODE" = forced ]; then
         OUT_BIN="${OUT_BIN}_forced"
         FORCE_FLAG="-DSAND_FORCE_WORK"
@@ -109,7 +110,8 @@ for MODE in normal forced; do
     "$OUT_BIN" > "$BUILD_DIR/fingerprint.$MODE.txt" 2> "$BUILD_DIR/skip.$MODE.txt"
 done
 
-"$PYTHON" "$MAIN_DIR/../../scripts/gates/check_skip_facts.py" --coverage "$BUILD_DIR/skip.forced.txt" "$SAND_DIR"
+COVERED=1
+"$PYTHON" "$MAIN_DIR/../../scripts/gates/check_skip_facts.py" --coverage "$BUILD_DIR/skip.normal.txt"     --coverage "$BUILD_DIR/skip.forced.txt" "$SAND_DIR" || COVERED=0
 
 # The forced build against the normal one, not against the baseline: a
 # skip that drops work makes the normal build differ, while the forced one
@@ -154,6 +156,13 @@ case "${1:-}" in
         echo "fingerprint: forced work identical to normal"
     else
         RESULT=1
+    fi
+    if [ "$COVERED" -eq 0 ]; then
+        RESULT=1
+        echo >&2
+        echo "AN UNTESTED SKIP. No scene reaches the SAND_SKIP_IF sites marked" >&2
+        echo "UNTESTED above, so the forced comparison says nothing about them:" >&2
+        echo "add a row to grid_fingerprint.c that does." >&2
     fi
     exit "$RESULT"
     ;;

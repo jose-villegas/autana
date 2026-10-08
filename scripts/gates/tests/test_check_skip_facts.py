@@ -83,6 +83,20 @@ class SkipFactsTest(unittest.TestCase):
     def test_comments_and_strings_are_not_reads(self):
         self.assertEqual(self.problems('/* may_have_x */ puts("may_have_x");'), [])
 
+    def test_coverage_sums_captures_and_fails_on_an_untested_site(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp) / "sand"
+            root.mkdir()
+            (root / "sand.c").write_text("void f(void) {\nif (SAND_SKIP_IF(a)) return;\n"
+                                         "if (SAND_SKIP_IF(b)) return;\n}\n", encoding="utf-8")
+            normal = pathlib.Path(temp) / "normal.txt"
+            forced = pathlib.Path(temp) / "forced.txt"
+            normal.write_text("SAND_SKIP x/sand/sand.c:2 3\n", encoding="utf-8")
+            forced.write_text("SAND_SKIP x/sand/sand.c:3 0\n", encoding="utf-8")
+            self.assertEqual(check_skip_facts.coverage(root, [normal, forced]), 1)
+            forced.write_text("SAND_SKIP x/sand/sand.c:3 5\n", encoding="utf-8")
+            self.assertEqual(check_skip_facts.coverage(root, [normal, forced]), 0)
+
     def test_block_define_requires_marker(self):
         self.assertTrue(self.problems("", extra="#define BLOCK_NEAR 0x10u"))
         self.assertEqual(self.problems("if (SAND_SKIP_IF(BLOCK_NEAR == 0)) return;",

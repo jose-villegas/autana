@@ -207,9 +207,6 @@ try_heat_transform(sand_t* s, int nx, int ny, int w, int h) {
     if (CELL_IS_EMPTY(n)) {
         return false;
     }
-    if (SAND_SKIP_IF((pair_theirs_bits(CELL_MATERIAL(n)) & PAIR_HEAT_RESPONSIVE) == 0)) {
-        return false;
-    }
     return try_heat_transform_given(s, nx, ny, w, h, at, n);
 }
 
