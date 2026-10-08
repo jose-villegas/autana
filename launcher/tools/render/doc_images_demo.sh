@@ -6,7 +6,7 @@
 #   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
-# OBJECT_flat, OBJECT_fitted and OBJECT_fitted_full.
+# OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
 #
@@ -48,6 +48,7 @@ demo_gif ${ID}-lite --scene "$ID" --object "${FULL}_lite"
 demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
+demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
 demo_gif ${ID}-depth --scene "$ID" --object "$FULL" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$FULL" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$FULL" --view motion
@@ -62,6 +63,7 @@ demo_still lite "${FULL}_lite"
 demo_still flat "${FULL}_flat"
 demo_still fitted "${FULL}_fitted"
 demo_still fitted-full "${FULL}_fitted_full"
+demo_still flat-fitted "${FULL}_flat_fitted"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
     --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
@@ -70,9 +72,11 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lit
     --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
     --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-flat-flat-fitted.png" --crops 3 \
+    --label-a flat --label-b "flat fitted" --row "flat | flat fitted" "$W/still-flat.bmp" "$W/still-flat-fitted.bmp" > "$W/compare-flat-flat-fitted.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
-for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full; do
+for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full compare-flat-flat-fitted; do
     [ -f "$RENDER/$crops.crops.png" ] || { echo "$0: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done
 

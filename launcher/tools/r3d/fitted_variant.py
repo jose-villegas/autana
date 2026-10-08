@@ -7,7 +7,8 @@
 
 A scene renderer with a `fit` table is not baked by mesh_import.py.
 `prepare`, in the r3d environment, bakes its start (the import's geometry
-steps at the variant's `triangles`, lit by the scene's bake), samples the
+steps at the variant's `triangles`, lit by the scene's bake, flat when the
+renderer's shading is), samples the
 scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
@@ -33,13 +34,20 @@ from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa
 
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
 BOARD_SCALE = 2
+# The host renderer that draws any scene file's objects along its camera path.
+VIEWER = pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh"
 
 
 def placed_variant(scene, name):
-    """The fitted renderer named by its object, variant or scene output."""
-    jobs = [item for item in scene.renderers if name in (item.object.name, item.renderer.variant.name, item.asset_name) and item.renderer.fit]
+    """The fitted renderer named by its scene object, its scene output or,
+    when only one renderer fits it, its variant."""
+    fitted = [item for item in scene.renderers if item.renderer.fit]
+    jobs = [item for item in fitted if name in (item.object.name, item.asset_name)]
+    jobs = jobs or [item for item in fitted if item.renderer.variant.name == name]
     if not jobs:
         raise SettingsError(f"the scene places no fitted variant {name!r}")
+    if len(jobs) > 1:
+        raise SettingsError(f"{name!r} is fitted by {', '.join(item.object.name for item in jobs)}; name the object")
     return jobs[0]
 
 
@@ -57,6 +65,13 @@ def split_poses(fit, poses):
         time = index * fit.train_every_ms
         (held_out if time and time % fit.held_out_every_ms == 0 else training).append(pose)
     return training, held_out
+
+
+def viewer_args(job, frames, dt_ms, scene):
+    """The scene viewer's arguments that draw `job`'s object alone, portrait,
+    for `frames` frames `dt_ms` apart along the scene camera's path."""
+    from r3d.scene_asset import scene_id
+    return f"--scene {scene_id(scene)} --object {job.object.name} --quarter 0 --frames {frames} --dt {dt_ms}"
 
 
 def canonical(value):
@@ -104,8 +119,7 @@ def recipe_digest(job, scene):
 
 
 def prepare(scene_path, scene, job, work):
-    from r3d.lit_mesh import write_lit_mesh
-    from r3d.mesh_import import bake_geometry, camera_path_poses
+    from r3d.mesh_import import camera_path_poses, write_baked
     from r3d.reference_render import main as reference_main
 
     renderer = job.renderer
@@ -113,8 +127,7 @@ def prepare(scene_path, scene, job, work):
     if visibility is None or visibility.source != "camera_path":
         raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
-    geometry = bake_geometry(job, scene)
-    write_lit_mesh(work, variant.name, geometry.positions, geometry.rgb, geometry.tris, geometry.tri_double, **geometry.scale)
+    start = write_baked(job, scene, work, variant.name)
     w, h, lens, near, poses = camera_path_poses(scene, visibility, fit.train_every_ms, either_way_up=False)
     training, held_out = split_poses(fit, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
@@ -125,7 +138,7 @@ def prepare(scene_path, scene, job, work):
                              ("held_out.txt", "reference_held_out")):
         reference_main([str(scene_path), "--object", job.object.name, "--poses",
                         str(work / poses), "--out", str(work / reference), "--normals"])
-    log(f"prepared {variant.name}: start of {len(geometry.tris)} triangles, {len(training)} training poses")
+    log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
 
 
 def reference_digest(scene_path, job, scene):
@@ -270,16 +283,13 @@ def held_out_score(job, mesh_path, work, host, scene, inputs=None):
     """Mean and p95 DeltaE76 from the host renderer against held-out references."""
     from types import SimpleNamespace
     from r3d.poses import read_poses
-    from r3d.scene_asset import scene_id
 
-    variant, fit = job.renderer.variant, job.renderer.fit
+    fit = job.renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
     _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    id = scene_id(scene)
-    args = SimpleNamespace(render_args=f"--quarter 0 --scene {id} --object {job.object.name} --frames {len(poses)} "
-                                       f"--dt {fit.held_out_every_ms}", reference=inputs / "reference_held_out",
+    args = SimpleNamespace(render_args=viewer_args(job, len(poses), fit.held_out_every_ms, scene), reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
     return _score_mesh(args, job.asset_name, mesh_path, score_dir, host, scene)
 
@@ -326,7 +336,7 @@ def comma_numbers(text, cast):
 def sweep_main(argv):
     parser = argparse.ArgumentParser(description="Fit and score a recipe over triangle budgets and cost weights.")
     parser.add_argument("scene")
-    parser.add_argument("--variant", required=True, help="the fitted variant the scene places")
+    parser.add_argument("--variant", required=True, help="the fitted scene object, or its variant when only one object fits it")
     parser.add_argument("--budgets", required=True, type=lambda text: comma_numbers(text, int))
     parser.add_argument("--cost-weights", default="0", type=lambda text: comma_numbers(text, float))
     parser.add_argument("--board-ms", type=lambda text: comma_numbers(text, float), help="measurements in budget, cost-weight order")
@@ -354,9 +364,8 @@ def sweep_main(argv):
         nonlocal host
         if host is None:
             from r3d.bake_fidelity import build_host
-            from r3d.mesh_import import REPO
 
-            host = build_host(REPO / "launcher/tools/render/scene_viewer.sh", out / "host", scene_path)
+            host = build_host(VIEWER, out / "host", scene_path)
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
                    smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
@@ -387,7 +396,7 @@ def main(argv=None):
         return sweep_main(argv[1:])
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene")
-    parser.add_argument("--mesh", required=True, help="the fitted variant's name")
+    parser.add_argument("--mesh", required=True, help="the fitted scene object, or its variant when only one object fits it")
     parser.add_argument("--work", required=True, help="scratch directory the two steps share")
     parser.add_argument("step", choices=("prepare", "fit"))
     args = parser.parse_args(argv)

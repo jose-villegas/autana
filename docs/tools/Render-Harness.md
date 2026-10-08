@@ -54,7 +54,7 @@ bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
-`OBJECT_flat`, `OBJECT_fitted` and `OBJECT_fitted_full`.
+`OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
 The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
 `tools/doc_images.sh` for the app's own:
 

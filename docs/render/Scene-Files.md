@@ -328,8 +328,9 @@ used only for scoring.
 
 #### fit.optimise
 
-The appearance fit starts from a smooth bake at its budget and adjusts welded
-positions and vertex colours against reference renders from camera-path poses.
+The appearance fit starts from the renderer's bake at its budget, smooth or
+[flat](#a-flat-fit), and adjusts welded positions and colours against
+reference renders from camera-path poses.
 The triangles stay fixed, so the budget and frame cost hold. A `fit` table
 records the budget, training, held-out and coverage poses, optimiser settings,
 and output hashes. [`fitted_variant.py` remakes the mesh](../../launcher/tools/r3d/README.md#appearance-fit)
@@ -409,7 +410,7 @@ moves; segment fits see fewer training poses.
 
 ```mermaid
 flowchart LR
-    S[simplified smooth bake] --> F[fit positions and colours]
+    S[simplified bake, smooth or flat] --> F[fit positions and colours]
     P[camera path poses] --> R[reference renders]
     R --> F
     F --> W[write_lit_mesh]
@@ -429,6 +430,38 @@ view. The error reported beside $`\Delta E`$ is the mean normal angle:
 
 The generated normal-angle heatmaps and sweep findings live in the scene tools
 README.
+
+##### A flat fit
+
+A renderer with both `shading = { flat = ... }` and a `fit` table is fitted
+flat: its start is a flat bake of its variant, and $`C`$ holds one colour per triangle
+instead of one per vertex. The positions are fitted as before, so a face's
+edges move to where one colour reads best, along a shading change. Each pixel
+takes its triangle's colour:
+
+```math
+\mathcal{R}_v(P, C)_p = C_{\tau_v(p)}
+\qquad \tau_v(p) = \text{the triangle pixel } p \text{ shows in pose } v
+```
+
+A pixel inside a face does not depend on $`P`$, so the position gradient comes
+only from the edges. The fit draws every triangle with three vertices of its
+own, so every edge, not only a silhouette, is antialiased and passes a
+gradient to the positions on both sides; those vertices still read one welded
+position each, so faces cannot part. Pruning, the warm start and the writer
+keep each colour with its triangle, and the device draws the result as any flat
+mesh, at a flat mesh's cost.
+
+```mermaid
+flowchart LR
+    B[flat bake<br/>a colour per face] --> F[fit positions and<br/>face colours]
+    F --> E[edges antialiased<br/>gradient to positions]
+    E --> F
+    F --> W[write_lit_mesh<br/>face colours]
+```
+
+[Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
+with its flat fit.
 
 #### fit.hashes
 

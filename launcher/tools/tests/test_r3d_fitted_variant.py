@@ -21,15 +21,54 @@ except ImportError:
     parse_poses = None
 
 try:
-    from r3d import lit_mesh, mesh_import, reference_render
+    from r3d import mesh_import, reference_render
 except ImportError:
-    lit_mesh = mesh_import = reference_render = None
+    mesh_import = reference_render = None
 
 try:
     from PIL import Image
     import render_compare
 except ImportError:
     Image = render_compare = None
+
+
+@unittest.skipIf(mesh_import is None, "needs the r3d environment")
+class WriteBakedTests(unittest.TestCase):
+    """The one writer behind bake(), the fit's start and the GPU stage's bakes writes what the renderer's shading
+    says: a flat renderer's mesh carries a colour per triangle, a smooth one a colour per vertex."""
+
+    def write(self, face_samples):
+        import numpy as np
+        from r3d.lit_mesh import read_lit_mesh
+
+        positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+        geometry = SimpleNamespace(positions=positions, rgb=np.full((4, 3), 100), tris=np.array([[0, 1, 2], [0, 2, 3]]),
+                                   tri_double=np.zeros(2, dtype=int), scale={"position_scale": 8})
+        job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples))
+        faces = np.array([[255.0, 0.0, 0.0], [0.0, 0.0, 255.0]])
+        with tempfile.TemporaryDirectory() as directory, \
+                unittest.mock.patch.object(mesh_import, "flat_colours", return_value=faces) as lit:
+            mesh_import.write_baked(job, None, pathlib.Path(directory), "card", geometry)
+            back = read_lit_mesh(pathlib.Path(directory) / "card.mesh")
+        return back, lit
+
+    def test_a_flat_renderer_writes_a_flat_mesh(self):
+        back, lit = self.write((4, 1, 4, None))
+        lit.assert_called_once()
+        self.assertIsNone(back.rgb)
+        from r3d.lit_mesh import finest_triangles
+
+        q, _rgb, tris, _double, face = finest_triangles(back)
+        # Triangle (0, 1, 2) lies right of the diagonal and was given red; (0, 2, 3) left of it, blue.
+        right = q[tris].mean(axis=1)[:, 0] > q[tris].mean(axis=1)[:, 1]
+        self.assertEqual({tuple(c) for c in face[right].tolist()}, {(255, 0, 0)})
+        self.assertEqual({tuple(c) for c in face[~right].tolist()}, {(0, 0, 255)})
+
+    def test_a_smooth_renderer_writes_vertex_colours(self):
+        back, lit = self.write(None)
+        lit.assert_not_called()
+        self.assertIsNone(back.face_colors)
+        self.assertTrue((back.rgb == 100).all())
 
 
 @unittest.skipIf(parse_poses is None, "needs NumPy")
@@ -51,6 +90,58 @@ class FittedVariantTests(unittest.TestCase):
         width, height, lens, near, poses = parse_poses(text)
         self.assertEqual((width, height, lens, near), (184, 224, 0.62, 6.0))
         self.assertEqual(list(poses[0]), [1.0, 2.0, 3.0, 0.0, 0.0, -1.0])
+
+
+def fake_job(object_name, asset_name, variant, fitted=True):
+    return SimpleNamespace(object=SimpleNamespace(name=object_name), asset_name=asset_name,
+                           renderer=SimpleNamespace(fit=object() if fitted else None, variant=SimpleNamespace(name=variant)))
+
+
+@unittest.skipIf(fitted_variant is None, "needs the r3d environment")
+class PlacedVariantTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from r3d.import_settings import load_scene
+        scene = pathlib.Path(__file__).resolve().parents[3] / "launcher/demo/sponza/sponza.scene.toml"
+        try:
+            cls.sponza = load_scene(scene)
+        except Exception as error:
+            raise unittest.SkipTest(f"the Sponza scene does not load here: {error}")
+
+    def test_a_scene_object_name_picks_its_own_renderer_even_when_a_variant_is_shared(self):
+        for name in ("atrium_fitted_full", "atrium_flat_fitted", "atrium_fitted"):
+            job = fitted_variant.placed_variant(self.sponza, name)
+            self.assertEqual(job.object.name, name)
+        self.assertEqual(fitted_variant.placed_variant(self.sponza, "atrium_flat_fitted").renderer.variant.name,
+                         "sponza_fitted_full")
+
+    def test_an_asset_name_picks_its_own_renderer(self):
+        job = fitted_variant.placed_variant(self.sponza, "sponza.atrium_flat_fitted")
+        self.assertEqual(job.object.name, "atrium_flat_fitted")
+
+    def test_a_variant_only_one_fitted_object_uses_names_that_object(self):
+        self.assertEqual(fitted_variant.placed_variant(self.sponza, "sponza_fitted").object.name, "atrium_fitted")
+
+    def test_a_variant_two_fitted_objects_share_is_refused_naming_both(self):
+        with self.assertRaises(fitted_variant.SettingsError) as caught:
+            fitted_variant.placed_variant(self.sponza, "sponza_fitted_full")
+        message = str(caught.exception)
+        self.assertIn("atrium_fitted_full", message)
+        self.assertIn("atrium_flat_fitted", message)
+        self.assertNotIn("atrium_fitted,", message)
+
+    def test_unknown_names_and_objects_that_are_not_fitted_are_refused(self):
+        for name in ("no_such_object", "sponza_lite", "atrium", "atrium_flat", "atrium_lite", "sponza"):
+            with self.assertRaisesRegex(fitted_variant.SettingsError, "no fitted variant"):
+                fitted_variant.placed_variant(self.sponza, name)
+
+    def test_an_object_name_wins_over_another_objects_variant_of_the_same_name(self):
+        scene = SimpleNamespace(renderers=[fake_job("wanted", "s.wanted", "other"), fake_job("second", "s.second", "wanted")])
+        self.assertEqual(fitted_variant.placed_variant(scene, "wanted").object.name, "wanted")
+
+    def test_a_shared_variant_is_ambiguous_only_among_fitted_renderers(self):
+        scene = SimpleNamespace(renderers=[fake_job("a", "s.a", "v"), fake_job("b", "s.b", "v", fitted=False)])
+        self.assertEqual(fitted_variant.placed_variant(scene, "v").object.name, "a")
 
 
 @unittest.skipIf(fitted_variant is None, "needs the r3d environment")
@@ -135,6 +226,11 @@ class SweepTests(unittest.TestCase):
             self.assertNotIn("fit output 0\n", str(caught.exception))
             self.assertIsInstance(caught.exception.__cause__, ValueError)
 
+    def test_the_viewer_draws_the_scene_object_alone(self):
+        job = SimpleNamespace(asset_name="tiny.walls_fitted", object=SimpleNamespace(name="walls_fitted"))
+        self.assertEqual(fitted_variant.viewer_args(job, 3, 5000, pathlib.Path("tiny.scene.toml")),
+                         "--scene tiny --object walls_fitted --quarter 0 --frames 3 --dt 5000")
+
     @unittest.skipIf(Image is None, "needs the synthetic render scorer")
     def test_held_out_score_keeps_each_mesh_and_pose_with_its_reference(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -154,7 +250,7 @@ class SweepTests(unittest.TestCase):
                 first = fitted_variant.held_out_score(job, meshes[1], work, work / "host", scene=work / "tiny.scene.toml")
                 second = fitted_variant.held_out_score(job, meshes[2], work, work / "host", scene=work / "tiny.scene.toml")
                 one_pose_late = self._synthetic_score(
-                    SimpleNamespace(render_args="--scene tiny-fitted --frames 3 --dt 5", reference=references,
+                    SimpleNamespace(render_args="--scene tiny --object fitted --frames 3 --dt 5", reference=references,
                                     reference_first=1), job.asset_name, meshes[0], work / "late", work / "host")
         self.assertLess(aligned[0], 0.01)
         self.assertNotAlmostEqual(first[0], second[0], places=3)
@@ -186,7 +282,7 @@ class SweepTests(unittest.TestCase):
 
     @unittest.skipIf(reference_render is None, "needs the r3d renderer")
     def test_a_sweep_reuses_one_prepared_reference_set(self):
-        geometry = SimpleNamespace(positions=[], rgb=[], tris=[0], tri_double=[], scale={})
+        start = SimpleNamespace(tris=[0])
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
                                    fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
@@ -195,9 +291,8 @@ class SweepTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
-                 unittest.mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
+                 unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
                  unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
-                 unittest.mock.patch.object(lit_mesh, "write_lit_mesh"), \
                  unittest.mock.patch.object(reference_render, "main") as render:
                 fitted_variant.sweep_references("scene", "data", job, work)
                 fitted_variant.sweep_references("scene", "data", job, work)

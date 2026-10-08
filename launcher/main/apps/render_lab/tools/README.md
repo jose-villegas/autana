@@ -79,7 +79,7 @@ its scene by name rather than through the menu:
 | Command | Does |
 |---|---|
 | `autana render scenes` | every scene's key and name, and which one is showing |
-| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza` or `sponza-lite` |
+| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana render partial on\|off` | partial updates, as the menu's toggle sets them |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
