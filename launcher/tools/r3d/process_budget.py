@@ -11,6 +11,7 @@ import traceback
 import signal
 import sys
 import ctypes
+import contextlib
 from collections import deque
 
 GIB = 1024 ** 3
@@ -33,10 +34,10 @@ def task_reservation():
     return _task_reservation
 
 
-def meminfo_bytes():
+def meminfo_bytes(text=None):
     return {line.split(':')[0]: int(line.split()[1]) * 1024
-            for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
-            if line.startswith('MemAvailable:')}
+            for line in (pathlib.Path('/proc/meminfo').read_text() if text is None else text).splitlines()
+            if line.startswith(('MemAvailable:', 'MemTotal:'))}
 
 
 def worker_capacity(available, estimates, floors, cores):
@@ -150,6 +151,96 @@ def parent_death_signal(parent_pid):
 
 def peak_rss(pid=None):
     return status_bytes(pid or os.getpid(), "VmHWM")
+
+
+def step_memory(gpu):
+    ram = status_bytes(os.getpid(), "VmRSS") or None
+    vram = None
+    if gpu:
+        try:
+            vram = gpu_resident_bytes().get(os.getpid())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        torch = sys.modules.get("torch")
+        cuda = getattr(torch, "cuda", None)
+        if cuda and getattr(cuda, "is_initialized", lambda: False)():
+            reserved = cuda.max_memory_reserved()
+            vram = max(vram or 0, reserved)
+    return ram, vram
+
+
+class PeakSampler:
+    """Sample injected numeric fields at boundaries and on one joined polling thread."""
+
+    def __init__(self, probe, interval=0.1, poll_probe=None):
+        self.probe, self.poll_probe, self.interval = probe, poll_probe or probe, interval
+        self.peaks = []
+        self.stopped = threading.Event()
+        self.thread = None
+
+    def sample(self, probe):
+        values = probe()
+        if not self.peaks:
+            self.peaks = [None] * len(values)
+        for index, value in enumerate(values):
+            if value is not None:
+                self.peaks[index] = max(self.peaks[index] or 0, value)
+
+    def poll(self):
+        while not self.stopped.wait(self.interval):
+            self.sample(self.poll_probe)
+
+    def __enter__(self):
+        self.sample(self.probe)
+        if self.interval is not None:
+            self.thread = threading.Thread(target=self.poll)
+            self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stopped.set()
+        if self.thread is not None:
+            self.thread.join()
+        self.sample(self.probe)
+
+
+class NullRecorder:
+    def step(self, *args, **kwargs):
+        return contextlib.nullcontext({})
+
+
+NULL_RECORDER = NullRecorder()
+
+
+class StepRecorder:
+    """Wall time and process RSS peaks; GPU boundaries also include torch's reserved peak."""
+
+    def __init__(self, clock=time.monotonic, probe=step_memory, interval=0.1):
+        self.clock, self.probe, self.interval = clock, probe, interval
+        self.rows = []
+
+    @contextlib.contextmanager
+    def step(self, name, triangles_in, gpu=False):
+        if any(row["step"] == name for row in self.rows):
+            raise ValueError(f"repeated step: {name}")
+        row = {"step": name, "triangles_in": triangles_in, "triangles_out": triangles_in,
+               "wall_s": 0.0, "peak_ram_bytes": None, "peak_vram_bytes": None}
+        self.rows.append(row)
+        torch = sys.modules.get("torch")
+        cuda = getattr(torch, "cuda", None)
+        if gpu and cuda and getattr(cuda, "is_initialized", lambda: False)():
+            cuda.reset_peak_memory_stats()
+        poll_probe = lambda: self.probe(False)
+        sampler = PeakSampler(lambda: self.probe(gpu), self.interval, poll_probe)
+        try:
+            with sampler:
+                started = self.clock()
+                try:
+                    yield row
+                finally:
+                    row["wall_s"] = self.clock() - started
+        finally:
+            row["peak_ram_bytes"], row["peak_vram_bytes"] = sampler.peaks
 
 
 def function_name(function):
