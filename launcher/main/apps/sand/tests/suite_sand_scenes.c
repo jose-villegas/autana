@@ -341,19 +341,9 @@ test_the_four_liquid_scene_keeps_reacting_after_settling(void) {
     run_steps(&s, 10, 0, 1000);
     run_steps(&s, 20, 0, 1000);
 
-    int stone = 0, steam = 0, fire = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = CELL_MATERIAL(sand_at(&s, x, y));
-            if (m == MAT_STONE) {
-                stone++;
-            } else if (m == MAT_STEAM) {
-                steam++;
-            } else if (m == MAT_FIRE) {
-                fire++;
-            }
-        }
-    }
+    int counts[MATERIAL_MAX];
+    sand_material_counts(&s, counts);
+    const int stone = counts[MAT_STONE], steam = counts[MAT_STEAM], fire = counts[MAT_FIRE];
 
     free(big);
     free(blocks);
@@ -516,17 +506,9 @@ test_the_smoke_and_steam_scene_stays_a_gas_screen(void) {
 
     run_steps(&s, 10, 0, 1000);
 
-    int smoke = 0, steam = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = CELL_MATERIAL(sand_at(&s, x, y));
-            if (m == MAT_SMOKE) {
-                smoke++;
-            } else if (m == MAT_STEAM) {
-                steam++;
-            }
-        }
-    }
+    int counts[MATERIAL_MAX];
+    sand_material_counts(&s, counts);
+    const int smoke = counts[MAT_SMOKE], steam = counts[MAT_STEAM];
     const int count = sand_count(&s);
 
     free(big);
@@ -1655,19 +1637,9 @@ typedef struct {
  * unlike wet_earth_scan()'s water MASS and dirt MOISTURE. */
 static wet_earth_paint_t
 census_wet_earth_paint(const sand_t* s) {
-    wet_earth_paint_t paint = {0};
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = CELL_MATERIAL(sand_at(s, x, y));
-            if (m == MAT_SAND) {
-                paint.sand++;
-            } else if (m == MAT_DIRT) {
-                paint.dirt++;
-            } else if (m == MAT_WATER) {
-                paint.water++;
-            }
-        }
-    }
+    int counts[MATERIAL_MAX];
+    sand_material_counts(s, counts);
+    const wet_earth_paint_t paint = {.sand = counts[MAT_SAND], .dirt = counts[MAT_DIRT], .water = counts[MAT_WATER]};
     return paint;
 }
 
@@ -1865,17 +1837,9 @@ test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_cla
 
     run_steps(&s, 20, 0, 1000);
 
-    int stone = 0, fire = 0;
-    for (int y = 0; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            const int m = CELL_MATERIAL(sand_at(&s, x, y));
-            if (m == MAT_STONE) {
-                stone++;
-            } else if (m == MAT_FIRE) {
-                fire++;
-            }
-        }
-    }
+    int counts[MATERIAL_MAX];
+    sand_material_counts(&s, counts);
+    const int stone = counts[MAT_STONE], fire = counts[MAT_FIRE];
 
     free(big);
     free(blocks);
