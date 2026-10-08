@@ -289,43 +289,34 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
 void
 resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* config, int triangles,
                             int32_t frame_us) {
-    const float prior_variance[2] = {PRIOR_SCALE_SD * PRIOR_SCALE_SD, PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US};
-    const float x[2] = {resolution_model_predict_us(&p->model, config, p->step, triangles), 1.0F};
+    /* The state is (scale, offset) and the frame's features are (fitted price, 1). */
+    const float base = resolution_model_predict_us(&p->model, config, p->step, triangles);
+    const float keep = RHO * RHO;
     p->scale = 1.0F + (RHO * (p->scale - 1.0F));
     p->offset_us *= RHO;
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            p->covariance[i][j] =
-                (RHO * RHO * p->covariance[i][j]) + (i == j ? (1.0F - (RHO * RHO)) * prior_variance[i] : 0.0F);
-        }
-    }
-    const float predicted = (p->scale * x[0]) + p->offset_us;
+    float(*c)[2] = p->covariance;
+    c[0][0] = (keep * c[0][0]) + ((1.0F - keep) * PRIOR_SCALE_SD * PRIOR_SCALE_SD);
+    c[1][1] = (keep * c[1][1]) + ((1.0F - keep) * PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US);
+    c[0][1] *= keep;
+    const float predicted = (p->scale * base) + p->offset_us;
     const float noise = NOISE_SHARE * predicted;
-    float variance = (noise * noise) + (NOISE_FLOOR_US * NOISE_FLOOR_US);
-    float px[2];
-    for (int i = 0; i < 2; i++) {
-        px[i] = (p->covariance[i][0] * x[0]) + p->covariance[i][1];
-        variance += x[i] * px[i];
-    }
+    const float px0 = (c[0][0] * base) + c[0][1];
+    const float px1 = (c[0][1] * base) + c[1][1];
+    const float variance = (noise * noise) + (NOISE_FLOOR_US * NOISE_FLOOR_US) + (base * px0) + px1;
     if (!isfinite(predicted) || !isfinite(variance) || variance <= 0.0F) {
         reset_refit(p);
         return;
     }
     const float limit = 3.0F * sqrtf(variance);
     const float innovation = fmaxf(-limit, fminf(limit, (float)frame_us - predicted));
-    p->scale += px[0] / variance * innovation;
-    p->offset_us += px[1] / variance * innovation;
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            p->covariance[i][j] -= px[i] / variance * px[j];
-            if (!isfinite(p->covariance[i][j])) {
-                reset_refit(p);
-                return;
-            }
-        }
-    }
-    p->covariance[0][1] = p->covariance[1][0] = (0.5F * p->covariance[0][1]) + (0.5F * p->covariance[1][0]);
-    if (!isfinite(p->scale) || !isfinite(p->offset_us) || p->scale <= 0.0F) {
+    p->scale += px0 / variance * innovation;
+    p->offset_us += px1 / variance * innovation;
+    c[0][0] -= px0 / variance * px0;
+    c[0][1] -= px0 / variance * px1;
+    c[1][1] -= px1 / variance * px1;
+    c[1][0] = c[0][1];
+    if (!isfinite(p->scale) || !isfinite(p->offset_us) || !isfinite(c[0][0]) || !isfinite(c[0][1]) || !isfinite(c[1][1])
+        || p->scale <= 0.0F) {
         reset_refit(p);
     }
 }

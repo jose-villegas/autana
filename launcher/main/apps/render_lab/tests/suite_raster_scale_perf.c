@@ -302,6 +302,15 @@ record_frame(frame_record_t* record, int64_t began_us, int64_t drawn_us, int64_t
                                r.stats.triangles, r.predicted_us};
 }
 
+/* Where the predictor's refit ended a flight; not inlined, so its frame is
+ * not on the stack while the flight draws. */
+static __attribute__((noinline)) void
+log_refit(const char* camera, const ladder_t* ladder, const resolution_config_t* config) {
+    const resolution_predict_t* refit = &render_context_main()->predict;
+    ESP_LOGI(TAG, "dynres_refit: %s %s %ld scale %.3f offset_us %.0f", camera, ladder->name, (long)config->budget_us,
+             (double)refit->scale, (double)refit->offset_us);
+}
+
 /* The path flown through the scene manager at FRAME_DT_MS a frame: at the
  * camera's half scale when `config` is NULL, else under the policy. */
 static __attribute__((noinline)) void
@@ -335,9 +344,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         record_frame(&records[i], began_us, drawn_us, composed_us);
     }
     if (model != NULL) {
-        const resolution_predict_t* refit = &render_context_main()->predict;
-        ESP_LOGI(TAG, "dynres_refit: %s %s %ld scale %.3f offset_us %.0f", camera, ladder->name,
-                 (long)config->budget_us, (double)refit->scale, (double)refit->offset_us);
+        log_refit(camera, ladder, config);
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     memory_free(half);
