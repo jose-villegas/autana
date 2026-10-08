@@ -330,6 +330,33 @@ field_docs_offsets_are_sound(void) {
     }
 }
 
+/*
+ * One row's worth of rows (materials[] name + reactions[]/extended_
+ * reactions[] row + movement kind), built once and reused for both the
+ * per-material section and the pairwise join table below.
+ */
+
+typedef struct {
+    const char* name;
+    const reaction_t* r;
+    material_kind_t kind;
+    uint8_t self_id;  /* the plain material id this row's own material is
+                        * (MAT_EXTENDED for every extended material, since
+                        * they share that one id and have no plain id of
+                        * their own), see emit_ignite()'s self check,
+                        * which needs this to tell "ignites into itself"
+                        * (wood) apart from "ignites into a third thing" */
+    uint8_t color_id; /* the raw byte a TARGET field would hold if it
+                        * named this exact material - a plain id for an
+                        * ordinary material, MATX(k) for an extended one.
+                        * Unlike self_id above (MAT_EXTENDED for every
+                        * extended material) this keeps k, because
+                        * material_hex() needs the real swatch cell to
+                        * look a colour up, not just which physics row the
+                        * material shares, see material_hex()'s own
+                        * comment. */
+} mrow_t;
+
 static const field_doc_t*
 field_doc(const char* name) {
     for (size_t i = 0; i < ARRAY_LEN(field_docs); i++) {
@@ -339,6 +366,11 @@ field_doc(const char* name) {
     }
     fprintf(stderr, "dump_reactions: field_doc(\"%s\") - no such field\n", name);
     exit(1);
+}
+
+static uint8_t
+field_u8(const mrow_t* row, const char* field) {
+    return *((const uint8_t*)row->r + field_doc(field)->offset);
 }
 
 /*
@@ -771,33 +803,6 @@ cause_marked(const char* field, size_t index) {
     return buf;
 }
 
-/*
- * One row's worth of rows (materials[] name + reactions[]/extended_
- * reactions[] row + movement kind), built once and reused for both the
- * per-material section and the pairwise join table below.
- */
-
-typedef struct {
-    const char* name;
-    const reaction_t* r;
-    material_kind_t kind;
-    uint8_t self_id;  /* the plain material id this row's own material is
-                        * (MAT_EXTENDED for every extended material, since
-                        * they share that one id and have no plain id of
-                        * their own), see emit_ignite()'s self check,
-                        * which needs this to tell "ignites into itself"
-                        * (wood) apart from "ignites into a third thing" */
-    uint8_t color_id; /* the raw byte a TARGET field would hold if it
-                        * named this exact material - a plain id for an
-                        * ordinary material, MATX(k) for an extended one.
-                        * Unlike self_id above (MAT_EXTENDED for every
-                        * extended material) this keeps k, because
-                        * material_hex() needs the real swatch cell to
-                        * look a colour up, not just which physics row the
-                        * material shares, see material_hex()'s own
-                        * comment. */
-} mrow_t;
-
 /* +1 for gunpowder: one row for all eight low-nibble codes 0xF8-0xFF, not
  * one per code - see build_rows()'s own comment on why. */
 static mrow_t all_rows[(MAT_COUNT - 1) + MATERIAL_EXTENDED_COUNT + 1];
@@ -1030,9 +1035,6 @@ static void
 adverb_exceptions_are_sound(void) {
     for (size_t i = 0; i < ARRAY_LEN(ADVERB_EXCEPTIONS); i++) {
         const adverb_exception_t* e = &ADVERB_EXCEPTIONS[i];
-        const field_doc_t* fd = field_doc(e->field); /* exits(1) itself if
-                                    * the field is not a real field_docs[]
-                                    * row */
         if (e->why == NULL || e->why[0] == '\0') {
             fprintf(stderr,
                     "dump_reactions: ADVERB_EXCEPTIONS[%zu] (%s) has no "
@@ -1055,7 +1057,7 @@ adverb_exceptions_are_sound(void) {
                     i, e->field, (unsigned)e->cell);
             exit(1);
         }
-        const uint8_t raw = *(const uint8_t*)((const unsigned char*)row->r + fd->offset);
+        const uint8_t raw = field_u8(row, e->field);
         const char* would_be = adverb(e->field, raw);
         if (strcmp(would_be, e->adverb) == 0) {
             fprintf(stderr,
@@ -2002,7 +2004,11 @@ collect_material_list(bool (*pred)(const mrow_t*), list_item_t* items, size_t ca
         if (!pred(&all_rows[i])) {
             continue;
         }
-        snprintf(items[count].name, sizeof(items[count].name), "%s", prose_name(all_rows[i].name));
+        const int written = snprintf(items[count].name, sizeof(items[count].name), "%s", prose_name(all_rows[i].name));
+        if (written < 0 || (size_t)written >= sizeof(items[count].name)) {
+            fprintf(stderr, "dump_reactions: material list name too long\n");
+            exit(1);
+        }
         material_hex(all_rows[i].color_id, items[count].color, sizeof(items[count].color));
         count++;
     }
@@ -2088,7 +2094,6 @@ typedef enum {
     PART_TARGET,
     PART_RATE,
     PART_RATE_GAP,
-    PART_CELL_RATE_GAP,
     PART_LIST,
     PART_CAUSE,
 } example_part_kind_t;
@@ -2096,7 +2101,7 @@ typedef enum {
 typedef struct {
     example_part_kind_t kind;
     const char* text;
-    bool (*materials)(const mrow_t*);
+    bool (*members)(const mrow_t*);
 } example_part_t;
 
 typedef struct {
@@ -2106,10 +2111,10 @@ typedef struct {
 } example_t;
 
 static const example_t examples[] = {
+    /* emit_ignite, ignites_to == self_id */
     {"Wood",
      "Ignite - GRP_IGNITE: flammability, ignites_to, heat_sources (emit_ignite)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Catches", NULL},
          {PART_GLUE, " ", NULL},
          {PART_MATERIAL, "Fire", NULL},
@@ -2118,10 +2123,10 @@ static const example_t examples[] = {
          {PART_LIST, NULL, pred_burns},
          {PART_GLUE, ", and burns in place.", NULL},
      }},
+    /* emit_burn, burns != 0, residue != 0, quench_to != 0 */
     {"Fire",
      "Burn - GRP_BURN: burns, residue, quench_to (emit_burn)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_GLUE, "Is a heat source in its own right; ", NULL},
          {PART_RATE, "residue", NULL},
          {PART_GLUE, " ", NULL},
@@ -2134,46 +2139,47 @@ static const example_t examples[] = {
          {PART_TARGET, "quench_to", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_transform, heat_ramp == 0, heat_chance != 0, flaw_to == 0 */
     {"Sand",
      "Transform - GRP_TRANSFORM: heats_to, heat_chance, heat_sources (emit_transform)",
      {
-         {PART_GLUE, ": Beside ", NULL},
+         {PART_GLUE, "Beside ", NULL},
          {PART_LIST, NULL, pred_burns},
          {PART_GLUE, ", ", NULL},
          {PART_VERB, "melts", NULL},
          {PART_GLUE, " to ", NULL},
          {PART_TARGET, "heats_to", NULL},
-         {PART_CELL_RATE_GAP, "heat_chance", NULL},
+         {PART_RATE_GAP, "heat_chance", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_temperature, heat_ramp == 0, conducts != 0 */
     {"Metal",
      "Temperature - GRP_TEMPERATURE: conducts (emit_temperature)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Passes heat on", NULL},
          {PART_RATE_GAP, "conducts", NULL},
          {PART_GLUE, ", without banking any of it itself.", NULL},
      }},
+    /* emit_cold, chills != 0 */
     {"Ice",
      "Cold - GRP_COLD: chills (emit_cold)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Chills whatever it touches", NULL},
          {PART_RATE_GAP, "chills", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_warmth, warms != 0 */
     {"Steam",
      "Warmth - GRP_WARMTH: warms (emit_warmth)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Warms whatever it touches", NULL},
          {PART_RATE_GAP, "warms", NULL},
          {PART_GLUE, ", without igniting or quenching anything.", NULL},
      }},
+    /* emit_thaw, heats_to != 0 */
     {"Snow",
      "Thaw - GRP_THAW: thaws, heats_to (emit_thaw)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Melts in any liquid it touches", NULL},
          {PART_GLUE, " ", NULL},
          {PART_RATE, "thaws", NULL},
@@ -2181,10 +2187,10 @@ static const example_t examples[] = {
          {PART_TARGET, "heats_to", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_wet, soaks != 0, soaks_to != 0 */
     {"Sand",
      "Wet - GRP_WET: soaks, soaks_to, wetting_liquids (emit_wet)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Soaks up", NULL},
          {PART_GLUE, " any ", NULL},
          {PART_LIST, NULL, pred_wets_liquid},
@@ -2196,10 +2202,10 @@ static const example_t examples[] = {
          {PART_CAUSE, "soaks_to", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_acid, dissolves != 0, fizz != 0 */
     {"Acid",
      "Acid - GRP_ACID: dissolves, fizz (emit_acid)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Dissolves an adjacent cell", NULL},
          {PART_RATE_GAP, "dissolves", NULL},
          {PART_GLUE, ", ", NULL},
@@ -2208,10 +2214,10 @@ static const example_t examples[] = {
          {PART_MATERIAL, "Smoke", NULL},
          {PART_GLUE, " behind.", NULL},
      }},
+    /* emit_grow, grows != 0 */
     {"Plant",
      "Grow - GRP_GROW: grows (emit_grow)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Grows into wet", NULL},
          {PART_GLUE, " ", NULL},
          {PART_MATERIAL, "Dirt", NULL},
@@ -2220,10 +2226,11 @@ static const example_t examples[] = {
          {PART_MATERIAL, "Dirt", NULL},
          {PART_GLUE, "'s moisture per cell.", NULL},
      }},
+    /* emit_harden, hardens_to != 0 */
     {"Plant",
      "Harden - GRP_HARDEN: harden_chance, hardens_to, holds_line, clings_to (emit_harden)",
      {
-         {PART_GLUE, ": A straight run of 6 cells ", NULL},
+         {PART_GLUE, "A straight run of 6 cells ", NULL},
          {PART_RATE, "harden_chance", NULL},
          {PART_GLUE, " ", NULL},
          {PART_VERB, "hardens", NULL},
@@ -2238,10 +2245,11 @@ static const example_t examples[] = {
          {PART_TARGET, "clings_to", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_regrow, sprouts != 0, sprouts_to != 0 */
     {"Wood",
      "Regrow - GRP_REGROW: sprouts, sprouts_to (emit_regrow)",
      {
-         {PART_GLUE, ": Standing in wet ", NULL},
+         {PART_GLUE, "Standing in wet ", NULL},
          {PART_MATERIAL, "Dirt", NULL},
          {PART_GLUE, ", ", NULL},
          {PART_VERB, "sprouts", NULL},
@@ -2251,10 +2259,10 @@ static const example_t examples[] = {
          {PART_RATE_GAP, "sprouts", NULL},
          {PART_GLUE, ".", NULL},
      }},
+    /* emit_shatter, shatters_to != 0 */
     {"Glass",
      "Shatter - GRP_SHATTER: shatters_to (emit_shatter)",
      {
-         {PART_GLUE, ": ", NULL},
          {PART_VERB, "Shatters", NULL},
          {PART_GLUE, " into ", NULL},
          {PART_TARGET, "shatters_to", NULL},
@@ -2277,9 +2285,8 @@ example_material(seg_t* segs, size_t* n, list_item_t* material, uint8_t id) {
 
 static void
 example_rate(seg_t* segs, size_t* n, const mrow_t* row, const example_part_t* part) {
-    const uint8_t value = *((const uint8_t*)row->r + field_doc(part->text)->offset);
-    const char* word =
-        (part->kind == PART_CELL_RATE_GAP) ? adverb_cell(part->text, value, row->color_id) : adverb(part->text, value);
+    const uint8_t value = field_u8(row, part->text);
+    const char* word = adverb_cell(part->text, value, row->color_id);
     if (part->kind == PART_RATE) {
         seg_mark(segs, n, MARK_RATE, word);
     } else {
@@ -2289,7 +2296,7 @@ example_rate(seg_t* segs, size_t* n, const mrow_t* row, const example_part_t* pa
 
 static void
 example_list(seg_t* segs, size_t* n, list_item_t* materials, size_t* material_count, const example_part_t* part) {
-    const size_t count = collect_material_list(part->materials, &materials[*material_count], LIST_ITEM_MAX);
+    const size_t count = collect_material_list(part->members, &materials[*material_count], LIST_ITEM_MAX);
     seg_list(segs, n, &materials[*material_count], count, " or ");
     *material_count += count;
 }
@@ -2301,14 +2308,12 @@ example_part(seg_t* segs, size_t* n, list_item_t* materials, size_t* material_co
         case PART_LIST: example_list(segs, n, materials, material_count, part); break;
         case PART_MATERIAL:
         case PART_TARGET: {
-            const uint8_t id = (part->kind == PART_TARGET) ? *((const uint8_t*)row->r + field_doc(part->text)->offset)
-                                                           : find_row(part->text)->color_id;
+            const uint8_t id = (part->kind == PART_TARGET) ? field_u8(row, part->text) : find_row(part->text)->color_id;
             example_material(segs, n, &materials[(*material_count)++], id);
             break;
         }
         case PART_RATE:
-        case PART_RATE_GAP:
-        case PART_CELL_RATE_GAP: example_rate(segs, n, row, part); break;
+        case PART_RATE_GAP: example_rate(segs, n, row, part); break;
         case PART_CAUSE: seg_mark(segs, n, MARK_CAUSE, cause_at(part->text, 0)); break;
         case PART_VERB: seg_mark(segs, n, MARK_VERB, part->text); break;
         case PART_GLUE: seg_glue(segs, n, part->text); break;
@@ -2328,6 +2333,7 @@ print_example(const example_t* example) {
     size_t material_count = 1;
     material_hex(row->color_id, materials[0].color, sizeof(materials[0].color));
     seg_material(segs, &n, materials[0].color, example->subject);
+    seg_glue(segs, &n, ": ");
     for (size_t i = 0; i < ARRAY_LEN(example->parts); i++) {
         const example_part_t* part = &example->parts[i];
         if (part->kind == PART_END) {
