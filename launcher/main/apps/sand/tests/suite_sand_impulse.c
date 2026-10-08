@@ -1678,6 +1678,48 @@ test_a_low_speed_entry_below_the_bounce_floor_still_just_waits(void) {
                                   "that never happened");
 }
 
+/* A w x h grid and an impulse queue covering every cell of it, reused across
+ * a seed sweep and freed by chunk_board_close(). */
+typedef struct {
+    uint8_t* cells;
+    impulse_t* buf;
+    int w, h;
+} chunk_board_t;
+
+static chunk_board_t
+chunk_board_open(int w, int h) {
+    chunk_board_t b = {malloc((size_t)w * h), malloc((size_t)(w * h) * sizeof(impulse_t)), w, h};
+    TEST_ASSERT_NOT_NULL_MESSAGE(b.cells, "the chunk board must fit in what the framebuffer leaves");
+    TEST_ASSERT_NOT_NULL_MESSAGE(b.buf, "the chunk board's impulse queue must fit in what the framebuffer leaves");
+    return b;
+}
+
+static void
+chunk_board_close(chunk_board_t* b) {
+    free(b->buf);
+    free(b->cells);
+}
+
+/* Clears the board into g under `seed`, impulses on, with a stone floor. */
+static void
+chunk_board_reset(const chunk_board_t* b, sand_t* g, uint32_t seed) {
+    memset(b->cells, 0, (size_t)b->w * b->h);
+    sand_init(g, b->cells, b->w, b->h, seed);
+    sand_enable_impulses(g, b->buf, b->w * b->h);
+    fill_box(g, 0, b->w, b->h - 1, b->h, STONE);
+}
+
+/* Throws a stone chunk from (x, y) toward dir at full speed, then steps g
+ * until its impulse queue empties or max_steps pass. */
+static void
+throw_chunk(sand_t* g, int x, int y, int dir, int max_steps) {
+    sand_set(g, x, y, STONE);
+    sand_impulse_dislodge(g, x, y, dir, 255, SAND_IMPULSE_SPEED_RAMP);
+    for (int steps = 0; steps < max_steps && g->impulse_count > 0; steps++) {
+        sand_step(g, 0, 1000, 0);
+    }
+}
+
 /* GRID EDGE REFLECTS: sand_at()'s off-grid-is-STONE convention has to fold
  * into this bounce for free. Read from the BOARD, not impulse_buf.
  *
@@ -1693,30 +1735,15 @@ test_a_low_speed_entry_below_the_bounce_floor_still_just_waits(void) {
 
 static void
 test_a_chunk_bounces_off_the_grid_edge_instead_of_waiting_there_forever(void) {
-    uint8_t* edge_cells = malloc((size_t)EDGE_W * EDGE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(edge_cells, "grid-edge-bounce grid must fit in what the framebuffer leaves");
-    impulse_t* buf = malloc((size_t)(EDGE_W * EDGE_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "grid-edge-bounce impulse queue must fit in what the framebuffer "
-                                      "leaves");
+    chunk_board_t board = chunk_board_open(EDGE_W, EDGE_H);
 
     for (uint32_t k = 1; k <= (uint32_t)EDGE_SEEDS; k++) {
-        memset(edge_cells, 0, (size_t)EDGE_W * EDGE_H);
         sand_t g;
-        sand_init(&g, edge_cells, EDGE_W, EDGE_H, k);
-        sand_enable_impulses(&g, buf, EDGE_W * EDGE_H);
-
-        fill_box(&g, 0, EDGE_W, EDGE_H - 1, EDGE_H, STONE);
+        chunk_board_reset(&board, &g, k);
 
         enum { EDGE_X = EDGE_W - 1, SY = 1, DIR_RIGHT = 2 };
 
-        sand_set(&g, EDGE_X, SY, STONE);
-        sand_impulse_dislodge(&g, EDGE_X, SY, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
-
-        int steps = 0;
-        while (steps < EDGE_MAX_STEPS && g.impulse_count > 0) {
-            sand_step(&g, 0, 1000, 0);
-            steps++;
-        }
+        throw_chunk(&g, EDGE_X, SY, DIR_RIGHT, EDGE_MAX_STEPS);
 
         int fx = -1;
         for (int x = 0; x < EDGE_W; x++) {
@@ -1743,8 +1770,7 @@ test_a_chunk_bounces_off_the_grid_edge_instead_of_waiting_there_forever(void) {
         TEST_ASSERT_TRUE_MESSAGE(fx < EDGE_X, msg);
     }
 
-    free(buf);
-    free(edge_cells);
+    chunk_board_close(&board);
 }
 
 /* Anti-pinball: a chunk in a closed stone box must settle within a
@@ -1765,24 +1791,12 @@ test_a_chunk_thrown_into_a_closed_box_comes_to_rest(void) {
         sand_init(&s, cells, W, H, k);
         sand_enable_impulses(&s, impulse_buf, W * H);
 
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, 0, STONE);
-            sand_set(&s, x, H - 1, STONE);
-        }
-        for (int y = 0; y < H; y++) {
-            sand_set(&s, 0, y, STONE);
-            sand_set(&s, W - 1, y, STONE);
-        }
-        const int cx = W / 2, cy = H / 2;
-        sand_set(&s, cx, cy, STONE);
+        fill_box(&s, 0, W, 0, 1, STONE);
+        fill_box(&s, 0, W, H - 1, H, STONE);
+        fill_box(&s, 0, 1, 0, H, STONE);
+        fill_box(&s, W - 1, W, 0, H, STONE);
         const int dir = (int)(k % 8);
-        sand_impulse_dislodge(&s, cx, cy, dir, 255, SAND_IMPULSE_SPEED_RAMP);
-
-        int steps = 0;
-        while (steps < BOX_MAX_STEPS && s.impulse_count > 0) {
-            sand_step(&s, 0, 1000, 0);
-            steps++;
-        }
+        throw_chunk(&s, W / 2, H / 2, dir, BOX_MAX_STEPS);
 
         char msg[192];
         snprintf(msg, sizeof msg,
@@ -1809,30 +1823,15 @@ test_a_chunk_thrown_into_a_closed_box_comes_to_rest(void) {
 
 static void
 test_a_chunk_dropped_on_flat_ground_still_settles_on_it(void) {
-    uint8_t* open_cells = malloc((size_t)OPEN_W * OPEN_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(open_cells, "open-floor settle grid must fit in what the framebuffer leaves");
-    impulse_t* buf = malloc((size_t)(OPEN_W * OPEN_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "open-floor settle impulse queue must fit in what the framebuffer "
-                                      "leaves");
+    chunk_board_t board = chunk_board_open(OPEN_W, OPEN_H);
 
     for (uint32_t k = 1; k <= (uint32_t)OPEN_SEEDS; k++) {
-        memset(open_cells, 0, (size_t)OPEN_W * OPEN_H);
         sand_t g;
-        sand_init(&g, open_cells, OPEN_W, OPEN_H, k);
-        sand_enable_impulses(&g, buf, OPEN_W * OPEN_H);
-
-        fill_box(&g, 0, OPEN_W, OPEN_H - 1, OPEN_H, STONE);
+        chunk_board_reset(&board, &g, k);
 
         enum { SX = OPEN_W / 2, SY = 1, DIR_DOWN = 0 };
 
-        sand_set(&g, SX, SY, STONE);
-        sand_impulse_dislodge(&g, SX, SY, DIR_DOWN, 255, SAND_IMPULSE_SPEED_RAMP);
-
-        int steps = 0;
-        while (steps < OPEN_MAX_STEPS && g.impulse_count > 0) {
-            sand_step(&g, 0, 1000, 0);
-            steps++;
-        }
+        throw_chunk(&g, SX, SY, DIR_DOWN, OPEN_MAX_STEPS);
 
         char msg[192];
         snprintf(msg, sizeof msg,
@@ -1855,8 +1854,7 @@ test_a_chunk_dropped_on_flat_ground_still_settles_on_it(void) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(OPEN_H - 2, landed_y, msg);
     }
 
-    free(buf);
-    free(open_cells);
+    chunk_board_close(&board);
 }
 
 /* A BRUSH-DRAWN WALL, NOT A CLEAN ONE-CELL ONE - clean walls have hidden
@@ -1875,19 +1873,11 @@ test_a_chunk_dropped_on_flat_ground_still_settles_on_it(void) {
 
 static void
 test_a_chunk_thrown_into_a_brush_drawn_wall_conserves_itself_and_settles(void) {
-    uint8_t* wall_cells = malloc((size_t)WALL_W * WALL_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wall_cells, "brush-wall settle grid must fit in what the framebuffer leaves");
-    impulse_t* buf = malloc((size_t)(WALL_W * WALL_H) * sizeof *buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "brush-wall settle impulse queue must fit in what the framebuffer "
-                                      "leaves");
+    chunk_board_t board = chunk_board_open(WALL_W, WALL_H);
 
     for (uint32_t k = 1; k <= (uint32_t)WALL_SEEDS; k++) {
-        memset(wall_cells, 0, (size_t)WALL_W * WALL_H);
         sand_t g;
-        sand_init(&g, wall_cells, WALL_W, WALL_H, k);
-        sand_enable_impulses(&g, buf, WALL_W * WALL_H);
-
-        fill_box(&g, 0, WALL_W, WALL_H - 1, WALL_H, STONE);
+        chunk_board_reset(&board, &g, k);
         /* Four brush strokes, radius 2-4, centres ~3 apart - a hand-drawn
          * wall with real notches, not a flat line. */
         sand_spawn(&g, 8, 8, 3, MAT_STONE);
@@ -1899,14 +1889,7 @@ test_a_chunk_thrown_into_a_brush_drawn_wall_conserves_itself_and_settles(void) {
 
         enum { SX = 2, SY = 2, DIR_RIGHT = 2 };
 
-        sand_set(&g, SX, SY, STONE);
-        sand_impulse_dislodge(&g, SX, SY, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
-
-        int steps = 0;
-        while (steps < WALL_MAX_STEPS && g.impulse_count > 0) {
-            sand_step(&g, 0, 1000, 0);
-            steps++;
-        }
+        throw_chunk(&g, SX, SY, DIR_RIGHT, WALL_MAX_STEPS);
 
         char msg[160];
         snprintf(msg, sizeof msg,
@@ -1923,8 +1906,7 @@ test_a_chunk_thrown_into_a_brush_drawn_wall_conserves_itself_and_settles(void) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(before + 1, sand_count(&g), msg);
     }
 
-    free(buf);
-    free(wall_cells);
+    chunk_board_close(&board);
 }
 
 /* THE REGRESSION GUARD, for the one scene a "stop on any obstruction" rule
