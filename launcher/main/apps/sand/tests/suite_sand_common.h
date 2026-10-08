@@ -58,9 +58,8 @@ extern uint8_t sleep_blocks[BLOCK_COLS * BLOCK_ROWS];
 
 /* The second most-reused fixture after s/fixture() itself - every test
  * wide enough to need more than the 8x8 default, from water-levelling
- * through boiler/conduction/metal-rod tests, mallocs WIDE_W * WIDE_H bytes
- * into wide_cells and frees them once done, the same technique as every
- * other fixture in the split. */
+ * through boiler/conduction/metal-rod tests: wide_open() allocates
+ * wide_cells and the test frees it once done. */
 #define WIDE_W 32
 #define WIDE_H 20
 extern uint8_t* wide_cells;
@@ -112,9 +111,9 @@ void fixture(void);
 void stone_floor_fixture(void);
 
 /* The default fixture, cleared, soaking on: a root at (ROOT_X, ROOT_Y)
- * sheltered by wood above it, on a stone floor two cells wider than its
- * neighbours either side - a powder at the edge of a flush floor still has
- * a diagonal to slide off into. */
+ * sheltered by wood above it, on a stone ledge reaching two cells either
+ * side - a powder beside the root needs ledge past it, or it still has a
+ * diagonal to slide off into. */
 #define ROOT_X (W / 2)
 #define ROOT_Y 3
 void sheltered_root_fixture(void);

@@ -562,20 +562,26 @@ sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h) {
     }
 }
 
+static void
+init_sleeping(sand_t* g, uint8_t* grid, uint8_t* blocks, int w, int h, uint32_t seed) {
+    sand_init(g, grid, w, h, seed);
+    sand_enable_sleeping(g, blocks);
+}
+
 void
 sand_test_grid_init(sand_t* g, uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
     sand_test_grid_buffers_open(grid, blocks, w, h);
-    sand_init(g, *grid, w, h, seed);
-    sand_enable_sleeping(g, *blocks);
+    init_sleeping(g, *grid, *blocks, w, h, seed);
 }
 
+/* The buffers before the sand_t, the heap order every timed row was
+ * measured with. */
 sand_t*
 sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
     sand_test_grid_buffers_open(grid, blocks, w, h);
 
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, *grid, w, h, seed);
-    sand_enable_sleeping(real, *blocks);
+    init_sleeping(real, *grid, *blocks, w, h, seed);
     return real;
 }

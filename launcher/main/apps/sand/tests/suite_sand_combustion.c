@@ -98,7 +98,7 @@ test_gas_rises_diagonally_under_tilted_gravity(void) {
  * does, which is what these three tests check instead of an exact cell. */
 
 /* How many gas cells the default fixture holds, and the sums of their rows
- * and columns - a mean, cross-multiplied. */
+ * and columns. */
 typedef struct {
     int count, row_sum, col_sum;
 } gas_spread_t;
@@ -474,7 +474,7 @@ test_gas_decays_and_disappears_over_time(void) {
                                   "test_gas_grain_count_is_conserved)");
 }
 
-/* Spawns one cell of m at (3,4) with decay forced, lets it burn out, and
+/* Spawns one cell of m at (3,4) with decay forced, lets it decay away, and
  * asserts row 4 was marked dirty on the way. `pinned` holds it still, so the
  * vanish lands at a known row instead of wherever it drifted. */
 static void
@@ -634,15 +634,13 @@ test_direct_reaction_calls_rearm_confined_blasts(void) {
 
     for (size_t seed = 0; seed < sizeof seeds / sizeof seeds[0]; seed++) {
         uint8_t* cells = malloc(CW * CH);
-        impulse_t* impulses = malloc((size_t)(CW * CH) * sizeof *impulses);
         TEST_ASSERT_NOT_NULL(cells);
-        TEST_ASSERT_NOT_NULL(impulses);
 
         sand_t board;
         sand_init(&board, cells, CW, CH, seeds[seed]);
         sand_set_flammability(&board, 255);
         sand_set_decay(&board, 0);
-        sand_enable_impulses(&board, impulses, CW * CH);
+        impulse_t* impulses = impulses_open(&board, CW * CH);
 
         unsigned blasts[POCKET_COUNT];
         unsigned explosions[POCKET_COUNT];
@@ -689,15 +687,13 @@ burst_board_from_frame(uint8_t fill) {
     enum { BW = 6 * 40, BH = 5, BURST_STEPS = 3 };
 
     uint8_t* cells = malloc(BW * BH);
-    impulse_t* impulses = malloc(sizeof(*impulses) * BW * BH);
     TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
     memset(&s, fill, sizeof s);
     sand_init(&s, cells, BW, BH, 29u);
     sand_set_mobility(&s, 0);
-    sand_enable_impulses(&s, impulses, BW * BH);
+    impulse_t* impulses = impulses_open(&s, BW * BH);
     for (int i = 0; i < 6; i++) {
         build_confined_gas_pocket(&s, 10 + i * 40);
     }
@@ -737,14 +733,12 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     enum { CELL_COUNT = 6, CELL_SPACING = 40, CW = CELL_COUNT * CELL_SPACING, CH = 5 };
 
     uint8_t* cells = calloc(CW * CH, 1);
-    impulse_t* impulses = malloc((size_t)(CW * CH) * sizeof *impulses);
     TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t chain;
     sand_init(&chain, cells, CW, CH, 29u);
     sand_set_mobility(&chain, 0);
-    sand_enable_impulses(&chain, impulses, CW * CH);
+    impulse_t* impulses = impulses_open(&chain, CW * CH);
 
     for (int i = 0; i < CELL_COUNT; i++) {
         build_confined_gas_pocket(&chain, 10 + i * CELL_SPACING);

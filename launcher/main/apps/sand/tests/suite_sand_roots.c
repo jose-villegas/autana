@@ -557,14 +557,13 @@ test_a_root_eats_a_moist_neighbour_and_only_spends_its_own_moisture(void) {
 static void
 test_a_root_never_eats_dry_dirt_sand_or_empty_space(void) {
     const int cx = ROOT_X, cy = ROOT_Y;
-    /* see previous test */
     sheltered_root_fixture();
     /* Three candidates, one per guard in gather_root_cands()'s
      * neighbour scan - all beside the root rather than below it, since
      * the row below is now the floor. */
     sand_set(&s, cx - 1, cy, CELL_SOIL(MAT_DIRT, 1, 0)); /* dry, left */
     sand_set(&s, cx + 1, cy, SAND_FIRST_SHADE);          /* sand, right */
-    /* (cx - 1, cy - 1) stays SAND_EMPTY from sand_clear() above - empty,
+    /* (cx - 1, cy - 1) stays SAND_EMPTY from the fixture's sand_clear() - empty,
      * diagonally up-left, one of the root's eight neighbours - named
      * explicitly here rather than left implicit, so the scene reads as
      * three deliberate candidates rather than two plus whatever the grid
@@ -596,7 +595,7 @@ surface_rule_lets_growth_through(int satellite_roots) {
     sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
 
     const int cx = 4, cy = 4;
-    /* see test_a_root_never_eats_dry_dirt_sand_or_empty_space's own comment */
+    /* Two cells wider than the candidates, as in sheltered_root_fixture(). */
     for (int x = cx - 2; x <= cx + 2; x++) {
         sand_set(&t, x, cy + 2, STONE);
     }
@@ -813,13 +812,8 @@ test_a_thickly_rooted_cell_stops_growing(void) {
 static void
 test_roots_grow_toward_the_wet_side_only(void) {
     const int cx = ROOT_X, cy = ROOT_Y;
-    /* Both dirt candidates are KIND_POWDER - a floor under the whole
-     * candidate row, or neither survives long enough to be eaten OR to
-     * stay put and prove it was not. Two cells wider than the candidates
-     * themselves, see test_a_root_never_eats_dry_dirt_sand_or_empty_
-     * space's own comment on why a floor flush with its edge cells is
-     * not actually a floor; a powder resting right at the edge still has
-     * an open diagonal to slide off into. */
+    /* Both dirt candidates are KIND_POWDER: without the fixture's ledge
+     * neither survives long enough to be eaten or to prove it was not. */
     sheltered_root_fixture();
     sand_set(&s, cx - 1, cy, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX)); /* wet,
                                                                           * left

@@ -1168,11 +1168,7 @@ assert_mover_paid_one_dirt_drag(const char* why) {
 
 /* THE FORMULA ITSELF, single step, single displaced cell - the one place in
  * this rung where asserting on s.impulse_buf[0].speed directly is the claim
- * rather than a stand-in for it. The floor under the row keeps gravity from
- * pulling either cell out before the impulse gets its step.
- *
- * impulse_count is 2: rung 3's transfer queues an entry for the struck dirt
- * cell, appended only after compaction, so the mover is still entry 0. */
+ * rather than a stand-in for it. */
 static void
 test_a_thrown_chunk_loses_speed_proportional_to_the_density_it_displaces(void) {
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2 };
@@ -1197,11 +1193,8 @@ test_a_thrown_chunk_loses_speed_proportional_to_the_density_it_displaces(void) {
 }
 
 /* THE SAME PIN, KIND_POWDER THIS TIME: a thrown grain pays the identical
- * density-scaled drag a thrown chunk does, see SAND_IMPULSE_DRAG_POWDER_
- * SHIFT's own comment in sand.h for when powders joined drag's scope (they
- * were briefly out; this comment used to say so and was stale by the time
- * this rung's own name says otherwise). impulse_count is 2 for the same
- * transfer reason as the test just above - see its own comment. */
+ * density-scaled drag a thrown chunk does (SAND_IMPULSE_DRAG_POWDER_SHIFT,
+ * sand_impulse.h). */
 static void
 test_a_thrown_powder_grain_pays_drag_displacing_dirt(void) {
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2 };
@@ -1243,7 +1236,7 @@ test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    /* Not == 1, unlike the two pins above: this is the only one of the
+    /* Not an exact count, unlike the two pins above: this is the only one of the
      * three whose mover is a liquid, and the liquid passes run BEFORE the
      * flight pass every step - splash_displace() (sand_liquid_move.h) queues
      * impulses of its own, so the buffer legitimately holds more than the

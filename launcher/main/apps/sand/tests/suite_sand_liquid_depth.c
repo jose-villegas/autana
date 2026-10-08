@@ -900,13 +900,10 @@ test_a_continuously_moving_boundary_does_not_run_away(void) {
     free(debounce_test_cells);
 }
 
-/* THE ACTUAL REGRESSION: a pool with open air above it (every real pool
- * has this), walked frame by frame. Accumulates through LIQUID cells only -
- * a non-liquid cell resets to 0 - so open air above a pool can't saturate
- * the debounce before the walk reaches real water; an accumulator that
- * also climbed through empty space saturates to 255 within a couple of
- * frames for most columns. along_x runs the same walk sideways: a row with
- * open air beside the pool, the horizontal debounce. */
+/* A pool with open air before it, walked frame by frame. Depth climbs
+ * through liquid cells only, so open air cannot saturate the debounce
+ * before the walk reaches water. along_x walks a row beside the pool
+ * instead of a column under it. */
 static void
 assert_the_debounce_survives_open_air(bool along_x) {
     enum { LINE = 1, EDGE = 5, LEN = DEBOUNCE_TEST_H };
@@ -930,7 +927,7 @@ assert_the_debounce_survives_open_air(bool along_x) {
 
     /* FRAME 1: first-ever paint. The boundary gets at most a one-frame
      * cold-start grace, not a value climbed through the five empty cells
-     * before it - THE EXACT BUG the previous version shipped with. */
+     * before it. */
     mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth);
     TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(1u, depth[EDGE],
                                            "the boundary's first-ever reading must be at most 1 (the accepted "
@@ -1402,8 +1399,7 @@ wake_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
 }
 
 /* advance_local_depth_wake(), mirrored: whether the wake tick fires this
- * frame - shared by every reproduction in this file that needs the same
- * carried-remainder tick (wake_test_run(), band_test_run()). */
+ * frame, the remainder carried to the next. */
 static bool
 local_depth_wake_tick(uint32_t* elapsed_ms, uint32_t dt_ms, uint32_t wake_ms) {
     *elapsed_ms += dt_ms;
@@ -1415,8 +1411,7 @@ local_depth_wake_tick(uint32_t* elapsed_ms, uint32_t dt_ms, uint32_t wake_ms) {
 }
 
 /* Marks every row of a w x h grid whose occupancy changed since
- * `prev_occupied` - shared by every reproduction in this file that tracks
- * occupancy this way (wake_test_run(), band_test_run()). */
+ * `prev_occupied`. */
 static void
 local_depth_mark_occupancy_dirty(sand_t* g, int w, int h, const bool* prev_occupied, bool* row_dirty) {
     for (int y = 0; y < h; y++) {
@@ -1444,9 +1439,8 @@ wake_test_row_carries_liquid(sand_t* g, int y) {
     return false;
 }
 
-/* Snapshots a w x h grid's occupancy into `prev_occupied`, for the next
- * frame's local_depth_mark_occupancy_dirty() call - shared the same way
- * that helper is. */
+/* Snapshots a w x h grid's occupancy into `prev_occupied` for the next
+ * frame's comparison. */
 static void
 local_depth_snapshot_occupancy(sand_t* g, int w, int h, bool* prev_occupied) {
     for (int y = 0; y < h; y++) {
@@ -1459,8 +1453,7 @@ local_depth_snapshot_occupancy(sand_t* g, int w, int h, bool* prev_occupied) {
 /* A sleeping w x h scene repainted the way sand_paint_row_n() repaints the
  * screen - only rows whose occupancy changed, plus the rows the wake tick
  * picks when it fires - remembering the depth each cell was last painted
- * with. Shared by wake_test_run() and band_test_run(); open allocates every
- * buffer fresh per run, close frees them. */
+ * with. */
 #define REPAINT_H_MAX 96
 
 typedef struct {

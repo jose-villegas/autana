@@ -586,7 +586,7 @@ test_a_plant_drains_standing_water_into_the_soil(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 0)); /* bone dry */
     }
-    plug_well(CELL_MAKE(MAT_WATER, MASS_MAX)); /* the plug */
+    plug_well(CELL_MAKE(MAT_WATER, MASS_MAX));
 
     /* Sampled as it goes, not at the end. Soil dries, so by the time the
      * water is gone the moisture it turned into has gone too - asserting

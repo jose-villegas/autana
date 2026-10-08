@@ -3170,11 +3170,9 @@ test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
 }
 
 #ifdef DEVICE_BUILD
-/* One present-cost row: a REAL_W x REAL_H scene from `build`, sleeping at
- * the app's rates with dirty rows tracked, settled settle_steps and then
- * presented measured_steps frames under ordinary gravity. Logs the frame
- * split under `frame` and the strip-send counts under `scene`, and returns
- * the mean present cost per frame. */
+/* One present-cost row: a REAL_W x REAL_H scene from `build` at the app's
+ * rates, settled settle_steps, then presented measured_steps frames. Logs
+ * under `frame` and `scene`; returns the mean present cost per frame. */
 static int64_t
 present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps, int measured_steps, const char* frame,
                       const char* scene) {
@@ -3206,11 +3204,8 @@ present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps,
                                                       1000, 0, settle_steps, measured_steps, &full_bands, &gathered,
                                                       &partial_bands, &sim_us, &mark_us, &present_us);
 
-    /* THE WHOLE FRAME, not just the bus: every other
-     * row here times sand_step() with no drawing, and the present rows
-     * time the bus alone, so nothing measured the frame a user actually
-     * sees. The helper already separates these three - this row was
-     * discarding them. */
+    /* The whole frame: the other rows time sand_step() without drawing,
+     * or the bus alone. */
     ESP_LOGI("device_tests", "frame time, %s: sim %lld us/frame", frame, (long long)sim_us);
     ESP_LOGI("device_tests", "frame time, %s: mark %lld us/frame", frame, (long long)mark_us);
     ESP_LOGI("device_tests", "frame time, %s: present %lld us/frame", frame, (long long)present_us);

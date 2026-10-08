@@ -1277,8 +1277,8 @@ test_plants_do_not_sprout_in_gunpowder(void) {
 
     const int cx = W / 2, cy = 3;
     /* A floor two cells wider than the candidates themselves, not flush
-     * with them - the same margin test_a_root_never_eats_dry_dirt_sand_
-     * or_empty_space uses and for the same reason: a powder blocked
+     * with them - the same margin sheltered_root_fixture() uses and
+     * for the same reason: a powder blocked
      * straight down still has an open diagonal-down to scatter into and
      * escape the very cell this test means to watch, which a floor flush
      * with the candidates does not close off. */
