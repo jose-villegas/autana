@@ -331,7 +331,9 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
             current->update(dt_ms, input);
         }
         shell_systems_update(dt_ms);
+        FRAME_COST_BEGIN(waited);
         gfx_present_wait();
+        FRAME_COST_END(waited, "present.wait");
     }
     ui_clear_band_overlay();
     if (overlap) {

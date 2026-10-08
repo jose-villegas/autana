@@ -324,11 +324,13 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     if (resolves) {
+        FRAME_COST_BEGIN(resolved_from);
         const int mid = raster->height / 2;
         work->mine =
             (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
         work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
         run_split(resolve_slice, &work->mine, &work->other);
+        FRAME_COST_END(resolved_from, "r3d.resolve");
     }
 }
 

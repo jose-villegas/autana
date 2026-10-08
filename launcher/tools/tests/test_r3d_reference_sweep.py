@@ -3,6 +3,7 @@
 import pathlib
 import sys
 import unittest
+import threading
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
@@ -19,6 +20,20 @@ except ImportError:
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceSweepTest(unittest.TestCase):
+    def test_vram_peak_catches_a_rise_and_fall_inside_the_block(self):
+        sampled = threading.Event()
+        value = [1]
+        def probe():
+            current = value[0]
+            if threading.current_thread() is not threading.main_thread() and current == 100:
+                sampled.set()
+            return current
+        with reference_sweep.VramPeak(probe) as peak:
+            value[0] = 100
+            self.assertTrue(sampled.wait(2))
+            value[0] = 2
+        self.assertEqual(peak.peak, 100)
+
     def test_relative_noise_is_the_seed_spread_over_the_mean(self):
         rng = np.random.default_rng(1)
         images = [np.full((16, 16, 3), 2.0) + rng.normal(0.0, 0.2, (16, 16, 3)) for _ in range(64)]

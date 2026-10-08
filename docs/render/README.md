@@ -5,13 +5,16 @@ of objects, and the runtime that draws it. The renderer is `launcher/main/render
 the offline tools are `launcher/tools/r3d/`. There is no GPU and no display
 framework, only a span rasterizer on both cores.
 
-To put a model on screen, start with [Building a Scene](Building-a-Scene.md).
+The whole path, from a source model to the panel, one section per stage, is
+the [Render Pipeline](Render-Pipeline.md). To put a model on screen, start
+with [Building a Scene](Building-a-Scene.md).
 
 Reference content (a scene with its import, bakes and camera path) lives in
 the [demo assets](../../launcher/demo/README.md).
 
 | | |
 |---|---|
+| [Render-Pipeline.md](Render-Pipeline.md) | **The overview**: every stage from the source model to the panel in order, what each reads, writes and costs, with a picture and a link to its reference page. |
 | [Building-a-Scene.md](Building-a-Scene.md) | **Start here**: import a mesh, place it in a scene, light it, add a camera, draw it. |
 | [Scene-Files.md](Scene-Files.md) | The scene file: objects with a transform and one component (mesh renderer, directional light, camera), sky and ambient, what a scene must carry, and the scene entry (`SCNE`) the pack build bakes from it. |
 | [Scene-Manager.md](Scene-Manager.md) | The runtime side of a scene: load by name, the packed component arrays, the one active camera, what the shell does each frame and who owns what. |

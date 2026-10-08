@@ -40,6 +40,7 @@ from r3d.light import (  # noqa: E402
     visible_from_region,
 )
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path  # noqa: E402
@@ -146,64 +147,77 @@ def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
     return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
 
 
-def bake_geometry(job, scene):
+def bake_geometry(job, scene, recorder=None):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
     keeps. `scene` is None for a bare import."""
     settings, renderer = job.settings, job.renderer
     rng = np.random.default_rng(settings.seed)
-    src = load_source(settings)
+    recorder = NULL_RECORDER if recorder is None else recorder
+    with recorder.step("source load", 0) as step:
+        src = load_source(settings)
+        step["triangles_out"] = len(src.tri_v)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
-    if settings.alpha_keep is not None:
-        tri_v, tri_t, tri_m = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
-        src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
-    intersector = None
-    visibility = renderer.visibility
-    if visibility or job.bake:
-        intersector = RayQuery(src.p, tri_v)
-    bounce = path_light_for(src, job, scene)
-    double_names = settings.double_sided
-    seen = np.ones(len(tri_v), dtype=bool)
-    if visibility:
-        double = np.array([src.names[material] in double_names for material in tri_m])
-        seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
-    if settings.thin:
-        thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
-        seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+    with recorder.step("alpha mask", len(tri_v)) as step:
+        if settings.alpha_keep is not None:
+            tri_v, tri_t, tri_m = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
+            src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
+        step["triangles_out"] = len(tri_v)
+    with recorder.step("visibility", len(tri_v)) as step:
+        intersector = None
+        visibility = renderer.visibility
+        if visibility or job.bake:
+            intersector = RayQuery(src.p, tri_v)
+        double_names = settings.double_sided
+        seen = np.ones(len(tri_v), dtype=bool)
+        if visibility:
+            double = np.array([src.names[material] in double_names for material in tri_m])
+            seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
+        step["triangles_out"] = int(seen.sum())
+    with recorder.step("thin", int(seen.sum())) as step:
+        if settings.thin:
+            thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
+            seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+        step["triangles_out"] = int(seen.sum())
     shown_v, shown_m = tri_v[seen], tri_m[seen]
-    if settings.simplify:
-        log("splitting evenly")
-        wp, wt = weld_keeping(src.p, shown_v)
-        dp, dt, dm = densify(wp, wt, shown_m, settings.simplify.dense_edge)
-        parts = [(material, *compact(dp, dt[dm == material])) for material in range(len(src.names)) if np.any(dm == material)]
-    else:
-        parts = [(material, *compact(src.p, shown_v[shown_m == material])) for material in range(len(src.names))
-                 if np.any(shown_m == material)]
-    all_pos, all_rgb, all_tris, all_double, all_mat = [], [], [], [], []
-    base = 0
-    for material, mp, mt in parts:
-        double = src.names[material] in double_names
-        if job.bake:
-            vpos, vrgb, vtris = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce)
+    with recorder.step("light", len(shown_v)) as step:
+        bounce = path_light_for(src, job, scene)
+        if settings.simplify:
+            log("splitting evenly")
+            wp, wt = weld_keeping(src.p, shown_v)
+            dp, dt, dm = densify(wp, wt, shown_m, settings.simplify.dense_edge)
+            parts = [(material, *compact(dp, dt[dm == material])) for material in range(len(src.names)) if np.any(dm == material)]
         else:
-            vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
-        all_pos.append(vpos)
-        all_rgb.append(vrgb)
-        all_tris.append(vtris + base)
-        all_double.append(np.full(len(vtris), int(double)))
-        all_mat.append(np.full(len(vtris), material))
-        base += len(vpos)
-        log(f"  {src.names[material]}: {len(vpos)} vertices")
-    positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
-    tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
-    if settings.simplify:
-        steps = settings.simplify
-        props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
-        positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles, props,
-                                                 colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
-        rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
-        tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
+            parts = [(material, *compact(src.p, shown_v[shown_m == material])) for material in range(len(src.names))
+                     if np.any(shown_m == material)]
+        all_pos, all_rgb, all_tris, all_double, all_mat = [], [], [], [], []
+        base = 0
+        for material, mp, mt in parts:
+            double = src.names[material] in double_names
+            if job.bake:
+                vpos, vrgb, vtris = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce)
+            else:
+                vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
+            all_pos.append(vpos)
+            all_rgb.append(vrgb)
+            all_tris.append(vtris + base)
+            all_double.append(np.full(len(vtris), int(double)))
+            all_mat.append(np.full(len(vtris), material))
+            base += len(vpos)
+            log(f"  {src.names[material]}: {len(vpos)} vertices")
+        positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
+        tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
+        step["triangles_out"] = len(tris)
+    with recorder.step("simplify", len(tris)) as step:
+        if settings.simplify:
+            steps = settings.simplify
+            props = [(frozenset(index for index, name in enumerate(src.names) if name in steps.props), steps.props_share)]
+            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles, props,
+                                                     colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
+            rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
+            tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
+        step["triangles_out"] = len(tris)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce)
 
@@ -246,15 +260,19 @@ def check_fitted(job, scene):
     log(f"{target.name} matches its fit recipe")
 
 
-def write_baked(job, scene, out_dir, name, geometry=None):
+def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
     is and smooth otherwise, from `geometry` when bake_geometry already made it.
     Returns the baked mesh."""
     renderer = job.renderer
-    geometry = bake_geometry(job, scene) if geometry is None else geometry
-    face_rgb = flat_colours(job, scene, geometry, renderer.face_samples) if renderer.face_samples else None
+    recorder = NULL_RECORDER if recorder is None else recorder
+    geometry = bake_geometry(job, scene, recorder) if geometry is None else geometry
+    face_rgb = None
+    if renderer.face_samples:
+        with recorder.step("face colours", len(geometry.tris)):
+            face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
     return write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
-                          geometry.tris, geometry.tri_double, face_rgb=face_rgb, **geometry.scale)
+                          geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, **geometry.scale)
 
 
 def bake(job, scene):
