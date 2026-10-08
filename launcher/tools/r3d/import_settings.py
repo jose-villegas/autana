@@ -594,8 +594,8 @@ def load_scene(path):
     cameras = [item for item in objects if item.kind == "camera"]
     if not renderers:
         raise SettingsError("scene.objects needs a mesh_renderer")
-    if len(cameras) > 1:
-        raise SettingsError("scene.objects may have one camera")
+    if any(camera.component.region is not None for camera in cameras[1:]):
+        raise SettingsError("only the first camera may have a region")
     lights = [item.component for item in objects if item.kind == "light"]
     for name in ("sky", "ambient"):
         if name in values:

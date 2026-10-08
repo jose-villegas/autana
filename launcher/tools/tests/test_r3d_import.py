@@ -415,12 +415,12 @@ class SceneTests(unittest.TestCase):
         scene = load_scene(self.lit(head=HEAD + sky))
         self.assertEqual([item["type"] for item in scene.lights], ["directional", "sky", "ambient"])
 
-    def test_a_camera_carries_its_lens_and_region_and_a_scene_has_one(self):
+    def test_the_first_camera_carries_the_bake_lens_and_region(self):
         scene = load_scene(self.lit(REGION, objects=camera()))
         self.assertEqual(scene.camera.component.near_z, 1.0)
         self.assertEqual(scene.region[1], [1.0, 1.0, 1.0])
-        self.rejects("one camera", self.two_imports, renderer("a.import.toml") + camera(region=False)
-                     + camera(region=False).replace('"camera"', '"other"'))
+        self.rejects("first camera", self.two_imports, renderer("a.import.toml") + camera(region=False)
+                     + camera().replace('"camera"', '"other"'))
         self.rejects("half_fov_short_tan", self.two_imports, renderer("a.import.toml")
                      + '[[objects]]\nname = "c"\n[objects.camera]\nnear_z = 1.0\n')
         self.rejects("letters, digits and _", self.two_imports, renderer("a.import.toml")
