@@ -253,6 +253,44 @@ measure_escape(const sand_t* g, const uint8_t* footprint, int w, int h, int cap)
     return m;
 }
 
+/* A REAL_W x REAL_H board, sleeping, at the app's rates, with a
+ * DUNE_IMPULSE_MAX impulse queue and, if asked, a cleared footprint mask.
+ * Every buffer is checked together and freed together on failure: Unity's
+ * assert never returns, so asserting after each malloc would leak the ones
+ * before it. */
+typedef struct {
+    uint8_t* big;
+    uint8_t* blocks;
+    uint8_t* footprint;
+    impulse_t* impulses;
+} blast_board_t;
+
+static void
+blast_board_close(blast_board_t* b) {
+    free(b->big);
+    free(b->blocks);
+    free(b->footprint);
+    free(b->impulses);
+}
+
+static void
+blast_board_open(blast_board_t* b, sand_t* real, uint32_t seed, bool with_footprint) {
+    b->big = malloc((size_t)REAL_W * REAL_H);
+    b->blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
+    b->footprint = with_footprint ? calloc(1, DUNE_FOOTPRINT_BYTES) : NULL;
+    b->impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
+    if (b->big == NULL || b->blocks == NULL || (with_footprint && b->footprint == NULL) || b->impulses == NULL) {
+        blast_board_close(b);
+        TEST_FAIL_MESSAGE("need a grid, a block map, an impulse buffer and any footprint mask asked for, and at "
+                          "least one failed to allocate");
+    }
+
+    sand_init(real, b->big, REAL_W, REAL_H, seed);
+    sand_enable_sleeping(real, b->blocks);
+    use_app_rates(real);
+    sand_enable_impulses(real, b->impulses, DUNE_IMPULSE_MAX);
+}
+
 /* Three numbers - escaped grains, furthest throw, material destroyed -
  * rather than a boolean, which cannot tell power from reach from
  * destruction apart, and conflating them is how a change that helps one
@@ -264,27 +302,10 @@ measure_escape(const sand_t* g, const uint8_t* footprint, int w, int h, int cap)
 static void
 test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
-    uint8_t* big = malloc(cells_len);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
-    uint8_t* footprint = malloc(DUNE_FOOTPRINT_BYTES);
-    impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
-    const bool have_all = (big != NULL && blocks != NULL && footprint != NULL && impulses != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        free(footprint);
-        free(impulses);
-        TEST_FAIL_MESSAGE("need a grid, a block map, a one-bit-per-cell "
-                          "footprint mask, and an impulse buffer for the "
-                          "dune scene, and at least one failed to allocate");
-    }
-    memset(footprint, 0, DUNE_FOOTPRINT_BYTES);
-
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 51u);
-    sand_enable_sleeping(&real, blocks);
-    use_app_rates(&real);
-    sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
+    blast_board_t board;
+    blast_board_open(&board, &real, 51u, true);
+    uint8_t* const footprint = board.footprint;
 
     build_sand_dune_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
@@ -326,10 +347,7 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
     const int after = sand_count(&real);
     const int destroyed = before - after;
 
-    free(big);
-    free(blocks);
-    free(footprint);
-    free(impulses);
+    blast_board_close(&board);
 
     TEST_ASSERT_TRUE_MESSAGE(settled, "the dune must actually stop moving within the settle budget - a "
                                       "pile still falling is not a dune, it is a rectangle in the "
@@ -468,24 +486,9 @@ carve_circle_empty(sand_t* g, int w, int h, int cx, int cy, int r) {
 static void
 test_the_water_pool_scene_refills_its_own_cavity(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
-    uint8_t* big = malloc(cells_len);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
-    impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
-    const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        free(impulses);
-        TEST_FAIL_MESSAGE("need a grid, a block map and an impulse buffer "
-                          "for the water pool scene, and at least one "
-                          "failed to allocate");
-    }
-
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 61u);
-    sand_enable_sleeping(&real, blocks);
-    use_app_rates(&real);
-    sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
+    blast_board_t board;
+    blast_board_open(&board, &real, 61u, false);
 
     build_dune_beside_water_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
@@ -532,9 +535,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
     run_steps(&real, 100, 0, 1000);
     const int carved_water_after = water_within(&real, cx, cy, carve_r);
 
-    free(big);
-    free(blocks);
-    free(impulses);
+    blast_board_close(&board);
 
     TEST_ASSERT_TRUE_MESSAGE(settled, "the dune and the pool must both stop moving within the settle "
                                       "budget before anything is measured against them");
@@ -624,24 +625,9 @@ count_occupied_outside_vessel(const sand_t* g, int w, int h, int margin) {
 static void
 test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
-    uint8_t* big = malloc(cells_len);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
-    impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
-    const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        free(impulses);
-        TEST_FAIL_MESSAGE("need a grid, a block map and an impulse buffer "
-                          "for the vessel scene, and at least one failed "
-                          "to allocate");
-    }
-
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 71u);
-    sand_enable_sleeping(&real, blocks);
-    use_app_rates(&real);
-    sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
+    blast_board_t board;
+    blast_board_open(&board, &real, 71u, false);
 
     build_dune_in_a_vessel_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
@@ -660,9 +646,7 @@ test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
 
     const int outside_occupied = count_occupied_outside_vessel(&real, REAL_W, REAL_H, VESSEL_MARGIN);
 
-    free(big);
-    free(blocks);
-    free(impulses);
+    blast_board_close(&board);
 
     TEST_ASSERT_TRUE_MESSAGE(settled, "the dune inside the vessel must stop moving within the settle "
                                       "budget before anything is measured against it");
@@ -706,24 +690,9 @@ build_dune_over_wood_scene(sand_t* s) {
 static int
 dune_over_wood_burning(uint32_t seed, bool* settled_out, int* wood_before_out) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
-    uint8_t* big = malloc(cells_len);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
-    impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
-    const bool have_all = (big != NULL && blocks != NULL && impulses != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        free(impulses);
-        TEST_FAIL_MESSAGE("need a grid, a block map and an impulse buffer "
-                          "for the wood floor scene, and at least one "
-                          "failed to allocate");
-    }
-
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, seed);
-    sand_enable_sleeping(&real, blocks);
-    use_app_rates(&real);
-    sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
+    blast_board_t board;
+    blast_board_open(&board, &real, seed, false);
 
     build_dune_over_wood_scene(&real);
     *settled_out = settle_fully(&real, cells_len);
@@ -755,9 +724,7 @@ dune_over_wood_burning(uint32_t seed, bool* settled_out, int* wood_before_out) {
         }
     }
 
-    free(big);
-    free(blocks);
-    free(impulses);
+    blast_board_close(&board);
     return burning_wood;
 }
 
@@ -880,28 +847,10 @@ count_true_flags(const bool arr[], int n) {
 static void
 test_the_layered_dune_scene_throws_more_than_one_band(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
-    uint8_t* big = malloc(cells_len);
-    uint8_t* blocks = malloc(sand_sleep_block_bytes(REAL_W, REAL_H));
-    uint8_t* footprint = malloc(DUNE_FOOTPRINT_BYTES);
-    impulse_t* impulses = malloc((size_t)DUNE_IMPULSE_MAX * sizeof(impulse_t));
-    const bool have_all = (big != NULL && blocks != NULL && footprint != NULL && impulses != NULL);
-    if (!have_all) {
-        free(big);
-        free(blocks);
-        free(footprint);
-        free(impulses);
-        TEST_FAIL_MESSAGE("need a grid, a block map, a one-bit-per-cell "
-                          "footprint mask and an impulse buffer for the "
-                          "layered dune scene, and at least one failed "
-                          "to allocate");
-    }
-    memset(footprint, 0, DUNE_FOOTPRINT_BYTES);
-
     sand_t real;
-    sand_init(&real, big, REAL_W, REAL_H, 97u);
-    sand_enable_sleeping(&real, blocks);
-    use_app_rates(&real);
-    sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
+    blast_board_t board;
+    blast_board_open(&board, &real, 97u, true);
+    uint8_t* const footprint = board.footprint;
 
     build_layered_dune_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
@@ -923,10 +872,7 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
     mark_seen_bands_outside(&real, footprint, REAL_W, REAL_H, seen_variant_outside);
     const int distinct_bands_outside = count_true_flags(seen_variant_outside, SAND_SHADE_COUNT);
 
-    free(big);
-    free(blocks);
-    free(footprint);
-    free(impulses);
+    blast_board_close(&board);
 
     TEST_ASSERT_TRUE_MESSAGE(settled, "the layered dune must stop moving within the settle budget "
                                       "before anything is measured against it");
