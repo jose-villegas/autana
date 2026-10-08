@@ -12,7 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 #define GFX_ATTACHMENT_COLOR   0 /* gfx_color_t, the panel's own format */
 #define GFX_ATTACHMENT_DEPTH   1 /* uint16_t, in the renderer's encoding */

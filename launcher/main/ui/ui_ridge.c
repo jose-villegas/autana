@@ -8,8 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gfx/draw/gfx_dither.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_dither.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"

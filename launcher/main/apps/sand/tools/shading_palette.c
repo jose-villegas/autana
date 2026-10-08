@@ -34,8 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "gfx/gfx_indexed.h"
-#include "gfx/gfx_palette.h"
+#include "gfx/draw/gfx_palette.h"
+#include "gfx/present/gfx_indexed.h"
 #include "gfx_palette_gen.h"
 #include "material.h"
 #include "material_palette.h"
@@ -2178,9 +2178,9 @@ write_header_banner(FILE* f) {
             " *========================================================================"
             "===*/\n"
             "#pragma once\n\n"
-            "#include \"gfx/gfx_color.h\"\n"
-            "#include \"gfx/gfx_indexed.h\"\n"
-            "#include \"gfx/gfx_palette.h\"\n\n"
+            "#include \"gfx/draw/gfx_color.h\"\n"
+            "#include \"gfx/present/gfx_indexed.h\"\n"
+            "#include \"gfx/draw/gfx_palette.h\"\n\n"
             "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
             UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
 }

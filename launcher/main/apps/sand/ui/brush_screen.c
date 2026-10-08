@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "gfx/gfx_color.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/draw/gfx_color.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "ui/ui.h"
 #include "ui/ui_style.h"
 

@@ -4,7 +4,6 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=scene_viewer
 scene_sources="
-main/gfx/gfx.c
 main/util/runtime/tune.c
 main/util/runtime/job.c
 main/render/raster.c

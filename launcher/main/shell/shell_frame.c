@@ -2,7 +2,10 @@
 #include <stdio.h>
 
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"

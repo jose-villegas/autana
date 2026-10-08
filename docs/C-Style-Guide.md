@@ -119,13 +119,15 @@ Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper 
 ### Token clones
 
 `python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
-compared with the merge-base with `origin/main`, or `HEAD~1` when HEAD is
-on main. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
+compared with the merge-base with `--base` (`origin/main` unless a pull
+request targets another branch), or `HEAD~1` when HEAD is on that branch. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
 Extract a shared owner for each new clone that exceeds its file pair's allowance.
 Each sorted file pair has its own budget: new fragments may use only the
 tokens of base fragments that vanished from HEAD; a surviving shrink gives no
 headroom. Renames map to the base names; line shifts do not change a budget.
-Removing another file pair gives no headroom.
+Code moved out of a file the change deletes keeps the fragments it held there,
+and a block of `#include` or `RUN_TEST` lines is not a clone. Removing another
+file pair gives no headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without
@@ -253,7 +255,7 @@ functions start with their module name and then say what they do:
 prefix stable because it is the C namespace for that module.
 
 Static functions do not need a synthetic prefix. Give them the shortest clear
-verb or predicate in their file's context, such as `panel_bring_up()`. Do not
+verb or predicate in their file's context, such as `qspi_bus_up()`. Do not
 add `prv_`, type-encoded Hungarian prefixes, or another naming layer whose only
 purpose is to restate linkage or type information.
 

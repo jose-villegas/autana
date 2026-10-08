@@ -4,21 +4,15 @@
  *
  * gfx_font.h splits a font into pure metrics (gfx_font_advance(),
  * gfx_font_text_width(), gfx_font_height(), `static inline` in the header,
- * same reason icon_walk_blocks() is in gfx/icon.h: it links on a host with no
- * gfx.h, no BSP, no drivers) and drawing (gfx_text_font() in gfx.c, which
+ * same reason icon_walk_blocks() is in gfx/draw/icon.h: it links on a host with no
+ * gfx.h, no BSP, no drivers) and drawing (gfx_text_font() in gfx_draw.c, which
  * calls gfx_fill_rect() and so cannot). This suite exercises the metrics and
- * the geometry, the same split suite_icons.c makes for gfx/icons_system.h:
- * gfx_font_row_run_rect() computes where a rect goes, gfx.c only calls it.
+ * the geometry, the same split suite_icons.c makes for gfx/draw/icons_system.h:
+ * gfx_font_row_run_rect() computes where a rect goes, gfx_draw.c only calls it.
  *
- * gfx.h is deliberately NOT included here: it pulls in bsp/esp-bsp.h, which
- * does not compile on a host. That means GFX_CHAR_W, GFX_CHAR_H and
- * GFX_GLYPH_SCALE (gfx.h) are not reachable from this file, so the few
- * assertions that need "the size the UI is laid out around" mirror
- * GFX_GLYPH_SCALE as a local constant instead of including it; see
- * MIRRORED_GLYPH_SCALE below. Everything else is derived from
- * gfx_font_8x8's own fields (cell_w, cell_h) rather than a second hardcoded
- * 8, so a change to the bitmap's cell size cannot silently drift out of
- * step with what this suite expects.
+ * Everything is derived from gfx_font_8x8's own fields (cell_w, cell_h)
+ * rather than a second hardcoded 8, so a change to the bitmap's cell size
+ * cannot silently drift out of step with what this suite expects.
  */
 
 #include <stdlib.h>
@@ -27,23 +21,19 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_font.h"
-#include "gfx/gfx_target.h"
-
-/* Mirrors gfx.h's GFX_GLYPH_SCALE (8x8 glyphs drawn at 2x; see gfx.h's own
- * comment on GFX_CHAR_W/GFX_CHAR_H). Kept in one place, right where it is
- * used, rather than repeated as a magic 2 at every call site below. */
-#define MIRRORED_GLYPH_SCALE 2
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font.h"
+#include "gfx/draw/gfx_target.h"
 
 /* gfx_font_8x8: the real, shipped font */
 
 static void
 test_default_font_width_matches_char_w_per_character(void) {
-    /* GFX_CHAR_W is 8 * GFX_GLYPH_SCALE (gfx.h), i.e. cell_w * scale here. */
-    const int char_w = gfx_font_8x8.cell_w * MIRRORED_GLYPH_SCALE;
+    /* GFX_CHAR_W is 8 * GFX_GLYPH_SCALE (gfx_draw.h), i.e. cell_w * scale here. */
+    const int char_w = gfx_font_8x8.cell_w * GFX_GLYPH_SCALE;
 
-    TEST_ASSERT_EQUAL_INT(char_w, gfx_font_text_width(&gfx_font_8x8, "A", 1, MIRRORED_GLYPH_SCALE));
-    TEST_ASSERT_EQUAL_INT(3 * char_w, gfx_font_text_width(&gfx_font_8x8, "ABC", 3, MIRRORED_GLYPH_SCALE));
+    TEST_ASSERT_EQUAL_INT(char_w, gfx_font_text_width(&gfx_font_8x8, "A", 1, GFX_GLYPH_SCALE));
+    TEST_ASSERT_EQUAL_INT(3 * char_w, gfx_font_text_width(&gfx_font_8x8, "ABC", 3, GFX_GLYPH_SCALE));
 }
 
 static void
@@ -58,11 +48,11 @@ test_width_scales_linearly_with_scale(void) {
 
 static void
 test_width_scales_linearly_with_length(void) {
-    const int one_char = gfx_font_text_width(&gfx_font_8x8, "A", 1, MIRRORED_GLYPH_SCALE);
+    const int one_char = gfx_font_text_width(&gfx_font_8x8, "A", 1, GFX_GLYPH_SCALE);
 
     for (int len = 0; len <= 10; len++) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(one_char * len,
-                                      gfx_font_text_width(&gfx_font_8x8, "AAAAAAAAAA", len, MIRRORED_GLYPH_SCALE),
+                                      gfx_font_text_width(&gfx_font_8x8, "AAAAAAAAAA", len, GFX_GLYPH_SCALE),
                                       "width did not scale linearly with string length");
     }
 }
@@ -74,8 +64,8 @@ test_width_scales_linearly_with_length(void) {
  * newly-introduced out-of-bounds read. */
 static void
 test_monospace_width_does_not_need_len_to_fit_the_string(void) {
-    const int expect = 20 * gfx_font_8x8.cell_w * MIRRORED_GLYPH_SCALE;
-    TEST_ASSERT_EQUAL_INT(expect, gfx_font_text_width(&gfx_font_8x8, "HI", 20, MIRRORED_GLYPH_SCALE));
+    const int expect = 20 * gfx_font_8x8.cell_w * GFX_GLYPH_SCALE;
+    TEST_ASSERT_EQUAL_INT(expect, gfx_font_text_width(&gfx_font_8x8, "HI", 20, GFX_GLYPH_SCALE));
 }
 
 static void
@@ -87,33 +77,33 @@ test_len_negative_matches_nul_terminated_length(void) {
 
 static void
 test_zero_length_string_is_zero_wide(void) {
-    TEST_ASSERT_EQUAL_INT(0, gfx_font_text_width(&gfx_font_8x8, "", -1, MIRRORED_GLYPH_SCALE));
-    TEST_ASSERT_EQUAL_INT(0, gfx_font_text_width(&gfx_font_8x8, "ignored", 0, MIRRORED_GLYPH_SCALE));
+    TEST_ASSERT_EQUAL_INT(0, gfx_font_text_width(&gfx_font_8x8, "", -1, GFX_GLYPH_SCALE));
+    TEST_ASSERT_EQUAL_INT(0, gfx_font_text_width(&gfx_font_8x8, "ignored", 0, GFX_GLYPH_SCALE));
 }
 
 static void
 test_height_matches_char_h_at_default_scale(void) {
-    /* GFX_CHAR_H is 8 * GFX_GLYPH_SCALE (gfx.h), i.e. cell_h * scale here. */
-    const int char_h = gfx_font_8x8.cell_h * MIRRORED_GLYPH_SCALE;
-    TEST_ASSERT_EQUAL_INT(char_h, gfx_font_height(&gfx_font_8x8, MIRRORED_GLYPH_SCALE));
+    /* GFX_CHAR_H is 8 * GFX_GLYPH_SCALE (gfx_draw.h), i.e. cell_h * scale here. */
+    const int char_h = gfx_font_8x8.cell_h * GFX_GLYPH_SCALE;
+    TEST_ASSERT_EQUAL_INT(char_h, gfx_font_height(&gfx_font_8x8, GFX_GLYPH_SCALE));
 }
 
 /* Monospace: every glyph advances by cell_w * scale, whether or not the
  * codepoint is one the font actually covers, the same thing the old
  * gfx_text_turned() did, advancing by a fixed cell every character even
- * past one it declined to draw (see gfx.c's gfx_text_font()). */
+ * past one it declined to draw (see gfx_draw.c's gfx_text_font()). */
 static void
 test_monospace_advance_is_cell_w_times_scale_for_every_glyph(void) {
     const unsigned char in_range[] = {0, 'A', 'z', 127};
     const unsigned char out_of_range[] = {128, 200, 255};
 
     for (size_t i = 0; i < sizeof(in_range); i++) {
-        TEST_ASSERT_EQUAL_INT(gfx_font_8x8.cell_w * MIRRORED_GLYPH_SCALE,
-                              gfx_font_advance(&gfx_font_8x8, in_range[i], MIRRORED_GLYPH_SCALE));
+        TEST_ASSERT_EQUAL_INT(gfx_font_8x8.cell_w * GFX_GLYPH_SCALE,
+                              gfx_font_advance(&gfx_font_8x8, in_range[i], GFX_GLYPH_SCALE));
     }
     for (size_t i = 0; i < sizeof(out_of_range); i++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(gfx_font_8x8.cell_w * MIRRORED_GLYPH_SCALE,
-                                      gfx_font_advance(&gfx_font_8x8, out_of_range[i], MIRRORED_GLYPH_SCALE),
+        TEST_ASSERT_EQUAL_INT_MESSAGE(gfx_font_8x8.cell_w * GFX_GLYPH_SCALE,
+                                      gfx_font_advance(&gfx_font_8x8, out_of_range[i], GFX_GLYPH_SCALE),
                                       "an out-of-range codepoint must still advance by a full cell, "
                                       "matching the old gfx_text_turned()'s unconditional advance");
     }
@@ -191,7 +181,7 @@ test_proportional_height_is_cell_h_times_scale(void) {
 /*
  * gfx_font_row_run_rect(): proof that batching a run of set bits into one
  * rect covers exactly the same pixels as drawing one bit at a time.
- * gfx.c cannot link on a host, so the pixel transform is mirrored here.
+ * The pixel transform is mirrored here, independently of gfx_draw.c.
  */
 
 static void
@@ -293,13 +283,13 @@ test_row_run_rect_matches_per_bit_placement_at_scale_one_and_at_origin(void) {
 }
 
 /*
- * gfx_text_font() (gfx.c) skips a whole character when its own row extent
+ * gfx_text_font() (gfx_draw.c) skips a whole character when its own row extent
  * misses the current gfx_target_t entirely: one command replayed into
  * several bands (ui_replay_band()) otherwise re-walks every character per
  * band. Safe only if every rect gfx_font_row_run_rect() can ever produce
  * for that character stays inside the same row extent, so skipping never
  * discards a rect that would have painted anything, proven here for every
- * (row, col) a real glyph can pass, at every turn, without gfx.c.
+ * (row, col) a real glyph can pass, at every turn, without gfx_draw.c.
  */
 static void
 test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
@@ -327,7 +317,7 @@ test_row_run_rect_never_leaves_the_characters_own_row_extent(void) {
  * gfx_font_row_run_rect_dilated(): proof that one dilated-halo pass
  * paints the same pixels as UI_TEXT_OUTLINED's 8 unit-offset copies of
  * gfx_text_font(), ink drawn last either way. Rasterizes both forms into
- * small pixel grids via gfx_target_fill_rect() (the same body gfx.c's
+ * small pixel grids via gfx_target_fill_rect() (the same body gfx_draw.c's
  * gfx_fill_rect() calls) and compares them exactly, at every turn and
  * with a band edge cutting through the glyph.
  */

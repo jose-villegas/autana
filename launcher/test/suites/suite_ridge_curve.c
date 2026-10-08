@@ -14,7 +14,7 @@
 #include "unity.h"
 
 #include "boot/boot_anim_image.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #include "ui/ridge_curve_generated.h"
 
 #define VIEW_W               RIDGE_CURVE_POINTS

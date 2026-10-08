@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include "gfx/gfx_font.h"
+#include "gfx/draw/gfx_font.h"
 
 /* The UI/body-text role. Compile-time resolution lets the linker omit a
  * font nothing names. */

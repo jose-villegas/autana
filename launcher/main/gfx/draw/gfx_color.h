@@ -194,7 +194,7 @@ gfx_dither_level(uint8_t alpha) {
 
 /* Whether an ordered (Bayer) dither at `alpha` (0 nothing, 255 everything,
  * 16 graduated levels between; see gfx_fill_rect_dither()'s own comment
- * in gfx.c) covers absolute panel pixel (x, y). Callers with their own pixel
+ * in gfx_draw.c) covers absolute panel pixel (x, y). Callers with their own pixel
  * loops share this table and rounding rule rather than drifting out of phase. */
 static inline bool
 gfx_dither_covers(int x, int y, uint8_t alpha) {

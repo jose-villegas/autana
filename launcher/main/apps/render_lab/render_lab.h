@@ -9,8 +9,8 @@
 
 #include <stdbool.h>
 
-#include "gfx/gfx.h"
-#include "gfx/gfx_box.h"
+#include "gfx/draw/gfx_box.h"
+#include "gfx/draw/gfx_color.h"
 
 #define RENDER_LAB_BACKGROUND_RGB 0x0A0C14
 

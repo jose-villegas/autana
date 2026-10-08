@@ -147,6 +147,35 @@ class CloneTests(unittest.TestCase):
             original.write_text(BLOCK, encoding="utf-8")
             self.assertEqual(len(gate.scan(root, 80)), 1)
 
+    def test_whole_gate_splitting_a_file_keeps_its_clone(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def git(*args):
+                return gate.git(root, *args).decode().strip()
+            def commit():
+                git("add", "-A")
+                git("commit", "-m", "test: source")
+            git("init", "-b", "main")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            whole = root / "launcher/main/whole.c"
+            whole.parent.mkdir(parents=True)
+            # Mostly comment, so git sees the split as a deletion, not a rename.
+            notes = "".join(f"/* note {i}: what the rest of this file held */\n" for i in range(200))
+            whole.write_text(notes + BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta"), encoding="utf-8")
+            commit()
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            git("checkout", "-b", "feature/test")
+            git("rm", "-q", "launcher/main/whole.c")
+            whole.parent.mkdir(parents=True, exist_ok=True)
+            (root / "launcher/main/part.c").write_text(BLOCK + "int pad_new;\n" + BLOCK.replace("alpha", "beta"),
+                                                       encoding="utf-8")
+            commit()
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = gate.main([], root=root)
+            self.assertEqual(result, 0, output.getvalue())
+
     def pair(self, first="a.c", second="b.c", fragment=BLOCK):
         return {"firstFile": {"name": first, "start": 1, "end": 12},
                 "secondFile": {"name": second, "start": 1, "end": 12},
@@ -236,6 +265,21 @@ class CloneTests(unittest.TestCase):
         copied = self.pair(fragment=BLOCK + listing)
         self.assertEqual(gate.filter_pairs([copied]), [copied])
 
+    def test_code_moved_out_of_a_deleted_file_spends_its_clone(self):
+        base = self.scan({"launcher/main/old.c": BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta")}, 80)
+        head = self.scan({"launcher/main/new.c": BLOCK + "int pad_new;\n" + BLOCK.replace("alpha", "beta")}, 80)
+        self.assertTrue(base and head)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base, moved=base), 0)
+            self.assertEqual(gate.check_pairs(head, base), 1)
+
+    def test_a_moved_clone_that_grew_still_fails(self):
+        base = self.scan({"launcher/main/old.c": BLOCK + "int pad_old;\n" + BLOCK.replace("alpha", "beta")}, 80)
+        grown = BLOCK.replace("    return result", "    result += input * 7;\n    return result")
+        head = self.scan({"launcher/main/new.c": grown + "int pad_new;\n" + grown.replace("alpha", "beta")}, 80)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pairs(head, base, moved=base), 1)
+
     def test_self_match_is_ignored(self):
         self.assertEqual(gate.filter_pairs([self.pair("a.c", "a.c")]), [])
 
@@ -292,6 +336,14 @@ class CloneTests(unittest.TestCase):
             self.assertEqual(gate.scan(root, 80, revision="HEAD"), [])
             git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"))
             self.assertEqual(gate.comparison_base(root), base)
+            stacked = git("rev-parse", "HEAD")
+            git("update-ref", "refs/remotes/origin/feature/base", stacked)
+            git("update-ref", "refs/remotes/origin/main", base)
+            git("checkout", "-q", "-b", "feature/stacked")
+            (root / "launcher/main/c.c").write_text("int stacked;", encoding="utf-8")
+            git("add", ".")
+            git("commit", "-m", "test: stacked")
+            self.assertEqual(gate.comparison_base(root, against="origin/feature/base"), stacked)
 
     def test_unrelated_branch_change_skips_base_scan(self):
         pair = self.pair()

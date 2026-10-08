@@ -8,7 +8,7 @@
  * The present task is what turns that back into pixels, once per dirty
  * band, by calling the functions here: a LUT lookup per cell plus a
  * nearest-neighbour upscale by the grid's own cell size, never a per-pixel
- * divide. gfx.c is the only real caller; everything below is pure enough
+ * divide. gfx_mode.c and gfx_present.c are the only real callers; everything below is pure enough
  * for a host test to call directly.
  */
 #pragma once
@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 #define GFX_INDEXED_PALETTE_SIZE 256
 

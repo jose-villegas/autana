@@ -11,7 +11,10 @@ set(app_srcs
     "display/display.c"
     "display/display_device.c"
     "display/panel_clock.c"
-    "gfx/gfx.c"
+    "gfx/draw/gfx_draw.c"
+    "gfx/present/gfx_debug.c"
+    "gfx/present/gfx_mode.c"
+    "gfx/present/gfx_present.c"
     "input/touch.c"
     "input/touch_calib.c"
     "input/touch_point.c"
@@ -80,7 +83,7 @@ function(launcher_glob output pattern)
 endfunction()
 
 if(CONFIG_LAUNCHER_QEMU)
-    list(APPEND app_srcs "gfx/gfx_null_panel_device.c")
+    list(APPEND app_srcs "gfx/present/gfx_null_panel_device.c")
 endif()
 
 # The frame's view modes: a development tool, with nothing calling them in a
@@ -120,7 +123,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
-list(APPEND app_srcs "board/board_esp32s3.c")
+list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
 
 # Apps are discovered, not listed.
 #
@@ -178,7 +181,7 @@ list(APPEND app_srcs ${discovered_apps})
 # SPI2. "sdmmc" itself is still needed for sdmmc_card_t and the protocol
 # layer underneath the host driver.
 #
-# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see gfx.c. It is
+# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer

@@ -27,7 +27,7 @@
 #include "unity.h"
 
 #include "boot/boot_anim.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/draw/gfx_font_roles.h"
 
 #include <stdlib.h>
 
@@ -36,14 +36,14 @@
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_mode.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
 #include "test_cleanup.h"
 #endif
 
-/* The panel these numbers are laid out for. Named here rather than pulled
- * from gfx.h, which needs the BSP; gfx_dirty.h mirrors the same two numbers
- * for the same reason. */
+/* The panel these numbers are laid out for, spelled out so a wrong
+ * GFX_WIDTH/HEIGHT cannot quietly agree with them. */
 #define PANEL_W 368
 #define PANEL_H 448
 

@@ -1,14 +1,11 @@
 /*
  * gfx_full_redraw: the two latches behind gfx_request_full_redraw()
- * (gfx.h) that gfx_dirty.h does not already own: band mode's own
+ * (gfx_present.h) that gfx_dirty.h does not already own: band mode's own
  * "force every band next frame" signal, and the shell-facing "a redraw
  * was requested and not yet consumed" flag.
  *
- * Header-only and static, the same reason gfx_dirty.h and
- * gfx_present_guard.h are: gfx.c includes this once and gets its own
- * pair of flags, a host suite includes it again and gets an independent
- * copy to drive and inspect directly, with no ESP-IDF dependency to
- * satisfy; see suite_gfx_full_redraw.c.
+ * Header-only over one instance (gfx_present.c), ESP-IDF-free so a host
+ * suite drives it directly; see suite_gfx_full_redraw.c.
  */
 #pragma once
 
@@ -19,7 +16,7 @@
  * describe. Starts true so the very first band frame after boot, or
  * after gfx_mode_enter() grants band mode, forces every band regardless
  * of anything gfx_mark_dirty() has been told yet. */
-static bool gfx_band_force_all_dirty = true;
+extern bool gfx_band_force_all_dirty;
 
 static inline void
 gfx_band_force_all(void) {
@@ -28,7 +25,7 @@ gfx_band_force_all(void) {
 
 /* Reads and clears in one step: a request arriving after this frame's
  * capture must not retroactively force bands a frame already under way
- * already skipped; see gfx_band_frame_begin()'s own comment in gfx.c. */
+ * already skipped; see band_frame_force_all in gfx_mode.c. */
 static inline bool
 gfx_band_take_force_all(void) {
     const bool forced = gfx_band_force_all_dirty;
@@ -38,11 +35,11 @@ gfx_band_take_force_all(void) {
 
 /* True from a gfx_request_full_redraw() call until the shell consumes it
  * for the pass that follows; see gfx_full_redraw_pending()/
- * gfx_full_redraw_clear_pending() in gfx.h. An app's invalidate() callback
+ * gfx_full_redraw_clear_pending() in gfx_present.h. An app's invalidate() callback
  * (app.h) fires at most once per request: the shell checks this before
  * the next frame() and clears it after, so a request made mid-frame is
  * picked up on the pass that follows rather than the one already running. */
-static bool gfx_full_redraw_latched;
+extern bool gfx_full_redraw_latched;
 
 static inline void
 gfx_full_redraw_latch(void) {

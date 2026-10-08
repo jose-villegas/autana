@@ -21,6 +21,7 @@
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render_host.h"

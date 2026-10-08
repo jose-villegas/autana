@@ -36,10 +36,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# Every gfx source but the device-only *_device.c.
+file(GLOB_RECURSE gfx_srcs CONFIGURE_DEPENDS ${LAUNCHER_DIR}/main/gfx/*.c)
+list(FILTER gfx_srcs EXCLUDE REGEX "_device\\.c$")
+
 add_library(editor_runtime STATIC
     runtime/runtime.c
+    ${gfx_srcs}
     ${LAUNCHER_DIR}/main/app/app_registry.c
-    ${LAUNCHER_DIR}/main/gfx/gfx.c
     ${LAUNCHER_DIR}/main/input/gesture.c
     ${LAUNCHER_DIR}/main/ui/system_navigation.c
     ${LAUNCHER_DIR}/main/ui/ui.c

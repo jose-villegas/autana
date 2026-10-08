@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "selftest/post_layout.h"
 #include "ui/ui_transform.h"

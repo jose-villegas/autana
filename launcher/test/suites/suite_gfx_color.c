@@ -20,7 +20,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 static void
 test_t_zero_returns_a_exactly(void) {

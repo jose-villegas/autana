@@ -11,6 +11,8 @@
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
 #include "ui/ui_ridge.h"
 #include "util/runtime/memory.h"

@@ -396,7 +396,7 @@ tint it held the moment it went still.
 The sand options screen's COLOR MODE defaults to 256 and picks between FULL
 (the RGB565 path, byte-identical, this document's whole pipeline
 above), 256, and 16. Both alternates request `GFX_LAYOUT_INDEXED`
-(`gfx/gfx_mode.h`): gfx frees the PSRAM framebuffer and instead owns a
+(`gfx/present/gfx_mode.h`): gfx frees the PSRAM framebuffer and instead owns a
 persistent `grid_w x grid_h` byte image of
 palette indices in internal RAM plus a 256-entry RGB565 LUT. Sand writes
 indices, never pixels (`sand_paint_row_n()`, the same function the RGB565 path

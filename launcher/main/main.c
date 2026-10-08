@@ -12,6 +12,7 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "input/input_shell.h"
 #include "selftest/post.h"
 #include "selftest/post_layout.h"

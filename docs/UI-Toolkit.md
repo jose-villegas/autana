@@ -229,7 +229,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
   late.
 - **Pure geometry.** `ui_bezel_spans()` and `ui_panel_spans()` return where
   the rectangles go and nothing else, so `test/suites/suite_ui_style.c`
-  checks the shape without linking `gfx.c` or microui.
+  checks the shape without linking `gfx_draw.c` or microui.
 
 ## Drawing helpers
 
@@ -242,9 +242,9 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 | `ui_draw_icon()` | a baked `icon_t` filling a rect, in one colour |
 
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
-through `icon_walk_blocks()` (`gfx/icon.h`), so an icon costs no new
+through `icon_walk_blocks()` (`gfx/draw/icon.h`), so an icon costs no new
 `MU_ICON_*` id and no patch to microui. The shell's own icons are in
-`gfx/icons_system.h`. An app's icons live in the app's own folder, baked by
+`gfx/draw/icons_system.h`. An app's icons live in the app's own folder, baked by
 the same generator, so deleting the app deletes them.
 
 ## Layout

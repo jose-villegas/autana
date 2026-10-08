@@ -2,13 +2,13 @@
  * gfx_null_panel_device: gfx_null_panel.h over esp_lcd's panel interface,
  * holding each strip on a modelled QSPI bus for its transfer time.
  */
-#include "gfx/gfx_null_panel.h"
+#include "gfx/present/gfx_null_panel.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "gfx/gfx.h"
-#include "gfx/gfx_dirty.h"
+#include "gfx/present/gfx_dirty.h"
 
 #include "esp_lcd_panel_interface.h"
 #include "esp_timer.h"

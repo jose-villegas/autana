@@ -9,8 +9,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"

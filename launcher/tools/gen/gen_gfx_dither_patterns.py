@@ -2,7 +2,7 @@
 """Generate the ordered threshold ranks used by gfx_dither.h.
 
 Run from launcher/:
-    python tools/gen/gen_gfx_dither_patterns.py main/gfx/gfx_dither_patterns_generated.h
+    python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h
 """
 
 import argparse
@@ -53,7 +53,7 @@ def main():
     args.output.write_text(
         "/* GENERATED FILE - do not edit.\n"
         " *\n"
-        " *     python tools/gen/gen_gfx_dither_patterns.py main/gfx/gfx_dither_patterns_generated.h\n"
+        " *     python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h\n"
         " */\n"
         "#pragma once\n\n"
         "#include <stdint.h>\n\n" + "\n".join(arrays),

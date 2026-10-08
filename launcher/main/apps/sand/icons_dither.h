@@ -3,15 +3,15 @@
  *
  *     python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h
  *
- * Baked from main/apps/sand/icons/dither.png (4x4 cells) - see gfx/icon.h for
- * icon_t's own fields and tools/gen/gen_icons.py for the PNG/SVG decode,
- * validation and packing this table was produced by.
+ * Baked from main/apps/sand/icons/dither.png (4x4 cells) - see
+ * gfx/draw/icon.h for icon_t's own fields and tools/gen/gen_icons.py for the
+ * PNG/SVG decode, validation and packing this table was produced by.
  *===========================================================================*/
 #pragma once
 
 #include <stdint.h>
 
-#include "gfx/icon.h"
+#include "gfx/draw/icon.h"
 
 typedef enum {
     ICON_DITHER_NONE,

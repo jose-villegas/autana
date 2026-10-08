@@ -79,7 +79,7 @@ is not paid at all.
 
 - **The render path.** `apps/sand/tools/brush_screen_render_host.c` renders the
   screen at both orientations, on a host, through the real `gfx.c` and the
-  real `ui_style.h` / `ui_slider.h` / `gfx/icon.h` geometry. That is what a
+  real `ui_style.h` / `ui_slider.h` / `gfx/draw/icon.h` geometry. That is what a
   `/render` endpoint needs; it is already written.
 - **Host-linkable everything.** `gfx.c` (behind its `ESP_PLATFORM` guards),
   the pure geometry headers, the baked icon atlases, and `microui.c`: the

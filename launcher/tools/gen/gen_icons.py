@@ -3,7 +3,7 @@
 files, each icon declaring its own source.
 
     python tools/gen/gen_icons.py design/icons/system.png design/icons/system.json \\
-        > main/gfx/icons_system.h
+        > main/gfx/draw/icons_system.h
 
 General-purpose, not system-set-specific: the same generator produces
 an app's own apps/<name>/icons_<name>.h from apps/<name>/icons/<name>.png +
@@ -108,7 +108,7 @@ import textwrap
 import zlib
 from pathlib import Path
 
-# icon_t.blocks (gfx/icon.h) is a uint8_t; the real remaining bound now
+# icon_t.blocks (gfx/draw/icon.h) is a uint8_t; the real remaining bound now
 # that ui_draw_icon() (ui.c) streams runs instead of collecting them into a
 # stack buffer. A count above 255 would silently wrap that field rather
 # than fail loudly, so this stays a hard rejection, not a raise-when-
@@ -559,7 +559,7 @@ def output_path_for(json_path):
     prefix = Path(json_path).stem
     if manifest_dir.name == "icons" and manifest_dir.parent.name != "design":
         return "%s/icons_%s.h" % (manifest_dir.parent.as_posix(), prefix)
-    return "main/gfx/icons_%s.h" % prefix
+    return "main/gfx/draw/icons_%s.h" % prefix
 
 
 # --- manifest ------------------------------------------------------------------
@@ -628,7 +628,7 @@ def emit(w_stdout, prefix, cmd, source_png, cell_w, cell_h, svg_commits, baked):
     w(" *\n")
     w(" *     %s\n" % cmd)
     w(" *\n")
-    body = ("Baked from %s (%dx%d cells) - see gfx/icon.h for icon_t's own "
+    body = ("Baked from %s (%dx%d cells) - see gfx/draw/icon.h for icon_t's own "
             "fields and tools/gen/gen_icons.py for the PNG/SVG decode, "
             "validation and packing this table was produced by." %
             (source_png, cell_w, cell_h))
@@ -645,7 +645,7 @@ def emit(w_stdout, prefix, cmd, source_png, cell_w, cell_h, svg_commits, baked):
     w(" *===========================================================================*/\n")
     w("#pragma once\n\n")
     w("#include <stdint.h>\n\n")
-    w('#include "gfx/icon.h"\n\n')
+    w('#include "gfx/draw/icon.h"\n\n')
 
     w("typedef enum {\n")
     for entry, *_rest in baked:
@@ -793,7 +793,7 @@ def main(argv):
         blocks = count_runs(bits, iw, ih)
         if blocks > RUN_COUNT_CAP:
             die("%s: icon %r bakes to %d runs, over RUN_COUNT_CAP (%d) - "
-                "icon_t.blocks (gfx/icon.h) is a uint8_t and would silently "
+                "icon_t.blocks (gfx/draw/icon.h) is a uint8_t and would silently "
                 "wrap; simplify the artwork" % (json_path, name, blocks, RUN_COUNT_CAP))
 
         baked.append((name, iw, ih, stride, offset, blocks, packed))

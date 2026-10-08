@@ -10,6 +10,7 @@
 #include "display/panel_clock.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "util/build/build_variant.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/settings.h"
@@ -17,7 +18,7 @@
 static const char TAG[] = "display";
 
 _Static_assert(PANEL_CLOCK_SLOW_HZ == GFX_PANEL_CLOCK_SLOW_HZ && PANEL_CLOCK_FAST_HZ == GFX_PANEL_CLOCK_FAST_HZ,
-               "panel_clock.h's rates must match gfx.h's");
+               "panel_clock.h's rates must match gfx_present.h's");
 
 static display_orientation_t shell_orientation;
 static panel_clock_t shell_panel_clock;

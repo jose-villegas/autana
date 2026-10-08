@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "test_harness.h"
 #include "unity.h"
 

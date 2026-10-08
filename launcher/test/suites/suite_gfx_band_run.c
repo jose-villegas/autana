@@ -6,8 +6,11 @@
 #include <stdlib.h>
 
 #include "gfx/gfx.h"
-#include "gfx/gfx_band_run.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "test_cleanup.h"
 
 typedef struct {

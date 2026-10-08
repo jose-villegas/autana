@@ -13,8 +13,9 @@
 # Declare before sourcing:
 #
 #   scene_name      output stem, and what the binary reports as its own
-#   scene_sources   the firmware translation units to build, space or
-#                   newline separated, relative to launcher/
+#   scene_sources   the firmware translation units to build besides gfx,
+#                   which every scene gets, space or newline separated,
+#                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
 #                   with an optional fourth field, |nopin, for a render
 #                   whose pixels are not integer-exact (see scene_pin).
@@ -192,6 +193,9 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
+    # Every scene draws through gfx: all of it but the device-only *_device.c.
+    _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" -name '*.c' ! -name '*_device.c' | sort | tr '
+' ' ')"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done

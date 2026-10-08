@@ -536,7 +536,7 @@ caps_matches_internal(uint32_t caps) {
 }
 
 /* MALLOC_CAP_DMA excludes psram along with MALLOC_CAP_INTERNAL: PSRAM
- * carries neither cap on this board (gfx.c bounces every PSRAM strip
+ * carries neither cap on this board (gfx_present.c bounces every PSRAM strip
  * through an internal DMA buffer rather than DMA'ing PSRAM directly). */
 static int
 caps_matches_psram(uint32_t caps) {

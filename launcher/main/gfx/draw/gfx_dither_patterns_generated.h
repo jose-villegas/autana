@@ -1,6 +1,6 @@
 /* GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_gfx_dither_patterns.py main/gfx/gfx_dither_patterns_generated.h
+ *     python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h
  */
 #pragma once
 

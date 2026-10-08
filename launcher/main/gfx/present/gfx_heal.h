@@ -12,21 +12,22 @@
  *
  * Pending rows are kept in GFX_HEAL_UNIT_ROWS units, one bit each, which is
  * finer than any strip and coarse enough for one uint64_t. Pure state, no
- * ESP-IDF, so a host suite drives it directly; gfx.c owns one instance.
+ * ESP-IDF, so a host suite drives it directly; gfx_present.c owns one instance.
  */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#define GFX_HEAL_SCREEN_ROWS 448
-#define GFX_HEAL_UNIT_ROWS   8
-#define GFX_HEAL_UNITS       (GFX_HEAL_SCREEN_ROWS / GFX_HEAL_UNIT_ROWS)
-#define GFX_HEAL_STRIP_ROWS  32
-#define GFX_HEAL_PHASE_STEP  (3 * GFX_HEAL_UNIT_ROWS)
+#include "gfx/gfx.h"
+
+#define GFX_HEAL_UNIT_ROWS  8
+#define GFX_HEAL_UNITS      (GFX_HEIGHT / GFX_HEAL_UNIT_ROWS)
+#define GFX_HEAL_STRIP_ROWS 32
+#define GFX_HEAL_PHASE_STEP (3 * GFX_HEAL_UNIT_ROWS)
 
 /* The most strips one plan can return: every unit's strip, disjoint. */
-#define GFX_HEAL_MAX_STRIPS  (GFX_HEAL_SCREEN_ROWS / GFX_HEAL_STRIP_ROWS + 1)
+#define GFX_HEAL_MAX_STRIPS (GFX_HEIGHT / GFX_HEAL_STRIP_ROWS + 1)
 
 _Static_assert(GFX_HEAL_UNITS <= 64, "pending units must fit one uint64_t");
 _Static_assert(GFX_HEAL_STRIP_ROWS % GFX_HEAL_UNIT_ROWS == 0, "a strip must cover whole units");
@@ -55,7 +56,7 @@ gfx_heal_reset(gfx_heal_t* h) {
 static inline void
 gfx_heal_queue_rows(gfx_heal_t* h, int y0, int y1) {
     y0 = y0 < 0 ? 0 : y0;
-    y1 = y1 > GFX_HEAL_SCREEN_ROWS ? GFX_HEAL_SCREEN_ROWS : y1;
+    y1 = y1 > GFX_HEIGHT ? GFX_HEIGHT : y1;
     if (y0 >= y1) {
         return;
     }
@@ -71,13 +72,13 @@ gfx_heal_queue_rolling(gfx_heal_t* h, int rows) {
     if (rows <= 0) {
         return;
     }
-    rows = rows > GFX_HEAL_SCREEN_ROWS ? GFX_HEAL_SCREEN_ROWS : rows;
+    rows = rows > GFX_HEIGHT ? GFX_HEIGHT : rows;
     const int end = h->rolling_row + rows;
     gfx_heal_queue_rows(h, h->rolling_row, end);
-    if (end > GFX_HEAL_SCREEN_ROWS) {
-        gfx_heal_queue_rows(h, 0, end - GFX_HEAL_SCREEN_ROWS);
+    if (end > GFX_HEIGHT) {
+        gfx_heal_queue_rows(h, 0, end - GFX_HEIGHT);
     }
-    h->rolling_row = end % GFX_HEAL_SCREEN_ROWS;
+    h->rolling_row = end % GFX_HEIGHT;
 }
 
 static inline bool
@@ -110,7 +111,7 @@ gfx_heal_plan(gfx_heal_t* h, int budget_pixels, int width, gfx_heal_strip_t* out
         int y0 = gfx_heal_strip_start(u * GFX_HEAL_UNIT_ROWS, h->phase);
         int y1 = y0 + GFX_HEAL_STRIP_ROWS;
         y0 = y0 < 0 ? 0 : y0;
-        y1 = y1 > GFX_HEAL_SCREEN_ROWS ? GFX_HEAL_SCREEN_ROWS : y1;
+        y1 = y1 > GFX_HEIGHT ? GFX_HEIGHT : y1;
 
         const int area = (y1 - y0) * width;
         if (used + area > budget_pixels) {

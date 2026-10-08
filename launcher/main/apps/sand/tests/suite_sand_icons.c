@@ -21,7 +21,7 @@
 #include "unity.h"
 
 #include "apps/sand/icons_sand.h"
-#include "gfx/icon.h"
+#include "gfx/draw/icon.h"
 
 typedef struct {
     const char* name;

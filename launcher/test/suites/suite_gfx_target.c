@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_target.h"
+#include "gfx/draw/gfx_target.h"
 
 #include <string.h>
 

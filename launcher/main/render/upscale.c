@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stddef.h>
 
-#include "gfx/gfx_target.h"
+#include "gfx/draw/gfx_target.h"
 #include "render/code_layout.h"
 
 static uint16_t

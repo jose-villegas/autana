@@ -1,5 +1,5 @@
 /*
- * Portable suite: gfx/icons_system.h's ICON_SYSTEM_CHECK, the artwork
+ * Portable suite: gfx/draw/icons_system.h's ICON_SYSTEM_CHECK, the artwork
  * MU_ICON_CHECK renders from the baked atlas (see ui.c's draw_command()).
  *
  * check_expected_rows below is transcribed BY HAND from icons.h's own icon_check_bitmap picture, not
@@ -29,8 +29,8 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/icon.h"
-#include "gfx/icons_system.h"
+#include "gfx/draw/icon.h"
+#include "gfx/draw/icons_system.h"
 
 /* check's own baked run count (icon_system_table[ICON_SYSTEM_CHECK].blocks),
  * big enough buffer for it at any box size, since a run's count is

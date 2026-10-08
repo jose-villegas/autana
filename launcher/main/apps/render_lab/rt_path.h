@@ -15,7 +15,7 @@
 
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #include "render/r3d.h"
 #include "rt_cornell.h"
 

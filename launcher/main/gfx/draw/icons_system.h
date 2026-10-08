@@ -1,10 +1,10 @@
 /*=============================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_icons.py ../design/icons/system.png ../design/icons/system.json > main/gfx/icons_system.h
+ *     python tools/gen/gen_icons.py ../design/icons/system.png ../design/icons/system.json > main/gfx/draw/icons_system.h
  *
- * Baked from ../design/icons/system.png (16x16 cells) - see gfx/icon.h for
- * icon_t's own fields and tools/gen/gen_icons.py for the PNG/SVG decode,
+ * Baked from ../design/icons/system.png (16x16 cells) - see gfx/draw/icon.h
+ * for icon_t's own fields and tools/gen/gen_icons.py for the PNG/SVG decode,
  * validation and packing this table was produced by.
  *
  * Imported icons are pixelarticons (MIT, Gerrit Halfmann) - see
@@ -15,7 +15,7 @@
 
 #include <stdint.h>
 
-#include "gfx/icon.h"
+#include "gfx/draw/icon.h"
 
 typedef enum {
     ICON_SYSTEM_CHECK,

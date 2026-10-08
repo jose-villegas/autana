@@ -1,7 +1,7 @@
 /*
  * sand_colour_state - which gfx pixel-format transition each sand app event
  * requires, as a standalone, ESP-IDF-free module so a host suite can prove
- * the one invariant that matters without gfx.c or a device: indexed mode
+ * the one invariant that matters without gfx or a device: indexed mode
  * never survives a path back to the title screen, because neither menu
  * screen has an indexed draw path; either would touch a framebuffer that
  * does not exist.

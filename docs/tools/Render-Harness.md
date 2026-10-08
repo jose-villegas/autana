@@ -269,7 +269,7 @@ passes, so a new scene is not blocked on one.
 
 **A pin only holds where the pixels are integer-exact**, since CI renders on
 a different compiler and C library than anyone's desk. The self-test report
-and the home screen are pinned: `gfx.c` does no float maths, and the scroll
+and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called. The
 wire and cube scenes project in float (`util/math/`) and are pinned too:

@@ -204,8 +204,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/gfx/gfx_dirty.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/gfx_dirty.h"\n')
+            gate_tree.write(root, "launcher/main/gfx/present/gfx_dirty.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/present/gfx_dirty.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
