@@ -47,7 +47,8 @@ static void
 run_requests(int argc, char** argv) {
     for (int i = 1; i + 1 < argc; i++) {
         if (strcmp(argv[i], "--run") == 0) {
-            const suite_run_t run = suites_run_request(argv[i + 1]);
+            suite_run_t run;
+            suites_run_request(argv[i + 1], &run);
             suites_print_run(&run);
         }
     }

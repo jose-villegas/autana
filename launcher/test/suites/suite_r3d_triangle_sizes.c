@@ -107,10 +107,13 @@ sizes_at(const grid_mesh_t* g, float distance) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0.0f, 0.0f, distance}, {0.0f, 0.001f, -1.0f}, 0.5f, 1.0f}, g->mesh.position_scale,
                   (viewport_t){64, 48, 0});
+    r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());
+    TEST_ASSERT_NOT_NULL(work);
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible);
+    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible, work);
     r3d_sizes_t s = {0};
     r3d_sizes_count(&g->mesh, &lens, visible, count, &s);
+    free(work);
     return s;
 }
 

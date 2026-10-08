@@ -116,6 +116,12 @@ context does, calls `raster_census()`, sets the size, then
 `raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
 or tool that schedules them itself.
 
+Culling and clipping use caller-owned workspace sized by
+`r3d_pipeline_work_bytes()`. The raster's arena, sized by
+`raster_scratch_bytes()`, holds one workspace per row slice. Culling reuses
+the first workspace before drawing starts. Direct pipeline callers supply
+the workspace explicitly; simultaneous draws need distinct blocks.
+
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
 rows of its own target. `r3d_pipeline_transform()` also records the screen rows

@@ -106,7 +106,7 @@ clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
     }
     memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     const r3d_span_target_t target = {b.picture, NULL, 0};
-    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target);
+    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
 }
 
 typedef struct {
@@ -126,7 +126,8 @@ draw_half(half_job_t* j) {
     const r3d_span_target_t target = {gfx_render_target_window(&b.picture, j->row0, j->row1), NULL, 0};
     memset(gfx_render_target_depth(&target.rows, j->row0), 0,
            (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
-    r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target);
+    r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target,
+                      b.work[j->row0 == 0 ? 0 : 1]);
     j->us = timing_now_us() - start;
 }
 
@@ -150,7 +151,9 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
     half_job_t together_top = top;
     half_job_t together_bottom = bottom;
     const int64_t start = timing_now_us();
-    (void)job_run_core1(draw_half_on_core1, &together_top, sizeof together_top);
+    if (!job_try_core1(draw_half_on_core1, &together_top, sizeof together_top)) {
+        draw_half_on_core1(&together_top);
+    }
     draw_half(&together_bottom);
     TEST_ASSERT_TRUE(job_wait(1000));
     const int64_t wall = timing_now_us() - start;
@@ -178,7 +181,7 @@ test_sponza_draw_stage_breakdown(void) {
     bench_open(&b, &atrium, NULL);
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
     const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
-    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1);
+    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1, parts.work[0]);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, &lens, parts.culled + 1, visible, parts.cs, parts.rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(timing_now_us() - start));
@@ -211,8 +214,9 @@ static void
 report_frame_cost(const char* label, const r3d_instance_t* instance, const raster_attachment_t* const* attachments,
                   r3d_placement_t* moving) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    bench_t b;
-    bench_open(&b, instance, attachments);
+    bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(b);
+    bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
@@ -225,8 +229,8 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
             moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
         }
         const int64_t start = timing_now_us();
-        const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
-        raster_upscale(&b.raster, b.panel, GFX_WIDTH, GFX_HEIGHT);
+        const raster_stats_t stats = raster_draw(&b->raster, &camera, 0);
+        raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
@@ -236,7 +240,8 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
     }
     ESP_LOGI(TAG, "%s both cores: mean %lldus (%.1f fps before present), worst %lldus", label,
              (long long)(frame_sum / samples), 1e6 * samples / (double)frame_sum, (long long)worst);
-    bench_close(&b);
+    bench_close(b);
+    memory_free(b);
 }
 
 void

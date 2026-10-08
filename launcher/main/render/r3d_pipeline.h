@@ -22,6 +22,7 @@
 #include "render/raster.h"
 #include "render/viewport.h"
 #include "util/math/vec3f.h"
+#include "util/scalar/mathi.h"
 
 #if defined(ESP_PLATFORM)
 #include "sdkconfig.h"
@@ -60,10 +61,15 @@ void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
  * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */
 void r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale);
 
+/* Caller-owned workspace, reusable between culling and drawing. Concurrent
+ * draws each need their own block, aligned as malloc provides. */
+typedef struct r3d_pipeline_work r3d_pipeline_work_t;
+size_t r3d_pipeline_work_bytes(void);
+
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
  * mesh->cluster_count entries. */
-int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out);
+int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work);
 
 /* The screen rows a cluster's vertices span, for a caller drawing only some
  * rows to skip it whole. A cluster with a vertex behind the near plane or
@@ -81,7 +87,7 @@ void r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, 
 /* `rows` as r3d_pipeline_transform() filled it, or NULL to test every triangle. */
 void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
-                       const r3d_span_target_t* target);
+                       const r3d_span_target_t* target, r3d_pipeline_work_t* work);
 
 /* The length of the shortest prefix of `clusters` holding at least half of
  * their vertices; 0 when there are none. */
@@ -99,15 +105,21 @@ int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters
 #define R3D_PIPELINE_CACHE_WAY 8192 /* the board's 64 KB in 8 ways */
 #endif
 
+/* Pointer-bearing state needs host alignment without widening the board's
+ * four-byte carve. */
+#define R3D_PIPELINE_WORK_ALIGNMENT _Alignof(r3d_span_target_t)
+
 /* A raster's scratch block as its parts: the one layout
  * raster_scratch_bytes() sizes. The census list comes first, so it stays put
  * when the render size changes, and takes whole cache ways, so the parts
  * after it fall in the cache sets they would without it. */
 typedef struct {
-    r3d_pipeline_vertex_t* cs;   /* mesh->vertex_count entries */
-    r3d_pipeline_rows_t* rows;   /* mesh->cluster_count entries */
-    gfx_render_target_t picture; /* raster_picture(), every row */
-    uint16_t* culled;            /* raster_culled_length() entries */
+    r3d_pipeline_vertex_t* cs;    /* mesh->vertex_count entries */
+    r3d_pipeline_rows_t* rows;    /* mesh->cluster_count entries */
+    gfx_render_target_t picture;  /* raster_picture(), every row */
+    r3d_pipeline_work_t* work[2]; /* one block per row slice */
+    uint16_t* culled;             /* raster_culled_length() entries */
+    void* draw;                   /* raster-owned instance and slice state */
 } r3d_pipeline_buffers_t;
 
 /* The census list's share of the scratch block: raster_culled_length()
@@ -115,7 +127,7 @@ typedef struct {
 static inline size_t
 r3d_pipeline_culled_bytes(const raster_t* raster) {
     const size_t way = R3D_PIPELINE_CACHE_WAY;
-    return ((sizeof(uint16_t) * raster_culled_length(raster)) + way - 1) / way * way;
+    return mathi_size_ceil(sizeof(uint16_t) * raster_culled_length(raster), way);
 }
 
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
@@ -133,6 +145,11 @@ r3d_pipeline_carve(const raster_t* raster) {
     b.rows = (r3d_pipeline_rows_t*)p;
     p += sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster);
     b.picture = raster_picture(raster);
-    gfx_render_target_carve(&b.picture, p);
+    p = gfx_render_target_carve(&b.picture, p);
+    p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
+    p = (char*)raster->scratch + mathi_size_ceil((size_t)(p - (char*)raster->scratch), R3D_PIPELINE_WORK_ALIGNMENT);
+    b.work[0] = (r3d_pipeline_work_t*)p;
+    b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
+    b.draw = p + 2 * r3d_pipeline_work_bytes();
     return b;
 }

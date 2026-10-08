@@ -26,8 +26,19 @@
 
 static gfx_color_t* color;
 static uint16_t* depth;
+static r3d_pipeline_work_t* work;
 
 static void release_fixture(void);
+
+static r3d_pipeline_work_t*
+pipeline_work(void) {
+    if (work == NULL) {
+        work = malloc(r3d_pipeline_work_bytes());
+    }
+    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(work);
+    return work;
+}
 
 static r3d_span_target_t
 fixture(void) {
@@ -1051,8 +1062,8 @@ draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
     (void)fixture();
     const r3d_span_target_t top = fixture_rows(0, split);
     const r3d_span_target_t bottom = fixture_rows(split, H);
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top);
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom);
+    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top, pipeline_work());
+    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom, pipeline_work());
 }
 
 /* Whether the reference says the same of a centre nudged a subpixel either
@@ -1140,7 +1151,7 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
         r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
         (void)fixture();
         const r3d_span_target_t window = fixture_rows(row0, row1);
-        r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window);
+        r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window, pipeline_work());
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
         TEST_ASSERT_NOT_EQUAL(0, depth[(spots[i][1] * W) + spots[i][0]]);
     }
@@ -1199,6 +1210,16 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
     return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
+static int
+draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
+    uint16_t visible[1];
+    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work());
+    r3d_pipeline_vertex_t cs[4];
+    r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
+    r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
+    return count;
+}
+
 /* The quad faces +z; this camera stands on +z looking back at it. */
 static int
 draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors) {
@@ -1206,12 +1227,8 @@ draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t
     const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, face_colors, &cluster);
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
-    uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
-    r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    (void)draw_quad_mesh(&mesh, &lens, &t);
     return covered();
 }
 
@@ -1241,13 +1258,9 @@ test_a_lens_fitted_to_half_the_width_keeps_the_view(void) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     r3d_lens_fit(&lens, W / 2, H);
-    uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
-    r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     (void)fixture();
     const r3d_span_target_t t = r3d_span_target(color, depth, W / 2, 0, H);
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    (void)draw_quad_mesh(&mesh, &lens, &t);
     TEST_ASSERT_EQUAL_INT(12 * 24, covered());
     for (int y = 12; y < 36; y++) {
         for (int x = 10; x < 22; x++) {
@@ -1269,7 +1282,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1284,13 +1297,8 @@ draw_floor(const uint16_t* face_colors) {
 
     r3d_lens_t lens;
     r3d_lens_init(&lens, &(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, (viewport_t){W, H, 0});
-    uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&mesh, &lens, visible);
-    TEST_ASSERT_EQUAL_INT(1, count);
-    r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(&mesh, &lens, visible, count, cs, NULL);
     const r3d_span_target_t t = fixture();
-    r3d_pipeline_draw(&mesh, &lens, visible, count, cs, NULL, &t);
+    TEST_ASSERT_EQUAL_INT(1, draw_quad_mesh(&mesh, &lens, &t));
 }
 
 /* The near clip keeps the part in front and nothing lands above the horizon row. */
@@ -1492,9 +1500,9 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible);
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work());
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
-    r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t);
+    r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
     free(cs);
     free(visible);
@@ -1663,6 +1671,26 @@ typedef struct {
 } span_of_bytes_t;
 
 static void
+test_the_frame_workspace_is_aligned(void) {
+    const r3d_lit_mesh_t mesh = {.vertex_count = 1, .cluster_count = 1};
+    for (int width = 1; width <= 2; width++) {
+        for (int height = 1; height <= 2; height++) {
+            for (int destination = 0; destination <= 3; destination++) {
+                raster_t raster = {ONE_MESH(&mesh), .width = width, .height = height, .destination_width = destination,
+                                   .destination_height = destination};
+                raster.scratch = malloc(raster_scratch_bytes(&raster));
+                TEST_ASSERT_NOT_NULL(raster.scratch);
+                const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
+                TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[0] % _Alignof(r3d_span_target_t));
+                TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[1] % _Alignof(r3d_span_target_t));
+                TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.draw % _Alignof(r3d_span_target_t));
+                free(raster.scratch);
+            }
+        }
+    }
+}
+
+static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
@@ -1678,21 +1706,27 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
         {(const char*)b.culled, r3d_pipeline_culled_bytes(&raster)},
+        {(const char*)b.work[0], r3d_pipeline_work_bytes()},
+        {(const char*)b.work[1], r3d_pipeline_work_bytes()},
+        {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
         {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
         {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
-    for (int i = 0; i < 5; i++) {
+    for (size_t i = 0; i < sizeof parts / sizeof parts[0]; i++) {
         TEST_ASSERT_TRUE_MESSAGE(parts[i].at >= scratch && parts[i].at + parts[i].size <= scratch + bytes,
                                  "a working array reaches outside the scratch");
-        for (int j = 0; j < i; j++) {
+        for (size_t j = 0; j < i; j++) {
             TEST_ASSERT_TRUE_MESSAGE(parts[i].at + parts[i].size <= parts[j].at
                                          || parts[j].at + parts[j].size <= parts[i].at,
                                      "two working arrays overlap");
         }
         total += parts[i].size;
     }
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)total);
+    const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    const size_t padding = (size_t)((const char*)b.work[0] - maps);
+    TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
     /* The census list holds every instance's slot and takes whole cache ways,
@@ -2246,6 +2280,8 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
+    free(work);
+    work = NULL;
     free(shared_parts);
     shared_parts = NULL;
     free(other_parts);
@@ -2351,6 +2387,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_drawing_a_window_with_cluster_rows_matches_a_full_draw);
     RUN_TEST(test_a_triangle_over_any_side_of_the_screen_is_drawn);
 
+    RUN_TEST(test_the_frame_workspace_is_aligned);
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);

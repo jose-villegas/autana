@@ -12,7 +12,18 @@
  */
 #pragma once
 
+#include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
+
+/* Rounds a byte count up to a power-of-two alignment. The padded count
+ * must fit size_t. */
+static inline size_t
+mathi_size_ceil(size_t bytes, size_t alignment) {
+    assert(alignment != 0 && (alignment & (alignment - 1)) == 0);
+    assert(bytes <= SIZE_MAX - (alignment - 1));
+    return (bytes + alignment - 1) & ~(alignment - 1);
+}
 
 static inline int32_t
 mathi_zero(void) {

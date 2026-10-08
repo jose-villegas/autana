@@ -90,7 +90,7 @@ one_core_draw_us(const raster_t* raster, const r3d_pipeline_buffers_t* b, const 
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
     const r3d_span_target_t target = {b->picture, NULL, 0};
-    r3d_pipeline_draw(raster->instances[0].mesh, lens, b->culled + 1, visible, b->cs, b->rows, &target);
+    r3d_pipeline_draw(raster->instances[0].mesh, lens, b->culled + 1, visible, b->cs, b->rows, &target, b->work[0]);
     const int64_t us = timing_now_us() - start;
     r3d_span_stop_after = 0;
     return us;
@@ -109,7 +109,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_lens_init(&lens, &camera, mesh.position_scale, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
     r3d_lens_fit(&lens, raster->width, raster->height);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    const int visible = r3d_pipeline_cull(&mesh, &lens, b.culled + 1);
+    const int visible = r3d_pipeline_cull(&mesh, &lens, b.culled + 1, b.work[0]);
     r3d_pipeline_transform(&mesh, &lens, b.culled + 1, visible, b.cs, b.rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
