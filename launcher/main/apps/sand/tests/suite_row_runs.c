@@ -113,16 +113,30 @@ test_span_fallback_reports_empty_range_for_an_empty_row(void) {
 /* row_runs_find_or_span */
 
 static void
-test_find_or_span_lists_the_runs_within_the_cap(void) {
-    uint8_t row[10] = {1, 1, 0, 0, 0, 0, 1, 1, 1, 0};
+test_find_or_span_lists_the_runs_at_the_cap(void) {
+    uint8_t row[(2 * ROW_MAX_RUNS) + 1] = {0};
+    for (int i = 0; i < ROW_MAX_RUNS; i++) {
+        row[(2 * i) + 1] = FULL;
+    }
     uint16_t x0[ROW_MAX_RUNS] = {0};
     uint16_t x1[ROW_MAX_RUNS] = {0};
 
-    TEST_ASSERT_EQUAL_INT(2, row_runs_find_or_span(row, 10, EMPTY, x0, x1));
-    TEST_ASSERT_EQUAL_UINT16(0, x0[0]);
-    TEST_ASSERT_EQUAL_UINT16(2, x1[0]);
-    TEST_ASSERT_EQUAL_UINT16(6, x0[1]);
-    TEST_ASSERT_EQUAL_UINT16(9, x1[1]);
+    TEST_ASSERT_EQUAL_INT(ROW_MAX_RUNS, row_runs_find_or_span(row, (int)sizeof row, EMPTY, x0, x1));
+    for (int i = 0; i < ROW_MAX_RUNS; i++) {
+        TEST_ASSERT_EQUAL_UINT16((2 * i) + 1, x0[i]);
+        TEST_ASSERT_EQUAL_UINT16((2 * i) + 2, x1[i]);
+    }
+}
+
+/* An empty row reports no runs, not an inverted fallback span: the app
+ * clears a vanished blob only when its row reports none. */
+static void
+test_find_or_span_reports_nothing_for_an_empty_row(void) {
+    uint8_t row[6] = {0};
+    uint16_t x0[ROW_MAX_RUNS] = {0};
+    uint16_t x1[ROW_MAX_RUNS] = {0};
+
+    TEST_ASSERT_EQUAL_INT(0, row_runs_find_or_span(row, 6, EMPTY, x0, x1));
 }
 
 static void
@@ -285,7 +299,8 @@ run_row_runs_suite(void) {
 
     RUN_TEST(test_span_fallback_covers_everything_non_empty);
     RUN_TEST(test_span_fallback_reports_empty_range_for_an_empty_row);
-    RUN_TEST(test_find_or_span_lists_the_runs_within_the_cap);
+    RUN_TEST(test_find_or_span_lists_the_runs_at_the_cap);
+    RUN_TEST(test_find_or_span_reports_nothing_for_an_empty_row);
     RUN_TEST(test_find_or_span_falls_back_to_one_span_past_the_cap);
 
     RUN_TEST(test_reconcile_unions_a_current_run_with_the_overlapping_previous_one);

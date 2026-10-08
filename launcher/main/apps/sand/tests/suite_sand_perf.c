@@ -271,7 +271,6 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */
 typedef struct {
-    int64_t pass[6]; /* the last step's */
     int64_t totals[6];
     int64_t peak[6];
     int64_t peak_total;
@@ -288,7 +287,6 @@ pass_split_add(pass_split_t* split, const sand_t* real) {
                              real->pass_us.gas_us,   real->pass_us.reactions_us, real->pass_us.impulses_us};
     int64_t total = 0;
     for (int j = 0; j < 6; j++) {
-        split->pass[j] = pass[j];
         split->totals[j] += pass[j];
         total += pass[j];
     }
@@ -460,7 +458,8 @@ real_board_open_built(real_board_t* b, void (*build)(sand_t*, uint8_t*, uint8_t*
 }
 
 /* At the app's rates with a queue of impulse_max impulses, allocated ahead of
- * the sand_t. Not armed: a row that wants the bookkeeping opens it. */
+ * the sand_t. Unlike its siblings it does not arm the board: a row that wants
+ * the bookkeeping opens it. */
 static sand_t*
 real_board_open_impulses(real_board_t* b, int impulse_max, uint32_t seed) {
     sand_test_grid_buffers_open(&b->big, &b->blocks, REAL_W, REAL_H);
@@ -1823,7 +1822,8 @@ measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, in
     *out_value = value;
 }
 
-/* build_full_size_step_scene() with no block map, as it is timed alone. */
+/* build_full_size_step_scene() with no block map, as the full-size step row
+ * times it. */
 static void
 build_full_size_step_scene_awake(sand_t* real, uint8_t* big, uint8_t* blocks) {
     (void)blocks;
@@ -1874,11 +1874,6 @@ run_xtperf_over_scene(const xtperf_scene_t* scene, uint64_t* total_cycles, uint6
     }
 }
 
-/* An instrument, not a gate: asserts only that the counters moved at all -
- * the logged ratios are the point. Rebuilds each scene per event so every
- * window starts from the same deterministic state rather than drifting
- * across fifteen back-to-back runs. Counters are per-CPU, so the core is
- * checked rather than assumed. */
 static void
 log_mixed_scene_hashes(void) {
     uint8_t* big;
@@ -1899,6 +1894,10 @@ log_mixed_scene_hashes(void) {
     free(blocks);
 }
 
+/* An instrument, not a gate: asserts only that the counters moved at all -
+ * the logged ratios are the point. Rebuilds each scene per event so every
+ * window starts from the same deterministic state. Counters are per-CPU, so
+ * the core is checked rather than assumed. */
 static void
 test_the_xtensa_counters_over_three_scenes(void) {
 #if CONFIG_LAUNCHER_QEMU
@@ -2167,11 +2166,9 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
 
     log_step_time("screen of smoke and steam", per_step);
 
-    /* Read before the frees below, asserted after - the same fix
-     * test_a_gravity_flip_on_every_material_at_once_stays_sane documents:
-     * Unity longjmps out of a failing assert, so an assert ahead of
-     * free() would skip it and leak ~41 KB on this device's no-PSRAM
-     * heap. */
+    /* Read before the frees below, asserted after: Unity longjmps out of a
+     * failing assert, so an assert ahead of free() would skip it and leak
+     * ~41 KB on this device's no-PSRAM heap. */
     const int count = sand_count(real);
 
     real_board_close(&b);
@@ -2280,13 +2277,13 @@ test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
             peak_blasts = real->explosions_this_step;
         }
         if (step <= 50) {
-            const int64_t* const pass = split.pass;
             ESP_LOGI("device_tests",
                      "gas ignition vessel step=%d blasts=%u live=%d dropped=%u sweep=%lld liq=%lld "
                      "flt=%lld gas=%lld react=%lld imp=%lld us",
                      step, real->explosions_this_step, real->impulse_count, real->impulse_cap_hits - cap_before,
-                     (long long)pass[0], (long long)pass[1], (long long)pass[2], (long long)pass[3], (long long)pass[4],
-                     (long long)pass[5]);
+                     (long long)real->pass_us.sweep_us, (long long)real->pass_us.liquid_us,
+                     (long long)real->pass_us.float_us, (long long)real->pass_us.gas_us,
+                     (long long)real->pass_us.reactions_us, (long long)real->pass_us.impulses_us);
         } else {
             blasts_after_50 += real->explosions_this_step;
             cap_hits_after_50 += real->impulse_cap_hits - cap_before;
@@ -2600,8 +2597,9 @@ panel_clock_scope_end(panel_clock_scope_t scope) {
  * order), behind draw_dirty_rows()'s same dirty gate; paints no pixels, since
  * gfx_present()'s cost depends only on marked regions, never colour. */
 
-/* Row cy's current runs, reconciled against the ones it last sent into
- * send_x0/send_x1, which then become the last sent. Returns the send count. */
+/* Reconciles row cy's current runs against the ones recorded last frame,
+ * writes the send ranges to send_x0/send_x1 and records the current runs in
+ * their place. Returns the send count. */
 static int
 mirror_row_reconcile(const uint8_t* row, int w, int cy, uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n,
                      uint16_t* send_x0, uint16_t* send_x1) {
@@ -2708,48 +2706,66 @@ log_frame_time(const char* frame, int64_t sim_us, int64_t mark_us, int64_t prese
 
 #endif /* DEVICE_BUILD */
 
-/* What app_sand.c keeps per row to mark a frame: the dirty flags the sim
- * writes, with `span` the dirty column span too, and the runs last sent. */
+/* A present-cost scene's grid and sim, with what app_sand.c keeps per row to
+ * mark a frame: the dirty flags the sim writes, the dirty column span
+ * (dirty_x0/dirty_x1, NULL unless opened for the span mirror) and the runs
+ * last sent. */
 typedef struct {
+    uint8_t* big;
+    uint8_t* blocks;
     uint8_t* dirty;
     uint16_t* dirty_x0;
     uint16_t* dirty_x1;
     uint16_t* x0;
     uint16_t* x1;
     uint8_t* n;
-} present_rows_t;
+    sand_t* sim;
+} present_board_t;
 
-/* Allocates REAL_H rows of each, every row seeded as last sending the full
- * width. */
+/* Allocates the grid (and with `blocks` its block map), REAL_H rows of each
+ * per-row buffer, then the sim, in that order; every row is seeded as last
+ * sending the full width. The caller builds the scene into sim. */
 static void
-present_rows_open(present_rows_t* r, bool span) {
-    r->dirty = malloc(REAL_H);
-    r->dirty_x0 = span ? malloc(REAL_H * sizeof(uint16_t)) : NULL;
-    r->dirty_x1 = span ? malloc(REAL_H * sizeof(uint16_t)) : NULL;
-    r->x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
-    r->x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
-    r->n = malloc(REAL_H);
-    TEST_ASSERT_NOT_NULL(r->dirty);
-    TEST_ASSERT_TRUE(!span || ((r->dirty_x0 != NULL) && (r->dirty_x1 != NULL)));
-    TEST_ASSERT_NOT_NULL(r->x0);
-    TEST_ASSERT_NOT_NULL(r->x1);
-    TEST_ASSERT_NOT_NULL(r->n);
+present_board_open(present_board_t* b, bool blocks, bool span) {
+    b->blocks = NULL;
+    if (blocks) {
+        sand_test_grid_buffers_open(&b->big, &b->blocks, REAL_W, REAL_H);
+    } else {
+        b->big = malloc((size_t)REAL_W * REAL_H);
+        TEST_ASSERT_NOT_NULL(b->big);
+    }
+    b->dirty = malloc(REAL_H);
+    b->dirty_x0 = span ? malloc(REAL_H * sizeof(uint16_t)) : NULL;
+    b->dirty_x1 = span ? malloc(REAL_H * sizeof(uint16_t)) : NULL;
+    b->x0 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
+    b->x1 = malloc(REAL_H * ROW_MAX_RUNS * sizeof(uint16_t));
+    b->n = malloc(REAL_H);
+    TEST_ASSERT_NOT_NULL(b->dirty);
+    TEST_ASSERT_TRUE(!span || ((b->dirty_x0 != NULL) && (b->dirty_x1 != NULL)));
+    TEST_ASSERT_NOT_NULL(b->x0);
+    TEST_ASSERT_NOT_NULL(b->x1);
+    TEST_ASSERT_NOT_NULL(b->n);
 
     for (int i = 0; i < REAL_H; i++) {
-        r->x0[i * ROW_MAX_RUNS] = 0;
-        r->x1[i * ROW_MAX_RUNS] = (uint16_t)REAL_W;
-        r->n[i] = 1;
+        b->x0[i * ROW_MAX_RUNS] = 0;
+        b->x1[i * ROW_MAX_RUNS] = (uint16_t)REAL_W;
+        b->n[i] = 1;
     }
+    b->sim = malloc(sizeof *b->sim);
+    TEST_ASSERT_NOT_NULL(b->sim);
 }
 
 static void
-present_rows_close(present_rows_t* r) {
-    free(r->dirty);
-    free(r->dirty_x0);
-    free(r->dirty_x1);
-    free(r->x0);
-    free(r->x1);
-    free(r->n);
+present_board_close(present_board_t* b) {
+    free(b->big);
+    free(b->blocks);
+    free(b->dirty);
+    free(b->dirty_x0);
+    free(b->dirty_x1);
+    free(b->x0);
+    free(b->x1);
+    free(b->n);
+    free(b->sim);
 }
 
 /* DENSE, CONTIGUOUS shape. Checkerboard exceeds ROW_MAX_RUNS (2).
@@ -2769,18 +2785,13 @@ build_falling_sand_present_scene(sand_t* real, uint8_t* big, uint8_t* dirty_rows
  * mark and present means. */
 static void
 present_falling_sand_scene(int bands[3], int64_t phase_us[3]) {
-    uint8_t* big = malloc((size_t)REAL_W * REAL_H);
-    TEST_ASSERT_NOT_NULL(big);
-    present_rows_t rows;
-    present_rows_open(&rows, false);
-
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
-    build_falling_sand_present_scene(real, big, rows.dirty);
-    TEST_ASSERT_EQUAL_UINT8(1, rows.dirty[(REAL_H / 2) - 1]);
+    present_board_t b;
+    present_board_open(&b, false, false);
+    build_falling_sand_present_scene(b.sim, b.big, b.dirty);
+    TEST_ASSERT_EQUAL_UINT8(1, b.dirty[(REAL_H / 2) - 1]);
 
 #ifdef DEVICE_BUILD
-    (void)run_present_against_scene(real, big, REAL_W, REAL_H, rows.dirty, rows.x0, rows.x1, rows.n, 0, 1, 0, 5,
+    (void)run_present_against_scene(b.sim, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, 0, 1, 0, 5,
                                     FALLING_SAND_PRESENT_FRAMES, &bands[0], &bands[1], &bands[2], &phase_us[0],
                                     &phase_us[1], &phase_us[2]);
 #else
@@ -2788,9 +2799,7 @@ present_falling_sand_scene(int bands[3], int64_t phase_us[3]) {
     (void)phase_us;
 #endif
 
-    free(big);
-    present_rows_close(&rows);
-    free(real);
+    present_board_close(&b);
 }
 
 static void
@@ -2850,25 +2859,20 @@ test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
 static int64_t
 present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps, int measured_steps, const char* frame,
                       const char* scene) {
-    uint8_t* big;
-    uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-    present_rows_t rows;
-    present_rows_open(&rows, false);
-
-    sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, big, REAL_W, REAL_H, seed);
-    sand_enable_sleeping(real, blocks);
+    present_board_t b;
+    present_board_open(&b, true, false);
+    sand_t* const real = b.sim;
+    sand_init(real, b.big, REAL_W, REAL_H, seed);
+    sand_enable_sleeping(real, b.blocks);
     use_app_rates(real);
-    sand_track_dirty_rows(real, rows.dirty);
+    sand_track_dirty_rows(real, b.dirty);
 
     build(real);
 
     int full_bands = 0, gathered = 0, partial_bands = 0;
     int64_t sim_us = 0, mark_us = 0, present_us = 0;
-    const int64_t mean_us = run_present_against_scene(real, big, REAL_W, REAL_H, rows.dirty, rows.x0, rows.x1, rows.n,
-                                                      0, 1000, 0, settle_steps, measured_steps, &full_bands, &gathered,
+    const int64_t mean_us = run_present_against_scene(real, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, 0, 1000, 0,
+                                                      settle_steps, measured_steps, &full_bands, &gathered,
                                                       &partial_bands, &sim_us, &mark_us, &present_us);
 
     log_frame_time(frame, sim_us, mark_us, present_us);
@@ -2877,10 +2881,7 @@ present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps,
              "partial-band strip-sends)",
              scene, REAL_W, REAL_H, (long long)mean_us, measured_steps, full_bands, gathered, partial_bands);
 
-    free(big);
-    free(blocks);
-    present_rows_close(&rows);
-    free(real);
+    present_board_close(&b);
     return mean_us;
 }
 
@@ -3038,35 +3039,26 @@ build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks
 
 #define PRESENT_COST_MEASURED_STEPS 20
 
-/* A freshly built copy of `build` under the old row-only mirror, or with
+/* A freshly built copy of `build` under the row-only mirror, or with
  * `span` the column-span one: `bands` gets the strip-sends, *pixels_sent the
  * span mirror's pixels per frame. */
 static int64_t
 measure_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy, bool span, int bands[3],
                      int64_t* pixels_sent) {
-    uint8_t* big;
-    uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-    present_rows_t rows;
-    present_rows_open(&rows, span);
-
-    sand_t* const sim = malloc(sizeof *sim);
-    TEST_ASSERT_NOT_NULL(sim);
-    build(sim, big, blocks);
-    sand_track_dirty_rows(sim, rows.dirty);
+    present_board_t b;
+    present_board_open(&b, true, span);
+    build(b.sim, b.big, b.blocks);
+    sand_track_dirty_rows(b.sim, b.dirty);
 
     const int64_t us =
         span
-            ? run_present_against_scene_span(sim, big, REAL_W, REAL_H, rows.dirty, rows.dirty_x0, rows.dirty_x1,
-                                             rows.x0, rows.x1, rows.n, gx, gy, 0, 20, PRESENT_COST_MEASURED_STEPS,
-                                             &bands[0], &bands[1], &bands[2], pixels_sent)
-            : run_present_against_scene(sim, big, REAL_W, REAL_H, rows.dirty, rows.x0, rows.x1, rows.n, gx, gy, 0, 20,
+            ? run_present_against_scene_span(b.sim, b.big, REAL_W, REAL_H, b.dirty, b.dirty_x0, b.dirty_x1, b.x0, b.x1,
+                                             b.n, gx, gy, 0, 20, PRESENT_COST_MEASURED_STEPS, &bands[0], &bands[1],
+                                             &bands[2], pixels_sent)
+            : run_present_against_scene(b.sim, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, gx, gy, 0, 20,
                                         PRESENT_COST_MEASURED_STEPS, &bands[0], &bands[1], &bands[2], NULL, NULL, NULL);
 
-    free(sim);
-    free(big);
-    free(blocks);
-    present_rows_close(&rows);
+    present_board_close(&b);
     return us;
 }
 
