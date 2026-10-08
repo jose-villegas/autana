@@ -2,8 +2,10 @@
 """Require declared simulation facts to be read through SAND_SKIP_IF or SAND_FACT_RULE.
 
 Markers on declarations define the vocabulary. Predicate and writer bodies
-may inspect facts; assignment targets may maintain them. Comments, literals,
-preprocessor definitions and declarations are not executable reads.
+may inspect facts, and so may the right-hand side of an assignment or
+initializer whose target is itself a fact: deriving one fact from others is
+writing it, and the derived fact's own reads are checked in turn. Comments,
+literals, preprocessor definitions and declarations are not executable reads.
 """
 import argparse
 import pathlib
@@ -35,8 +37,7 @@ def declarations(code):
             name = re.search(r"\b([A-Za-z_]\w*)\s*(?:\[[^;]*\])?\s*(?:=|$)", head)
             if name:
                 facts.add(name[1])
-                equal = code.find("=", mark.end(), end)
-                spans.append((mark.start(), equal if equal >= 0 else end + 1))
+                spans.append((mark.start(), end + 1))
     return facts, spans
 
 
@@ -108,6 +109,10 @@ def problems(root=ROOT):
         spans = list(exemptions[path])
         for site in re.finditer(r"\b(?:SAND_SKIP_IF|SAND_FACT_RULE)\s*\(", code):
             spans.append((site.start(), balanced_end(code, site.end() - 1, "(", ")")))
+        for token in IDENTIFIER.finditer(code):
+            if token[0] in facts and is_write(code, token.start(), token.end()):
+                end = code.find(";", token.end())
+                spans.append((token.end(), end if end >= 0 else len(code)))
         for token in IDENTIFIER.finditer(code):
             if token[0] not in facts or any(a <= token.start() < b for a, b in spans):
                 continue

@@ -38,11 +38,19 @@ class SkipFactsTest(unittest.TestCase):
         self.assertEqual(self.problems("s->may_have_x = true; s->may_have_x |= 1; "
                                        "s->may_have_x &= ~1; ++s->may_have_x;"), [])
 
-    def test_self_assignment_rhs_is_read(self):
-        self.assertTrue(self.problems("s->may_have_x = s->may_have_x;"))
+    def test_deriving_a_fact_is_a_write(self):
+        self.assertEqual(self.problems("SAND_FACT bool cached = !s->may_have_x; "
+                                       "if (SAND_SKIP_IF(cached)) return;"), [])
+        self.assertEqual(self.problems("s->may_have_y = s->may_have_x;",
+                                       "SAND_FACT bool may_have_x; SAND_FACT bool may_have_y;"), [])
 
-    def test_marked_initializer_does_not_hide_a_read(self):
-        self.assertTrue(self.problems("SAND_FACT bool cached = s->may_have_x;"))
+    def test_a_derived_fact_is_still_checked(self):
+        self.assertTrue(any("cached read outside SAND_SKIP_IF" in p
+                            for p in self.problems("SAND_FACT bool cached = !s->may_have_x; "
+                                                   "if (cached) return;")))
+
+    def test_assignment_to_a_plain_local_is_a_read(self):
+        self.assertTrue(self.problems("bool plain = s->may_have_x; if (plain) return;"))
 
     def test_block_in_a_comment_is_not_a_declaration(self):
         self.assertEqual(self.problems("", extra="/*\n#define BLOCK_NEAR 0x10u\n*/"), [])

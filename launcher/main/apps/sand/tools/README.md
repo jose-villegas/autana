@@ -7,26 +7,33 @@ names what it measures in its own header. The render harness the
 
 ## Grid fingerprint
 
-`report_fingerprint.sh --check` compares both the normal simulation and a
-host-only `SAND_FORCE_WORK` build against `fingerprint_baseline.txt`.
-`SAND_SKIP_IF` evaluates the skip condition in both builds; forced work
-always takes the work path. A forced mismatch identifies scenes where a
-skip changes the output. The source-derived coverage report counts how
-often each site would skip across the reference scenes. Zero counts warn
-that a skip is untested and do not fail the check.
+`report_fingerprint.sh` hashes fixed scenes in two builds. The normal build
+is the program as it ships. The host-only `SAND_FORCE_WORK` build never
+takes a `SAND_SKIP_IF` skip: every skip does its work, and where the fact
+said skip, any non-cell state that work touched (the sequential RNG, the
+pass-direction flips, the reaction stage bookkeeping) is put back.
 
-With no argument the tool prints both fingerprints. `--update` records
-only the normal build and requires an accepted behaviour change.
-`scripts/gates/check_skip_facts.py` requires declared facts to be read
-through `SAND_SKIP_IF` or `SAND_FACT_RULE`, except in fact predicates and
-writers. Scheduling and fact-maintenance functions retain their normal
-decisions.
+| Check | Fails when |
+|---|---|
+| normal build vs `fingerprint_baseline.txt` | behaviour changed |
+| forced build vs normal build | a skip dropped work that changes cells |
 
-When a fact says skip, forced work preserves cell writes and restores the
-sequential RNG, pass-direction flips, and reaction stage bookkeeping.
-`SAND_FACT_RULE` preserves facts that constrain behaviour in both builds,
-such as the rest predicate governing crust formation. A forced mismatch
-therefore identifies cell-changing work omitted by a skip.
+`--check` runs both. `--update` records the normal build and refuses while
+the forced build differs from it, so a baseline is never recorded with a
+skip that drops work. A fact that is only too strict, skipping less than it
+could, changes no output; neither check sees it, and neither needs to.
+
+After the forced run the tool lists every `SAND_SKIP_IF` site with how often
+it would have skipped across the scenes. A site at 0 was never exercised:
+a warning, not a failure, since the comparison says nothing about it.
+
+`scripts/gates/check_skip_facts.py` keeps the list complete. Facts are
+marked `SAND_FACT` where declared; a read of one must sit inside
+`SAND_SKIP_IF` or, where the fact is a behaviour rule rather than a skip
+(crust forms only on resting cells), inside `SAND_FACT_RULE`. Functions
+that compute facts are marked `SAND_FACT_WRITER` and may read them freely;
+a local a fact is derived into is marked `SAND_FACT` too, so its own reads
+are checked.
 
 ## Host renders
 

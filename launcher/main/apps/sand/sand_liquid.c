@@ -798,7 +798,7 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * liquids to sort; with one, or none, every cell of this pass would reject
      * and the answer is the same for all of them. A screen of water - what a
      * liquid scene usually is - therefore pays a popcount, not a pass. */
-    SAND_FACT const uint16_t liquids_here = SAND_FACT_RULE(s->may_have_materials) & liquid_mask();
+    SAND_FACT const uint16_t liquids_here = s->may_have_materials & liquid_mask();
     if (!SAND_SKIP_IF((liquids_here & (uint16_t)(liquids_here - 1u)) == 0u)
         && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
         SAND_PASS_BEGIN(float);

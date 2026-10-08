@@ -1480,7 +1480,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
     int row_at = y0 * w;
 
     int scanned_by = -1;
-    bool block_row_settled = false;
+    SAND_FACT bool block_row_settled = false;
 
     for (int y = y0; y != y1; y += y_step, row_at += row_step) {
         const int by = y / SAND_BLOCK_H;
@@ -1488,7 +1488,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
         if (settled_bit != 0) {
             if (by != scanned_by) {
                 scanned_by = by;
-                block_row_settled = SAND_FACT_RULE(blocks_settled_over(s, x0, x1, y, y + 1, settled_bit));
+                block_row_settled = blocks_settled_over(s, x0, x1, y, y + 1, settled_bit);
             }
             if (SAND_SKIP_IF(SAND_FORCED_IF(block_row_settled))) {
                 continue;
