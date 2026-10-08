@@ -1671,6 +1671,26 @@ typedef struct {
 } span_of_bytes_t;
 
 static void
+test_the_frame_workspace_is_aligned(void) {
+    const r3d_lit_mesh_t mesh = {.vertex_count = 1, .cluster_count = 1};
+    for (int width = 1; width <= 2; width++) {
+        for (int height = 1; height <= 2; height++) {
+            for (int destination = 0; destination <= 3; destination++) {
+                raster_t raster = {ONE_MESH(&mesh), .width = width, .height = height, .destination_width = destination,
+                                   .destination_height = destination};
+                raster.scratch = malloc(raster_scratch_bytes(&raster));
+                TEST_ASSERT_NOT_NULL(raster.scratch);
+                const r3d_pipeline_buffers_t b = r3d_pipeline_carve(&raster);
+                TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[0] % _Alignof(r3d_span_target_t));
+                TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.work[1] % _Alignof(r3d_span_target_t));
+                TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)b.draw % _Alignof(r3d_span_target_t));
+                free(raster.scratch);
+            }
+        }
+    }
+}
+
+static void
 test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
@@ -1703,7 +1723,10 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         }
         total += parts[i].size;
     }
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)total);
+    const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    const size_t padding = (size_t)((const char*)b.work[0] - maps);
+    TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
     /* The census list holds every instance's slot and takes whole cache ways,
@@ -2364,6 +2387,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_drawing_a_window_with_cluster_rows_matches_a_full_draw);
     RUN_TEST(test_a_triangle_over_any_side_of_the_screen_is_drawn);
 
+    RUN_TEST(test_the_frame_workspace_is_aligned);
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);

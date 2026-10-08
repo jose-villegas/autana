@@ -37,6 +37,7 @@ typedef struct {
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
+_Static_assert(_Alignof(draw_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "draw work alignment");
 
 static void
 transform_slice(void* ctx) {
@@ -187,11 +188,12 @@ size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
     const gfx_render_target_t picture = raster_picture(raster);
-    return (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
-           + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
-           + gfx_render_target_bytes(&picture)
-           + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1)
-           + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t);
+    const size_t prefix =
+        (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
+        + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
+        + gfx_render_target_bytes(&picture)
+        + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
+    return mathi_size_ceil(prefix, R3D_PIPELINE_WORK_ALIGNMENT) + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t);
 }
 
 /* The shape the camera frames: the destination's when upscaled, so a render
@@ -323,7 +325,8 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
     }
     if (resolves) {
         const int mid = raster->height / 2;
-        work->mine = (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
+        work->mine =
+            (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
         work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
         run_split(resolve_slice, &work->mine, &work->other);
     }

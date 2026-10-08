@@ -22,6 +22,7 @@
 #include "render/raster.h"
 #include "render/viewport.h"
 #include "util/math/vec3f.h"
+#include "util/scalar/mathi.h"
 
 #if defined(ESP_PLATFORM)
 #include "sdkconfig.h"
@@ -104,6 +105,10 @@ int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters
 #define R3D_PIPELINE_CACHE_WAY 8192 /* the board's 64 KB in 8 ways */
 #endif
 
+/* Pointer-bearing state needs host alignment without widening the board's
+ * four-byte carve. */
+#define R3D_PIPELINE_WORK_ALIGNMENT _Alignof(r3d_span_target_t)
+
 /* A raster's scratch block as its parts: the one layout
  * raster_scratch_bytes() sizes. The census list comes first, so it stays put
  * when the render size changes, and takes whole cache ways, so the parts
@@ -122,7 +127,7 @@ typedef struct {
 static inline size_t
 r3d_pipeline_culled_bytes(const raster_t* raster) {
     const size_t way = R3D_PIPELINE_CACHE_WAY;
-    return ((sizeof(uint16_t) * raster_culled_length(raster)) + way - 1) / way * way;
+    return mathi_size_ceil(sizeof(uint16_t) * raster_culled_length(raster), way);
 }
 
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
@@ -142,6 +147,7 @@ r3d_pipeline_carve(const raster_t* raster) {
     b.picture = raster_picture(raster);
     p = gfx_render_target_carve(&b.picture, p);
     p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
+    p = (char*)raster->scratch + mathi_size_ceil((size_t)(p - (char*)raster->scratch), R3D_PIPELINE_WORK_ALIGNMENT);
     b.work[0] = (r3d_pipeline_work_t*)p;
     b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
     b.draw = p + 2 * r3d_pipeline_work_bytes();

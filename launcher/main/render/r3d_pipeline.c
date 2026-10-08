@@ -184,9 +184,11 @@ struct r3d_pipeline_work {
     };
 };
 
+_Static_assert(_Alignof(r3d_pipeline_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "pipeline work alignment");
+
 size_t
 r3d_pipeline_work_bytes(void) {
-    return sizeof(r3d_pipeline_work_t);
+    return mathi_size_ceil(sizeof(r3d_pipeline_work_t), R3D_PIPELINE_WORK_ALIGNMENT);
 }
 
 /* Children go on the stack farthest first, so the nearest pops first and
