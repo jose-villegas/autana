@@ -1058,24 +1058,28 @@ test_wood_leaf_top5_still_flips_on_a_clear_change(void) {
     TEST_ASSERT_TRUE_MESSAGE(top5_contains(top5, 1, 0), "right is now kept - the choice moved to straight down");
 }
 
+/* A wood cell at x = 2 in dirt, a leaf directly above it (slot 0, "up"),
+ * and the five upward-or-level slots in the order material_wood_near_leaf()
+ * reads them. */
+#define NEAR_LEAF_DIRT CELL_SOIL(MAT_DIRT, 0, 3)
+static const int8_t up_five[5][2] = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}};
+static const uint8_t leaf_above[5] = {NEAR_LEAF_DIRT, NEAR_LEAF_DIRT, MATX(MATX_LEAF), NEAR_LEAF_DIRT, NEAR_LEAF_DIRT};
+static const uint8_t wood_row[5] = {NEAR_LEAF_DIRT, NEAR_LEAF_DIRT, CELL_MAKE(MAT_WOOD, 0), NEAR_LEAF_DIRT,
+                                    NEAR_LEAF_DIRT};
+static const uint8_t dirt_below[5] = {NEAR_LEAF_DIRT, NEAR_LEAF_DIRT, NEAR_LEAF_DIRT, NEAR_LEAF_DIRT, NEAR_LEAF_DIRT};
+
 /* material_wood_near_leaf() with `slots` 1 checks only the ONE slot `hash`
  * picks, not all five - the mechanism that turns a stable per-cell hash
  * into a stand-in for a one-time random assignment, at the cost of one
  * read instead of up to eight. */
 static void
 test_wood_near_leaf_checks_its_assigned_slot(void) {
-    static const int8_t top5[5][2] = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}};
-    const cell_t L = MATX(MATX_LEAF), D = CELL_SOIL(MAT_DIRT, 0, 3), Wd = CELL_MAKE(MAT_WOOD, 0);
-    const uint8_t above[5] = {D, D, L, D, D}; /* leaf sits directly "up" (slot 0) */
-    const uint8_t row[5] = {D, D, Wd, D, D};
-    const uint8_t below[5] = {D, D, D, D, D};
-
-    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(above, row, below, 2, 5, top5, 0u, 1u),
+    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 0u, 1u),
                              "hash 0 picks slot 0 (up), where the leaf actually is");
-    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(above, row, below, 2, 5, top5, 1u, 1u),
+    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 1u, 1u),
                               "hash 1 picks slot 1 (up-left), empty - the leaf at slot 0 must not "
                               "leak through a different slot's check");
-    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(NULL, row, below, 2, 5, top5, 0u, 1u),
+    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(NULL, wood_row, dirt_below, 2, 5, up_five, 0u, 1u),
                               "a NULL above row (the grid's top edge) must not crash or false-positive");
 }
 
@@ -1084,15 +1088,9 @@ test_wood_near_leaf_checks_its_assigned_slot(void) {
  * wider window, which is what makes coverage a tunable dial. */
 static void
 test_wood_near_leaf_widens_coverage_with_more_slots(void) {
-    static const int8_t top5[5][2] = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}};
-    const cell_t L = MATX(MATX_LEAF), D = CELL_SOIL(MAT_DIRT, 0, 3), Wd = CELL_MAKE(MAT_WOOD, 0);
-    const uint8_t above[5] = {D, D, L, D, D}; /* leaf at slot 0 ("up") */
-    const uint8_t row[5] = {D, D, Wd, D, D};
-    const uint8_t below[5] = {D, D, D, D, D};
-
-    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(above, row, below, 2, 5, top5, 4u, 1u),
+    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 4u, 1u),
                               "checking only slot 4 (right) finds nothing - the leaf is at slot 0");
-    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(above, row, below, 2, 5, top5, 4u, 2u),
+    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 4u, 2u),
                              "checking 2 slots from the same start wraps around to slot 0 too");
 }
 
