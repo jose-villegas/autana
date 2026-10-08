@@ -12,6 +12,7 @@ r3d_pipeline_draw	bne-back	22	77	4
 r3d_pipeline_draw	loop	25	46	3
 r3d_pipeline_draw	j-back	13	27	2
 r3d_pipeline_draw	j-back	8	33	2
+r3d_pipeline_draw	bne-back	1	91	3
 r3d_pipeline_draw	j-back	16	1120	36
 r3d_pipeline_draw	j-back	26	1218	39
 walk_rows	function	12	751	24
