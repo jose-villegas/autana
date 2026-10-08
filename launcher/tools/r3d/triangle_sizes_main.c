@@ -144,6 +144,7 @@ read_poses_or_exit(const char* path, r3d_sizes_poses_t* poses) {
 }
 
 typedef struct {
+    r3d_pipeline_work_t* work;
     uint16_t* visible;
     r3d_pipeline_rows_t* rows;
     r3d_pipeline_vertex_t* cs;
@@ -157,7 +158,7 @@ render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int count, const
     memset(b->depth, 0, size.pixels * sizeof(*b->depth));
     r3d_pipeline_transform(mesh, lens, b->visible, count, b->cs, b->rows);
     const r3d_span_target_t target = r3d_span_target(b->color, b->depth, size.width, 0, size.height);
-    r3d_pipeline_draw(mesh, lens, b->visible, count, b->cs, b->rows, &target);
+    r3d_pipeline_draw(mesh, lens, b->visible, count, b->cs, b->rows, &target, b->work);
 }
 
 int
@@ -188,6 +189,7 @@ main(int argc, char** argv) {
     const r3d_lit_mesh_t* mesh = &mesh_view;
     const frame_size_t size = {poses->width, poses->height, (size_t)poses->width * (size_t)poses->height};
     const buffers_t b = {
+        checked_malloc(r3d_pipeline_work_bytes()),
         checked_malloc(sizeof(uint16_t) * (size_t)mesh->cluster_count),
         checked_malloc(sizeof(r3d_pipeline_rows_t) * (size_t)mesh->cluster_count),
         checked_malloc(sizeof(r3d_pipeline_vertex_t) * (size_t)mesh->vertex_count),
@@ -202,7 +204,7 @@ main(int argc, char** argv) {
         r3d_lens_init(&lens,
                       &(camera_t){poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z},
                       mesh->position_scale, (viewport_t){size.width, size.height, 0});
-        const int count = r3d_pipeline_cull(mesh, &lens, b.visible);
+        const int count = r3d_pipeline_cull(mesh, &lens, b.visible, b.work);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &lens, b.visible, count, &s);
         print_sizes(pose, &s);
@@ -216,6 +218,7 @@ main(int argc, char** argv) {
     (void)printf("\nTriangles the draw hands the rasterizer, over every pose, by bounding box in pixel centres:\n\n");
     r3d_boxes_print(stdout, &boxes);
     free(poses);
+    free(b.work);
     free(b.visible);
     free(b.rows);
     free(b.cs);

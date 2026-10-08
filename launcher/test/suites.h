@@ -63,7 +63,7 @@ typedef struct {
     int unmatched; /* patterns that matched no test */
 } suite_run_t;
 
-suite_run_t suites_run_request(const char* request);
+void suites_run_request(const char* request, suite_run_t* run);
 
 /* The completion line a harness waits for: one owner, so the tools that parse
  * it are pinned to what this prints. */

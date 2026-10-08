@@ -3,6 +3,7 @@
 
     python scripts/gates/find_narrative_comments.py [--min-chars 300] [--json PATH]
     python scripts/gates/find_narrative_comments.py --tombstones   fail on any "moved to <file>"
+    Add --paths FILE... to scope either mode to complete files.
 
 docs/C-Style-Guide.md's first comment rule: a comment states the constraint that holds
 now, never the journey. This finds candidates for that rule by keyword, so it
@@ -40,8 +41,8 @@ TOMBSTONE = re.compile(
 SKIP = ("components",)
 
 
-def find(root, min_chars):
-    for p in sources(root, excluded=False):
+def find(root, min_chars, files=None):
+    for p in sources(root, excluded=False, files=files):
         if any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -52,8 +53,8 @@ def find(root, min_chars):
                        "banner": c.is_banner}
 
 
-def tombstones(root):
-    for p in sources(root, excluded=False):
+def tombstones(root, files=None):
+    for p in sources(root, excluded=False, files=files):
         if any(s in p.parts for s in SKIP):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -68,16 +69,17 @@ def main():
     ap.add_argument("--min-chars", type=int, default=300)
     ap.add_argument("--json")
     ap.add_argument("--tombstones", action="store_true")
+    ap.add_argument("--paths", nargs="+")
     args = ap.parse_args()
 
     if args.tombstones:
-        found = list(tombstones(args.root))
+        found = list(tombstones(args.root, args.paths))
         for path, line in found:
             print(f"{path}:{line}: comment records where code moved; state the constraint or delete it")
         print(f"{len(found)} tombstone comment{'' if len(found) == 1 else 's'}")
         return 1 if found else 0
 
-    rows = sorted(find(args.root, args.min_chars), key=lambda r: -r["chars"])
+    rows = sorted(find(args.root, args.min_chars, args.paths), key=lambda r: -r["chars"])
     for r in rows[:25]:
         print(f"  {r['chars']:5d} chars {r['lines']:4d} lines  "
               f"{r['path']}:{r['line']}")

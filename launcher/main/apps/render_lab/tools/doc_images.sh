@@ -81,6 +81,7 @@ sponza_gif sponza-lite --scene sponza-lite
 sponza_gif sponza-flat --scene sponza-flat
 sponza_gif sponza-fitted --scene sponza-fitted
 sponza_gif sponza-fitted-full --scene sponza-fitted-full
+sponza_gif sponza-flat-fitted --scene sponza-flat-fitted
 sponza_gif sponza-depth --scene sponza --view depth
 sponza_gif sponza-tiles --scene sponza --view tiles
 sponza_gif sponza-motion-vectors --scene sponza --view motion
@@ -95,6 +96,7 @@ sponza_still lite sponza-lite
 sponza_still flat sponza-flat
 sponza_still fitted sponza-fitted
 sponza_still fitted-full sponza-fitted-full
+sponza_still flat-fitted sponza-flat-fitted
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-lite.png" --crops 3 \
     --label-a full --label-b lite --row "full | lite" "$W/still-full.bmp" "$W/still-lite.bmp" > "$W/compare-full-lite.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-flat.png" --crops 3 \
@@ -103,9 +105,11 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-lit
     --label-a lite --label-b fitted --row "lite | fitted" "$W/still-lite.bmp" "$W/still-fitted.bmp" > "$W/compare-lite-fitted.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-full-fitted-full.png" --crops 3 \
     --label-a full --label-b "fitted full" --row "full | fitted full" "$W/still-full.bmp" "$W/still-fitted-full.bmp" > "$W/compare-full-fitted-full.log"
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-flat-flat-fitted.png" --crops 3 \
+    --label-a flat --label-b "flat fitted" --row "flat | flat fitted" "$W/still-flat.bmp" "$W/still-flat-fitted.bmp" > "$W/compare-flat-flat-fitted.log"
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
-for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full; do
+for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full compare-flat-flat-fitted; do
     [ -f "$RENDER/$crops.crops.png" ] || { echo "doc_images.sh: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done
 

@@ -176,8 +176,15 @@ done
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.
 run mkdir -p "$OUT/render" "$OUT/tables"
+set --
+for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
+    [ -f "$csv" ] || continue
+    camera=${csv##*/dynamic-resolution-quality-}
+    camera=${camera%.csv}
+    set -- "$@" --quality "$camera=$csv"
+done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    --quality docs/render/data/dynamic-resolution-quality.csv --tables "$OUT/tables" \
+    "$@" --tables "$OUT/tables" \
     --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
 
 table_status=0
