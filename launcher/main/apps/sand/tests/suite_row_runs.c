@@ -127,7 +127,7 @@ test_find_or_span_lists_the_runs_within_the_cap(void) {
 
 static void
 test_find_or_span_falls_back_to_one_span_past_the_cap(void) {
-    uint8_t row[2 * (ROW_MAX_RUNS + 1) + 1] = {0};
+    uint8_t row[(2 * (ROW_MAX_RUNS + 1)) + 1] = {0};
     for (int i = 0; i <= ROW_MAX_RUNS; i++) {
         row[(2 * i) + 1] = FULL;
     }
