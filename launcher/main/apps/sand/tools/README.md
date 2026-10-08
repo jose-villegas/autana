@@ -1,5 +1,15 @@
 # Sand tools
 
+## Generated files
+
+<!-- generated: generated-files-sand sha256=bed1e804bdc4a2730410835527645a3c08ffd6bb2030cdd3f9aab5523bee7a4a -->
+| Output | Generator | Run in | Command |
+|---|---|---|---|
+| [icons_dither.h](../icons_dither.h) | [gen_icons.py](../../../../tools/gen/gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h` |
+| [icons_sand.h](../icons_sand.h) | [gen_icons.py](../../../../tools/gen/gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/sand.png main/apps/sand/icons/sand.json > main/apps/sand/icons_sand.h` |
+| [sand_palette256.h](../sand_palette256.h) | [report_shading_palette.sh](report_shading_palette.sh) | `launcher/` | `main/apps/sand/tools/report_shading_palette.sh main/apps/sand/sand_palette256.h` |
+<!-- /generated: generated-files-sand -->
+
 Host-only scripts; the firmware build skips this folder. Each `report_*.sh`
 names what it measures in its own header. The render harness the
 `*_render_host.sh` scenes use is

@@ -26,8 +26,8 @@ A banner whose command names a <placeholder> input, finds no script, or
 does not name its own file as output fails: a file nobody can regenerate is
 a committed fixture, and carries no banner.
 
-A run over every file also fails when the table of them in TABLE_DOC is not
-the one --write-table would write.
+A run over every file also checks the engine and app tables of generated
+outputs against what --write-table would write.
 """
 import argparse
 import concurrent.futures
@@ -47,7 +47,7 @@ from generated_blocks import replace_block  # noqa: E402
 
 INTERPRETERS = {"python": sys.executable, "python3": sys.executable, "sh": "sh"}
 DIFF_LINES = 20
-# The table of every generated file, kept beside the generators' rules.
+# The engine's table is kept beside the generators' rules.
 TABLE_DOC = "launcher/tools/gen/README.md"
 TABLE_BLOCK = "generated-files"
 
@@ -166,11 +166,21 @@ def check(root, name):
     return "differs from what its banner's command makes; rerun that command\n" + shown
 
 
-def table(root, names):
+def table_documents(names):
+    """Generated outputs belong to their engine or app owner's tool index."""
+    documents = {TABLE_DOC: []}
+    for name in names:
+        parts = pathlib.PurePosixPath(name).parts
+        doc = "/".join((*parts[:4], "tools", "README.md")) if parts[:3] == ("launcher", "main", "apps") else TABLE_DOC
+        documents.setdefault(doc, []).append(name)
+    return documents
+
+
+def table(root, names, doc=TABLE_DOC):
     """The Markdown table of `names` for TABLE_DOC: each output, the script
     its banner runs, the folder it runs in and the banner's command, linked
     from that document."""
-    here = (root / TABLE_DOC).parent
+    here = (root / doc).parent
 
     def link(path):
         return f"[{path.name}]({os.path.relpath(path, here).replace(os.sep, '/')})"
@@ -197,7 +207,9 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     if args.write_table:
-        replace_block(root / TABLE_DOC, TABLE_BLOCK, table(root, generated_files(root)))
+        for doc, names in table_documents(generated_files(root)).items():
+            block = TABLE_BLOCK if doc == TABLE_DOC else f"{TABLE_BLOCK}-{pathlib.PurePosixPath(doc).parts[3].replace('_', '-')}"
+            replace_block(root / doc, block, table(root, names, doc))
         return 0
     names = [pathlib.Path(p).resolve().relative_to(root).as_posix() for p in args.paths] or generated_files(root)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
@@ -205,9 +217,12 @@ def main():
     for name, problem in zip(names, results):
         print(f"ok   {name}" if problem is None else f"FAIL {name}: {problem}")
     failed = sum(problem is not None for problem in results)
-    if not args.paths and replace_block(root / TABLE_DOC, TABLE_BLOCK, table(root, names), check=True):
-        print(f"FAIL {TABLE_DOC}: its table of generated files is stale; run this gate with --write-table")
-        failed += 1
+    if not args.paths:
+        for doc, outputs in table_documents(names).items():
+            block = TABLE_BLOCK if doc == TABLE_DOC else f"{TABLE_BLOCK}-{pathlib.PurePosixPath(doc).parts[3].replace('_', '-')}"
+            if replace_block(root / doc, block, table(root, outputs, doc), check=True):
+                print(f"FAIL {doc}: its table of generated files is stale; run this gate with --write-table")
+                failed += 1
     print(f"generated files: {len(names)} checked, {failed} failed")
     return int(failed > 0)
 

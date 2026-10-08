@@ -289,7 +289,10 @@ from the chord between the front's end points after both axes are normalized.
 The [documentation stages](../render/doc_stages.py)
 rebuild fitted comparisons and sweeps with this recipe API, write measured
 Markdown blocks with the shared doc writer, and consume board captures to
-refit the cost weights. The GPU smoke mode publishes no images or tables.
+refit the cost weights. Host scoring uses the engine's
+[scene viewer](../render/scene_viewer.sh) with the supplied scene and renderer.
+[doc_images_demo.sh](../render/doc_images_demo.sh) owns the demo's CPU images
+and measured tables. The GPU smoke mode publishes no images or tables.
 
 ## Cost-aware fit
 

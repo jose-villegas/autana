@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turns a raw device capture into a markdown report of suite_boot_anim_
 perf.c's per-checkpoint frame breakdown, the same idea as
-main/apps/render_lab/tools/report_cube_perf.py, but for boot_anim's own
+the cube frame-cost report, but for boot_anim's own
 suite, whose output shape is different enough (only Total/Image/Present
 carry a full min/max/avg/med/p95 breakdown; Clear/Floor/Axes/Curve/Zeros/
 Title are logged as an average only, to keep six checkpoints' worth of

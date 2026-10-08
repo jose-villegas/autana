@@ -35,17 +35,7 @@
 
 set -eu
 
-run() {
-    if "$@"; then
-        return 0
-    else
-        code=$?
-        printf '%s: failed (exit %s):' "$0" "$code" >&2
-        printf ' %s' "$@" >&2
-        printf '\n' >&2
-        return "$code"
-    fi
-}
+. "$(dirname "$0")/../../../scripts/lib/run.sh"
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
@@ -105,10 +95,24 @@ case "${1:-}" in
             case "$image" in render/gpu/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
-            if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh \
-                launcher/main/apps/*/tools/doc_images.sh launcher/main/apps/*/tools/doc_import_examples.py; then
-                orphan "$image"
-                status=1
+            if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
+                launcher/main/apps/*/tools/doc_images.sh; then
+                claimed=0
+                for scene in launcher/demo/*/*.scene.toml; do
+                    id=$(basename "$scene" .scene.toml)
+                    case "$stem" in
+                        "$id"-*)
+                            template='${ID}'${stem#"$id"}
+                            if grep -qF -- "$template" "$TOOLS_DIR/doc_images_demo.sh"; then
+                                claimed=1
+                                break
+                            fi ;;
+                    esac
+                done
+                if [ "$claimed" = 0 ]; then
+                    orphan "$image"
+                    status=1
+                fi
             fi
         done
         exit $status
@@ -172,6 +176,8 @@ for script in launcher/main/apps/*/tools/doc_images.sh; do
     app=$(basename "$(dirname "$(dirname "$script")")")
     run bash "$script" "$OUT" "$WORK/$app"
 done
+
+run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo"
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

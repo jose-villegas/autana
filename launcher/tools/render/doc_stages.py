@@ -20,7 +20,7 @@ from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRE
 from r3d.import_settings import content_checksum, load_import_settings, source_files
 
 SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
-HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
+HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
 VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full")
@@ -164,11 +164,7 @@ def board(args, out, work):
         [(name, f"{means[name]:.3f}") for name in VARIANTS]), encoding="utf-8")
     scene = load_scene(SCENE)
     job = placed_variant(scene, "sponza_fitted")
-    header = ROOT / "launcher/main/apps/render_lab/sponza_content.h"
-    interval = re.search(r"#define\s+SPONZA_POSE_EVERY_MS\s+(\d+)", header.read_text())
-    if interval is None:
-        raise ValueError("cannot read the board suite pose interval")
-    every_ms = int(interval.group(1))
+    every_ms = job.renderer.fit.held_out_every_ms
     poses = camera_path_poses(scene, job.renderer.visibility, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
@@ -215,10 +211,10 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
     directory.mkdir(exist_ok=True)
     from r3d.poses import read_poses
     count = len(read_poses(reference_inputs / "held_out.txt")[-1])
-    settings = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {job.renderer.variant.name.replace('_', '-')} "
+    settings = SimpleNamespace(render_args=f"--quarter 0 --scene {SCENE.name.removesuffix(".scene.toml")} --object {job.object.name} "
                                           f"--frames {count} --dt {job.renderer.fit.held_out_every_ms}",
                                reference=reference_inputs / "reference_held_out", reference_scale=2)
-    metrics = score(settings, host, write_assets(job.asset_name, mesh, directory), directory)
+    metrics = score(settings, host, write_assets(job.asset_name, mesh, directory, SCENE), directory)
     views, size = load_views([(str(reference_inputs / "held_out.txt"), str(settings.reference))], 2)
     angle = normal_error(start_mesh(mesh), views, size, angle_dir=directory / "angles")
     triangles = len(finest_triangles(read_lit_mesh(mesh))[2])
@@ -331,7 +327,7 @@ def _gpu(args, out, work, executor):
                         work / "smoke.mesh", estimates=FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
-    host = build_host(HOST_SCRIPT, work / "host")
+    host = build_host(HOST_SCRIPT, work / "host", SCENE)
     rows, comparisons, sweep = [], {}, []
     weights, *_ = load(WEIGHTS)
 

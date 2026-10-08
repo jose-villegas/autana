@@ -52,6 +52,14 @@ def header(command, value):
 
 
 class GateTests(unittest.TestCase):
+    def test_app_outputs_have_tables_in_their_own_tools_folder(self):
+        from check_generated_files import table_documents
+        names = ["launcher/main/gfx/generated.h", "launcher/main/apps/example/generated.h"]
+        self.assertEqual(table_documents(names), {
+            TABLE_DOC: [names[0]],
+            "launcher/main/apps/example/tools/README.md": [names[1]],
+        })
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

@@ -88,9 +88,6 @@ class SweepTests(unittest.TestCase):
             self.assertNotIn("fit output 0\n", str(caught.exception))
             self.assertIsInstance(caught.exception.__cause__, ValueError)
 
-    def test_mesh_names_map_to_the_host_scene_keys(self):
-        self.assertEqual(fitted_variant.host_scene_key("tiny_fitted"), "tiny-fitted")
-
     @unittest.skipIf(Image is None, "needs the synthetic render scorer")
     def test_held_out_score_keeps_each_mesh_and_pose_with_its_reference(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -98,7 +95,7 @@ class SweepTests(unittest.TestCase):
             references = work / "reference_held_out"
             references.mkdir()
             (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]]))
-            job = SimpleNamespace(asset_name="tiny.fitted", renderer=SimpleNamespace(
+            job = SimpleNamespace(asset_name="tiny.fitted", object=SimpleNamespace(name="fitted"), renderer=SimpleNamespace(
                 variant=SimpleNamespace(name="tiny_fitted"), fit=SimpleNamespace(held_out_every_ms=5)))
             meshes = [work / name for name in ("source.mesh", "first.mesh", "second.mesh")]
             for value, mesh in enumerate(meshes):
@@ -121,7 +118,7 @@ class SweepTests(unittest.TestCase):
         return Image.new("RGB", (4, 4), (30 + mesh * 50 + pose * 25, 60 + mesh * 40 + pose * 15, 90 + mesh * 30 + pose * 10))
 
     @classmethod
-    def _synthetic_score(cls, args, _name, pack, _work, _host):
+    def _synthetic_score(cls, args, _name, pack, _work, _host, _scene=None):
         fields = args.render_args.split()
         frames = int(fields[fields.index("--frames") + 1])
         mesh = int(pathlib.Path(pack).read_text())

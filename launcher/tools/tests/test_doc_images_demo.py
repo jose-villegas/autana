@@ -9,11 +9,11 @@ import tempfile
 import tomllib
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[6]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 DEMO_SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 DEMO_IMPORT = ROOT / "launcher/demo/sponza/sponza.import.toml"
-APP_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/doc_images.sh"
+APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
@@ -30,12 +30,12 @@ class DocImageFailureTest(unittest.TestCase):
                 f'test -f "$(dirname "$1")/{DEMO_IMPORT.name}" || exit 7\n'
                 'echo import_dependency_ready\nexit 8\n', encoding="utf-8")
             source = APP_SCRIPT.read_text(encoding="utf-8")
-            helper = "run() {" + source.split("run() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+            helper = (ROOT / "scripts/lib/run.sh").read_text(encoding="utf-8")
             functions = source.split("bake_and_render() {", 1)[1].split("\nvariant_bake smooth", 1)[0]
             functions = "\n".join(line for line in functions.splitlines() if "physical_scene.py" not in line)
             script = root / "stage.sh"
             script.write_text(
-                'set -e\nW=work\nM=.\nR3D_PYTHON=sh\nmkdir -p work\n'
+                'set -e\nW=work\nID=sponza\nFULL=atrium\nR3D_PYTHON=sh\nmkdir -p work\n'
                 f'DEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
                 f'cp "$DEMO/{DEMO_SCENE.name}" work/physical.scene.toml\n'
                 + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct none ''\n", encoding="utf-8")
@@ -49,7 +49,7 @@ class PhysicalSceneTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import importlib.util
-        path = ROOT / "launcher/main/apps/render_lab/tools/physical_scene.py"
+        path = ROOT / "launcher/tools/render/physical_scene.py"
         spec = importlib.util.spec_from_file_location("physical_scene", path)
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)

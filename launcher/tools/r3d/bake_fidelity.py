@@ -89,8 +89,8 @@ def build_host(script, out_dir, scene=None):
 
 
 def write_assets(name, mesh_file, out, scene=None):
-    """The asset packs of every root in the tree, mesh `name` taken from
-    `mesh_file`, written to out/assets; returns that folder."""
+    """Pack the supplied scene or runtime roots with one scratch mesh;
+    returns out/assets."""
     assets = out / "assets"
     write_packs(assets, pack_bytes([scene or LAUNCHER / "main"], [f"{name}={mesh_file}"]))
     return assets

@@ -17,15 +17,12 @@
 ## The rules every generator follows
 
 Apps keep their own generators in `apps/<name>/tools/`; the rules are the
-same. Every checked-in output, from the banner each one carries:
+same. Engine outputs are listed here from their banners; each app's tools
+README lists its own generated outputs.
 
-<!-- generated: generated-files sha256=67cb7396e9e2853579a5815c23c2c4d266b0992633ecb6ac70d963f9ca9a29ba -->
+<!-- generated: generated-files sha256=83779ceed0381dd0c699e0a0b08de01106e57d832ce5854344c71883f4552e9d -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
-| [wire_primitives_generated.h](../../main/apps/render_lab/wire_primitives_generated.h) | [gen_wire_primitives.py](../../main/apps/render_lab/tools/gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
-| [icons_dither.h](../../main/apps/sand/icons_dither.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h` |
-| [icons_sand.h](../../main/apps/sand/icons_sand.h) | [gen_icons.py](gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/sand.png main/apps/sand/icons/sand.json > main/apps/sand/icons_sand.h` |
-| [sand_palette256.h](../../main/apps/sand/sand_palette256.h) | [report_shading_palette.sh](../../main/apps/sand/tools/report_shading_palette.sh) | `launcher/` | `main/apps/sand/tools/report_shading_palette.sh main/apps/sand/sand_palette256.h` |
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
 | [boot_anim_image.h](../../main/boot/boot_anim_image.h) | [gen_boot_anim_image.py](gen_boot_anim_image.py) | `launcher/` | `python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h` |
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |

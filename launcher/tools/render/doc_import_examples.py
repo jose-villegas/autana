@@ -5,25 +5,26 @@ from pathlib import Path
 import subprocess
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from r3d.bake_fidelity import write_assets
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import write_lit_mesh
 from r3d.mesh_import import bake_geometry
 
 
-def main(work, out):
+def main(scene_path, object_name, work, out):
     root = Path.cwd()
-    scene = load_scene(root / "launcher/demo/sponza/sponza.scene.toml")
-    job = copy.deepcopy(next(item for item in scene.renderers if item.object.name == "atrium"))
+    scene = load_scene(scene_path)
+    job = copy.deepcopy(next(item for item in scene.renderers if item.object.name == object_name))
     job.bake = None
     scratch = work / "albedo"
     scratch.mkdir(exist_ok=True)
     geometry = bake_geometry(job, scene)
     write_lit_mesh(scratch, job.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
                    geometry.tri_double, **geometry.scale)
-    assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.mesh", scratch)
-    subprocess.run([str(work / "render_lab_render"), "--quarter", "0", "--no-hud", "--scene", "sponza",
+    assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.mesh", scratch, scene_path)
+    host = work / ("scene_viewer_render.exe" if os.name == "nt" else "scene_viewer_render")
+    subprocess.run([str(host), "--quarter", "0", "--scene", scene_path.name.removesuffix(".scene.toml"), "--object", object_name,
                     "--frames", "5", "--dt", "5000", "-o", str(scratch / "last.bmp")], check=True,
                    env={**os.environ, "AUTANA_ASSET_DIR": str(assets)})
     compare = root / "launcher/tools/render/render_compare.py"
@@ -36,4 +37,4 @@ def main(work, out):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve())
+    main(Path(sys.argv[1]).resolve(), sys.argv[2], Path(sys.argv[3]).resolve(), Path(sys.argv[4]).resolve())

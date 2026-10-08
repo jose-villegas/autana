@@ -20,6 +20,17 @@ POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 
 
 class DocStagesTests(unittest.TestCase):
+    def test_stage_host_is_the_engine_viewer(self):
+        self.assertEqual(stages.HOST_SCRIPT, stages.ROOT / "launcher/tools/render/scene_viewer.sh")
+
+    def test_viewer_host_build_receives_the_scene(self):
+        from r3d.bake_fidelity import build_host
+        with mock.patch("r3d.bake_fidelity.subprocess.run") as run:
+            run.return_value.stdout = "built viewer\n"
+            build_host(Path("scene_viewer.sh"), Path("out"), stages.SCENE)
+        self.assertEqual(run.call_args.args[0], ["sh", "scene_viewer.sh", stages.SCENE.as_posix(),
+                                               "--build-only", "-o", "out"])
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

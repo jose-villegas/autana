@@ -59,11 +59,6 @@ def split_poses(fit, poses):
     return training, held_out
 
 
-def host_scene_key(variant_name):
-    """The host renderer's scene key for a generated mesh identifier."""
-    return variant_name.replace("_", "-")
-
-
 def canonical(value):
     """A JSON-ready form of parsed settings, independent of parser layout.
     The digest hashes parser fields, so an explicit default differs from an omitted one; the stamp test catches it."""
@@ -264,14 +259,14 @@ def sweep_rows(out, points):
     return [json.loads((pathlib.Path(out) / point_name(point) / "result.json").read_text()) for point in points]
 
 
-def _score_mesh(args, name, mesh_path, score_dir, host):
+def _score_mesh(args, name, mesh_path, score_dir, host, scene=None):
     """Score a packed mesh through the host renderer."""
     from r3d.bake_fidelity import score, write_assets
 
-    return score(args, host, write_assets(name, mesh_path, score_dir), score_dir)[:2]
+    return score(args, host, write_assets(name, mesh_path, score_dir, scene), score_dir)[:2]
 
 
-def held_out_score(job, mesh_path, work, host, inputs=None):
+def held_out_score(job, mesh_path, work, host, inputs=None, scene=None):
     """Mean and p95 DeltaE76 from the host renderer against held-out references."""
     from types import SimpleNamespace
     from r3d.poses import read_poses
@@ -281,10 +276,11 @@ def held_out_score(job, mesh_path, work, host, inputs=None):
     _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    args = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {host_scene_key(variant.name)} --frames {len(poses)} "
+    scene_id = pathlib.Path(scene).name.removesuffix(".scene.toml") if scene is not None else job.asset_name.rsplit(".", 1)[0]
+    args = SimpleNamespace(render_args=f"--quarter 0 --scene {scene_id} --object {job.object.name} --frames {len(poses)} "
                                        f"--dt {fit.held_out_every_ms}", reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
-    return _score_mesh(args, job.asset_name, mesh_path, score_dir, host)
+    return _score_mesh(args, job.asset_name, mesh_path, score_dir, host, scene)
 
 
 def board_poses(work):
@@ -359,11 +355,11 @@ def sweep_main(argv):
             from r3d.bake_fidelity import build_host
             from r3d.mesh_import import REPO
 
-            host = build_host(REPO / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh", out / "host")
+            host = build_host(REPO / "launcher/tools/render/scene_viewer.sh", out / "host", scene_path)
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
                    smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
-        mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work)
+        mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work, scene=scene_path)
         from r3d.cost_model import load, mesh_rows, predict
         from r3d.lit_mesh import finest_triangles, read_lit_mesh
 

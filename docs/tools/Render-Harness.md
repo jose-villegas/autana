@@ -49,7 +49,11 @@ every frame through the shared harness's video writer.
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
-repository root. It makes the launcher's and the UI toolkit's images itself and runs each app's
+repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
+bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
+`scene_viewer.sh`, selecting one renderer with `--object NAME`. Its scene path
+is configured at the top of the script or passed as its third argument.
+The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
 `tools/doc_images.sh` for the app's own:
 
 ```sh
@@ -64,7 +68,7 @@ It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 ```
 
-An app's `tools/doc_images.sh` may also need the packages in
+The demo image script needs the packages in
 `launcher/tools/r3d/requirements.txt`. Demo source models live in
 `launcher/demo/*/source/` under Git LFS; fetch them with
 `git lfs pull --exclude=""` before a reference render. The CPU workflow caches

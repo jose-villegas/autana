@@ -14,10 +14,8 @@ on:
       - 'launcher/tools/gltf/**'
       - 'launcher/main/**/*.c'
       - 'launcher/main/**/*.h'
-      - 'launcher/demo/sponza/**'
-      - 'launcher/main/apps/render_lab/scenes/**'
-      - 'launcher/main/apps/render_lab/tools/*.sh'
-      - 'launcher/main/apps/render_lab/tools/*.c'
+      - '!launcher/main/apps/**'
+      - 'launcher/demo/**'
       - 'launcher/components/microui/**'
       - '.github/workflows/doc-images-gpu.yml'
 
