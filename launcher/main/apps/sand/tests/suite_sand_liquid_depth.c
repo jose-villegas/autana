@@ -1160,9 +1160,7 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
             sand_set(&fx.depth_test, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
-    for (int i = 0; i < 300; i++) {
-        sand_step(&fx.depth_test, 0, 1000, 0);
-    }
+    run_steps(&fx.depth_test, 300, 0, 1000);
 
     uint8_t settled_snapshot[DEPTH_TEST_W * DEPTH_TEST_H];
     memcpy(settled_snapshot, depth_test_cells, sizeof settled_snapshot);
@@ -1176,9 +1174,7 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
         sand_spawn(&fx.depth_test, DEPTH_TEST_W / 2, 1, 1, MAT_WATER);
         sand_step(&fx.depth_test, 0, 1000, 0);
     }
-    for (int i = 0; i < 200; i++) {
-        sand_step(&fx.depth_test, 0, 1000, 0);
-    }
+    run_steps(&fx.depth_test, 200, 0, 1000);
 
     /* The reservoir's NEW surface. */
     const int new_surface = depth_test_find_full_row();
@@ -1258,9 +1254,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
             sand_set(&fx.depth_test, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
-    for (int i = 0; i < 300; i++) {
-        sand_step(&fx.depth_test, 1000, 0, 0);
-    }
+    run_steps(&fx.depth_test, 300, 1000, 0);
 
     memcpy(settled_snapshot, cells, (size_t)LANDSCAPE_DEPTH_TEST_W * LANDSCAPE_DEPTH_TEST_H);
 
@@ -1276,9 +1270,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
         sand_spawn(&fx.depth_test, 2, 0, 1, MAT_WATER);
         sand_step(&fx.depth_test, 1000, 0, 0);
     }
-    for (int i = 0; i < 10; i++) {
-        sand_step(&fx.depth_test, 1000, 0, 0);
-    }
+    run_steps(&fx.depth_test, 10, 1000, 0);
 
     /* Deep in the ORIGINAL reservoir, well past any band a real pour
      * anywhere near the ceiling could reach - mass conservation makes this
@@ -2726,18 +2718,14 @@ shadow_test_build_scene(sand_t* g) {
             sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
-    for (int i = 0; i < 400; i++) {
-        sand_step(g, 1000, 1000, 0);
-    }
+    run_steps(g, 400, 1000, 1000);
 
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             sand_set(g, SHADOW_TEST_W / 2 + dx, SHADOW_TEST_H / 2 + dy, CELL_MAKE(MAT_STONE, 0));
         }
     }
-    for (int i = 0; i < 30; i++) {
-        sand_step(g, 1000, 1000, 0);
-    }
+    run_steps(g, 30, 1000, 1000);
 }
 
 static void

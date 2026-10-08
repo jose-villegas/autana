@@ -101,6 +101,12 @@ extern sand_t wide;
 /* Resets the default fixture (s/cells) via sand_init(). */
 void fixture(void);
 
+/* fixture(), cleared, with a stone floor along the bottom row. */
+void stone_floor_fixture(void);
+
+/* Steps g `steps` times under (gx, gy), no jostle. */
+void run_steps(sand_t* g, int steps, int gx, int gy);
+
 /* Loads a picture of a grid into s/cells. Rows are given top to bottom, so
  * the text reads the way the screen looks: 'o' a grain, anything else
  * empty. */

@@ -377,9 +377,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
         sand_set(&flaw, lava_x + 1, y, CELL_SOIL(MAT_DIRT, 1, 0)); /* dry */
     }
 
-    for (int i = 0; i < 6000; i++) {
-        sand_step(&flaw, 0, 1000, 0);
-    }
+    run_steps(&flaw, 6000, 0, 1000);
 
     int stone_count = 0, metal_count = 0;
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
@@ -711,9 +709,7 @@ test_the_rod_terminates_at_conduct_reach_not_the_far_wall(void) {
         sand_set(&rod, bed_x0 + i, y, CELL_SOIL(MAT_DIRT, 1, 0));
     }
 
-    for (int i = 0; i < 6000; i++) {
-        sand_step(&rod, 0, 1000, 0);
-    }
+    run_steps(&rod, 6000, 0, 1000);
 
     /* The run is contiguous from the lava outward, so the first cell that
      * is NEITHER metal NOR stone ends it - reaction_t.flaw_to

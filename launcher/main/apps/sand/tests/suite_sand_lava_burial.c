@@ -55,9 +55,7 @@ test_lava_buried_in_stone_is_not_deleted(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(MASS_MAX, before,
                                   "fixture check: one full cell of lava, walled in on all four sides");
 
-    for (int i = 0; i < 90; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 90, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "lava walled in by stone must still be there - smothering puts a "
@@ -163,9 +161,7 @@ test_lava_under_a_lid_with_gaps_never_bursts(void) {
                                   "fixture check: a full-width row of lava, floored throughout and "
                                   "ceiled only on every other column");
 
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "a lava cell under a lid with a gap in it - both diagonals covered "
@@ -227,9 +223,7 @@ test_lava_in_a_wall_notch_never_bursts(void) {
     sand_enable_impulses(&s, buf, W * H);
     sand_set_lava_burst(&s, 255);
 
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
 
     int stone_after = 0;
     for (int y = 0; y < H; y++) {
@@ -429,11 +423,7 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
  * it must not touch at all, not just against the threshold being wrong. */
 static void
 test_an_open_lava_pool_never_bursts(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     for (int x = 2; x < W - 2; x++) {
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
     }
@@ -441,9 +431,7 @@ test_an_open_lava_pool_never_bursts(void) {
     const int before = liquid_mass_of(MAT_LAVA);
     TEST_ASSERT_TRUE_MESSAGE(before > 0, "fixture check: an open pool of lava sitting on a floor");
 
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "an ordinary open lava pool - a floor beneath it, open air above "
@@ -503,11 +491,7 @@ test_buried_lava_still_becomes_stone_with_impulses_off(void) {
  * of its lava in 200 steps where a flat-floored one lost none. */
 static void
 test_lava_is_not_boiled_by_its_own_conducted_heat(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     /* Two pools of lava with a single conducting wall between them. */
     const int wall = W / 2;
     for (int y = H - 3; y < H - 1; y++) {
@@ -520,9 +504,7 @@ test_lava_is_not_boiled_by_its_own_conducted_heat(void) {
     }
     const int before = liquid_mass_of(MAT_LAVA);
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, liquid_mass_of(MAT_LAVA),
                                   "lava must not be boiled into steam by heat conducted from other "

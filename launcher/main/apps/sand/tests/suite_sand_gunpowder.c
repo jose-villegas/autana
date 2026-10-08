@@ -65,9 +65,7 @@ test_a_gunpowder_grain_keeps_its_tone_as_it_falls(void) {
     const cell_t grain = GUNPOWDER_CELL(2);
     sand_set(&s, 3, 0, grain);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 3, 0, 1);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(grain, sand_at(&s, 3, 3),
                                     "a gunpowder grain's dry tone must travel with it as it falls, "
@@ -155,9 +153,7 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
     fixture();
     sand_set(&s, 3, 0, GUNPOWDER_CELL(0));
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 10, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(sand_at(&s, 3, H - 1)),
                              "a single grain of gunpowder must fall straight down onto the "
@@ -174,9 +170,7 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
     }
     const int expected = count_cells_gunpowder();
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 1, 0, 0);
-    }
+    run_steps(&s, 60, 1, 0);
 
     int touching_wall = 0;
     for (int y = 0; y < H; y++) {
@@ -210,9 +204,7 @@ drop_grain_onto_bed(uint8_t bed, cell_t dropped) {
         }
     }
     sand_set(&s, 3, 3, dropped);
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 }
 
 /* True if column x=3, rows [0,4), holds a cell whose material is `m` - the
@@ -337,11 +329,7 @@ test_fire_beside_dry_gunpowder_lights_it(void) {
 
 static void
 test_lava_beside_dry_gunpowder_lights_it_through_the_heat_path(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 3, H - 3, STONE);
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -794,9 +782,7 @@ test_a_buried_lit_gunpowder_cell_is_not_smothered(void) {
     }
     sand_set(&s, x, y, GUNPOWDER_LIT_CELL);
 
-    for (int i = 0; i < 100; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 100, 0, 1000);
 
     const cell_t c = sand_at(&s, x, y);
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(c) && cell_code(c) == GUNPOWDER_LIT,
@@ -907,11 +893,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
  * the only accepted exit. */
 static void
 test_soaked_gunpowder_never_lights_beside_lava(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 3, H - 3, STONE);
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -957,11 +939,7 @@ test_soaked_gunpowder_never_lights_beside_lava(void) {
  * once it is genuinely dry - that is a different claim, not this one. */
 static void
 test_heat_dries_wet_gunpowder_one_level_with_steam(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     sand_set(&s, 2, H - 2, STONE);
     /* BOXED IN ON THE DIAGONALS TOO, not just straight up. This test
      * measures conduction drying a wet cell, so the lava must heat without
@@ -1284,9 +1262,7 @@ test_soaked_gunpowder_can_turn_into_oil_and_dry_never_does(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
     }
-    for (int i = 0; i < 6000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 6000, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_OIL),
                                   "bone-dry gunpowder must never roll the saturated-to-oil chance "
                                   "- it only ever fires once held reaches moist_max, and a dry "
@@ -1316,9 +1292,7 @@ test_acid_dissolves_gunpowder(void) {
     }
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, count_cells_gunpowder(), "setup: there must be gunpowder to eat");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_gunpowder(),
                                   "acid must eat the gunpowder it settles onto, the same rate "
@@ -1389,9 +1363,7 @@ test_a_root_does_not_drink_from_or_eat_gunpowder(void) {
     sand_set(&s, cx + 1, cy, soaked); /* right: moist gunpowder, the one
                                          * candidate this test is about */
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 3000, 0, 1000);
 
     const cell_t c = sand_at(&s, cx + 1, cy);
     TEST_ASSERT_TRUE_MESSAGE(cell_is_gunpowder(c), "a root must never convert gunpowder into a root cell, whatever "
@@ -1429,9 +1401,7 @@ test_plants_do_not_sprout_in_gunpowder(void) {
     /* (cx + 1, cy) stays SAND_EMPTY from sand_clear() above - the
      * candidate cell a real sprout would seed a leaf into. */
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 3000, 0, 1000);
 
     bool any_leaf = false;
     for (int y = 0; y < H && !any_leaf; y++) {
@@ -1485,9 +1455,7 @@ test_a_lit_fuse_is_not_re_placed_by_heat(void) {
     const cell_t before = sand_at(&s, 4, H - 2);
     memset(dirty, 0, H);
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(before, sand_at(&s, 4, H - 2),
                                     "a lit fuse beside a heat source must stay the identical byte - "

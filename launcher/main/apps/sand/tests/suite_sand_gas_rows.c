@@ -116,9 +116,7 @@ test_the_walk_arms_every_row_it_lands_in(void) {
     gas_rows_fixture();
     build_mixed_gas_board(false);
 
-    for (int i = 0; i < 80; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 80, 0, 1);
 
     assert_no_stranded_gas("the spread pass was about to skip a row that holds gas - a rise "
                            "sweep mover moved a cell without arming the row it landed in");
@@ -142,9 +140,7 @@ test_a_downward_walk_cascade_arms_every_row(void) {
         }
     }
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 200, 0, 1);
 
     assert_no_stranded_gas("a gas cell walked down into a row the rise sweep had not reached, "
                            "took another turn there, and ended up in a row the spread pass was "
@@ -161,9 +157,7 @@ test_the_exhaustive_mover_arms_every_row_it_lands_in(void) {
     sand_set_gas_walk(&gr, false);
     build_mixed_gas_board(false);
 
-    for (int i = 0; i < 80; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 80, 0, 1);
 
     assert_no_stranded_gas("the exhaustive mover moved gas without arming the row it landed in");
     gas_rows_teardown();
@@ -202,9 +196,7 @@ test_reaction_made_gas_is_never_stranded(void) {
     gas_rows_fixture();
     build_mixed_gas_board(true);
 
-    for (int i = 0; i < 120; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 120, 0, 1);
 
     assert_no_stranded_gas("gas minted by a reaction after the gas pass was still unaccounted "
                            "for when the next step's spread pass ran");
@@ -222,9 +214,7 @@ test_the_skip_actually_fires_and_the_audit_sees_it(void) {
     build_mixed_gas_board(false);
     sand_gas_row_audit_skippable = 0;
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&gr, 0, 1, 0);
-    }
+    run_steps(&gr, 20, 0, 1);
 
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, sand_gas_row_audit_skippable,
                                           "no row was ever skippable, so the audit checked nothing and the "

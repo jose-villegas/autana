@@ -57,9 +57,7 @@ test_stone_never_moves(void) {
     fixture();
     sand_set(&s, 3, 0, STONE);
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(STONE, sand_at(&s, 3, 0),
                                     "a static material stays exactly where it is put, unsupported or not "
@@ -72,9 +70,7 @@ test_nothing_displaces_stone(void) {
     sand_set(&s, 3, 5, STONE);
     sand_set(&s, 3, 4, SAND);
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(STONE, sand_at(&s, 3, 5),
                                     "sand must not sink through a stone floor however heavy it is");
@@ -91,9 +87,7 @@ test_sand_sinks_through_water(void) {
     }
     sand_set(&s, 3, 3, SAND);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
                                   "sand is denser than water, so it must sink all the way through the "
@@ -113,9 +107,7 @@ test_water_does_not_sink_through_sand(void) {
     }
     sand_set(&s, 3, 3, WATER);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, 3)),
                                   "water is lighter than sand, so it must sit on top rather than sink "
@@ -155,9 +147,7 @@ test_water_finds_its_own_level(void) {
         sand_set(&s, 3, y, WATER);
     }
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 200, 0, 1000);
 
     int tallest = H;
     for (int y = 0; y < H; y++) {
@@ -185,9 +175,7 @@ test_a_powder_still_holds_a_heap(void) {
         sand_set(&s, 3, y, SAND);
     }
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 200, 0, 1000);
 
     int occupied_columns = 0;
     for (int x = 0; x < W; x++) {
@@ -218,9 +206,7 @@ test_water_can_be_held_by_a_stone_basin(void) {
     }
     const int water = count_of(MAT_WATER);
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 200, 0, 1000);
 
     int held = 0;
     for (int x = 3; x < 5; x++) {
@@ -253,9 +239,7 @@ test_a_drop_resting_on_a_pool_comes_to_rest(void) {
     }
     sand_set(&s, 3, 3, WATER); /* one drop, on top, nothing above it */
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     /* Checked one step at a time, not by comparing two distant snapshots.
      * The wandering is an OSCILLATION - the sweep direction alternates, so a
@@ -282,9 +266,7 @@ test_water_under_weight_still_spreads(void) {
         sand_set(&s, 3, y, WATER); /* a column standing on the floor */
     }
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 200, 0, 1000);
 
     int on_the_floor = 0;
     for (int x = 0; x < W; x++) {
@@ -310,9 +292,7 @@ test_water_poured_into_a_basin_reaches_both_ends(void) {
         sand_set(&s, 1, y, WATER);
     }
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, W - 2, H - 1)),
                                   "water poured in at one end must travel to the other - if it cannot, "
@@ -363,9 +343,7 @@ build_full_basin(void) {
             sand_set(pour_p, x, y, CELL_MAKE(MAT_WATER, 8));
         }
     }
-    for (int i = 0; i < 200; i++) {
-        sand_step(pour_p, 0, 1000, 0);
-    }
+    run_steps(pour_p, 200, 0, 1000);
 }
 
 static int
@@ -412,9 +390,7 @@ test_a_tipped_basin_pours_its_water_out(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(100, held, "the basin must actually be full to begin with");
 
     /* Tipped hard to the right - far past any angle of repose. */
-    for (int i = 0; i < 600; i++) {
-        sand_step(pour_p, 1000, 300, 0);
-    }
+    run_steps(pour_p, 600, 1000, 300);
 
     /* 75, not held/10: under this gravity the basin's right wall is a
      * floor, and the corner at (11,12) is a genuine pocket reachable only
@@ -473,13 +449,9 @@ test_a_tipped_basin_keeps_its_sand(void) {
             sand_set(pour_p, x, y, CELL_MAKE(MAT_SAND, 8));
         }
     }
-    for (int i = 0; i < 200; i++) {
-        sand_step(pour_p, 0, 1000, 0);
-    }
+    run_steps(pour_p, 200, 0, 1000);
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(pour_p, 1000, 300, 0);
-    }
+    run_steps(pour_p, 600, 1000, 300);
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, material_in_basin(MAT_SAND),
                                      "sand has friction and an angle of repose, so a tipped basin must "
@@ -581,9 +553,7 @@ test_a_large_body_of_water_levels(void) {
         sand_step(&wide, 0, 1000, 0);
     }
     const long volume = mass_of(&wide, WIDE_W, WIDE_H, MAT_WATER);
-    for (int i = 0; i < 600; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 600, 0, 1000);
     const long volume_after = mass_of(&wide, WIDE_W, WIDE_H, MAT_WATER);
 
     /* Level means every column is the same depth, give or take the one row a
@@ -642,9 +612,7 @@ test_a_settled_pool_does_not_flicker(void) {
         sand_spawn(&wide, WIDE_W / 2, 1, 3, MAT_WATER);
         sand_step(&wide, gx, gy, 0);
     }
-    for (int i = 0; i < 600; i++) {
-        sand_step(&wide, gx, gy, 0);
-    }
+    run_steps(&wide, 600, gx, gy);
 
     /* Once settled, no single step may move much mass at all. The bug moved
      * roughly half the deepest column's worth in one step, then its
@@ -744,9 +712,7 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
         sand_set(&s, x, h - full_rows - 1, CELL_MAKE(MAT_WATER, 7));
     }
 
-    for (int i = 0; i < steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, steps, gx, gy);
 
     const int q = w / 8;
     const long lo = material_variant_sum_in_columns(&s, 0, q, h, MAT_WATER);
@@ -925,9 +891,7 @@ test_a_water_splash_actually_opens_a_gap(void) {
     }
 
     int cleared = 0;
-    for (int i = 0; i < 15; i++) {
-        sand_step(&fx.crater_sim, 0, 1000, 0);
-    }
+    run_steps(&fx.crater_sim, 15, 0, 1000);
     for (int i = 0; i < 4; i++) {
         if (CELL_IS_EMPTY(sand_at(&fx.crater_sim, nbr_x[i], nbr_y[i]))) {
             cleared++;
@@ -1133,9 +1097,7 @@ test_a_flying_water_grain_does_not_swap_into_dirt_in_its_path(void) {
 
     sand_impulse(&s, WX, ROW, DIR_RIGHT, 255);
 
-    for (int i = 0; i < H; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, H, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(MAT_DIRT, CELL_MATERIAL(sand_at(&s, DX, ROW)),
                                     "a flying water grain queued straight at a dirt cell beside it "

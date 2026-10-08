@@ -281,9 +281,7 @@ test_a_grain_rests_on_the_floor(void) {
     fixture();
     sand_set(&s, 3, H - 1, SAND_FIRST_SHADE);
 
-    for (int i = 0; i < 5; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 5, 0, 1);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, H - 1),
                                   "the floor is solid - a grain must not fall out of the grid");
@@ -336,9 +334,7 @@ test_a_grain_in_a_pit_stays_put(void) {
     };
     load(before, 8);
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 10, 0, 1);
 
     static const char* after[] = {
         "........", "........", "........", "........", "........", "........", "...o....", "..ooo...",
@@ -362,9 +358,7 @@ test_a_settled_grid_reports_nothing_dirty(void) {
     sand_set(&s, 0, H - 1, SAND_FIRST_SHADE);
     memset(dirty, 0, H);
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 10, 0, 1);
 
     for (int y = 0; y < H; y++) {
         TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, dirty[y],
@@ -629,9 +623,7 @@ test_a_surface_grain_still_slides(void) {
     };
     load(before, 8);
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 300, 1000, 0);
-    }
+    run_steps(&s, 200, 300, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_EMPTY, sand_at(&s, 2, 3),
                                     "an unloaded grain on top of a column must still topple off, or a "
@@ -710,9 +702,7 @@ test_a_flat_bed_does_not_slide_on_a_slight_tilt(void) {
         const long before = centre_of_mass_x();
 
         /* About 14 degrees - a tilt you would not expect to pour sand. */
-        for (int i = 0; i < 200; i++) {
-            sand_step(&s, 250, 1000, 0);
-        }
+        run_steps(&s, 200, 250, 1000);
 
         TEST_ASSERT_EQUAL_INT_MESSAGE((int)before, (int)centre_of_mass_x(),
                                       "a flat bed must not migrate at a tilt below the angle of repose "
@@ -795,9 +785,7 @@ test_a_steep_tilt_does_pour_the_bed(void) {
     }
     const long before = centre_of_mass_x();
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 1200, 1000, 0);
-    }
+    run_steps(&s, 200, 1200, 1000);
 
     TEST_ASSERT_GREATER_THAN_MESSAGE((int)before, (int)centre_of_mass_x(),
                                      "past the angle of repose the bed must pour downhill");
@@ -845,9 +833,7 @@ test_sand_poured_onto_a_sleeping_pile_still_falls(void) {
     /* The bed is now asleep. Drop a grain far above it. */
     sand_set(&s, 3, 0, SAND_FIRST_SHADE);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 6),
                                   "a grain dropped onto a sleeping pile must fall and land on it - if "
@@ -870,9 +856,7 @@ test_undermining_a_sleeping_pile_collapses_it(void) {
     sand_erase(&s, 3, 7, 0);
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 7), "the hole must actually have been made");
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 7),
                                   "removing a grain must wake what was resting on it, or the pile hangs "
@@ -889,9 +873,7 @@ test_turning_the_board_wakes_a_sleeping_pile(void) {
     /* Now put the board on its side. Nothing has moved, so every row is
      * asleep - but every grain can now move, and only the change of direction
      * says so. */
-    for (int i = 0; i < 100; i++) {
-        sand_step(&s, 1000, 0, 0);
-    }
+    run_steps(&s, 100, 1000, 0);
 
     int at_right_wall = 0;
     for (int y = 0; y < H; y++) {

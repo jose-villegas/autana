@@ -81,9 +81,7 @@ test_gas_rises_diagonally_under_tilted_gravity(void) {
                                      * average */
     sand_set(&s, 5, H - 1, GAS);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 1000, 1000, 0);
-    }
+    run_steps(&s, 3, 1000, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 5, H - 1)),
                                   "the grain must have left its starting cell");
@@ -107,9 +105,7 @@ test_gas_drifts_upward_under_ordinary_gravity(void) {
         sand_set(&s, x, start_row, GAS);
     }
 
-    for (int i = 0; i < 12; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 12, 0, 1000);
 
     int count = 0;
     int row_sum = 0;
@@ -139,9 +135,7 @@ test_gas_drifts_downward_when_the_board_is_inverted(void) {
         sand_set(&s, x, start_row, GAS);
     }
 
-    for (int i = 0; i < 12; i++) {
-        sand_step(&s, 0, -1000, 0);
-    }
+    run_steps(&s, 12, 0, -1000);
 
     int count = 0;
     int row_sum = 0;
@@ -173,9 +167,7 @@ test_gas_drifts_against_tilted_gravity(void) {
         start_col_sum += x;
     }
 
-    for (int i = 0; i < 12; i++) {
-        sand_step(&s, 1000, 1000, 0);
-    }
+    run_steps(&s, 12, 1000, 1000);
 
     int count = 0;
     int row_sum = 0;
@@ -212,9 +204,7 @@ test_gas_is_blocked_by_a_stone_ceiling(void) {
     }
     sand_set(&s, 3, H - 1, GAS);
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     /* Once blocked from rising further, a lone grain with open space on
      * both sides is free to drift sideways along the row (equalise_gas()
@@ -248,9 +238,7 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
         sand_set_mobility(&gas_rise_sim, 255);
         sand_set(&gas_rise_sim, GAS_RISE_W / 2, GAS_RISE_H / 2, GAS);
 
-        for (int step = 0; step < GAS_RISE_STEPS; step++) {
-            sand_step(&gas_rise_sim, 0, 1000, 0);
-        }
+        run_steps(&gas_rise_sim, GAS_RISE_STEPS, 0, 1000);
 
         int final_row = GAS_RISE_H;
         for (int y = 0; y < GAS_RISE_H; y++) {
@@ -383,9 +371,7 @@ test_gas_disperses_across_a_ceiling(void) {
         sand_set(&s, W / 2, y, GAS);
     }
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     int occupied_columns = 0;
     for (int x = 1; x < W - 1; x++) {
@@ -412,9 +398,7 @@ test_sand_sinks_through_gas(void) {
     }
     sand_set(&s, 3, 3, SAND);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
                                   "sand is denser than gas, so it must sink all the way through "
@@ -431,9 +415,7 @@ test_water_sinks_through_gas(void) {
     }
     sand_set(&s, 3, 3, WATER);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
                                   "water is denser than gas too, so it must sink through it the same "
@@ -517,9 +499,7 @@ test_gas_decays_and_disappears_over_time(void) {
     /* At a forced 100% chance, life ticks down by exactly one per step -
      * gone on the step that takes it from 1 to 0, so full life takes
      * exactly that many steps to clear. */
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s),
                                   "gas must decay away to nothing given enough time - unlike every "
@@ -537,9 +517,7 @@ test_gas_decaying_away_marks_its_row_dirty(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_GAS), "setup: exactly one gas grain placed");
     memset(dirty, 0, H);
 
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the grain must have decayed away by now");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4],
@@ -891,9 +869,7 @@ test_fire_burns_out_and_disappears_over_time(void) {
                                   "random shade - random_cell() already generalises this for any "
                                   "decay != 0 material, gas included");
 
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s),
                                   "fire must burn out to nothing given enough time, the same "
@@ -932,9 +908,7 @@ test_sand_sinks_through_fire(void) {
     }
     sand_set(&s, 3, 3, SAND);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
                                   "sand is denser than fire (60 > 15), so it must sink all the "
@@ -1094,9 +1068,7 @@ test_fire_burning_out_marks_its_row_dirty(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_FIRE), "setup: exactly one fire cell placed");
     memset(dirty, 0, H);
 
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the fire cell must have burned out by now");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4],
@@ -1168,9 +1140,7 @@ snow_left_over_soil_at(uint8_t moisture) {
         sand_set(&s, x, H - 3, SNOW);
     }
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
     return count_cells_of(MAT_SNOW);
 }
 
@@ -1229,9 +1199,7 @@ test_cold_conducts_deep_into_a_slab(void) {
     /* 2000 steps, a minute of play, because conduction is deliberately slow -
      * see COLD_CARRY_PERIOD. At 250 steps the slab is only 5% shocked, which
      * is the mechanic working, not failing. */
-    for (int i = 0; i < 2000; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 2000, 0, 1000);
 
     const slab_chill_t r = scan_slab_chill(&g, W2, H2, slab_top);
     const int depth = r.deepest - slab_top + 1;
@@ -1358,9 +1326,7 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
             sand_set(&g, x, y, SNOW);
         }
     }
-    for (int i = 0; i < 200; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 200, 0, 1000);
 
     /* SAMPLED, NOT COUNTED EVERY STEP. Rescanning the grid each step costs
      * more than stepping it, and the answer is a threshold crossing several
@@ -1469,9 +1435,7 @@ test_snow_does_not_crust_against_open_air(void) {
         }
     }
 
-    for (int i = 0; i < 2000; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 2000, 0, 1000);
 
     const crust_faces_t f = snow_bank_crust_faces(&g, X0, X1, YTOP, YBOT);
     free(cells);
@@ -1581,9 +1545,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
      * where the second layer is well under way and the fifth has barely
      * started - measured, and it moved when the crust rate stopped riding an
      * unrelated wake. */
-    for (int i = 0; i < 8000; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 8000, 0, 1000);
 
     const crust_depth_t d = snow_bank_crust_by_depth(&g, X0, X1, YTOP, YBOT);
     free(cells);
@@ -1950,9 +1912,7 @@ test_an_ember_does_not_rise(void) {
     fixture();
     sand_set(&s, 3, H - 1, EMBER);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(cell_is_burning(sand_at(&s, 3, H - 1)),
                              "a burning log is KIND_STATIC, unlike fire - it must stay exactly "
@@ -1973,9 +1933,7 @@ test_an_ember_burns_out_over_time(void) {
      * gets its own full MATERIAL_VARIANTS-1 budget from whenever it was
      * born - worst case the ember's last step. Both budgets need room to
      * run out. */
-    for (int i = 0; i < 2 * (MATERIAL_VARIANTS - 1); i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 2 * (MATERIAL_VARIANTS - 1), 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s),
                                   "an ember, and anything it flared into fire along the way, must "
@@ -2338,9 +2296,7 @@ test_gas_capped_by_solid_instead_of_a_liquid_stays_put(void) {
     }
     sand_set(&s, 3, 6, GAS);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(6, first_row_holding(MAT_GAS),
                                   "capped by SOLID instead of liquid, the same grain has no legal move "
@@ -2474,9 +2430,7 @@ test_acid_dissolves_sand(void) {
     acid_tank(2, 2);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, count_cells_of(MAT_SAND), "setup: there must be sand to eat");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_SAND), "acid must eat the sand it settles onto");
 }
@@ -2494,9 +2448,7 @@ test_acid_does_not_dissolve_its_container(void) {
     const int walls = count_cells_of(MAT_GLASS);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, walls, "setup: the tank must actually be made of glass");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(walls, count_cells_of(MAT_GLASS),
                                   "acid must not touch glass - it is the one material that resists, "
@@ -2520,9 +2472,7 @@ test_acid_eats_through_stone(void) {
         sand_set(&s, x, H - 4, CELL_MAKE(MAT_ACID, MASS_MAX));
     }
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(before, count_cells_of(MAT_STONE),
                                       "acid must eat into stone - stone stopped being the acid-proof "

@@ -608,9 +608,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
     const split_passes_scope_t split = split_passes_scope_begin(0u);
     sand_set_two_core_step(true);
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
     sand_set_two_core_step(false);
     split_passes_scope_end(split);
     tc_assert_split_arm_swept_split(swept_before, true);
@@ -707,9 +705,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     }
 
     sand_set_two_core_step(true);
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
     sand_set_two_core_step(false);
 
     int* occupied = malloc(sizeof(int) * (size_t)TC_H);
@@ -1545,9 +1541,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     build(&s);
 
     sand_set_two_core_step(two_core);
-    for (int i = 0; i < steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, steps, gx, gy);
     sand_set_two_core_step(false);
     tc_collect_core1();
 
@@ -2790,9 +2784,7 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
 
     tc_dispatch_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(true);
-    for (int i = 0; i < settle_steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, settle_steps, gx, gy);
     memset(sand_split_dispatches, 0, sizeof sand_split_dispatches);
     sand_step(&s, gx, gy, 0);
     for (int slot = 0; slot < SAND_SPLIT_SLOTS; slot++) {

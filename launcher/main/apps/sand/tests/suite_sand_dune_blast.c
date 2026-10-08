@@ -75,9 +75,7 @@ static bool
 settle_fully(sand_t* s, size_t cells_len) {
     for (int batch = 0; batch < DUNE_SETTLE_MAX_BATCHES; batch++) {
         const uint64_t before = grid_checksum(s->cells, cells_len);
-        for (int i = 0; i < DUNE_SETTLE_BATCH_STEPS; i++) {
-            sand_step(s, 0, 1000, 0);
-        }
+        run_steps(s, DUNE_SETTLE_BATCH_STEPS, 0, 1000);
         if (grid_checksum(s->cells, cells_len) == before) {
             return true;
         }
@@ -318,9 +316,7 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
      * grain to rest and for a water/collapse scene's own refill to
      * finish. */
     const int max_lifetime = (SAND_EXPLODE_INITIAL_SPEED + SAND_IMPULSE_SPEED_RAMP - 1) / SAND_IMPULSE_SPEED_RAMP;
-    for (int i = 0; i < max_lifetime + 20; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, max_lifetime + 20, 0, 1000);
 
     /* Distance to the NEAREST footprint cell, not to the detonation
      * centre: from one fixed interior point, a grain genuinely thrown
@@ -525,9 +521,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
     sand_explode(&real, cx, cy, DUNE_BLAST_RADIUS);
 
     const int max_lifetime = (SAND_EXPLODE_INITIAL_SPEED + SAND_IMPULSE_SPEED_RAMP - 1) / SAND_IMPULSE_SPEED_RAMP;
-    for (int i = 0; i < max_lifetime + 40; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, max_lifetime + 40, 0, 1000);
 
     const bool centre_refilled = sand_at(&real, cx, cy) != SAND_EMPTY;
 
@@ -543,9 +537,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
     const int carve_r = 6;
     carve_circle_empty(&real, REAL_W, REAL_H, cx, cy, carve_r);
     const int carved_empty = empty_within(&real, cx, cy, carve_r);
-    for (int refill_step = 0; refill_step < 100; refill_step++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, 100, 0, 1000);
     const int carved_water_after = water_within(&real, cx, cy, carve_r);
 
     free(big);
@@ -674,9 +666,7 @@ test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
     sand_explode(&real, cx, cy, DUNE_BLAST_RADIUS);
 
     const int max_lifetime = (SAND_EXPLODE_INITIAL_SPEED + SAND_IMPULSE_SPEED_RAMP - 1) / SAND_IMPULSE_SPEED_RAMP;
-    for (int i = 0; i < max_lifetime + 20; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, max_lifetime + 20, 0, 1000);
 
     const int outside_occupied = count_occupied_outside_vessel(&real, REAL_W, REAL_H, VESSEL_MARGIN);
 
@@ -769,9 +759,7 @@ dune_over_wood_burning(uint32_t seed, bool* settled_out, int* wood_before_out) {
     sand_explode(&real, cx, cy, DUNE_BLAST_RADIUS);
 
     const int max_lifetime = (SAND_EXPLODE_INITIAL_SPEED + SAND_IMPULSE_SPEED_RAMP - 1) / SAND_IMPULSE_SPEED_RAMP;
-    for (int i = 0; i < max_lifetime + 20; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, max_lifetime + 20, 0, 1000);
 
     int burning_wood = 0;
     for (int y = 0; y < REAL_H; y++) {
@@ -851,13 +839,9 @@ test_the_wood_floor_scene_catches_fire(void) {
 static void
 build_layered_dune_scene(sand_t* s) {
     sand_spawn(s, REAL_W / 2, REAL_H / 4, REAL_W / 5, MAT_SAND);
-    for (int i = 0; i < 40; i++) {
-        sand_step(s, 0, 1000, 0);
-    }
+    run_steps(s, 40, 0, 1000);
     sand_spawn(s, REAL_W / 2, REAL_H / 4, (REAL_W / 5) * 2 / 3, MAT_SAND);
-    for (int i = 0; i < 40; i++) {
-        sand_step(s, 0, 1000, 0);
-    }
+    run_steps(s, 40, 0, 1000);
     sand_spawn(s, REAL_W / 2, REAL_H / 4, (REAL_W / 5) / 3, MAT_SAND);
 }
 
@@ -951,9 +935,7 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
     sand_explode(&real, cx, cy, DUNE_BLAST_RADIUS);
 
     const int max_lifetime = (SAND_EXPLODE_INITIAL_SPEED + SAND_IMPULSE_SPEED_RAMP - 1) / SAND_IMPULSE_SPEED_RAMP;
-    for (int i = 0; i < max_lifetime + 20; i++) {
-        sand_step(&real, 0, 1000, 0);
-    }
+    run_steps(&real, max_lifetime + 20, 0, 1000);
 
     bool seen_variant_outside[SAND_SHADE_COUNT] = {false};
     mark_seen_bands_outside(&real, footprint, REAL_W, REAL_H, seen_variant_outside);

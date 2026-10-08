@@ -134,9 +134,7 @@ test_a_grain_keeps_its_shade_as_it_falls(void) {
     const uint8_t shade = SAND_LAST_SHADE;
     sand_set(&s, 3, 0, shade);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 3, 0, 1);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(shade, sand_at(&s, 3, 3),
                                     "shade travels with the grain, or a falling pile shimmers");
@@ -176,9 +174,7 @@ test_a_heap_settles_against_whichever_wall_is_down(void) {
     }
 
     /* Long enough for everything to reach the right-hand wall and stop. */
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 1, 0, 0);
-    }
+    run_steps(&s, 60, 1, 0);
 
     /* Note what is NOT asserted: that every grain ends up in the last column
      * or two. It does not, and should not - the heap forms a wedge with a 45
@@ -545,9 +541,7 @@ test_an_emitter_wakes_a_sleeping_block(void) {
     TEST_ASSERT_TRUE_MESSAGE(sand_add_emitter(&s, 3, 0, WATER),
                              "setup: the emitter's own point is empty and in bounds");
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     bool moved_off_row_zero = false;
     for (int x = 0; x < W && !moved_off_row_zero; x++) {
@@ -573,9 +567,7 @@ test_emitted_water_produces_a_continuing_stream(void) {
     TEST_ASSERT_TRUE_MESSAGE(sand_add_emitter(&s, 3, 0, WATER),
                              "setup: the emitter's own point is empty and in bounds");
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     int water_cells = 0;
     for (int y = 0; y < H; y++) {
@@ -771,9 +763,7 @@ test_a_running_water_emitter_accumulates_mass_on_the_floor(void) {
      * comment), so the bottom row is already a floor with no need to
      * paint one - the same shape test_an_emitter_fills_its_own_cell_when_
      * empty relies on. */
-    for (int i = 0; i < 150; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 150, 0, 1000);
 
     long total_mass = 0;
     bool water_on_the_floor = false;

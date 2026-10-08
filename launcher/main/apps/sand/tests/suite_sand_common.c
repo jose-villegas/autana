@@ -30,6 +30,22 @@ fixture(void) {
     sand_init(&s, cells, W, H, 12345u);
 }
 
+void
+stone_floor_fixture(void) {
+    fixture();
+    sand_clear(&s);
+    for (int x = 0; x < W; x++) {
+        sand_set(&s, x, H - 1, STONE);
+    }
+}
+
+void
+run_steps(sand_t* g, int steps, int gx, int gy) {
+    for (int i = 0; i < steps; i++) {
+        sand_step(g, gx, gy, 0);
+    }
+}
+
 /* Load a picture of a grid. Rows are given top to bottom, so the text reads
  * the way the screen looks. */
 void
@@ -63,9 +79,7 @@ settle_with_sleeping(const char* rows[], int count, int steps, int gx, int gy) {
     sand_enable_sleeping(&s, sleep_blocks);
     load(rows, count);
 
-    for (int i = 0; i < steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, steps, gx, gy);
 }
 
 void
@@ -78,9 +92,7 @@ assert_nothing_left_to_do(int gx, int gy) {
     sand_init(&awake, cells, W, H, 999u);
     memcpy(cells, settled, sizeof(settled));
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&awake, gx, gy, 0);
-    }
+    run_steps(&awake, 60, gx, gy);
 
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(settled, cells, sizeof(settled),
                                      "a fully awake simulation found something to move that the sleeping "

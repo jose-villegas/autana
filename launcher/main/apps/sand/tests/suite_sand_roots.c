@@ -105,9 +105,7 @@ test_a_trunk_standing_on_its_own_root_is_anchored(void) {
      * geometry cannot pass this one by accident either. */
     sand_set(&s, cx + 1, H - 6, MATX(MATX_PLANT));
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(MATX(MATX_ROOT), sand_at(&s, cx, H - 3),
                                     "the root itself must not have moved - it holds still regardless "
@@ -316,9 +314,7 @@ test_a_root_column_reaches_below_the_collar(void) {
                                                    * root cell with a
                                                    * moist neighbour */
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&t, 0, 1000, 0);
-    }
+    run_steps(&t, 3000, 0, 1000);
 
     const root_reach_t reach = measure_root_reach(&t, REACH_TEST_W, REACH_TEST_H, cx, collar_y);
     free(grid);
@@ -505,9 +501,7 @@ test_a_root_is_inert(void) {
      * it either - if a root fell, moved, or spawned anything at all,
      * this would catch it. */
     sand_set(&s, W / 2, 2, MATX(MATX_ROOT));
-    for (int i = 0; i < 300; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 300, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(MATX(MATX_ROOT), sand_at(&s, W / 2, 2),
                                   "a root must not move - it holds still and holds on, the whole "
                                   "of its own reaction row");
@@ -526,9 +520,7 @@ test_a_root_is_inert(void) {
         sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
         sand_set(&s, x, 0, CELL_MAKE(MAT_WATER, MASS_MAX));
     }
-    for (int i = 0; i < 500; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 500, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_EXTENDED),
                                   "a board with wet soil and standing water but no plant or wood "
                                   "anywhere must never produce a root - roots are grown, not "
@@ -650,9 +642,7 @@ test_a_root_never_eats_dry_dirt_sand_or_empty_space(void) {
      * three deliberate candidates rather than two plus whatever the grid
      * happened to start as. */
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 3000, 0, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(CELL_SOIL(MAT_DIRT, 1, 0), sand_at(&s, cx - 1, cy),
                                     "dry dirt must never be eaten - CELL_MOISTURE(n) != 0 is not "
@@ -1596,9 +1586,7 @@ test_two_pours_apart_in_time_lay_down_different_shades(void) {
 
         sand_clear(&s);
         /* Long enough for the band to drift exactly one place along. */
-        for (int i = 0; i < 64; i++) {
-            sand_step(&s, 0, 1000, 0);
-        }
+        run_steps(&s, 64, 0, 1000);
     }
 
     const int gap = (lo[0] + hi[0]) / 2 - (lo[1] + hi[1]) / 2;
@@ -1657,9 +1645,7 @@ test_a_moving_grain_keeps_the_shade_it_was_poured_with(void) {
     }
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, poured, "the pour must have landed");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     sand_shade_histogram(after);
     for (int v = 0; v < MATERIAL_VARIANTS; v++) {

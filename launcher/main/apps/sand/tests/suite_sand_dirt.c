@@ -53,9 +53,7 @@ test_wet_sand_becomes_dirt_and_spends_the_water(void) {
     }
     const int water_before = liquid_mass_of(MAT_WATER);
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(count_cells_of(MAT_DIRT) > 0,
                              "sand left sitting under water must turn into dirt - slowly, but "
@@ -171,9 +169,7 @@ test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
 
     /* Settle to sleep BEFORE the water drops - the bug only showed once the
      * board had already gone quiet once. */
-    for (int i = 0; i < 40; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 40, 0, 1000);
 
     const int water_y = dirt_y - 8;
     for (int x = 0; x < WIDE_W; x++) {
@@ -268,9 +264,7 @@ test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
      * ordering test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it
      * uses, mirrored: this time sleep has to hold with the water gone. */
     clear_material(&wide, WIDE_W, WIDE_H, MAT_WATER);
-    for (int i = 0; i < 80; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 80, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_awake_blocks(&wide),
                                   "setup: the bed must actually be asleep by now, or this test cannot "
                                   "tell a sleeping block's own drying from an awake one's");
@@ -389,9 +383,7 @@ test_a_dry_dirt_grain_keeps_its_tone_as_it_falls(void) {
     const cell_t grain = CELL_SOIL(MAT_DIRT, 5, 0);
     sand_set(&s, 3, 0, grain);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 3, 0, 1);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(grain, sand_at(&s, 3, 3),
                                     "a dry tone must travel with the grain, or a falling pile of dirt "
@@ -439,12 +431,7 @@ test_soil_loses_its_tone_across_a_wetting_and_gets_a_fresh_one_drying(void) {
  * percolation or ambient decay fires first on any one column is a roll. */
 static void
 test_soil_dries_biased_by_the_neighbour_it_just_watered(void) {
-    fixture();
-    sand_clear(&s);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     for (int x = 0; x < W; x += 2) {
         sand_set(&s, x, H - 3, CELL_SOIL(MAT_DIRT, 5, 1)); /* about to run dry */
         sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 5, 0)); /* dry, room for water */
@@ -560,9 +547,7 @@ test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
         }
     }
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&t, 0, 1000, 0);
-    }
+    run_steps(&t, 3000, 0, 1000);
     clear_material(&t, DRY_BANK_W, DRY_BANK_H, MAT_WATER);
 
     bool wet = true;
@@ -681,9 +666,7 @@ test_soaking_is_off_unless_asked_for(void) {
         sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
     }
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_DIRT),
                                   "with soaking off, sand under water must stay sand - a mechanic "
@@ -710,9 +693,7 @@ test_a_wetting_front_spreads_past_the_cells_it_touched(void) {
      * spreads has to be what that one cell is holding. */
     sand_set(&s, 0, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     int reach = -1;
     for (int x = 0; x < W; x++) {
@@ -881,9 +862,7 @@ test_cullet_neither_drinks_water_nor_turns_into_soil(void) {
     }
     const int water_before = liquid_mass_of(MAT_WATER);
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_DIRT),
                                   "cullet left sitting under water must stay cullet - glass has no "
@@ -911,9 +890,7 @@ test_wet_soil_does_not_bind_cullet_from_above(void) {
         sand_set(&s, x, H - 4, CELL_MAKE(MAT_WATER, MASS_MAX));
     }
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(W, count_cells_of(MAT_DIRT),
                                   "the watered bank must not have grown down into the cullet bed");

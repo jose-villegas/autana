@@ -241,9 +241,7 @@ build_layout_mixed_flip_scene(sand_t* s) {
         sand_set(s, sand_x1 + off, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
         sand_set(s, water_x0 - 1 - off, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     }
-    for (int i = 0; i < LAYOUT_SETTLE_STEPS; i++) {
-        sand_step(s, 0, 1000, 0);
-    }
+    run_steps(s, LAYOUT_SETTLE_STEPS, 0, 1000);
     return 0;
 }
 
@@ -357,12 +355,8 @@ test_the_four_liquid_scene_keeps_reacting_after_settling(void) {
 
     build_four_liquid_scene(&s);
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 10, 0, 1000);
+    run_steps(&s, 20, 0, 1000);
 
     int stone = 0, steam = 0, fire = 0;
     for (int y = 0; y < REAL_H; y++) {
@@ -457,12 +451,8 @@ test_the_lava_stress_scene_reaches_every_reaction_it_claims(void) {
 
     build_lava_stress_scene(&s);
 
-    for (int i = 0; i < 30; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 30, 0, 1000);
+    run_steps(&s, 20, 0, 1000);
 
     int glass = 0, fire = 0, steam = 0, stone = 0, extended = 0;
     for (int y = 0; y < REAL_H; y++) {
@@ -557,9 +547,7 @@ test_the_smoke_and_steam_scene_stays_a_gas_screen(void) {
     build_smoke_and_steam_scene(&s);
     const int total = REAL_W * REAL_H;
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 10, 0, 1000);
 
     int smoke = 0, steam = 0;
     for (int y = 0; y < REAL_H; y++) {
@@ -1194,9 +1182,7 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
 
     build_boiler_scene(&s);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     const boiler_census_t window_start = census_boiler_scene(&s);
     const int count_at_window_start = sand_count(&s);
@@ -1813,9 +1799,7 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
     build_wet_earth_scene(&s);
     const wet_earth_paint_t painted = census_wet_earth_paint(&s);
 
-    for (int i = 0; i < 35; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 35, 0, 1000);
 
     const int touching_columns = count_wet_earth_touching_columns(&s);
 
@@ -1966,9 +1950,7 @@ test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_cla
 
     build_water_over_lava_scene(&s);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     int stone = 0, fire = 0;
     for (int y = 0; y < REAL_H; y++) {
@@ -2675,9 +2657,7 @@ mature_tree_settle(sand_t* s, uint8_t* big, uint8_t* blocks) {
     sand_enable_sleeping(s, blocks);
     sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(s);
-    for (int i = 0; i < MATURE_TREE_SETTLE_STEPS; i++) {
-        sand_step(s, 0, 1000, 0);
-    }
+    run_steps(s, MATURE_TREE_SETTLE_STEPS, 0, 1000);
 }
 
 /* THE SCENE'S OWN CLAIM, and the one a cheap number here could be hiding: a
@@ -2698,16 +2678,12 @@ test_the_mature_tree_scene_is_finished_but_can_be_restarted(void) {
     count_greenery(&s2, 0, REAL_W, &grown);
     const bool moisture_flag = s2.may_have_moisture;
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s2, 0, 1000, 0);
-    }
+    run_steps(&s2, 60, 0, 1000);
     greenery_t still;
     count_greenery(&s2, 0, REAL_W, &still);
 
     mature_tree_replant(&s2);
-    for (int i = 0; i < MATURE_TREE_REPLANT_STEPS; i++) {
-        sand_step(&s2, 0, 1000, 0);
-    }
+    run_steps(&s2, MATURE_TREE_REPLANT_STEPS, 0, 1000);
     greenery_t again;
     count_greenery(&s2, 0, REAL_W, &again);
 
@@ -2828,9 +2804,7 @@ test_the_snowfall_scene_holds_a_crusting_bank_and_a_live_fall(void) {
     sand_set_crust(&s2, CRUST_ROLL_MAX);
 
     build_snowfall_scene(&s2);
-    for (int i = 0; i < SNOWFALL_SETTLE_STEPS; i++) {
-        sand_step(&s2, 0, 1000, 0);
-    }
+    run_steps(&s2, SNOWFALL_SETTLE_STEPS, 0, 1000);
 
     int snow_before = 0, ice = 0, sand_left = 0, dirt_left = 0;
     snowfall_census(&s2, &snow_before, &ice, &sand_left, &dirt_left);
@@ -2886,9 +2860,7 @@ test_the_plant_pour_scene_keeps_a_loose_heap_in_the_air(void) {
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
     build_plant_pour_scene(&s2);
 
-    for (int i = 0; i < PLANT_POUR_SETTLE_STEPS; i++) {
-        sand_step(&s2, 0, 1000, 0);
-    }
+    run_steps(&s2, PLANT_POUR_SETTLE_STEPS, 0, 1000);
     for (int i = 0; i < PLANT_POUR_MEASURED_STEPS; i++) {
         plant_pour_stamp(&s2, i);
         sand_step(&s2, 0, 1000, 0);
@@ -2948,9 +2920,7 @@ test_the_settled_plant_heap_is_dry_and_still_full_of_plants(void) {
         plant_pour_stamp(&s2, i);
         sand_step(&s2, 0, 1000, 0);
     }
-    for (int i = 0; i < PLANT_IDLE_SETTLE_STEPS; i++) {
-        sand_step(&s2, 0, 1000, 0);
-    }
+    run_steps(&s2, PLANT_IDLE_SETTLE_STEPS, 0, 1000);
 
     int plants = 0, airborne = 0;
     for (int y = 0; y < REAL_H; y++) {
@@ -3044,9 +3014,7 @@ build_landscape_bed(sand_t* s, int steps) {
         }
         sand_step(s, LANDSCAPE_GX, 0, 0);
     }
-    for (int i = 0; i < LANDSCAPE_SETTLE_STEPS; i++) {
-        sand_step(s, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(s, LANDSCAPE_SETTLE_STEPS, LANDSCAPE_GX, 0);
 }
 
 void
@@ -3199,9 +3167,7 @@ water_slope_gravity_sweep(sand_t* s, int gx0, int gy0, int gx1, int gy1, int ste
 
 void
 water_slope_gravity_hold(sand_t* s, int gx, int gy, int steps) {
-    for (int i = 0; i < steps; i++) {
-        sand_step(s, gx, gy, 0);
-    }
+    run_steps(s, steps, gx, gy);
 }
 
 /* One sand_set() per non-empty cell, not a memcpy of captured_slope_cells:
@@ -3239,9 +3205,7 @@ build_submerged_pile_scene(sand_t* s) {
         landscape_water_pour(s, i);
         sand_step(s, LANDSCAPE_GX, 0, 0);
     }
-    for (int i = 0; i < SUBMERGED_PILE_SETTLE_STEPS; i++) {
-        sand_step(s, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(s, SUBMERGED_PILE_SETTLE_STEPS, LANDSCAPE_GX, 0);
 }
 
 static void
@@ -3584,9 +3548,7 @@ test_the_captured_slope_scenes_water_is_live(void) {
     const long mass_before = water_slope_total_water_mass(&s2);
     const bool tracked = s2.may_have_liquid;
 
-    for (int i = 0; i < 30; i++) {
-        sand_step(&s2, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(&s2, 30, LANDSCAPE_GX, 0);
     const long mass_after = water_slope_total_water_mass(&s2);
 
     free(big);
@@ -3632,9 +3594,7 @@ test_a_submerged_pile_settles_asleep_with_headroom(void) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(REAL_W * REAL_H / 10, water_cells,
                                          "the pile must actually be submerged, not just splashed");
 
-    for (int i = 0; i < SUBMERGED_PILE_FULL_SETTLE_STEPS; i++) {
-        sand_step(&s2, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(&s2, SUBMERGED_PILE_FULL_SETTLE_STEPS, LANDSCAPE_GX, 0);
     const int awake = count_awake_blocks(&s2);
 
     free(big);
@@ -3712,9 +3672,7 @@ test_a_drying_no_plant_board_stays_off_the_full_walk(void) {
 
     const unsigned d0 = sand_reactions_cells_dispatched;
     const int steps = 300;
-    for (int i = 0; i < steps; i++) {
-        sand_step(&s2, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(&s2, steps, LANDSCAPE_GX, 0);
     const unsigned dispatched = sand_reactions_cells_dispatched - d0;
 
     free(big);

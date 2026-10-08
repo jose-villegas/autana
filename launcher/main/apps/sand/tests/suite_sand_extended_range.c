@@ -147,9 +147,7 @@ test_a_powder_lands_on_a_powder_but_sinks_in_a_liquid(void) {
         sand_clear(&s);
         build_powder_sink_scene(bed, dropped);
 
-        for (int i = 0; i < 300; i++) {
-            sand_step(&s, 0, 1000, 0);
-        }
+        run_steps(&s, 300, 0, 1000);
 
         int lowest, highest_bed;
         find_dropped_and_bed_extents(dropped, bed, &lowest, &highest_bed);
