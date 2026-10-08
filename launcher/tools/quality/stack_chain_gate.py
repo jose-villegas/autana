@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Guard task stack frames measured from recompiled source graphs.
 
-Discover launcher/**/stack_chain.txt: root FUNCTION test|frame|system and
+Discover launcher/**/stack_chain.txt: root FUNCTION test|frame|system|boot and
 indirect CALLER... : CALLEE... (private names: file.c:function).
 Compiler graphs close source pointer calls; context and budgets are derived.
 Uncompiled libraries are not counted: newlib printf (_vfprintf_r ~800 B),
@@ -40,7 +40,7 @@ EDGE_RE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"( lab
 FRAME_RE = re.compile(r"(\d+) bytes \(static\)")
 INDIRECT = "__indirect_call"
 KINDS = {"test": "call_protected", "frame": "shell_step_app",
-         "system": "scene_shell_render"}
+         "system": "scene_shell_render", "boot": "app_boot_init"}
 
 
 class SpecError(Exception):
