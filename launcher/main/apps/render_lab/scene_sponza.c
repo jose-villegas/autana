@@ -93,7 +93,7 @@ enter_with(sponza_bake_t shown) {
         }
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
-    (void)scene_activate(sponza, NULL);
+    (void)scene_activate(sponza, render_lab_start_camera);
     render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
     applied_budget_ms = -1;
     apply_budget();
