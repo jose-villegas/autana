@@ -1,9 +1,10 @@
 name: Host Tests
 
 # Everything that compiles and runs on the runner itself, no ESP-IDF: the
-# portable suite (launcher/test/run_tests.sh, plain gcc), the render scenes,
-# and the host editor's CTest suite. The editor steps run even when an
-# earlier one failed, so one red suite never hides the state of the other.
+# portable suite (launcher/test/run_tests.sh, plain gcc), the sand
+# fingerprint, the render scenes, and the host editor's CTest suite. The
+# editor steps run even when an earlier one failed, so one red suite never
+# hides the state of the other.
 
 on:
   push:
@@ -31,6 +32,7 @@ jobs:
           path: launcher/test/build/run_tests.log
           if-no-files-found: warn
       - run: bash launcher/main/apps/sand/tools/report_reactions.sh --check
+      - run: sh launcher/main/apps/sand/tools/report_fingerprint.sh --check
       - run: sh launcher/tools/render/render_all_scenes.sh
 
       # EDITOR_BUILD_GUI=OFF leaves out only the SDL2 + Dear ImGui window,
