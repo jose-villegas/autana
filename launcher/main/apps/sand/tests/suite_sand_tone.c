@@ -113,11 +113,7 @@ test_the_brush_and_the_setter_agree_about_every_material(void) {
 static void
 test_snow_painted_into_water_melts(void) {
     stone_floor_fixture();
-    for (int y = H - 4; y < H - 1; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&s, 0, W, H - 4, H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
     sand_spawn(&s, W / 2, 1, 2, MAT_SNOW);
     TEST_ASSERT_TRUE_MESSAGE(count_cells_of(MAT_SNOW) > 0,
                              "fixture check: the brush has to put some snow on the board");
@@ -145,17 +141,9 @@ test_snow_melts_in_any_liquid(void) {
 
     for (unsigned k = 0; k < sizeof liquids / sizeof liquids[0]; k++) {
         fixture();
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 1, STONE);
-        }
-        for (int y = H - 4; y < H - 1; y++) {
-            for (int x = 0; x < W; x++) {
-                sand_set(&s, x, y, CELL_MAKE(liquids[k], MASS_MAX));
-            }
-        }
-        for (int x = 2; x < W - 2; x++) {
-            sand_set(&s, x, 0, SNOW);
-        }
+        fill_box(&s, 0, W, H - 1, H, STONE);
+        fill_box(&s, 0, W, H - 4, H - 1, CELL_MAKE(liquids[k], MASS_MAX));
+        fill_box(&s, 2, W - 2, 0, 1, SNOW);
 
         run_steps(&s, 600, 0, 1000);
 
@@ -180,17 +168,9 @@ test_melting_snow_makes_water_not_more_of_the_liquid(void) {
 
     for (unsigned k = 0; k < sizeof liquids / sizeof liquids[0]; k++) {
         fixture();
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 1, STONE);
-        }
-        for (int y = H - 3; y < H - 1; y++) {
-            for (int x = 0; x < W; x++) {
-                sand_set(&s, x, y, CELL_MAKE(liquids[k], MASS_MAX));
-            }
-        }
-        for (int x = 2; x < W - 2; x++) {
-            sand_set(&s, x, 0, SNOW);
-        }
+        fill_box(&s, 0, W, H - 1, H, STONE);
+        fill_box(&s, 0, W, H - 3, H - 1, CELL_MAKE(liquids[k], MASS_MAX));
+        fill_box(&s, 2, W - 2, 0, 1, SNOW);
 
         bool water_seen = false;
         for (int i = 0; i < 600 && !water_seen; i++) {
@@ -213,12 +193,8 @@ test_melting_snow_makes_water_not_more_of_the_liquid(void) {
 static void
 test_snow_keeps_on_dry_ground(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, 0, SNOW);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 1, W - 1, 0, 1, SNOW);
     const int fell = W - 2;
 
     run_steps(&s, 600, 0, 1000);
@@ -240,9 +216,7 @@ test_stone_heats_up_next_to_lava(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, STONE);
     }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_LAVA, MASS_MAX));
-    }
+    fill_box(&s, 1, W - 1, H - 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     int hottest = 0;
     for (int i = 0; i < 400; i++) {
@@ -358,12 +332,8 @@ test_stone_never_melts_however_hot(void) {
     fixture();
     sand_clear(&s);
     const int walls = W;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, CELL_MAKE(MAT_STONE, MATERIAL_VARIANTS - 1));
-    }
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
-    }
+    fill_box(&s, 0, W, H - 1, H, CELL_MAKE(MAT_STONE, MATERIAL_VARIANTS - 1));
+    fill_box(&s, 0, W, H - 2, H - 1, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     run_steps(&s, 800, 0, 1000);
 
@@ -381,9 +351,7 @@ test_snow_cracks_glass_but_not_stone(void) {
     fixture();
     sand_clear(&s);
     const int mid = W / 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     for (int x = 1; x < W - 1; x++) {
         /* left half stone, right half glass - both at the top of the ramp */
         sand_set(&s, x, H - 2, CELL_MAKE(x < mid ? MAT_STONE : MAT_GLASS, MATERIAL_VARIANTS - 1));

@@ -218,15 +218,6 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
 
 #define LAYOUT_SETTLE_STEPS 30
 
-static void
-layout_fill(sand_t* s, int x0, int x1, int y0, int y1, cell_t c) {
-    for (int y = y0; y < y1; y++) {
-        for (int x = x0; x < x1; x++) {
-            sand_set(s, x, y, c);
-        }
-    }
-}
-
 int
 build_layout_mixed_flip_scene(sand_t* s) {
     const int w = s->w;
@@ -234,8 +225,8 @@ build_layout_mixed_flip_scene(sand_t* s) {
     const int sand_x1 = (w * 3) / 10;
     const int water_x0 = w - (w * 3) / 10;
 
-    layout_fill(s, 0, sand_x1, h / 2, h, SAND_FIRST_SHADE);
-    layout_fill(s, water_x0, w, h / 2, h, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(s, 0, sand_x1, h / 2, h, SAND_FIRST_SHADE);
+    fill_box(s, water_x0, w, h / 2, h, CELL_MAKE(MAT_WATER, MASS_MAX));
     for (int y = 0; y < h; y++) {
         const int off = (y * (water_x0 - sand_x1 - 1)) / (h - 1);
         sand_set(s, sand_x1 + off, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
@@ -247,7 +238,7 @@ build_layout_mixed_flip_scene(sand_t* s) {
 
 int
 build_layout_water_scene(sand_t* s) {
-    layout_fill(s, s->w / 4, (s->w * 3) / 4, 0, s->h / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(s, s->w / 4, (s->w * 3) / 4, 0, s->h / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     return 0;
 }
 
@@ -268,7 +259,7 @@ build_layout_sand_only_scene(sand_t* s) {
  * another is a gravity flip, which the mixed scene already covers. */
 int
 build_layout_settling_pile_scene(sand_t* s) {
-    layout_fill(s, s->w / 4, (s->w * 3) / 4, s->h / 3, s->h, SAND_FIRST_SHADE);
+    fill_box(s, s->w / 4, (s->w * 3) / 4, s->h / 3, s->h, SAND_FIRST_SHADE);
     return LAYOUT_SETTLE_STEPS;
 }
 
@@ -280,11 +271,11 @@ build_layout_levelling_pool_scene(sand_t* s) {
     const int h = s->h;
     const cell_t stone = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
 
-    layout_fill(s, 1, w - 1, (h * 2) / 3, h, CELL_MAKE(MAT_WATER, MASS_MAX));
-    layout_fill(s, 0, 1, 0, h, stone);
-    layout_fill(s, w - 1, w, 0, h, stone);
-    layout_fill(s, 0, w, h - 1, h, stone);
-    layout_fill(s, w / 3, (w * 2) / 3, h / 2, (h * 2) / 3, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(s, 1, w - 1, (h * 2) / 3, h, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(s, 0, 1, 0, h, stone);
+    fill_box(s, w - 1, w, 0, h, stone);
+    fill_box(s, 0, w, h - 1, h, stone);
+    fill_box(s, w / 3, (w * 2) / 3, h / 2, (h * 2) / 3, CELL_MAKE(MAT_WATER, MASS_MAX));
     return LAYOUT_SETTLE_STEPS;
 }
 
@@ -296,7 +287,7 @@ build_layout_levelling_pool_scene(sand_t* s) {
  * the climb is the point. */
 int
 build_layout_gas_column_scene(sand_t* s) {
-    layout_fill(s, s->w / 3, (s->w * 2) / 3, s->h / 3, (s->h * 2) / 3, LAYOUT_GAS_LIFE);
+    fill_box(s, s->w / 3, (s->w * 2) / 3, s->h / 3, (s->h * 2) / 3, LAYOUT_GAS_LIFE);
     return 0;
 }
 
@@ -310,11 +301,11 @@ build_layout_gas_box_scene(sand_t* s) {
     const int h = s->h;
     const cell_t stone = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
 
-    layout_fill(s, 1, w - 1, 1 + h / 4, h - 1, LAYOUT_GAS_LIFE);
-    layout_fill(s, 0, 1, 0, h, stone);
-    layout_fill(s, w - 1, w, 0, h, stone);
-    layout_fill(s, 0, w, 0, 1, stone);
-    layout_fill(s, 0, w, h - 1, h, stone);
+    fill_box(s, 1, w - 1, 1 + h / 4, h - 1, LAYOUT_GAS_LIFE);
+    fill_box(s, 0, 1, 0, h, stone);
+    fill_box(s, w - 1, w, 0, h, stone);
+    fill_box(s, 0, w, 0, 1, stone);
+    fill_box(s, 0, w, h - 1, h, stone);
     return LAYOUT_SETTLE_STEPS;
 }
 
@@ -402,11 +393,7 @@ test_the_four_liquid_scene_keeps_reacting_after_settling(void) {
 void
 build_lava_stress_scene(sand_t* s) {
     /* floor: a lava reservoir */
-    for (int y = (REAL_H * 3) / 4; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
-        }
-    }
+    fill_box(s, 0, REAL_W, (REAL_H * 3) / 4, REAL_H, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     /* middle: repeating columns six cells wide - sand, wood, oil, then a
      * gap - deliberately, not an oversight, see the comment above. */
@@ -425,11 +412,7 @@ build_lava_stress_scene(sand_t* s) {
     }
 
     /* roof: a water slab */
-    for (int y = 0; y < REAL_H / 6; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(s, 0, REAL_W, 0, REAL_H / 6, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* All six reactions the scene above exists to cover really do fire in it,
@@ -1041,23 +1024,13 @@ build_campfire_scene(sand_t* s) {
     const int pile_y1 = ground_top; /* sits on the sand */
     const int pile_y0 = pile_y1 - pile_h;
 
-    for (int y = ground_top; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, SAND);
-        }
-    }
+    fill_box(s, 0, REAL_W, ground_top, REAL_H, SAND);
 
-    for (int y = pile_y0; y < pile_y1; y++) {
-        for (int x = pile_x0; x < pile_x0 + pile_w; x++) {
-            sand_set(s, x, y, WOOD);
-        }
-    }
+    fill_box(s, pile_x0, pile_x0 + pile_w, pile_y0, pile_y1, WOOD);
 
     /* Lit along the top of the pile, not buried in it: a fire needs air, and
      * burying it would measure smothering instead of burning. */
-    for (int x = pile_x0; x < pile_x0 + pile_w; x++) {
-        sand_set(s, x, pile_y0 - 1, FIRE);
-    }
+    fill_box(s, pile_x0, pile_x0 + pile_w, pile_y0 - 1, pile_y0, FIRE);
 }
 
 /* A heat source left running, against build_thermal_shock_scene()'s burst of
@@ -1347,11 +1320,7 @@ void
 build_tree_grove_scene(sand_t* s) {
     const int ground = (REAL_H * 4) / 5;
 
-    for (int y = ground; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_DIRT, 0));
-        }
-    }
+    fill_box(s, 0, REAL_W, ground, REAL_H, CELL_MAKE(MAT_DIRT, 0));
 
     /* Four trees across the width, see build_tree_grove_tree()'s own
      * comment for why each one is built the way it is. */
@@ -1578,11 +1547,7 @@ build_filling_basin_scene(sand_t* s) {
             sand_set(s, REAL_W - 1 - d, y, STONE);
         }
     }
-    for (int y = REAL_H - FILLING_BASIN_WALL; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, STONE);
-        }
-    }
+    fill_box(s, 0, REAL_W, REAL_H - FILLING_BASIN_WALL, REAL_H, STONE);
     for (int x = FILLING_BASIN_WALL; x < FILLING_BASIN_RAMP_X1; x++) {
         const int y0 = filling_basin_ramp_top(x);
         for (int y = y0; y < y0 + FILLING_BASIN_RAMP_H; y++) {
@@ -1594,11 +1559,8 @@ build_filling_basin_scene(sand_t* s) {
      * an arriving grain in any direction, so give_mass() returns zero for
      * every one of down and both slides, and the scene measures a reject.
      * Counted: 426,880 slide attempts, none of which transferred. */
-    for (int y = FILLING_BASIN_TOP; y < REAL_H - FILLING_BASIN_WALL; y++) {
-        for (int x = FILLING_BASIN_WALL; x < REAL_W - FILLING_BASIN_WALL; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX / 2));
-        }
-    }
+    fill_box(s, FILLING_BASIN_WALL, REAL_W - FILLING_BASIN_WALL, FILLING_BASIN_TOP, REAL_H - FILLING_BASIN_WALL,
+             CELL_MAKE(MAT_WATER, MASS_MAX / 2));
 
     filling_basin_pour(s);
 }
@@ -1641,11 +1603,7 @@ build_snowfall_scene(sand_t* s) {
      * in the air ices nothing: measured, a board given only the fall reached
      * its first ice cell somewhere past step 120, and a drift arriving every
      * ten steps kept the bank awake and reached none at all. */
-    for (int y = SNOWFALL_BED_TOP - SNOWFALL_BANK_H; y < SNOWFALL_BED_TOP; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_SNOW, MASS_MAX));
-        }
-    }
+    fill_box(s, 0, REAL_W, SNOWFALL_BED_TOP - SNOWFALL_BANK_H, SNOWFALL_BED_TOP, CELL_MAKE(MAT_SNOW, MASS_MAX));
 
     snowfall_drift(s);
 }
@@ -1693,11 +1651,7 @@ build_wet_earth_scene(sand_t* s) {
     const int water_h = earth_top / 2;
     const int water_top = earth_top - water_h;
     const int cx0 = REAL_W / 4, cx1 = (REAL_W * 3) / 4;
-    for (int y = water_top; y < earth_top; y++) {
-        for (int x = cx0; x < cx1; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(s, cx0, cx1, water_top, earth_top, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* Water is graded as summed variant, not cell count: a count only moves when
@@ -2044,53 +1998,25 @@ gunpowder_basin_fill_interior(sand_t* s, int ix0, int ix1, int iy0, int iy1, int
             sand_set(s, x, y, GUNPOWDER_CELL(0));
         }
     }
-    for (int y = fy; y < fy + GUNPOWDER_BASIN_SPARK; y++) {
-        for (int x = fx; x < fx + GUNPOWDER_BASIN_SPARK; x++) {
-            sand_set(s, x, y, FIRE);
-        }
-    }
+    fill_box(s, fx, fx + GUNPOWDER_BASIN_SPARK, fy, fy + GUNPOWDER_BASIN_SPARK, FIRE);
 }
 
 /* Outside, left of the vessel: water, then sand, then dirt, each close
  * enough for a breached wall or a flung ember to reach. */
 static void
 gunpowder_basin_left_stacks(sand_t* s, int ix0, int iy0, int iy1) {
-    for (int y = iy0; y < iy0 + 15; y++) {
-        for (int x = ix0 - 25; x < ix0 - 5; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-    for (int y = iy0 + 15; y < iy0 + 30; y++) {
-        for (int x = ix0 - 25; x < ix0 - 5; x++) {
-            sand_set(s, x, y, SAND_FIRST_SHADE);
-        }
-    }
-    for (int y = iy0 + 30; y < iy1; y++) {
-        for (int x = ix0 - 25; x < ix0 - 5; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_DIRT, 0));
-        }
-    }
+    fill_box(s, ix0 - 25, ix0 - 5, iy0, iy0 + 15, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(s, ix0 - 25, ix0 - 5, iy0 + 15, iy0 + 30, SAND_FIRST_SHADE);
+    fill_box(s, ix0 - 25, ix0 - 5, iy0 + 30, iy1, CELL_MAKE(MAT_DIRT, 0));
 }
 
 /* Outside, right of the vessel: oil and wood - fuel for escaping fire to
  * spread into - then acid. */
 static void
 gunpowder_basin_right_stacks(sand_t* s, int ix1, int iy0, int iy1) {
-    for (int y = iy0; y < iy0 + 15; y++) {
-        for (int x = ix1 + 5; x < ix1 + 25; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_OIL, MASS_MAX));
-        }
-    }
-    for (int y = iy0 + 15; y < iy0 + 30; y++) {
-        for (int x = ix1 + 5; x < ix1 + 25; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WOOD, 0));
-        }
-    }
-    for (int y = iy0 + 30; y < iy1; y++) {
-        for (int x = ix1 + 5; x < ix1 + 25; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
-        }
-    }
+    fill_box(s, ix1 + 5, ix1 + 25, iy0, iy0 + 15, CELL_MAKE(MAT_OIL, MASS_MAX));
+    fill_box(s, ix1 + 5, ix1 + 25, iy0 + 15, iy0 + 30, CELL_MAKE(MAT_WOOD, 0));
+    fill_box(s, ix1 + 5, ix1 + 25, iy0 + 30, iy1, CELL_MAKE(MAT_ACID, MASS_MAX));
 }
 
 /* Above the open mouth: a metal slab, sitting in the path of the updraft
@@ -2099,11 +2025,7 @@ gunpowder_basin_right_stacks(sand_t* s, int ix1, int iy0, int iy1) {
  * metal never falls in this simulation. */
 static void
 gunpowder_basin_metal_slab(sand_t* s, int fx, int iy0) {
-    for (int y = iy0 - 25; y < iy0 - 10; y++) {
-        for (int x = fx - 10; x < fx + 10; x++) {
-            sand_set(s, x, y, MATX(MATX_METAL));
-        }
-    }
+    fill_box(s, fx - 10, fx + 10, iy0 - 25, iy0 - 10, MATX(MATX_METAL));
 }
 
 /* A brush-drawn vessel of dry gunpowder, lit near the top, with water,
@@ -2160,9 +2082,7 @@ build_gas_ignition_vessel_scene(sand_t* s) {
             sand_set(s, x, y, STONE);
         }
     }
-    for (int x = x0 + 1; x < x1; x++) {
-        sand_set(s, x, y0 + 20, FIRE);
-    }
+    fill_box(s, x0 + 1, x1, y0 + 20, y0 + 20 + 1, FIRE);
 }
 
 static void

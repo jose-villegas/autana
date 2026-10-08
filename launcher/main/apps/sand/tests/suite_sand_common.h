@@ -104,6 +104,9 @@ void fixture(void);
 /* fixture(), cleared, with a stone floor along the bottom row. */
 void stone_floor_fixture(void);
 
+/* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
+void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
+
 /* Steps g `steps` times under (gx, gy), no jostle. */
 void run_steps(sand_t* g, int steps, int gx, int gy);
 

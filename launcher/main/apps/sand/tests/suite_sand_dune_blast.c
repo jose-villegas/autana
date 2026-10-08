@@ -386,11 +386,7 @@ build_dune_beside_water_scene(sand_t* s) {
      * basin, same claims - it simply starts where it was always going to
      * end up. */
     const int pool_depth = 38;
-    for (int y = REAL_H - pool_depth; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(s, 0, REAL_W, REAL_H - pool_depth, REAL_H, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* The one place in this file checking Impulse-Mechanics.md's device
@@ -704,11 +700,7 @@ build_dune_over_wood_scene(sand_t* s) {
      * shock and lava-stress scenes above deliberately want as their own
      * trigger - this scene wants the opposite: unlit wood, waiting for
      * THIS test's blast to be the first thing that ever lights it. */
-    for (int y = REAL_H - 12; y < REAL_H; y++) {
-        for (int x = REAL_W / 2 - REAL_W / 5; x < REAL_W / 2 + REAL_W / 5; x++) {
-            sand_set(s, x, y, CELL_MAKE(MAT_WOOD, 0));
-        }
-    }
+    fill_box(s, REAL_W / 2 - REAL_W / 5, REAL_W / 2 + REAL_W / 5, REAL_H - 12, REAL_H, CELL_MAKE(MAT_WOOD, 0));
 }
 
 /* The CORE's bottom edge sits at the wood floor's top surface, not the

@@ -85,12 +85,8 @@ test_temperature_flag_clears_after_its_last_cell_is_removed(void) {
 static void
 hold_lava_under_a_pane(int steps) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 3, GLASS);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 1, W - 1, H - 3, H - 2, GLASS);
     for (int i = 0; i < steps; i++) {
         for (int x = 1; x < W - 1; x++) {
             if (CELL_IS_EMPTY(sand_at(&s, x, H - 2))) {
@@ -138,12 +134,8 @@ test_glass_banks_heat_rather_than_melting_on_contact(void) {
 static void
 test_a_fire_held_long_enough_melts_glass_to_lava(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 3, GLASS);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 1, W - 1, H - 3, H - 2, GLASS);
 
     int melted = 0;
     for (int i = 0; i < 4000 && !melted; i++) {
@@ -208,12 +200,8 @@ test_glass_forgets_a_fire_that_went_out(void) {
 static void
 test_glass_cools_on_a_board_with_no_fire_at_all(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 1, W - 1, H - 2, H - 1, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
     TEST_ASSERT_EQUAL_INT_MESSAGE(MATERIAL_VARIANTS - 1, hottest_glass(),
                                   "fixture check: the pane starts at the top of its ramp");
 
@@ -237,12 +225,8 @@ test_glass_cools_on_a_board_with_no_fire_at_all(void) {
 static void
 test_freshly_fused_glass_starts_cold(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
+    fill_box(&s, 1, W - 1, H - 2, H - 1, CELL_MAKE(MAT_SAND, 8));
 
     int made = 0;
     for (int i = 0; i < 2000 && !made; i++) {
@@ -271,9 +255,7 @@ static void
 test_snow_shatters_a_glowing_pane_into_sand(void) {
     fixture();
     const int panes = W - 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     for (int x = 1; x < W - 1; x++) {
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
         sand_set(&s, x, H - 3, SNOW);
@@ -320,9 +302,7 @@ test_chilling_hot_glass_also_transforms_the_chilling_snow_cell(void) {
         sand_set(g, base + 1, 0, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
         sand_set(g, base + 2, 0, STONE);
     }
-    for (int x = 0; x < w; x++) {
-        sand_set(g, x, 1, STONE);
-    }
+    fill_box(g, 0, w, 1, 2, STONE);
 
     sand_step(g, 0, 1000, 0);
 
@@ -513,9 +493,7 @@ test_snow_keeps_on_ordinary_cold_glass(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, GLASS);
     }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 3, SNOW);
-    }
+    fill_box(&s, 1, W - 1, H - 3, H - 2, SNOW);
     const int flakes = count_cells_of(MAT_SNOW);
 
     run_steps(&s, 600, 0, 1000);
@@ -638,14 +616,8 @@ test_a_frosted_pane_warms_back_to_room_temperature(void) {
 static void
 build_lava_glass_wall(int wall) {
     stone_floor_fixture();
-    for (int y = 1; y < H - 1; y++) {
-        sand_set(&s, wall, y, GLASS);
-    }
-    for (int y = H - 3; y < H - 1; y++) {
-        for (int x = 1; x < wall; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
-        }
-    }
+    fill_box(&s, wall, wall + 1, 1, H - 1, GLASS);
+    fill_box(&s, 1, wall, H - 3, H - 1, CELL_MAKE(MAT_LAVA, MASS_MAX));
 }
 
 /* Steps the scene until the wall cell at (wall, face) reaches
@@ -747,9 +719,7 @@ static void
 test_one_shock_cracks_the_whole_pane(void) {
     stone_floor_fixture();
     /* A pane the full width, hot, with a single flake at one END. */
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
-    }
+    fill_box(&s, 0, W, H - 2, H - 1, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
     sand_set(&s, 0, H - 3, SNOW);
 
     run_steps(&s, 90, 0, 1000);
@@ -799,9 +769,7 @@ test_a_crack_does_not_jump_to_a_separate_pane(void) {
 static void
 test_cold_glass_is_unharmed_by_snow(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     const int panes = W - 2;
     for (int x = 1; x < W - 1; x++) {
         sand_set(&s, x, H - 2, GLASS);
@@ -824,9 +792,7 @@ test_cold_glass_is_unharmed_by_snow(void) {
 static void
 test_snow_melts_where_it_chills(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     for (int x = 1; x < W - 1; x++) {
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, SAND_SHOCK_HEAT - 1));
         sand_set(&s, x, H - 3, SNOW);

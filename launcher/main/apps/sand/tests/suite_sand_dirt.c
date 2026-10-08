@@ -48,9 +48,7 @@ test_wet_sand_becomes_dirt_and_spends_the_water(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
     }
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&s, 0, W, H - 3, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     const int water_before = liquid_mass_of(MAT_WATER);
 
     run_steps(&s, 600, 0, 1000);
@@ -118,9 +116,7 @@ test_dirt_takes_on_moisture_and_dries_out_again(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_DIRT, 0));
     }
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&s, 0, W, H - 3, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int wettest = 0;
     for (int i = 0; i < 400; i++) {
@@ -172,9 +168,7 @@ test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
     run_steps(&wide, 40, 0, 1000);
 
     const int water_y = dirt_y - 8;
-    for (int x = 0; x < WIDE_W; x++) {
-        sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&wide, 0, WIDE_W, water_y, water_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int wetted_at = -1;
     for (int i = 0; i < 200 && wetted_at < 0; i++) {
@@ -1026,9 +1020,7 @@ test_water_percolates_diagonally_as_well_as_straight_down(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     /* One row above the floor, so the grains the water has to reach
      * are resting on it - a grain with empty space under it falls
      * out of the scene before any of this gets a turn. */

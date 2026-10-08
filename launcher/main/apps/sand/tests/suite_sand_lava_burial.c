@@ -40,11 +40,7 @@ static void
 test_lava_buried_in_stone_is_not_deleted(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     sand_set(&s, W / 2, H / 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
     /* This scene puts a complete lid over the lava -
      * pinned off so this test still isolates smothered()'s
@@ -75,11 +71,7 @@ static void
 test_buried_lava_bursts_into_stone_and_fire(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     const int cx = W / 2, cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
@@ -424,9 +416,7 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
 static void
 test_an_open_lava_pool_never_bursts(void) {
     stone_floor_fixture();
-    for (int x = 2; x < W - 2; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
-    }
+    fill_box(&s, 2, W - 2, H - 2, H - 1, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_burst(&s, 255);
     const int before = liquid_mass_of(MAT_LAVA);
     TEST_ASSERT_TRUE_MESSAGE(before > 0, "fixture check: an open pool of lava sitting on a floor");
@@ -448,11 +438,7 @@ static void
 test_buried_lava_still_becomes_stone_with_impulses_off(void) {
     fixture();
     sand_clear(&s);
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, STONE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, STONE);
     const int cx = W / 2, cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_burst(&s, 255);

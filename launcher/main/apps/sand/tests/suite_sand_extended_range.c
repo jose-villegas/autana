@@ -48,9 +48,7 @@ test_heat_through_a_pan_lights_oil_rather_than_boiling_it(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 3, STONE); /* the pan */
     }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 4, CELL_MAKE(MAT_OIL, MASS_MAX));
-    }
+    fill_box(&s, 1, W - 1, H - 4, H - 3, CELL_MAKE(MAT_OIL, MASS_MAX));
 
     bool lit = false;
     for (int i = 0; i < 300; i++) {
@@ -80,9 +78,7 @@ test_heat_through_a_pan_lights_oil_rather_than_boiling_it(void) {
  * near the top to fall onto it. */
 static void
 build_powder_sink_scene(uint8_t bed, uint8_t dropped) {
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     for (int y = H - 4; y < H - 1; y++) {
         for (int x = 0; x < W; x++) {
             sand_set(&s, x, y,
@@ -185,9 +181,7 @@ test_hot_gas_warms_what_it_touches(void) {
 
     /* A stone slab with nothing but steam against it - no fire, no
      * conduction path, nothing else that could account for the heat. */
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 2, STONE);
-    }
+    fill_box(&s, 0, W, H - 2, H - 1, STONE);
     for (int i = 0; i < 300; i++) {
         for (int x = 1; x < W - 1; x++) {
             if (CELL_IS_EMPTY(sand_at(&s, x, H - 3))) {
@@ -223,9 +217,7 @@ test_hot_gas_does_not_set_fire_to_anything(void) {
     sand_clear(&s);
     sand_set_flammability(&s, SAND_FLAMMABILITY_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 2, WOOD);
-    }
+    fill_box(&s, 0, W, H - 2, H - 1, WOOD);
     for (int i = 0; i < 400; i++) {
         for (int x = 1; x < W - 1; x++) {
             if (CELL_IS_EMPTY(sand_at(&s, x, H - 3))) {

@@ -381,11 +381,7 @@ test_local_depth_follows_the_puddles_own_shape(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(obst_pool_cells, "obstructed-pool grid must fit in what the framebuffer leaves");
     sand_init(&fx.obst_pool, obst_pool_cells, PW, PH, 4242u);
 
-    for (int y = 2; y < PH; y++) {
-        for (int x = 0; x < PW; x++) {
-            sand_set(&fx.obst_pool, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.obst_pool, 0, PW, 2, PH, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     /* The obstacle: a two-cell rock plug straight through column OBST_X's
      * water, with water left continuous above and below it - "an irregular
@@ -714,11 +710,7 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(blend_pool_cells, "blend-sweep pool grid must fit in what the framebuffer leaves");
     sand_init(&fx.blend_pool, blend_pool_cells, PW, PH, 9001u);
 
-    for (int y = 2; y < PH; y++) {
-        for (int x = 0; x < PW; x++) {
-            sand_set(&fx.blend_pool, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.blend_pool, 0, PW, 2, PH, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int lum[BLEND_SWEEP_N];
     for (size_t i = 0; i < BLEND_SWEEP_N; i++) {
@@ -874,9 +866,7 @@ test_a_continuously_moving_boundary_does_not_run_away(void) {
     uint8_t* debounce_test_cells = malloc((size_t)DEBOUNCE_TEST_W * DEBOUNCE_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(debounce_test_cells, "debounce probe grid must fit in what the framebuffer leaves");
     sand_init(&fx.debounce_test, debounce_test_cells, DEBOUNCE_TEST_W, DEBOUNCE_TEST_H, 2u);
-    for (int y = START_TOP; y < DEBOUNCE_TEST_H; y++) {
-        sand_set(&fx.debounce_test, CX, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&fx.debounce_test, CX, CX + 1, START_TOP, DEBOUNCE_TEST_H, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     unsigned char stable = 0, top_row = 255;
     unsigned depth[DEBOUNCE_TEST_H];
@@ -923,9 +913,7 @@ test_the_debounce_survives_open_air_above_the_pool(void) {
     uint8_t* debounce_test_cells = malloc((size_t)DEBOUNCE_TEST_W * DEBOUNCE_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(debounce_test_cells, "debounce pool grid must fit in what the framebuffer leaves");
     sand_init(&fx.debounce_test, debounce_test_cells, DEBOUNCE_TEST_W, DEBOUNCE_TEST_H, 1u);
-    for (int y = WATER_TOP; y < DEBOUNCE_TEST_H; y++) {
-        sand_set(&fx.debounce_test, CX, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&fx.debounce_test, CX, CX + 1, WATER_TOP, DEBOUNCE_TEST_H, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     unsigned char stable = 0, top_row = 255;
     unsigned depth[DEBOUNCE_TEST_H];
@@ -1031,9 +1019,7 @@ test_the_horizontal_debounce_survives_open_air_beside_the_pool(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(hdebounce_test_cells, "horizontal debounce pool grid must fit in what the framebuffer "
                                                        "leaves");
     sand_init(&fx.hdebounce_test, hdebounce_test_cells, HDEBOUNCE_TEST_W, HDEBOUNCE_TEST_H, 1u);
-    for (int x = WATER_LEFT; x < HDEBOUNCE_TEST_W; x++) {
-        sand_set(&fx.hdebounce_test, x, CY, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&fx.hdebounce_test, WATER_LEFT, HDEBOUNCE_TEST_W, CY, CY + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     unsigned char stable = 0, top_col = 255;
     unsigned depth[HDEBOUNCE_TEST_W];
@@ -1155,11 +1141,7 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
      * in essentially one step - nothing here needs the settling itself to
      * be interesting, only what happens once it is poured onto. */
     const int fill_top = 10;
-    for (int y = fill_top; y < DEPTH_TEST_H; y++) {
-        for (int x = 0; x < DEPTH_TEST_W; x++) {
-            sand_set(&fx.depth_test, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.depth_test, 0, DEPTH_TEST_W, fill_top, DEPTH_TEST_H, CELL_MAKE(MAT_WATER, MASS_MAX));
     run_steps(&fx.depth_test, 300, 0, 1000);
 
     uint8_t settled_snapshot[DEPTH_TEST_W * DEPTH_TEST_H];
@@ -1249,11 +1231,8 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
     /* Down is grid +X here - a deep reservoir fills the gravity-ward part
      * of every row, settled before tracking starts. */
     const int fill_x0 = LANDSCAPE_DEPTH_TEST_W / 3;
-    for (int y = 0; y < LANDSCAPE_DEPTH_TEST_H; y++) {
-        for (int x = fill_x0; x < LANDSCAPE_DEPTH_TEST_W; x++) {
-            sand_set(&fx.depth_test, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.depth_test, fill_x0, LANDSCAPE_DEPTH_TEST_W, 0, LANDSCAPE_DEPTH_TEST_H,
+             CELL_MAKE(MAT_WATER, MASS_MAX));
     run_steps(&fx.depth_test, 300, 1000, 0);
 
     memcpy(settled_snapshot, cells, (size_t)LANDSCAPE_DEPTH_TEST_W * LANDSCAPE_DEPTH_TEST_H);
@@ -1399,11 +1378,7 @@ test_a_shallow_puddle_still_shows_real_darkening(void) {
 
     /* Rows 0-1 stay empty (the surface); rows 2..PH-1 are water - 18 rows,
      * squarely inside the 10-20 cell range measured as broken. */
-    for (int y = 2; y < PH; y++) {
-        for (int x = 0; x < PW; x++) {
-            sand_set(&fx.shallow_pool, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.shallow_pool, 0, PW, 2, PH, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     enum { NEAR_SURFACE_Y = 3, NEAR_BOTTOM_Y = PH - 1 };
 
@@ -1643,16 +1618,10 @@ wake_test_interior_mean_depth(sand_t* g, const int8_t* displayed_depth) {
  * classification, so it could never have found this bug. */
 static void
 wake_test_build_scene(sand_t* g) {
-    for (int y = WAKE_TEST_H - 6; y < WAKE_TEST_H; y++) {
-        for (int x = 0; x < WAKE_TEST_W; x++) {
-            sand_set(g, x, y, CELL_MAKE(MAT_STONE, 0));
-        }
-    }
+    fill_box(g, 0, WAKE_TEST_W, WAKE_TEST_H - 6, WAKE_TEST_H, CELL_MAKE(MAT_STONE, 0));
     sand_spawn(g, WAKE_TEST_W / 3, 6, 5, MAT_WATER);
     sand_spawn(g, 2 * WAKE_TEST_W / 3, 4, 6, MAT_WATER);
-    for (int y = WAKE_TEST_H - 9; y < WAKE_TEST_H - 8; y++) {
-        sand_set(g, WAKE_TEST_W / 2, y, CELL_MAKE(MAT_STONE, 0));
-    }
+    fill_box(g, WAKE_TEST_W / 2, WAKE_TEST_W / 2 + 1, WAKE_TEST_H - 9, WAKE_TEST_H - 8, CELL_MAKE(MAT_STONE, 0));
 }
 
 /* Folds this frame's mean depth into worst_jump/prev_mean, once
@@ -1951,11 +1920,7 @@ band_test_build_scene(sand_t* g) {
         sand_set(g, x, 0, CELL_MAKE(MAT_STONE, 0));
         sand_set(g, x, BAND_TEST_H - 1, CELL_MAKE(MAT_STONE, 0));
     }
-    for (int y = 1; y < BAND_TEST_H - 1; y++) {
-        for (int x = BAND_TEST_W - 17; x < BAND_TEST_W - 1; x++) {
-            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(g, BAND_TEST_W - 17, BAND_TEST_W - 1, 1, BAND_TEST_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* A fresh two-cell pour every 7th frame, so the surface keeps getting
@@ -2352,11 +2317,8 @@ flash_test_settle(bool guard_chain, bool gate_reset) {
     sand_enable_sleeping(&fx.flash_test_grid, flash_test_blocks);
     sand_track_dirty_rows(&fx.flash_test_grid, flash_test_dirty);
 
-    for (int y = FLASH_TEST_H - FLASH_TEST_FILL_ROWS; y < FLASH_TEST_H; y++) {
-        for (int x = 0; x < FLASH_TEST_W; x++) {
-            sand_set(&fx.flash_test_grid, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.flash_test_grid, 0, FLASH_TEST_W, FLASH_TEST_H - FLASH_TEST_FILL_ROWS, FLASH_TEST_H,
+             CELL_MAKE(MAT_WATER, MASS_MAX));
 
     ray_walk_state_reset(fx_ray);
     fx_ray->ignore_chain_break = !guard_chain;
@@ -2713,11 +2675,7 @@ shadow_test_build_scene(sand_t* g) {
         sand_set(g, x, 0, CELL_MAKE(MAT_STONE, 0));
         sand_set(g, x, SHADOW_TEST_H - 1, CELL_MAKE(MAT_STONE, 0));
     }
-    for (int y = 1; y < SHADOW_TEST_H - 1; y++) {
-        for (int x = 1; x < SHADOW_TEST_W - 1; x++) {
-            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(g, 1, SHADOW_TEST_W - 1, 1, SHADOW_TEST_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
     run_steps(g, 400, 1000, 1000);
 
     for (int dy = -1; dy <= 1; dy++) {

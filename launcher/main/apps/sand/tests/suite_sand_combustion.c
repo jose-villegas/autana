@@ -101,9 +101,7 @@ static void
 test_gas_drifts_upward_under_ordinary_gravity(void) {
     fixture();
     const int start_row = H / 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, start_row, GAS);
-    }
+    fill_box(&s, 0, W, start_row, start_row + 1, GAS);
 
     run_steps(&s, 12, 0, 1000);
 
@@ -131,9 +129,7 @@ static void
 test_gas_drifts_downward_when_the_board_is_inverted(void) {
     fixture();
     const int start_row = H / 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, start_row, GAS);
-    }
+    fill_box(&s, 0, W, start_row, start_row + 1, GAS);
 
     run_steps(&s, 12, 0, -1000);
 
@@ -199,9 +195,7 @@ test_gas_drifts_against_tilted_gravity(void) {
 static void
 test_gas_is_blocked_by_a_stone_ceiling(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, 0, STONE);
-    }
+    fill_box(&s, 0, W, 0, 1, STONE);
     sand_set(&s, 3, H - 1, GAS);
 
     run_steps(&s, 50, 0, 1000);
@@ -355,9 +349,7 @@ test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
 static void
 test_gas_disperses_across_a_ceiling(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, 0, STONE);
-    }
+    fill_box(&s, 0, W, 0, 1, STONE);
     for (int y = 0; y < H; y++) {
         sand_set(&s, 0, y, STONE);
         sand_set(&s, W - 1, y, STONE);
@@ -367,9 +359,7 @@ test_gas_disperses_across_a_ceiling(void) {
      * first reaches the ceiling the rest are blocked from stacking through
      * it too. Whether they disperse sideways instead, or just pile up
      * behind the leader, is exactly what this test checks. */
-    for (int y = H - 4; y < H; y++) {
-        sand_set(&s, W / 2, y, GAS);
-    }
+    fill_box(&s, W / 2, W / 2 + 1, H - 4, H, GAS);
 
     run_steps(&s, 60, 0, 1000);
 
@@ -391,11 +381,7 @@ test_gas_disperses_across_a_ceiling(void) {
 static void
 test_sand_sinks_through_gas(void) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, GAS);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, GAS);
     sand_set(&s, 3, 3, SAND);
 
     run_steps(&s, 60, 0, 1000);
@@ -408,11 +394,7 @@ test_sand_sinks_through_gas(void) {
 static void
 test_water_sinks_through_gas(void) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, GAS);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, GAS);
     sand_set(&s, 3, 3, WATER);
 
     run_steps(&s, 60, 0, 1000);
@@ -425,11 +407,7 @@ test_water_sinks_through_gas(void) {
 static void
 test_gas_grain_count_is_conserved(void) {
     fixture();
-    for (int y = 1; y < 4; y++) {
-        for (int x = 1; x < 6; x++) {
-            sand_set(&s, x, y, GAS);
-        }
-    }
+    fill_box(&s, 1, 6, 1, 4, GAS);
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(15, expected);
 
@@ -901,11 +879,7 @@ test_fire_rises_and_disperses_like_gas(void) {
 static void
 test_sand_sinks_through_fire(void) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, FIRE);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, FIRE);
     sand_set(&s, 3, 3, SAND);
 
     run_steps(&s, 60, 0, 1000);
@@ -1087,9 +1061,7 @@ test_fire_spreads_through_a_connected_pocket_in_one_step(void) {
                                      * it, so the pass is pinned to isolate
                                      * reaction scan order, not gas motion */
     sand_set(&s, 0, 0, FIRE);
-    for (int x = 1; x < W; x++) {
-        sand_set(&s, x, 0, GAS);
-    }
+    fill_box(&s, 1, W, 0, 1, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -1185,16 +1157,8 @@ test_cold_conducts_deep_into_a_slab(void) {
 
     sand_t g;
     sand_init(&g, cells, W2, H2, 7u);
-    for (int y = slab_top; y < H2; y++) {
-        for (int x = 0; x < W2; x++) {
-            sand_set(&g, x, y, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
-        }
-    }
-    for (int y = 6; y < slab_top; y++) {
-        for (int x = 0; x < W2; x++) {
-            sand_set(&g, x, y, SNOW);
-        }
-    }
+    fill_box(&g, 0, W2, slab_top, H2, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
+    fill_box(&g, 0, W2, 6, slab_top, SNOW);
 
     /* 2000 steps, a minute of play, because conduction is deliberately slow -
      * see COLD_CARRY_PERIOD. At 250 steps the slab is only 5% shocked, which
@@ -1318,14 +1282,8 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
     sand_init(&g, cells, GW, GH, 71u);
     sand_enable_sleeping(&g, blocks);
 
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
-    for (int y = GH - 1 - DEPTH; y < GH - 1; y++) {
-        for (int x = X0; x < X1; x++) {
-            sand_set(&g, x, y, SNOW);
-        }
-    }
+    fill_box(&g, 0, GW, GH - 1, GH, STONE);
+    fill_box(&g, X0, X1, GH - 1 - DEPTH, GH - 1, SNOW);
     run_steps(&g, 200, 0, 1000);
 
     /* SAMPLED, NOT COUNTED EVERY STEP. Rescanning the grid each step costs
@@ -1426,9 +1384,7 @@ test_snow_does_not_crust_against_open_air(void) {
     sand_enable_sleeping(&g, blocks);
     sand_set_crust(&g, 4); /* 4 in CRUST_ROLL_MAX, as 256 in 65536 was */
 
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
+    fill_box(&g, 0, GW, GH - 1, GH, STONE);
     for (int y = YTOP; y <= YBOT; y++) {
         for (int x = X0; x < X1; x++) {
             sand_set(&g, x, y, SNOW);
@@ -1526,9 +1482,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
     /* WALLED, and resting on the floor. Snow is a powder: a block of it left
      * in mid-air collapses into rubble, and the first version of this measured
      * the rubble. */
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
+    fill_box(&g, 0, GW, GH - 1, GH, STONE);
     for (int y = 10; y < GH - 1; y++) {
         sand_set(&g, X0 - 1, y, STONE);
         sand_set(&g, X1, y, STONE);
@@ -1678,14 +1632,8 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
     sand_init(&g, cells, GW, GH, 71u);
     sand_enable_sleeping(&g, blocks);
 
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
-    for (int y = GH - 1 - DEPTH; y < GH - 1; y++) {
-        for (int x = 2; x < GW - 2; x++) {
-            sand_set(&g, x, y, SNOW);
-        }
-    }
+    fill_box(&g, 0, GW, GH - 1, GH, STONE);
+    fill_box(&g, 2, GW - 2, GH - 1 - DEPTH, GH - 1, SNOW);
     for (int i = 0; i < WARMUP; i++) {
         sand_step(&g, 0, 1000, 0); /* land, and be marked settled */
     }
@@ -1776,9 +1724,7 @@ test_a_material_created_during_the_pass_stays_in_the_mask(void) {
     fixture();
 
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, STONE);
     /* Saturated on arrival, so the soaked_to roll is live immediately and no
      * water is needed - water would put a second material on the board and
      * blur what the mask is being asked about. Rolling every step is what
@@ -2164,11 +2110,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
                                  * keeps this deterministic rather than
                                  * merely probable */
 
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, FIRE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, FIRE);
 
     /* Checked after EVERY step, not once at the end: sand_set_decay() is a
      * single override applying to every material, so the smoke a burnt-out
@@ -2460,17 +2402,11 @@ static void
 test_acid_eats_through_stone(void) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 2, STONE);
-    }
+    fill_box(&s, 0, W, H - 1, H, GLASS);
+    fill_box(&s, 1, W - 1, H - 2, H - 1, STONE);
     const int before = count_cells_of(MAT_STONE);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, before, "setup: a stone floor");
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 4, CELL_MAKE(MAT_ACID, MASS_MAX));
-    }
+    fill_box(&s, 1, W - 1, H - 4, H - 3, CELL_MAKE(MAT_ACID, MASS_MAX));
 
     run_steps(&s, 600, 0, 1000);
 

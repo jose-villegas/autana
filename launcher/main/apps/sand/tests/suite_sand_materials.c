@@ -80,11 +80,7 @@ static void
 test_sand_sinks_through_water(void) {
     fixture();
     /* A pool with a grain of sand sitting on top of it. */
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, WATER);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, WATER);
     sand_set(&s, 3, 3, SAND);
 
     run_steps(&s, 60, 0, 1000);
@@ -100,11 +96,7 @@ test_water_does_not_sink_through_sand(void) {
     /* The mirror of the last one, and the half that a naive swap gets wrong:
      * displacement has to be one-way, or the two materials trade places back
      * and forth for ever. */
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, SAND);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, SAND);
     sand_set(&s, 3, 3, WATER);
 
     run_steps(&s, 60, 0, 1000);
@@ -117,14 +109,8 @@ test_water_does_not_sink_through_sand(void) {
 static void
 test_displacement_conserves_both_materials(void) {
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, WATER);
-        }
-    }
-    for (int x = 1; x < 5; x++) {
-        sand_set(&s, x, 2, SAND);
-    }
+    fill_box(&s, 0, W, 4, H, WATER);
+    fill_box(&s, 1, 5, 2, 3, SAND);
     const long water = mass_of(&s, W, H, MAT_WATER);
     const int sand = count_of(MAT_SAND);
 
@@ -143,9 +129,7 @@ test_water_finds_its_own_level(void) {
     fixture();
     /* A column of water in the middle of the floor. Sand would stand there as
      * a heap at its angle of repose; water must not. */
-    for (int y = 2; y < H; y++) {
-        sand_set(&s, 3, y, WATER);
-    }
+    fill_box(&s, 3, 4, 2, H, WATER);
 
     run_steps(&s, 200, 0, 1000);
 
@@ -171,9 +155,7 @@ test_a_powder_still_holds_a_heap(void) {
     /* The other side of the same coin: making water spread must not have made
      * sand spread too. */
     fixture();
-    for (int y = 2; y < H; y++) {
-        sand_set(&s, 3, y, SAND);
-    }
+    fill_box(&s, 3, 4, 2, H, SAND);
 
     run_steps(&s, 200, 0, 1000);
 
@@ -201,9 +183,7 @@ test_water_can_be_held_by_a_stone_basin(void) {
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 5, H - 1, STONE);
     sand_set(&s, 5, H - 2, STONE);
-    for (int x = 3; x < 5; x++) {
-        sand_set(&s, x, 4, WATER);
-    }
+    fill_box(&s, 3, 5, 4, 5, WATER);
     const int water = count_of(MAT_WATER);
 
     run_steps(&s, 200, 0, 1000);
@@ -232,11 +212,7 @@ test_a_drop_resting_on_a_pool_comes_to_rest(void) {
      * step - and since the sweep direction alternates, it slid left, right,
      * left, wandering the surface for ever. */
     fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, WATER);
-        }
-    }
+    fill_box(&s, 0, W, 4, H, WATER);
     sand_set(&s, 3, 3, WATER); /* one drop, on top, nothing above it */
 
     run_steps(&s, 60, 0, 1000);
@@ -288,9 +264,7 @@ test_water_poured_into_a_basin_reaches_both_ends(void) {
         sand_set(&s, 0, y, STONE);
         sand_set(&s, W - 1, y, STONE);
     }
-    for (int y = 0; y < 6; y++) {
-        sand_set(&s, 1, y, WATER);
-    }
+    fill_box(&s, 1, 2, 0, 6, WATER);
 
     run_steps(&s, 400, 0, 1000);
 
@@ -335,14 +309,8 @@ build_full_basin(void) {
         sand_set(pour_p, 5, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
         sand_set(pour_p, 12, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     }
-    for (int x = 5; x < 13; x++) {
-        sand_set(pour_p, x, POUR_H - 1, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-    }
-    for (int y = POUR_H - 4; y < POUR_H - 1; y++) {
-        for (int x = 6; x < 12; x++) {
-            sand_set(pour_p, x, y, CELL_MAKE(MAT_WATER, 8));
-        }
-    }
+    fill_box(pour_p, 5, 13, POUR_H - 1, POUR_H, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+    fill_box(pour_p, 6, 12, POUR_H - 4, POUR_H - 1, CELL_MAKE(MAT_WATER, 8));
     run_steps(pour_p, 200, 0, 1000);
 }
 
@@ -441,14 +409,8 @@ test_a_tipped_basin_keeps_its_sand(void) {
         sand_set(pour_p, 5, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
         sand_set(pour_p, 12, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     }
-    for (int x = 5; x < 13; x++) {
-        sand_set(pour_p, x, POUR_H - 1, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
-    }
-    for (int y = POUR_H - 4; y < POUR_H - 1; y++) {
-        for (int x = 6; x < 12; x++) {
-            sand_set(pour_p, x, y, CELL_MAKE(MAT_SAND, 8));
-        }
-    }
+    fill_box(pour_p, 5, 13, POUR_H - 1, POUR_H, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+    fill_box(pour_p, 6, 12, POUR_H - 4, POUR_H - 1, CELL_MAKE(MAT_SAND, 8));
     run_steps(pour_p, 200, 0, 1000);
 
     run_steps(pour_p, 600, 1000, 300);
@@ -703,14 +665,8 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
      * because there is nothing for either ray to transfer. A real pool
      * always has a ragged surface, and this is what gives the fixture one. */
     const int full_rows = h / 3;
-    for (int y = h - full_rows; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
-    for (int x = 0; x < w; x++) {
-        sand_set(&s, x, h - full_rows - 1, CELL_MAKE(MAT_WATER, 7));
-    }
+    fill_box(&s, 0, w, h - full_rows, h, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_box(&s, 0, w, h - full_rows - 1, h - full_rows, CELL_MAKE(MAT_WATER, 7));
 
     run_steps(&s, steps, gx, gy);
 
@@ -806,11 +762,7 @@ test_water_falling_onto_water_also_queues_a_small_displacement(void) {
     sand_init(&fx.splash_sim, splash_cells, SPLASH_W, SPLASH_H, 1u);
     sand_enable_impulses(&fx.splash_sim, drop_impulse_buf, 4096);
 
-    for (int y = POOL_TOP + 1; y < SPLASH_H; y++) {
-        for (int x = 0; x < SPLASH_W; x++) {
-            sand_set(&fx.splash_sim, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(&fx.splash_sim, 0, SPLASH_W, POOL_TOP + 1, SPLASH_H, CELL_MAKE(MAT_WATER, MASS_MAX));
     /* The surface row has ROOM - a fully-packed target has nothing for the
      * straight-down transfer this trigger reads to give it. */
     sand_set(&fx.splash_sim, CX, POOL_TOP, CELL_MAKE(MAT_WATER, SURFACE_MASS));
@@ -931,9 +883,7 @@ test_a_cascading_impulse_moves_more_than_one_cell(void) {
     sand_init(&fx.cascade_test_sim, cascade_test_cells, CASCADE_TEST_W, CASCADE_TEST_H, 1u);
     sand_enable_impulses(&fx.cascade_test_sim, buf, 64);
 
-    for (int y = TOP; y < TOP + COL_LEN; y++) {
-        sand_set(&fx.cascade_test_sim, COL, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&fx.cascade_test_sim, COL, COL + 1, TOP, TOP + COL_LEN, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     sand_impulse(&fx.cascade_test_sim, COL, TOP, DIR_UP, 255);
 
@@ -977,19 +927,9 @@ build_dirt_stir_basin(sand_t* g, int floor_row, int dirt_top, int pool_top) {
         sand_set(g, 0, y, STONE);
         sand_set(g, STIR_W - 1, y, STONE);
     }
-    for (int x = 0; x < STIR_W; x++) {
-        sand_set(g, x, floor_row, STONE);
-    }
-    for (int y = dirt_top; y < floor_row; y++) {
-        for (int x = 1; x < STIR_W - 1; x++) {
-            sand_set(g, x, y, CELL_MAKE(MAT_DIRT, 0));
-        }
-    }
-    for (int y = pool_top; y < dirt_top; y++) {
-        for (int x = 1; x < STIR_W - 1; x++) {
-            sand_set(g, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    fill_box(g, 0, STIR_W, floor_row, floor_row + 1, STONE);
+    fill_box(g, 1, STIR_W - 1, dirt_top, floor_row, CELL_MAKE(MAT_DIRT, 0));
+    fill_box(g, 1, STIR_W - 1, pool_top, dirt_top, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* Fills was_dirt[0..n) with whether each of g's cells currently holds
@@ -1089,9 +1029,7 @@ test_a_flying_water_grain_does_not_swap_into_dirt_in_its_path(void) {
 
     enum { ROW = 4, WX = 3, DX = 4, DIR_RIGHT = 2 };
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, ROW + 1, STONE);
-    }
+    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
     sand_set(&s, WX, ROW, WATER);
     sand_set(&s, DX, ROW, CELL_MAKE(MAT_DIRT, 0));
 
@@ -1122,9 +1060,7 @@ test_a_flying_water_grain_still_displaces_another_liquid(void) {
 
     enum { ROW = 4, WX = 3, OX = 4, DIR_RIGHT = 2 };
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, ROW + 1, STONE);
-    }
+    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
     sand_set(&s, WX, ROW, WATER);
     sand_set(&s, OX, ROW, OIL);
     sand_set(&s, OX + 1, ROW, STONE);
@@ -1161,9 +1097,7 @@ test_a_water_into_water_cascade_is_untouched_by_the_liquid_fix(void) {
     sand_init(&fx.liq_cascade_sim, liq_cascade_cells, LIQ_CASCADE_W, LIQ_CASCADE_H, 1u);
     sand_enable_impulses(&fx.liq_cascade_sim, buf, 64);
 
-    for (int y = TOP; y < TOP + COL_LEN; y++) {
-        sand_set(&fx.liq_cascade_sim, COL, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    fill_box(&fx.liq_cascade_sim, COL, COL + 1, TOP, TOP + COL_LEN, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     sand_impulse(&fx.liq_cascade_sim, COL, TOP, DIR_UP, 255);
 
