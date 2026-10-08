@@ -36,7 +36,7 @@ crossflow_fixture(void) {
     TEST_ASSERT_EQUAL_UINT((unsigned)sizeof f->stamps, (unsigned)sand_step_stamp_bytes(CF_W, CF_H));
     sand_enable_step_stamps(&f->s, f->stamps);
     f->scratch = lane_scratch_open(&f->s);
-    fill_box(&f->s, 0, CF_W, 0, CF_H, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+    sand_fill_box(&f->s, 0, 0, CF_W, CF_H, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     f->s.step_phase = 1;
     f->s.liquid_flip = true;
     return f;
@@ -111,7 +111,7 @@ test_liquid_density_sort_swaps_a_landscape_boundary_in_every_row(void) {
     sand_t s;
     sort_fixture(&s, cells);
 
-    fill_box(&s, 1, 2, 1, SORT_H - 1, WATER);
+    sand_fill_box(&s, 1, 1, 2, SORT_H - 1, WATER);
     sort_liquids(&s, 1, 0);
 
     for (int y = 1; y < SORT_H - 1; y++) {
@@ -137,7 +137,7 @@ test_liquid_density_sort_keeps_the_portrait_rate(void) {
     sand_t s;
     sort_fixture(&s, cells);
 
-    fill_box(&s, 1, SORT_W - 1, 1, 2, WATER);
+    sand_fill_box(&s, 1, 1, SORT_W - 1, 2, WATER);
     sort_liquids(&s, 0, 1);
 
     for (int x = 1; x < SORT_W - 1; x++) {

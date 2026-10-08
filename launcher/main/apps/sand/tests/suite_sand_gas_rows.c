@@ -52,14 +52,14 @@ gas_rows_teardown(void) {
 
 static void
 lay_gas_row_floor(void) {
-    fill_box(&gr, 0, GASROW_W, GASROW_H - 1, GASROW_H, CELL_MAKE(MAT_STONE, 0));
+    sand_fill_box(&gr, 0, GASROW_H - 1, GASROW_W, GASROW_H, CELL_MAKE(MAT_STONE, 0));
 }
 
 /* Water for try_bubble() and the walk's buoyancy fallback to push
  * through. */
 static void
 lay_gas_row_water_bed(void) {
-    fill_box(&gr, 4, GASROW_W - 4, GASROW_H - 8, GASROW_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&gr, 4, GASROW_H - 8, GASROW_W - 4, GASROW_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* Stone/wood-or-sand pillar pairs for a mover to be BLOCKED BY. */
@@ -125,8 +125,8 @@ static void
 test_a_downward_walk_cascade_arms_every_row(void) {
     gas_rows_fixture();
 
-    fill_box(&gr, 0, GASROW_W, GASROW_H - 1, GASROW_H, CELL_MAKE(MAT_STONE, 0));
-    fill_box(&gr, 2, GASROW_W - 2, 2, 8, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_fill_box(&gr, 0, GASROW_H - 1, GASROW_W, GASROW_H, CELL_MAKE(MAT_STONE, 0));
+    sand_fill_box(&gr, 2, 2, GASROW_W - 2, 8, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
 
     run_steps(&gr, 200, 0, 1);
 

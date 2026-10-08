@@ -170,7 +170,7 @@ test_the_average_direction_tracks_the_true_angle(void) {
 static void
 test_dithering_still_conserves_grains(void) {
     fixture();
-    fill_box(&s, 1, 6, 1, 4, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 1, 1, 6, 4, SAND_FIRST_SHADE);
     const int expected = sand_count(&s);
 
     /* An awkward angle, so the direction changes from step to step. */
@@ -382,7 +382,7 @@ test_every_changed_row_is_reported(void) {
      * stale pixels: run a busy grid, then check the report against a full
      * before-and-after comparison. */
     dirty_fixture();
-    fill_box(&s, 1, 7, 1, 5, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 1, 1, 7, 5, SAND_FIRST_SHADE);
 
     for (int i = 0; i < 90; i++) {
         uint8_t before[W * H];
@@ -532,7 +532,7 @@ test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row(void) {
 static void
 test_load_counts_the_grains_stacked_above(void) {
     fixture();
-    fill_box(&s, 2, 3, 3, H, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 2, 3, 3, H, SAND_FIRST_SHADE);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, sand_load_above(&s, 2, H - 1, 0, 1),
                                   "the bottom of a five-grain column carries the other four");
@@ -565,7 +565,7 @@ test_open_sky_is_not_load(void) {
 static void
 test_load_is_measured_against_gravity(void) {
     fixture();
-    fill_box(&s, 0, 4, 3, 4, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 0, 3, 4, 4, SAND_FIRST_SHADE);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, sand_load_above(&s, 3, 3, 1, 0),
                                   "with gravity to the right, the grains to the LEFT are the ones "
@@ -623,7 +623,7 @@ test_friction_never_stops_a_grain_falling(void) {
     fixture();
     /* Buried under four grains, but with nothing underneath. Whatever is on
      * top of it, an unsupported grain falls - that is what unsupported means. */
-    fill_box(&s, 3, 4, 0, 5, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 3, 0, 4, 5, SAND_FIRST_SHADE);
 
     sand_step(&s, 0, 1, 0);
 
@@ -682,7 +682,7 @@ test_a_flat_bed_does_not_slide_on_a_slight_tilt(void) {
      * Room on both sides to slide into, so staying put is a real result. */
     for (int trial = 0; trial < 20; trial++) {
         sand_init(&s, cells, W, H, 31u + (uint32_t)trial);
-        fill_box(&s, 2, 6, H - 1, H, SAND_FIRST_SHADE);
+        sand_fill_box(&s, 2, H - 1, 6, H, SAND_FIRST_SHADE);
         const long before = centre_of_mass_x();
 
         /* About 14 degrees - a tilt you would not expect to pour sand. */
@@ -712,7 +712,7 @@ settled_base_x(int rows, uint32_t seed) {
     }
 
     sand_init(big, big_cells, BIG_W, BIG_H, seed);
-    fill_box(big, 2, 8, BIG_H - rows, BIG_H, SAND_FIRST_SHADE);
+    sand_fill_box(big, 2, BIG_H - rows, 8, BIG_H, SAND_FIRST_SHADE);
     for (int i = 0; i < 120; i++) {
         sand_step(big, 1200, 1000, 0); /* well past the angle of repose */
     }
@@ -760,7 +760,7 @@ test_a_steep_tilt_does_pour_the_bed(void) {
     /* The other side of the same rule: past the friction angle it MUST move,
      * or the sand is glued down rather than resting. About 50 degrees. */
     fixture();
-    fill_box(&s, 2, 6, H - 1, H, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 2, H - 1, 6, H, SAND_FIRST_SHADE);
     const long before = centre_of_mass_x();
 
     run_steps(&s, 200, 1200, 1000);

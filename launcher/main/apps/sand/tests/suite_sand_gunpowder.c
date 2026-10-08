@@ -198,7 +198,7 @@ test_gunpowder_falls_and_piles_like_a_powder(void) {
 static void
 drop_grain_onto_bed(uint8_t bed, cell_t dropped) {
     fixture();
-    fill_box(&s, 0, W, 4, H, bed);
+    sand_fill_box(&s, 0, 4, W, H, bed);
     sand_set(&s, 3, 3, dropped);
     run_steps(&s, 60, 0, 1000);
 }
@@ -374,7 +374,7 @@ test_a_lit_gunpowder_trail_burns_along_itself(void) {
                                  * is immortal (decay 0); the trail must
                                  * actually burn down behind the fuse
                                  * front, not just light up and stay lit */
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 1, H - 2, GUNPOWDER_LIT_CELL);
     for (int x = 2; x <= 5; x++) {
         sand_set(&s, x, H - 2, GUNPOWDER_CELL(0));
@@ -423,7 +423,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
      * burn_decay for burn-out to happen at all. */
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    fill_box(&s, 1, 7, H - 1, H, STONE);
+    sand_fill_box(&s, 1, H - 1, 7, H, STONE);
     boxed_lit_square(&s);
 
     impulse_t* square_buf = impulses_open(&s, W * H);
@@ -445,7 +445,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
      * fire. */
     fixture();
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    fill_box(&s, 1, 7, H - 1, H, STONE);
+    sand_fill_box(&s, 1, H - 1, 7, H, STONE);
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 5, H - 2, STONE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
@@ -524,13 +524,13 @@ test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
  * room whose walls only a real blast's core reaches. */
 static void
 fuse_room(int x) {
-    fill_box(&wide, x - 1, x, 2, 4, STONE);
-    fill_box(&wide, x + 2, x + 3, 2, 4, STONE);
+    sand_fill_box(&wide, x - 1, 2, x, 4, STONE);
+    sand_fill_box(&wide, x + 2, 2, x + 3, 4, STONE);
 }
 
 static void
 lit_square(int x) {
-    fill_box(&wide, x, x + 2, 2, 4, GUNPOWDER_LIT_CELL);
+    sand_fill_box(&wide, x, 2, x + 2, 4, GUNPOWDER_LIT_CELL);
 }
 
 /* Whether no cell of the 2x2 at columns x, x + 1, rows 2-3 is gunpowder. */
@@ -558,7 +558,7 @@ test_fuse_blasts_are_capped_at_one_per_step(void) {
 
     impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
-    fill_box(&wide, 0, WIDE_W, 4, 5, STONE);
+    sand_fill_box(&wide, 0, 4, WIDE_W, 5, STONE);
     /* Group A: columns 2-3. */
     fuse_room(2);
     lit_square(2);
@@ -608,7 +608,7 @@ test_a_longer_fuse_cooldown_delays_the_next_blast(void) {
 
     impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
 
-    fill_box(&wide, 0, WIDE_W, 4, 5, STONE);
+    sand_fill_box(&wide, 0, 4, WIDE_W, 5, STONE);
     fuse_room(2);
     lit_square(2);
     fuse_room(26);
@@ -649,7 +649,7 @@ test_a_one_wide_lit_trail_never_detonates(void) {
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL); /* sand_init()'s default
                                  * is immortal (decay 0) - this test needs
                                  * the whole trail to actually burn out */
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 6, H - 2, STONE);
     for (int x = 0; x <= 5; x++) {
         sand_set(&s, x, H - 2, GUNPOWDER_LIT_CELL);
@@ -726,7 +726,7 @@ test_water_quenches_lit_gunpowder_to_soaked(void) {
     fixture();
     sand_clear(&s);
     sand_set_decay(&s, 0);
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
     sand_set(&s, 4, H - 2, WATER);
 
@@ -758,7 +758,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
     sand_set_mobility(&s, 0);                    /* keep an earlier-resolved corner's
                                  * fresh fire from drifting off before
                                  * the last corner is checked */
-    fill_box(&s, 1, 7, H - 1, H, STONE);
+    sand_fill_box(&s, 1, H - 1, 7, H, STONE);
     boxed_lit_square(&s);
     /* No sand_enable_impulses() - s->impulse_buf stays NULL, the default. */
 
@@ -934,7 +934,7 @@ ignite_trial_row(sand_t* g, uint8_t* cells, int w, int trials, cell_t gp_byte) {
         sand_set(g, base + 1, 0, gp_byte);
         sand_set(g, base + 2, 0, STONE);
     }
-    fill_box(g, 0, w, 1, 2, STONE);
+    sand_fill_box(g, 0, 1, w, 2, STONE);
 }
 
 static void
@@ -1177,7 +1177,7 @@ static void
 test_acid_dissolves_gunpowder(void) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    fill_box(&s, 1, W - 1, H - 1, H, GLASS);
+    sand_fill_box(&s, 1, H - 1, W - 1, H, GLASS);
     for (int y = 1; y < H; y++) {
         sand_set(&s, 1, y, GLASS);
         sand_set(&s, W - 2, y, GLASS);
@@ -1224,7 +1224,7 @@ test_a_wet_neighbour_does_not_put_out_a_lit_fuse(void) {
     sand_clear(&s);
     sand_set_decay(&s, 0);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
     sand_set(&s, 3, H - 2, GUNPOWDER_LIT_CELL);
     sand_set(&s, 4, H - 2, with_moisture(GUNPOWDER_CELL(0), r->moist_max, r));

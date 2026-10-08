@@ -406,9 +406,9 @@ snow_float_scan(void) {
 static void
 test_snow_floats_on_water(void) {
     fixture();
-    fill_box(&s, 0, W, H - 1, H, STONE);
-    fill_box(&s, 0, W, H - 4, H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
-    fill_box(&s, 2, W - 2, 0, 1, SNOW);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+    sand_fill_box(&s, 0, H - 4, W, H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 2, 0, W - 2, 1, SNOW);
 
     run_steps(&s, 20, 0, 1000);
 
@@ -435,11 +435,11 @@ test_glass_conducts_heat_like_stone(void) {
     /* And in the simulation, not only in the table: a sealed vessel with
      * water in it and fire underneath. */
     fixture();
-    fill_box(&s, 0, W, H - 1, H, GLASS);
+    sand_fill_box(&s, 0, H - 1, W, H, GLASS);
     for (int x = 1; x < W - 1; x++) {
         sand_set(&s, x, H - 3, GLASS); /* the vessel's base */
     }
-    fill_box(&s, 2, W - 2, H - 4, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 2, H - 4, W - 2, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     bool boiled = false;
     for (int i = 0; i < 400 && !boiled; i++) {
@@ -463,8 +463,8 @@ test_glass_conducts_heat_like_stone(void) {
 static void
 test_sand_turns_to_glass_under_sustained_heat(void) {
     fixture();
-    fill_box(&s, 0, W, H - 1, H, GLASS);
-    fill_box(&s, 1, W - 1, H - 2, H - 1, CELL_MAKE(MAT_SAND, 8));
+    sand_fill_box(&s, 0, H - 1, W, H, GLASS);
+    sand_fill_box(&s, 1, H - 2, W - 1, H - 1, CELL_MAKE(MAT_SAND, 8));
 
     /* A flame held against it, re-laid each step: fire is KIND_GAS and
      * rises away during the same step it is placed, so a single spark
@@ -511,7 +511,7 @@ static void
 test_acid_dissolves_dune_sand_but_not_cullet(void) {
     fixture();
 
-    fill_box(&s, 0, W, H - 1, H, GLASS);
+    sand_fill_box(&s, 0, H - 1, W, H, GLASS);
     for (int y = 0; y < H - 1; y++) {
         sand_set(&s, 4, y, GLASS); /* keeps the two acid columns from ever meeting */
     }
@@ -560,8 +560,8 @@ acid_fizz_fixture(uint8_t* cells) {
     sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5u);
     sand_set_evaporates(&fx.fizz_sim, 0); /* isolate fizz, see the tests'
                                           * own comments for why */
-    fill_box(&fx.fizz_sim, 0, FIZZ_W, 4, FIZZ_H, CELL_MAKE(MAT_SAND, 8));
-    fill_box(&fx.fizz_sim, 0, FIZZ_W, 0, 3, CELL_MAKE(MAT_ACID, MASS_MAX));
+    sand_fill_box(&fx.fizz_sim, 0, 4, FIZZ_W, FIZZ_H, CELL_MAKE(MAT_SAND, 8));
+    sand_fill_box(&fx.fizz_sim, 0, 0, FIZZ_W, 3, CELL_MAKE(MAT_ACID, MASS_MAX));
 }
 
 static void
@@ -980,15 +980,15 @@ acid_water_pour_fixture(uint8_t* cells, material_id_t pool) {
                                                 * evaporates roll - same
                                                 * reasoning as the other
                                                 * dilution fixtures above. */
-    fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_W, DILUTE_POUR_H - 1, DILUTE_POUR_H, STONE);
-    fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_W, DILUTE_POUR_H - 1 - DILUTE_POUR_POOL_DEPTH, DILUTE_POUR_H - 1,
-             CELL_MAKE(pool, MASS_MAX));
+    sand_fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_H - 1, DILUTE_POUR_W, DILUTE_POUR_H, STONE);
+    sand_fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_H - 1 - DILUTE_POUR_POOL_DEPTH, DILUTE_POUR_W, DILUTE_POUR_H - 1,
+                  CELL_MAKE(pool, MASS_MAX));
 }
 
 static void
 pour_and_count(material_id_t tap, int* out_pool_mat, int* out_tap_mat) {
     for (int i = 0; i < DILUTE_POUR_STEPS; i++) {
-        fill_box(&fx.dilute_pour_sim, 0, DILUTE_POUR_W, 0, 1, CELL_MAKE(tap, MASS_MAX));
+        sand_fill_box(&fx.dilute_pour_sim, 0, 0, DILUTE_POUR_W, 1, CELL_MAKE(tap, MASS_MAX));
         sand_step(&fx.dilute_pour_sim, 0, 1000, 0);
     }
 
@@ -1029,7 +1029,7 @@ pour_and_measure_tap_gain(material_id_t pool, material_id_t tap, int bias) {
 /* The two side walls and floor the contest pours into. */
 static void
 acid_water_contest_build_walls(sand_t* g, int gw, int gh) {
-    fill_box(g, 0, gw, gh - 1, gh, STONE);
+    sand_fill_box(g, 0, gh - 1, gw, gh, STONE);
     for (int y = 6; y < gh; y++) {
         sand_set(g, 4, y, STONE);
         sand_set(g, gw - 5, y, STONE);
@@ -1160,8 +1160,8 @@ static void
 test_a_little_acid_cannot_eat_an_unlimited_amount(void) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    fill_box(&s, 0, W, H - 1, H, STONE);
-    fill_box(&s, 0, W, 2, H - 1, CELL_MAKE(MAT_SAND, 8));
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+    sand_fill_box(&s, 0, 2, W, H - 1, CELL_MAKE(MAT_SAND, 8));
     const int sand_before = count_cells_of(MAT_SAND);
     /* One cell of acid: MASS_MAX units, so at one unit a cell it can
      * account for at most MASS_MAX cells however long it is left. */
@@ -1300,7 +1300,7 @@ test_oil_flows_more_slowly_than_water(void) {
     for (int k = 0; k < 2; k++) {
         sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
         sand_set_mobility(&wide, SAND_MOBILITY_PER_MATERIAL);
-        fill_box(&wide, 0, WIDE_W, WIDE_H - 1, WIDE_H, STONE);
+        sand_fill_box(&wide, 0, WIDE_H - 1, WIDE_W, WIDE_H, STONE);
         for (int y = 1; y <= WIDE_H - 2; y++) {
             for (int x = 1; x <= 4; x++) {
                 sand_set(&wide, x, y, CELL_MAKE(liquids[k], MASS_MAX));
@@ -1389,7 +1389,7 @@ test_oil_trapped_under_water_floats_to_the_surface(void) {
 static void
 test_sand_floats_on_oil(void) {
     fixture();
-    fill_box(&s, 0, W, 4, H, OIL);
+    sand_fill_box(&s, 0, 4, W, H, OIL);
     sand_set(&s, 3, 3, SAND);
 
     run_steps(&s, 60, 0, 1000);
@@ -1406,7 +1406,7 @@ test_sand_floats_on_oil(void) {
 static void
 test_dirt_still_sinks_through_oil(void) {
     fixture();
-    fill_box(&s, 0, W, 4, H, OIL);
+    sand_fill_box(&s, 0, 4, W, H, OIL);
     sand_set(&s, 3, 3, CELL_SOIL(MAT_DIRT, 1, 0));
 
     run_steps(&s, 60, 0, 1000);
@@ -1428,7 +1428,7 @@ test_lava_does_not_decay_away(void) {
      * 0, so tick_decay() never reads its variant nibble and never eats the
      * cell's mass. A one-cell-wide well. Penning lava in tests DECAY, not
      * flow. */
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 2, H - 2, STONE);
     sand_set(&s, 4, H - 2, STONE);
     sand_set(&s, 3, H - 2, LAVA);
@@ -1601,7 +1601,7 @@ static void
 test_a_lava_pool_in_a_dry_stone_bowl_does_not_freeze_itself(void) {
     fixture();
     sand_clear(&s);
-    fill_box(&s, 0, W, 0, H, STONE);
+    sand_fill_box(&s, 0, 0, W, H, STONE);
     sand_set(&s, W / 2, H / 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_cooloff(&s, 255);
     /* Same reasoning as test_lava_buried_in_stone_is_not_deleted's own
@@ -1842,7 +1842,7 @@ test_quenching_makes_steam_but_burning_out_makes_smoke(void) {
     fixture();
     sand_set_decay(&s, 255);
     sand_set_mobility(&s, 0);
-    fill_box(&s, 0, W, H - 1, H, FIRE);
+    sand_fill_box(&s, 0, H - 1, W, H, FIRE);
 
     bool found_smoke = false, found_steam = false;
     for (int i = 0; i < 2 * (MATERIAL_VARIANTS - 1); i++) {
@@ -2050,9 +2050,9 @@ boiler_column(cell_t liquid, int top) {
 
     sand_set(&wide, BOILER_X, BOILER_BOTTOM + 2, FIRE);
     sand_set(&wide, BOILER_X, BOILER_BOTTOM + 1, STONE);
-    fill_box(&wide, BOILER_X, BOILER_X + 1, top, BOILER_BOTTOM + 1, liquid);
-    fill_box(&wide, BOILER_X - 1, BOILER_X, top, BOILER_BOTTOM + 3, STONE);
-    fill_box(&wide, BOILER_X + 1, BOILER_X + 2, top, BOILER_BOTTOM + 3, STONE);
+    sand_fill_box(&wide, BOILER_X, top, BOILER_X + 1, BOILER_BOTTOM + 1, liquid);
+    sand_fill_box(&wide, BOILER_X - 1, top, BOILER_X, BOILER_BOTTOM + 3, STONE);
+    sand_fill_box(&wide, BOILER_X + 1, top, BOILER_X + 2, BOILER_BOTTOM + 3, STONE);
 }
 
 static void
