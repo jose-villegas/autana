@@ -17,6 +17,12 @@
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
 #include "gfx/gfx_color.h"
+#ifndef DEVICE_BUILD
+#include "gfx/gfx.h"
+#include "gfx/gfx_test.h"
+#include "shell/shell_frame.h"
+#include "ui/ui.h"
+#endif
 #include "render/context/render_context.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
@@ -316,6 +322,9 @@ static fixture_t fx;
 static void
 release_fixture(void) {
     scene_unload_all();
+#ifndef DEVICE_BUILD
+    gfx_reset_for_test();
+#endif
     test_free_aligned(fx.raw);
     free(fx.pixels);
     free(fx.held);
@@ -339,7 +348,7 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(fx.instances);
     const uint32_t total = make_pack(fx.bytes);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
-    fx.target = (scene_target_t){fx.pixels, SIZE, SIZE};
+    fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL};
 }
 
 static scene_t*
@@ -935,7 +944,7 @@ test_a_compose_with_no_framebuffer_writes_nothing(void) {
         fx.pixels[i] = SENTINEL;
     }
     scene_render(16, 0, SIZE, SIZE);
-    const scene_target_t none = {NULL, SIZE, SIZE};
+    const scene_target_t none = {NULL, SIZE, SIZE, NULL};
     scene_compose(16, 0, &none);
     TEST_ASSERT_EQUAL_INT(4, render_context_frame(render_context_main()).stats.triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
@@ -1099,8 +1108,254 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
 }
 
+#ifndef DEVICE_BUILD
+int
+display_quarter_now(void) {
+    return 0;
+}
+
+static void
+expanded_fixture(void) {
+    fixture();
+    TEST_ASSERT_TRUE(gfx_init());
+    show("test_pair", NULL);
+    free(fx.pixels);
+    free(fx.held);
+    fx.pixels = memory_alloc(sizeof(*fx.pixels) * GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    fx.held = memory_alloc(sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.pixels);
+    TEST_ASSERT_NOT_NULL(fx.held);
+    gfx_set_frame_overlay(NULL);
+}
+
+static void
+expanded_picture(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 50);
+    scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
+    raster_t* raster = &render_context_main()->raster;
+    raster_upscale(raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    const size_t before_half = memory_free_bytes(MEMORY_PSRAM);
+    const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_NOT_NULL(half.half_pixels);
+    TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
+    TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
+    gfx_expand_frame();
+    TEST_ASSERT_TRUE(gfx_frame_expanded());
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+    }
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[0]);
+    TEST_ASSERT_TRUE(fx.pixels[(GFX_HEIGHT / 2) * GFX_WIDTH + GFX_WIDTH / 2] != CLEAR);
+    gfx_mode_exit();
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before_half);
+}
+
+static void
+test_expanded_scene_in_separate_picture_matches_upscale(void) {
+    expanded_picture();
+}
+
+static void
+test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
+    expanded_fixture();
+    gfx_color_t* half = gfx_half_picture();
+    half[0] = 0x1234;
+    gfx_expand_frame();
+    TEST_ASSERT_TRUE(gfx_frame_expanded());
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    const unsigned trips = gfx_fb_guard_trips_for_test();
+    TEST_ASSERT_NULL(gfx_framebuffer());
+    TEST_ASSERT_EQUAL_UINT(trips + 1, gfx_fb_guard_trips_for_test());
+    gfx_pixel(0, 0, 0x5678);
+    TEST_ASSERT_EQUAL_UINT(trips + 2, gfx_fb_guard_trips_for_test());
+    TEST_ASSERT_EQUAL_HEX16(0x1234, half[0]);
+    gfx_present_begin();
+    TEST_ASSERT_TRUE(gfx_frame_expanded());
+    gfx_present_wait();
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    gfx_expand_frame();
+    gfx_mode_exit();
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_NOT_NULL(gfx_half_picture());
+    gfx_expand_frame();
+    gfx_reset_for_test();
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_TRUE(gfx_init());
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    gfx_mode_enter(&bands);
+    TEST_ASSERT_NULL(gfx_half_picture());
+}
+
+static void
+test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 50);
+    scene_shell_render(16);
+    raster_upscale(&render_context_main()->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    gfx_color_t* full = gfx_framebuffer();
+    void* pressure = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
+    const size_t remaining = memory_largest_block(MEMORY_PSRAM);
+    gfx_color_t* half = gfx_half_picture();
+    scene_shell_compose(16);
+    memory_free(pressure);
+    TEST_ASSERT_TRUE(remaining < sizeof(gfx_color_t) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2));
+    TEST_ASSERT_NULL(half);
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+}
+
+static void
+test_non_half_compose_upscales_to_the_full_destination(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 75);
+    scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
+    render_context_t* context = render_context_main();
+    raster_upscale(&context->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    target.half_pixels[0] = SENTINEL;
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &target));
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, gfx_framebuffer(), sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+}
+
+static void
+build_expanded_ui(ui_text_style_t style) {
+    ui_set_text_style(style);
+    const input_t input = {0};
+    ui_begin(&input);
+    mu_Context* ctx = ui_context();
+    mu_begin_window_ex(ctx, "expanded", mu_rect(11, 19, 200, 110),
+                       MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME);
+    mu_draw_rect(ctx, mu_rect(13, 28, 197, 67), ui_rgb(0xAABBCC));
+    mu_draw_text(ctx, NULL, "strip replay", -1, mu_vec2(17, 53), ui_rgb(0xFFBB00));
+    mu_end_window(ctx);
+    ui_end(UI_NO_BACKGROUND);
+}
+
+static void
+test_ui_replay_over_expanded_scene_matches_full_frame(void) {
+    expanded_picture();
+    for (int style = UI_TEXT_PLAIN; style <= UI_TEXT_SHADOWED; style++) {
+        for (int quarter = 0; quarter < 4; quarter++) {
+            raster_upscale(&render_context_main()->raster, gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT);
+            ui_init();
+            ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+            build_expanded_ui((ui_text_style_t)style);
+            memcpy(fx.held, gfx_framebuffer(), sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT);
+            scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+            const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+            TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
+            gfx_expand_frame();
+            gfx_set_frame_overlay(ui_replay_band);
+            const unsigned trips = gfx_fb_guard_trips_for_test();
+            ui_init();
+            ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+            build_expanded_ui((ui_text_style_t)style);
+            for (int y = 0; y < GFX_HEIGHT; y++) {
+                gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+            }
+            TEST_ASSERT_EQUAL_UINT(trips, gfx_fb_guard_trips_for_test());
+            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+            gfx_present();
+        }
+    }
+}
+
+static void
+test_shell_expanded_pass_replays_build_mark_without_raw_writes(void) {
+    expanded_fixture();
+    ui_init();
+    shell_frame_init("1234567");
+    gfx_set_frame_overlay(shell_frame_overlay);
+    render_context_set_scale(render_context_main(), 50);
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_TRUE(gfx_frame_expanded());
+    const unsigned trips = gfx_fb_guard_trips_for_test();
+    build_expanded_ui(UI_TEXT_OUTLINED);
+    shell_frame_extras();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+    }
+    TEST_ASSERT_EQUAL_UINT(trips, gfx_fb_guard_trips_for_test());
+    gfx_set_frame_overlay(ui_replay_band);
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.held + (size_t)y * GFX_WIDTH);
+    }
+    TEST_ASSERT_TRUE(memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT) != 0);
+    gfx_present();
+}
+
+static void
+test_paused_or_empty_expanded_scene_retains_its_picture(void) {
+    expanded_picture();
+    gfx_present();
+    for (int pause = 1; pause >= 0; pause--) {
+        scene_set_paused(pause != 0);
+        if (!pause) {
+            scene_t* scene = scene_loaded_at(0);
+            scene_entity_set_enabled(scene, scene_find(scene, "red"), false);
+            scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
+        }
+        scene_shell_render(16);
+        scene_shell_compose(16);
+        TEST_ASSERT_TRUE(gfx_frame_expanded());
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+        }
+        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+        gfx_present();
+    }
+    const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &full));
+    const scene_target_t half = {full.pixels, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
+    scene_t* scene = scene_loaded_at(0);
+    scene_entity_set_enabled(scene, scene_find(scene, "red"), true);
+    TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
+    scene_unload(scene);
+    TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
+}
+
+static void
+test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
+    expanded_picture();
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
+    gfx_expand_frame();
+    gfx_set_frame_overlay(ui_replay_band);
+    ui_init();
+    build_expanded_ui(UI_TEXT_OUTLINED);
+    gfx_present();
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    ui_clear_band_overlay();
+    TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
+    gfx_expand_frame();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+    }
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+}
+
+#endif
+
 void
 run_scene_suite(void) {
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_shell_expanded_pass_replays_build_mark_without_raw_writes);
+    RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
+    RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
+    RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
+    RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
+    RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
+    RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
+    RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
+#endif
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
     RUN_TEST(test_a_camera_clears_to_the_colour_its_scene_gives);
     RUN_TEST(test_a_load_that_fails_says_what_it_was_about);

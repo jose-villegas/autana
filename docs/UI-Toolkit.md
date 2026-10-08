@@ -55,7 +55,9 @@ differently from the last frame, so a screen that does not change costs
 nothing: hashing a few kilobytes of commands is far cheaper than repainting
 and sending a whole screen to the panel. Anything painted outside the list is invisible to that hash and
 survives on screen as a stale smear, which is why every entry below emits
-commands.
+commands. In an [expanded frame](Gfx-and-Presentation.md#expanded-frames)
+`ui_end()` bins the commands as `ui_end_for_bands()` does, and the present
+replays them over each strip it sends.
 
 ## A whole screen
 

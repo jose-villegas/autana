@@ -35,11 +35,10 @@ typedef enum {
 /* The name of the entity that draws each bake, found at load. */
 extern const char* const sponza_bakes[SPONZA_BAKE_COUNT];
 
-/* The sizes dynamic resolution steps through: height first, since a frame's
- * rows and span setup follow the height, then the width. All widths upscale
- * on a fast path. The floor costs as its 2.5x isotropic counterpart (147x179);
- * the 3x-cost step (122x149 counterpart) is recovery only. The model is the
- * board fit from suite_raster_scale_perf.c, one upscale per step. */
+/* Rows and span setup follow height, so the ladder reduces height before
+ * width. Widths use fast upscale paths; the board fit from
+ * suite_raster_scale_perf.c includes one upscale per step.
+ * The 3x-cost step is recovery-only. */
 #define SPONZA_LADDER_STEPS    7
 #define SPONZA_LADDER_RECOVERY 6
 #define SPONZA_LADDER_HALF     4
