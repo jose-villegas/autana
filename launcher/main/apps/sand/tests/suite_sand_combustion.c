@@ -862,7 +862,7 @@ test_fire_rises_and_disperses_like_gas(void) {
 
 /* Mirrors test_sand_sinks_through_gas exactly - fire's displacement rules
  * are identical to gas's (density-based, not a blanket refusal). See
- * test_fire_is_smothered_when_fully_buried below for burying fire out
+ * test_a_fire_buried_on_all_four_sides_goes_out below for burying fire out
  * completely, via smothering rather than contact. */
 static void
 test_sand_sinks_through_fire(void) {
@@ -884,20 +884,6 @@ surround_fire(cell_t above, cell_t below, cell_t left, cell_t right) {
             sand_set(&s, at[i][0], at[i][1], sides[i]);
         }
     }
-}
-
-static void
-test_fire_is_smothered_when_fully_buried(void) {
-    fixture();
-    surround_fire(STONE, STONE, STONE, STONE);
-
-    sand_step(&s, 0, 1000, 0);
-
-    TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 3)),
-                             "fire buried on all four sides by something denser must smother "
-                             "out - the only way sand puts fire out, since a single touch "
-                             "just lets sand sink through uneventfully (see "
-                             "test_sand_sinks_through_fire above)");
 }
 
 static void
@@ -2435,7 +2421,6 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_fire_burns_out_and_disappears_over_time);
     RUN_TEST(test_fire_rises_and_disperses_like_gas);
     RUN_TEST(test_sand_sinks_through_fire);
-    RUN_TEST(test_fire_is_smothered_when_fully_buried);
     RUN_TEST(test_fire_is_not_smothered_with_a_gap);
     RUN_TEST(test_fire_is_not_smothered_by_gas);
     RUN_TEST(test_liquid_wins_over_smothering);

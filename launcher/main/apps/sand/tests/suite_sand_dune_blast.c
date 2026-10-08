@@ -146,6 +146,49 @@ nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y,
     return cap + 1; /* not found within cap, see this function's own comment */
 }
 
+/* Every edge of the ring is searched: one footprint cell three away from
+ * the query on each side, and on each corner, reads as distance 3. A ring
+ * that skipped its columns or its rows would report the side cells as
+ * further away than they are; one that ran off the grid must find nothing
+ * past it. */
+static void
+test_the_nearest_footprint_distance_finds_a_cell_on_every_edge_of_the_ring(void) {
+    enum { RING_W = 21, RING_H = 21, QX = 10, QY = 10, R = 3 };
+
+    static const int8_t offsets[][2] = {
+        {R, 0}, {-R, 0}, {0, R}, {0, -R}, {R, -1}, {-R, 2}, {1, R}, {-2, -R}, {R, R}, {-R, -R}, {R, -R}, {-R, R},
+    };
+
+    enum { CASES = sizeof offsets / sizeof offsets[0] };
+
+    const size_t mask_bytes = (((size_t)RING_W * RING_H) + 7) / 8;
+    uint8_t* mask = malloc(mask_bytes);
+    TEST_ASSERT_NOT_NULL(mask);
+
+    int expected[CASES];
+    int found[CASES];
+    for (int k = 0; k < CASES; k++) {
+        memset(mask, 0, mask_bytes);
+        footprint_set(mask, ((size_t)(QY + offsets[k][1]) * RING_W) + (size_t)(QX + offsets[k][0]));
+        expected[k] = R;
+        found[k] = nearest_footprint_distance(mask, RING_W, RING_H, QX, QY, RING_W - 1);
+    }
+
+    /* A ring past the right edge must not wrap: (w, y) in the bit index is
+     * (0, y + 1), a cell the full width away from a query at x = w - 1. */
+    memset(mask, 0, mask_bytes);
+    footprint_set(mask, (size_t)(QY + 1) * RING_W);
+    const int across = nearest_footprint_distance(mask, RING_W, RING_H, RING_W - 1, QY, RING_W - 1);
+    free(mask);
+
+    TEST_ASSERT_EQUAL_INT_ARRAY_MESSAGE(expected, found, CASES,
+                                        "a footprint cell three away on any side or corner, element k being "
+                                        "offsets[k], must read as distance 3");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(RING_W - 1, across,
+                                  "a ring running off the grid's right edge must not read the next row's "
+                                  "first cell as a neighbour");
+}
+
 /* The largest Chebyshev distance any two cells on this grid could ever
  * have, see nearest_footprint_distance()'s own comment for why this is
  * the cap it is called with, and why that makes the cap a search bound
@@ -869,6 +912,7 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
 
 void
 run_sand_dune_blast_suite(void) {
+    RUN_TEST(test_the_nearest_footprint_distance_finds_a_cell_on_every_edge_of_the_ring);
     RUN_TEST(test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint);
     RUN_TEST(test_the_water_pool_scene_refills_its_own_cavity);
     RUN_TEST(test_the_vessel_scene_lets_nothing_reach_outside_it);
