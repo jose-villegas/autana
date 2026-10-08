@@ -172,86 +172,25 @@ sponza_status(void) {
     return buf;
 }
 
+/* What every bake's scene shares; each names itself, its key and its bake's enter. */
+#define SPONZA_SCENE_FIELDS                                                                                            \
+    .frame = scene_sponza_frame, .update = NULL, .frame_band = NULL, .exit = scene_sponza_exit,                        \
+    .invalidate = scene_sponza_invalidate, .status = sponza_status, .needs_full_framebuffer = true,                    \
+    .shows_view_modes = true
+
 const render_lab_scene_t scene_sponza = {
-    .name = "Sponza",
-    .key = "sponza",
-    .enter = scene_sponza_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_lite = {
-    .name = "Sponza Lite",
-    .key = "sponza-lite",
-    .enter = scene_sponza_lite_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza Lite", .key = "sponza-lite", .enter = scene_sponza_lite_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_flat = {
-    .name = "Sponza Flat",
-    .key = "sponza-flat",
-    .enter = scene_sponza_flat_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza Flat", .key = "sponza-flat", .enter = scene_sponza_flat_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_fitted = {
-    .name = "Sponza Fitted",
-    .key = "sponza-fitted",
-    .enter = scene_sponza_fitted_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
-const render_lab_scene_t scene_sponza_fitted_full = {
-    .name = "Sponza Fitted Full",
-    .key = "sponza-fitted-full",
-    .enter = scene_sponza_fitted_full_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
-const render_lab_scene_t scene_sponza_flat_fitted = {
-    .name = "Sponza Flat Fitted",
-    .key = "sponza-flat-fitted",
-    .enter = scene_sponza_flat_fitted_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
+    .name = "Sponza Fitted", .key = "sponza-fitted", .enter = scene_sponza_fitted_enter, SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_fitted_full = {.name = "Sponza Fitted Full",
+                                                     .key = "sponza-fitted-full",
+                                                     .enter = scene_sponza_fitted_full_enter,
+                                                     SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_flat_fitted = {.name = "Sponza Flat Fitted",
+                                                     .key = "sponza-flat-fitted",
+                                                     .enter = scene_sponza_flat_fitted_enter,
+                                                     SPONZA_SCENE_FIELDS};

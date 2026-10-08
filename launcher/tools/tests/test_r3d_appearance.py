@@ -40,6 +40,17 @@ except ImportError:
     GPU = False
 
 
+def cuda(array):
+    """`array` as a float32 CUDA tensor."""
+    return torch.as_tensor(array, dtype=torch.float32, device="cuda")
+
+
+def draw(renderer, points, colours, matrix):
+    """What `renderer` draws of `points` in `colours` through `matrix`, as a NumPy image."""
+    with torch.no_grad():
+        return renderer(cuda(points), cuda(colours), cuda(matrix)).cpu().numpy()
+
+
 def grid(count, z=0.0):
     """A count x count quad grid in x and y over [-1, 1], facing +z, with a
     colour seam down its middle column of vertices: the left half's vertices
@@ -328,9 +339,7 @@ class AppearanceFitTests(unittest.TestCase):
             size = (48, 40)
             matrix = projection([0.2, -0.1, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
             truth = Renderer(mesh[2], mesh[3], mesh[5], size, "cuda")
-            moved = torch.as_tensor(mesh[0] * [1.3, 0.8, 1.0], dtype=torch.float32, device="cuda")
-            target = truth(moved, torch.as_tensor(mesh[1][::-1].copy(), dtype=torch.float32, device="cuda"), torch.as_tensor(
-                matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+            target = draw(truth, mesh[0] * [1.3, 0.8, 1.0], mesh[1][::-1].copy(), matrix)
             _points, _rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.01,
                                               lr_colour=0.05, laplacian=0.0, report=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
@@ -345,9 +354,7 @@ class AppearanceFitTests(unittest.TestCase):
         truth = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, "cuda", flat=True)
         # The target's colour boundary sits a third of a column to the right of the start's.
         shifted = mesh.points + np.where(np.abs(mesh.points[:, :1]) < 0.4, [[0.15, 0.0, 0.0]], 0.0)
-        target = truth(torch.as_tensor(shifted, dtype=torch.float32, device="cuda"),
-                       torch.as_tensor(mesh.rgb, dtype=torch.float32, device="cuda"),
-                       torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+        target = draw(truth, shifted, mesh.rgb, matrix)
         points, rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.005,
                                         lr_colour=0.0, laplacian=0.0, report=0)
         self.assertEqual(rgb.shape, mesh.rgb.shape)
@@ -360,15 +367,13 @@ class AppearanceFitTests(unittest.TestCase):
         positions, tris = grid_mesh(2, 1.0)
         colours = np.stack([[(k + 1) / (len(tris) + 1), 1.0 - k / len(tris), (k % 3) / 2.0] for k in range(len(tris))])
         size = (96, 80)
-        matrix = torch.as_tensor(projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 48, 40, 0.62, 0.5), dtype=torch.float32, device="cuda")
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 48, 40, 0.62, 0.5)
         render = Renderer(tris, np.zeros(len(tris), dtype=bool), np.arange(len(positions)), size, "cuda", flat=True)
-        points = torch.as_tensor(positions, dtype=torch.float32, device="cuda")
-        with torch.no_grad():
-            image = render(points, torch.as_tensor(colours, dtype=torch.float32, device="cuda"), matrix).cpu().numpy()
+        image = draw(render, positions, colours, matrix)
         # Each triangle's centroid, projected by the matrix alone, lands on a pixel of that triangle's colour.
         width, height = size
         for k, tri in enumerate(tris):
-            clip = matrix.cpu().numpy().astype(np.float64) @ np.append(positions[tri].mean(axis=0), 1.0)
+            clip = matrix @ np.append(positions[tri].mean(axis=0), 1.0)
             x, y = clip[:2] / clip[3]
             column, row = int((x + 1) / 2 * width), int((1 - y) / 2 * height)
             self.assertTrue(0 <= column < width and 0 <= row < height, f"triangle {k} is off screen")
@@ -385,16 +390,13 @@ class AppearanceFitTests(unittest.TestCase):
         matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 48, 40, 0.62, 0.5)
         wanted = np.stack([[(k % 4) / 3.0, ((k // 4) % 2), 1.0 - k / count] for k in range(count)])
         truth = Renderer(tris, double, vertex_point, size, "cuda", flat=True)
-        target = truth(torch.as_tensor(positions, dtype=torch.float32, device="cuda"),
-                       torch.as_tensor(wanted, dtype=torch.float32, device="cuda"),
-                       torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+        target = draw(truth, positions, wanted, matrix)
         start = np.full((count, 3), 0.5)
         mesh = FitMesh(positions, start, tris, double, 64, vertex_point, True)
         _points, rgb, _history = optimise(mesh, [(matrix, target)], size, steps=400, batch=1, lr_position=0.0, lr_colour=0.05,
                                           laplacian=0.0, report=0)
         with torch.no_grad():
-            ids = truth.visible_ids(torch.as_tensor(positions, dtype=torch.float32, device="cuda"),
-                                    torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).cpu().numpy()
+            ids = truth.visible_ids(cuda(positions), cuda(matrix)).cpu().numpy()
         coverage_pixels = np.bincount(ids[ids >= 0], minlength=count)
         seen = np.nonzero(coverage_pixels > 50)[0]
         self.assertGreaterEqual(len(seen), 4)
@@ -410,13 +412,11 @@ class AppearanceFitTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
-        moved = torch.as_tensor(mesh[0] * [1.3, 0.8, 1.0], dtype=torch.float32, device="cuda")
-        colours = torch.as_tensor(mesh[1][::-1].copy(), dtype=torch.float32, device="cuda")
         views = []
         for width, height in ((24, 20), (20, 24)):
             matrix = projection([0.2, -0.1, 3.0], [0.0, 0.0, -1.0], width, height, 0.62, 0.5)
             truth = Renderer(mesh[2], mesh[3], mesh[5], (2 * width, 2 * height), "cuda")
-            target = truth(moved, colours, torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).detach().cpu().numpy()
+            target = draw(truth, mesh[0] * [1.3, 0.8, 1.0], mesh[1][::-1].copy(), matrix)
             self.assertEqual(target.shape[:2], (2 * height, 2 * width))
             views.append((matrix, target))
         _points, _rgb, history = optimise(mesh, views, None, steps=150, batch=2, lr_position=0.01, lr_colour=0.05,
@@ -433,10 +433,7 @@ class AppearanceFitTests(unittest.TestCase):
         reference = np.zeros((40, 48, 3), dtype=np.float32)
         reference[...] = np.array([0.0, 0.6, 0.8], dtype=np.float32)
         render = Renderer(mesh[2], mesh[3], mesh[5], size, "cuda")
-        with torch.no_grad():
-            colour = render(torch.as_tensor(mesh[0], dtype=torch.float32, device="cuda"),
-                            torch.as_tensor(mesh[1], dtype=torch.float32, device="cuda"),
-                            torch.as_tensor(matrix, dtype=torch.float32, device="cuda")).cpu().numpy()
+        colour = draw(render, mesh[0], mesh[1], matrix)
         view = (matrix, colour, reference, eye)
         before = normal_error(mesh, [view], size)
         points, _rgb, _history = optimise(mesh, [view], size, steps=200, batch=1, lr_position=0.02, lr_colour=0.0,
