@@ -61,6 +61,24 @@ class SceneFiles(unittest.TestCase):
 
 
 class SceneEntryTests(SceneFiles):
+    def test_multiple_cameras_and_their_clips_share_the_scene_pack(self):
+        (self.root / "clips" / "tour.anim.toml").write_text(CLIP)
+        second = lens("clips/tour.anim.toml").replace('name = "camera"', 'name = "tour"')
+        path = self.scene(renderer("a.import.toml") + renderer("b.import.toml") + lens("clips/fly.anim.toml") + second)
+        loaded = load_scene(path)
+        self.assertEqual(loaded.camera.name, "camera")
+        decoded = scene_asset.decode(scene_asset.bake(path))
+        self.assertEqual([c["clip"] for c in decoded["cameras"]], ["fly", "tour"])
+        self.assertEqual([decoded["entities"][c["entity"]]["name"] for c in decoded["cameras"]], ["camera", "tour"])
+        packs = build_pack.pack_bytes([self.root])
+        self.assertEqual(list(packs), ["hall"])
+        self.assertEqual(set(parse_pack(packs["hall"])), {"hall", "a", "b", "fly", "tour"})
+
+    def test_a_region_on_a_secondary_camera_is_refused(self):
+        second = lens(extra='region = { min = [-1, -1, -1], max = [1, 1, 1] }\n').replace('name = "camera"', 'name = "tour"')
+        with self.assertRaisesRegex(SettingsError, "first camera"):
+            load_scene(self.scene(renderer("a.import.toml") + lens() + second))
+
     def test_entities_renderers_and_the_camera_read_back_in_file_order(self):
         # The first entity is the only one that moved, so an array reversed or shifted is caught.
         moved = renderer("a.import.toml", transform="position = [1.0, 2.0, 3.0]\nscale = [2.0, 2.0, 0.5]\n")

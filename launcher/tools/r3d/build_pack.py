@@ -76,14 +76,15 @@ def add_entry(entries, key, source, root):
 
 
 def scene_entries(path, scene):
-    """{entry id: its source} of a scene's pack: its entry, its meshes and its camera's clip."""
+    """{entry id: its source} of a scene's pack: its entry, its meshes and every camera's clip."""
     entries = {}
     add_entry(entries, scene_asset.scene_id(path), path, path)
     for item in scene.renderers:
         add_entry(entries, item.asset_name, item.asset_path, path)
-    clip = scene.camera.component.path if scene.camera else None
-    if clip:
-        add_entry(entries, clip.clip, clip.animation, path)
+    for camera in (obj for obj in scene.objects if obj.kind == "camera"):
+        clip = camera.component.path
+        if clip:
+            add_entry(entries, clip.clip, clip.animation, path)
     return entries
 
 

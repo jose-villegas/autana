@@ -58,6 +58,7 @@ static size_t scene_arena_mark;
  * by default. Read only at enter(), the same contract render_lab_band_mode
  * below documents. */
 const char* render_lab_start_scene_key;
+const char* render_lab_start_camera;
 
 /* Unknown or unset resolves to the first scene, never a hard error. */
 static int

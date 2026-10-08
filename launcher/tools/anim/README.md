@@ -6,6 +6,16 @@ sampler. What a track is, how to author one and how to target a new property
 is in [docs/Animation-Tracks.md](../../../docs/Animation-Tracks.md).
 Nothing here runs on the board.
 
+`python launcher/tools/anim/camera_keys.py KEYS.toml OUT.glb` authors a camera
+path without Blender. The TOML sets `node` and `animation`, with `[[keys]]`
+tables holding `t` in seconds, `eye = [x,y,z]` and `look_at = [x,y,z]`.
+Times start at zero and increase strictly. Translation uses CUBICSPLINE
+Catmull-Rom tangents; rotation uses LINEAR quaternions, local -Z forward,
+world +Y up, with successive quaternions in the same hemisphere. A repeated
+first key at the end wraps the translation tangents for a smooth loop.
+The tool needs only Python's standard library. Vertical views are refused
+because +Y up cannot define their roll.
+
 | File | What it does |
 |---|---|
 | [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes a track per channel, node TRS or `KHR_animation_pointer`, keys and interpolation as authored, with the checks every bake makes. `r3d/build_pack.py` calls it. |

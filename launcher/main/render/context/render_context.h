@@ -33,6 +33,7 @@ typedef struct {
     int width, height;
     raster_stats_t stats;
     int32_t draw_us, upscale_us;
+    int32_t predicted_us;
 } render_context_frame_t;
 
 typedef struct {

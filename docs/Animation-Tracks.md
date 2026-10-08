@@ -116,6 +116,13 @@ camera track gives a `camera_t` its look direction.
 
 ## Authoring
 
+For a camera path without Blender, run
+`python launcher/tools/anim/camera_keys.py KEYS.toml OUT.glb`. The keys file
+sets `node`, `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at`
+vectors. Translation is a smooth Catmull-Rom curve and rotation interpolates
+short-way quaternions with +Y up; repeat the first key at the end to close
+the loop. Name the resulting GLB in a `NAME.anim.toml` as below.
+
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
    `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a property outside translation,

@@ -2,7 +2,7 @@
 NAME.scene.toml, and read back. The one writer of the entry, and its reader
 on the host; main/scene/scene_asset.c is the firmware's.
 
-Each object that is a mesh renderer or the camera is an entity, in file
+Each object that is a mesh renderer or a camera is an entity, in file
 order, found by name at run time. A renderer names its mesh by pack id and
 the camera its path by clip id (the stem of the .anim.toml the scene names)
 and node, all opened from the scene's pack at scene_load(). Lights, the
@@ -64,7 +64,7 @@ def encode(scene):
     """The entry's bytes for a scene as load_scene() returns it."""
     objects = entities(scene)
     index = {obj.name: i for i, obj in enumerate(objects)}
-    cameras = [scene.camera] if scene.camera else []
+    cameras = [obj for obj in objects if obj.kind == "camera"]
     names = b"".join(NAME.pack(field(obj.name, "entity")) for obj in objects)
     transforms = b"".join(TRANSFORM.pack(*[x for row in obj.matrix for x in row], *obj.position) for obj in objects)
     renderers = b"".join(RENDERER.pack(index[item.object.name], 0, field(mesh, "mesh id"))

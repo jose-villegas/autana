@@ -39,6 +39,15 @@ region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
 path = { animation = "flythrough.anim.toml", node = "camera" }
 
 [[objects]]
+name = "tour"
+
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+background = 0x9CC0E6
+path = { animation = "tour.anim.toml", node = "camera" }
+
+[[objects]]
 name = "atrium"
 
 [objects.mesh_renderer]
