@@ -118,7 +118,7 @@ def recipe_digest(job, scene):
                                      source_digest(job.settings)], sort_keys=True).encode()).hexdigest()
 
 
-def prepare(scene_path, scene, job, work):
+def prepare(scene_path, scene, job, work, recorder=None):
     from r3d.mesh_import import camera_path_poses, write_baked
     from r3d.reference_render import main as reference_main
 
@@ -127,7 +127,7 @@ def prepare(scene_path, scene, job, work):
     if visibility is None or visibility.source != "camera_path":
         raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
-    start = write_baked(job, scene, work, variant.name)
+    start = write_baked(job, scene, work, variant.name, recorder=recorder)
     w, h, lens, near, poses = camera_path_poses(scene, visibility, fit.train_every_ms, either_way_up=False)
     training, held_out = split_poses(fit, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
@@ -139,7 +139,6 @@ def prepare(scene_path, scene, job, work):
         reference_main([str(scene_path), "--object", job.object.name, "--poses",
                         str(work / poses), "--out", str(work / reference), "--normals"])
     log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
-    return {"measurements": getattr(start, "measurements", [])}
 
 
 def reference_digest(scene_path, job, scene):
@@ -190,24 +189,25 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     return target
 
 
-def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, target=None, measured=False):
+def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, target=None, recorder=None):
     import contextlib
     import traceback
-    from r3d.process_budget import StepRecorder
+    from r3d.process_budget import NULL_RECORDER
     from r3d.lit_mesh import read_lit_mesh
     target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.mesh" if target is None else target
     log_path = pathlib.Path(point_dir) / "fit.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    recorder = StepRecorder() if measured else None
-    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.mesh").tris) if measured else 0
+    recording = recorder is not None
+    recorder = NULL_RECORDER if recorder is None else recorder
+    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.mesh").tris) if recording else 0
     try:
-        with recorder.step("fit", triangles, gpu=True) if recorder else contextlib.nullcontext() as step:
+        with recorder.step("fit", triangles, gpu=True) as step:
             with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                 mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
                        cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs)
-            if step is not None:
+            if recording:
                 step["triangles_out"] = len(read_lit_mesh(mesh).tris)
-        return {"mesh": str(mesh), **({"measurements": recorder.rows} if recorder else {})}
+        return {"mesh": str(mesh)}
     except Exception as error:
         with log_path.open("a") as output:
             traceback.print_exc(file=output)

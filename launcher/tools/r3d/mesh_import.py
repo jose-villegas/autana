@@ -40,7 +40,7 @@ from r3d.light import (  # noqa: E402
     visible_from_region,
 )
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
-from r3d.process_budget import StepRecorder
+from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path  # noqa: E402
@@ -153,7 +153,7 @@ def bake_geometry(job, scene, recorder=None):
     keeps. `scene` is None for a bare import."""
     settings, renderer = job.settings, job.renderer
     rng = np.random.default_rng(settings.seed)
-    recorder = StepRecorder() if recorder is None else recorder
+    recorder = NULL_RECORDER if recorder is None else recorder
     with recorder.step("source load", 0) as step:
         src = load_source(settings)
         step["triangles_out"] = len(src.tri_v)
@@ -219,7 +219,7 @@ def bake_geometry(job, scene, recorder=None):
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale, bounce=bounce, measurements=recorder.rows, recorder=recorder)
+                           tri_mat=tri_mat, scale=scale, bounce=bounce)
 
 
 def flat_colours(job, scene, geometry, face_samples, **knobs):
@@ -260,15 +260,17 @@ def check_fitted(job, scene):
     log(f"{target.name} matches its fit recipe")
 
 
-def write_baked(job, scene, out_dir, name, geometry=None):
+def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
     is and smooth otherwise, from `geometry` when bake_geometry already made it.
     Returns the baked mesh."""
     renderer = job.renderer
-    geometry = bake_geometry(job, scene) if geometry is None else geometry
-    recorder = getattr(geometry, "recorder", None) or StepRecorder()
-    with recorder.step("light", len(geometry.tris)):
-        face_rgb = flat_colours(job, scene, geometry, renderer.face_samples) if renderer.face_samples else None
+    recorder = NULL_RECORDER if recorder is None else recorder
+    geometry = bake_geometry(job, scene, recorder) if geometry is None else geometry
+    face_rgb = None
+    if renderer.face_samples:
+        with recorder.step("face colours", len(geometry.tris)):
+            face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
     return write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
                           geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, **geometry.scale)
 

@@ -34,10 +34,10 @@ def task_reservation():
     return _task_reservation
 
 
-def meminfo_bytes():
+def meminfo_bytes(text=None):
     return {line.split(':')[0]: int(line.split()[1]) * 1024
-            for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
-            if line.startswith('MemAvailable:')}
+            for line in (pathlib.Path('/proc/meminfo').read_text() if text is None else text).splitlines()
+            if line.startswith(('MemAvailable:', 'MemTotal:'))}
 
 
 def worker_capacity(available, estimates, floors, cores):
@@ -169,10 +169,51 @@ def step_memory(gpu):
     return ram, vram
 
 
+class PeakSampler:
+    """Sample injected numeric fields at boundaries and on one joined polling thread."""
+
+    def __init__(self, probe, interval=0.1, poll_probe=None):
+        self.probe, self.poll_probe, self.interval = probe, poll_probe or probe, interval
+        self.peaks = []
+        self.stopped = threading.Event()
+        self.thread = None
+
+    def sample(self, probe):
+        values = probe()
+        if not self.peaks:
+            self.peaks = [None] * len(values)
+        for index, value in enumerate(values):
+            if value is not None:
+                self.peaks[index] = max(self.peaks[index] or 0, value)
+
+    def poll(self):
+        while not self.stopped.wait(self.interval):
+            self.sample(self.poll_probe)
+
+    def __enter__(self):
+        self.sample(self.probe)
+        if self.interval is not None:
+            self.thread = threading.Thread(target=self.poll)
+            self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stopped.set()
+        if self.thread is not None:
+            self.thread.join()
+        self.sample(self.probe)
+
+
+class NullRecorder:
+    def step(self, *args, **kwargs):
+        return contextlib.nullcontext({})
+
+
+NULL_RECORDER = NullRecorder()
+
+
 class StepRecorder:
-    """Wall time and sampled process resident peaks, accumulated by stage name.
-    RAM is RSS during the step, not the process's lifetime high-water mark.
-    GPU steps also include PyTorch's reserved high-water mark when available."""
+    """Wall time and process RSS peaks; GPU boundaries also include torch's reserved peak."""
 
     def __init__(self, clock=time.monotonic, probe=step_memory, interval=0.1):
         self.clock, self.probe, self.interval = clock, probe, interval
@@ -180,41 +221,26 @@ class StepRecorder:
 
     @contextlib.contextmanager
     def step(self, name, triangles_in, gpu=False):
-        row = next((row for row in self.rows if row["step"] == name), None)
-        if row is None:
-            row = {"step": name, "triangles_in": triangles_in, "triangles_out": triangles_in,
-                   "wall_s": 0.0, "peak_ram_bytes": None, "peak_vram_bytes": None}
-            self.rows.append(row)
+        if any(row["step"] == name for row in self.rows):
+            raise ValueError(f"repeated step: {name}")
+        row = {"step": name, "triangles_in": triangles_in, "triangles_out": triangles_in,
+               "wall_s": 0.0, "peak_ram_bytes": None, "peak_vram_bytes": None}
+        self.rows.append(row)
         torch = sys.modules.get("torch")
         cuda = getattr(torch, "cuda", None)
         if gpu and cuda and getattr(cuda, "is_initialized", lambda: False)():
             cuda.reset_peak_memory_stats()
-        stopped = threading.Event()
-
-        def sample():
-            for key, value in zip(("peak_ram_bytes", "peak_vram_bytes"), self.probe(gpu)):
-                if value is not None:
-                    row[key] = max(row[key] or 0, value)
-
-        def poll():
-            while not stopped.wait(self.interval):
-                sample()
-
-        sample()
-        thread = None
-        if self.interval is not None:
-            thread = threading.Thread(target=poll)
-            thread.start()
-        started = self.clock()
+        poll_probe = (lambda: self.probe(False)) if self.probe is step_memory else lambda: self.probe(gpu)
+        sampler = PeakSampler(lambda: self.probe(gpu), self.interval, poll_probe)
         try:
-            yield row
+            with sampler:
+                started = self.clock()
+                try:
+                    yield row
+                finally:
+                    row["wall_s"] = self.clock() - started
         finally:
-            elapsed = self.clock() - started
-            stopped.set()
-            if thread is not None:
-                thread.join()
-            sample()
-            row["wall_s"] += elapsed
+            row["peak_ram_bytes"], row["peak_vram_bytes"] = sampler.peaks
 
 
 def function_name(function):

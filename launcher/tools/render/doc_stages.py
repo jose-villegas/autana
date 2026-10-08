@@ -123,12 +123,8 @@ def markdown(headers, rows):
 MACHINE_FIELDS = ("CPU", "Cores/threads", "RAM", "GPU", "VRAM", "Driver", "CUDA", "OS", "Python", "Mitsuba", "PyTorch")
 
 
-def machine_probes():
-    import platform
-    import importlib.metadata
+def machine_probes(cpuinfo, meminfo, nvidia_smi, versions):
     from r3d.process_budget import meminfo_bytes
-    import torch
-    cpuinfo = Path("/proc/cpuinfo").read_text()
     cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo.splitlines() if line.startswith("model name"))
     cores = set()
     for block in cpuinfo.split("\n\n"):
@@ -136,22 +132,29 @@ def machine_probes():
         fields = {key.strip(): value.strip() for key, value in fields.items()}
         if "core id" in fields:
             cores.add((fields.get("physical id", "0"), fields["core id"]))
-    gpu = subprocess.check_output(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
-                                   "--format=csv,noheader,nounits"], text=True, timeout=10).strip().splitlines()
+    gpu = nvidia_smi.strip().splitlines()
     devices = [tuple(value.strip() for value in line.split(",")) for line in gpu]
-    values = {"CPU": cpu, "Cores/threads": f"{len(cores) or 'unknown'}/{os.cpu_count()}",
-              "RAM": f"{meminfo_bytes()['MemTotal'] / 1024 ** 3:.1f} GiB",
+    values = {"CPU": cpu, "Cores/threads": f"{len(cores) or 'unknown'}/{versions['threads']}",
+              "RAM": f"{meminfo_bytes(meminfo)['MemTotal'] / 1024 ** 3:.1f} GiB",
               "GPU": "; ".join(row[0] for row in devices),
               "VRAM": "; ".join(row[1] + " MiB" for row in devices),
-              "Driver": "; ".join(row[2] for row in devices), "CUDA": torch.version.cuda,
-              "OS": platform.platform(), "Python": platform.python_version(),
-              "Mitsuba": importlib.metadata.version("mitsuba"), "PyTorch": torch.__version__}
-    return {key: (lambda value=value: value) for key, value in values.items()}
+              "Driver": "; ".join(row[2] for row in devices), "CUDA": versions["CUDA"],
+              **{name: versions[name] for name in ("OS", "Python", "Mitsuba", "PyTorch")}}
+    return values
 
 
 def machine_table(probes=None):
-    probes = machine_probes() if probes is None else probes
-    return markdown(["Machine", "Value"], [(key, probes[key]()) for key in MACHINE_FIELDS])
+    if probes is None:
+        import platform
+        import importlib.metadata
+        import torch
+        gpu = subprocess.check_output(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
+                                       "--format=csv,noheader,nounits"], text=True, timeout=10)
+        probes = machine_probes(Path("/proc/cpuinfo").read_text(), Path("/proc/meminfo").read_text(), gpu,
+                                dict(threads=os.cpu_count(), CUDA=torch.version.cuda, OS=platform.platform(),
+                                     Python=platform.python_version(), Mitsuba=importlib.metadata.version("mitsuba"),
+                                     PyTorch=torch.__version__))
+    return markdown(["Machine", "Value"], [(key, probes[key]) for key in MACHINE_FIELDS])
 
 
 def bake_steps_table(variants):
@@ -291,14 +294,21 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights, scen
     return row, directory / "frames.avi", {"triangles": triangles, "mean_delta_e": metrics[0],
                                          "p95_delta_e": metrics[1], "predicted_ms": predicted}
 
-def bake_worker(scene, job, path_cull, prefix, baked_name, work):
+def recorded_call(function, *args):
+    from r3d.process_budget import StepRecorder
+    recorder = StepRecorder()
+    result = function(*args, recorder=recorder)
+    return result, recorder.rows
+
+
+def bake_worker(scene, job, path_cull, prefix, baked_name, work, recorder=None):
     from r3d.mesh_import import bake_geometry, camera_path_poses, write_baked
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     directory = work / f"bake-{prefix}"
     directory.mkdir(exist_ok=True)
-    geometry = bake_geometry(baked, scene)
-    write_baked(baked, scene, directory, baked.renderer.variant.name, geometry)
+    geometry = bake_geometry(baked, scene, recorder)
+    write_baked(baked, scene, directory, baked.renderer.variant.name, geometry, recorder)
     if path_cull:
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
@@ -312,7 +322,7 @@ def bake_worker(scene, job, path_cull, prefix, baked_name, work):
         write_lit_mesh(culled_dir, "culled", geometry.positions, geometry.rgb, geometry.tris[seen],
                        geometry.tri_double[seen], **geometry.scale)
     return (directory / f"{baked.renderer.variant.name}.mesh",
-            culled_dir / "culled.mesh" if path_cull else None, geometry.measurements)
+            culled_dir / "culled.mesh" if path_cull else None)
 
 def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.mesh_import import camera_path_poses
@@ -328,11 +338,12 @@ def smoke_prepare(scene_path, scene, job, inputs):
                         "--out", str(inputs / name), "--normals"])
 
 def prepare_variants(executor, scene_path, scene, jobs, work, on_ready):
+    from functools import partial
     from concurrent.futures import Future
     from r3d.fitted_variant import prepare
     from r3d.process_budget import PREPARE_BYTES
     ready = [Future() for job in jobs]
-    prepares = [executor.submit(prepare, scene_path, scene, job, work / f"inputs-{fitted.prefix}", estimates=PREPARE_BYTES,
+    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, work / f"inputs-{fitted.prefix}", estimates=PREPARE_BYTES,
                                 priority=True)
                 for fitted, job in zip(FITTED, jobs)]
     for index, (job, future) in enumerate(zip(jobs, prepares)):
@@ -413,8 +424,8 @@ def _gpu(args, out, work, executor):
     def prepared(index, job):
         prefix = FITTED[index].prefix
         reference_inputs = work / f"inputs-{prefix}"
-        fitted_futures[prefix] = executor.submit(fit_point, {}, work / f"fit-{prefix}", scene_path, scene, job,
-                                                  reference_inputs, False, work / f"{prefix}.mesh", True, estimates=FIT_BYTES)
+        fitted_futures[prefix] = executor.submit(partial(recorded_call, fit_point), {}, work / f"fit-{prefix}", scene_path, scene, job,
+                                                  reference_inputs, False, work / f"{prefix}.mesh", estimates=FIT_BYTES)
         if FITTED[index].sweeps:
             normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
             for normal in normal_weights:
@@ -438,9 +449,9 @@ def _gpu(args, out, work, executor):
         prefix = entry.prefix
         reference_inputs = work / f"inputs-{prefix}"
         for label, baked_name in (("GI-bake", args.object + entry.baked),):
-            baked_mesh, culled_mesh, measurements = executor.submit(bake_worker, scene, job, entry.path_cull, prefix, baked_name,
+            (baked_mesh, culled_mesh), steps = executor.submit(partial(recorded_call, bake_worker), scene, job, entry.path_cull, prefix, baked_name,
                                                         work, estimates=BAKE_BYTES, priority=True).result()
-            bake_steps.append((f"{prefix}-{label}", measurements))
+            bake_steps.append((f"{prefix}-{label}", steps))
             measure(f"{prefix}-{label}", job, baked_mesh, reference_inputs)
             if entry.path_cull:
                 measure("full-path-culled", job, culled_mesh, reference_inputs)
@@ -449,10 +460,10 @@ def _gpu(args, out, work, executor):
                      reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
                      "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
                      comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
-        fit_result = fitted_futures[prefix].result()
-        start_steps = prepared_result["measurements"] if prepared_result else []
+        fit_result, fit_steps = fitted_futures[prefix].result()
+        _, start_steps = prepared_result
         bake_steps.append((f"{prefix}-fit-start", start_steps))
-        bake_steps.append((f"{prefix}-GI-fit", fit_result["measurements"]))
+        bake_steps.append((f"{prefix}-GI-fit", fit_steps))
         fitted = Path(fit_result["mesh"])
         fitted_values = measure(f"{prefix}-GI-fit", job, fitted, reference_inputs)
         if entry.budget_point:

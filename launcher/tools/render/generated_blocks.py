@@ -9,7 +9,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/ga
 from tracked import tracked_files
 
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)(?: sha256=([0-9a-f]{64}))? -->$", re.M)
-PENDING_OWNERS = frozenset(("pipeline-frame-stages", "bake-machine", "bake-steps"))
 TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
 
 
@@ -75,9 +74,6 @@ def apply_tables(root, tables, check=False):
     changed = False
     for table in sorted(tables.glob("*.md")):
         name = table.stem
-        if name not in owners and name in PENDING_OWNERS:
-            print(f"unowned {name}")
-            continue
         if name not in owners:
             raise ValueError(f"no document owns generated table {name}")
         doc = owners[name]

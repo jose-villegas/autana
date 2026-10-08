@@ -174,19 +174,20 @@ autana suite run_raster_scale_perf_suite --flash --out docs/render/data/dynamic-
 sh launcher/tools/render/render_doc_images.sh
 ```
 
-The generator also writes the `pipeline-frame-stages` table, from the
-half-width, half-height row. The suite attaches nothing, so resolve and
-presentation come from two frame-cost captures of the demo scene running on
-the same build at the camera's default render size: `monitor 30` with the
-scene as shipped, copied to `data/pipeline-present-board.log`, and again with
-the motion-vector view on, copied to `data/pipeline-resolve-board.log`.
-`autana monitor` prints the path of the capture it writes. Check
-`autana status` and `autana buildid` before and after each.
+The generator also writes the `pipeline-frame-stages` table from frame-cost
+report windows: every bracket of the scene as shipped, plus the resolve row
+from a capture with motion vectors attached. Capture both from the same build:
 
-A scene that overlaps presentation with drawing reports the frame's wait for
-the send as `present.wait`; one that does not reports `present`. A missing
-capture leaves its row `not in capture`; a capture without the stage fails
-the run.
+```sh
+autana monitor 30 --out docs/render/data/pipeline-present-board.log
+autana monitor 30 --out docs/render/data/pipeline-resolve-board.log
+```
+
+The first runs with the scene as shipped; the second with the scene's debug
+view set to the motion attachment (a development-build tunable; `autana tune`
+lists it). Check `autana status` and `autana buildid` before and after each
+capture. A missing capture leaves its row `not in capture`; a capture without
+report windows fails the run.
 
 The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
 rebakes and fits. Refresh them on the GPU runner with:

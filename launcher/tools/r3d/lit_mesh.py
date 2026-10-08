@@ -194,8 +194,6 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, *
             step["triangles_out"] = len(mesh.tris)
     with recorder.step("write", len(mesh.tris)) if recorder else contextlib.nullcontext():
         (pathlib.Path(out_dir) / f"{name}.mesh").write_bytes(mesh_blob(mesh))
-    if recorder is not None:
-        mesh.measurements = recorder.rows
     return mesh
 
 

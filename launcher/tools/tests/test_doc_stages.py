@@ -290,7 +290,8 @@ class PrepareSchedulingTests(unittest.TestCase):
         ready = stages.prepare_variants(executor, Path('other.scene.toml'), 'scene', jobs, Path('work'),
                                         lambda index, job: seen.append((index, job)))
         self.assertEqual(executor.submit.call_count, 2)
-        self.assertTrue(all(call.args[0] is prepare for call in executor.submit.call_args_list))
+        self.assertTrue(all(call.args[0].func is stages.recorded_call and call.args[0].args == (prepare,)
+                            for call in executor.submit.call_args_list))
         self.assertEqual(seen, [])
         futures[0].set_result(None)
         self.assertEqual(seen, [(0, 'lite-job')])
@@ -352,15 +353,19 @@ class FullGpuSchedulingTests(unittest.TestCase):
                 super().add_done_callback(callback)
                 if len(prepare_futures) == 3 and all(f._done_callbacks for f in prepare_futures):
                     for future in reversed(prepare_futures):
-                        future.set_result(None)
+                        future.set_result((None, [dict(step="prepare fixture", wall_s=1, triangles_in=4, triangles_out=3, peak_ram_bytes=None, peak_vram_bytes=None)]))
                     for future, directory, target in reversed(fit_futures):
                         completed.append(directory.name)
-                        future.set_result({'mesh': str(target), 'measurements': []})
+                        result = {'mesh': str(target)}
+                        future.set_result((result, [dict(step='fit fixture', wall_s=2, triangles_in=3, triangles_out=2, peak_ram_bytes=1, peak_vram_bytes=2)])
+                                          if directory.name.startswith('fit-') else result)
 
         class Executor:
             def submit(self, function, *args, **kwargs):
                 future = Future()
                 owner = function.func if isinstance(function, partial) else function
+                if owner is stages.recorded_call:
+                    owner = function.args[0]
                 from r3d.process_budget import PREPARE_BYTES, FIT_BYTES, BAKE_BYTES, MEASURE_BYTES
                 estimates = {fitted.prepare: PREPARE_BYTES, fitted.fit_point: FIT_BYTES,
                              stages.bake_worker: BAKE_BYTES, stages.measure_worker: MEASURE_BYTES}
@@ -375,7 +380,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     target = args[7] if len(args) > 7 else directory.parent / f'{directory.name}.mesh'
                     fit_futures.append((future, directory, target))
                 elif owner is stages.bake_worker:
-                    future.set_result((Path('baked.mesh'), Path('culled.mesh'), []))
+                    future.set_result(((Path('baked.mesh'), Path('culled.mesh')), [dict(step='bake fixture', wall_s=3, triangles_in=5, triangles_out=4, peak_ram_bytes=None, peak_vram_bytes=None)]))
                 elif owner is stages.measure_worker:
                     label = args[0]
                     consumed.append(label)
@@ -412,6 +417,16 @@ class FullGpuSchedulingTests(unittest.TestCase):
                              ["hall_lite", "hall", "hall_flat"])
             self.assertEqual({path.name for path in (out / "tables").iterdir()},
                              {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-machine.md", "bake-steps.md"})
+            table = (out / 'tables/bake-steps.md').read_text()
+            for prefix in ('lite', 'full', 'flat'):
+                self.assertIn(f"| {prefix}-GI-bake | bake fixture | 3.000 | 5 | 4 |", table)
+                self.assertIn(f"| {prefix}-fit-start | prepare fixture | 1.000 | 4 | 3 |", table)
+                self.assertIn(f"| {prefix}-GI-fit | fit fixture | 2.000 | 3 | 2 |", table)
+            measured = [function for owner, args, kwargs, function in calls
+                        if owner is fitted.fit_point and args[1].name.startswith('fit-')]
+            self.assertEqual(len(measured), 3)
+            self.assertTrue(all(isinstance(function, partial) and function.func is stages.recorded_call
+                                and function.args == (fitted.fit_point,) for function in measured))
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
                              'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'flat-GI-bake', 'flat-GI-fit']
@@ -426,7 +441,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
             arguments = []
             for _, args, kwargs, function in fit_calls:
                 point, point_dir = args[:2]
-                job = function.keywords['job'] if isinstance(function, partial) else args[4]
+                job = function.keywords['job'] if isinstance(function, partial) and 'job' in function.keywords else args[4]
                 target = args[7].name if len(args) > 7 else f'{point_dir.name}.mesh'
                 arguments.append((point_dir.name, target, point.get('budget'), point.get('cost_weight', 0.),
                                   job.renderer.fit.normal_weight))
