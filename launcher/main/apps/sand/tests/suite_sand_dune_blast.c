@@ -99,35 +99,13 @@ footprint_set(uint8_t* mask, size_t idx) {
     mask[idx >> 3] |= (uint8_t)(1u << (idx & 7));
 }
 
-/* Whether row y (if on-grid) touches the footprint anywhere in [x0, x1]. */
+/* Whether row `at` (if on-grid) touches the footprint anywhere in [i0, i1]
+ * - or, with !along_x, column `at` anywhere in rows [i0, i1]. */
 static bool
-footprint_row_hit(const uint8_t* footprint, int w, int h, int x0, int x1, int y) {
-    if (y < 0 || y >= h) {
-        return false;
-    }
-    for (int xx = x0; xx <= x1; xx++) {
-        if (xx < 0 || xx >= w) {
-            continue;
-        }
-        if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)xx)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Whether column x (if on-grid) touches the footprint anywhere in
- * [y0, y1]. */
-static bool
-footprint_col_hit(const uint8_t* footprint, int w, int h, int y0, int y1, int x) {
-    if (x < 0 || x >= w) {
-        return false;
-    }
-    for (int yy = y0; yy <= y1; yy++) {
-        if (yy < 0 || yy >= h) {
-            continue;
-        }
-        if (footprint_get(footprint, (size_t)yy * (size_t)w + (size_t)x)) {
+footprint_line_hit(const uint8_t* footprint, int w, int h, int i0, int i1, int at, bool along_x) {
+    for (int i = i0; i <= i1; i++) {
+        const int x = along_x ? i : at, y = along_x ? at : i;
+        if (x >= 0 && x < w && y >= 0 && y < h && footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
             return true;
         }
     }
@@ -141,9 +119,10 @@ footprint_ring_hit(const uint8_t* footprint, int w, int h, int x, int y, int r) 
     const int x0 = x - r, x1 = x + r;
     const int y0 = y - r, y1 = y + r;
 
-    return footprint_row_hit(footprint, w, h, x0, x1, y0) || footprint_row_hit(footprint, w, h, x0, x1, y1)
-           || footprint_col_hit(footprint, w, h, y0 + 1, y1 - 1, x0)
-           || footprint_col_hit(footprint, w, h, y0 + 1, y1 - 1, x1);
+    return footprint_line_hit(footprint, w, h, x0, x1, y0, true)
+           || footprint_line_hit(footprint, w, h, x0, x1, y1, true)
+           || footprint_line_hit(footprint, w, h, y0 + 1, y1 - 1, x0, false)
+           || footprint_line_hit(footprint, w, h, y0 + 1, y1 - 1, x1, false);
 }
 
 /* Distance past the dune's own edge, not from the detonation centre:
