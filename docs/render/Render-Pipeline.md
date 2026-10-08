@@ -10,82 +10,69 @@ image under `docs/images/`, is generated from the source by the doc-images pipel
 demo scene in the [demo assets](../../launcher/demo/README.md).
 
 - [Offline, on the host](#offline-on-the-host)
-- [Source model](#source-model)
-- [Alpha mask](#alpha-mask)
-- [Visibility](#visibility)
-- [Thin](#thin)
-- [Light](#light)
-- [Simplify](#simplify)
-- [Fit](#fit)
-- [Meshlets](#meshlets)
-- [Asset pack](#asset-pack)
+  - [Source model](#source-model)
+  - [Alpha mask](#alpha-mask)
+  - [Visibility](#visibility)
+  - [Thin](#thin)
+  - [Light](#light)
+  - [Simplify](#simplify)
+  - [Fit](#fit)
+  - [Meshlets](#meshlets)
+  - [Asset pack](#asset-pack)
 - [Every frame, on the board](#every-frame-on-the-board)
-- [Scene and camera](#scene-and-camera)
-- [Render size](#render-size)
-- [Cull](#cull)
-- [Transform](#transform)
-- [Clip](#clip)
-- [Span fill](#span-fill)
-- [Resolve](#resolve)
-- [View modes](#view-modes)
-- [Upscale](#upscale)
-- [Present](#present)
+  - [Scene and camera](#scene-and-camera)
+  - [Render size](#render-size)
+  - [Cull](#cull)
+  - [Transform](#transform)
+  - [Clip](#clip)
+  - [Span fill](#span-fill)
+  - [Resolve](#resolve)
+  - [View modes](#view-modes)
+  - [Upscale](#upscale)
+  - [Present](#present)
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Host["Offline, on the host: tools/r3d"]
         direction TB
         subgraph Geometry["Geometry"]
             direction LR
-            Src["Source model"] --> Mask["Alpha mask"] --> Vis["Visibility"] --> Thin["Thin"]
+            Src["Source<br/>model"] --> Mask["Alpha<br/>mask"] --> Vis["Visibility"] --> Thin["Thin"]
         end
-        subgraph Colour["Colour"]
-            direction LR
-            Light["Light<br/><i>direct · occlusion · bounce</i>"]
-        end
+        Light["Light<br/><i>direct · occlusion · bounce</i>"]
         subgraph Shape["Shape"]
             direction LR
-            Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat</i>"]
+            Simp["Simplify"] --> Fit["Fit<br/><i>smooth or flat, CUDA</i>"]
         end
         subgraph Output["Output"]
             direction LR
             Mesh["Meshlets"] --> Pack["Asset pack"]
         end
-        Thin --> Light
-        Light --> Simp
+        Thin --> Light --> Simp
         Fit --> Mesh
     end
     subgraph Board["Every frame, on the board"]
         direction TB
-        Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size: fixed,<br/>stepped or predicted</i>"]
-        subgraph Update["Update, while the last frame is sent"]
-            direction TB
-            subgraph Draw["render/raster, both cores"]
-                direction LR
-                Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>colour · depth<br/>attachments</i>"]
-            end
-            subgraph Finish["render/raster"]
-                direction LR
-                Res["Resolve"] --> View["View modes"]
-            end
-            Fill --> Res
-        end
-        Wait["shell: wait for the send"]
-        subgraph Compose["Compose"]
+        Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size</i>"]
+        subgraph Update["Update, while the last frame is sent: render/raster, both cores"]
             direction LR
-            Up["render/raster: upscale,<br/><i>or copy into a half picture</i>"]
+            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
         end
-        Present["gfx/present<br/><i>sends dirty rows, or doubles<br/>a half picture while sending</i>"]
+        subgraph After["After the send"]
+            direction LR
+            Up["Compose: upscale,<br/><i>or copy into a half picture</i>"] --> Present["gfx/present<br/><i>dirty rows, or a half<br/>picture doubled</i>"]
+        end
         Size --> Cull
-        Cull -. "predicted: the census<br/>prices the size first" .-> Size
-        View --> Wait --> Up --> Present
+        Cull -. "predicted: census first" .-> Size
+        View --> Up
     end
     Pack --> Scene
 ```
 
 ## Offline, on the host
 
-Every step runs on the CPU except the fit, which needs a CUDA GPU.
+Every step runs on the CPU except the fit, which needs a CUDA GPU; the light
+bake uses one when present.
 The doc-images GPU stage rebakes the demo scene's meshes on the machine in
 the table below:
 
