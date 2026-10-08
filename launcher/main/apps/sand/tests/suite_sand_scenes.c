@@ -1306,6 +1306,19 @@ build_tree_grove_scene(sand_t* s) {
     }
 }
 
+/* The ground every plant scene stands on, bottom 30% of the board: dry
+ * dirt over sand. Dirt is the CAP, not the fill: roots weld into soil, and
+ * soil is what holds the moisture they drink, so the surface has to be dirt
+ * however the rest of the bed is made. Returns the ground's top row. */
+static int
+build_plant_ground(sand_t* s) {
+    const int bed_top = (REAL_H * 7) / 10;
+    const int dirt_top = REAL_H - (REAL_H - bed_top) / 2;
+    fill_box(s, 0, REAL_W, bed_top, dirt_top, CELL_SOIL(MAT_DIRT, 1, 0));
+    fill_box(s, 0, REAL_W, dirt_top, REAL_H, CELL_MAKE(MAT_SAND, 0));
+    return bed_top;
+}
+
 /* The plant code - anchored()'s BFS, find_water(), the root roll - only runs
  * for a cell already standing on damp soil, so every other scene here prices
  * it at zero.
@@ -1317,17 +1330,7 @@ build_tree_grove_scene(sand_t* s) {
 
 void
 build_plant_bed_scene(sand_t* s) {
-    const int bed_top = (REAL_H * 7) / 10; /* bottom 30% is ground */
-    const int dirt_top = REAL_H - (REAL_H - bed_top) / 2;
-
-    for (int y = bed_top; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            /* Dirt is the CAP, not the fill: roots weld into soil, and soil is
-             * what holds the moisture they drink, so the surface has to be
-             * dirt however the rest of the bed is made. */
-            sand_set(s, x, y, y < dirt_top ? CELL_SOIL(MAT_DIRT, 1, 0) : CELL_MAKE(MAT_SAND, 0));
-        }
-    }
+    const int bed_top = build_plant_ground(s);
 
     for (int x = PLANT_BED_SEED_SPACING / 2; x < REAL_W; x += PLANT_BED_SEED_SPACING) {
         sand_set(s, x, bed_top - 1, MATX(MATX_PLANT));
@@ -1394,14 +1397,7 @@ mature_tree_replant(sand_t* s) {
 
 void
 build_plant_pour_scene(sand_t* s) {
-    const int bed_top = (REAL_H * 7) / 10;
-    const int dirt_top = REAL_H - (REAL_H - bed_top) / 2;
-
-    for (int y = bed_top; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, y < dirt_top ? CELL_SOIL(MAT_DIRT, 1, 0) : CELL_MAKE(MAT_SAND, 0));
-        }
-    }
+    build_plant_ground(s);
 
     /* Damp earth, so the growth stages are armed as they are in play. A dry
      * board disarms them all and measures a different game. */
@@ -1410,14 +1406,7 @@ build_plant_pour_scene(sand_t* s) {
 
 void
 build_dry_plant_heap_scene(sand_t* s) {
-    const int bed_top = (REAL_H * 7) / 10;
-    const int dirt_top = REAL_H - (REAL_H - bed_top) / 2;
-
-    for (int y = bed_top; y < REAL_H; y++) {
-        for (int x = 0; x < REAL_W; x++) {
-            sand_set(s, x, y, y < dirt_top ? CELL_SOIL(MAT_DIRT, 1, 0) : CELL_MAKE(MAT_SAND, 0));
-        }
-    }
+    build_plant_ground(s);
 }
 
 void
