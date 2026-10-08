@@ -12,10 +12,10 @@ demo scene in the [demo assets](../../launcher/demo/README.md);
 
 | [Offline, on the host](#offline-on-the-host) | [Every frame, on the board](#every-frame-on-the-board) |
 |---|---|
-| **1. [Geometry](#geometry)**<br/>1.1 [Source model](#source-model) → 1.2 [Alpha mask](#alpha-mask) → 1.3 [Visibility](#visibility) → 1.4 [Thin](#thin) | **5. [Scene and camera](#scene-and-camera)** |
-| **2. [Light](#light)** | **6. [Render size](#render-size)** |
-| **3. [Shape](#shape)**<br/>3.1 [Simplify](#simplify) → 3.2 [Fit](#fit) | **7. [Update](#update)**<br/>7.1 [Cull](#cull) → 7.2 [Transform](#transform) → 7.3 [Clip](#clip) → 7.4 [Span fill](#span-fill) → 7.5 [Resolve](#resolve) → 7.6 [View modes](#view-modes) |
-| **4. [Output](#output)**<br/>4.1 [Meshlets](#meshlets) → 4.2 [Asset pack](#asset-pack) | **8. [After the send](#after-the-send)**<br/>8.1 [Compose](#compose) → 8.2 [Present](#present) |
+| **[Geometry](#geometry)**<br/>↳ [Source model](#source-model) → [Alpha mask](#alpha-mask) → [Visibility](#visibility) → [Thin](#thin) | **[Scene and camera](#scene-and-camera)** |
+| **[Light](#light)** | **[Render size](#render-size)** |
+| **[Shape](#shape)**<br/>↳ [Simplify](#simplify) → [Fit](#fit) | **[Update](#update)**<br/>↳ [Cull](#cull) → [Transform](#transform) → [Clip](#clip) → [Span fill](#span-fill) → [Resolve](#resolve) → [View modes](#view-modes) |
+| **[Output](#output)**<br/>↳ [Meshlets](#meshlets) → [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>↳ [Compose](#compose) → [Present](#present) |
 
 ```mermaid
 flowchart TB
