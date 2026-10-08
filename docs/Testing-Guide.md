@@ -210,19 +210,45 @@ rather than an edit everywhere; a profile field that has never been
 measured is the literal `unmeasured`, and both loaders refuse to hand one
 to a gate.
 
-**These are approximations, and worth knowing where they end.** The stack
-gate checks test code only, one function at a time, so it bounds the worst
-single frame rather than the deepest path. The deepest path under each root an
-app declares in its `stack_chain.txt` is summed from the diagnostics build's
-own call graph by `launcher/tools/quality/stack_chain_gate.py` (CI and
-`autana build diag --check`). Calls through a pointer are declared there too,
-and a caller that makes a pointer call without being declared fails the
-gate; a new target of a declared pointer must still be added by hand.
-Its frames are the host compiler's: the Xtensa frame is half the size at
-the median but up to 1.67x larger in the worst measured case, so
-`check_stack_usage_device.sh`, the same checker over the target
-compiler's own frames, no device needed, is what to run when a host frame
-nears the ceiling.
+**These are approximations, and worth knowing where they end.** The host
+stack gate checks test code one function at a time. Its frames are the host
+compiler's; `check_stack_usage_device.sh` checks the target compiler's frames
+when a host frame nears the ceiling.
+
+`launcher/tools/quality/stack_chain_gate.py` discovers `stack_chain.txt` under
+`launcher/`, excluding build directories. App roots belong in their app's
+spec; engine roots belong in the test spec. A `root FUNCTION KIND` line
+names a `test`, `frame` or `system` entry. The target compiler measures
+frames and calls in the engine, opted-in apps, tests and task/test runners.
+
+An `indirect CALLER... : CALLEE...` line supplies pointer targets. Every
+spec contributes to one graph; declare each edge once beside the pointer
+caller, with engine edges in the engine spec. An undeclared source-line
+pointer caller reachable below a root fails. Private names may be
+qualified as `file.c:function`. Suite registrations and Unity's wrapper
+supply runner pointer edges from their sources. The runner overhead is the
+deepest measured path from the main-task entry to the kind's dispatcher:
+`call_protected`, `shell_step_app` or `scene_shell_render`. There are no
+per-root ancestor lists or copied budgets. Missing paths and non-static
+frames fail.
+
+Every root uses the budget `DP_MAIN_TASK_STACK_BYTES` minus `timing.c`'s
+reserve, derived runner frames and target context. The compiler evaluates
+`XT_STK_FRMSZ` and the aligned `XT_CP_SIZE` from its configured headers;
+TLS storage comes from the ELF's linker symbols. Interrupt context includes
+window spills; coprocessor and TLS storage occupy the top of the task stack.
+Worker-task calls are separate; a dispatcher's synchronous fallback remains
+on its caller's stack. The conservative maximum includes clipping paths,
+which a device's high-water mark may not encounter with an interrupt.
+The gate counts frames only in the source files it recompiles. Uncompiled
+libraries, including newlib's printf family (about 800 bytes for
+`_vfprintf_r`), esp_log and FreeRTOS, are not counted. There is no library
+allowance; `timing.c`'s board stack-watermark check covers the remaining
+stack use. Source-line pointer checks and private function qualification
+come from compiler graphs.
+The chain gate runs in self-test CI and `autana build diag --check`; it
+predicts stack use without flashing.
+
 The arena models one process's allocations from a clean start, so it cannot
 show fragmentation inherited from the rest of a real boot. Neither gate
 replaces a device capture. They make a whole class of bug cost a second on
