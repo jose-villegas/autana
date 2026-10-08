@@ -1342,6 +1342,16 @@ plant_bed_rain(sand_t* s) {
     }
 }
 
+void
+plant_bed_settle(sand_t* s) {
+    for (int i = 0; i < PLANT_BED_SETTLE_STEPS; i++) {
+        if (i == PLANT_BED_RAIN_A || i == PLANT_BED_RAIN_B) {
+            plant_bed_rain(s);
+        }
+        sand_step(s, 0, 1000, 0);
+    }
+}
+
 /* Both bands go into EMPTY cells only, so the soil threads between the
  * standing trunks instead of replacing them, and the water starts eight rows
  * clear of it - a pour that has to FALL before it lands, which is the case a
@@ -2397,12 +2407,7 @@ plant_ruin_window(sand_t* s, greenery_t* acid_before, greenery_t* acid_after, gr
     const int lava_x0 = PLANT_RUIN_WALL_X + PLANT_RUIN_WALL_W;
 
     build_plant_ruin_scene(s);
-    for (int i = 0; i < PLANT_BED_SETTLE_STEPS; i++) {
-        if (i == PLANT_BED_RAIN_A || i == PLANT_BED_RAIN_B) {
-            plant_bed_rain(s);
-        }
-        sand_step(s, 0, 1000, 0);
-    }
+    plant_bed_settle(s);
     plant_ruin_acid_drip(s, PLANT_RUIN_ACID_LEAD_STEPS);
     plant_ruin_lava_pour(s);
 
