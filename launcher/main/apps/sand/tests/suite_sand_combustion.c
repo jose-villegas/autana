@@ -474,24 +474,33 @@ test_gas_decays_and_disappears_over_time(void) {
                                   "test_gas_grain_count_is_conserved)");
 }
 
+/* Spawns one cell of m at (3,4) with decay forced, lets it burn out, and
+ * asserts row 4 was marked dirty on the way. `pinned` holds it still, so the
+ * vanish lands at a known row instead of wherever it drifted. */
 static void
-test_gas_decaying_away_marks_its_row_dirty(void) {
+assert_decaying_away_marks_its_row(material_id_t m, bool pinned, const char* why) {
     dirty_fixture();
     sand_set_decay(&s, 255);
-    sand_set_mobility(&s, 0); /* stay put, so the vanish lands at a
-                                 * known row instead of wherever it drifted */
+    if (pinned) {
+        sand_set_mobility(&s, 0);
+    }
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_GAS), "setup: exactly one gas grain placed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, m), "setup: exactly one cell placed");
     memset(dirty, 0, H);
 
     run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the grain must have decayed away by now");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4],
-                                    "the row a gas grain decayed away in must be marked dirty, or its "
-                                    "last colour stays on the panel forever after the cell itself is "
-                                    "already empty - tick_decay()'s vanish branch must call "
-                                    "mark_rows() the same way its tick-down branch already does");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the cell must have decayed away by now");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4], why);
+}
+
+static void
+test_gas_decaying_away_marks_its_row_dirty(void) {
+    assert_decaying_away_marks_its_row(MAT_GAS, true,
+                                       "the row a gas grain decayed away in must be marked dirty, or its "
+                                       "last colour stays on the panel forever after the cell itself is "
+                                       "already empty - tick_decay()'s vanish branch must call "
+                                       "mark_rows() the same way its tick-down branch already does");
 }
 
 /* The packed-row equalise skip (row_is_packed(), see
@@ -1017,20 +1026,11 @@ test_igniting_a_neighbour_marks_its_row_dirty(void) {
 
 static void
 test_fire_burning_out_marks_its_row_dirty(void) {
-    dirty_fixture();
-    sand_set_decay(&s, 255);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_FIRE), "setup: exactly one fire cell placed");
-    memset(dirty, 0, H);
-
-    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the fire cell must have burned out by now");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4],
-                                    "the row a fire cell burned out in must be marked dirty, or its "
-                                    "last colour stays on the panel forever after the cell itself is "
-                                    "already empty - tick_decay()'s vanish branch already does this "
-                                    "correctly (shared with gas), this pins it down for fire too");
+    assert_decaying_away_marks_its_row(MAT_FIRE, false,
+                                       "the row a fire cell burned out in must be marked dirty, or its "
+                                       "last colour stays on the panel forever after the cell itself is "
+                                       "already empty - tick_decay()'s vanish branch already does this "
+                                       "correctly (shared with gas), this pins it down for fire too");
 }
 
 static void
