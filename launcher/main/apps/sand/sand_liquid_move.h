@@ -160,7 +160,7 @@ move_liquid_grain(sand_t* s, uint8_t* row, uint8_t* prow, int x, int y, int dx, 
      * too-viscous-to-move code out of the hot path, worth ~26% on a
      * water benchmark. Wrong for oil (refuses ~2 in 3 steps), but water
      * is what a screen of liquid usually is. */
-    if (s->may_have_viscous_liquid && __builtin_expect(!liquid_may_move(s, x, y, mat_id), 0)) {
+    if (!SAND_SKIP_IF(!s->may_have_viscous_liquid) && __builtin_expect(!liquid_may_move(s, x, y, mat_id), 0)) {
         return false;
     }
 
