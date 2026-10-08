@@ -9,33 +9,14 @@ image under `docs/images/`, is generated from the source by the doc-images pipel
 ([Render-Harness.md](../tools/Render-Harness.md#images-in-these-docs)), on the
 demo scene in the [demo assets](../../launcher/demo/README.md).
 
-- [Offline, on the host](#offline-on-the-host)
-  - [Geometry](#geometry)
-    - [Source model](#source-model)
-    - [Alpha mask](#alpha-mask)
-    - [Visibility](#visibility)
-    - [Thin](#thin)
-  - [Light](#light)
-  - [Shape](#shape)
-    - [Simplify](#simplify)
-    - [Fit](#fit)
-  - [Output](#output)
-    - [Meshlets](#meshlets)
-    - [Asset pack](#asset-pack)
-- [Every frame, on the board](#every-frame-on-the-board)
-  - [Scene and camera](#scene-and-camera)
-  - [Render size](#render-size)
-  - [Update](#update)
-    - [Cull](#cull)
-    - [Transform](#transform)
-    - [Clip](#clip)
-    - [Span fill](#span-fill)
-    - [Resolve](#resolve)
-    - [View modes](#view-modes)
-  - [After the send](#after-the-send)
-    - [Compose](#compose)
-    - [Present](#present)
-- [Refreshing](#refreshing)
+| [Offline, on the host](#offline-on-the-host) | [Every frame, on the board](#every-frame-on-the-board) |
+|---|---|
+| **[Geometry](#geometry)**<br/>[Source model](#source-model) → [Alpha mask](#alpha-mask) → [Visibility](#visibility) → [Thin](#thin) | **[Scene and camera](#scene-and-camera)** |
+| **[Light](#light)** | **[Render size](#render-size)** |
+| **[Shape](#shape)**<br/>[Simplify](#simplify) → [Fit](#fit) | **[Update](#update)**<br/>[Cull](#cull) → [Transform](#transform) → [Clip](#clip) → [Span fill](#span-fill) → [Resolve](#resolve) → [View modes](#view-modes) |
+| **[Output](#output)**<br/>[Meshlets](#meshlets) → [Asset pack](#asset-pack) | **[After the send](#after-the-send)**<br/>[Compose](#compose) → [Present](#present) |
+
+[Refreshing](#refreshing) the generated tables.
 
 ```mermaid
 flowchart TB
