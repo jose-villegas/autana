@@ -184,9 +184,8 @@ test_colour_packing_matches_the_panel_format(void) {
 
 void
 test_clear_touches_every_pixel(void) {
-    fixture();
     const gfx_color_t c = gfx_rgb(0x123456);
-    gfx_clear(c);
+    clear_fixture(c);
     TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(c));
 }
 
@@ -800,9 +799,7 @@ time_present(void) {
 
 static void
 test_an_unchanged_frame_costs_almost_nothing(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     const int64_t full = time_present(); /* clear marks everything */
 
     const int64_t unchanged = time_present(); /* nothing touched since */
@@ -832,9 +829,7 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
  * of that involved. */
 static void
 test_full_present_cost_splits_into_bus_time_and_overhead(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x102030)); /* marks the whole screen dirty */
+    clear_fixture(gfx_rgb(0x102030)); /* marks the whole screen dirty */
     const int64_t present_us = time_present();
 
     const int64_t raw_start = timing_now_us();
@@ -859,9 +854,7 @@ test_full_present_cost_splits_into_bus_time_and_overhead(void) {
 
 static void
 test_a_partial_change_costs_less_than_a_full_frame(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     const int64_t full = time_present();
 
     /* One band of seven. */
@@ -887,7 +880,8 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
 }
 
 static void
-write_dirty_rectangle(gfx_color_t* fb, int x0, int y0, int w, int h, gfx_color_t colour) {
+write_dirty_rectangle(int x0, int y0, int w, int h, gfx_color_t colour) {
+    gfx_color_t* const fb = gfx_framebuffer();
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             fb[((y0 + y) * GFX_WIDTH) + x0 + x] = colour;
@@ -898,8 +892,7 @@ write_dirty_rectangle(gfx_color_t* fb, int x0, int y0, int w, int h, gfx_color_t
 
 static int64_t
 present_reference_band(gfx_color_t colour) {
-    fixture();
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     (void)time_present();
     gfx_fill_rect(0, 0, GFX_WIDTH, 64, colour);
     return time_present();
@@ -922,9 +915,8 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
 
     /* A narrow strip within a band, written directly and marked with its
      * real bounds: a caller repainting a narrow changed strip. */
-    gfx_color_t* fb = gfx_framebuffer();
     const int w = 20;
-    write_dirty_rectangle(fb, 0, 0, w, 64, gfx_rgb(0x204060));
+    write_dirty_rectangle(0, 0, w, 64, gfx_rgb(0x204060));
     const int64_t narrow = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
@@ -957,10 +949,9 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
 
     /* Wide but short: most of the band's width, a sliver of its height:
      * the shape a sideways-falling stream leaves behind. */
-    gfx_color_t* fb = gfx_framebuffer();
     const int w = 300;
     const int h = 8;
-    write_dirty_rectangle(fb, 0, 0, w, h, gfx_rgb(0x602040));
+    write_dirty_rectangle(0, 0, w, h, gfx_rgb(0x602040));
     const int64_t wide = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %dx%d px (gathered) %lld us", (long long)full_band, w, h,
@@ -996,9 +987,8 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
 
     /* Full width, 48 of the band's 64 rows: the shape a wide change
      * leaves that has not yet grown to fill its whole strip. */
-    gfx_color_t* fb = gfx_framebuffer();
     const int h = 48;
-    write_dirty_rectangle(fb, 0, 0, GFX_WIDTH, h, gfx_rgb(0x406020));
+    write_dirty_rectangle(0, 0, GFX_WIDTH, h, gfx_rgb(0x406020));
     const int64_t partial = time_present();
 
     ESP_LOGI(TAG,
@@ -1021,17 +1011,16 @@ static void
 test_two_far_corners_cost_less_than_a_full_band(void) {
     const int64_t full_band = present_reference_band(gfx_rgb(0x206020));
 
-    gfx_color_t* fb = gfx_framebuffer();
     const int size = 15;
 
     /* Top-left corner. */
-    write_dirty_rectangle(fb, 0, 0, size, size, gfx_rgb(0x206020));
+    write_dirty_rectangle(0, 0, size, size, gfx_rgb(0x206020));
 
     /* Bottom-right corner: a different row range within the same band, a
      * different column, nothing in between touched. */
     const int y0 = 64 - size;
     const int x0 = GFX_WIDTH - size;
-    write_dirty_rectangle(fb, x0, y0, size, size, gfx_rgb(0x206020));
+    write_dirty_rectangle(x0, y0, size, size, gfx_rgb(0x206020));
 
     const int64_t two_corners = time_present();
 
@@ -1063,7 +1052,6 @@ static void
 test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
     const int64_t full_band = present_reference_band(gfx_rgb(0x602060));
 
-    gfx_color_t* fb = gfx_framebuffer();
     const int size = 15;
     /* Cells 0, 1 and 2 (COL_WIDTH=92 each): adjacent, so these merge
      * into one 276px-wide coarse run, not three separate cell-level ones.
@@ -1073,12 +1061,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
     const int xs[3] = {5, 115, 230};
 
     for (int i = 0; i < 3; i++) {
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                fb[y * GFX_WIDTH + xs[i] + x] = gfx_rgb(0x602060);
-            }
-        }
-        gfx_mark_dirty(xs[i], 0, size, size);
+        write_dirty_rectangle(xs[i], 0, size, size, gfx_rgb(0x602060));
     }
 
     const int64_t three_marks = time_present();
@@ -1105,13 +1088,12 @@ static void
 test_a_near_budget_split_crosses_the_gather_threshold(void) {
     const int64_t full_band = present_reference_band(gfx_rgb(0x206040));
 
-    gfx_color_t* fb = gfx_framebuffer();
     const int small_size = 15;
     const int wide_x = 48, wide_w = 110, wide_h = 64;
 
-    write_dirty_rectangle(fb, 2, 0, small_size, small_size, gfx_rgb(0x206040));
+    write_dirty_rectangle(2, 0, small_size, small_size, gfx_rgb(0x206040));
 
-    write_dirty_rectangle(fb, wide_x, 0, wide_w, wide_h, gfx_rgb(0x206040));
+    write_dirty_rectangle(wide_x, 0, wide_w, wide_h, gfx_rgb(0x206040));
 
     const int64_t near_budget = time_present();
 
@@ -1132,12 +1114,11 @@ static void
 test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     const int64_t full_band = present_reference_band(gfx_rgb(0x406020));
 
-    gfx_color_t* fb = gfx_framebuffer();
     const int size = 10;
 
-    write_dirty_rectangle(fb, 5, 0, size, size, gfx_rgb(0x406020));
+    write_dirty_rectangle(5, 0, size, size, gfx_rgb(0x406020));
 
-    write_dirty_rectangle(fb, 70, 0, size, size, gfx_rgb(0x406020));
+    write_dirty_rectangle(70, 0, size, size, gfx_rgb(0x406020));
 
     const int64_t two_marks = time_present();
 
@@ -1175,8 +1156,7 @@ test_a_corner_label_costs_less_than_its_rows_full_width(void) {
 
 static void
 test_drawing_marks_what_it_touched(void) {
-    fixture();
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     gfx_present(); /* everything now clean */
 
     TEST_ASSERT_FALSE_MESSAGE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT),

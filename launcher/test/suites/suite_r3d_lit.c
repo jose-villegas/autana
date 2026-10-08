@@ -109,12 +109,11 @@ test_two_triangles_sharing_an_edge_cover_a_square_exactly_once(void) {
     TEST_ASSERT_NOT_NULL(hits);
     memset(hits, 0, W * H);
 
-    r3d_span_target_t t = draw_fixture_triangle(&a, &b, &c);
+    (void)draw_fixture_triangle(&a, &b, &c);
     for (int i = 0; i < W * H; i++) {
         hits[i] += depth[i] != 0;
     }
-    t = fixture();
-    r3d_span_triangle(&t, &a, &c, &d);
+    (void)draw_fixture_triangle(&a, &c, &d);
     for (int i = 0; i < W * H; i++) {
         hits[i] += depth[i] != 0;
         TEST_ASSERT_TRUE_MESSAGE(hits[i] <= 1, "a pixel on the shared edge was filled by both triangles");
@@ -185,8 +184,7 @@ test_the_nearer_triangle_wins_in_either_order(void) {
     r3d_span_triangle(&t, &na, &nb, &nc);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), color[5 * W + 5]);
 
-    t = fixture();
-    r3d_span_triangle(&t, &na, &nb, &nc);
+    t = draw_fixture_triangle(&na, &nb, &nc);
     r3d_span_triangle(&t, &fa, &fb, &fc);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), color[5 * W + 5]);
 }

@@ -27,12 +27,6 @@ assert_report(frame_cost_t* cost, uint32_t frames, char* line, size_t capacity, 
     TEST_ASSERT_EQUAL_STRING(expected, line);
 }
 
-static void
-finish_report(frame_cost_t* cost, char* line, size_t capacity, const char* expected) {
-    assert_report(cost, 1, line, capacity, expected);
-    free(cost);
-}
-
 static int
 leave_bracket(frame_cost_t* cost, const char* name, int64_t from_us, int64_t to_us) {
     const int mark = frame_cost_enter(cost, from_us);
@@ -61,7 +55,8 @@ test_a_name_is_one_slot_whether_or_not_it_is_the_same_literal(void) {
     frame_cost_add(cost, spelled_again, 1000);
     TEST_ASSERT_EQUAL_INT(1, cost->count);
 
-    finish_report(cost, line, sizeof line, "draw 2.00/1.0 | total 2.00");
+    assert_report(cost, 1, line, sizeof line, "draw 2.00/1.0 | total 2.00");
+    free(cost);
 }
 
 static void
@@ -72,7 +67,8 @@ test_a_report_forgets_so_the_next_window_starts_clean(void) {
     frame_cost_report(cost, 1, line, sizeof line);
 
     frame_cost_add(cost, "draw", 1000);
-    finish_report(cost, line, sizeof line, "draw 1.00/1.0 | total 1.00");
+    assert_report(cost, 1, line, sizeof line, "draw 1.00/1.0 | total 1.00");
+    free(cost);
 }
 
 static void
@@ -83,7 +79,8 @@ test_with_no_frames_the_charge_survives_to_the_next_report(void) {
     TEST_ASSERT_EQUAL_INT(0, frame_cost_report(cost, 0, line, sizeof line));
     TEST_ASSERT_EQUAL_STRING("", line);
 
-    finish_report(cost, line, sizeof line, "draw 9.00/9.0 | total 9.00");
+    assert_report(cost, 1, line, sizeof line, "draw 9.00/9.0 | total 9.00");
+    free(cost);
 }
 
 static void
@@ -126,7 +123,8 @@ test_a_dropped_name_is_flagged_in_the_report_and_gone_next_window(void) {
                   "h 1.00/1.0  i 1.00/1.0  j 1.00/1.0  k 1.00/1.0  l 1.00/1.0 | total 12.00 +1 dropped");
 
     frame_cost_add(cost, "a", 1000);
-    finish_report(cost, line, sizeof line, "a 1.00/1.0 | total 1.00");
+    assert_report(cost, 1, line, sizeof line, "a 1.00/1.0 | total 1.00");
+    free(cost);
 }
 
 static void
@@ -135,7 +133,8 @@ test_a_line_too_short_ends_on_a_whole_slot(void) {
     char line[20];
     frame_cost_add(cost, "draw", 4000);
     frame_cost_add(cost, "send", 8000);
-    finish_report(cost, line, sizeof line, "draw 4.00/4.0");
+    assert_report(cost, 1, line, sizeof line, "draw 4.00/4.0");
+    free(cost);
 }
 
 static void
@@ -145,7 +144,8 @@ test_the_total_is_the_sum_of_each_names_average(void) {
     frame_cost_add(cost, "x", 1000);
     frame_cost_add(cost, "y", 2500);
     frame_cost_add(cost, "z", 4000);
-    finish_report(cost, line, sizeof line, "x 1.00/1.0  y 2.50/2.5  z 4.00/4.0 | total 7.50");
+    assert_report(cost, 1, line, sizeof line, "x 1.00/1.0  y 2.50/2.5  z 4.00/4.0 | total 7.50");
+    free(cost);
 }
 
 static void
@@ -156,7 +156,8 @@ test_a_bracket_inside_another_is_charged_only_its_own_time(void) {
     (void)leave_bracket(cost, "inner", 3000, 7000);
     frame_cost_leave(cost, outer, "outer", 10000);
 
-    finish_report(cost, line, sizeof line, "inner 4.00/4.0  outer 6.00/6.0 | total 10.00");
+    assert_report(cost, 1, line, sizeof line, "inner 4.00/4.0  outer 6.00/6.0 | total 10.00");
+    free(cost);
 }
 
 static void
@@ -169,7 +170,8 @@ test_a_bracket_two_levels_deep_charges_each_level_its_own_time(void) {
     frame_cost_leave(cost, middle, "middle", 8000);
     frame_cost_leave(cost, outer, "outer", 10000);
 
-    finish_report(cost, line, sizeof line, "inner 3.00/3.0  middle 4.00/4.0  outer 3.00/3.0 | total 10.00");
+    assert_report(cost, 1, line, sizeof line, "inner 3.00/3.0  middle 4.00/4.0  outer 3.00/3.0 | total 10.00");
+    free(cost);
 }
 
 static void
@@ -181,7 +183,8 @@ test_two_siblings_inside_one_parent_are_both_taken_out_of_it(void) {
     (void)leave_bracket(cost, "childB", 4000, 9000);
     frame_cost_leave(cost, outer, "outer", 10000);
 
-    finish_report(cost, line, sizeof line, "childA 2.00/2.0  childB 5.00/5.0  outer 3.00/3.0 | total 10.00");
+    assert_report(cost, 1, line, sizeof line, "childA 2.00/2.0  childB 5.00/5.0  outer 3.00/3.0 | total 10.00");
+    free(cost);
 }
 
 static void
@@ -208,7 +211,8 @@ test_what_ran_inside_an_abandoned_bracket_is_still_taken_out_of_the_outer_one(vo
     (void)leave_bracket(cost, "inner", 2000, 6000);
     frame_cost_leave(cost, outer, "outer", 10000);
 
-    finish_report(cost, line, sizeof line, "inner 4.00/4.0  outer 6.00/6.0 | total 10.00");
+    assert_report(cost, 1, line, sizeof line, "inner 4.00/4.0  outer 6.00/6.0 | total 10.00");
+    free(cost);
 }
 
 static void
@@ -220,7 +224,8 @@ test_leaving_with_a_mark_already_unwound_charges_nothing(void) {
     frame_cost_leave(cost, inner, "inner", 9000); /* stale: already popped */
     frame_cost_leave(cost, outer, "outer", 10000);
 
-    finish_report(cost, line, sizeof line, "inner 2.00/2.0  outer 8.00/8.0 | total 10.00");
+    assert_report(cost, 1, line, sizeof line, "inner 2.00/2.0  outer 8.00/8.0 | total 10.00");
+    free(cost);
 }
 
 static void
