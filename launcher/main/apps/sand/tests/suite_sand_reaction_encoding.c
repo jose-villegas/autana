@@ -89,24 +89,26 @@ assert_reaction_field_never_bare_extended(uint8_t v, const char* field, const ch
  * count) on one reaction row - shared by both halves of the loop below so
  * the same sixteen fields are never checked by two verbatim copies that
  * could drift apart. */
+#define ASSERT_NEVER_BARE_EXTENDED(field) assert_reaction_field_never_bare_extended(r->field, #field, owner)
+
 static void
 assert_reaction_row_never_mints_bare_extended(const reaction_t* r, const char* owner) {
-    assert_reaction_field_never_bare_extended(r->ignites_to, "ignites_to", owner);
-    assert_reaction_field_never_bare_extended(r->boils_to, "boils_to", owner);
-    assert_reaction_field_never_bare_extended(r->quench_to, "quench_to", owner);
-    assert_reaction_field_never_bare_extended(r->condenses_to, "condenses_to", owner);
-    assert_reaction_field_never_bare_extended(r->heats_to, "heats_to", owner);
-    assert_reaction_field_never_bare_extended(r->flaw_to, "flaw_to", owner);
-    assert_reaction_field_never_bare_extended(r->spoils_to, "spoils_to", owner);
-    assert_reaction_field_never_bare_extended(r->soaks_to, "soaks_to", owner);
-    assert_reaction_field_never_bare_extended(r->soaked_to, "soaked_to", owner);
-    assert_reaction_field_never_bare_extended(r->hardens_to, "hardens_to", owner);
-    assert_reaction_field_never_bare_extended(r->clings_to, "clings_to", owner);
-    assert_reaction_field_never_bare_extended(r->roots_to, "roots_to", owner);
-    assert_reaction_field_never_bare_extended(r->canopy_to, "canopy_to", owner);
-    assert_reaction_field_never_bare_extended(r->sprouts_to, "sprouts_to", owner);
-    assert_reaction_field_never_bare_extended(r->buds_to, "buds_to", owner);
-    assert_reaction_field_never_bare_extended(r->shatters_to, "shatters_to", owner);
+    ASSERT_NEVER_BARE_EXTENDED(ignites_to);
+    ASSERT_NEVER_BARE_EXTENDED(boils_to);
+    ASSERT_NEVER_BARE_EXTENDED(quench_to);
+    ASSERT_NEVER_BARE_EXTENDED(condenses_to);
+    ASSERT_NEVER_BARE_EXTENDED(heats_to);
+    ASSERT_NEVER_BARE_EXTENDED(flaw_to);
+    ASSERT_NEVER_BARE_EXTENDED(spoils_to);
+    ASSERT_NEVER_BARE_EXTENDED(soaks_to);
+    ASSERT_NEVER_BARE_EXTENDED(soaked_to);
+    ASSERT_NEVER_BARE_EXTENDED(hardens_to);
+    ASSERT_NEVER_BARE_EXTENDED(clings_to);
+    ASSERT_NEVER_BARE_EXTENDED(roots_to);
+    ASSERT_NEVER_BARE_EXTENDED(canopy_to);
+    ASSERT_NEVER_BARE_EXTENDED(sprouts_to);
+    ASSERT_NEVER_BARE_EXTENDED(buds_to);
+    ASSERT_NEVER_BARE_EXTENDED(shatters_to);
 }
 
 /* Every "_to"-shaped field must never hold 15. GUNPOWDER_LIT_CELL (0xFF) is
@@ -2048,30 +2050,32 @@ test_a_thick_wall_conducts_more_slowly_than_a_thin_one(void) {
                                   "attenuating walk itself, not a second constant");
 }
 
+#define BOILER_X      5
+#define BOILER_BOTTOM 4
+
+/* Allocates `wide` with conduction forced and nothing moving: fire under a
+ * stone lid at BOILER_X, `liquid` from row top down to BOILER_BOTTOM above
+ * the lid, and stone walls the height of the column, so cross-flow has
+ * nowhere to send any mass while conduction does its work. */
 static void
-test_boiling_converts_the_cell_nearest_the_heat(void) {
+boiler_column(cell_t liquid, int top) {
     wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boil-nearest-the-heat grid must fit in what the framebuffer "
-                                             "leaves");
+    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "the boiler grid must fit in what the framebuffer leaves");
     sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, water_top = 1, water_bottom = 4;
+    sand_set(&wide, BOILER_X, BOILER_BOTTOM + 2, FIRE);
+    sand_set(&wide, BOILER_X, BOILER_BOTTOM + 1, STONE);
+    fill_box(&wide, BOILER_X, BOILER_X + 1, top, BOILER_BOTTOM + 1, liquid);
+    fill_box(&wide, BOILER_X - 1, BOILER_X, top, BOILER_BOTTOM + 3, STONE);
+    fill_box(&wide, BOILER_X + 1, BOILER_X + 2, top, BOILER_BOTTOM + 3, STONE);
+}
 
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    for (int y = water_top; y <= water_bottom; y++) {
-        sand_set(&wide, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
-    /* Side walls the height of the column, so cross-flow has nowhere to
-     * send any mass and the column stays exactly this shape while
-     * conduction does its work. */
-    for (int y = water_top; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
+static void
+test_boiling_converts_the_cell_nearest_the_heat(void) {
+    const int x = BOILER_X, water_top = 1, water_bottom = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_top);
 
     bool boiled = false;
     for (int i = 0; i < 10 && !boiled; i++) {
@@ -2101,23 +2105,9 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
  * other chance fields. */
 static void
 test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boils-disabled grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
-    sand_set_conduction(&wide, 255);
+    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 0);
-    sand_set_mobility(&wide, 0);
-
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, water_y = 4;
-
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    for (int y = water_y; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
 
     run_steps(&wide, 50, 0, 1000);
     const uint8_t result_material = CELL_MATERIAL(sand_at(&wide, x, water_y));
@@ -2135,23 +2125,9 @@ test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
 
 static void
 test_boiled_steam_starts_at_full_life(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiled-steam-life grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
-    sand_set_conduction(&wide, 255);
+    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 255);
-    sand_set_mobility(&wide, 0);
-
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, water_y = 4;
-
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    for (int y = water_y; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
 
     sand_step(&wide, 0, 1000, 0);
 
@@ -2173,24 +2149,9 @@ test_boiled_steam_starts_at_full_life(void) {
 
 static void
 test_boiling_acid_produces_gas_not_steam(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "boiling-acid-produces-gas grid must fit in what the framebuffer "
-                                             "leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
-    sand_set_conduction(&wide, 255);
+    const int x = BOILER_X, acid_y = BOILER_BOTTOM;
+    boiler_column(CELL_MAKE(MAT_ACID, MASS_MAX), acid_y);
     sand_set_boils(&wide, 255);
-    sand_set_mobility(&wide, 0);
-
-    const int x = 5;
-    const int fire_y = 6, stone_y = 5, acid_y = 4;
-
-    sand_set(&wide, x, fire_y, FIRE);
-    sand_set(&wide, x, stone_y, STONE);
-    sand_set(&wide, x, acid_y, CELL_MAKE(MAT_ACID, MASS_MAX));
-    for (int y = acid_y; y <= fire_y; y++) {
-        sand_set(&wide, x - 1, y, STONE);
-        sand_set(&wide, x + 1, y, STONE);
-    }
 
     sand_step(&wide, 0, 1000, 0);
     const uint8_t result_material = CELL_MATERIAL(sand_at(&wide, x, acid_y));
