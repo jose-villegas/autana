@@ -56,6 +56,25 @@ impulse_fixture(void) {
 
 #define fixture() impulse_fixture()
 
+/* The default fixture with impulses on. */
+static void
+armed_fixture(void) {
+    fixture();
+    sand_enable_impulses(&s, impulse_buf, W * H);
+}
+
+/* armed_fixture() with a stone floor under row `row`, so gravity cannot pull
+ * a cell out of the row before the impulse gets its step. */
+static void
+armed_lane(int row) {
+    armed_fixture();
+    fill_box(&s, 0, W, row + 1, row + 2, STONE);
+}
+
+static const char ONE_PUSH_STILL_TRACKED[] = "the single push roll here succeeds on the order of 99.6% of the time at "
+                                             "speed 255 - losing tracking on this one step means the scene itself is "
+                                             "broken, not that this run was merely unlucky";
+
 /* CHECKS DISC-COUNT TABLE DIFFERENTLY THAN GENERATION ALGORITHM. COVERS
  * OUT-OF-RANGE RADII. */
 static void
@@ -98,8 +117,7 @@ test_the_disc_count_table_matches_a_direct_lattice_count(void) {
  * test_a_strong_close_blast_can_breach_a_wall for the other half. */
 static void
 test_a_blast_inside_a_sealed_vessel_stays_inside_it(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     /* Payload centre, clearance ensures room to fly. */
     for (int y = 0; y < H; y++) {
@@ -156,8 +174,7 @@ test_a_blast_inside_a_sealed_vessel_stays_inside_it(void) {
  * tumble back into the hole behind it. */
 static void
 test_a_strong_close_blast_can_breach_a_wall(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     for (int y = 1; y <= 6; y++) {
         for (int x = 1; x <= 6; x++) {
@@ -184,8 +201,7 @@ test_a_strong_close_blast_can_breach_a_wall(void) {
 
 static void
 test_a_dislodged_wall_keeps_falling_even_if_its_first_push_roll_fails(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     sand_set(&s, 3, 0, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     sand_impulse_dislodge(&s, 3, 0, 0, 0, SAND_IMPULSE_SPEED_RAMP);
@@ -208,8 +224,7 @@ test_a_dislodged_wall_keeps_falling_even_if_its_first_push_roll_fails(void) {
  * there, and drops a shard it no longer recognises. */
 static void
 test_a_pane_knocked_loose_is_queued_as_cullet(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     sand_set(&s, 1, 1, GLASS);
     sand_impulse_dislodge(&s, 1, 1, ring_of(1, 0), SAND_EXPLODE_INITIAL_SPEED, SAND_IMPULSE_SPEED_RAMP);
@@ -238,8 +253,7 @@ test_a_pane_knocked_loose_is_queued_as_cullet(void) {
  * travel only happens if the entry survived re-acquisition. */
 static void
 test_a_shattered_pane_flies_the_way_it_was_pushed(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     sand_set(&s, 1, 1, GLASS);
     sand_impulse_dislodge(&s, 1, 1, ring_of(1, 0), SAND_EXPLODE_INITIAL_SPEED, SAND_IMPULSE_SPEED_RAMP);
@@ -268,8 +282,7 @@ test_a_shattered_pane_flies_the_way_it_was_pushed(void) {
  * blast merely happened near. */
 static void
 test_a_pane_that_refuses_the_push_stays_a_pane(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     sand_set(&s, 1, 1, GLASS);
     sand_impulse(&s, 1, 1, ring_of(1, 0), SAND_EXPLODE_INITIAL_SPEED);
@@ -280,8 +293,7 @@ test_a_pane_that_refuses_the_push_stays_a_pane(void) {
 
 static void
 test_sand_displace_alone_never_creates_fire_or_smoke(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     for (int y = 1; y <= 5; y++) {
         for (int x = 1; x <= 5; x++) {
@@ -333,8 +345,7 @@ test_sand_displace_alone_never_creates_fire_or_smoke(void) {
 
 static void
 test_a_blast_conserves_grains(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     fill_box(&s, 2, 6, 2, 5, SAND_FIRST_SHADE);
 
@@ -365,8 +376,7 @@ test_a_blast_at_the_edge_stays_in_bounds(void) {
     };
 
     for (size_t i = 0; i < sizeof(spots) / sizeof(spots[0]); i++) {
-        fixture();
-        sand_enable_impulses(&s, impulse_buf, W * H);
+        armed_fixture();
         fill_box(&s, 0, W, 0, H, SAND_FIRST_SHADE);
 
         sand_explode(&s, spots[i].cx, spots[i].cy, 3);
@@ -390,8 +400,7 @@ test_a_blast_at_the_edge_stays_in_bounds(void) {
 
 static void
 test_a_dropped_entry_never_moves_someone_elses_cell(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     sand_set(&s, 4, 4, SAND_FIRST_SHADE);
     sand_explode(&s, 3, 4, 1); /* (4,4) is the RIGHT neighbour of centre */
@@ -538,8 +547,7 @@ test_a_flying_grain_keeps_its_outward_push_while_falling(void) {
     /* ONCE, outside the trial loop below: fixture() re-seeds the rng, so
      * calling it per trial would replay one identical trial sixteen times.
      * sand_clear() wipes the grid and leaves the rng where it was. */
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     const int max_lifetime = (SAND_EXPLODE_INITIAL_SPEED + SAND_IMPULSE_SPEED_RAMP - 1) / SAND_IMPULSE_SPEED_RAMP;
     const int steps = max_lifetime + 5;
@@ -861,8 +869,7 @@ test_a_thrown_static_chunk_conserves_lava_mass_on_sink(void) {
  * be mistaken for one of the two chunks being tracked. */
 static void
 test_a_chunk_stacked_on_an_in_flight_chunk_waits_instead_of_settling_and_both_eventually_land(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     enum { COL = 3, TOP_ROW = 2, BOTTOM_ROW = 3 };
 
@@ -950,8 +957,7 @@ test_a_chunk_stacked_on_an_in_flight_chunk_waits_instead_of_settling_and_both_ev
  * it, while a fixture starting at the default only reaches one. */
 static void
 ordinary_static_solid_scene(bool flip) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
     s.liquid_flip = flip;
 
     sand_set(&s, 2, 0, STONE);
@@ -1145,6 +1151,21 @@ test_a_thrown_chunk_travels_less_far_through_dirt_than_through_water(void) {
                                       "travelling less far");
 }
 
+/* The mover (entry 0) is still tracked beside the one transfer entry its
+ * struck dirt cell queued, and paid exactly the ramp plus dirt's drag. */
+static void
+assert_mover_paid_one_dirt_drag(const char* why) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, s.impulse_count,
+                                  "the single push roll here succeeds on the order of 99.6% of the "
+                                  "time at speed 255, so the mover (entry 0) losing tracking would "
+                                  "mean the scene itself is broken - and rung 3's transfer adds "
+                                  "exactly one more entry (the struck dirt cell, entry 1) whenever "
+                                  "the mover's post-drag speed clears SAND_IMPULSE_TRANSFER_MIN_"
+                                  "SPEED, which this scene's own numbers do");
+    const uint8_t expected = (uint8_t)(255 - SAND_IMPULSE_SPEED_RAMP - impulse_drag_of(CELL_MAKE(MAT_DIRT, 0)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(expected, s.impulse_buf[0].speed, why);
+}
+
 /* THE FORMULA ITSELF, single step, single displaced cell - the one place in
  * this rung where asserting on s.impulse_buf[0].speed directly is the claim
  * rather than a stand-in for it. The floor under the row keeps gravity from
@@ -1154,12 +1175,9 @@ test_a_thrown_chunk_travels_less_far_through_dirt_than_through_water(void) {
  * cell, appended only after compaction, so the mover is still entry 0. */
 static void
 test_a_thrown_chunk_loses_speed_proportional_to_the_density_it_displaces(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, STONE);
     sand_set(&s, TX, ROW, CELL_MAKE(MAT_DIRT, 0));
     /* A wall one cell past the target, so the entry moves EXACTLY one
@@ -1172,19 +1190,10 @@ test_a_thrown_chunk_loses_speed_proportional_to_the_density_it_displaces(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, s.impulse_count,
-                                  "the single push roll here succeeds on the order of 99.6% of the "
-                                  "time at speed 255, so the mover (entry 0) losing tracking would "
-                                  "mean the scene itself is broken - and rung 3's transfer adds "
-                                  "exactly one more entry (the struck dirt cell, entry 1) whenever "
-                                  "the mover's post-drag speed clears SAND_IMPULSE_TRANSFER_MIN_"
-                                  "SPEED, which this scene's own numbers do");
-    const uint8_t expected = (uint8_t)(255 - SAND_IMPULSE_SPEED_RAMP - impulse_drag_of(CELL_MAKE(MAT_DIRT, 0)));
-    TEST_ASSERT_EQUAL_INT_MESSAGE(expected, s.impulse_buf[0].speed,
-                                  "speed lost displacing a single dirt cell must equal exactly the "
-                                  "plain ramp plus impulse_drag_of()'s own density-derived cost - "
-                                  "this is the formula step_impulses() actually implements, not an "
-                                  "inequality standing in for it");
+    assert_mover_paid_one_dirt_drag("speed lost displacing a single dirt cell must equal exactly the "
+                                    "plain ramp plus impulse_drag_of()'s own density-derived cost - "
+                                    "this is the formula step_impulses() actually implements, not an "
+                                    "inequality standing in for it");
 }
 
 /* THE SAME PIN, KIND_POWDER THIS TIME: a thrown grain pays the identical
@@ -1195,12 +1204,9 @@ test_a_thrown_chunk_loses_speed_proportional_to_the_density_it_displaces(void) {
  * transfer reason as the test just above - see its own comment. */
 static void
 test_a_thrown_powder_grain_pays_drag_displacing_dirt(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, CELL_MAKE(MAT_SAND, 8));
     sand_set(&s, TX, ROW, CELL_MAKE(MAT_DIRT, 0));
     /* A wall one cell past the target, so the entry moves EXACTLY one
@@ -1213,19 +1219,10 @@ test_a_thrown_powder_grain_pays_drag_displacing_dirt(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, s.impulse_count,
-                                  "the single push roll here succeeds on the order of 99.6% of the "
-                                  "time at speed 255, so the mover (entry 0) losing tracking would "
-                                  "mean the scene itself is broken - and rung 3's transfer adds "
-                                  "exactly one more entry (the struck dirt cell, entry 1) whenever "
-                                  "the mover's post-drag speed clears SAND_IMPULSE_TRANSFER_MIN_"
-                                  "SPEED, which this scene's own numbers do");
-    const uint8_t expected = (uint8_t)(255 - SAND_IMPULSE_SPEED_RAMP - impulse_drag_of(CELL_MAKE(MAT_DIRT, 0)));
-    TEST_ASSERT_EQUAL_INT_MESSAGE(expected, s.impulse_buf[0].speed,
-                                  "a KIND_POWDER mover pays the same density-scaled drag a "
-                                  "KIND_STATIC one does - a thrown grain is most of what a blast "
-                                  "actually puts in the air, so leaving powders out made the whole "
-                                  "mechanism imperceptible on the device even though it worked");
+    assert_mover_paid_one_dirt_drag("a KIND_POWDER mover pays the same density-scaled drag a "
+                                    "KIND_STATIC one does - a thrown grain is most of what a blast "
+                                    "actually puts in the air, so leaving powders out made the whole "
+                                    "mechanism imperceptible on the device even though it worked");
 }
 
 /* THE SCOPE PIN, now that powders are in: the boundary is LIQUIDS, and it
@@ -1237,12 +1234,9 @@ test_a_thrown_powder_grain_pays_drag_displacing_dirt(void) {
  * so water into water is the whole of the case. */
 static void
 test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, CELL_MAKE(MAT_WATER, MASS_MAX));
     sand_set(&s, TX, ROW, CELL_MAKE(MAT_WATER, MASS_MAX));
     sand_impulse(&s, SX, ROW, DIR_RIGHT, 255);
@@ -1283,12 +1277,9 @@ test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
  * that cannot bounce stalls against the wall until its flight ages out. */
 static void
 test_a_thrown_powder_grain_bounces_off_a_wall_instead_of_waiting(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2, DIR_LEFT = 6 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, CELL_MAKE(MAT_SAND, 8));
     sand_set(&s, TX, ROW, STONE);
     sand_impulse(&s, SX, ROW, DIR_RIGHT, 255);
@@ -1314,21 +1305,15 @@ test_a_thrown_powder_grain_bounces_off_a_wall_instead_of_waiting(void) {
  * and this is what says so. */
 static void
 test_a_thrown_chunk_displacing_nothing_loses_only_the_plain_ramp(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, DIR_RIGHT = 2 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, STONE);
     sand_impulse_dislodge(&s, SX, ROW, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count,
-                                  "the single push roll here succeeds on the order of 99.6% of the "
-                                  "time at speed 255 - losing tracking on this one step means the "
-                                  "scene itself is broken, not that this run was merely unlucky");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count, ONE_PUSH_STILL_TRACKED);
     /* The ramp is charged PER CELL of travel, and an entry at full speed
      * covers several - so the pin is ramp times the cells it was entitled
      * to, derived from the constants rather than restated. The claim is
@@ -1429,12 +1414,9 @@ test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step(void) {
  * the mover. */
 static void
 test_a_full_speed_static_chunk_moves_several_cells_in_one_push(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, DIR_RIGHT = 2 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, STONE);
     sand_impulse_dislodge(&s, SX, ROW, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
 
@@ -1562,21 +1544,15 @@ test_blocker_normal_and_reflect_off_normal_match_the_exhaustive_arc_table(void) 
  * pure "up": the head-on case. */
 static void
 test_a_thrown_chunk_reverses_direction_bouncing_off_a_flat_floor(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 3, SX = 4, DIR_DOWN = 0, DIR_UP = 4 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, STONE);
     sand_impulse_dislodge(&s, SX, ROW, DIR_DOWN, 255, SAND_IMPULSE_SPEED_RAMP);
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count,
-                                  "the single push roll here succeeds on the order of 99.6% of the "
-                                  "time at speed 255 - losing tracking on this one step means the "
-                                  "scene itself is broken, not that this run was merely unlucky");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count, ONE_PUSH_STILL_TRACKED);
     TEST_ASSERT_EQUAL_INT_MESSAGE(DIR_UP, s.impulse_buf[0].dir,
                                   "a chunk thrown straight down into a flat, wide floor must bounce "
                                   "back the exact opposite way it came, not merely lose speed while "
@@ -1597,8 +1573,7 @@ test_a_thrown_chunk_reverses_direction_bouncing_off_a_flat_floor(void) {
  * rather than a dressed-up 180 flip. */
 static void
 test_a_thrown_chunk_deflects_off_a_flat_floor_instead_of_reversing(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     enum { ROW = 3, SX = 4, DIR_DOWN_RIGHT = 1, DIR_UP_RIGHT = 3, DIR_UP_LEFT = 5 };
 
@@ -1620,10 +1595,7 @@ test_a_thrown_chunk_deflects_off_a_flat_floor_instead_of_reversing(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count,
-                                  "the single push roll here succeeds on the order of 99.6% of the "
-                                  "time at speed 255 - losing tracking on this one step means the "
-                                  "scene itself is broken, not that this run was merely unlucky");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count, ONE_PUSH_STILL_TRACKED);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(DIR_UP_LEFT, s.impulse_buf[0].dir,
                                   "must not be a flat 180 - DIR_UP_LEFT is straight back the way it "
                                   "came, which is what a dressed-up flip (or the water/acid rule "
@@ -1649,21 +1621,15 @@ test_a_thrown_chunk_deflects_off_a_flat_floor_instead_of_reversing(void) {
  * leaving entry.speed after it well under the floor. */
 static void
 test_a_low_speed_entry_below_the_bounce_floor_still_just_waits(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 3, SX = 4, DIR_DOWN = 0, BIG_RAMP = 230 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, STONE);
     sand_impulse_dislodge(&s, SX, ROW, DIR_DOWN, 255, BIG_RAMP);
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count,
-                                  "the single push roll here succeeds on the order of 99.6% of the "
-                                  "time at speed 255 - losing tracking on this one step means the "
-                                  "scene itself is broken, not that this run was merely unlucky");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, s.impulse_count, ONE_PUSH_STILL_TRACKED);
     const uint8_t expected_speed = (uint8_t)(255 - BIG_RAMP);
     TEST_ASSERT_TRUE_MESSAGE(expected_speed < SAND_IMPULSE_BOUNCE_MIN_SPEED,
                              "fixture check: this scene must actually land under the floor, or "
@@ -1917,8 +1883,7 @@ test_a_chunk_thrown_into_a_brush_drawn_wall_conserves_itself_and_settles(void) {
  * scene a device read as nothing happening. */
 static void
 test_a_blast_in_a_packed_bed_opens_a_cavity_and_reaches_beyond_the_radius(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     fill_box(&s, 0, W, 1, H, SAND_FIRST_SHADE);
 
@@ -2007,8 +1972,7 @@ test_a_blast_queues_impulses_on_every_side_of_the_centre(void) {
  * behaviour this round deliberately changed. */
 static void
 test_detonating_empty_space_still_flashes_the_core(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
+    armed_fixture();
 
     sand_explode(&s, 4, 4, 3);
 
@@ -2698,12 +2662,9 @@ test_a_thrown_powder_grain_flings_water_out_of_the_pool_it_hits(void) {
  * its own first. */
 static void
 test_a_struck_water_cell_is_handed_impulse_in_a_backward_cone_from_the_mover(void) {
-    fixture();
-    sand_enable_impulses(&s, impulse_buf, W * H);
-
     enum { ROW = 4, SX = 1, TX = 2, DIR_RIGHT = 2 };
 
-    fill_box(&s, 0, W, ROW + 1, ROW + 2, STONE);
+    armed_lane(ROW);
     sand_set(&s, SX, ROW, STONE);
     sand_set(&s, TX, ROW, CELL_MAKE(MAT_WATER, MASS_MAX));
     sand_impulse_dislodge(&s, SX, ROW, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
