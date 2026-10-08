@@ -841,12 +841,12 @@ static const fp_scene_t SCENES[] = {
     /* Skip coverage, see SKIP COVERAGE above the builders. two_core_big's own
      * board with sleeping on is the only row whose split can skip a resting
      * chunk. */
-    {"lone_flame", scene_lone_flame, 107u, 0, 1000, 0, 0, 0, 0},
-    {"bare_snow", scene_bare_snow, 109u, 0, 1000, 0, 0, 0, 0},
-    {"dry_garden", scene_dry_garden, 113u, 0, 1000, 0, 0, 0, 0},
-    {"soak_asleep", scene_soak_asleep, 127u, 0, 1000, 1, 0, 0, 0},
-    {"tilted_pool", scene_tilted_pool, 131u, 300, 1000, 1, 64, 128, 0},
-    {"two_core_asleep", scene_two_core_big, 101u, 0, 1000, 1, 256, 192, 1},
+    {"lone_flame", scene_lone_flame, 107U, 0, 1000, 0, 0, 0, 0},
+    {"bare_snow", scene_bare_snow, 109U, 0, 1000, 0, 0, 0, 0},
+    {"dry_garden", scene_dry_garden, 113U, 0, 1000, 0, 0, 0, 0},
+    {"soak_asleep", scene_soak_asleep, 127U, 0, 1000, 1, 0, 0, 0},
+    {"tilted_pool", scene_tilted_pool, 131U, 300, 1000, 1, 64, 128, 0},
+    {"two_core_asleep", scene_two_core_big, 101U, 0, 1000, 1, 256, 192, 1},
 };
 
 /* What one scene's sand_t points into, owned here and freed together. */
