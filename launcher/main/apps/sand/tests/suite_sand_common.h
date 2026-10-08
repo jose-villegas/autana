@@ -108,6 +108,9 @@ void fixture(void);
 /* fixture(), cleared, with a stone floor along the bottom row. */
 void stone_floor_fixture(void);
 
+/* The per-material scatter, decay and mobility app_sand.c runs with. */
+void use_app_rates(sand_t* g);
+
 /* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
 void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
 
@@ -123,6 +126,11 @@ void assert_count_kept_in_every_direction(int (*count)(void), int expected, cons
 
 /* stone_floor_fixture() with soaking on and a full row of bed on the floor. */
 void soaked_bed_fixture(cell_t bed);
+
+/* Row HEAT_ROW_Y of g: fire at x = 1, a stone conductor `len` cells long
+ * from x = 2, then `target` on a three-cell stone shelf. Returns target's x. */
+#define HEAT_ROW_Y 2
+int heat_conductor_row(sand_t* g, int len, cell_t target);
 
 /* Steps g `steps` times under (gx, gy), no jostle. */
 void run_steps(sand_t* g, int steps, int gx, int gy);

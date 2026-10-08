@@ -51,6 +51,23 @@ wide_open(uint32_t seed) {
     sand_init(&wide, wide_cells, WIDE_W, WIDE_H, seed);
 }
 
+int
+heat_conductor_row(sand_t* g, int len, cell_t target) {
+    const int target_x = 2 + len;
+    fill_box(g, target_x - 1, target_x + 2, HEAT_ROW_Y + 1, HEAT_ROW_Y + 2, STONE);
+    sand_set(g, 1, HEAT_ROW_Y, FIRE);
+    fill_box(g, 2, target_x, HEAT_ROW_Y, HEAT_ROW_Y + 1, STONE);
+    sand_set(g, target_x, HEAT_ROW_Y, target);
+    return target_x;
+}
+
+void
+use_app_rates(sand_t* g) {
+    sand_set_scatter(g, SAND_SCATTER_PER_MATERIAL);
+    sand_set_decay(g, SAND_DECAY_PER_MATERIAL);
+    sand_set_mobility(g, SAND_MOBILITY_PER_MATERIAL);
+}
+
 void
 fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c) {
     for (int y = y0; y < y1; y++) {

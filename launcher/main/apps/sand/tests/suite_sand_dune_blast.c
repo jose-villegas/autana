@@ -283,9 +283,7 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 51u);
     sand_enable_sleeping(&real, blocks);
-    sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&real);
     sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
 
     build_sand_dune_scene(&real);
@@ -486,9 +484,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 61u);
     sand_enable_sleeping(&real, blocks);
-    sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&real);
     sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
 
     build_dune_beside_water_scene(&real);
@@ -644,9 +640,7 @@ test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 71u);
     sand_enable_sleeping(&real, blocks);
-    sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&real);
     sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
 
     build_dune_in_a_vessel_scene(&real);
@@ -728,9 +722,7 @@ dune_over_wood_burning(uint32_t seed, bool* settled_out, int* wood_before_out) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, seed);
     sand_enable_sleeping(&real, blocks);
-    sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&real);
     sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
 
     build_dune_over_wood_scene(&real);
@@ -908,9 +900,7 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
     sand_t real;
     sand_init(&real, big, REAL_W, REAL_H, 97u);
     sand_enable_sleeping(&real, blocks);
-    sand_set_scatter(&real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&real);
     sand_enable_impulses(&real, impulses, DUNE_IMPULSE_MAX);
 
     build_layered_dune_scene(&real);

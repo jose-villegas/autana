@@ -342,19 +342,8 @@ test_heat_conducted_through_stone_lights_gunpowder(void) {
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
-    const int y = 2;
-    const int wall_x0 = 2;
-    const int wall_len = 5;
-    const int gp_x = wall_x0 + wall_len;
-
-    sand_set(&wide, gp_x - 1, y + 1, STONE);
-    sand_set(&wide, gp_x, y + 1, STONE);
-    sand_set(&wide, gp_x + 1, y + 1, STONE);
-    sand_set(&wide, 1, y, FIRE);
-    for (int i = 0; i < wall_len; i++) {
-        sand_set(&wide, wall_x0 + i, y, STONE);
-    }
-    sand_set(&wide, gp_x, y, GUNPOWDER_CELL(0));
+    const int y = HEAT_ROW_Y;
+    const int gp_x = heat_conductor_row(&wide, 5, GUNPOWDER_CELL(0));
 
     bool lit = false;
     for (int i = 0; i < 150 && !lit; i++) {

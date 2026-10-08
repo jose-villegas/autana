@@ -1983,22 +1983,10 @@ test_conduction_stops_at_the_reach_cap(void) {
     sand_set_mobility(&cap, 0);
     sand_set_conduction(&cap, 255);
 
-    const int y = 2;
-    const int wall_x0 = 2;
-    const int wall_len = CONDUCT_REACH_TEST + 8;
-    const int water_x = wall_x0 + wall_len;
-
-    sand_set(&cap, water_x - 1, y + 1, STONE);
-    sand_set(&cap, water_x, y + 1, STONE);
-    sand_set(&cap, water_x + 1, y + 1, STONE);
-    sand_set(&cap, 1, y, FIRE);
-    for (int i = 0; i < wall_len; i++) {
-        sand_set(&cap, wall_x0 + i, y, STONE);
-    }
-    sand_set(&cap, water_x, y, WATER);
+    const int water_x = heat_conductor_row(&cap, CONDUCT_REACH_TEST + 8, WATER);
 
     run_steps(&cap, 50, 0, 1000);
-    const uint8_t result_material = CELL_MATERIAL(sand_at(&cap, water_x, 2));
+    const uint8_t result_material = CELL_MATERIAL(sand_at(&cap, water_x, HEAT_ROW_Y));
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
      * free() after one never runs, see drop_impulse_buf's own comment

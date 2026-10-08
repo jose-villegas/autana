@@ -48,9 +48,7 @@ assert_every_change_is_marked(material_id_t m, int steps, const char* what) {
 
     fixture();
     sand_track_dirty_rows(&s, dirty);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&s);
 
     for (int x = 0; x < W; x++) {
         sand_set(&s, x, 0, STONE);

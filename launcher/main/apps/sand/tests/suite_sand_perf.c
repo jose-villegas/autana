@@ -1914,9 +1914,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     sand_init(real, big, REAL_W, REAL_H, 23u);
     sand_enable_sleeping(real, blocks);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     /* Without this, sand_explode() has nowhere to write and the gunpowder
      * patches below can never detonate - see ALL_PAIRS_IMPULSE_MAX. */
     sand_enable_impulses(real, impulses, ALL_PAIRS_IMPULSE_MAX);
@@ -2168,9 +2166,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 29u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
 
     build_four_liquid_scene(real);
 
@@ -2197,9 +2193,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 37u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
 
     build_lava_stress_scene(real);
 
@@ -2301,9 +2295,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
 
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
 
     build_thermal_shock_scene(real);
 
@@ -2329,9 +2321,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 43u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
 
     build_boiler_scene(real);
 
@@ -2360,10 +2350,8 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 53u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
+    use_app_rates(real);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
 
     build_wet_earth_scene(real);
 
@@ -2400,9 +2388,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     sand_init(real, big, REAL_W, REAL_H, 59u);
     sand_enable_sleeping(real, blocks);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     sand_enable_impulses(real, impulses, WATER_LAVA_IMPULSE_MAX);
 
     build_water_over_lava_scene(real);
@@ -2433,9 +2419,7 @@ test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
     TEST_ASSERT_NOT_NULL(real);
     sand_init(real, big, REAL_W, REAL_H, 71u);
     sand_enable_sleeping(real, blocks);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     sand_enable_impulses(real, impulses, GAS_IGNITION_VESSEL_IMPULSE_MAX);
     build_gas_ignition_vessel_scene(real);
 
@@ -2513,9 +2497,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     sand_init(real, big, REAL_W, REAL_H, 61u);
     sand_enable_sleeping(real, blocks);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     sand_enable_impulses(real, impulses, GUNPOWDER_BASIN_IMPULSE_MAX);
 
     build_gunpowder_basin_scene(real);
@@ -2592,10 +2574,8 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 11u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
+    use_app_rates(real);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
 
     build_plant_ruin_scene(real);
     for (int i = 0; i < PLANT_BED_SETTLE_STEPS; i++) {
@@ -2657,9 +2637,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 17u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
 
     build_filling_basin_scene(real);
     for (int i = 0; i < FILLING_BASIN_SETTLE_STEPS; i++) {
@@ -2716,9 +2694,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 23u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     sand_set_crust(real, CRUST_ROLL_MAX);
 
     build_snowfall_scene(real);
@@ -2924,9 +2900,7 @@ test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 29u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     build_landscape_bed_scene(real);
 
     int64_t worst = 0;
@@ -2954,9 +2928,7 @@ test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 29u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     build_landscape_deep_bed_scene(real);
 
     int64_t worst = 0;
@@ -2984,9 +2956,7 @@ test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
     uint8_t* blocks;
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 29u);
     board_bookkeeping_open(real);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     build_landscape_bed_scene(real);
 
     int64_t worst = 0;
@@ -3319,9 +3289,7 @@ test_present_cost_against_the_lava_stress_scene(void) {
     TEST_ASSERT_NOT_NULL(real);
     sand_init(real, big, REAL_W, REAL_H, 37u);
     sand_enable_sleeping(real, blocks);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     sand_track_dirty_rows(real, dirty_rows);
     seed_row_runs_full_width_for_gfx_test(row_x0, row_x1, row_n, REAL_W, REAL_H);
 
@@ -3380,9 +3348,7 @@ test_present_cost_against_the_thermal_shock_scene(void) {
     TEST_ASSERT_NOT_NULL(real);
     sand_init(real, big, REAL_W, REAL_H, 41u);
     sand_enable_sleeping(real, blocks);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     sand_track_dirty_rows(real, dirty_rows);
     seed_row_runs_full_width_for_gfx_test(row_x0, row_x1, row_n, REAL_W, REAL_H);
 
@@ -3574,9 +3540,7 @@ static void
 build_landscape_gas_over_sand_pile_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
     sand_init(real, big, REAL_W, REAL_H, 53u);
     sand_enable_sleeping(real, blocks);
-    sand_set_scatter(real, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(real, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(real, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(real);
     build_landscape_deep_bed_scene(real);
 
     for (int y = REAL_H / 3; y < (REAL_H * 2) / 3; y++) {

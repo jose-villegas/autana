@@ -184,11 +184,8 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
 
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 23u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 23u);
 
     build_all_pairs_scene(&s);
 
@@ -335,14 +332,9 @@ static void
 test_the_four_liquid_scene_keeps_reacting_after_settling(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 29u);
-    sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 29u);
+    use_app_rates(&s);
 
     build_four_liquid_scene(&s);
 
@@ -423,14 +415,9 @@ static void
 test_the_lava_stress_scene_reaches_every_reaction_it_claims(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 37u);
-    sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 37u);
+    use_app_rates(&s);
 
     build_lava_stress_scene(&s);
 
@@ -514,11 +501,8 @@ static void
 test_the_smoke_and_steam_scene_stays_a_gas_screen(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 31u);
-    sand_enable_sleeping(&s, blocks);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 31u);
     /* This scene's whole point is a screen where every cell is one gas
      * or the other, conserved - and reaction_t.condenses genuinely is
      * not conserving: a 2x2 patch of steam collapsing into one water
@@ -845,9 +829,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 41u);
     sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&s);
 
     build_thermal_shock_scene(&s);
     const int painted = sand_count(&s);
@@ -1135,14 +1117,9 @@ static void
 test_the_boiler_scene_keeps_boiling_across_the_window(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 43u);
-    sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 43u);
+    use_app_rates(&s);
     /* Condensation is not one-for-one the way boiling is - a 2x2 patch of
      * steam collapses into a SINGLE water cell, a net loss of three - so
      * left on it would eventually violate the sand_count_now floor below
@@ -1740,15 +1717,10 @@ static void
 test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 53u);
-    sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 53u);
+    use_app_rates(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
 
     build_wet_earth_scene(&s);
     const wet_earth_paint_t painted = census_wet_earth_paint(&s);
@@ -1897,9 +1869,7 @@ test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_cla
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 59u);
     sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&s);
     sand_enable_impulses(&s, impulses, WATER_LAVA_IMPULSE_MAX);
 
     build_water_over_lava_scene(&s);
@@ -2096,9 +2066,7 @@ test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 71u);
     sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&s);
     sand_enable_impulses(&s, impulses, GAS_IGNITION_VESSEL_IMPULSE_MAX);
     build_gas_ignition_vessel_scene(&s);
 
@@ -2254,9 +2222,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
     sand_t s;
     sand_init(&s, big, REAL_W, REAL_H, 61u);
     sand_enable_sleeping(&s, blocks);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&s);
     sand_enable_impulses(&s, impulses, GUNPOWDER_BASIN_IMPULSE_MAX);
 
     build_gunpowder_basin_scene(&s);
@@ -2506,15 +2472,10 @@ static void
 test_the_plant_ruin_scene_eats_roots_and_burns_a_canopy(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 11u);
-    sand_enable_sleeping(&s2, blocks);
-    sand_set_scatter(&s2, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s2, SAND_DECAY_PER_MATERIAL);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11u);
+    use_app_rates(&s2);
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
-    sand_set_mobility(&s2, SAND_MOBILITY_PER_MATERIAL);
 
     greenery_t ab, aa, lb, la;
     int fire = 0;
@@ -2660,14 +2621,9 @@ static void
 test_the_filling_basin_scene_runs_from_the_lip_to_the_pool(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 17u);
-    sand_enable_sleeping(&s2, blocks);
-    sand_set_scatter(&s2, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s2, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s2, SAND_MOBILITY_PER_MATERIAL);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 17u);
+    use_app_rates(&s2);
 
     build_filling_basin_scene(&s2);
     for (int i = 0; i < FILLING_BASIN_SETTLE_STEPS; i++) {
@@ -2713,14 +2669,9 @@ static void
 test_the_snowfall_scene_holds_a_crusting_bank_and_a_live_fall(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 23u);
-    sand_enable_sleeping(&s2, blocks);
-    sand_set_scatter(&s2, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s2, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s2, SAND_MOBILITY_PER_MATERIAL);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 23u);
+    use_app_rates(&s2);
     sand_set_crust(&s2, CRUST_ROLL_MAX);
 
     build_snowfall_scene(&s2);
@@ -2772,11 +2723,8 @@ static void
 test_the_plant_pour_scene_keeps_a_loose_heap_in_the_air(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 11u);
-    sand_enable_sleeping(&s2, blocks);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11u);
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
     build_plant_pour_scene(&s2);
 
@@ -2828,11 +2776,8 @@ static void
 test_the_settled_plant_heap_is_dry_and_still_full_of_plants(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 11u);
-    sand_enable_sleeping(&s2, blocks);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11u);
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
     build_dry_plant_heap_scene(&s2);
 
@@ -3132,9 +3077,7 @@ static void
 landscape_fixture(sand_t* s, uint8_t* big, uint8_t* blocks, uint32_t seed) {
     sand_init(s, big, REAL_W, REAL_H, seed);
     sand_enable_sleeping(s, blocks);
-    sand_set_scatter(s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(s);
 }
 
 /* Everything the two landscape frame-budget rows assume before their window
