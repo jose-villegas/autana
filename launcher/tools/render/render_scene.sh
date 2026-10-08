@@ -95,6 +95,13 @@ render_scene_packs() {
             set -- "$@" "$(to_native "$_rs_launcher/$_rs_folder")"
         done
     fi
+    _rs_old_ifs=$IFS
+    IFS='
+'
+    for _rs_replace in ${scene_replacements:-}; do
+        set -- "$@" --replace "${_rs_replace%%=*}=$(to_native "${_rs_replace#*=}")"
+    done
+    IFS=$_rs_old_ifs
     "$_rs_python" "$(to_native "$_rs_tools/r3d/build_pack.py")" \
         -o "$(to_native "$_rs_assets")" "$@" > /dev/null || return 1
     if [ -z "$(find "$_rs_assets" -name '*.apak' | head -n 1)" ]; then
@@ -157,6 +164,10 @@ render_scene_build() {
             --asset-file)
                 [ $# -ge 2 ] || { echo "--asset-file needs a scene file" >&2; return 2; }
                 scene_asset_file="$2"; shift 2 ;;
+            --replace)
+                [ $# -ge 2 ] || { echo "--replace needs NAME=FILE" >&2; return 2; }
+                scene_replacements="${scene_replacements:-}${scene_replacements:+
+}$2"; shift 2 ;;
             *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only]" >&2; return 2 ;;
         esac
     done

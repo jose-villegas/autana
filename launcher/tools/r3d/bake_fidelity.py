@@ -80,18 +80,19 @@ def declared_samples(renderer, median):
     return samples, low, high, median if samples == "auto" and area is None else area
 
 
-def build_host(script, out_dir):
+def build_host(script, out_dir, scene=None):
     """The scene's host renderer; returns its path."""
-    done = subprocess.run(["sh", script.as_posix(), "--build-only", "-o", out_dir.as_posix()], capture_output=True, text=True,
+    inputs = [scene.as_posix()] if scene is not None else []
+    done = subprocess.run(["sh", script.as_posix(), *inputs, "--build-only", "-o", out_dir.as_posix()], capture_output=True, text=True,
                           check=True)
     return pathlib.Path(done.stdout.split("built ", 1)[1].strip())
 
 
-def write_assets(name, mesh_file, out):
+def write_assets(name, mesh_file, out, scene=None):
     """The asset packs of every root in the tree, mesh `name` taken from
     `mesh_file`, written to out/assets; returns that folder."""
     assets = out / "assets"
-    write_packs(assets, pack_bytes([LAUNCHER / "main"], [f"{name}={mesh_file}"]))
+    write_packs(assets, pack_bytes([scene or LAUNCHER / "main"], [f"{name}={mesh_file}"]))
     return assets
 
 
@@ -158,7 +159,7 @@ def main(argv=None):
         out = work / label
         log(f"variant {label}")
         mesh_file = write_variant(job, scene, geometry, spec, out)
-        rows.append((label, score(args, host, write_assets(job.asset_name, mesh_file, out), out)))
+        rows.append((label, score(args, host, write_assets(job.asset_name, mesh_file, out, pathlib.Path(args.scene)), out)))
         print(f"{label}: mean dE76 {rows[-1][1][0]:.3f}", flush=True)
     print(table(rows))
     (work / "table.md").write_text(table(rows) + "\n")
