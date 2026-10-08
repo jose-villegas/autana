@@ -90,16 +90,49 @@ def ms(us):
     return f"{us / 1000:.1f}"
 
 
+def read_present(path):
+    if path is None or not pathlib.Path(path).exists():
+        return None
+    values = []
+    for line in pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        if "ms/frame avg/worst:" in line:
+            match = re.search(r"\bpresent ([\d.]+)/[\d.]+", line)
+            if match:
+                values.append(float(match[1]))
+    if not values:
+        raise ValueError(f"{path}: no present millisecond windows")
+    return statistics.mean(values)
+
+
+def pipeline_table(splits, present, size):
+    stages = splits.get(size, {})
+    rows = ["| Stage | Board ms/frame |", "|---|---|"]
+    for label, names in (("census/cull", ("r3d.census", "r3d.cull")),
+                         ("transform", ("r3d.transform",)), ("draw", ("r3d.draw",)),
+                         ("resolve", ("r3d.resolve",)), ("upscale", ("r3d.upscale",))):
+        found = [stages[name] for name in names if name in stages]
+        rows.append(f"| {label} | {sum(found):.2f} |" if found else f"| {label} | not in capture |")
+    rows.append(f"| present | {present:.2f} |" if present is not None else "| present | not in capture |")
+    return "\n".join(rows) + (f"\n\nRender size {size[0]}x{size[1]}; both cores for split raster passes. "
+                              "Present is the mean of the frame-cost report windows, including the send join.")
+
+
 def stages_table(splits, spans):
+    resolve = any("r3d.resolve" in stages for stages in splits.values())
     lines = ["| Render size | Divisor | Pixels | Frame mean | p50 | max | cull | transform | draw | upscale "
              "| 1 core: setup | rows | span setup | fill |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    if resolve:
+        lines[0] = lines[0].replace("| upscale", "| resolve | upscale")
+        lines[1] += "---|"
     full = DESTINATION[0] * DESTINATION[1]
     for size, s in splits.items():
         o = spans.get(size, {})
         lines.append(f"| {size[0]}x{size[1]} | {divisor(size)} | {100 * size[0] * size[1] / full:.0f}% "
                      f"| {ms(s['mean'])} | {ms(s['p50'])} | {ms(s['max'])} | {s.get('r3d.cull', 0):.1f} "
-                     f"| {s.get('r3d.transform', 0):.1f} | {s.get('r3d.draw', 0):.1f} | {s.get('r3d.upscale', 0):.1f} "
+                     f"| {s.get('r3d.transform', 0):.1f} | {s.get('r3d.draw', 0):.1f} "
+                     + ((f"| {s['r3d.resolve']:.1f} " if "r3d.resolve" in s else "| not in capture ") if resolve else "")
+                     + f"| {s.get('r3d.upscale', 0):.1f} "
                      + " ".join(f"| {ms(o[k])}" for k in ("setup", "rows", "span_setup", "fill")) + " |")
     return "\n".join(lines) + "\n\nMilliseconds; both cores unless marked one core."
 
@@ -234,6 +267,8 @@ def main():
     parser.add_argument("captures", nargs="+")
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True)
+    parser.add_argument("--present", type=pathlib.Path)
+    parser.add_argument("--default-size", nargs=2, type=int, default=(DESTINATION[0] // 2, DESTINATION[1] // 2))
     parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
     args = parser.parse_args()
     refit = {}
@@ -250,6 +285,7 @@ def main():
     args.tables.mkdir(parents=True, exist_ok=True)
     tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
               "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs, refit)}
+    tables["pipeline-frame-stages"] = pipeline_table(splits, read_present(args.present), tuple(args.default_size))
     for name, body in tables.items():
         (args.tables / f"{name}.md").write_text(body + "\n", encoding="utf-8")
     chart(rows, args.chart)

@@ -195,7 +195,7 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
     set -- "$@" --quality "$camera=$csv"
 done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    "$@" --tables "$OUT/tables" \
+    "$@" --present docs/render/data/pipeline-present-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
 
 table_status=0
