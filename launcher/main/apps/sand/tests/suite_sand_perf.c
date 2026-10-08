@@ -84,9 +84,7 @@ build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
     /* Let it fully settle first - same starting state a real pour-then-
      * pause reaches, stone included (it was never moving, but the pass
      * still has to notice that). */
-    for (int i = 0; i < 300; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, 300, 0, 1000);
 }
 
 /* FNV-1a over the grid, so a host build of the same scene can be compared
@@ -145,9 +143,7 @@ test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
     build_mixed_gravity_flip_scene(real, big, blocks);
     sand_reactions_force_full_walk(true);
     sand_reactions_cells_dispatched = 0;
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, -1000, 0);
-    }
+    run_steps(real, steps, 0, -1000);
     const unsigned dispatched_full = sand_reactions_cells_dispatched;
 
     build_mixed_gravity_flip_scene(real, big, blocks);
@@ -205,16 +201,12 @@ test_the_soak_only_skip_matches_the_full_walks_grid_exactly(void) {
     build_mixed_gravity_flip_scene(real, big, blocks);
 
     sand_reactions_force_full_walk(true);
-    for (int i = 0; i < 20; i++) {
-        sand_step(real, 0, -1000, 0);
-    }
+    run_steps(real, 20, 0, -1000);
     const uint32_t full_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
 
     build_mixed_gravity_flip_scene(real, big, blocks);
     sand_reactions_force_full_walk(false);
-    for (int i = 0; i < 20; i++) {
-        sand_step(real, 0, -1000, 0);
-    }
+    run_steps(real, 20, 0, -1000);
     const uint32_t fast_hash = grid_hash(big, (size_t)REAL_W * (size_t)REAL_H);
 
     sand_reactions_force_full_walk(false);
@@ -277,15 +269,46 @@ time_steps(sand_t* real, int steps, int gx, int gy, int gz) {
 
 static int64_t
 time_settled_steps(sand_t* real, int settle_steps, int measured_steps) {
-    for (int i = 0; i < settle_steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, settle_steps, 0, 1000);
     return time_steps(real, measured_steps, 0, 1000, 0);
 }
 
 static void
 log_step_time(const char* scene, int64_t per_step) {
     ESP_LOGI("device_tests", "%s, %dx%d: %lld us per step", scene, REAL_W, REAL_H, (long long)per_step);
+}
+
+/* time_steps() under ordinary gravity that also sums each pass's own time
+ * and keeps the dearest step's split, then logs both under `scene`. */
+static int64_t
+time_steps_split(sand_t* real, int steps, const char* scene) {
+    const two_core_scope_t core = two_core_scope_begin(true);
+    const int64_t start = timing_now_us();
+    int64_t pass_totals[6] = {0};
+    int64_t pass_peak[6] = {0};
+    int64_t peak_total = -1;
+    int peak_impulses = 0;
+    for (int i = 0; i < steps; i++) {
+        sand_step(real, 0, 1000, 0);
+        const int64_t pass[6] = {real->pass_us.sweep_us, real->pass_us.liquid_us,    real->pass_us.float_us,
+                                 real->pass_us.gas_us,   real->pass_us.reactions_us, real->pass_us.impulses_us};
+        int64_t total = 0;
+        for (int j = 0; j < 6; j++) {
+            pass_totals[j] += pass[j];
+            total += pass[j];
+        }
+        if (total > peak_total) {
+            memcpy(pass_peak, pass, sizeof pass_peak);
+            peak_total = total;
+            peak_impulses = real->impulse_count;
+        }
+    }
+    const int64_t per_step = (timing_now_us() - start) / steps;
+    two_core_scope_end(core);
+
+    log_step_time(scene, per_step);
+    log_pass_split(scene, steps, real->impulse_max, pass_totals, pass_peak, peak_impulses, real->impulse_cap_hits);
+    return per_step;
 }
 
 /* What a timed row does to its scene before step i, if anything. */
@@ -562,9 +585,7 @@ test_the_gas_random_walk_against_the_exhaustive_mover(void) {
             sand_t* const real = malloc(sizeof *real);
             TEST_ASSERT_NOT_NULL(real);
             build_fire_scene(real, big, blocks);
-            for (int i = 0; i < FIRE_WARMUP_STEPS; i++) {
-                sand_step(real, 0, 1000, 0);
-            }
+            run_steps(real, FIRE_WARMUP_STEPS, 0, 1000);
 
             sand_set_gas_walk(real, arm == 1);
             const int64_t start = timing_now_us();
@@ -617,9 +638,7 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
         sand_chunk_share_for_test(two_core ? SAND_CHUNK_SHARE_ALWAYS : SAND_CHUNK_SHARE_AUTO);
     const int steps = 20;
     const int64_t start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, gy, 0);
-    }
+    run_steps(real, steps, 0, gy);
     *out_per_step = (timing_now_us() - start) / steps;
     (void)sand_chunk_share_for_test(share);
     two_core_scope_end(core);
@@ -949,12 +968,8 @@ test_the_sweeps_gas_scenes_put_work_in_both_gas_passes(void) {
         const int cells_before = sweep_cells_of(&cs, MAT_GAS);
         const int packed_before = sweep_cells_of(&bs, MAT_GAS);
 
-        for (int i = 0; i < cw; i++) {
-            sand_step(&cs, gx[g], gy[g], 0);
-        }
-        for (int i = 0; i < bw; i++) {
-            sand_step(&bs, gx[g], gy[g], 0);
-        }
+        run_steps(&cs, cw, gx[g], gy[g]);
+        run_steps(&bs, bw, gx[g], gy[g]);
         memcpy(before, column, GW * GH);
         for (int i = 0; i < SWEEP_STEPS; i++) {
             sand_step(&cs, gx[g], gy[g], 0);
@@ -1079,9 +1094,7 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
     const sand_chunk_share_t share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS);
     sand_force_hashed_rng(arm == SWEEP_ARM_SERIAL_HASHED);
     sand_chunk_pass_set_driver_for_test(arm == SWEEP_ARM_SOLO ? SAND_CHUNK_PASS_SOLO : SAND_CHUNK_PASS_CORE1);
-    for (int i = 0; i < warm; i++) {
-        sand_step(&b.s, o->gx, o->gy, 0);
-    }
+    run_steps(&b.s, warm, o->gx, o->gy);
     b.s.split_lane_aborts = 0;
     sweep_pass_us_t pass = {0};
     const int64_t start = timing_now_us();
@@ -1155,9 +1168,7 @@ sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) 
     const two_core_scope_t core = two_core_scope_begin(two_core);
     const int settled_in = sweep_floor_settle(&b, (size_t)q->w * (size_t)q->h);
     const int64_t start = timing_now_us();
-    for (int i = 0; i < SWEEP_FLOOR_STEPS; i++) {
-        sand_step(&b.s, 0, 1000, 0);
-    }
+    run_steps(&b.s, SWEEP_FLOOR_STEPS, 0, 1000);
     const int64_t per_step = (timing_now_us() - start) / SWEEP_FLOOR_STEPS;
     two_core_scope_end(core);
     collect_core1_lane();
@@ -1322,9 +1333,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
 
     /* Let it fully settle first - every block should go to sleep, the
      * same state a real pile reaches between pours. */
-    for (int i = 0; i < 300; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, 300, 0, 1000);
 
     /* Flip - straight up instead of straight down. */
     const int steps = 20;
@@ -1386,9 +1395,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
     /* Settle until every block sleeps - "with the water settled" is half the
      * reported condition, and a pool that is still moving would time
      * something else entirely. */
-    for (int i = 0; i < 300; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, 300, 0, 1000);
 
     /* THE TURN. */
     const two_core_scope_t core = two_core_scope_begin(true);
@@ -1593,16 +1600,12 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
      * the pour first would leave the steady rows a wetter bed than the one
      * the other row times. */
     int64_t start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, steps, 0, 1000);
     const int64_t steady = (timing_now_us() - start) / steps;
 
     plant_bed_rain(real);
     start = timing_now_us();
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, steps, 0, 1000);
     const int64_t poured = (timing_now_us() - start) / steps;
     two_core_scope_end(core);
 
@@ -1733,9 +1736,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
 
     /* Settle first: the turn should start from a body at rest, not from a
      * field still finding its own shape. */
-    for (int i = 0; i < 60; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, 60, 0, 1000);
     const int before = sand_count(real);
 
     int64_t worst = 0;
@@ -1991,9 +1992,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
     /* Let it get going - long enough for the reactions to be under way and
      * the liquids to have found their levels, so the flip lands on a live
      * scene rather than a freshly painted one. */
-    for (int i = 0; i < 120; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, 120, 0, 1000);
 
     const int steps = 20;
     const int64_t per_step = time_steps(real, steps, 0, -1000, 0);
@@ -2156,9 +2155,7 @@ test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget(void) {
     const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = timing_now_us();
     const int steps = 10;
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(real, steps, LANDSCAPE_GX, 0);
     const int64_t per_step = (timing_now_us() - start) / steps;
     two_core_scope_end(core);
 
@@ -2258,38 +2255,9 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
 
     build_lava_stress_scene(real);
 
-    for (int i = 0; i < 30; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, 30, 0, 1000);
 
-    const two_core_scope_t core = two_core_scope_begin(true);
-    const int64_t start = timing_now_us();
-    const int steps = 20;
-    int64_t pass_totals[6] = {0};
-    int64_t pass_peak[6] = {0};
-    int64_t peak_total = -1;
-    int peak_impulses = 0;
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-        const int64_t pass[6] = {real->pass_us.sweep_us, real->pass_us.liquid_us,    real->pass_us.float_us,
-                                 real->pass_us.gas_us,   real->pass_us.reactions_us, real->pass_us.impulses_us};
-        int64_t total = 0;
-        for (int j = 0; j < 6; j++) {
-            pass_totals[j] += pass[j];
-            total += pass[j];
-        }
-        if (total > peak_total) {
-            memcpy(pass_peak, pass, sizeof pass_peak);
-            peak_total = total;
-            peak_impulses = real->impulse_count;
-        }
-    }
-    const int64_t per_step = (timing_now_us() - start) / steps;
-    two_core_scope_end(core);
-
-    log_step_time("lava stress scene", per_step);
-    log_pass_split("lava stress scene", steps, real->impulse_max, pass_totals, pass_peak, peak_impulses,
-                   real->impulse_cap_hits);
+    const int64_t per_step = time_steps_split(real, 20, "lava stress scene");
 
     board_bookkeeping_close();
     free(big);
@@ -2563,34 +2531,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 
     build_gunpowder_basin_scene(real);
 
-    const two_core_scope_t core = two_core_scope_begin(true);
-    const int64_t start = timing_now_us();
-    const int steps = GUNPOWDER_BASIN_MEASURED_STEPS;
-    int64_t pass_totals[6] = {0};
-    int64_t pass_peak[6] = {0};
-    int64_t peak_total = -1;
-    int peak_impulses = 0;
-    for (int i = 0; i < steps; i++) {
-        sand_step(real, 0, 1000, 0);
-        const int64_t pass[6] = {real->pass_us.sweep_us, real->pass_us.liquid_us,    real->pass_us.float_us,
-                                 real->pass_us.gas_us,   real->pass_us.reactions_us, real->pass_us.impulses_us};
-        int64_t total = 0;
-        for (int j = 0; j < 6; j++) {
-            pass_totals[j] += pass[j];
-            total += pass[j];
-        }
-        if (total > peak_total) {
-            memcpy(pass_peak, pass, sizeof pass_peak);
-            peak_total = total;
-            peak_impulses = real->impulse_count;
-        }
-    }
-    const int64_t per_step = (timing_now_us() - start) / steps;
-    two_core_scope_end(core);
-
-    log_step_time("gunpowder basin scene", per_step);
-    log_pass_split("gunpowder basin scene", steps, real->impulse_max, pass_totals, pass_peak, peak_impulses,
-                   real->impulse_cap_hits);
+    const int64_t per_step = time_steps_split(real, GUNPOWDER_BASIN_MEASURED_STEPS, "gunpowder basin scene");
 
     board_bookkeeping_close();
     free(big);
@@ -2713,9 +2654,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
     sand_set_crust(real, CRUST_ROLL_MAX);
 
     build_snowfall_scene(real);
-    for (int i = 0; i < SNOWFALL_SETTLE_STEPS; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, SNOWFALL_SETTLE_STEPS, 0, 1000);
 
     int64_t worst = 0;
     const int64_t per_step = time_fed_steps(real, SNOWFALL_MEASURED_STEPS, 0, 1000, feed_snowfall_drift, &worst);
@@ -2747,9 +2686,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
     build_plant_pour_scene(real);
 
-    for (int i = 0; i < PLANT_POUR_SETTLE_STEPS; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, PLANT_POUR_SETTLE_STEPS, 0, 1000);
 
     int64_t worst = 0;
     const int64_t per_step = time_fed_steps(real, PLANT_POUR_MEASURED_STEPS, 0, 1000, plant_pour_stamp, &worst);
@@ -2778,9 +2715,7 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     build_dry_plant_heap_scene(real);
 
     run_fed_steps(real, PLANT_POUR_MEASURED_STEPS, 0, 1000, plant_pour_stamp);
-    for (int i = 0; i < PLANT_IDLE_SETTLE_STEPS; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, PLANT_IDLE_SETTLE_STEPS, 0, 1000);
 
     const int steps = 200;
     const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
@@ -2809,9 +2744,7 @@ test_a_finished_tree_fits_in_the_frame_budget(void) {
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(real);
 
-    for (int i = 0; i < MATURE_TREE_SETTLE_STEPS; i++) {
-        sand_step(real, 0, 1000, 0);
-    }
+    run_steps(real, MATURE_TREE_SETTLE_STEPS, 0, 1000);
 
     const int steps = 200;
     const int64_t per_step = time_steps(real, steps, 0, 1000, 0);
@@ -3954,9 +3887,7 @@ test_water_slope_controls_log_the_pass_split(void) {
     sand_init(real, big, REAL_W, REAL_H, 41u);
     sand_enable_sleeping(real, blocks);
     build_water_slope_scene(real);
-    for (int i = 0; i < 60; i++) {
-        sand_step(real, LANDSCAPE_GX, 0, 0);
-    }
+    run_steps(real, 60, LANDSCAPE_GX, 0);
     water_slope_step_and_log(real, LANDSCAPE_GX, 0, names[0], 0);
     masses[0] = water_slope_water_mass(real);
 
