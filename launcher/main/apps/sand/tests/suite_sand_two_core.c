@@ -2755,7 +2755,7 @@ tc_build_settled_slab_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 static void
 tc_build_falling_column_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
-    fill_box(s, TC_W / 2 - 2, TC_W / 2 + 2, 0, TC_H / 8, SAND);
+    fill_box(s, (TC_W / 2) - 2, (TC_W / 2) + 2, 0, TC_H / 8, SAND);
 }
 
 static void

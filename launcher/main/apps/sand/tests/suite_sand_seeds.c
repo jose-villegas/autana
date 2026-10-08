@@ -1269,7 +1269,7 @@ test_a_bare_trunk_in_wet_ground_buds_again(void) {
     soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    fill_box(&s, W / 2, W / 2 + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
+    fill_box(&s, W / 2, (W / 2) + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
 
     /* Specifically FOLIAGE, not MAT_EXTENDED alone: a plant at the foot
      * of a trunk is a sucker - a grower, which would climb the outside
@@ -1289,7 +1289,7 @@ test_a_bare_trunk_in_wet_ground_buds_again(void) {
     soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, 0));
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
-    fill_box(&s, W / 2, W / 2 + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
+    fill_box(&s, W / 2, (W / 2) + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
     run_steps(&s, 1500, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_EXTENDED),
                                   "and on dry ground it must not - budding out of nothing is a "
@@ -1305,7 +1305,7 @@ test_a_bare_trunk_in_wet_ground_buds_again(void) {
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
 
     sand_set(&s, W / 2, H - 2, CELL_SOIL(MAT_DIRT, 1, 1)); /* one level */
-    fill_box(&s, W / 2, W / 2 + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
+    fill_box(&s, W / 2, (W / 2) + 1, H - 5, H - 2, CELL_MAKE(MAT_WOOD, 0));
     run_steps(&s, 1500, 0, 1000);
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, count_cells_of(MAT_EXTENDED),
                                           "a trunk in barely damp ground must put out a bud or two, not a "

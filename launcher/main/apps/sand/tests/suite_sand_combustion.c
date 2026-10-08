@@ -127,7 +127,8 @@ test_gas_drifts_upward_under_ordinary_gravity(void) {
     run_steps(&s, 12, 0, 1000);
 
     const gas_spread_t g = gas_spread();
-    const int count = g.count, row_sum = g.row_sum;
+    const int count = g.count;
+    const int row_sum = g.row_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -147,7 +148,8 @@ test_gas_drifts_downward_when_the_board_is_inverted(void) {
     run_steps(&s, 12, 0, -1000);
 
     const gas_spread_t g = gas_spread();
-    const int count = g.count, row_sum = g.row_sum;
+    const int count = g.count;
+    const int row_sum = g.row_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -171,7 +173,9 @@ test_gas_drifts_against_tilted_gravity(void) {
     run_steps(&s, 12, 1000, 1000);
 
     const gas_spread_t g = gas_spread();
-    const int count = g.count, row_sum = g.row_sum, col_sum = g.col_sum;
+    const int count = g.count;
+    const int row_sum = g.row_sum;
+    const int col_sum = g.col_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -355,7 +359,7 @@ test_gas_disperses_across_a_ceiling(void) {
      * first reaches the ceiling the rest are blocked from stacking through
      * it too. Whether they disperse sideways instead, or just pile up
      * behind the leader, is exactly what this test checks. */
-    fill_box(&s, W / 2, W / 2 + 1, H - 4, H, GAS);
+    fill_box(&s, W / 2, (W / 2) + 1, H - 4, H, GAS);
 
     run_steps(&s, 60, 0, 1000);
 

@@ -104,8 +104,9 @@ footprint_set(uint8_t* mask, size_t idx) {
 static bool
 footprint_line_hit(const uint8_t* footprint, int w, int h, int i0, int i1, int at, bool along_x) {
     for (int i = i0; i <= i1; i++) {
-        const int x = along_x ? i : at, y = along_x ? at : i;
-        if (x >= 0 && x < w && y >= 0 && y < h && footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
+        const int x = along_x ? i : at;
+        const int y = along_x ? at : i;
+        if (x >= 0 && x < w && y >= 0 && y < h && footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
             return true;
         }
     }
@@ -134,7 +135,7 @@ footprint_ring_hit(const uint8_t* footprint, int w, int h, int x, int y, int r) 
  * search, never affects correctness. */
 static int
 nearest_footprint_distance(const uint8_t* footprint, int w, int h, int x, int y, int cap) {
-    if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
+    if (footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
         return 0;
     }
     for (int r = 1; r <= cap; r++) {
@@ -216,7 +217,7 @@ measure_escape(const sand_t* g, const uint8_t* footprint, int w, int h, int cap)
     escape_measure_t m = {0, 0};
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
+            if (footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
                 continue; /* inside the original dune - not an escape */
             }
             if (CELL_MATERIAL(sand_at(g, x, y)) != MAT_SAND) {
@@ -657,7 +658,7 @@ build_dune_over_wood_scene(sand_t* s) {
      * shock and lava-stress scenes above deliberately want as their own
      * trigger - this scene wants the opposite: unlit wood, waiting for
      * THIS test's blast to be the first thing that ever lights it. */
-    fill_box(s, REAL_W / 2 - REAL_W / 5, REAL_W / 2 + REAL_W / 5, REAL_H - 12, REAL_H, CELL_MAKE(MAT_WOOD, 0));
+    fill_box(s, (REAL_W / 2) - (REAL_W / 5), (REAL_W / 2) + (REAL_W / 5), REAL_H - 12, REAL_H, CELL_MAKE(MAT_WOOD, 0));
 }
 
 /* The CORE's bottom edge sits at the wood floor's top surface, not the
@@ -794,7 +795,7 @@ static void
 mark_seen_bands_outside(const sand_t* g, const uint8_t* footprint, int w, int h, bool seen[SAND_SHADE_COUNT]) {
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            if (footprint_get(footprint, (size_t)y * (size_t)w + (size_t)x)) {
+            if (footprint_get(footprint, ((size_t)y * (size_t)w) + (size_t)x)) {
                 continue;
             }
             const cell_t c = sand_at(g, x, y);

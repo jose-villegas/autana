@@ -834,9 +834,11 @@ test_a_same_row_reset_commits_but_a_different_row_does_not(void) {
 static void
 mirror_debounced_depth_line(sand_t* g, int fixed, int len, bool along_x, unsigned char* stable, unsigned char* top,
                             unsigned depth_out[]) {
-    const int dx = along_x ? 1 : 0, dy = 1 - dx;
+    const int dx = along_x ? 1 : 0;
+    const int dy = 1 - dx;
     for (int i = 0; i < len; i++) {
-        const int x = dx * i + dy * fixed, y = dy * i + dx * fixed;
+        const int x = (dx * i) + (dy * fixed);
+        const int y = (dy * i) + (dx * fixed);
         const cell_t here = sand_at(g, x, y);
         const bool same = CELL_MATERIAL(sand_at(g, x - dx, y - dy)) == CELL_MATERIAL(here);
         unsigned stable_depth = 0u;
@@ -908,9 +910,11 @@ static void
 assert_the_debounce_survives_open_air(bool along_x) {
     enum { LINE = 1, EDGE = 5, LEN = DEBOUNCE_TEST_H };
 
-    const int w = along_x ? LEN : DEBOUNCE_TEST_W, h = along_x ? DEBOUNCE_TEST_W : LEN;
+    const int w = along_x ? LEN : DEBOUNCE_TEST_W;
+    const int h = along_x ? DEBOUNCE_TEST_W : LEN;
     const char* const unit = along_x ? "column" : "row";
-    const int edge_x = along_x ? EDGE : LINE, edge_y = along_x ? LINE : EDGE;
+    const int edge_x = along_x ? EDGE : LINE;
+    const int edge_y = along_x ? LINE : EDGE;
     sand_t* const g = &fx.debounce_test;
 
     uint8_t* debounce_test_cells = malloc((size_t)w * h);
@@ -922,7 +926,8 @@ assert_the_debounce_survives_open_air(bool along_x) {
         fill_box(g, LINE, LINE + 1, EDGE, LEN, CELL_MAKE(MAT_WATER, MASS_MAX));
     }
 
-    unsigned char stable = 0, top = 255;
+    unsigned char stable = 0;
+    unsigned char top = 255;
     unsigned depth[LEN];
 
     /* FRAME 1: first-ever paint. The boundary gets at most a one-frame
@@ -1445,7 +1450,7 @@ static void
 local_depth_snapshot_occupancy(sand_t* g, int w, int h, bool* prev_occupied) {
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            prev_occupied[y * w + x] = !CELL_IS_EMPTY(sand_at(g, x, y));
+            prev_occupied[(y * w) + x] = !CELL_IS_EMPTY(sand_at(g, x, y));
         }
     }
 }
@@ -1512,8 +1517,12 @@ repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, 
                   bool empty_unpainted) {
     sand_step(r->g, gx, gy, 0);
 
-    bool vdom, vrev, hrev;
-    unsigned ax, ay, scale_q8;
+    bool vdom;
+    bool vrev;
+    bool hrev;
+    unsigned ax;
+    unsigned ay;
+    unsigned scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
     const bool wake_fired = local_depth_wake_tick(&r->wake_elapsed_ms, REPAINT_DT_MS, REPAINT_WAKE_MS);
@@ -1534,8 +1543,11 @@ repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, 
         unsigned row_depth[RAY_WALK_STATE_W];
         mirror_ray_walk_row(r->g, y, r->w, r->h, vdom, vrev, hrev, ax, ay, scale_q8, ceiling, fx_ray, row_depth);
         for (int x = 0; x < r->w; x++) {
-            const bool unpainted = empty_unpainted && CELL_IS_EMPTY(sand_at(r->g, x, y));
-            r->displayed[y * r->w + x] = unpainted ? -1 : (int8_t)row_depth[x];
+            int8_t* const shown = &r->displayed[(y * r->w) + x];
+            *shown = (int8_t)row_depth[x];
+            if (empty_unpainted && CELL_IS_EMPTY(sand_at(r->g, x, y))) {
+                *shown = -1;
+            }
         }
     }
 
@@ -1578,7 +1590,7 @@ wake_test_build_scene(sand_t* g) {
     fill_box(g, 0, WAKE_TEST_W, WAKE_TEST_H - 6, WAKE_TEST_H, CELL_MAKE(MAT_STONE, 0));
     sand_spawn(g, WAKE_TEST_W / 3, 6, 5, MAT_WATER);
     sand_spawn(g, 2 * WAKE_TEST_W / 3, 4, 6, MAT_WATER);
-    fill_box(g, WAKE_TEST_W / 2, WAKE_TEST_W / 2 + 1, WAKE_TEST_H - 9, WAKE_TEST_H - 8, CELL_MAKE(MAT_STONE, 0));
+    fill_box(g, WAKE_TEST_W / 2, (WAKE_TEST_W / 2) + 1, WAKE_TEST_H - 9, WAKE_TEST_H - 8, CELL_MAKE(MAT_STONE, 0));
 }
 
 /* Folds this frame's mean depth into worst_jump/prev_mean, once
