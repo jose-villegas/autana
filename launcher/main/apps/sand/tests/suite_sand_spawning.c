@@ -48,9 +48,7 @@ assert_every_change_is_marked(material_id_t m, int steps, const char* what) {
 
     fixture();
     sand_track_dirty_rows(&s, dirty);
-    sand_set_scatter(&s, SAND_SCATTER_PER_MATERIAL);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
+    use_app_rates(&s);
 
     for (int x = 0; x < W; x++) {
         sand_set(&s, x, 0, STONE);
@@ -108,24 +106,12 @@ test_grains_are_never_created_or_destroyed(void) {
 
     /* A slab dropped into the middle, then shaken through every gravity
      * direction. Whatever the rules do, the count must not drift. */
-    for (int y = 1; y < 4; y++) {
-        for (int x = 1; x < 6; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    fill_box(&s, 1, 6, 1, 4, SAND_FIRST_SHADE);
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(15, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, sand_count(&s),
-                                          "a step must conserve grains in every gravity direction");
-        }
-    }
+    assert_count_kept_in_every_direction(grain_count, expected,
+                                         "a step must conserve grains in every gravity direction");
 }
 
 static void
@@ -134,9 +120,7 @@ test_a_grain_keeps_its_shade_as_it_falls(void) {
     const uint8_t shade = SAND_LAST_SHADE;
     sand_set(&s, 3, 0, shade);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 3, 0, 1);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(shade, sand_at(&s, 3, 3),
                                     "shade travels with the grain, or a falling pile shimmers");
@@ -169,16 +153,10 @@ test_grains_fall_sideways_when_the_board_is_on_its_edge(void) {
 static void
 test_a_heap_settles_against_whichever_wall_is_down(void) {
     fixture();
-    for (int y = 1; y < 4; y++) {
-        for (int x = 1; x < 4; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    fill_box(&s, 1, 4, 1, 4, SAND_FIRST_SHADE);
 
     /* Long enough for everything to reach the right-hand wall and stop. */
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 1, 0, 0);
-    }
+    run_steps(&s, 60, 1, 0);
 
     /* Note what is NOT asserted: that every grain ends up in the last column
      * or two. It does not, and should not - the heap forms a wedge with a 45
@@ -376,11 +354,7 @@ test_a_full_share_fills_the_whole_disc(void) {
 static void
 test_erase_removes_a_disc(void) {
     fixture();
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, SAND_FIRST_SHADE);
 
     const int removed = sand_erase(&s, 4, 4, 2);
 
@@ -405,11 +379,7 @@ test_erasing_empty_space_removes_nothing(void) {
 static void
 test_erase_is_clipped_to_the_grid(void) {
     fixture();
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    fill_box(&s, 0, W, 0, H, SAND_FIRST_SHADE);
 
     const int removed = sand_erase(&s, 0, 0, 3);
 
@@ -420,9 +390,7 @@ test_erase_is_clipped_to_the_grid(void) {
 static void
 test_erase_marks_the_rows_it_emptied(void) {
     dirty_fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, 4, SAND_FIRST_SHADE);
-    }
+    fill_box(&s, 0, W, 4, 5, SAND_FIRST_SHADE);
     memset(dirty, 0, H);
 
     sand_erase(&s, 4, 4, 1);
@@ -504,8 +472,7 @@ test_an_emitter_fills_its_own_cell_when_empty(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "an emitter must fill its own point once that point is empty");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, H - 1, "an emitter must fill its own point once that point is empty");
 }
 
 static void
@@ -517,10 +484,10 @@ test_an_emitter_does_not_overwrite_an_occupied_cell(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "an emitter must never overwrite whatever is already sitting on "
-                                  "its own point - that is the entire rate control, and an emitter "
-                                  "that ignored it would be a firehose");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, H - 1,
+                       "an emitter must never overwrite whatever is already sitting on "
+                       "its own point - that is the entire rate control, and an emitter "
+                       "that ignored it would be a firehose");
 }
 
 /* The failure mode this test exists to catch: a write that places material
@@ -545,9 +512,7 @@ test_an_emitter_wakes_a_sleeping_block(void) {
     TEST_ASSERT_TRUE_MESSAGE(sand_add_emitter(&s, 3, 0, WATER),
                              "setup: the emitter's own point is empty and in bounds");
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     bool moved_off_row_zero = false;
     for (int x = 0; x < W && !moved_off_row_zero; x++) {
@@ -573,9 +538,7 @@ test_emitted_water_produces_a_continuing_stream(void) {
     TEST_ASSERT_TRUE_MESSAGE(sand_add_emitter(&s, 3, 0, WATER),
                              "setup: the emitter's own point is empty and in bounds");
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     int water_cells = 0;
     for (int y = 0; y < H; y++) {
@@ -771,9 +734,7 @@ test_a_running_water_emitter_accumulates_mass_on_the_floor(void) {
      * comment), so the bottom row is already a floor with no need to
      * paint one - the same shape test_an_emitter_fills_its_own_cell_when_
      * empty relies on. */
-    for (int i = 0; i < 150; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 150, 0, 1000);
 
     long total_mass = 0;
     bool water_on_the_floor = false;
@@ -813,8 +774,7 @@ test_adding_an_emitter_over_an_occupied_cell_still_registers(void) {
                                   "landing on something");
 
     sand_step(&s, 0, 1000, 0);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "and it must not emit while the cell stays occupied");
+    ASSERT_MATERIAL_AT(MAT_SAND, 3, H - 1, "and it must not emit while the cell stays occupied");
 
     /* Cleared directly, not via sand_erase() - erase would also remove the
      * emitter itself (see test_erase_stops_an_emitter_from_emitting below)
@@ -823,9 +783,9 @@ test_adding_an_emitter_over_an_occupied_cell_still_registers(void) {
     sand_set(&s, 3, H - 1, SAND_EMPTY);
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "once the cell clears, the already-registered emitter must start "
-                                  "emitting into it");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, H - 1,
+                       "once the cell clears, the already-registered emitter must start "
+                       "emitting into it");
 }
 
 static void
