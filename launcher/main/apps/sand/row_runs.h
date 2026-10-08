@@ -42,6 +42,27 @@ int row_runs_find(const uint8_t* row, int width, uint8_t empty, int* run_x0, int
  * x1==0) if the row has no non-`empty` bytes at all. */
 void row_runs_span_fallback(const uint8_t* row, int width, uint8_t empty, int* x0, int* x1);
 
+/* row_runs_find() into the uint16_t lists row_runs_reconcile() takes, or the
+ * one row_runs_span_fallback() span when the row holds too many runs.
+ * Returns the run count. Inline: the app calls it once per dirty row. */
+static inline int
+row_runs_find_or_span(const uint8_t* row, int width, uint8_t empty, uint16_t* x0, uint16_t* x1) {
+    int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
+    const int n = row_runs_find(row, width, empty, run_x0, run_x1);
+    if (n < 0) {
+        int span_x0, span_x1;
+        row_runs_span_fallback(row, width, empty, &span_x0, &span_x1);
+        x0[0] = (uint16_t)span_x0;
+        x1[0] = (uint16_t)span_x1;
+        return 1;
+    }
+    for (int i = 0; i < n; i++) {
+        x0[i] = (uint16_t)run_x0[i];
+        x1[i] = (uint16_t)run_x1[i];
+    }
+    return n;
+}
+
 /* Reconciles this frame's runs against last send, so a shrunk or
  * vanished run still sends enough to clear its old pixels: a current
  * run absorbs every previous run it overlaps; a run no current run
