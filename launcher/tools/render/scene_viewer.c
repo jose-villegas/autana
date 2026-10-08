@@ -42,10 +42,8 @@ options(int argc, char** argv) {
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_view_named(value);
             if (view == RENDER_VIEW_UNKNOWN) {
-                fprintf(stderr, "scene_viewer: --view is shaded");
-                for (int k = 0; k < RENDER_VIEW_COUNT; k++) {
-                    fprintf(stderr, ", %s", render_context_view(k)->name);
-                }
+                fprintf(stderr, "scene_viewer: --view is ");
+                render_context_print_views(stderr);
                 fprintf(stderr, ", not %s\n", value);
                 return false;
             }

@@ -88,10 +88,8 @@ view_from_name(const char* name) {
     if (view != RENDER_VIEW_UNKNOWN) {
         return set_tunable("view", view);
     }
-    fprintf(stderr, "render_lab_render_host: --view is shaded");
-    for (int i = 0; i < RENDER_VIEW_COUNT; i++) {
-        fprintf(stderr, ", %s", render_context_view(i)->name);
-    }
+    fprintf(stderr, "render_lab_render_host: --view is ");
+    render_context_print_views(stderr);
     fprintf(stderr, ", not %s\n", name);
     return false;
 }

@@ -47,8 +47,8 @@ renderer's resolution, half the panel's each way, upscaled like the shaded
 one. They are `|nopin`, like the shaded Sponza renders: the camera path is
 float, so which pixels a triangle reaches can differ by compiler.
 `--view` sets the tunable `render_lab.view`, so on a development build
-`autana tune render_lab.view N` selects row N of the render_view_t table in
-render/context/render_context.c; -1 is shaded. `--view` on a
+`autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
+values follow the render_view_t table order in render/context/render_context.c. `--view` on a
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh

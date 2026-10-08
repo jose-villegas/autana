@@ -279,7 +279,7 @@ test_depth_and_tiles_rows_use_no_scratch(void) {
     raster_rig_t* r = rig_open(NULL, 0);
     const size_t plain = raster_scratch_bytes(&r->raster);
     for (int i = 0; i < 2; i++) {
-        const raster_attachment_t view = render_context_view(i)->attachment(NULL);
+        const raster_attachment_t view = render_context_view(i + 1)->attachment(NULL);
         const raster_attachment_t* one[] = {&view};
         raster_rig_attach(r, one, 1);
         TEST_ASSERT_EQUAL_size_t(plain, raster_scratch_bytes(&r->raster));
@@ -314,7 +314,7 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
     render_context_t* b = &contexts[1];
     render_context_set_scale(a, 100);
     render_context_set_scale(b, 100);
-    const int view = 2;
+    const int view = render_context_view_named("motion");
     render_context_set_view(a, view);
     render_context_set_view(b, view);
     raster_motion_t* state = a->view_state;
@@ -346,6 +346,7 @@ static void
 test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     raster_rig_t* r = rig_open(NULL, 0);
     render_context_t c = {0};
+    TEST_ASSERT_EQUAL_INT(RENDER_VIEW_SHADED, c.view);
     render_context_set_view(&c, RENDER_VIEW_SHADED);
     TEST_ASSERT_EQUAL_INT(0, c.view);
     render_context_set_scale(&c, 100);
@@ -354,7 +355,7 @@ test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(shaded);
     memcpy(shaded, raster_color(&c.raster), sizeof(uint16_t) * W * H);
-    render_context_set_view(&c, 3);
+    render_context_set_view(&c, render_context_view_named("meshlets"));
     TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &camera, 0, 0, W, H));
     TEST_ASSERT_TRUE(memcmp(shaded, raster_color(&c.raster), sizeof(uint16_t) * W * H) != 0);
     free(shaded);
@@ -365,10 +366,10 @@ test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
 static void
 test_failed_view_allocation_leaves_shaded(void) {
     render_context_t c = {0};
-    render_context_set_view(&c, 0);
+    render_context_set_view(&c, render_context_view_named("depth"));
     void* occupied = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(occupied);
-    render_context_set_view(&c, 2);
+    render_context_set_view(&c, render_context_view_named("motion"));
     memory_free(occupied);
     TEST_ASSERT_EQUAL_INT(0, c.view);
     TEST_ASSERT_NULL(c.view_state);
@@ -390,17 +391,17 @@ test_view_table_and_context_ownership(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_VIEW_SHADED, render_context_view_named("shaded"));
     TEST_ASSERT_EQUAL_INT(RENDER_VIEW_UNKNOWN, render_context_view_named("unknown"));
     TEST_ASSERT_NULL(render_context_view(RENDER_VIEW_SHADED));
-    TEST_ASSERT_NULL(render_context_view(RENDER_VIEW_COUNT));
-    for (int i = 0; i < RENDER_VIEW_COUNT; i++) {
+    TEST_ASSERT_NULL(render_context_view(RENDER_VIEW_COUNT + 1));
+    for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
         const render_view_t* row = render_context_view(i);
         TEST_ASSERT_NOT_NULL(row);
-        TEST_ASSERT_EQUAL_STRING(names[i], row->name);
+        TEST_ASSERT_EQUAL_STRING(names[i - 1], row->name);
         TEST_ASSERT_EQUAL_INT(i, render_context_view_named(row->name));
-        for (int j = 0; j < i; j++) {
+        for (int j = 1; j < i; j++) {
             TEST_ASSERT_TRUE(strcmp(row->name, render_context_view(j)->name) != 0);
         }
         render_context_set_view(&c, i);
-        TEST_ASSERT_EQUAL_INT(i + 1, c.view);
+        TEST_ASSERT_EQUAL_INT(i, c.view);
         TEST_ASSERT_EQUAL_INT(1, c.raster.attachment_count);
         TEST_ASSERT_EQUAL_PTR(&c.view_attachment, c.raster.attachments[0]);
         const raster_attachment_t expected = row->attachment(c.view_state);
@@ -426,7 +427,7 @@ test_view_table_and_context_ownership(void) {
     TEST_ASSERT_EQUAL_size_t(before_blocks, blocks);
     TEST_ASSERT_EQUAL_size_t(before_bytes, bytes);
 #endif
-    render_context_set_view(&c, RENDER_VIEW_COUNT - 1);
+    render_context_set_view(&c, RENDER_VIEW_COUNT);
     render_context_release(&c);
     TEST_ASSERT_NULL(c.view_state);
     TEST_ASSERT_EQUAL_INT(0, c.view);
@@ -437,8 +438,47 @@ test_view_table_and_context_ownership(void) {
 #endif
 }
 
+#ifndef DEVICE_BUILD
+static void
+test_printed_views_match_the_declared_names(void) {
+    FILE* out = tmpfile();
+    TEST_ASSERT_NOT_NULL(out);
+    render_context_print_views(out);
+    rewind(out);
+    char names[128] = {0};
+    const size_t bytes = fread(names, 1, sizeof names - 1, out);
+    fclose(out);
+    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets", names);
+    int count = 1;
+    for (size_t i = 0; i < bytes; i++) {
+        count += names[i] == ',';
+    }
+    TEST_ASSERT_EQUAL_INT(RENDER_VIEW_COUNT + 1, count);
+}
+#endif
+
+static void
+test_meshlet_writer_accepts_the_last_uint16_id(void) {
+    const r3d_lit_mesh_t meshes[] = {{.cluster_count = UINT16_MAX - 1}, {.cluster_count = 1}};
+    const r3d_instance_t instances[] = {{.mesh = &meshes[0]}, {.mesh = &meshes[1]}};
+    const raster_t raster = {.instances = instances, .instance_count = 2};
+    raster_meshlets_t state = {0};
+    const raster_attachment_t view = raster_meshlets_view(&state);
+    view.begin(&view, &raster, &camera, 0);
+    r3d_span_writer_t out = {0};
+    TEST_ASSERT_TRUE(view.writer(&view, 0, &out));
+    TEST_ASSERT_EQUAL_UINT32(1, out.value);
+    TEST_ASSERT_TRUE(view.writer(&view, 1, &out));
+    TEST_ASSERT_EQUAL_UINT32(UINT16_MAX, out.value);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX + 1, state.next);
+}
+
 void
 run_raster_attachment_suite(void) {
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_printed_views_match_the_declared_names);
+#endif
+    RUN_TEST(test_meshlet_writer_accepts_the_last_uint16_id);
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_failed_view_allocation_leaves_shaded);
 #endif

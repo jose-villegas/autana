@@ -225,8 +225,8 @@ colour and depth, then any further attachment the caller lists in
 `raster_t.attachments`. An attachment with pixels is carved from the scratch block at
 the drawn size, so a picture drawn at a new size carves anew, and none keeps
 pixels from one picture to the next. A view with `bytes_per_pixel == 0`
-reserves no scratch pixels and is never cleared. Its `clear` hook may be NULL;
-depth and tiles use only colour and depth in their `show` hooks.
+reserves no scratch pixels. It is not cleared when its `clear` hook is NULL;
+depth and tiles have NULL clear hooks and use only colour and depth in their `show` hooks.
 
 ```mermaid
 flowchart LR

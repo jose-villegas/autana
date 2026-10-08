@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "render/camera.h"
 #include "render/r3d_instance.h"
@@ -43,7 +44,7 @@ typedef struct {
 } render_view_t;
 
 #define RENDER_VIEW_UNKNOWN -2
-#define RENDER_VIEW_SHADED  -1
+#define RENDER_VIEW_SHADED  0
 #define RENDER_VIEW_COUNT   4
 
 typedef struct {
@@ -57,7 +58,7 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    int view; /* row index plus one; zero is shaded */
+    int view; /* zero is shaded; table rows start at one */
     void* view_state;
     raster_attachment_t view_attachment;
     const raster_attachment_t* view_attached[1];
@@ -85,8 +86,11 @@ void render_context_set_view(render_context_t* context, int view);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
 const render_view_t* render_context_view(int view);
 
-/* A row index, RENDER_VIEW_SHADED, or RENDER_VIEW_UNKNOWN for an unknown name. */
+/* A view number, RENDER_VIEW_SHADED, or RENDER_VIEW_UNKNOWN for an unknown name. */
 int render_context_view_named(const char* name);
+
+/* Comma-separated names, shaded first, followed by the table order. */
+void render_context_print_views(FILE* out);
 
 /* Draws `count` instances through `camera` for a destination of `width` by
  * `height`, turned for `quarter`; false when there is no scratch for it. */

@@ -18,11 +18,6 @@ begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* c
     (void)camera;
     (void)quarter;
     raster_meshlets_t* state = self->state;
-    uint32_t clusters = 0;
-    for (int i = 0; i < raster->instance_count; i++) {
-        clusters += (uint32_t)raster->instances[i].mesh->cluster_count;
-        assert(clusters <= UINT16_MAX);
-    }
     state->next = 1;
     state->raster = raster;
 }

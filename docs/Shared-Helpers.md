@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=00b585e460d434f73db9e6ac017f33231d26eb339567bf0364e14512487c71e3 -->
+<!-- generated: shared-helpers sha256=62d09bae91a38fc065ce7783a4a31594379538cc4236a8b3701da89430f873a2 -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -79,7 +79,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/main/input/touch_inject_fsm.h](../launcher/main/input/touch_inject_fsm.h) | touch_inject_fsm: a scripted contact sampled by the touch poller. | `touch_inject_init, touch_inject_step, touch_inject_t` |
 | [launcher/main/input/touch_point.h](../launcher/main/input/touch_point.h) | touch_point: prepares a sampled point for the touch state machine. | `touch_point_prepare` |
 | [launcher/main/render/camera.h](../launcher/main/render/camera.h) | camera: a pinhole camera in model units, as a scene places one. | `camera_t` |
-| [launcher/main/render/context/render_context.h](../launcher/main/render/context/render_context.h) | render_context: what a frame is drawn at and how well, apart from what is drawn and from where. | `RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, RENDER_FIXED, RENDER_PREDICTED, RENDER_STEPPED, RENDER_VIEW_COUNT, RENDER_VIEW_SHADED, RENDER_VIEW_UNKNOWN, policy, render_context_compose, render_context_draw, render_context_frame, render_context_frame_t, render_context_main, render_context_release, render_context_set_dynamic_resolution, render_context_set_scale, render_context_set_view, render_context_t, render_context_view, render_context_view_named, render_view_t` |
+| [launcher/main/render/context/render_context.h](../launcher/main/render/context/render_context.h) | render_context: what a frame is drawn at and how well, apart from what is drawn and from where. | `RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, RENDER_FIXED, RENDER_PREDICTED, RENDER_STEPPED, RENDER_VIEW_COUNT, RENDER_VIEW_SHADED, RENDER_VIEW_UNKNOWN, policy, render_context_compose, render_context_draw, render_context_frame, render_context_frame_t, render_context_main, render_context_print_views, render_context_release, render_context_set_dynamic_resolution, render_context_set_scale, render_context_set_view, render_context_t, render_context_view, render_context_view_named, render_view_t` |
 | [launcher/main/render/r3d.h](../launcher/main/render/r3d.h) | r3d: what a scene includes to draw a baked lit mesh or trace rays: the camera, the raster, the viewport, the ray camera and the float vector. | `` |
 | [launcher/main/render/r3d_instance.h](../launcher/main/render/r3d_instance.h) | r3d_instance: one mesh drawn where it is placed. | `r3d_instance_t, r3d_placement_t` |
 | [launcher/main/render/r3d_line_camera.h](../launcher/main/render/r3d_line_camera.h) | r3d_line_camera: the camera for points and segments projected through r3d_project.h (float, in the scene's own length unit), and the two things a caller placing one needs: the roll that keeps a scene's up on the shell's up, and the fit onto a non-square viewport. | `r3d_line_camera_t, r3d_line_camera_upright, r3d_line_camera_view` |
