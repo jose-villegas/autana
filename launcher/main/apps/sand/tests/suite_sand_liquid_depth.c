@@ -829,28 +829,30 @@ test_a_same_row_reset_commits_but_a_different_row_does_not(void) {
 }
 
 /* Mirrors sand_paint_row.h's debounce logic on top of mirror_local_depth_column()'s
- * walk; state persists across calls, driven by sand_paint_row_n(). */
+ * walk; state persists across calls, driven by sand_paint_row_n(). Walks the
+ * column x = fixed downward, or with along_x the row y = fixed rightward. */
 static void
-mirror_debounced_depth_column(sand_t* g, int cx, int h, unsigned char* stable, unsigned char* top_row,
-                              unsigned depth_out[]) {
-    for (int cy = 0; cy < h; cy++) {
-        const cell_t here = sand_at(g, cx, cy);
-        const cell_t above = sand_at(g, cx, cy - 1);
-        const bool same = CELL_MATERIAL(above) == CELL_MATERIAL(here);
+mirror_debounced_depth_line(sand_t* g, int fixed, int len, bool along_x, unsigned char* stable, unsigned char* top,
+                            unsigned depth_out[]) {
+    for (int i = 0; i < len; i++) {
+        const int x = along_x ? i : fixed, y = along_x ? fixed : i;
+        const cell_t here = sand_at(g, x, y);
+        const cell_t before = along_x ? sand_at(g, x - 1, y) : sand_at(g, x, y - 1);
+        const bool same = CELL_MATERIAL(before) == CELL_MATERIAL(here);
         unsigned stable_depth;
 
         if (material_of(here)->kind != KIND_LIQUID) {
             stable_depth = 0u;
         } else if (same) {
             stable_depth = *stable < 255u ? *stable + 1u : 255u;
-        } else if (*top_row == (unsigned char)cy) {
+        } else if (*top == (unsigned char)i) {
             stable_depth = 0u;
         } else {
             stable_depth = *stable < 255u ? *stable + 1u : 255u;
-            *top_row = (unsigned char)cy;
+            *top = (unsigned char)i;
         }
         *stable = (unsigned char)stable_depth;
-        depth_out[cy] = stable_depth;
+        depth_out[i] = stable_depth;
     }
 }
 
@@ -873,15 +875,15 @@ test_a_continuously_moving_boundary_does_not_run_away(void) {
 
     /* Settle once, exactly like the sibling test below, before the drain
      * begins. */
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
+    mirror_debounced_depth_line(&fx.debounce_test, CX, DEBOUNCE_TEST_H, false, &stable, &top_row, depth);
+    mirror_debounced_depth_line(&fx.debounce_test, CX, DEBOUNCE_TEST_H, false, &stable, &top_row, depth);
 
     /* The drain: the boundary recedes by exactly one row every frame, for
      * several frames running - never landing on the same row twice, so
      * local_depth_top_row[] can never confirm a commit for any of them. */
     for (int i = 0; i < DRAIN_ROWS; i++) {
         sand_erase(&fx.debounce_test, CX, START_TOP + i, 0);
-        mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
+        mirror_debounced_depth_line(&fx.debounce_test, CX, DEBOUNCE_TEST_H, false, &stable, &top_row, depth);
 
         const int new_top = START_TOP + i + 1;
         char why[384];
@@ -905,79 +907,87 @@ test_a_continuously_moving_boundary_does_not_run_away(void) {
  * a non-liquid cell resets to 0 - so open air above a pool can't saturate
  * the debounce before the walk reaches real water; an accumulator that
  * also climbed through empty space saturates to 255 within a couple of
- * frames for most columns. */
+ * frames for most columns. along_x runs the same walk sideways: a row with
+ * open air beside the pool, the horizontal debounce. */
 static void
-test_the_debounce_survives_open_air_above_the_pool(void) {
-    enum { CX = 1, WATER_TOP = 5 };
+assert_the_debounce_survives_open_air(bool along_x) {
+    enum { LINE = 1, EDGE = 5, LEN = DEBOUNCE_TEST_H };
 
-    uint8_t* debounce_test_cells = malloc((size_t)DEBOUNCE_TEST_W * DEBOUNCE_TEST_H);
+    const int w = along_x ? LEN : DEBOUNCE_TEST_W, h = along_x ? DEBOUNCE_TEST_W : LEN;
+    const char* const unit = along_x ? "column" : "row";
+    const int edge_x = along_x ? EDGE : LINE, edge_y = along_x ? LINE : EDGE;
+    sand_t* const g = &fx.debounce_test;
+
+    uint8_t* debounce_test_cells = malloc((size_t)w * h);
     TEST_ASSERT_NOT_NULL_MESSAGE(debounce_test_cells, "debounce pool grid must fit in what the framebuffer leaves");
-    sand_init(&fx.debounce_test, debounce_test_cells, DEBOUNCE_TEST_W, DEBOUNCE_TEST_H, 1u);
-    fill_box(&fx.debounce_test, CX, CX + 1, WATER_TOP, DEBOUNCE_TEST_H, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_init(g, debounce_test_cells, w, h, 1u);
+    if (along_x) {
+        fill_box(g, EDGE, LEN, LINE, LINE + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    } else {
+        fill_box(g, LINE, LINE + 1, EDGE, LEN, CELL_MAKE(MAT_WATER, MASS_MAX));
+    }
 
-    unsigned char stable = 0, top_row = 255;
-    unsigned depth[DEBOUNCE_TEST_H];
+    unsigned char stable = 0, top = 255;
+    unsigned depth[LEN];
 
     /* FRAME 1: first-ever paint. The boundary gets at most a one-frame
-     * cold-start grace, not a value climbed through the five empty rows
-     * above it - THE EXACT BUG the previous version shipped with. */
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(1u, depth[WATER_TOP],
+     * cold-start grace, not a value climbed through the five empty cells
+     * before it - THE EXACT BUG the previous version shipped with. */
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(1u, depth[EDGE],
                                            "the boundary's first-ever reading must be at most 1 (the accepted "
                                            "cold-start grace), not a value saturated by climbing through the "
-                                           "open air above it");
+                                           "open air before it");
 
     /* FRAME 2: nothing changed. The boundary must now be fully committed -
-     * exactly 0 - and every row below it must show a small, correctly
+     * exactly 0 - and every cell past it must show a small, correctly
      * climbed depth, not something still recovering from a saturated
      * start. */
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
-    for (int y = WATER_TOP; y < DEBOUNCE_TEST_H; y++) {
-        char why[144];
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth);
+    char why[192];
+    for (int i = EDGE; i < LEN; i++) {
         snprintf(why, sizeof why,
-                 "row %d must read exactly %d once settled - not a value still "
-                 "recovering from a run through open air above the pool",
-                 y, y - WATER_TOP);
-        TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(y - WATER_TOP), depth[y], why);
+                 "%s %d must read exactly %d once settled - not a value still "
+                 "recovering from a run through open air before the pool",
+                 unit, i, i - EDGE);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(i - EDGE), depth[i], why);
     }
 
-    /* THE BLINK: the topmost cell vanishes for exactly one frame, then
-     * comes back - the reported flicker's own shape. Every row below it
-     * must be unaffected. */
-    unsigned settled[DEBOUNCE_TEST_H];
+    /* THE BLINK: the edge cell vanishes for exactly one frame, then comes
+     * back - the reported flicker's own shape. Every cell past it must be
+     * unaffected. */
+    unsigned settled[LEN];
     memcpy(settled, depth, sizeof depth);
 
-    sand_erase(&fx.debounce_test, CX, WATER_TOP, 0);
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
-    for (int y = WATER_TOP + 1; y < DEBOUNCE_TEST_H; y++) {
-        char why[160];
+    sand_erase(g, edge_x, edge_y, 0);
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth);
+    for (int i = EDGE + 1; i < LEN; i++) {
         snprintf(why, sizeof why,
-                 "row %d changed during a ONE-FRAME blink of the cell above it "
+                 "%s %d changed during a ONE-FRAME blink of the cell before it "
                  "- the debounce must absorb this, not let it cascade",
-                 y);
-        TEST_ASSERT_EQUAL_UINT_MESSAGE(settled[y], depth[y], why);
+                 unit, i);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(settled[i], depth[i], why);
     }
 
-    sand_set(&fx.debounce_test, CX, WATER_TOP, CELL_MAKE(MAT_WATER, MASS_MAX));
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth); /* revert */
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth); /* settle */
-    for (int y = WATER_TOP; y < DEBOUNCE_TEST_H; y++) {
-        char why[160];
+    sand_set(g, edge_x, edge_y, CELL_MAKE(MAT_WATER, MASS_MAX));
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth); /* revert */
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth); /* settle */
+    for (int i = EDGE; i < LEN; i++) {
         snprintf(why, sizeof why,
-                 "row %d must be back to its settled depth once the blink "
+                 "%s %d must be back to its settled depth once the blink "
                  "reverts and one further frame has confirmed it",
-                 y);
-        TEST_ASSERT_EQUAL_UINT_MESSAGE(settled[y], depth[y], why);
+                 unit, i);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(settled[i], depth[i], why);
     }
 
-    /* A REAL, LASTING change - the topmost cell empties and STAYS empty -
-     * must still commit within a couple of frames, or genuine changes
-     * would be hidden forever, not just one-frame blinks. */
-    sand_erase(&fx.debounce_test, CX, WATER_TOP, 0);
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
-    mirror_debounced_depth_column(&fx.debounce_test, CX, DEBOUNCE_TEST_H, &stable, &top_row, depth);
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, depth[WATER_TOP + 1],
-                                   "a boundary that genuinely moved - the old top cell erased and not "
+    /* A REAL, LASTING change - the edge cell empties and STAYS empty - must
+     * still commit within a couple of frames, or genuine changes would be
+     * hidden forever, not just one-frame blinks. */
+    sand_erase(g, edge_x, edge_y, 0);
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth);
+    mirror_debounced_depth_line(g, LINE, LEN, along_x, &stable, &top, depth);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, depth[EDGE + 1],
+                                   "a boundary that genuinely moved - the old edge cell erased and not "
                                    "coming back - must commit to its new position within a couple of "
                                    "frames, not be absorbed the way a one-frame blink is");
 
@@ -985,109 +995,13 @@ test_the_debounce_survives_open_air_above_the_pool(void) {
 }
 
 static void
-mirror_debounced_depth_row(sand_t* g, int cy, int w, unsigned char* stable, unsigned char* top_col,
-                           unsigned depth_out[]) {
-    for (int cx = 0; cx < w; cx++) {
-        const cell_t here = sand_at(g, cx, cy);
-        const cell_t left = sand_at(g, cx - 1, cy);
-        const bool same = CELL_MATERIAL(left) == CELL_MATERIAL(here);
-        unsigned stable_depth;
-
-        if (material_of(here)->kind != KIND_LIQUID) {
-            stable_depth = 0u;
-        } else if (same) {
-            stable_depth = *stable < 255u ? *stable + 1u : 255u;
-        } else if (*top_col == (unsigned char)cx) {
-            stable_depth = 0u;
-        } else {
-            stable_depth = *stable < 255u ? *stable + 1u : 255u;
-            *top_col = (unsigned char)cx;
-        }
-        *stable = (unsigned char)stable_depth;
-        depth_out[cx] = stable_depth;
-    }
+test_the_debounce_survives_open_air_above_the_pool(void) {
+    assert_the_debounce_survives_open_air(false);
 }
-
-#define HDEBOUNCE_TEST_W 20
-#define HDEBOUNCE_TEST_H 4
 
 static void
 test_the_horizontal_debounce_survives_open_air_beside_the_pool(void) {
-    enum { CY = 1, WATER_LEFT = 5 };
-
-    uint8_t* hdebounce_test_cells = malloc((size_t)HDEBOUNCE_TEST_W * HDEBOUNCE_TEST_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(hdebounce_test_cells, "horizontal debounce pool grid must fit in what the framebuffer "
-                                                       "leaves");
-    sand_init(&fx.hdebounce_test, hdebounce_test_cells, HDEBOUNCE_TEST_W, HDEBOUNCE_TEST_H, 1u);
-    fill_box(&fx.hdebounce_test, WATER_LEFT, HDEBOUNCE_TEST_W, CY, CY + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
-
-    unsigned char stable = 0, top_col = 255;
-    unsigned depth[HDEBOUNCE_TEST_W];
-
-    /* FRAME 1: first-ever paint. The boundary gets at most a one-frame
-     * cold-start grace, not a value climbed through the five empty columns
-     * beside it - the same bug class the vertical test's own frame 1 guards
-     * against. */
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(1u, depth[WATER_LEFT],
-                                           "the boundary's first-ever reading must be at most 1 (the accepted "
-                                           "cold-start grace), not a value saturated by climbing through the "
-                                           "open air beside it");
-
-    /* FRAME 2: nothing changed. The boundary must now be fully committed -
-     * exactly 0 - and every column past it must show a small, correctly
-     * climbed depth, not something still recovering from a saturated
-     * start. */
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth);
-    for (int x = WATER_LEFT; x < HDEBOUNCE_TEST_W; x++) {
-        char why[160];
-        snprintf(why, sizeof why,
-                 "column %d must read exactly %d once settled - not a value "
-                 "still recovering from a run through open air beside the pool",
-                 x, x - WATER_LEFT);
-        TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(x - WATER_LEFT), depth[x], why);
-    }
-
-    unsigned settled[HDEBOUNCE_TEST_W];
-    memcpy(settled, depth, sizeof depth);
-
-    sand_erase(&fx.hdebounce_test, WATER_LEFT, CY, 0);
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth);
-    for (int x = WATER_LEFT + 1; x < HDEBOUNCE_TEST_W; x++) {
-        char why[224];
-        snprintf(why, sizeof why,
-                 "column %d changed during a ONE-FRAME blink of the cell beside "
-                 "it - the horizontal debounce must absorb this, not let it "
-                 "cascade into the blended depth the way an undebounced "
-                 "h_running_depth used to",
-                 x);
-        TEST_ASSERT_EQUAL_UINT_MESSAGE(settled[x], depth[x], why);
-    }
-
-    sand_set(&fx.hdebounce_test, WATER_LEFT, CY, CELL_MAKE(MAT_WATER, MASS_MAX));
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth); /* revert */
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth); /* settle */
-    for (int x = WATER_LEFT; x < HDEBOUNCE_TEST_W; x++) {
-        char why[160];
-        snprintf(why, sizeof why,
-                 "column %d must be back to its settled depth once the blink "
-                 "reverts and one further frame has confirmed it",
-                 x);
-        TEST_ASSERT_EQUAL_UINT_MESSAGE(settled[x], depth[x], why);
-    }
-
-    /* A REAL, LASTING change - the leftmost cell empties and STAYS empty -
-     * must still commit within a couple of frames, or genuine changes would
-     * be hidden forever, not just one-frame blinks. */
-    sand_erase(&fx.hdebounce_test, WATER_LEFT, CY, 0);
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth);
-    mirror_debounced_depth_row(&fx.hdebounce_test, CY, HDEBOUNCE_TEST_W, &stable, &top_col, depth);
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, depth[WATER_LEFT + 1],
-                                   "a boundary that genuinely moved - the old leftmost cell erased and "
-                                   "not coming back - must commit to its new position within a couple "
-                                   "of frames, not be absorbed the way a one-frame blink is");
-
-    free(hdebounce_test_cells);
+    assert_the_debounce_survives_open_air(true);
 }
 
 /*

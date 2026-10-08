@@ -38,9 +38,8 @@ extern uint8_t cells[W * H];
  * alive alongside another needs its own static, local to its one file. */
 typedef union {
     sand_t loc, splash_sim, crater_sim, cascade_test_sim, stir_sim, liq_cascade_sim, quench_sim, obst_pool, blend_pool,
-        debounce_test, hdebounce_test, depth_test, shallow_pool, wake_test_grid, band_test_grid, flash_test_grid,
-        shadow_test_grid, fizz_sim, dilute_sim, separated_dilute_sim, oil_dilute_sim, dilute_pour_sim, bubble_sim,
-        sleepy_bubble_sim;
+        debounce_test, depth_test, shallow_pool, wake_test_grid, band_test_grid, flash_test_grid, shadow_test_grid,
+        fizz_sim, dilute_sim, separated_dilute_sim, oil_dilute_sim, dilute_pour_sim, bubble_sim, sleepy_bubble_sim;
 } sand_test_fx_t;
 
 #define BLOCK_COLS ((W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
