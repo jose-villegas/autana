@@ -80,19 +80,19 @@ def declared_samples(renderer, median):
     return samples, low, high, median if samples == "auto" and area is None else area
 
 
-def build_host(script, out_dir, scene=None):
+def build_host(script, out_dir, scene):
     """The scene's host renderer; returns its path."""
-    inputs = [scene.as_posix()] if scene is not None else []
+    inputs = [scene.as_posix()]
     done = subprocess.run(["sh", script.as_posix(), *inputs, "--build-only", "-o", out_dir.as_posix()], capture_output=True, text=True,
                           check=True)
     return pathlib.Path(done.stdout.split("built ", 1)[1].strip())
 
 
-def write_assets(name, mesh_file, out, scene=None):
-    """Pack the supplied scene or runtime roots with one scratch mesh;
+def write_assets(name, mesh_file, out, scene):
+    """Pack the supplied scene with one scratch mesh;
     returns out/assets."""
     assets = out / "assets"
-    write_packs(assets, pack_bytes([scene or LAUNCHER / "main"], [f"{name}={mesh_file}"]))
+    write_packs(assets, pack_bytes([scene], [f"{name}={mesh_file}"]))
     return assets
 
 
@@ -152,7 +152,7 @@ def main(argv=None):
     log(f"geometry of {variant.name}")
     geometry = bake_geometry(job, scene)
     work = pathlib.Path(args.work).resolve()
-    host = pathlib.Path(args.host).resolve() if args.host else build_host(pathlib.Path(args.script).resolve(), work / "host")
+    host = pathlib.Path(args.host).resolve() if args.host else build_host(pathlib.Path(args.script).resolve(), work / "host", path)
     rows = []
     for item in args.variant or ["declared="]:
         label, _, spec = item.partition("=")

@@ -36,8 +36,8 @@ BOARD_SCALE = 2
 
 
 def placed_variant(scene, name):
-    """The fitted renderer named by its variant or scene output."""
-    jobs = [item for item in scene.renderers if name in (item.renderer.variant.name, item.asset_name) and item.renderer.fit]
+    """The fitted renderer named by its object, variant or scene output."""
+    jobs = [item for item in scene.renderers if name in (item.object.name, item.renderer.variant.name, item.asset_name) and item.renderer.fit]
     if not jobs:
         raise SettingsError(f"the scene places no fitted variant {name!r}")
     return jobs[0]
@@ -259,25 +259,26 @@ def sweep_rows(out, points):
     return [json.loads((pathlib.Path(out) / point_name(point) / "result.json").read_text()) for point in points]
 
 
-def _score_mesh(args, name, mesh_path, score_dir, host, scene=None):
+def _score_mesh(args, name, mesh_path, score_dir, host, scene):
     """Score a packed mesh through the host renderer."""
     from r3d.bake_fidelity import score, write_assets
 
     return score(args, host, write_assets(name, mesh_path, score_dir, scene), score_dir)[:2]
 
 
-def held_out_score(job, mesh_path, work, host, inputs=None, scene=None):
+def held_out_score(job, mesh_path, work, host, scene, inputs=None):
     """Mean and p95 DeltaE76 from the host renderer against held-out references."""
     from types import SimpleNamespace
     from r3d.poses import read_poses
+    from r3d.scene_asset import scene_id
 
     variant, fit = job.renderer.variant, job.renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
     _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    scene_id = pathlib.Path(scene).name.removesuffix(".scene.toml") if scene is not None else job.asset_name.rsplit(".", 1)[0]
-    args = SimpleNamespace(render_args=f"--quarter 0 --scene {scene_id} --object {job.object.name} --frames {len(poses)} "
+    id = scene_id(scene)
+    args = SimpleNamespace(render_args=f"--quarter 0 --scene {id} --object {job.object.name} --frames {len(poses)} "
                                        f"--dt {fit.held_out_every_ms}", reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
     return _score_mesh(args, job.asset_name, mesh_path, score_dir, host, scene)

@@ -142,7 +142,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0),
                                1000)
 
-    def test_wrapper_builds_a_scratch_replacement_without_changing_the_mesh(self):
+    def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
         scratch = self.root / "scratch mesh"
         scratch.mkdir()
         positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
@@ -150,15 +150,13 @@ path = { animation = "fly.anim.toml", node = "camera" }
                        np.array([[0, 1, 2]]), np.array([True]))
         original = (self.root / "card.mesh").read_bytes()
         out = self.root / "replacement host"
-        wrapper = TOOLS / "render/scene_viewer.sh"
-        built = subprocess.run([shutil.which("sh"), str(wrapper), str(self.scene), "-o", str(out),
-                                "--build-only", "--replace", f"card={scratch / 'replacement.mesh'}"],
+        built = subprocess.run([sys.executable, str(TOOLS / "r3d/build_pack.py"), "-o", str(out / "assets"),
+                                str(self.scene), "--replace", f"card={scratch / 'replacement.mesh'}"],
                                capture_output=True, text=True, timeout=120)
         self.assertEqual(built.returncode, 0, built.stderr)
-        self.assertTrue(built.stdout.startswith("built "), built.stdout)
         target = out / "frame.bmp"
         env = dict(os.environ, AUTANA_ASSET_DIR=str(out / "assets"))
-        rendered = subprocess.run([built.stdout.removeprefix("built ").strip(), "--scene", "room",
+        rendered = subprocess.run([str(self.binary), "--scene", "room",
                                    "--object", "card", "--frames", "2", "-o", str(target)],
                                   env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual(rendered.returncode, 0, rendered.stderr)
@@ -166,3 +164,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((16, 40, 255), 0),
                                1000)
         self.assertEqual((self.root / "card.mesh").read_bytes(), original)
+
+        original_run, original_frame = self.render("--object", "card")
+        self.assertEqual(original_run.returncode, 0, original_run.stderr)
+        with Image.open(original_frame) as image:
+            self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0), 1000)

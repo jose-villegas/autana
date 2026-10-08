@@ -55,6 +55,53 @@ class FittedVariantTests(unittest.TestCase):
 
 @unittest.skipIf(fitted_variant is None, "needs the r3d environment")
 class SweepTests(unittest.TestCase):
+    def test_held_out_render_carries_the_object_and_scene_to_the_packer(self):
+        from r3d import bake_fidelity
+        from unittest import mock
+        scene = pathlib.Path("gallery.scene.toml")
+        job = SimpleNamespace(asset_name="gallery.paint", object=SimpleNamespace(name="painting"),
+                              renderer=SimpleNamespace(variant=None, fit=SimpleNamespace(held_out_every_ms=17)))
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "held_out.txt").write_text(poses_text(2, 3, .5, 1, [[0, 0, 0, 0, 0, -1]]))
+            with mock.patch.object(bake_fidelity, "score", return_value=(1, 2)) as score, \
+                    mock.patch.object(bake_fidelity, "pack_bytes", return_value={}) as pack, \
+                    mock.patch.object(bake_fidelity, "write_packs"):
+                fitted_variant.held_out_score(job, pathlib.Path("scratch.mesh"), work, work / "host", scene)
+        fields = score.call_args.args[0].render_args.split()
+        self.assertEqual(fields[fields.index("--scene") + 1], "gallery")
+        self.assertEqual(fields[fields.index("--object") + 1], "painting")
+        pack.assert_called_once_with([scene], ["gallery.paint=scratch.mesh"])
+
+    def test_sweep_builds_the_scene_viewer_with_the_input_scene(self):
+        from r3d import bake_fidelity, cost_model
+        from unittest import mock
+        import numpy as np
+        scene = pathlib.Path("gallery.scene.toml").resolve()
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(name="paint", triangles=10)))
+        def run_points(out, points, run_point):
+            point_dir = out / "point"
+            point_dir.mkdir(parents=True)
+            run_point(points[0], point_dir)
+            return []
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(fitted_variant, "load_scene"), \
+                mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                mock.patch.object(fitted_variant, "sweep_references"), \
+                mock.patch.object(fitted_variant, "run_sweep_points", side_effect=run_points), \
+                mock.patch.object(fitted_variant, "fit", return_value=pathlib.Path("scratch.mesh")), \
+                mock.patch.object(fitted_variant, "held_out_score", return_value=(1, 2)), \
+                mock.patch.object(fitted_variant, "plot_pareto"), mock.patch.object(fitted_variant, "sweep_rows", return_value=[]), \
+                mock.patch.object(bake_fidelity, "build_host", return_value=pathlib.Path("host")) as build, \
+                mock.patch.object(cost_model, "load", return_value=([], [], [], [])), \
+                mock.patch.object(cost_model, "mesh_rows"), \
+                mock.patch.object(cost_model, "predict", return_value=np.array([1])), \
+                mock.patch("r3d.lit_mesh.read_lit_mesh"), \
+                mock.patch("r3d.lit_mesh.finest_triangles", return_value=([], [], [0])):
+            fitted_variant.sweep_main([str(scene), "--variant", "paint", "--budgets", "5", "--out", directory])
+        self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
+        self.assertEqual(build.call_args.args[2], scene)
+
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
@@ -103,9 +150,9 @@ class SweepTests(unittest.TestCase):
             for pose in (1, 2):
                 self._synthetic_picture(0, pose).save(references / ("%04d.png" % (pose - 1)))
             with unittest.mock.patch.object(fitted_variant, "_score_mesh", side_effect=self._synthetic_score):
-                aligned = fitted_variant.held_out_score(job, meshes[0], work, work / "host")
-                first = fitted_variant.held_out_score(job, meshes[1], work, work / "host")
-                second = fitted_variant.held_out_score(job, meshes[2], work, work / "host")
+                aligned = fitted_variant.held_out_score(job, meshes[0], work, work / "host", scene=work / "tiny.scene.toml")
+                first = fitted_variant.held_out_score(job, meshes[1], work, work / "host", scene=work / "tiny.scene.toml")
+                second = fitted_variant.held_out_score(job, meshes[2], work, work / "host", scene=work / "tiny.scene.toml")
                 one_pose_late = self._synthetic_score(
                     SimpleNamespace(render_args="--scene tiny-fitted --frames 3 --dt 5", reference=references,
                                     reference_first=1), job.asset_name, meshes[0], work / "late", work / "host")
