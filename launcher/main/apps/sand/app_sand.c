@@ -871,22 +871,7 @@ draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, ui
     uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
     paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
-
-    int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
-    const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
-    if (n < 0) {
-        int x0, x1;
-        row_runs_span_fallback(row, grid_w, SAND_EMPTY, &x0, &x1);
-        cur_x0[0] = (uint16_t)x0;
-        cur_x1[0] = (uint16_t)x1;
-        return 1;
-    }
-
-    for (int i = 0; i < n; i++) {
-        cur_x0[i] = (uint16_t)run_x0[i];
-        cur_x1[i] = (uint16_t)run_x1[i];
-    }
-    return n;
+    return row_runs_find_or_span(row, grid_w, SAND_EMPTY, cur_x0, cur_x1);
 }
 
 /* Advances the travelling shine, and says whether it moved. */
