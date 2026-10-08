@@ -273,7 +273,6 @@ measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, ui
                            const gfx_color_t** cell_table) {
     gfx_mode_request_t req = {0};
     req.layout = GFX_LAYOUT_INDEXED;
-    req.resolution = GFX_RESOLUTION_FULL;
     req.index_grid_w = CM_GRID_W;
     req.index_grid_h = CM_GRID_H;
     req.cell_size = CM_CELL;

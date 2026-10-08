@@ -143,6 +143,7 @@ setup(int quarter) {
     render_lab_band_mode = false;
     shell_quarter = quarter;
     ui_init();
+    gfx_set_frame_overlay(ui_replay_band);
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
     registered->enter();
     if (size_width > 0) {
@@ -159,6 +160,7 @@ setup(int quarter) {
 
 static void
 draw(const render_frame_t* frame) {
+    ui_clear_band_overlay();
     app_list()->frame(frame->dt_ms, &frame->input);
 }
 

@@ -225,6 +225,9 @@ void ui_invalidate(void);
  */
 void ui_end_for_bands(uint32_t background_rgb);
 
+/* Discards the previous frame's replay and queued overlay rectangles. */
+void ui_clear_band_overlay(void);
+
 /* Draws whatever ui_end_for_bands() bin holds that overlaps [row0, row1):
  * call once per band, into gfx's current band draw target, after the
  * app's own band content. Commands replay in the same back-to-front,

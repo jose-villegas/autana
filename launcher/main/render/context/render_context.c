@@ -169,15 +169,20 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     return true;
 }
 
-void
-render_context_compose(render_context_t* c, uint16_t* destination) {
-    c->raster.destination = destination;
+bool
+render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half) {
+    const raster_t* r = &c->raster;
+    const bool expanded =
+        half != NULL && 2 * r->width == r->destination_width && 2 * r->height == r->destination_height;
+    destination = expanded ? half : destination;
+    const int width = expanded ? r->width : r->destination_width;
+    const int height = expanded ? r->height : r->destination_height;
     if (c->policy == RENDER_FIXED) {
-        raster_upscale(&c->raster);
-        return;
+        raster_upscale(&c->raster, destination, width, height);
+        return expanded;
     }
     const int64_t began_us = timing_now_us();
-    raster_upscale(&c->raster);
+    raster_upscale(&c->raster, destination, width, height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {
@@ -185,6 +190,7 @@ render_context_compose(render_context_t* c, uint16_t* destination) {
     } else if (c->policy == RENDER_PREDICTED) {
         resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
     }
+    return expanded;
 }
 
 render_context_frame_t

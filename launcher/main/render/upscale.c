@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stddef.h>
 
+#include "gfx/gfx_target.h"
 #include "render/code_layout.h"
 
 static uint16_t
@@ -54,12 +55,6 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     return true;
 }
 
-/* A source pixel as shown: `clear` where nothing was drawn. */
-static inline uint16_t
-shown(const uint16_t* input, const uint16_t* input_depth, int x, uint16_t clear) {
-    return input_depth != NULL && input_depth[x] == 0 ? clear : input[x];
-}
-
 static void
 upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                    uint16_t* destination, int first_row, int row_count) {
@@ -68,7 +63,7 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->source_width; x++) {
-            const uint16_t pixel = shown(source + row, input_depth, x, clear);
+            const uint16_t pixel = gfx_target_shown_pixel(source + row, input_depth, x, clear);
             for (int repeat = 0; repeat < scale->factor; repeat++) {
                 output[(x * scale->factor) + repeat] = pixel;
             }
@@ -76,46 +71,18 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
     }
 }
 
-/* UPSCALE_KEPT and UPSCALE_DOUBLED store 32 bits at a time: two
- * neighbouring source pixels when the width is kept, one twice when it is
- * doubled. A source row read once feeds the next destination row too when
- * the row map repeats it inside the range. Inlined into each path, so
- * neither tests `doubled` per pixel. */
-static inline __attribute__((always_inline)) void
-paired_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-            uint16_t* destination, int first_row, int row_count, bool doubled) {
-    const int end = first_row + row_count;
-    const int stores = scale->destination_width / 2;
-    for (int y = first_row; y < end;) {
-        const size_t row = (size_t)scale->rows[y] * scale->source_width;
-        const uint16_t* input = source + row;
-        const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
-        uint32_t* top = (uint32_t*)(destination + ((size_t)y * scale->destination_width));
-        uint32_t* bottom = top + stores;
-        const bool both = y + 1 < end && scale->rows[y + 1] == scale->rows[y];
-        for (int x = 0; x < stores; x++) {
-            const uint32_t pair = doubled ? 0x10001U * shown(input, input_depth, x, clear)
-                                          : shown(input, input_depth, 2 * x, clear)
-                                                | ((uint32_t)shown(input, input_depth, (2 * x) + 1, clear) << 16);
-            top[x] = pair;
-            if (both) {
-                bottom[x] = pair;
-            }
-        }
-        y += both ? 2 : 1;
-    }
-}
-
 static void
 upscale_kept_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                   uint16_t* destination, int first_row, int row_count) {
-    paired_rows(scale, source, depth, clear, destination, first_row, row_count, false);
+    const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
+    gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count, false);
 }
 
 static void
 upscale_doubled_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                      uint16_t* destination, int first_row, int row_count) {
-    paired_rows(scale, source, depth, clear, destination, first_row, row_count, true);
+    const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
+    gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count, true);
 }
 
 static void
@@ -126,7 +93,7 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->destination_width; x++) {
-            output[x] = shown(source + row, input_depth, scale->columns[x], clear);
+            output[x] = gfx_target_shown_pixel(source + row, input_depth, scale->columns[x], clear);
         }
     }
 }

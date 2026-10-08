@@ -118,6 +118,7 @@ $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
+$MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
 $MAIN_DIR/input/touch_point.c
@@ -153,6 +154,7 @@ $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
+$MAIN_DIR/scene/scene_shell.c
 $MAIN_DIR/util/runtime/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c

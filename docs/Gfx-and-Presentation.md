@@ -79,12 +79,29 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
   `GFX_LAYOUT_FULL_FB`. Check the grant's `layout`, not the request's.
-- Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
-  request fields grant correctly and nothing consumes them.
+- Geometry is the panel's full size. Per-axis interlace request fields are
+  granted but do not alter drawing; `gfx_set_interlace()` controls strip sends.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
   divides `GFX_HEIGHT`. On the device, at every band height, the two band
   buffers alias `gfx.c`'s strip-bounce slots rather than allocating; a host
   build mallocs them.
+
+## Expanded frames
+
+An expanded frame holds an exact-half picture in `gfx_half_picture()`;
+`scene_compose()` copies into it and `scene_shell_compose()` calls
+`gfx_expand_frame()`. A paused or undrawn scene keeps its last expanded
+picture. Presentation doubles it into send strips until
+`gfx_present_wait()` completes. Raw framebuffer drawing is guarded during
+that interval.
+
+`ui_end()` bins commands instead of drawing into an expanded frame. The
+shell queues its home hint before the app builds the UI, then its frame
+overlay replays the bin and the development build mark into each strip.
+Readback uses the same expansion and overlay path.
+
+The half picture lives in gfx's own PSRAM buffer and costs 82 KB while a
+full-framebuffer app runs.
 
 ## Dirty tracking
 
@@ -153,7 +170,7 @@ flowchart TB
   in place drops data past 40 MHz.
 - A rejected transfer marks the whole screen dirty, so the next present
   repairs it.
-- Indexed mode skips the run logic: `run_present_indexed()` expands each dirty
+- Indexed mode skips the run logic: `run_present_strips()` expands each dirty
   strip whole through the LUT, straight into a bounce slot.
 
 ## Present: who runs it
@@ -308,7 +325,7 @@ For a capture of what the panel shows:
 
 | Mode | `gfx_readback_begin()` |
 |---|---|
-| full framebuffer, indexed | `GFX_READBACK_READY` at once |
+| full framebuffer, expanded frame, indexed | `GFX_READBACK_READY` at once |
 | band ring | `GFX_READBACK_PENDING`: forces the next frame to redraw every band into a PSRAM snapshot; call once per frame until `GFX_READBACK_READY` |
 | band ring, no room for the snapshot | `GFX_READBACK_UNAVAILABLE` |
 

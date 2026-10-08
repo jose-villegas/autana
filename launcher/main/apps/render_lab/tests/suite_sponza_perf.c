@@ -68,7 +68,6 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
         .width = render_width(),
         .height = render_height(),
         .upscaled = true,
-        .destination = b->panel,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
         .attachments = attachments,
@@ -198,7 +197,7 @@ test_sponza_draw_stage_breakdown(void) {
     const camera_t empty = {{0.0F, 20000.0F, 0.0F}, {0.0F, 1.0F, 0.01F}, 1.0F, 1.0F};
     start = timing_now_us();
     const raster_stats_t none = raster_draw(&b.raster, &empty, 0);
-    raster_upscale(&b.raster);
+    raster_upscale(&b.raster, b.panel, GFX_WIDTH, GFX_HEIGHT);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame", (long long)(timing_now_us() - start),
              none.clusters);
 
@@ -227,7 +226,7 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
         }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b.raster, &camera, 0);
-        raster_upscale(&b.raster);
+        raster_upscale(&b.raster, b.panel, GFX_WIDTH, GFX_HEIGHT);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);

@@ -54,17 +54,20 @@ sequenceDiagram
     Shell->>App: update(), if the app has one
     Note over Shell: scene_render(): clocks, moved entities,<br/>render_context_draw() on both cores into scratch
     Core1-->>Shell: gfx_present_wait()
-    Note over Shell: scene_compose(): raster_upscale()<br/>into the framebuffer
+    Note over Shell: scene_compose(): copy half picture<br/>or upscale into the framebuffer
     Shell->>App: frame() draws over the scene
     Shell->>Core1: next pass presents it
 ```
 
 `scene_render()` touches no framebuffer, so it runs while the last frame is
-still being sent. `scene_compose()` writes the framebuffer and runs once the
+still being sent. `scene_compose()` writes the half picture when the draw is
+exactly half the panel in both axes, otherwise the full framebuffer, once the
 send is done; if `scene_render()` did not run (the first frame after
 activating), it draws first. An app gets this overlap whenever a camera is
-active, with or without `update()`. With no camera active the loop is the plain
-one. Every frame redraws the whole picture, a static scene included. A camera
+active, with or without `update()`. A paused expanded picture keeps the
+overlap so each pass composes it again without rendering. With no camera
+active the loop is the plain one. Unpaused frames redraw the whole picture,
+a static scene included. A camera
 needs the full-framebuffer layout; in band mode the scene is drawn into the
 scratch but there is nothing to upscale it into.
 

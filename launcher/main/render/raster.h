@@ -26,13 +26,10 @@ struct raster {
     int instance_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
-    /* The picture is upscaled into `destination`, destination_width by
-     * destination_height. The colour target is then never cleared, since
-     * upscaling puts the clear colour wherever nothing was drawn. Drawing does
-     * not touch `destination`, so it may be set after drawing, before
-     * raster_upscale(). */
+    /* The camera frames by destination_width and destination_height. With
+     * upscaling, colour is not cleared: raster_upscale() supplies the clear
+     * colour wherever depth says nothing was drawn. */
     bool upscaled;
-    uint16_t* destination;
     int destination_width, destination_height;
     upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
     void* scratch;     /* raster_scratch_bytes() of it */
@@ -68,21 +65,17 @@ size_t raster_scratch_bytes(const raster_t* raster);
 /* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
-/* raster_draw() split in two, so a caller can price sizes between them.
- * raster_census() culls every instance into the scratch block's list,
- * raster_culled_length() entries, and returns what survived;
- * raster_draw_culled() draws that list at the raster's size now without
- * culling again. The list holds, in the same scratch block, for the same
- * camera, quarter and instances, at any size of an upscaled raster whose
- * destination size is unchanged; without upscaling, only at the size it was
- * taken at. */
+/* The census list lets a caller price sizes before drawing. It stays valid
+ * in the same scratch block for unchanged camera, quarter and instances.
+ * Upscaled rasters may change render size with a fixed destination; other
+ * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter);
 void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter);
 
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
-void raster_upscale(raster_t* raster);
+void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
 
 /* The 8x8 pixel tile RASTER_SHOW_DEPTH_TILES reduces the depth to: the unit
  * a hierarchical depth test would cull by. */

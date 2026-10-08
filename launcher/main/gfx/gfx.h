@@ -1,14 +1,8 @@
 /*
- * gfx: framebuffer ownership and drawing primitives.
- *
- * Everything on this device draws into ONE full-screen RGB565 framebuffer that
- * this module owns. The shell and every app share it; nothing else allocates a
- * buffer of its own. At 368x448x2 it is 322 KiB of PSRAM, and a second one
- * costs a per-frame PSRAM copy no app can afford; see
- * docs/Gfx-and-Presentation.md.
- *
- * Colours are given as plain 0xRRGGBB so callers never deal with the panel's
- * byte-swapped RGB565 layout; gfx_rgb() handles that conversion.
+ * gfx: shell and apps share one RGB565 PSRAM framebuffer (368x448x2 = 322 KiB).
+ * A second framebuffer costs a per-frame PSRAM copy apps cannot afford.
+ * Expanded frames replay overlays over doubled half-picture strips.
+ * Colours are plain 0xRRGGBB; gfx_rgb() handles the panel's byte swap.
  */
 #pragma once
 
@@ -21,6 +15,7 @@
 #include "bsp/esp-bsp.h"
 #endif
 #include "gfx/gfx_band.h"
+#include "gfx/gfx_band_run.h"
 #include "gfx/gfx_color.h"
 #include "gfx/gfx_fb_guard.h"
 #include "gfx/gfx_font.h"
@@ -91,6 +86,18 @@ gfx_color_t gfx_rgb(uint32_t rgb);
 /* Direct access, for renderers that write pixels in bulk (the 3D rasterizer
  * writes here directly rather than going through gfx_pixel per fragment). */
 gfx_color_t* gfx_framebuffer(void);
+
+/* Exact-half PSRAM picture, allocated lazily and freed on mode exit.
+ * Returns NULL outside GFX_LAYOUT_FULL_FB or when allocation fails. */
+gfx_color_t* gfx_half_picture(void);
+
+/* Presents the half picture doubled in both axes, with every strip dirty.
+ * Raw framebuffer drawing is refused until that present completes. */
+void gfx_expand_frame(void);
+bool gfx_frame_expanded(void);
+
+/* Replayed over each expanded strip, after its picture is doubled. */
+void gfx_set_frame_overlay(gfx_band_overlay_fn overlay);
 
 void gfx_clear(gfx_color_t color);
 
@@ -339,14 +346,8 @@ void gfx_heal_restore_defaults(void);
 
 bool gfx_heal_active(void);
 
-/*
- * Mode: a full PSRAM framebuffer, an internal-SRAM band ring for a
- * transient renderer, or a persistent internal-RAM index image.
- * Requested from enter(), released with gfx_mode_exit() from exit(). No
- * caller ever asks for anything but full resolution; an interlace request
- * is granted (gfx_mode.h) but changes nothing drawn; gfx_set_interlace()
- * is the switch that does.
- */
+/* Band and indexed layouts need their own storage. Interlace grants describe
+ * the request; gfx_set_interlace() controls the strip sends. */
 
 /* Grants `request`, allocates whatever the granted layout needs, and
  * returns the grant. Asserts the current mode is already GFX_LAYOUT_FULL_FB:

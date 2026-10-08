@@ -29,6 +29,8 @@
 
 #include "ui/ui.h"
 
+#include <assert.h>
+
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
@@ -37,6 +39,7 @@
 #include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
 #include "util/build/build_variant.h"
+#include "util/scalar/mathi.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static const char* TAG = "ui";
@@ -356,6 +359,10 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 
 bool
 ui_end(uint32_t background_rgb) {
+    if (gfx_frame_expanded()) {
+        ui_end_for_bands(background_rgb);
+        return true;
+    }
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -381,6 +388,7 @@ ui_end(uint32_t background_rgb) {
  * with no backdrop call: whoever drew under it has already drawn that part. */
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
+    assert(!gfx_frame_expanded());
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -492,6 +500,14 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
             const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
             *y0 = box.y;
             *y1 = box.y + box.h;
+            if (cmd->text.color.a == 255) {
+                ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
+                const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
+                for (int i = 0; i < n; i++) {
+                    *y0 = mathi_min(*y0, box.y + passes[i].dy);
+                    *y1 = mathi_max(*y1, box.y + box.h + passes[i].dy);
+                }
+            }
             return true;
         }
         case MU_COMMAND_ICON: {
@@ -586,6 +602,12 @@ mark_changed_ui_bands(void) {
             ui_band_hash[b] = h;
         }
     }
+}
+
+void
+ui_clear_band_overlay(void) {
+    ui_band_bin_count = 0;
+    extra_rect_count = 0;
 }
 
 void

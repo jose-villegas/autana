@@ -1719,14 +1719,9 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    raster_t raster = {ONE_MESH(&p->mesh),
-                       .width = W,
-                       .height = H,
-                       .clear = SKY,
-                       .upscaled = true,
-                       .destination = upscaled,
-                       .destination_width = 2 * W,
-                       .destination_height = 2 * H};
+    raster_t raster = {
+        ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
+        .destination_height = 2 * H};
     raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
@@ -1737,7 +1732,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
             raster_color(&raster)[i] = 0xBEEF;
         }
         raster_draw(&raster, &camera, 0);
-        raster_upscale(&raster);
+        raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
         reference_frame(p, &lens, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
                                               "the upscaled frame differs from one full draw");
@@ -1875,20 +1870,15 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(want);
     TEST_ASSERT_NOT_NULL(scratch);
-    raster_t raster = {ONE_MESH(&p->mesh),
-                       .width = W,
-                       .height = H,
-                       .clear = SKY,
-                       .upscaled = true,
-                       .destination = destination,
-                       .destination_width = W,
+    raster_t raster = {ONE_MESH(&p->mesh),     .width = W,       .height = H,
+                       .clear = SKY,           .upscaled = true, .destination_width = W,
                        .destination_height = H};
     raster.scratch = scratch;
 
     const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
     raster_draw(&raster, &camera, 0);
-    raster_upscale(&raster);
+    raster_upscale(&raster, destination, raster.destination_width, raster.destination_height);
     reference_frame(p, &lens, want);
     int sky = 0;
     for (int y = 0; y < H; y++) {
@@ -1915,14 +1905,9 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
     uint16_t* destination = frame_held.destination = malloc(sizeof(*destination) * OUT_W * OUT_H);
     uint16_t* drawn = frame_held.color = malloc(sizeof(*drawn) * W * H);
     uint16_t* drawn_depth = frame_held.depth = malloc(sizeof(*drawn_depth) * W * H);
-    raster_t raster = {ONE_MESH(&p->mesh),
-                       .width = W,
-                       .height = H,
-                       .clear = SKY,
-                       .upscaled = true,
-                       .destination = destination,
-                       .destination_width = OUT_W,
-                       .destination_height = OUT_H};
+    raster_t raster = {
+        ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = OUT_W,
+        .destination_height = OUT_H};
     raster.scratch = frame_held.scratch = malloc(raster_scratch_bytes(&raster));
     TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(drawn);
@@ -1933,7 +1918,7 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
     raster_draw(&raster, &camera, 0);
     memcpy(drawn, raster_color(&raster), sizeof(*drawn) * W * H);
     memcpy(drawn_depth, raster_depth(&raster), sizeof(*drawn_depth) * W * H);
-    raster_upscale(&raster);
+    raster_upscale(&raster, destination, raster.destination_width, raster.destination_height);
     for (int y = 0; y < OUT_H; y++) {
         for (int x = 0; x < OUT_W; x++) {
             const int source_x = nearest_source_index(x, OUT_W, W);
@@ -2210,14 +2195,9 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     TEST_ASSERT_NOT_NULL(scratch);
     TEST_ASSERT_NOT_NULL(depth_before);
     TEST_ASSERT_NOT_NULL(shaded);
-    raster_t raster = {ONE_MESH(&p->mesh),
-                       .width = W,
-                       .height = H,
-                       .clear = SKY,
-                       .upscaled = true,
-                       .destination = upscaled,
-                       .destination_width = 2 * W,
-                       .destination_height = 2 * H};
+    raster_t raster = {
+        ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
+        .destination_height = 2 * H};
     raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
@@ -2233,7 +2213,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
                                               "the shaded view changed the render");
 
         raster_show(&raster, RASTER_SHOW_DEPTH);
-        raster_upscale(&raster);
+        raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(depth_before, raster_depth(&raster), W * H,
                                               "showing the depth changed it");
         int drawn = 0;
