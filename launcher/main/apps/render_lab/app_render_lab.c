@@ -40,12 +40,23 @@ extern const render_lab_scene_t scene_sponza_lite;
 extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
 extern const render_lab_scene_t scene_sponza_fitted_full;
+extern const render_lab_scene_t scene_sponza_flat_fitted;
 bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube,         &scene_wire_plane,  &scene_wire_cube,     &scene_wire_sphere,
-    &scene_wire_capsule, &scene_raytrace,    &scene_pathtrace,     &scene_sponza,
-    &scene_sponza_lite,  &scene_sponza_flat, &scene_sponza_fitted, &scene_sponza_fitted_full,
+    &scene_cube,
+    &scene_wire_plane,
+    &scene_wire_cube,
+    &scene_wire_sphere,
+    &scene_wire_capsule,
+    &scene_raytrace,
+    &scene_pathtrace,
+    &scene_sponza,
+    &scene_sponza_lite,
+    &scene_sponza_flat,
+    &scene_sponza_fitted,
+    &scene_sponza_fitted_full,
+    &scene_sponza_flat_fitted,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
