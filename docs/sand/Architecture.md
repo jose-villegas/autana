@@ -226,7 +226,7 @@ stateDiagram-v2
     Active : Active<br/>a grain moved here<br/>(BLOCK_ACTIVE set)
     Settled : Settled<br/>stays until woken
 
-    Active --> Settled: a quiet step and<br/>any_neighbor_active() false
+    Active --> Settled: a quiet step and<br/>no active neighbour block
     Settled --> Active: sand_set(), sand_erase()<br/>or cross-flow wakes its 3x3<br/>(wake_block_and_neighbors())
 
     classDef activeStyle fill:#8a3d3d,color:#fff

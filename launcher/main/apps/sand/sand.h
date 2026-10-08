@@ -20,6 +20,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Marks derived skip facts and the functions that maintain them. */
+#define SAND_FACT
+#define SAND_FACT_WRITER
+
 #include "material.h"
 #include "sand_impulse.h"
 #include "util/build/build_variant.h"
@@ -82,7 +86,7 @@ typedef struct sand_s {
      * moment a liquid is placed, and only ever cleared by a pass that has
      * looked everywhere and found none. When it is false the whole cross-flow
      * pass is skipped, so a screen of sand never pays for water. */
-    bool may_have_liquid;
+    SAND_FACT bool may_have_liquid;
 
     /* Which materials are anywhere on the board, one bit per material id.
      *
@@ -94,58 +98,58 @@ typedef struct sand_s {
      * Records MATERIALS, not derived bits: the pair table lives in
      * sand_reactions.c, so latching stays one OR and the conversion happens
      * once a step. */
-    uint16_t may_have_materials;
+    SAND_FACT uint16_t may_have_materials;
 
     /* Whether any liquid present can REFUSE to move this step. Viscosity is
      * a property of the board, not of a cell: mobility 0 or 255 can only
      * answer yes, and 255 is the default. Recomputed once a step. */
-    bool may_have_viscous_liquid;
+    SAND_FACT bool may_have_viscous_liquid;
 
     /* Same idea as may_have_liquid, for gas, see sand_step_gas() in
      * sand_gas.c. */
-    bool may_have_gas;
+    SAND_FACT bool may_have_gas;
 
     /* For anything that burns, see sand_step_reactions() in sand_reactions.c.
      * Keyed on reaction_t.burns, not kind == KIND_STATIC: stone shares that
      * kind with ember and is poured often. */
-    bool may_have_burning;
+    SAND_FACT bool may_have_burning;
 
     /* Same idea again, for a material that dissolves others
      * (reaction_t.dissolves - acid is the only one today). Separate from
      * may_have_burning because dissolving is not a fire reaction: acid
      * has to work on a board with no flame anywhere, so
      * sand_step_reactions() runs when EITHER flag is set. */
-    bool may_have_dissolver;
+    SAND_FACT bool may_have_dissolver;
 
     /* For cells with a TEMPERATURE (glass, snow) - own flag since cooling
      * duration needs tracking independent of fire. */
-    bool may_have_temperature;
+    SAND_FACT bool may_have_temperature;
 
     /* Moisture-holding cells or soakers near liquid are armed. "A soaker
      * exists" alone does not arm it. Sand soaks but is common, so
      * step_one_reacting_row() checks actual wetness or adjacency to liquid. */
-    bool may_have_moisture;
+    SAND_FACT bool may_have_moisture;
 
     /* Reactions pass may run on a board with no fire, acid, heat, or water if
      * a seed falls from the screen to the floor - see reaction_t.falls. */
-    bool may_have_faller;
+    SAND_FACT bool may_have_faller;
 
     /* PRESENCE IS NOT MOBILITY, and this pair is the only gate where the
      * difference is worth a byte: a grown garden is all faller cells and none
      * of them can move, so presence alone would buy a board-wide scan every
      * step forever. Both must hold for the pass to run on fallers alone. */
-    bool faller_may_move;
+    SAND_FACT bool faller_may_move;
 
     /* Checks if grid has heat-interactive elements (e.g., stone, glass, ice)
      * to gate convection in step_one_reacting_row(). Not a pass gate but a
      * branch gate within the pass. Needed to prevent scanning four neighbours
      * for every gas cell on smoke/steam-only boards. */
-    bool may_have_heat_holder;
+    SAND_FACT bool may_have_heat_holder;
 
     /* Condensing flag for steam; unlike boiling, it's independent and must
      * persist. Without it, steam would never condense if no other reactions
      * occur. */
-    bool may_have_condenser;
+    SAND_FACT bool may_have_condenser;
 
     /* See sand_set_soak(). 0, the default, means nothing soaks. */
     int soak;

@@ -11,6 +11,7 @@ import re
 import sys
 
 from tracked import tracked_files
+from c_comments import balanced_end
 
 from check_doc_citations import documentation
 
@@ -113,15 +114,11 @@ def braced_body(text, start):
     begin = text.find("{", start)
     if begin < 0:
         return None
-    depth = 0
-    for pos in range(begin, len(text)):
-        if text[pos] == "{":
-            depth += 1
-        elif text[pos] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[begin + 1:pos]
-    return None
+    try:
+        end = balanced_end(text, begin)
+    except ValueError:
+        return None
+    return text[begin + 1:end - 1]
 
 
 def array_body(text, name):

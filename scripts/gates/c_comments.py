@@ -82,6 +82,16 @@ class Comment:
         return self.first
 
 
+def balanced_end(source, start, opening="{", closing="}"):
+    """Offset after a balanced delimiter pair; callers own literal masking."""
+    depth = 0
+    for at in range(start, len(source)):
+        depth += (source[at] == opening) - (source[at] == closing)
+        if depth == 0:
+            return at + 1
+    raise ValueError("unclosed " + opening)
+
+
 def tokens(source, literals=True):
     """Comment and literal spans; escaped quotes cannot start a comment."""
     i, n = 0, len(source)

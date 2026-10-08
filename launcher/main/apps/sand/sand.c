@@ -19,6 +19,34 @@
 
 #include "sand_priv.h"
 
+#ifdef SAND_FORCE_WORK
+#include <stdio.h>
+
+static sand_skip_site_t* skip_sites;
+
+bool
+sand_skip_site_note(sand_skip_site_t* site, bool allowed) {
+    if (!__atomic_exchange_n(&site->registered, true, __ATOMIC_RELAXED)) {
+        sand_skip_site_t* head = __atomic_load_n(&skip_sites, __ATOMIC_RELAXED);
+        do {
+            site->next = head;
+        } while (!__atomic_compare_exchange_n(&skip_sites, &head, site, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+    }
+    if (allowed) {
+        __atomic_fetch_add(&site->skipped, 1ULL, __ATOMIC_RELAXED);
+    }
+    return false;
+}
+
+void
+sand_skip_sites_report(void) {
+    for (sand_skip_site_t* site = skip_sites; site != NULL; site = site->next) {
+        fprintf(stderr, "SAND_SKIP %s:%d %llu\n", site->file, site->line,
+                __atomic_load_n(&site->skipped, __ATOMIC_RELAXED));
+    }
+}
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -323,7 +351,7 @@ sand_lane_prepare(sand_lane_t* lane, const sand_t* s) {
     }
 }
 
-static void
+SAND_FACT_WRITER static void
 merge_lane_content_flags(sand_t* s, const sand_t* lane) {
     s->may_have_liquid |= lane->may_have_liquid;
     s->may_have_gas |= lane->may_have_gas;
@@ -342,7 +370,7 @@ merge_lane_content_flags(sand_t* s, const sand_t* lane) {
 
 /* A settled bit survives only where both agree; everything else a lane can
  * write it only sets. */
-static void
+SAND_FACT_WRITER static void
 merge_lane_blocks(sand_t* s, const uint8_t* lane_blocks) {
     for (int i = 0; i < s->block_cols * s->block_rows; i++) {
         const uint8_t local = lane_blocks[i];
@@ -379,7 +407,7 @@ sand_lane_merge(sand_t* s, const sand_lane_t* lane) {
     merge_lane_content_flags(s, &lane->local);
 }
 
-bool
+SAND_FACT_WRITER bool
 sand_block_settled(const sand_t* s, int bx, int by) {
     if (s->block_state == NULL) {
         return false;
@@ -937,7 +965,7 @@ sweep_x_order(sand_t* s, int dx) {
  * diagonal pointing into swept rows. A grid holding liquid keeps the plain
  * ascending order: restricting its diagonals stopped poured water reaching
  * the floor, so there a grain can still slide twice in a step. */
-static void
+SAND_FACT_WRITER static void
 choose_sweep_order(const sand_t* s, int dy, const int** slide_a, const int** slide_b, int* y_from, int* y_to,
                    int* y_step) {
     const bool landscape_safe_sweep = dy == 0 && !s->may_have_liquid;
@@ -1113,7 +1141,7 @@ try_slide(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* brow, 
 /* Sleeping off when block_state missing. Wakes blocks if grid shaken or
  * settle direction changes. Returns dithered direction. Compares NEAREST
  * direction for sleeping. Clears BLOCK_ACTIVE each step for finalisation. */
-static uint8_t
+SAND_FACT_WRITER static uint8_t
 compute_settled_bit(sand_t* s, int jostle, int dx, int dy, int load_dx, int load_dy) {
     if (s->block_state == NULL) {
         return 0;
@@ -1189,7 +1217,7 @@ typedef struct {
 /* Marks BLOCK_ACTIVE if anything moves in a block's x-span within a row, for
  * compute_settled_bit()'s later finalisation pass; does nothing if
  * block_state is disabled. */
-static void
+SAND_FACT_WRITER static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
     const int lo = mathi_max(bx * SAND_BLOCK_W, ctx->x0);
     const int hi = mathi_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
@@ -1238,10 +1266,14 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
 static void
 step_one_row(const sweep_ctx_t* ctx) {
     for (int bx = ctx->bx_from; bx != ctx->bx_to; bx += ctx->bx_step) {
-        if (ctx->settled_bit != 0 && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)) {
+        SAND_FORCED_STATE(ctx->s);
+        if (SAND_SKIP_IF(
+                SAND_FORCED_IF(ctx->settled_bit != 0
+                               && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)))) {
             continue;
         }
         step_one_block(ctx, bx);
+        sand_forced_restore(ctx->s, &forced_state);
     }
 }
 
@@ -1253,7 +1285,7 @@ step_one_row(const sweep_ctx_t* ctx) {
  * BLOCK_ACTIVE, which nothing here writes, and only writes its own block's
  * settled bits - never a neighbour's - so a range may run before, after or
  * genuinely alongside any other, with no guard. */
-static void
+SAND_FACT_WRITER static void
 finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) {
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
@@ -1261,7 +1293,7 @@ finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) 
             if (s->block_state[i] & BLOCK_ACTIVE) {
                 continue;
             }
-            if (any_neighbor_active(s, bx, by)) {
+            if (block_neighbourhood_has(s, bx, by, BLOCK_ACTIVE, false)) {
                 s->block_state[i] &= (uint8_t)~(BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER);
             } else {
                 s->block_state[i] |= settled_bit;
@@ -1369,7 +1401,7 @@ build_xflow(xflow_t* f, int gx, int gy) {
 /* A mobility of 0 or 255 always admits the move; only a value between them
  * draws a roll. Asked of the global override when it is set, and otherwise of
  * every liquid actually present. */
-static bool
+SAND_FACT_WRITER static bool
 viscous_liquid_possible(const sand_t* s) {
     if (s->mobility >= 0) {
         return s->mobility != 0 && s->mobility < 255;
@@ -1390,7 +1422,7 @@ viscous_liquid_possible(const sand_t* s) {
  * `settled_bit`. Blocks reaching past that rectangle count too: a settled
  * answer then holds for strictly more than the caller asked about, which is
  * the safe direction for a skip. */
-static bool
+SAND_FACT static bool
 blocks_settled_over(const sand_t* s, int x0, int x1, int y0, int y1, uint8_t settled_bit) {
     if (settled_bit == 0) {
         return false;
@@ -1448,16 +1480,17 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
     int row_at = y0 * w;
 
     int scanned_by = -1;
-    bool block_row_settled = false;
+    SAND_FACT bool block_row_settled = false;
 
     for (int y = y0; y != y1; y += y_step, row_at += row_step) {
         const int by = y / SAND_BLOCK_H;
+        SAND_FORCED_STATE(s);
         if (settled_bit != 0) {
             if (by != scanned_by) {
                 scanned_by = by;
                 block_row_settled = blocks_settled_over(s, x0, x1, y, y + 1, settled_bit);
             }
-            if (block_row_settled) {
+            if (SAND_SKIP_IF(SAND_FORCED_IF(block_row_settled))) {
                 continue;
             }
         }
@@ -1472,6 +1505,7 @@ sweep_range(sand_t* s, int y0, int y1, int y_step, int x0, int x1, int w, int dx
         ctx.y = y;
         ctx.by = by;
         step_one_row(&ctx);
+        sand_forced_restore(s, &forced_state);
     }
 }
 
@@ -1650,7 +1684,7 @@ sand_chunk_share_for_test(sand_chunk_share_t mode) {
  * the costs total at most its cell count and no finish time passes UINT16_MAX. */
 _Static_assert(GRID_W_MAX* GRID_H_MAX <= UINT16_MAX, "a chunk's cell count must fit a 16-bit cost");
 
-static int
+SAND_FACT_WRITER static int
 chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, uint16_t* cost) {
     int total = 0;
 
@@ -1825,7 +1859,7 @@ sweep_one_chunk(void* pass, int lane, int cx, int cy) {
     int x0, x1, y0, y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
-    if (blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit)) {
+    if (SAND_SKIP_IF(blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit))) {
         return;
     }
     c->swept[lane]++;
@@ -1968,11 +2002,13 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * here, not via sand_step_gas()'s early return. Called every step,
      * skipping avoids marshalling nine arguments if no gas. Flash layout
      * cost. */
-    if (s->may_have_gas) {
+    SAND_FORCED_STATE(s);
+    if (!SAND_SKIP_IF(SAND_FORCED_IF(!s->may_have_gas))) {
         SAND_PASS_BEGIN(gas);
         sand_step_gas(s, gx, gy, dx, dy, slide_a, slide_b, perp_a, perp_b, load_dx, load_dy, x_step, jostle);
         SAND_PASS_END(s, gas);
     }
+    sand_forced_restore(s, &forced_state);
 
     /* Same slot for burning cell reactions; ignition/extinguish/burn-out are
      * not gravity-ward or movement. Must finish before finalize_settling().
