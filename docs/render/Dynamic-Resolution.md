@@ -2,8 +2,9 @@
 
 A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
-first; the picture is always upscaled back to the panel by `render/upscale.h`,
-which takes any ratio in either axis. The code is
+first; `render_context_compose()` copies an exact-half draw into the half
+picture when available and otherwise upscales to the panel size with
+`render/upscale.h`, which takes any ratio in either axis. The code is
 `launcher/main/render/resolution/`. It is opt-in, a setting of the render
 context rather than of a scene or a camera: an app turns it on with
 `render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)),
@@ -23,7 +24,9 @@ weights cannot, so the fit's shape across steps carries over to steps the
 predictor has not drawn lately. The scene's second path, which the fit never
 sees, measures how well the refit tracks a view the fit did not cover.
 
-The cost a policy holds is the part that scales: the draw and the upscale.
+The cost a policy holds is the part that scales: the draw and the compose
+each step pays. Calibration uses the render context's compose decision,
+including the copy into the half picture at the exactly-half step.
 The present and whatever an app draws over the scene are not in it. The
 predictor culls once with the picture's unfitted lens, before it chooses a
 size, and draws from the scratch block's census list with a fitted lens. The
@@ -39,26 +42,26 @@ predictor the cull is the census, `r3d.census`. The suite behind
 these tables draws the test scene's path at every size, both cores, and then
 once more on one core with the span rasterizer stopped after each stage.
 
-<!-- generated: dynres-stages sha256=0f4becbd9f8299effe743049c8208a8c665eb4eaf38421f367ce8c088cc55611 -->
+<!-- generated: dynres-stages sha256=8435ab00c02fc4e81a1da356201d979c7242abc17857f15f56c0c727b8d0403b -->
 | Render size | Divisor | Pixels | Frame mean | p50 | max | cull | transform | draw | upscale | 1 core: setup | rows | span setup | fill |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 368x448 | 1.00 | 100% | 111.0 | 111.9 | 126.9 | 0.7 | 4.2 | 95.5 | 10.6 | 32.5 | 34.2 | 34.9 | 47.2 |
-| 184x448 | 2.00 x 1.00 | 50% | 83.7 | 84.9 | 96.7 | 0.7 | 4.2 | 71.5 | 7.3 | 30.6 | 32.9 | 30.6 | 18.3 |
-| 184x358 | 2.00 x 1.25 | 40% | 71.2 | 72.4 | 84.3 | 0.7 | 4.2 | 59.6 | 6.7 | 29.6 | 27.0 | 24.3 | 12.7 |
-| 184x298 | 2.00 x 1.50 | 33% | 63.4 | 63.9 | 75.4 | 0.7 | 4.2 | 52.2 | 6.3 | 29.0 | 23.0 | 20.2 | 9.5 |
-| 184x224 | 2.00 | 25% | 54.0 | 54.4 | 65.5 | 0.7 | 4.2 | 43.2 | 5.8 | 28.0 | 18.1 | 15.1 | 6.2 |
-| 184x179 | 2.00 x 2.50 | 20% | 48.2 | 48.5 | 58.7 | 0.7 | 4.2 | 37.6 | 5.6 | 27.3 | 15.1 | 12.0 | 3.8 |
-| 184x149 | 2.00 x 3.01 | 17% | 44.1 | 44.7 | 53.9 | 0.7 | 4.2 | 33.7 | 5.4 | 26.6 | 13.1 | 9.9 | 2.5 |
-| 368x358 | 1.00 x 1.25 | 80% | 93.7 | 94.8 | 109.7 | 0.7 | 4.2 | 79.3 | 9.5 | 31.8 | 28.2 | 27.8 | 35.8 |
-| 368x298 | 1.00 x 1.50 | 67% | 81.9 | 82.7 | 96.7 | 0.7 | 4.2 | 68.6 | 8.3 | 31.3 | 24.2 | 23.2 | 28.4 |
-| 368x224 | 1.00 x 2.00 | 50% | 68.0 | 68.7 | 81.8 | 0.7 | 4.2 | 55.7 | 7.3 | 30.5 | 19.2 | 17.3 | 19.7 |
-| 294x358 | 1.25 | 64% | 86.2 | 87.1 | 101.8 | 0.7 | 4.2 | 71.5 | 9.7 | 31.0 | 27.9 | 26.8 | 26.0 |
-| 276x336 | 1.33 | 56% | 81.3 | 82.3 | 96.0 | 0.7 | 4.2 | 66.7 | 9.7 | 30.6 | 26.3 | 24.9 | 22.7 |
-| 245x298 | 1.50 | 44% | 71.8 | 72.4 | 85.5 | 0.7 | 4.2 | 57.9 | 8.9 | 29.8 | 23.5 | 21.5 | 15.5 |
-| 210x256 | 1.75 | 33% | 64.0 | 64.5 | 76.0 | 0.7 | 4.2 | 50.4 | 8.6 | 28.9 | 20.5 | 17.8 | 11.4 |
-| 245x224 | 1.50 x 2.00 | 33% | 61.3 | 61.8 | 73.9 | 0.7 | 4.2 | 47.6 | 8.7 | 28.9 | 18.6 | 16.1 | 10.6 |
-| 147x179 | 2.50 | 16% | 47.7 | 48.0 | 57.4 | 0.7 | 4.2 | 35.0 | 7.7 | 26.5 | 14.7 | 11.4 | 1.8 |
-| 122x149 | 3.02 | 11% | 42.5 | 42.1 | 51.2 | 0.7 | 4.2 | 30.0 | 7.5 | 25.2 | 12.4 | 8.9 | -0.2 |
+| 368x448 | 1.00 | 100% | 110.7 | 112.0 | 126.8 | 0.7 | 4.2 | 95.4 | 10.4 | 32.5 | 34.2 | 34.9 | 47.2 |
+| 184x448 | 2.00 x 1.00 | 50% | 83.6 | 84.7 | 96.6 | 0.7 | 4.2 | 71.4 | 7.3 | 30.6 | 32.8 | 30.6 | 18.3 |
+| 184x358 | 2.00 x 1.25 | 40% | 71.1 | 72.4 | 84.2 | 0.7 | 4.2 | 59.5 | 6.7 | 29.6 | 27.0 | 24.3 | 12.7 |
+| 184x298 | 2.00 x 1.50 | 33% | 63.3 | 63.8 | 75.4 | 0.7 | 4.2 | 52.1 | 6.3 | 29.0 | 23.0 | 20.2 | 9.5 |
+| 184x224 | 2.00 | 25% | 53.9 | 54.3 | 65.5 | 0.7 | 4.2 | 43.1 | 5.8 | 28.0 | 18.1 | 15.1 | 6.2 |
+| 184x179 | 2.00 x 2.50 | 20% | 48.1 | 48.3 | 58.6 | 0.7 | 4.2 | 37.5 | 5.6 | 27.3 | 15.1 | 12.0 | 3.8 |
+| 184x149 | 2.00 x 3.01 | 17% | 44.0 | 44.7 | 53.9 | 0.7 | 4.2 | 33.7 | 5.4 | 26.6 | 13.1 | 9.9 | 2.5 |
+| 368x358 | 1.00 x 1.25 | 80% | 93.4 | 94.5 | 109.5 | 0.7 | 4.2 | 79.2 | 9.4 | 31.8 | 28.2 | 27.8 | 35.8 |
+| 368x298 | 1.00 x 1.50 | 67% | 81.7 | 82.5 | 96.5 | 0.7 | 4.2 | 68.5 | 8.3 | 31.3 | 24.2 | 23.1 | 28.4 |
+| 368x224 | 1.00 x 2.00 | 50% | 67.8 | 68.5 | 81.6 | 0.7 | 4.2 | 55.6 | 7.3 | 30.4 | 19.2 | 17.3 | 19.7 |
+| 294x358 | 1.25 | 64% | 86.8 | 87.6 | 102.4 | 0.7 | 4.2 | 71.5 | 10.4 | 31.0 | 27.9 | 26.8 | 26.0 |
+| 276x336 | 1.33 | 56% | 82.0 | 83.0 | 96.8 | 0.7 | 4.2 | 66.6 | 10.4 | 30.6 | 26.2 | 24.9 | 22.7 |
+| 245x298 | 1.50 | 44% | 72.4 | 73.1 | 86.0 | 0.7 | 4.2 | 57.8 | 9.6 | 29.8 | 23.5 | 21.5 | 15.5 |
+| 210x256 | 1.75 | 33% | 64.7 | 65.4 | 76.7 | 0.7 | 4.2 | 50.3 | 9.5 | 28.8 | 20.5 | 17.9 | 11.3 |
+| 245x224 | 1.50 x 2.00 | 33% | 62.0 | 62.7 | 74.7 | 0.7 | 4.2 | 47.5 | 9.6 | 28.9 | 18.6 | 16.1 | 10.7 |
+| 147x179 | 2.50 | 16% | 48.5 | 49.0 | 58.3 | 0.7 | 4.2 | 34.9 | 8.7 | 26.5 | 14.7 | 11.4 | 1.7 |
+| 122x149 | 3.02 | 11% | 43.4 | 43.0 | 52.1 | 0.7 | 4.2 | 29.9 | 8.5 | 25.2 | 12.4 | 8.9 | -0.2 |
 
 Milliseconds; both cores unless marked one core.
 <!-- /generated: dynres-stages -->
@@ -71,17 +74,19 @@ rows and span setup follow the height, so a ladder cuts the height first. The
 floor and the recovery step are named for what they cost, not their scale:
 184x179 costs about what isotropic 2.5x (147x179) does, and 184x149 what 3x
 (122x149) does, the upscale they save paying for the pixels they keep. The one-core setup stage barely moves with size: it is the
-floor no step goes under.
+floor no step goes under. The split times a full upscale at every size; a
+live frame at exactly half copies into the half picture instead, and the
+policies below are priced and flown with that copy.
 
-<!-- generated: dynres-findings sha256=10fc0a496df624ee9ce20a7b0dc62d334a2a2e52c75c702a83ac50a0addcb0a3 -->
+<!-- generated: dynres-findings sha256=015a0aae2b5f966bae9efb3826a3c563b34e21a9b21ef7ec8994557e308fb376 -->
 | Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |
 |---|---|---|---|---|---|---|---|
-| half width, more height over half | 184x298 minus 184x224 | 9.5 | 9.0 | 0.5 | 4.9 | 5.1 | 3.3 |
+| half width, more height over half | 184x298 minus 184x224 | 9.4 | 9.0 | 0.5 | 4.9 | 5.1 | 3.3 |
 | half over floor | 184x224 minus 184x179 | 5.8 | 5.6 | 0.3 | 3.0 | 3.1 | 2.3 |
-| floor over 2.5x cost reference | 184x179 minus 147x179 | 0.5 | 2.6 | -2.2 | 0.4 | 0.6 | 2.1 |
-| recovery over 3x cost reference | 184x149 minus 122x149 | 1.6 | 3.7 | -2.1 | 0.6 | 1.0 | 2.7 |
-| full height over half | 368x448 minus 368x224 | 43.0 | 39.8 | 3.2 | 15.0 | 17.6 | 27.6 |
-| full width over half | 368x448 minus 184x448 | 27.3 | 24.0 | 3.3 | 1.4 | 4.4 | 28.9 |
+| floor over 2.5x cost reference | 184x179 minus 147x179 | -0.4 | 2.6 | -3.1 | 0.4 | 0.6 | 2.1 |
+| recovery over 3x cost reference | 184x149 minus 122x149 | 0.6 | 3.7 | -3.1 | 0.6 | 1.0 | 2.7 |
+| full height over half | 368x448 minus 368x224 | 42.9 | 39.8 | 3.1 | 15.0 | 17.6 | 27.6 |
+| full width over half | 368x448 minus 184x448 | 27.1 | 24.0 | 3.2 | 1.4 | 4.4 | 28.9 |
 <!-- /generated: dynres-findings -->
 
 ## The policies on the board
@@ -91,45 +96,25 @@ manager, at two budgets; the fixed row is the camera's half scale. The quality
 columns score every frame's size against the reference render of the same
 pose at full size ([Render-Harness.md](../tools/Render-Harness.md)).
 
-<!-- generated: dynres-policies sha256=a5626658a0f08efc3762eec0ad984a4af77add5290f00093110e0bf1f69d7aa0 -->
-| Path | Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| camera | 60.0 | fixed | half | 54.0 | 64.2 | 66.4 | 21.9% | 0 | 184x224 100% | 9.53 | 0.5581 |
-| camera | 60.0 | stepped | width | 51.7 | 60.0 | 64.2 | 5.0% | 11 | 184x358 3%, 184x298 17%, 184x224 29%, 184x179 52% | 9.55 | 0.5566 |
-| camera | 60.0 | predicted | width | 54.5 | 59.0 | 60.8 | 1.1% | 14 | 184x448 2%, 184x358 10%, 184x298 16%, 184x224 39%, 184x179 33% | 9.54 | 0.5572 |
-| camera | 60.0 | predicted | height | 53.6 | 58.8 | 62.9 | 0.7% | 10 | 368x298 2%, 368x224 11%, 184x224 55%, 184x179 32% | 9.53 | 0.5577 |
-| camera | 75.0 | fixed | half | 54.0 | 64.2 | 66.4 | 0.0% | 0 | 184x224 100% | 9.53 | 0.5581 |
-| camera | 75.0 | stepped | width | 64.1 | 75.4 | 93.5 | 5.4% | 12 | 368x448 1%, 184x448 11%, 184x358 25%, 184x298 42%, 184x224 21% | 9.52 | 0.5589 |
-| camera | 75.0 | predicted | width | 67.1 | 73.5 | 76.1 | 1.0% | 10 | 184x448 17%, 184x358 37%, 184x298 31%, 184x224 14% | 9.52 | 0.5592 |
-| camera | 75.0 | predicted | height | 64.2 | 71.0 | 75.9 | 0.6% | 10 | 368x358 3%, 368x298 16%, 368x224 43%, 184x224 38% | 9.50 | 0.5611 |
-| tour | 60.0 | fixed | half | 33.2 | 51.9 | 55.4 | 0.0% | 0 | 184x224 100% | 12.05 | 0.4968 |
-| tour | 60.0 | stepped | width | 45.5 | 71.7 | 91.3 | 17.2% | 20 | 368x448 7%, 184x448 23%, 184x358 36%, 184x298 29%, 184x224 4% | 12.04 | 0.4974 |
-| tour | 60.0 | predicted | width | 51.2 | 58.2 | 62.4 | 1.1% | 23 | 184x448 64%, 184x358 18%, 184x298 9%, 184x224 9% | 12.04 | 0.4977 |
-| tour | 60.0 | predicted | height | 51.9 | 58.8 | 61.4 | 1.0% | 21 | 368x358 16%, 368x298 43%, 368x224 24%, 184x224 16% | 12.04 | 0.4977 |
-| tour | 75.0 | fixed | half | 33.2 | 51.9 | 55.4 | 0.0% | 0 | 184x224 100% | 12.05 | 0.4968 |
-| tour | 75.0 | stepped | width | 66.3 | 78.8 | 85.2 | 10.8% | 22 | 368x448 40%, 184x448 43%, 184x358 15%, 184x298 1%, 184x224 1% | 12.04 | 0.4984 |
-| tour | 75.0 | predicted | width | 60.0 | 72.5 | 76.5 | 0.7% | 12 | 368x448 22%, 184x448 65%, 184x358 13% | 12.04 | 0.4982 |
-| tour | 75.0 | predicted | height | 66.6 | 72.7 | 76.4 | 1.4% | 23 | 368x448 28%, 368x358 44%, 368x298 15%, 368x224 13% | 12.03 | 0.4991 |
+<!-- generated: dynres-policies sha256=1f7ded71fc2fa639a0db293e7a60c1eaf585096633bffe48c8c1a23103866a09 -->
+| Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 60.0 | fixed | half | 50.8 | 61.0 | 63.2 | 11.6% | 0 | 184x224 100% | 9.53 | 0.5581 |
+| 60.0 | stepped | width | 51.4 | 59.8 | 64.2 | 4.7% | 11 | 184x358 3%, 184x298 24%, 184x224 25%, 184x179 48% | 9.55 | 0.5567 |
+| 60.0 | predicted | width | 53.8 | 59.4 | 64.1 | 3.3% | 12 | 184x448 2%, 184x358 11%, 184x298 16%, 184x224 57%, 184x179 15% | 9.53 | 0.5578 |
+| 60.0 | predicted | height | 52.1 | 59.1 | 64.1 | 3.0% | 8 | 368x298 2%, 368x224 12%, 184x224 72%, 184x179 15% | 9.53 | 0.5582 |
+| 75.0 | fixed | half | 50.8 | 61.0 | 63.2 | 0.0% | 0 | 184x224 100% | 9.53 | 0.5581 |
+| 75.0 | stepped | width | 63.9 | 75.3 | 93.7 | 5.4% | 12 | 368x448 1%, 184x448 11%, 184x358 26%, 184x298 46%, 184x224 16% | 9.52 | 0.5590 |
+| 75.0 | predicted | width | 67.2 | 74.0 | 77.5 | 2.3% | 10 | 184x448 17%, 184x358 37%, 184x298 32%, 184x224 14% | 9.52 | 0.5592 |
+| 75.0 | predicted | height | 61.9 | 73.2 | 78.5 | 2.9% | 10 | 368x358 3%, 368x298 17%, 368x224 40%, 184x224 40% | 9.50 | 0.5610 |
 
 Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM are against the reference at full size, lower dE and higher SSIM being closer.
 <!-- /generated: dynres-policies -->
 
 Prediction error compares each predicted frame's corrected price with its
-measured draw plus upscale cost, grouped by path, ladder and budget.
+measured cost, grouped by path, ladder and budget.
 
-<!-- generated: dynres-prediction sha256=70452cc80bb8df0b1ea67b8db98cbd77728f7604608262340e146f9ddc4ec65d -->
-| Path | Ladder | Budget | Frames | Median error | p95 error | Over budget |
-|---|---|---|---|---|---|---|
-| camera | height | 60.0 | 727 | 0.4% | 2.4% | 0.7% |
-| camera | width | 60.0 | 727 | 0.4% | 2.2% | 1.1% |
-| camera | height | 75.0 | 727 | 0.4% | 2.0% | 0.6% |
-| camera | width | 75.0 | 727 | 0.4% | 2.2% | 1.0% |
-| tour | height | 60.0 | 900 | 0.6% | 2.4% | 1.0% |
-| tour | width | 60.0 | 900 | 0.6% | 2.6% | 1.1% |
-| tour | height | 75.0 | 900 | 0.6% | 2.4% | 1.4% |
-| tour | width | 75.0 | 900 | 0.6% | 2.5% | 0.7% |
-
-Online refit: 1000 calls, mean 4.319 us, max 33 us per call.
+<!-- generated: dynres-prediction sha256=0 -->
 <!-- /generated: dynres-prediction -->
 
 What the table shows:

@@ -6,7 +6,7 @@
  * The first camera path supplies the offline fit. Then each policy flies
  * every named camera path through the scene manager at a fixed frame step,
  * one record per frame, against two budgets. Logs include frame costs,
- * chosen predictions, final refitted weights and refit overhead.
+ * chosen predictions, the refit's final scale and offset and its cost.
  * launcher/tools/r3d/dynres_report.py reads the capture.
  *
  * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
@@ -128,7 +128,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
 }
 
 static void
-measure_size(raster_t* raster, resolution_step_t size, int32_t* frame_us, char* report) {
+measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
@@ -139,7 +139,7 @@ measure_size(raster_t* raster, resolution_step_t size, int32_t* frame_us, char* 
         const camera_t camera = r3d_scene_camera_at(path, t_ms);
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &camera, 0);
-        raster_upscale(raster);
+        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
         triangles += stats.triangles;
     }
@@ -196,26 +196,26 @@ test_raster_stage_split_by_size(void) {
     raster.height = ladders[0].steps[0].height;
     const size_t scratch_bytes = raster_scratch_bytes(&raster);
     raster.scratch = memory_alloc(scratch_bytes, MEMORY_PSRAM);
-    raster.destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    gfx_color_t* destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(int32_t) * POSES_MAX);
     char* report = malloc(FRAME_COST_REPORT_MAX); /* too big for the frame task's stack */
     TEST_ASSERT_NOT_NULL(report);
     TEST_ASSERT_NOT_NULL(raster.scratch);
-    TEST_ASSERT_NOT_NULL(raster.destination);
+    TEST_ASSERT_NOT_NULL(destination);
     TEST_ASSERT_NOT_NULL(frame_us);
     for (int l = 0; l < LADDER_COUNT; l++) {
         for (int i = 0; i < ladders[l].count; i++) {
             if (!measured_before(l, i)) {
-                measure_size(&raster, ladders[l].steps[i], frame_us, report);
+                measure_size(&raster, destination, ladders[l].steps[i], frame_us, report);
             }
         }
     }
     for (int i = 0; i < (int)(sizeof mapped_sizes / sizeof mapped_sizes[0]); i++) {
-        measure_size(&raster, mapped_sizes[i], frame_us, report);
+        measure_size(&raster, destination, mapped_sizes[i], frame_us, report);
     }
     free(report);
     free(frame_us);
-    memory_free(raster.destination);
+    memory_free(destination);
     memory_free(raster.scratch);
     TEST_PASS();
 }
@@ -235,30 +235,33 @@ typedef struct {
 static bool
 calibrate(const resolution_config_t* config, resolution_model_t* model) {
     const r3d_instance_t instance = {&mesh, NULL};
-    raster_t raster = {.instances = &instance,
-                       .instance_count = 1,
-                       .upscaled = true,
-                       .width = config->steps[0].width,
-                       .height = config->steps[0].height,
-                       .destination_width = GFX_WIDTH,
-                       .destination_height = GFX_HEIGHT};
+    render_context_t context = {.policy = RENDER_FIXED,
+                                .raster = {.instances = &instance,
+                                           .instance_count = 1,
+                                           .upscaled = true,
+                                           .width = config->steps[0].width,
+                                           .height = config->steps[0].height,
+                                           .destination_width = GFX_WIDTH,
+                                           .destination_height = GFX_HEIGHT}};
+    raster_t* raster = &context.raster;
     const uint32_t period = r3d_scene_camera_period_ms(path);
     const int poses = (int)((period + POSE_EVERY_MS - 1) / POSE_EVERY_MS);
-    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
-    raster.destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    raster->scratch = memory_alloc(raster_scratch_bytes(raster), MEMORY_PSRAM);
+    gfx_color_t* destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
     resolution_sample_t* samples = memory_alloc(sizeof(*samples) * (size_t)(poses * config->step_count), MEMORY_PSRAM);
     bool fitted = false;
-    if (raster.scratch != NULL && raster.destination != NULL && samples != NULL) {
+    if (raster->scratch != NULL && destination != NULL && half != NULL && samples != NULL) {
         int count = 0;
         for (int step = 0; step < config->step_count; step++) {
-            raster.width = config->steps[step].width;
-            raster.height = config->steps[step].height;
+            raster->width = config->steps[step].width;
+            raster->height = config->steps[step].height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 const camera_t camera = r3d_scene_camera_at(path, t_ms);
                 const int64_t start = timing_now_us();
-                const raster_stats_t stats = raster_draw(&raster, &camera, 0);
+                const raster_stats_t stats = raster_draw(raster, &camera, 0);
                 const int64_t drawn = timing_now_us();
-                raster_upscale(&raster);
+                (void)render_context_compose(&context, destination, half);
                 samples[count++] = (resolution_sample_t){step, stats.triangles, (int32_t)(drawn - start),
                                                          (int32_t)(timing_now_us() - drawn)};
             }
@@ -266,8 +269,9 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
         fitted = resolution_model_fit(model, config, samples, count);
     }
     memory_free(samples);
-    memory_free(raster.destination);
-    memory_free(raster.scratch);
+    memory_free(half);
+    memory_free(destination);
+    memory_free(raster->scratch);
     return fitted;
 }
 
@@ -316,7 +320,10 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_context_set_scale(render_context_main(), 50);
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
-    const scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT};
+    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
+    gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(half);
+    target.half_pixels = half;
     /* Timed here, around the scene's own two calls, so every policy and the
      * fixed scale (which the context does not time) are timed alike. */
     for (int i = 0; i < frames; i++) {
@@ -333,6 +340,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
                  (long)config->budget_us, (double)refit->scale, (double)refit->offset_us);
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
+    memory_free(half);
     scene_unload(flown);
     log_frames(camera, policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records,
                frames);
