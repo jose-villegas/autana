@@ -35,8 +35,7 @@ STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
 FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")
 
 _REFIT_COST = re.compile(r"dynres_refit_cost: calls (\d+) mean_us ([\d.]+) max_us ([\d.]+)")
-_REFIT = re.compile(r"dynres_refit: (\w+) (\w+) (\d+) base ([\d.eE+-]+) per_triangle ([\d.eE+-]+) "
-                   r"per_triangle_row ([\d.eE+-]+) per_pixel_share ([\d.eE+-]+)")
+_REFIT = re.compile(r"dynres_refit: (\w+) (\w+) (\d+) scale ([\d.eE+-]+) offset_us ([\d.eE+-]+)")
 
 
 def read_captures(paths, refit=None):
@@ -59,8 +58,8 @@ def read_captures(paths, refit=None):
                     refit["cost"] = {"calls": int(m[1]), "mean_us": float(m[2]), "max_us": float(m[3])}
             elif m := _REFIT.search(line):
                 if refit is not None:
-                    refit.setdefault("weights", {})[(m[1], m[2], int(m[3]))] = dict(zip(
-                        ("base", "per_triangle", "per_triangle_row", "per_pixel_share"),
+                    refit.setdefault("correction", {})[(m[1], m[2], int(m[3]))] = dict(zip(
+                        ("scale", "offset_us"),
                         (float(value) for value in m.groups()[3:])))
             elif m := FRAMES.search(line):
                 records = [tuple(int(v) for v in item.split(":")) for item in m[6].split()]

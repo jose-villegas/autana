@@ -328,10 +328,9 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         record_frame(&records[i], began_us, drawn_us, composed_us);
     }
     if (model != NULL) {
-        const resolution_model_t* refit = &render_context_main()->predict.model;
-        ESP_LOGI(TAG, "dynres_refit: %s %s %ld base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f",
-                 camera, ladder->name, (long)config->budget_us, (double)refit->base_us, (double)refit->per_triangle_us,
-                 (double)refit->per_triangle_row_us, (double)refit->per_pixel_share_us);
+        const resolution_predict_t* refit = &render_context_main()->predict;
+        ESP_LOGI(TAG, "dynres_refit: %s %s %ld scale %.3f offset_us %.0f", camera, ladder->name,
+                 (long)config->budget_us, (double)refit->scale, (double)refit->offset_us);
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(flown);
@@ -420,9 +419,9 @@ test_dynamic_resolution_refit_cost(void) {
     for (int i = 0; i < 1000; i++) {
         predict->step = i % config->step_count;
         const int triangles = 1000 + (i * 137 % 19000);
-        const int32_t draw_us = (int32_t)resolution_model_predict_us(&prior, config, predict->step, triangles);
+        const int32_t frame_us = (int32_t)resolution_model_predict_us(&prior, config, predict->step, triangles);
         const int64_t began_us = timing_now_us();
-        resolution_predict_measured(predict, config, triangles, draw_us);
+        resolution_predict_measured(predict, config, triangles, frame_us);
         const int64_t elapsed_us = timing_now_us() - began_us;
         total_us += elapsed_us;
         max_us = elapsed_us > max_us ? elapsed_us : max_us;
