@@ -890,6 +890,10 @@ static void
 test_fire_is_smothered_when_fully_buried(void) {
     fixture();
     surround_fire(STONE, STONE, STONE, STONE);
+    /* And both up-diagonals: try_slide() carries fire out through either
+     * before the reactions pass runs, which also empties (3,3). */
+    sand_set(&s, 2, 2, STONE);
+    sand_set(&s, 4, 2, STONE);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -898,6 +902,9 @@ test_fire_is_smothered_when_fully_buried(void) {
                              "out - the only way sand puts fire out, since a single touch "
                              "just lets sand sink through uneventfully (see "
                              "test_sand_sinks_through_fire above)");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_of(MAT_FIRE),
+                                  "and no fire may be left anywhere - a fire that drifted out of an "
+                                  "open box also empties (3,3), so only this tells smothering apart");
 }
 
 static void
