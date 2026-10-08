@@ -509,6 +509,43 @@ finish_fed_row(sand_t* real, real_board_t* b, int steps, step_feed_fn feed, cons
     free(real);
 }
 
+/* A row that differs from others only by data: `build` painted on a fresh
+ * board, settled settle_steps under ordinary gravity, then timed over `steps`
+ * - fed by `feed` before each one when it is set. */
+typedef struct {
+    uint32_t seed;
+    bool app_rates;
+    bool soak;
+    void (*build)(sand_t* s);
+    int settle_steps;
+    int steps;
+    step_feed_fn feed;
+    const char* scene;
+    const char* name;
+    int64_t goal_us;
+    int64_t ceiling_us;
+} settled_row_t;
+
+static void
+run_settled_row(const settled_row_t* row) {
+    real_board_t b;
+    sand_t* const real = real_board_open(&b, row->seed);
+    if (row->app_rates) {
+        use_app_rates(real);
+    }
+    if (row->soak) {
+        sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
+    }
+    row->build(real);
+    run_steps(real, row->settle_steps, 0, 1000);
+
+    if (row->feed != NULL) {
+        finish_fed_row(real, &b, row->steps, row->feed, row->scene, row->name, row->goal_us, row->ceiling_us);
+    } else {
+        finish_timed_row(real, &b, row->steps, 1000, row->scene, row->name, row->goal_us, row->ceiling_us);
+    }
+}
+
 /* The gas rows run on both paths and the app runs one core at lower
  * qualities, so each path has its own goal and ceiling. */
 static void
@@ -1652,17 +1689,17 @@ test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
 
 static void
 test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 23u);
-
-    build_campfire_scene(real);
-
-    /* Let the sand settle and the fire catch, so the timed steps are a
-     * burning campfire rather than a scene still falling into place. */
-    run_steps(real, 30, 0, 1000);
-
-    /* Perf-scoped, with the block at 16x32. */
-    finish_timed_row(real, &b, 20, 1000, "campfire on a sand bed", "campfire on sand", 23520, 30010);
+    /* Settled so the sand lands and the fire catches, and the timed steps are
+     * a burning campfire rather than a scene still falling into place.
+     * Perf-scoped, with the block at 16x32. */
+    run_settled_row(&(const settled_row_t){.seed = 23u,
+                                           .build = build_campfire_scene,
+                                           .settle_steps = 30,
+                                           .steps = 20,
+                                           .scene = "campfire on a sand bed",
+                                           .name = "campfire on sand",
+                                           .goal_us = 23520,
+                                           .ceiling_us = 30010});
 }
 
 /* A tilted board is a different path, not a rotation of the same one:
@@ -2086,17 +2123,17 @@ test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_bud
  * ceiling. */
 static void
 test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 29u);
-    use_app_rates(real);
-
-    build_four_liquid_scene(real);
-
-    /* Settle first - the same "let it get going" step as the every-material
+    /* Settled first - the same "let it get going" step as the every-material
      * flip test above, so the measured window lands on a live scene. */
-    run_steps(real, 10, 0, 1000);
-
-    finish_timed_row(real, &b, 20, 1000, "four liquids reacting at once", "four reacting liquids", 64630, 75190);
+    run_settled_row(&(const settled_row_t){.seed = 29u,
+                                           .app_rates = true,
+                                           .build = build_four_liquid_scene,
+                                           .settle_steps = 10,
+                                           .steps = 20,
+                                           .scene = "four liquids reacting at once",
+                                           .name = "four reacting liquids",
+                                           .goal_us = 64630,
+                                           .ceiling_us = 75190});
 }
 
 static void
@@ -2158,29 +2195,31 @@ test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
  * moment it's painted. */
 static void
 test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 41u);
-    use_app_rates(real);
-
-    build_thermal_shock_scene(real);
-
     /* Step count is fixed at 10 by the host guard beside this test (its own
      * comment covers the cullet timeline); the ceiling is chosen against
      * the device's 5-second task watchdog at that fixed count - raising the
      * count without minding the ceiling needs re-doing the bet. */
-    finish_timed_row(real, &b, 10, 1000, "thermal shock lattice", "thermal shock", 83240, 97690);
+    run_settled_row(&(const settled_row_t){.seed = 41u,
+                                           .app_rates = true,
+                                           .build = build_thermal_shock_scene,
+                                           .steps = 10,
+                                           .scene = "thermal shock lattice",
+                                           .name = "thermal shock",
+                                           .goal_us = 83240,
+                                           .ceiling_us = 97690});
 }
 
 static void
 test_the_boiler_scene_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 43u);
-    use_app_rates(real);
-
-    build_boiler_scene(real);
-    run_steps(real, 20, 0, 1000);
-
-    finish_timed_row(real, &b, 30, 1000, "boiler scene", "boiler", 19890, 26380);
+    run_settled_row(&(const settled_row_t){.seed = 43u,
+                                           .app_rates = true,
+                                           .build = build_boiler_scene,
+                                           .settle_steps = 20,
+                                           .steps = 30,
+                                           .scene = "boiler scene",
+                                           .name = "boiler",
+                                           .goal_us = 19890,
+                                           .ceiling_us = 26380});
 }
 
 /* Sand and dirt poured in equal amounts, water dropped over both until
@@ -2192,16 +2231,17 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
  * that test's comment for why 35). */
 static void
 test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 53u);
-    use_app_rates(real);
-    sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
-
-    build_wet_earth_scene(real);
-    run_steps(real, 35, 0, 1000);
-
     /* Perf-scoped, with the block at 16x32. */
-    finish_timed_row(real, &b, 30, 1000, "wet earth scene", "wet earth", 29860, 37620);
+    run_settled_row(&(const settled_row_t){.seed = 53u,
+                                           .app_rates = true,
+                                           .soak = true,
+                                           .build = build_wet_earth_scene,
+                                           .settle_steps = 35,
+                                           .steps = 30,
+                                           .scene = "wet earth scene",
+                                           .name = "wet earth",
+                                           .goal_us = 29860,
+                                           .ceiling_us = 37620});
 }
 
 /* The water-over-lava scene from this file's own section above, run as a
@@ -2390,15 +2430,16 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
  * the plant bed row over again. */
 static void
 test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 11u);
-    sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
-    build_plant_pour_scene(real);
-
-    run_steps(real, PLANT_POUR_SETTLE_STEPS, 0, 1000);
-
-    finish_fed_row(real, &b, PLANT_POUR_MEASURED_STEPS, plant_pour_stamp, "plant pour", "plant pour",
-                   PLANT_POUR_BUDGET_US, 78730);
+    run_settled_row(&(const settled_row_t){.seed = 11u,
+                                           .soak = true,
+                                           .build = build_plant_pour_scene,
+                                           .settle_steps = PLANT_POUR_SETTLE_STEPS,
+                                           .steps = PLANT_POUR_MEASURED_STEPS,
+                                           .feed = plant_pour_stamp,
+                                           .scene = "plant pour",
+                                           .name = "plant pour",
+                                           .goal_us = PLANT_POUR_BUDGET_US,
+                                           .ceiling_us = 78730});
 }
 
 /* The same heap once it has stopped: the state a poured garden spends almost
@@ -2425,14 +2466,15 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
  * what a garden does for all but the first few hundred steps of its life. */
 static void
 test_a_finished_tree_fits_in_the_frame_budget(void) {
-    real_board_t b;
-    sand_t* const real = real_board_open(&b, 11u);
-    sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
-    build_plant_bed_scene(real);
-
-    run_steps(real, MATURE_TREE_SETTLE_STEPS, 0, 1000);
-
-    finish_timed_row(real, &b, 200, 1000, "finished tree", "finished tree", MATURE_TREE_BUDGET_US, 25040);
+    run_settled_row(&(const settled_row_t){.seed = 11u,
+                                           .soak = true,
+                                           .build = build_plant_bed_scene,
+                                           .settle_steps = MATURE_TREE_SETTLE_STEPS,
+                                           .steps = 200,
+                                           .scene = "finished tree",
+                                           .name = "finished tree",
+                                           .goal_us = MATURE_TREE_BUDGET_US,
+                                           .ceiling_us = 25040});
 }
 
 /* Every row above holds the board portrait, and the block shape behind the
