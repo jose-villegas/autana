@@ -58,7 +58,6 @@ flowchart LR
     reactionMatrix["Reaction pair-matrix"]:::side
     materialData["Materials + reactions<br/>as baked data"]:::side
     levelEditor["Level editor"]:::side
-    sandInstance["Sand core as an instance"]:::side
   end
   subgraph G["Phases 3-5: the games"]
     direction TB
@@ -79,7 +78,6 @@ flowchart LR
   tiltShake --> rollingBall
   levelEditor --> platformer
   materialData --> platformer
-  sandInstance --> platformer
   tiltShake --> platformer
   reactionMatrix --> materialData
   bandRing -.->|scrolling track| platformer
@@ -179,8 +177,8 @@ flowchart TB
   RC["render/rc: raycaster<br/>DDA per column, textured<br/>vertical spans, depth array"]:::r
   R3D["render/r3d: span rasterizer<br/>flat / Gouraud / dithered / affine,<br/>ordering table, 16-bit z per band, internal SRAM"]:::r
   M7["Mode-7 floor<br/>per-scanline affine plane"]:::r
-  SPR["render/r2d: tiles, line scroll,<br/>sprites, collision, sim-window<br/>compositing"]:::r
-  SIM["sim/sand: the automaton as instances:<br/>full-screen world, or VFX windows<br/>over tiles; materials as data"]:::r
+  SPR["render/r2d: tiles, line scroll,<br/>sprites, collision"]:::r
+  SIM["sim/sand: the automaton as<br/>the room world;<br/>materials as data"]:::r
 
   GFX["gfx retained fb, core-1 present +<br/>internal-SRAM band ring, dirty bands,<br/>mode request at enter()"]:::core
   CM["colormap / palettes + CLUT<br/>textures + Bayer dither"]:::core
@@ -192,7 +190,6 @@ flowchart TB
   BALL -.->|v1| M7
   PLAT --> SPR
   PLAT --> SIM
-  SIM -.->|VFX windows| SPR
   RC --> GFX
   R3D --> GFX
   M7 --> GFX
@@ -717,13 +714,10 @@ band ring's per-band z-buffer in internal SRAM (3.3) earn their place:
   up for every frame it moves. Decide this before the level format is
   designed.
 
-### 4.3 Platformer with parallax and 2D lighting → two tracks, and the mix
+### 4.3 Platformer with parallax and 2D lighting → two tracks
 
 This game is exploratory by design (maintainer's call): two ways to
-build the world are both kept, and the interesting question is how they
-combine. The architectural requirement that makes the combination
-possible is stated at the end, because it has to be built before either
-track gets far.
+build the world are both kept.
 
 **Track A: the tile engine, scrolling.**
 
@@ -753,7 +747,7 @@ keeps every present cheap in a fixed-camera room.
 - **Levels are placed blocks of a material.** A level is an ordered list
   of rectangles, each "material *m*, size (*w*, *h*), at (*x*, *y*)" in
   cell units, not a uniform tile grid. Loading
-  a room fills the rectangles into the instance's grid in list order, so
+  a room fills the rectangles into the grid in list order, so
   a later block overwrites an earlier one and carving is just a block of
   empty. A list of a few dozen records is a few hundred bytes, so levels
   are tiny as baked headers and a larger world costs nothing to keep in
@@ -792,138 +786,13 @@ keeps every present cheap in a fixed-camera room.
   Per-pixel normal-mapped lighting stays an option inside a light's
   radius only.
 
-**Track C: the mix: the automaton as a VFX and terrain layer over
-tiles.** This is where the two stop being alternatives:
-
-- **Windowed simulation.** Run the automaton only inside small
-  rectangular *sim windows* anchored in world space (a torch's fire, a
-  pipe pouring water, sand released by a trap, an explosion, smoke and
-  sparks) composited over the scrolling tile map. A 48×48-cell window is
-  2.3 KB and a few microseconds when settled; a dozen of them are cheaper
-  than one full grid. Empty cells are transparent, so the tiles show
-  through. The cellular automaton becomes the particle system, with
-  physics the particle system never had: water pools, fire spreads,
-  steam rises and condenses.
-- **Tiles as boundary.** A window reads the tile map's collision mask as
-  its static solid cells, so liquid flows over floors and fire climbs
-  walls without the tiles being cells. Grains leaving a window are
-  dropped, or the window grows or moves to follow them, per effect.
-- **Destructible tiles.** On impact a tile converts into cells inside a
-  window (rubble, sand, a burst pipe), which is destructible terrain in a
-  scrolling game; settled cells can optionally bake back into a tile so
-  the window can close.
-- **Coupling both ways.** Cells touching an entity apply the material's
-  effect (fire damage, wetness, burial); tiles and entities seed cells
-  (an emitter tile, a thrown flask); the game reads cell counts for
-  triggers (the pool is full, the fire is out).
-- **Where each track leads.** In a scrolling game the automaton's dirty
-  tracking buys nothing (the frame is full anyway), so its cost is only
-  the windows' step, which is small. In a room-based game the whole
-  screen can be one window and Track B falls out as the special case.
-
-**Track C design sketch.** The two things the mix needs:
-cells that are spatially aware of layers, and cells that survive
-scrolling, are one design seen from two sides, and the choice that
-decides it is *which coordinate frame the cells live in*. The answer is
-both, for different jobs:
-
-- **World-anchored windows, for VFX.** A window has a world origin and a
-  layer id; its cells are in window-local coordinates. Scrolling never
-  moves a cell, only where the window is composited (a clipped blit at a
-  pixel offset), which is why scrolling is not hard for this half.
-  Windows are created by emitters and events, grow to a cap when grains
-  reach their edge, sleep through the existing block sleeping, and close
-  when empty or when settled cells bake back into a tile. Cells in
-  different windows do not interact, fine for effects, and the reason
-  terrain needs the other frame.
-- **A screen-anchored grid with a scroll vector, for the active area.**
-  One grid the size of the screen plus a margin. Camera motion is
-  accumulated and split: the whole-cell part is applied *between* steps
-  as a translation of the grid (one `memmove` per row, ~41 KB, well under
-  a millisecond) and the strip that came into view is filled from the
-  world: the gameplay tile layer's collision mask as static solid cells,
-  plus any stored cells for that strip from a compressed off-screen
-  store. The fractional part (cells are 2 px, the camera moves in
-  pixels) is only a draw offset. Physics never sees the scroll. This is
-  Noita's chunk streaming at one-screen scale; Track B is the case where
-  the scroll is always zero.
-- **Where the scroll vector becomes physics.** The sand app already has a
-  momentum channel driven by the gyroscope. Feeding it the negative
-  camera velocity, scaled per window, makes cells inertial: smoke trails
-  when the camera lurches, dust settles when it stops, rain on a
-  background layer drifts by that layer's parallax factor. That is the
-  meaningful version of "cells aware of the scroll vector", it reuses
-  code that exists, and it is a per-window parameter, never per cell.
-- **Layer awareness.** A window's layer id gives it two things: its
-  compositing order and scroll factor from the layer it is drawn on, and
-  its *boundary* from the gameplay layer only. Background windows are
-  pure effects with no entity coupling; gameplay-layer windows hurt, wet
-  and bury entities and feed triggers. Depth is free through the palette
-  lookup: a background window draws one light level dimmer at no
-  per-pixel cost.
-- **Compositing.** Scrolling: every frame is full, so the draw is
-  `draw(instance, band, clip, offset)` per band for each overlapping
-  window, the band ring of 3.3. Rooms: the row-run dirty path as today.
-  Same instance type, two draw paths.
-- **Budget, estimates.** A 48×48 window is ~2,300 cells: from the sand
-  app's measured 6,623 us full-size step for 41,216 cells (device;
-  see 3.3 for why this is currently slower than the
-  pegged budget), *estimate* ~0.37 ms per step fully active
-  and near zero asleep, so a dozen live windows are *estimate* a few
-  milliseconds. The scrolling tile draw itself is a full-frame blit,
-  *estimate* ~2 ms at two cycles per pixel.
-- **Build order that proves it early**, each a host test before it is a
-  device number: (1) the instance core; (2) one world-anchored fire
-  window over a scrolling tile background in the host render harness,
-  which shows layers and compositing without the device; (3) the
-  shifting grid with tile-mask fill, the first scroll test; (4) the
-  momentum coupling, one parameter once the rest exists.
-- **Locality is the performance model.** The
-  simulation never needs to run full-screen; full-screen is the special
-  case of one big window. A level designer places a *torch*, and that is
-  an emitter record in the level's rectangle list: "instance of 16×32
-  cells, this material set, at world (x, y), on layer n". Loading the
-  level creates the instance, the game tracks its quad on screen, and
-  the draw composites it at the quad's offset and scale. Effects are
-  authored in the editor the same way terrain is.
-- **Parallax as level of detail.** A background window runs cheaper in
-  three independent, per-window ways: bigger cells (a 16×32 instance
-  drawn at 4×4 px covers what a 32×64 one does at a quarter of the step
-  cost), a lower step rate (every second or fourth frame, invisible at
-  parallax speeds), and a dimmer palette light level for depth. The
-  foreground layer gets full resolution and full rate. All three are
-  free once the instance carries its own size and the draw takes a
-  scale.
-- **Keep the quad axis-aligned with an integer scale** (1×, 2×, 4× cells
-  to pixels). A rotated or arbitrarily scaled quad turns the cheap blit
-  into a per-pixel affine sample, the Mode-7 cost class, which is not
-  worth paying for smoke.
-- **Left open on purpose:** what happens when two windows meet: merge
-  into one, or stay independent. Effects can stay independent; terrain
-  cannot, and that boundary is exactly where the active-area grid takes
-  over from windows. Decide on the first case that needs it.
-
-**The architectural requirement: the sand core as an instance.** Today the
-simulation is one grid at one size owned by the app. Every option above
-needs it to be a value: `(cells, width, height, material table, rng,
-boundary mask)`, with `step(instance)` and `draw(instance, destination,
-offset, scale)` taking it as a parameter, several instances alive at
-once, and the boundary supplied by the host (a room's edges, a tile
-mask). The host test grids already run at other sizes, so the core is
-closer to this than the app is; the work is making it explicit and
-keeping the byte-identical fingerprint for the sand app itself. Once
-that exists, Track B is one full-screen instance,
-Track C is many small ones, and the same materials, reactions, editor
-and baked data serve both.
-
-This changes the engine framing either way: the sand app graduates from
+This changes the engine framing for Track B: the sand app graduates from
 showcase to the world-simulation layer (`sim/` in section 5), and the
 tilt library, the editor pattern and the reaction table become engine
 pieces rather than app internals. The band ring (3.3) is a prerequisite
-for Track A and C's scrolling; Track B lives in full-fb mode on the sand
-dirty tracker either way, reading through decision B's retained
-framebuffer. The first prototype is Track B, because it needs the least
-new code; Track A and C are explored from there, not after it.
+for Track A's scrolling; Track B lives in full-fb mode on the sand dirty
+tracker, reading through decision B's retained framebuffer. The first
+prototype is Track B, because it needs the least new code.
 
 ---
 
@@ -942,11 +811,10 @@ gfx/        framebuffer or band buffers, present, primitives, dirty tracking
             band-ring modes)
 core/       fixed.h, mathi.h, rng.h, tween.h, an arena allocator,
             the authored-timeline system graduated from boot_anim
-sim/        the sand automaton as an instance: any size, several alive, host
-            boundary mask; materials and reactions as baked data; block
-            sleeping (today: apps/sand/ minus app_sand.c)
-render/     r2d: tiles, line scroll, sprites, blits, sim-window compositing,
-            collision against tiles or a sim grid, colormap lighting
+sim/        the sand automaton as a room's world; materials and reactions as
+            baked data; block sleeping (today: apps/sand/ minus app_sand.c)
+render/     r2d: tiles, line scroll, sprites, blits, collision against tiles
+            or the sand grid, colormap lighting
             r3d: transform/clip, bin, spans, z
             rc:  raycaster
 game/       physics, entities, tilt/shake, level/event tables
@@ -1006,7 +874,7 @@ in.
 | **2. r3d v1** | Span rasterizer built band-aware into the internal-SRAM band ring (3.3): flat, Gouraud, affine texture, colormap lighting; transform/clip extracted from boot_anim; triangle binning; half-res mode (scope unchanged) | Gates recomputed for 240 MHz and the band ring; cycles/pixel judged against the ~24 cycles/pixel/core ceiling (section 2), the old flat/textured sub-targets pending re-derivation |
 | **3. Raycaster and the FPS prototype** | `render/rc`, column-major textures, per-column depth, sprites, gyro look via the tilt/shake library, buttons move (scope unchanged) | Original target: 60 fps full-res walls + sprites, playable on the glass, reviewed against S3 numbers once Phases 0-1 land |
 | **4. Rolling ball** | Heightfield mesh on r3d, lit-disc ball, 2.5D fixed-point physics, gyro gravity (scope unchanged) | Original target: 30+ fps full-res, physics stable at dt 16-33 ms, reviewed against S3 numbers |
-| **5. Platformer, two tracks and the mix** | Sand core as an instance (size-agnostic, several alive, host-supplied boundary); Track B first: sprite + collision layer over the automaton, rooms, per-block lighting; level editor; materials as baked data; then Track A tiles + line scroll and Track C sim windows over tiles (scope unchanged) | Original targets: Track B ≥ 30 fps with the automaton live, zero bands sent when nothing moves; Track A/C 60 fps scrolling with three layers and a dozen live sim windows, reviewed against S3 numbers |
+| **5. Platformer, two tracks** | Track B first: sprite + collision layer over the automaton, rooms, per-block lighting; level editor; materials as baked data; then Track A tiles + line scroll | Original targets: Track B ≥ 30 fps with the automaton live, zero bands sent when nothing moves; Track A 60 fps scrolling with three layers, reviewed against S3 numbers |
 | **Throughout** | Graduate boot-anim tech (the authored-timeline system, the S3L transform extraction); host render harness; inlining-cliff gate | Every graduated piece has a second consumer and a reference test |
 
 Phase 0 is a week of measurement and no shipping code. Phases 1 and 2 are
@@ -1099,10 +967,9 @@ cheapest path to something that is unmistakably a game.
    models kept.** Track B (the sand automaton as the world, fixed-camera
    rooms, levels as blocks of a material, materials and reactions as
    baked data rather than runtime scripts) is the first prototype; Track
-   A (tiles, scrolling, line scroll) stays a full option; Track C (the
-   automaton as windowed VFX and destructible terrain over tiles) is the
-   direction to explore. All three need the sand core to become an
-   instance (section 4.3).
+   A (tiles, scrolling, line scroll) stays a full option. Running the
+   automaton as windowed VFX over tiles is out of scope: effects
+   get a scoped design of their own instead.
 
 ---
 
