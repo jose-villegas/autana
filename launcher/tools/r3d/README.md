@@ -160,7 +160,7 @@ below `--min-free-gib`.
 sweeps the flat bake's knobs:
 
 ```sh
-$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST     --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
+$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_OBJECT --host HOST     --render-args "--quarter 0 --scene SCENE_ID --object FLAT_OBJECT --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
 ```
 
 It bakes the simplified geometry once, re-lights it for each variant into

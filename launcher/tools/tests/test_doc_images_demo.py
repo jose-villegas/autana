@@ -8,6 +8,8 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
+from types import SimpleNamespace
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
@@ -18,6 +20,98 @@ APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
 class DocImageFailureTest(unittest.TestCase):
+    def test_tables_use_the_callers_scene_and_object(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        import numpy as np
+        values = (1, 2, 3, 4, 5)
+        def scores(path):
+            self.assertNotIn("atrium", path.name)
+            if path.name.endswith("_lite-compare.log"):
+                self.assertEqual(path.name, "painting_lite-compare.log")
+            return {name: values for name in ("frames mean", "two bounces", "direct light only",
+                    "intensity 1", "intensity 2", "intensity 3", "albedo boost 2",
+                    "intensity 1 (own reference)", "intensity 2 (own reference)",
+                    "intensity 3 (own reference)", "albedo boost 2 (own reference)")}
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "sampling").mkdir()
+            (work / "sampling/table.md").write_text("sampling\n")
+            pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=3,
+                                   edge_delta_e=4, interior_delta_e=5)
+            with mock.patch.object(doc_tables, "scores", side_effect=scores) as read, \
+                    mock.patch.object(doc_tables, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(doc_tables, "reference_video", return_value=(None, pair)):
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
+            self.assertIn(mock.call(work / "painting_lite-compare.log"), read.call_args_list)
+            self.assertEqual({path.name for path in (work / "tables").iterdir()},
+                             {f"gallery-{suffix}.md" for suffix in
+                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look")})
+
+    def test_driver_supplies_all_four_demo_arguments(self):
+        source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()
+        assignments = [line for line in source.splitlines() if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT="))]
+        calls = [line for line in source.splitlines() if line.startswith('run bash "$TOOLS_DIR/doc_images_demo.sh"')]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            stub = root / "doc_images_demo.sh"
+            stub.write_text('printf "%s\\n" "$@" > argv\n')
+            script = (ROOT / "scripts/lib/run.sh").read_text() + '\nTOOLS_DIR=.\nOUT=out\nWORK=work\n'
+            script += "\n".join(assignments + calls)
+            done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual((root / "argv").read_text().splitlines(),
+                             ["out", "work/demo", DEMO_SCENE.relative_to(ROOT).as_posix(), "atrium"])
+
+    def test_orphans_require_a_demo_prefix_and_a_matching_template(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            tools = root / "launcher/tools/render"
+            tools.mkdir(parents=True)
+            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py"):
+                shutil.copyfile(ROOT / "launcher/tools/render" / name, tools / name)
+            helper = root / "scripts/lib/run.sh"
+            helper.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
+            demo = root / "launcher/demo/gallery/gallery.scene.toml"
+            demo.parent.mkdir(parents=True)
+            demo.touch()
+            images = root / "docs/images/render"
+            images.mkdir(parents=True)
+            for stem in ("gallery-full", "gallery-missing", "unknown-full"):
+                (images / f"{stem}.gif").touch()
+            done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
+                                  cwd=root, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+            self.assertNotIn("orphan render/gallery-full.gif", done.stdout)
+            self.assertIn("orphan render/gallery-missing.gif", done.stdout)
+            self.assertIn("orphan render/unknown-full.gif", done.stdout)
+
+    def test_scratch_bake_packs_the_replacement_and_renders_its_object(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            tools = root / "launcher/tools/r3d"
+            tools.mkdir(parents=True)
+            (tools / "mesh_import.py").write_text("exit 0\n")
+            (tools / "build_pack.py").write_text('printf "%s\n" "$@" > pack.argv\n')
+            host = root / "host.sh"
+            host.write_text('printf "%s\n" "$@" > render.argv\nprintf "%s\n" "$AUTANA_ASSET_DIR" > assets.env\n')
+            host.chmod(0o755)
+            (root / "scratch").mkdir()
+            source = APP_SCRIPT.read_text()
+            function = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\n}", 1)[0] + "\n}\n"
+            script = (ROOT / "scripts/lib/run.sh").read_text() + \
+                'PYTHON=sh\nR3D_PYTHON=sh\nHOST=./host.sh\nSCENE=gallery.scene.toml\nID=gallery\nDEMO=.\n' + \
+                function + 'bake_and_render scratch gallery.paint painting\n'
+            done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual((root / "pack.argv").read_text().splitlines(),
+                             ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.mesh"])
+            args = (root / "render.argv").read_text().splitlines()
+            self.assertEqual(args[args.index("--scene") + 1], "gallery")
+            self.assertEqual(args[args.index("--object") + 1], "painting")
+            self.assertEqual((root / "assets.env").read_text().strip(), "scratch/assets")
+
     def test_variant_scene_keeps_its_import_dependency(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

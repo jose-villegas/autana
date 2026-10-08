@@ -1,9 +1,12 @@
 #!/bin/sh
 #
-# The demo scene's images for docs/images/, made by
+# The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> [SCENE.scene.toml [OBJECT]]
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT
+#
+# OBJECT is the full renderer; the scene must also place OBJECT_lite,
+# OBJECT_flat, OBJECT_fitted and OBJECT_fitted_full.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
 #
@@ -15,10 +18,11 @@ set -eu
 
 . scripts/lib/run.sh
 
-SCENE=${3:-launcher/demo/sponza/sponza.scene.toml}
+[ "$#" = 4 ] || { echo "$0: needs OUT WORK SCENE OBJECT" >&2; exit 2; }
+SCENE=$3
 DEMO=$(dirname "$SCENE")
 ID=$(basename "$SCENE" .scene.toml)
-FULL=${4:-atrium}
+FULL=$4
 RENDER=$1/render
 TABLES=$1/tables
 W=$2
@@ -69,15 +73,24 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/compare-ful
 # render_compare.py writes no crops where the two renders do not differ; fail
 # here rather than leave the pages linking a missing file.
 for crops in compare-full-lite compare-full-flat compare-lite-fitted compare-full-fitted-full; do
-    [ -f "$RENDER/$crops.crops.png" ] || { echo "doc_images.sh: $crops has no crops, the renders do not differ." >&2; exit 1; }
+    [ -f "$RENDER/$crops.crops.png" ] || { echo "$0: $crops has no crops, the renders do not differ." >&2; exit 1; }
 done
 
 # The fidelity sheet: two poses of the committed flat bake against the source
 # model lit per pixel. Poses at 0 to 25000 ms every 5000 give render frames 0 to 4,
 # and the sheet shows frames 2 and 4. The source model lives in
 # the demo folder and uses Git LFS.
-run "$PYTHON" launcher/tools/anim/track_host.py "$DEMO/flythrough.anim.toml" \
-    --every 5000 --until 30000 --poses camera 184 224 0.62 6 > "$W/fidelity-poses.txt"
+run "$PYTHON" - "$SCENE" "$FULL" > "$W/fidelity-poses.txt" <<'PYPOSES'
+import sys
+from pathlib import Path
+sys.path.insert(0, "launcher/tools")
+from r3d.import_settings import load_scene
+from r3d.mesh_import import camera_path_poses
+from r3d.fitted_variant import poses_text
+scene = load_scene(Path(sys.argv[1]))
+job = next(item for item in scene.renderers if item.object.name == sys.argv[2] + "_fitted")
+print(poses_text(*camera_path_poses(scene, job.renderer.visibility, 5000, either_way_up=False)), end="")
+PYPOSES
 # render_compare.sh keeps the traced frames in r3d/.cache/reference by a hash of
 # their inputs, so only a change to the scene, tracer or poses traces again.
 REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
@@ -88,12 +101,6 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.
     --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
     --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
-# The smooth bake with indirect light against the reference with the same
-# light, and bakes of the same import that differ only in what the scene says
-# about indirect light, each rendered at the same five poses. Each bake's
-# directory holds copies of the import and the scene and a link to the mesh
-# source they name, packed in place of the committed mesh, so nothing committed
-# changes.
 . scripts/lib/python.sh
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 # The committed smooth bake at the same five poses, scored against the committed
@@ -102,21 +109,24 @@ run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames 5 --dt 5000 \
     -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
     --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
-# bake_and_render DIR MESH SCENE: link the mesh source into DIR, bake the scene file in DIR,
+# Scratch bakes keep the import and scene beside their source link so their
+# dependencies resolve. The pack overrides one mesh without changing its source.
+
+# bake_and_render DIR MESH OBJECT: link the mesh source into DIR, bake the scene file in DIR,
 # pack the mesh in place of the committed one and render the five poses to DIR.avi.
 bake_and_render() {
-    dir=$1 mesh=$2 scene=$3
+    dir=$1 mesh=$2 object=$3
     run ln -sfn "$PWD/$DEMO/source" "$dir/source"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/$ID.scene.toml" --mesh "$mesh" > "$dir/bake.log" 2>&1
-    build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$dir/host" --replace "$mesh=$dir/$mesh.mesh")
-    run "${build#built }" --quarter 0 --scene "$ID" --object "$scene" --frames 5 --dt 5000 \
+    run "$PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" "$SCENE" --replace "$mesh=$dir/$mesh.mesh"
+    AUTANA_ASSET_DIR="$dir/assets" run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames 5 --dt 5000 \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }
 # The indirect-light and occlusion studies start from the physical look: the
 # committed scene without its occlusion and its [indirect] table, which the
 # scene sets for its own renders. Everything else here uses the committed look.
 run "$R3D_PYTHON" "launcher/tools/render/physical_scene.py" "$DEMO/$ID.scene.toml" "$W/physical.scene.toml"
-# variant_bake NAME BOUNCES SCENE-TABLE: bounces is `keep`, or `none` to take
+# variant_bake NAME BOUNCES SCENE-TABLE [MESH OBJECT]: bounces is `keep`, or `none` to take
 # the scene's `[bake].indirect` out; the table goes before the first object.
 variant_bake() {
     run mkdir -p "$W/indirect-$1"
@@ -141,7 +151,7 @@ PHYSICAL_REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-compare.png" --crops 4 \
     --reference-bakes "$PHYSICAL_REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
     --bake "direct light only" "$W/indirect-direct.avi" --bake "two bounces" "$W/indirect-smooth.avi" > "$W/indirect-compare.log"
-[ -f "$W/indirect-compare.crops.png" ] || { echo "doc_images.sh: indirect light has no crops, the bakes do not differ." >&2; exit 1; }
+[ -f "$W/indirect-compare.crops.png" ] || { echo "$0: indirect light has no crops, the bakes do not differ." >&2; exit 1; }
 run cp "$W/indirect-compare.png" "$RENDER/bake-indirect-compare.png"
 run cp "$W/indirect-compare.crops.png" "$RENDER/bake-indirect-crops.png"
 
@@ -181,7 +191,7 @@ AO_REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/ao-compare.png" --crops 4 \
     --reference-bakes "$AO_REFERENCE" --reference-scale 2 --sheet-frames 2,4 \
     --bake "no occlusion" "$W/ao-flat.avi" --bake "occlusion" "$W/ao-occluded.avi" > "$W/ao-compare.log"
-[ -f "$W/ao-compare.crops.png" ] || { echo "doc_images.sh: occlusion has no crops, the bakes do not differ." >&2; exit 1; }
+[ -f "$W/ao-compare.crops.png" ] || { echo "$0: occlusion has no crops, the bakes do not differ." >&2; exit 1; }
 run cp "$W/ao-compare.png" "$RENDER/bake-ao-compare.png"
 run cp "$W/ao-compare.crops.png" "$RENDER/bake-ao-crops.png"
 
@@ -203,7 +213,7 @@ sheet.save(sys.argv[2])' "$W/ao-map" "$RENDER/bake-ao-map.png"
 # Each fitted target against the same reference: its heatmap sheet at the
 # same two poses, and its last frame beside the reference, enlarged where they
 # differ most.
-#   against_reference <scene> <heatmap image> <reference image> <label> [--sheet] [--crops]
+#   against_reference <object> <heatmap image> <reference image> <label> [--sheet] [--crops]
 run "$PYTHON" -c 'import pathlib, sys; from PIL import Image
 frame = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))[4]
 picture = Image.open(frame).convert("RGB")
@@ -217,7 +227,7 @@ against_reference() {
         case "$1" in
             --sheet) sheet=yes ;;
             --crops) crops=yes ;;
-            *) echo "doc_images.sh: against_reference unknown option $1" >&2; exit 2 ;;
+            *) echo "$0: against_reference unknown option $1" >&2; exit 2 ;;
         esac
         shift
     done
@@ -230,7 +240,7 @@ against_reference() {
         run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$reference.png" --crops 3 \
             --label-a "$label" --label-b reference --row "$label | reference" "$W/fidelity-$scene.bmp" "$W/fidelity-reference-4.png" > "$W/$scene-reference.log"
         cp "$W/$reference.crops.png" "$RENDER/" || {
-            echo "doc_images.sh: $scene matches the reference, no crops." >&2
+            echo "$0: $scene matches the reference, no crops." >&2
             exit 1
         }
     fi
@@ -281,4 +291,4 @@ tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
 
-"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$W" "$RENDER" > "$W/import-examples.log" 2>&1
+"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$HOST" "$W" "$RENDER" > "$W/import-examples.log" 2>&1

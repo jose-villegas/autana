@@ -20,16 +20,37 @@ POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 
 
 class DocStagesTests(unittest.TestCase):
-    def test_stage_host_is_the_engine_viewer(self):
-        self.assertEqual(stages.HOST_SCRIPT, stages.ROOT / "launcher/tools/render/scene_viewer.sh")
-
     def test_viewer_host_build_receives_the_scene(self):
         from r3d.bake_fidelity import build_host
         with mock.patch("r3d.bake_fidelity.subprocess.run") as run:
             run.return_value.stdout = "built viewer\n"
-            build_host(Path("scene_viewer.sh"), Path("out"), stages.SCENE)
-        self.assertEqual(run.call_args.args[0], ["sh", "scene_viewer.sh", stages.SCENE.as_posix(),
+            build_host(Path("scene_viewer.sh"), Path("out"), Path("other.scene.toml"))
+        self.assertEqual(run.call_args.args[0], ["sh", "scene_viewer.sh", Path("other.scene.toml").as_posix(),
                                                "--build-only", "-o", "out"])
+
+    def test_measure_worker_renders_the_job_object_and_packs_only_its_scene(self):
+        from types import SimpleNamespace as NS
+        from r3d import bake_fidelity, appearance_simplify, lit_mesh, cost_model, poses
+        import numpy as np
+        scene = Path("gallery.scene.toml")
+        job = NS(asset_name="gallery.paint", object=NS(name="painting"),
+                 renderer=NS(fit=NS(held_out_every_ms=17)))
+        with mock.patch.object(poses, "read_poses", return_value=(1, 1, .5, 1, [0, 1])), \
+                mock.patch.object(bake_fidelity, "score", return_value=(1, 2, 3, 4, 5)) as score, \
+                mock.patch.object(bake_fidelity, "pack_bytes", return_value={}) as pack, \
+                mock.patch.object(bake_fidelity, "write_packs"), \
+                mock.patch.object(appearance_simplify, "load_views", return_value=([], 1)), \
+                mock.patch.object(appearance_simplify, "normal_error", return_value=0), \
+                mock.patch.object(appearance_simplify, "start_mesh"), \
+                mock.patch.object(lit_mesh, "read_lit_mesh"), \
+                mock.patch.object(lit_mesh, "finest_triangles", return_value=([], [], [0])), \
+                mock.patch.object(cost_model, "mesh_rows"), \
+                mock.patch.object(cost_model, "predict", return_value=np.array([1])):
+            stages.measure_worker("paint", job, Path("scratch.mesh"), self.tmp, self.tmp, Path("host"), [], scene)
+        fields = score.call_args.args[0].render_args.split()
+        self.assertEqual(fields[fields.index("--scene") + 1], "gallery")
+        self.assertEqual(fields[fields.index("--object") + 1], "painting")
+        pack.assert_called_once_with([scene], ["gallery.paint=scratch.mesh"])
 
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -66,12 +87,12 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         capture = self.tmp / "capture.txt"
         capture.write_text("other-diag\nlite both cores: mean 42000us\n")
         with self.assertRaisesRegex(ValueError, "build"):
-            stages.capture_rows(capture, "abcdef123456")
+            stages.capture_rows(capture, "abcdef123456", "sponza", "atrium")
 
     def test_capture_uses_existing_perf_parser(self):
         capture = self.tmp / "capture.txt"
         capture.write_text("abcdef123456-diag\nlite both cores: mean 42000us\n")
-        self.assertEqual(stages.capture_rows(capture, "abcdef123456"), {"lite": 42.0})
+        self.assertEqual(stages.capture_rows(capture, "abcdef123456", "sponza", "atrium"), {"lite": 42.0})
 
     def test_source_stamp_ignores_doc_refresh_but_not_recipe(self):
         (self.tmp / "launcher").mkdir()
@@ -101,19 +122,19 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         capture = self.tmp / "capture.txt"
         capture.write_text("abcdef123456-diag\nlite both cores: mean 42000us\n")
         with self.assertRaisesRegex(ValueError, "missing"):
-            stages.board_means([capture], "abcdef123456")
+            stages.board_means([capture], "abcdef123456", "sponza", "atrium")
 
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"
         capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us\n"
                            "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us\n")
         expected = [("sponza", 0), ("lite", 0)]
-        self.assertEqual(stages.board_frames([capture], expected), {("sponza", 0): 51.0, ("lite", 0): 42.0})
+        self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium"), {("sponza", 0): 51.0, ("lite", 0): 42.0})
         with self.assertRaisesRegex(ValueError, "exactly once"):
-            stages.board_frames([capture], [*expected, ("sponza", 5)])
+            stages.board_frames([capture], [*expected, ("sponza", 5)], "sponza", "atrium")
         capture.write_text(capture.read_text() + capture.read_text().splitlines()[0] + "\n")
         with self.assertRaisesRegex(ValueError, "exactly once"):
-            stages.board_frames([capture], expected)
+            stages.board_frames([capture], expected, "sponza", "atrium")
 
     def test_gpu_check_requires_saved_full_run(self):
         with self.assertRaisesRegex(ValueError, "no full run"):
@@ -172,7 +193,7 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         result.parent.mkdir(parents=True)
         result.write_text("full run")
         with mock.patch.object(stages, "RESULTS", self.tmp), mock.patch.object(stages, "gpu", lambda *args: 0):
-            self.assertEqual(stages.main(["--stage", "gpu", "--smoke"]), 0)
+            self.assertEqual(stages.main(["--stage", "gpu", "--smoke", "--scene", "other.scene.toml", "--object", "hall"]), 0)
         self.assertEqual(result.read_text(), "full run")
 
 
@@ -206,7 +227,7 @@ class PrepareSchedulingTests(unittest.TestCase):
         executor = mock.Mock()
         executor.submit.side_effect = futures
         seen = []
-        ready = stages.prepare_variants(executor, 'scene', jobs, Path('work'),
+        ready = stages.prepare_variants(executor, Path('other.scene.toml'), 'scene', jobs, Path('work'),
                                         lambda index, job: seen.append((index, job)))
         self.assertEqual(executor.submit.call_count, 2)
         self.assertTrue(all(call.args[0] is prepare for call in executor.submit.call_args_list))
@@ -224,7 +245,7 @@ class PrepareSchedulingTests(unittest.TestCase):
         executor = mock.Mock()
         executor.submit.side_effect = futures
         callback = mock.Mock()
-        ready = stages.prepare_variants(executor, None, [None, None], Path('work'), callback)
+        ready = stages.prepare_variants(executor, Path('other.scene.toml'), None, [None, None], Path('work'), callback)
         futures[0].set_exception(RuntimeError('prepare failure'))
         with self.assertRaisesRegex(RuntimeError, 'prepare failure'):
             ready[0].result()
@@ -250,7 +271,7 @@ class SmokeAdmissionTests(unittest.TestCase):
                 mock.patch.object(import_settings, 'load_scene', return_value=object()), \
                 mock.patch.object(fitted_variant, 'placed_variant', return_value=job), \
                 mock.patch.object(stages, 'current_stamp', return_value='smoke-stamp'):
-            stages._gpu(SimpleNamespace(smoke=True), Path(directory), Path(directory), executor)
+            stages._gpu(SimpleNamespace(smoke=True, scene=Path("other.scene.toml"), object="hall"), Path(directory), Path(directory), executor)
         fit_call = executor.submit.call_args_list[1]
         self.assertIs(fit_call.args[0], fitted_variant.fit_point)
         self.assertEqual(fit_call.kwargs['estimates'], FIT_BYTES)
@@ -317,12 +338,13 @@ class FullGpuSchedulingTests(unittest.TestCase):
             before = resume.read_bytes()
             with mock.patch.object(import_settings, 'load_scene', return_value=object()), \
                     mock.patch.object(fitted, 'placed_variant', side_effect=jobs), \
-                    mock.patch.object(bake_fidelity, 'build_host', return_value='host'), \
+                    mock.patch.object(bake_fidelity, 'build_host', return_value='host') as build_host, \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
                     mock.patch.object(stages, 'run'), mock.patch.object(stages, 'apply_tables'), \
                     mock.patch.object(fitted, 'plot_pareto'):
-                stages._gpu(NS(smoke=False), out, root / 'work', Executor())
+                stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
+            build_host.assert_called_once_with(stages.HOST_SCRIPT, work / 'host', Path('other.scene.toml'))
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
                              'full-GI-bake', 'full-path-culled', 'full-GI-fit']

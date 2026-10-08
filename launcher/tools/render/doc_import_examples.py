@@ -10,9 +10,10 @@ from r3d.bake_fidelity import write_assets
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import write_lit_mesh
 from r3d.mesh_import import bake_geometry
+from r3d.scene_asset import scene_id
 
 
-def main(scene_path, object_name, work, out):
+def main(scene_path, object_name, host, work, out):
     root = Path.cwd()
     scene = load_scene(scene_path)
     job = copy.deepcopy(next(item for item in scene.renderers if item.object.name == object_name))
@@ -23,8 +24,7 @@ def main(scene_path, object_name, work, out):
     write_lit_mesh(scratch, job.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
                    geometry.tri_double, **geometry.scale)
     assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.mesh", scratch, scene_path)
-    host = work / ("scene_viewer_render.exe" if os.name == "nt" else "scene_viewer_render")
-    subprocess.run([str(host), "--quarter", "0", "--scene", scene_path.name.removesuffix(".scene.toml"), "--object", object_name,
+    subprocess.run([str(host), "--quarter", "0", "--scene", scene_id(scene_path), "--object", object_name,
                     "--frames", "5", "--dt", "5000", "-o", str(scratch / "last.bmp")], check=True,
                    env={**os.environ, "AUTANA_ASSET_DIR": str(assets)})
     compare = root / "launcher/tools/render/render_compare.py"
@@ -37,4 +37,4 @@ def main(scene_path, object_name, work, out):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve(), sys.argv[2], Path(sys.argv[3]).resolve(), Path(sys.argv[4]).resolve())
+    main(Path(sys.argv[1]).resolve(), sys.argv[2], Path(sys.argv[3]).resolve(), Path(sys.argv[4]).resolve(), Path(sys.argv[5]).resolve())

@@ -15,7 +15,8 @@
 #
 # This makes the launcher and UI toolkit images itself and then runs every
 # launcher/main/apps/*/tools/doc_images.sh, which makes that app's images into
-# the out tree it is given. Everything is rendered into
+# the out tree it is given. It also runs doc_images_demo.sh for the demo scene.
+# Everything is rendered into
 # launcher/tools/results/doc_images/out/cpu/, laid out like docs/images/, first.
 #
 # --check compares each result with the committed image by decoded pixels
@@ -26,7 +27,8 @@
 # "orphan" and also exits 1. Exit 2 means the images or tables could not be
 # made or compared; failed commands and render-log tails are printed.
 #
-# App scripts also write out/tables/NAME.md. generated_blocks.py rewrites
+# doc_images_demo.sh and the dynamic-resolution report write out/tables/NAME.md.
+# generated_blocks.py rewrites
 # the matching named blocks; --check compares them without writing.
 #
 # The Cornell box is traced in float, and GIF palettes depend on the ffmpeg
@@ -35,20 +37,23 @@
 
 set -eu
 
-. "$(dirname "$0")/../../../scripts/lib/run.sh"
+. scripts/lib/run.sh
 
 TOOLS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
+DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
+DEMO_OBJECT=atrium
+
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ]; then
         shift 2
-        exec sh "$TOOLS_DIR/run_doc_gpu.sh" "$@"
+        exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
     fi
     . "$ROOT/scripts/lib/python.sh"
     PYTHON=$(find_python numpy scipy) || exit 2
-    exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" "$@"
+    exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
 fi
 
 IMAGES=docs/images
@@ -177,7 +182,7 @@ for script in launcher/main/apps/*/tools/doc_images.sh; do
     run bash "$script" "$OUT" "$WORK/$app"
 done
 
-run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo"
+run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

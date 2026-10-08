@@ -15,10 +15,8 @@ set -eu
 . scripts/lib/run.sh
 
 OUT=$1/overview
-RENDER=$1/render
-TABLES=$1/tables
 W=$2
-run mkdir -p "$W" "$RENDER"
+run mkdir -p "$W" "$OUT"
 
 run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
 

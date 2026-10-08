@@ -51,8 +51,9 @@ every frame through the shared harness's video writer.
 The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
 bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
-`scene_viewer.sh`, selecting one renderer with `--object NAME`. Its scene path
-is configured at the top of the script or passed as its third argument.
+`scene_viewer.sh`, selecting one renderer with `--object NAME`.
+It takes a scene file and the object name of its full renderer; the scene
+must also place OBJECT_lite, OBJECT_flat, OBJECT_fitted and OBJECT_fitted_full.
 The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
 `tools/doc_images.sh` for the app's own:
 
@@ -92,8 +93,9 @@ requests".
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
-Measured CPU tables are refreshed with the images. App scripts write Markdown
-to out/tables/NAME.md. The shared writer replaces the body between an HTML
+Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
+the dynamic-resolution report write `out/tables/NAME.md`. The shared writer
+replaces the body between an HTML
 comment containing `generated: NAME sha256=HASH` and one containing
 `/generated: NAME`, preserving the document's other text and line endings.
 Names use lowercase letters, digits and hyphens and are unique
@@ -108,6 +110,13 @@ changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
 the WSL CUDA environment; the board stage consumes a perf capture. Both use
 this writer.
+
+`--stage board --capture PATH` takes one capture per run, from the same
+diagnostics image. It rejects missing variants, failed suites and mismatched
+build identities, and rewrites the board tables and
+`launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
+weights change. `--build-commit SHA` accepts a capture from that commit while
+the firmware sources still match.
 
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
