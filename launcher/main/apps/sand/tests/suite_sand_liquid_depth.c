@@ -1350,22 +1350,14 @@ enum {
 };
 
 /* ~30fps, matches the reproduction that found this. */
-#define WAKE_TEST_DT_MS   33u
+#define REPAINT_DT_MS   33u
 /* Matches the wake timer in app_sand.c. */
-#define WAKE_TEST_WAKE_MS 120u
-
-static uint8_t wake_test_blocks[((WAKE_TEST_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-                                * ((WAKE_TEST_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)];
+#define REPAINT_WAKE_MS 120u
 
 /* The ray walk's cross-frame state, one walk at a time: every test that
  * needs it allocates it, uses it and frees it, so no walk's 392 bytes sit
  * in .bss between runs. */
 static ray_walk_state_t* fx_ray;
-
-/* wake_test_cells/wake_prev_occupied/wake_displayed_depth used to be file
- * statics here, permanently resident .bss even though only wake_test_run()
- * below ever touches them - malloc'd there instead, fresh per call, freed
- * before it returns (this test's own reproduction owns the only call). */
 
 static unsigned
 wake_test_edge_mask(sand_t* g, int x, int y) {
@@ -1454,39 +1446,6 @@ wake_test_row_carries_liquid(sand_t* g, int y) {
     return false;
 }
 
-/* THE WAKE TICK'S OWN ROW GATE - row_has_liquid[]'s population, recomputed
- * fresh each frame from the live grid (sand_paint_row_n() recomputes it every
- * time a row is painted; a row that never gets painted keeps whatever this
- * cache last decided, exactly like the real array). */
-static void
-wake_test_mark_wake_dirty(sand_t* g, bool wake_fired, bool* row_dirty) {
-    for (int y = 0; y < WAKE_TEST_H; y++) {
-        if (wake_fired && wake_test_row_carries_liquid(g, y)) {
-            row_dirty[y] = true;
-        }
-    }
-}
-
-/* mirror_ray_walk_row()'s own per-cell walk, for every dirty row. */
-static void
-wake_test_walk_dirty_rows(sand_t* g, const bool* row_dirty, bool vdom, bool vrev, bool hrev, unsigned ax, unsigned ay,
-                          unsigned scale_q8, ray_walk_state_t* st, int8_t* displayed_depth) {
-    const bool asc = !vrev;
-    for (int i = 0; i < WAKE_TEST_H; i++) {
-        const int y = asc ? i : (WAKE_TEST_H - 1 - i);
-        if (!row_dirty[y]) {
-            continue;
-        }
-        unsigned row_depth[RAY_WALK_STATE_W];
-        mirror_ray_walk_row(g, y, WAKE_TEST_W, WAKE_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
-                            MATERIAL_LIQUID_DEPTH_BAND, st, row_depth);
-        for (int x = 0; x < WAKE_TEST_W; x++) {
-            const cell_t here = sand_at(g, x, y);
-            displayed_depth[y * WAKE_TEST_W + x] = CELL_IS_EMPTY(here) ? -1 : (int8_t)row_depth[x];
-        }
-    }
-}
-
 /* Snapshots a w x h grid's occupancy into `prev_occupied`, for the next
  * frame's local_depth_mark_occupancy_dirty() call - shared the same way
  * that helper is. */
@@ -1497,6 +1456,99 @@ local_depth_snapshot_occupancy(sand_t* g, int w, int h, bool* prev_occupied) {
             prev_occupied[y * w + x] = !CELL_IS_EMPTY(sand_at(g, x, y));
         }
     }
+}
+
+/* A sleeping w x h scene repainted the way sand_paint_row_n() repaints the
+ * screen - only rows whose occupancy changed, plus the rows the wake tick
+ * picks when it fires - remembering the depth each cell was last painted
+ * with. Shared by wake_test_run() and band_test_run(); open allocates every
+ * buffer fresh per run, close frees them. */
+#define REPAINT_H_MAX 96
+
+typedef struct {
+    sand_t* g;
+    int w, h;
+    uint8_t* cells;
+    uint8_t* blocks;
+    bool* prev_occupied;
+    /* int8_t, not int: a displayed depth is -1 (never painted) or 0..
+     * MATERIAL_LIQUID_DEPTH_BAND (24), comfortably inside int8_t's range. */
+    int8_t* displayed;
+    uint32_t wake_elapsed_ms;
+} repaint_rig_t;
+
+static void
+repaint_rig_close(repaint_rig_t* r) {
+    free(r->cells);
+    free(r->blocks);
+    free(r->prev_occupied);
+    free(r->displayed);
+    free(fx_ray);
+    fx_ray = NULL;
+}
+
+static void
+repaint_rig_open(repaint_rig_t* r, sand_t* g, int w, int h) {
+    TEST_ASSERT_LESS_OR_EQUAL_INT(REPAINT_H_MAX, h);
+    const size_t n = (size_t)w * h;
+    *r = (repaint_rig_t){
+        g, w, h, malloc(n), malloc(sand_sleep_block_bytes(w, h)), malloc(n * sizeof(bool)), malloc(n * sizeof(int8_t)),
+        0};
+    fx_ray = malloc(sizeof *fx_ray);
+    /* All checked together, then freed together on failure - asserting
+     * straight after each malloc in turn would longjmp out on the first
+     * failure (Unity's assert never returns) and leak every allocation that
+     * came before it, permanently, for the rest of the run. */
+    if (!r->cells || !r->blocks || !r->prev_occupied || !r->displayed || !fx_ray) {
+        repaint_rig_close(r);
+        TEST_FAIL_MESSAGE("repaint buffers (grid/blocks/prev-occupied/displayed-depth) must fit in what the "
+                          "framebuffer leaves");
+    }
+
+    sand_init(g, r->cells, w, h, 41u);
+    sand_enable_sleeping(g, r->blocks);
+    ray_walk_state_reset(fx_ray);
+    memset(r->prev_occupied, 0, n * sizeof(bool));
+    memset(r->displayed, -1, n * sizeof(int8_t));
+}
+
+/* One frame: steps under (gx, gy), marks rows - occupancy changes, and
+ * every row wake_row() picks when the wake tick fires - then repaints each
+ * marked row through mirror_ray_walk_row() capped at `ceiling`. An empty
+ * cell reads -1 (never painted) when empty_unpainted. */
+static void
+repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, int y), unsigned ceiling,
+                  bool empty_unpainted) {
+    sand_step(r->g, gx, gy, 0);
+
+    bool vdom, vrev, hrev;
+    unsigned ax, ay, scale_q8;
+    ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
+
+    const bool wake_fired = local_depth_wake_tick(&r->wake_elapsed_ms, REPAINT_DT_MS, REPAINT_WAKE_MS);
+
+    bool row_dirty[REPAINT_H_MAX] = {0};
+    local_depth_mark_occupancy_dirty(r->g, r->w, r->h, r->prev_occupied, row_dirty);
+    for (int y = 0; y < r->h; y++) {
+        if (wake_fired && wake_row(r->g, y)) {
+            row_dirty[y] = true;
+        }
+    }
+
+    for (int i = 0; i < r->h; i++) {
+        const int y = vrev ? (r->h - 1 - i) : i;
+        if (!row_dirty[y]) {
+            continue;
+        }
+        unsigned row_depth[RAY_WALK_STATE_W];
+        mirror_ray_walk_row(r->g, y, r->w, r->h, vdom, vrev, hrev, ax, ay, scale_q8, ceiling, fx_ray, row_depth);
+        for (int x = 0; x < r->w; x++) {
+            const bool unpainted = empty_unpainted && CELL_IS_EMPTY(sand_at(r->g, x, y));
+            r->displayed[y * r->w + x] = unpainted ? -1 : (int8_t)row_depth[x];
+        }
+    }
+
+    local_depth_snapshot_occupancy(r->g, r->w, r->h, r->prev_occupied);
 }
 
 /* Mean DISPLAYED interior depth this frame - interior only ((mask &
@@ -1558,40 +1610,13 @@ wake_test_record_jump(double mean, int f, int settle_steps, double* prev_mean, d
 /* Returns worst single-frame swing in mean DISPLAYED interior depth. */
 static double
 wake_test_run(int steps) {
-    uint8_t* wake_test_cells = malloc((size_t)WAKE_TEST_W * WAKE_TEST_H);
-    bool* wake_prev_occupied = malloc((size_t)WAKE_TEST_W * WAKE_TEST_H * sizeof *wake_prev_occupied);
-    /* int8_t, not int: a displayed depth is -1 (never painted) or 0..
-     * MATERIAL_LIQUID_DEPTH_BAND (24), comfortably inside int8_t's range. */
-    int8_t* wake_displayed_depth = malloc((size_t)WAKE_TEST_W * WAKE_TEST_H * sizeof *wake_displayed_depth);
-    fx_ray = malloc(sizeof *fx_ray);
-    /* All three checked together, then freed together on failure -
-     * asserting straight after each malloc in turn would longjmp out on the
-     * first failure (Unity's assert never returns) and leak every
-     * allocation that came before it, permanently, for the rest of the run. */
-    if (!wake_test_cells || !wake_prev_occupied || !wake_displayed_depth || !fx_ray) {
-        free(wake_test_cells);
-        free(wake_prev_occupied);
-        free(wake_displayed_depth);
-        free(fx_ray);
-        TEST_ASSERT_TRUE_MESSAGE(false, "wake test buffers (grid/prev-occupied/displayed-depth) must "
-                                        "fit in what the framebuffer leaves");
-    }
-
-    sand_init(&fx.wake_test_grid, wake_test_cells, WAKE_TEST_W, WAKE_TEST_H, 41u);
-    sand_enable_sleeping(&fx.wake_test_grid, wake_test_blocks);
-
-    ray_walk_state_reset(fx_ray);
-    memset(wake_prev_occupied, 0, (size_t)WAKE_TEST_W * WAKE_TEST_H * sizeof *wake_prev_occupied);
-    for (int i = 0; i < WAKE_TEST_W * WAKE_TEST_H; i++) {
-        wake_displayed_depth[i] = -1;
-    }
-
+    repaint_rig_t rig;
+    repaint_rig_open(&rig, &fx.wake_test_grid, WAKE_TEST_W, WAKE_TEST_H);
     wake_test_build_scene(&fx.wake_test_grid);
 
     rng_t wobble;
     rng_seed(&wobble, 7u);
 
-    uint32_t wake_elapsed_ms = 0;
     const int settle_steps = 400; /* let the pool actually settle first */
     double worst_jump = 0.0;
     double prev_mean = -1.0;
@@ -1599,32 +1624,13 @@ wake_test_run(int steps) {
     for (int f = 0; f < steps; f++) {
         int gx, gy;
         wake_test_frame_gravity(&wobble, f, &gx, &gy);
+        repaint_rig_frame(&rig, gx, gy, wake_test_row_carries_liquid, MATERIAL_LIQUID_DEPTH_BAND, true);
 
-        sand_step(&fx.wake_test_grid, gx, gy, 0);
-
-        bool vdom, vrev, hrev;
-        unsigned ax, ay, scale_q8;
-        ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
-
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, WAKE_TEST_DT_MS, WAKE_TEST_WAKE_MS);
-
-        bool row_dirty[WAKE_TEST_H] = {0};
-        local_depth_mark_occupancy_dirty(&fx.wake_test_grid, WAKE_TEST_W, WAKE_TEST_H, wake_prev_occupied, row_dirty);
-        wake_test_mark_wake_dirty(&fx.wake_test_grid, wake_fired, row_dirty);
-        wake_test_walk_dirty_rows(&fx.wake_test_grid, row_dirty, vdom, vrev, hrev, ax, ay, scale_q8, fx_ray,
-                                  wake_displayed_depth);
-        local_depth_snapshot_occupancy(&fx.wake_test_grid, WAKE_TEST_W, WAKE_TEST_H, wake_prev_occupied);
-
-        const double mean = wake_test_interior_mean_depth(&fx.wake_test_grid, wake_displayed_depth);
+        const double mean = wake_test_interior_mean_depth(&fx.wake_test_grid, rig.displayed);
         wake_test_record_jump(mean, f, settle_steps, &prev_mean, &worst_jump);
     }
 
-    free(wake_test_cells);
-    free(wake_prev_occupied);
-    free(wake_displayed_depth);
-    free(fx_ray);
-    fx_ray = NULL;
-
+    repaint_rig_close(&rig);
     return worst_jump;
 }
 
@@ -1797,21 +1803,11 @@ enum {
     BAND_TEST_H = 96,
 };
 
-#define BAND_TEST_DT_MS   33u
-#define BAND_TEST_WAKE_MS 120u
 /* Long enough for the pool to settle and for several full sway periods (250
  * frames each) to run; short enough to stay inside this suite's own budget -
  * about 0.15 s. Green at every length tried; see this section's own comment. */
-#define BAND_TEST_FRAMES  900
-#define BAND_TEST_SETTLE  300
-
-static uint8_t band_test_blocks[((BAND_TEST_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
-                                * ((BAND_TEST_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H)];
-
-/* band_test_cells/band_prev_occupied/band_displayed_depth used to be file
- * statics here - malloc'd inside band_test_run() below instead (its own
- * reproduction owns the only call), for the same reason as wake_test_run()
- * above. */
+#define BAND_TEST_FRAMES 900
+#define BAND_TEST_SETTLE 300
 
 /* Do NOT raise above MATERIAL_LIQUID_DEPTH_BAND. LOCAL_DEPTH_COUNT_CEILING's
  * comment in sand_paint.h explains why no raise is needed. */
@@ -1826,14 +1822,10 @@ band_test_ceiling(void) {
  * than a settled pool's few dozen cells. */
 static void
 band_test_build_scene(sand_t* g) {
-    for (int y = 0; y < BAND_TEST_H; y++) {
-        sand_set(g, 0, y, CELL_MAKE(MAT_STONE, 0));
-        sand_set(g, BAND_TEST_W - 1, y, CELL_MAKE(MAT_STONE, 0));
-    }
-    for (int x = 0; x < BAND_TEST_W; x++) {
-        sand_set(g, x, 0, CELL_MAKE(MAT_STONE, 0));
-        sand_set(g, x, BAND_TEST_H - 1, CELL_MAKE(MAT_STONE, 0));
-    }
+    fill_box(g, 0, 1, 0, BAND_TEST_H, CELL_MAKE(MAT_STONE, 0));
+    fill_box(g, BAND_TEST_W - 1, BAND_TEST_W, 0, BAND_TEST_H, CELL_MAKE(MAT_STONE, 0));
+    fill_box(g, 0, BAND_TEST_W, 0, 1, CELL_MAKE(MAT_STONE, 0));
+    fill_box(g, 0, BAND_TEST_W, BAND_TEST_H - 1, BAND_TEST_H, CELL_MAKE(MAT_STONE, 0));
     fill_box(g, BAND_TEST_W - 17, BAND_TEST_W - 1, 1, BAND_TEST_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
@@ -1863,42 +1855,15 @@ band_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
 /* THE WAKE TICK'S OWN ROW GATE for the band test - any liquid-kind cell,
  * not water specifically (unlike wake_test_row_carries_liquid(), this
  * scene never needs the distinction). */
-static void
-band_test_mark_wake_dirty(sand_t* g, bool wake_fired, bool* row_dirty) {
-    if (!wake_fired) {
-        return;
-    }
-    for (int y = 0; y < BAND_TEST_H; y++) {
-        for (int x = 0; x < BAND_TEST_W; x++) {
-            const cell_t c = sand_at(g, x, y);
-            if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
-                row_dirty[y] = true;
-                break;
-            }
+static bool
+band_test_row_carries_liquid(sand_t* g, int y) {
+    for (int x = 0; x < BAND_TEST_W; x++) {
+        const cell_t c = sand_at(g, x, y);
+        if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
+            return true;
         }
     }
-}
-
-/* mirror_ray_walk_row()'s own per-cell walk, for every dirty row - no -1
- * empty sentinel, unlike wake_test_walk_dirty_rows(): this scene's own
- * jump count already skips empty cells by their material, not their
- * depth. */
-static void
-band_test_walk_dirty_rows(sand_t* g, const bool* row_dirty, bool vdom, bool vrev, bool hrev, unsigned ax, unsigned ay,
-                          unsigned scale_q8, unsigned ceiling, ray_walk_state_t* st, int8_t* displayed_depth) {
-    const bool asc = !vrev;
-    for (int i = 0; i < BAND_TEST_H; i++) {
-        const int cy = asc ? i : (BAND_TEST_H - 1 - i);
-        if (!row_dirty[cy]) {
-            continue;
-        }
-        unsigned row_depth[RAY_WALK_STATE_W];
-        mirror_ray_walk_row(g, cy, BAND_TEST_W, BAND_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8, ceiling, st,
-                            row_depth);
-        for (int x = 0; x < BAND_TEST_W; x++) {
-            displayed_depth[cy * BAND_TEST_W + x] = (int8_t)row_depth[x];
-        }
-    }
+    return false;
 }
 
 /* Whether the vertically adjacent water pair at (x, y-1)/(x, y) is a
@@ -1947,40 +1912,14 @@ band_test_count_jumps(sand_t* g, const int8_t* displayed_depth) {
 
 static int
 band_test_run(void) {
-    uint8_t* band_test_cells = malloc((size_t)BAND_TEST_W * BAND_TEST_H);
-    bool* band_prev_occupied = malloc((size_t)BAND_TEST_W * BAND_TEST_H * sizeof *band_prev_occupied);
-    /* int8_t, not int, see wake_test_run()'s own comment on the same
-     * narrowing; the depth values stored here have the same -1..
-     * MATERIAL_LIQUID_DEPTH_BAND (24) range. */
-    int8_t* band_displayed_depth = malloc((size_t)BAND_TEST_W * BAND_TEST_H * sizeof *band_displayed_depth);
-    fx_ray = malloc(sizeof *fx_ray);
-    /* All three checked together, then freed together on failure - see
-     * wake_test_run()'s own comment on the same pattern, above. */
-    if (!band_test_cells || !band_prev_occupied || !band_displayed_depth || !fx_ray) {
-        free(band_test_cells);
-        free(band_prev_occupied);
-        free(band_displayed_depth);
-        free(fx_ray);
-        TEST_ASSERT_TRUE_MESSAGE(false, "band test buffers (grid/prev-occupied/displayed-depth) must "
-                                        "fit in what the framebuffer leaves");
-    }
-
-    sand_init(&fx.band_test_grid, band_test_cells, BAND_TEST_W, BAND_TEST_H, 41u);
-    sand_enable_sleeping(&fx.band_test_grid, band_test_blocks);
-
-    ray_walk_state_reset(fx_ray);
-    memset(band_prev_occupied, 0, (size_t)BAND_TEST_W * BAND_TEST_H * sizeof *band_prev_occupied);
-    for (int i = 0; i < BAND_TEST_W * BAND_TEST_H; i++) {
-        band_displayed_depth[i] = -1;
-    }
-
+    repaint_rig_t rig;
+    repaint_rig_open(&rig, &fx.band_test_grid, BAND_TEST_W, BAND_TEST_H);
     band_test_build_scene(&fx.band_test_grid);
 
     rng_t wobble;
     rng_seed(&wobble, 7u);
 
     const unsigned ceiling = band_test_ceiling();
-    uint32_t wake_elapsed_ms = 0;
     int worst = 0;
 
     for (int f = 0; f < BAND_TEST_FRAMES; f++) {
@@ -1988,38 +1927,19 @@ band_test_run(void) {
 
         int gx, gy;
         band_test_frame_gravity(&wobble, f, &gx, &gy);
-
-        sand_step(&fx.band_test_grid, gx, gy, 0);
-
-        bool vdom, vrev, hrev;
-        unsigned ax, ay, scale_q8;
-        ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
-
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, BAND_TEST_DT_MS, BAND_TEST_WAKE_MS);
-
-        bool row_dirty[BAND_TEST_H] = {0};
-        local_depth_mark_occupancy_dirty(&fx.band_test_grid, BAND_TEST_W, BAND_TEST_H, band_prev_occupied, row_dirty);
-        band_test_mark_wake_dirty(&fx.band_test_grid, wake_fired, row_dirty);
-        band_test_walk_dirty_rows(&fx.band_test_grid, row_dirty, vdom, vrev, hrev, ax, ay, scale_q8, ceiling, fx_ray,
-                                  band_displayed_depth);
-        local_depth_snapshot_occupancy(&fx.band_test_grid, BAND_TEST_W, BAND_TEST_H, band_prev_occupied);
+        repaint_rig_frame(&rig, gx, gy, band_test_row_carries_liquid, ceiling, false);
 
         if (f < BAND_TEST_SETTLE) {
             continue;
         }
 
-        const int jumps = band_test_count_jumps(&fx.band_test_grid, band_displayed_depth);
+        const int jumps = band_test_count_jumps(&fx.band_test_grid, rig.displayed);
         if (jumps > worst) {
             worst = jumps;
         }
     }
 
-    free(band_test_cells);
-    free(band_prev_occupied);
-    free(band_displayed_depth);
-    free(fx_ray);
-    fx_ray = NULL;
-
+    repaint_rig_close(&rig);
     return worst;
 }
 
