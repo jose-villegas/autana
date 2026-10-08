@@ -71,6 +71,7 @@ PYTHON_TOKENS = re.compile(
 # identifiers are ignored, and has no shared owner to extract; a pair counts
 # only if what remains without them is still a clone's length in itself.
 TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;")
+INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 
 
 def registration_only(pair):
@@ -135,6 +136,9 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
                 continue
             target = tree / name
             target.parent.mkdir(parents=True, exist_ok=True)
+            if target.suffix != ".py":
+                content = INCLUDE_DIRECTIVE.sub(lambda match: "\n" * match[0].count("\n"),
+                                                content.decode("utf-8")).encode("utf-8")
             target.write_bytes(content)
         config = scratch / "config.json"
         config.write_text(json.dumps({"minTokens": minimum, "minLines": 0,

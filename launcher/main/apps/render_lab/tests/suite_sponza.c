@@ -92,6 +92,8 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
 static void
 check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+    r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());
+    TEST_ASSERT_NOT_NULL(work);
     uint16_t* walked = malloc(sizeof(*walked) * (size_t)mesh->cluster_count);
     uint8_t* kept = malloc((size_t)mesh->cluster_count);
     TEST_ASSERT_NOT_NULL(walked);
@@ -103,7 +105,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
         r3d_lens_init(&lens, &camera, mesh->position_scale, viewport);
 
         memset(kept, 0, (size_t)mesh->cluster_count);
-        const int count = r3d_pipeline_cull(mesh, &lens, walked);
+        const int count = r3d_pipeline_cull(mesh, &lens, walked, work);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
@@ -118,6 +120,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     }
     free(kept);
     free(walked);
+    free(work);
 }
 
 typedef struct {

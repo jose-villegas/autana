@@ -87,14 +87,26 @@ banner they carry ([Generated-Files.md](tools/Generated-Files.md)); so the
 hook and CI cannot disagree about what is in scope.
 
 ```sh
-scripts/install-git-hooks.sh          # opt in to the pre-commit hook
+scripts/install-git-hooks.sh          # opt in to pre-commit and pre-push hooks
 scripts/install-git-hooks.sh --status # is it active in this clone?
 scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check  # what CI runs
 ```
 
 The pre-commit hook checks the *staged content* of the C and header files in a
 commit, so a partially staged file is judged by what is actually being
-committed. It is feedback and not a gate: `--no-verify` skips it, `.git/hooks`
+committed. It also checks executable bits and file-scoped text rules. Install
+the Python dependencies with `python -m pip install -r scripts/gates/requirements.txt`.
+Run `scripts/gates/check-text-rules-staged.sh` by hand for the same text checks.
+The commands and flags come from steps marked `STAGED_TEXT_GATE` in
+`.github/workflows/comment-rules.yml`; the hook adds `--paths` to select files
+in a temporary index snapshot. Header companions and citation vocabulary
+also come from the index. Without ESP-IDF, the citation check reports which
+external names it cannot verify; CI requires the SDK.
+
+Pre-push checks target branch names and runs sanitized host tests when a
+pushed range changes `.c` or `.h`; see [Testing Guide](Testing-Guide.md#running-them).
+The hooks are feedback: `git commit --no-verify` or `git push --no-verify`
+skips them, `.git/hooks`
 is not cloned, and it never sees a merge or a commit made by CI. The workflow
 is the gate, and it checks every file in the list on every pull request and
 every push to `main`; a drift that reaches `main` is a failed build, not

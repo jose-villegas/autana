@@ -72,7 +72,9 @@ fixture(void) {
 
 static suite_run_t
 request(const char* text) {
-    return suites_run_request(text);
+    suite_run_t run;
+    suites_run_request(text, &run);
+    return run;
 }
 
 static void

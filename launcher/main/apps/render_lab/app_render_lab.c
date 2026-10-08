@@ -187,7 +187,7 @@ enter_layout(void) {
     const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
     const gfx_mode_request_t mode_request = {
         .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
-        .resolution = GFX_RESOLUTION_FULL,
+
         .interlace_x = false,
         .interlace_y = false,
     };
