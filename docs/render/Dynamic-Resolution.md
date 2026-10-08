@@ -170,33 +170,23 @@ renders the path at each size on a host and scores it. A new board run
 replaces the capture, and the generator does the rest:
 
 ```sh
-autana --wait 3600 --out docs/render/data/dynamic-resolution-board.log suite run_raster_scale_perf_suite --flash
+autana suite run_raster_scale_perf_suite --flash --out docs/render/data/dynamic-resolution-board.log
 sh launcher/tools/render/render_doc_images.sh
 ```
 
-The generator also writes the `pipeline-frame-stages` table in its output,
-using the half-width, half-height row. Missing brackets, including resolve
-when no attachment supplies a resolve hook, read `not in capture`.
-Presentation comes from `data/pipeline-present-board.log`. With the demo
-scene running at the camera's default render size, record the frame-cost
-millisecond reports (the hardware-counter summary from `autana perf` is
-not a time capture):
+The generator also writes the `pipeline-frame-stages` table, from the
+half-width, half-height row. The suite attaches nothing, so resolve and
+presentation come from two frame-cost captures of the demo scene running on
+the same build at the camera's default render size: `monitor 30` with the
+scene as shipped, copied to `data/pipeline-present-board.log`, and again with
+the motion-vector view on, copied to `data/pipeline-resolve-board.log`.
+`autana monitor` prints the path of the capture it writes. Check
+`autana status` and `autana buildid` before and after each.
 
-```sh
-autana status
-autana buildid
-autana --wait 3600 --out docs/render/data/pipeline-present-board.log monitor 30
-autana status
-autana buildid
-sh launcher/tools/render/render_doc_images.sh
-```
-
-The build identity must match the flashed commit before and after each
-capture. The present parser averages report windows that contain `present`;
-it rejects an existing capture with no such windows. An absent capture
-leaves that row `not in capture`. `pipeline-frame-stages`, `bake-machine`
-and `bake-steps` may have no document owner; the block writer checks their
-owner normally when a document includes their generated markers.
+A scene that overlaps presentation with drawing reports the frame's wait for
+the send as `present.wait`; one that does not reports `present`. A missing
+capture leaves its row `not in capture`; a capture without the stage fails
+the run.
 
 The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
 rebakes and fits. Refresh them on the GPU runner with:

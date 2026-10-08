@@ -34,7 +34,9 @@ brackets compile to nothing.
 The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
 `r3d.draw`, `r3d.resolve` and `r3d.upscale`. Clip and span fill are inside
 `r3d.draw`; `r3d.resolve` runs only when an attachment has a resolve hook.
-The shell brackets presentation as `present`.
+The shell brackets presentation as `present`; when an app overlaps the send
+with its next frame, the bracket is `present.wait`, the time the frame waits
+for that send to finish.
 
 ## Hardware counters
 
