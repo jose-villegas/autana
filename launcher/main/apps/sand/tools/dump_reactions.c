@@ -2264,6 +2264,58 @@ static const example_t examples[] = {
      }},
 };
 
+static void
+example_material(seg_t* segs, size_t* n, list_item_t* material, uint8_t id) {
+    const int written = snprintf(material->name, sizeof(material->name), "%s", prose_name(to_name(id)));
+    if (written < 0 || (size_t)written >= sizeof(material->name)) {
+        fprintf(stderr, "dump_reactions: example material name too long\n");
+        exit(1);
+    }
+    material_hex(id, material->color, sizeof(material->color));
+    seg_material(segs, n, material->color, material->name);
+}
+
+static void
+example_rate(seg_t* segs, size_t* n, const mrow_t* row, const example_part_t* part) {
+    const uint8_t value = *((const uint8_t*)row->r + field_doc(part->text)->offset);
+    const char* word =
+        (part->kind == PART_CELL_RATE_GAP) ? adverb_cell(part->text, value, row->color_id) : adverb(part->text, value);
+    if (part->kind == PART_RATE) {
+        seg_mark(segs, n, MARK_RATE, word);
+    } else {
+        seg_rate_gap(segs, n, word);
+    }
+}
+
+static void
+example_list(seg_t* segs, size_t* n, list_item_t* materials, size_t* material_count, const example_part_t* part) {
+    const size_t count = collect_material_list(part->materials, &materials[*material_count], LIST_ITEM_MAX);
+    seg_list(segs, n, &materials[*material_count], count, " or ");
+    *material_count += count;
+}
+
+static void
+example_part(seg_t* segs, size_t* n, list_item_t* materials, size_t* material_count, const mrow_t* row,
+             const example_part_t* part) {
+    switch (part->kind) {
+        case PART_LIST: example_list(segs, n, materials, material_count, part); break;
+        case PART_MATERIAL:
+        case PART_TARGET: {
+            const uint8_t id = (part->kind == PART_TARGET) ? *((const uint8_t*)row->r + field_doc(part->text)->offset)
+                                                           : find_row(part->text)->color_id;
+            example_material(segs, n, &materials[(*material_count)++], id);
+            break;
+        }
+        case PART_RATE:
+        case PART_RATE_GAP:
+        case PART_CELL_RATE_GAP: example_rate(segs, n, row, part); break;
+        case PART_CAUSE: seg_mark(segs, n, MARK_CAUSE, cause_at(part->text, 0)); break;
+        case PART_VERB: seg_mark(segs, n, MARK_VERB, part->text); break;
+        case PART_GLUE: seg_glue(segs, n, part->text); break;
+        case PART_END: break;
+    }
+}
+
 /* Plain sentence first, then the marked form immediately after - so the
  * section stays legible without a renderer (a raw diff, an editor, CI)
  * and not only on github.com. */
@@ -2287,37 +2339,7 @@ print_example(const example_t* example) {
             fprintf(stderr, "dump_reactions: example too long: %s\n", example->heading);
             exit(1);
         }
-        if (part->kind == PART_LIST) {
-            const size_t count = collect_material_list(part->materials, &materials[material_count], LIST_ITEM_MAX);
-            seg_list(segs, &n, &materials[material_count], count, " or ");
-            material_count += count;
-        } else if (part->kind == PART_MATERIAL || part->kind == PART_TARGET) {
-            const uint8_t id = (part->kind == PART_TARGET) ? *((const uint8_t*)row->r + field_doc(part->text)->offset)
-                                                           : find_row(part->text)->color_id;
-            list_item_t* material = &materials[material_count++];
-            const int written = snprintf(material->name, sizeof(material->name), "%s", prose_name(to_name(id)));
-            if (written < 0 || (size_t)written >= sizeof(material->name)) {
-                fprintf(stderr, "dump_reactions: example material name too long\n");
-                exit(1);
-            }
-            material_hex(id, material->color, sizeof(material->color));
-            seg_material(segs, &n, material->color, material->name);
-        } else if (part->kind == PART_RATE || part->kind == PART_RATE_GAP || part->kind == PART_CELL_RATE_GAP) {
-            const uint8_t value = *((const uint8_t*)row->r + field_doc(part->text)->offset);
-            const char* word = (part->kind == PART_CELL_RATE_GAP) ? adverb_cell(part->text, value, row->color_id)
-                                                                  : adverb(part->text, value);
-            if (part->kind == PART_RATE) {
-                seg_mark(segs, &n, MARK_RATE, word);
-            } else {
-                seg_rate_gap(segs, &n, word);
-            }
-        } else if (part->kind == PART_CAUSE) {
-            seg_mark(segs, &n, MARK_CAUSE, cause_at(part->text, 0));
-        } else if (part->kind == PART_VERB) {
-            seg_mark(segs, &n, MARK_VERB, part->text);
-        } else {
-            seg_glue(segs, &n, part->text);
-        }
+        example_part(segs, &n, materials, &material_count, row, part);
     }
     printf("\n**%s**\n\n", example->heading);
     print_plain(segs, n);
