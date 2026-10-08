@@ -31,6 +31,25 @@
 
 /* seeds */
 
+/* A plant at (W / 2, H - 3) plugging a one-cell well, `liquid` held in the
+ * well above it, stone walls either side of both. */
+static void
+plug_well(cell_t liquid) {
+    const int cx = W / 2;
+    fill_box(&s, cx - 1, cx, H - 4, H - 2, STONE);
+    fill_box(&s, cx + 1, cx + 2, H - 4, H - 2, STONE);
+    sand_set(&s, cx, H - 3, MATX(MATX_PLANT));
+    sand_set(&s, cx, H - 4, liquid);
+}
+
+/* One step of the default fixture with the soil row on the floor
+ * (H - 2) soaked back to saturation first - a bed kept watered. */
+static void
+watered_step(void) {
+    fill_box(&s, 0, W, H - 2, H - 1, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
+    sand_step(&s, 0, 1000, 0);
+}
+
 /* A seed painted in mid-air falls.
  *
  * It cannot fall the ordinary way. `kind` lives in materials[], and every
@@ -480,10 +499,7 @@ test_a_seed_under_stone_stays_put(void) {
     /* Kept watered - not load-bearing for the shove rule this test checks,
      * but keeps the scene closer to a real watered planting. */
     for (int i = 0; i < 1500; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
+        watered_step();
     }
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, count_cells_of(MAT_EXTENDED),
@@ -570,13 +586,7 @@ test_a_plant_drains_standing_water_into_the_soil(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, 0)); /* bone dry */
     }
-    const int cx = W / 2;
-    sand_set(&s, cx - 1, H - 3, STONE);
-    sand_set(&s, cx + 1, H - 3, STONE);
-    sand_set(&s, cx - 1, H - 4, STONE);
-    sand_set(&s, cx + 1, H - 4, STONE);
-    sand_set(&s, cx, H - 3, MATX(MATX_PLANT)); /* the plug */
-    sand_set(&s, cx, H - 4, CELL_MAKE(MAT_WATER, MASS_MAX));
+    plug_well(CELL_MAKE(MAT_WATER, MASS_MAX)); /* the plug */
 
     /* Sampled as it goes, not at the end. Soil dries, so by the time the
      * water is gone the moisture it turned into has gone too - asserting
@@ -617,13 +627,7 @@ test_a_plant_rooted_on_stone_does_not_drink(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, STONE); /* no soil anywhere */
     }
-    const int cx = W / 2;
-    sand_set(&s, cx - 1, H - 3, STONE);
-    sand_set(&s, cx + 1, H - 3, STONE);
-    sand_set(&s, cx - 1, H - 4, STONE);
-    sand_set(&s, cx + 1, H - 4, STONE);
-    sand_set(&s, cx, H - 3, MATX(MATX_PLANT));
-    sand_set(&s, cx, H - 4, CELL_MAKE(MAT_WATER, MASS_MAX));
+    plug_well(CELL_MAKE(MAT_WATER, MASS_MAX));
 
     run_steps(&s, 900, 0, 1000);
 
@@ -637,12 +641,7 @@ test_a_plant_rooted_on_stone_does_not_drink(void) {
      * whether it is wet, and a plant asking for "any adjacent liquid"
      * would siphon a slick into the soil as moisture. */
     soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, 0));
-    sand_set(&s, cx - 1, H - 3, STONE);
-    sand_set(&s, cx + 1, H - 3, STONE);
-    sand_set(&s, cx - 1, H - 4, STONE);
-    sand_set(&s, cx + 1, H - 4, STONE);
-    sand_set(&s, cx, H - 3, MATX(MATX_PLANT));
-    sand_set(&s, cx, H - 4, CELL_MAKE(MAT_OIL, MASS_MAX));
+    plug_well(CELL_MAKE(MAT_OIL, MASS_MAX));
 
     run_steps(&s, 900, 0, 1000);
 
@@ -670,10 +669,7 @@ test_a_hardened_trunk_is_left_with_foliage(void) {
 
     int leafed = 0;
     for (int i = 0; i < 3000 && !leafed; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
+        watered_step();
 
         for (int y = 0; y < H && !leafed; y++) {
             for (int x = 0; x < W; x++) {
@@ -735,10 +731,7 @@ test_a_hardened_trunk_is_thicker_at_the_foot(void) {
 
     trunk_taper_t taper = {0, 0};
     for (int i = 0; i < 3000; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
+        watered_step();
         update_trunk_taper(&s, W, H, &taper);
     }
 
@@ -938,10 +931,7 @@ test_a_leaf_neither_spreads_nor_falls(void) {
     sand_set(&s, W / 2, H - 3, MATX(MATX_LEAF));
 
     for (int i = 0; i < 2000; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
+        watered_step();
     }
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, count_cells_of(MAT_EXTENDED),
@@ -1242,10 +1232,7 @@ test_a_stem_that_wanders_still_hardens(void) {
      * walk. */
     int hardened = 0;
     for (int i = 0; i < 4000 && !hardened; i++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-        }
-        sand_step(&s, 0, 1000, 0);
+        watered_step();
         for (int k = 0; k < 6; k++) {
             if (CELL_MATERIAL(sand_at(&s, stem[k][0], stem[k][1])) == MAT_WOOD) {
                 hardened = 1;
