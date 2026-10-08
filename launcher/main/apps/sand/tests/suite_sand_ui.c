@@ -61,6 +61,26 @@ no_input(void) {
     return in;
 }
 
+/* The palette open on tile `brush`, pouring, with the panel's opened
+ * snapshot taken from that state - what a close compares against to decide
+ * whether to show the label. */
+static void
+open_palette_on(sand_ui_t* ui, int brush) {
+    fixture(ui);
+    ui->brush = brush;
+    ui->modes[brush] = BRUSH_POUR;
+    ui->screen = SAND_UI_PALETTE;
+    ui->opened = (sand_ui_selection_t){brush, BRUSH_POUR};
+}
+
+/* A BOOT release - what closes an open panel. */
+static unsigned
+close_palette(sand_ui_t* ui) {
+    input_t close = no_input();
+    close.boot.released = true;
+    return sand_ui_step(ui, &close);
+}
+
 /* An out-of-bounds point, named so the test below reads as "a tap,
  * somewhere" rather than two magic numbers, see its own comment for why
  * the exact coordinates don't matter. */
@@ -250,9 +270,7 @@ test_a_release_arriving_after_the_screen_changed_is_consumed_exactly_once(void) 
 static void
 test_tapping_a_different_tile_selects_it_and_preserves_its_mode(void) {
     sand_ui_t ui;
-    fixture(&ui);
-    ui.screen = SAND_UI_PALETTE;
-    ui.brush = 0;
+    open_palette_on(&ui, 0);
     ui.mode = SAND_MODE_ERASE; /* selecting a material must clear this */
     ui.modes[2] = BRUSH_SPAWN; /* tile 2's own remembered mode */
 
@@ -269,9 +287,7 @@ test_tapping_a_different_tile_selects_it_and_preserves_its_mode(void) {
 static void
 test_selecting_a_tile_while_detonating_resets_to_paint(void) {
     sand_ui_t ui;
-    fixture(&ui);
-    ui.screen = SAND_UI_PALETTE;
-    ui.brush = 0;
+    open_palette_on(&ui, 0);
     ui.mode = SAND_MODE_DETONATE;
 
     /* microui has already done its own hit-test by the time anything calls
@@ -290,11 +306,8 @@ test_selecting_a_tile_while_detonating_resets_to_paint(void) {
 static void
 test_tapping_the_selected_tile_toggles_pour_and_spawn(void) {
     sand_ui_t ui;
-    fixture(&ui);
-    ui.screen = SAND_UI_PALETTE;
-    ui.brush = 0;              /* MAT_SAND: emit-capable */
+    open_palette_on(&ui, 0);   /* MAT_SAND: emit-capable, pouring */
     ui.mode = SAND_MODE_ERASE; /* a toggle is not a selection - must stay */
-    ui.modes[0] = BRUSH_POUR;
 
     const unsigned actions = sand_ui_tile_clicked(&ui, 0);
 
@@ -619,16 +632,9 @@ test_a_panel_labels_only_a_change_made_since_it_opened(void) {
 static void
 test_closing_without_changing_anything_requests_no_label(void) {
     sand_ui_t ui;
-    fixture(&ui);
-    ui.brush = 1;
-    ui.modes[1] = BRUSH_POUR;
-    ui.screen = SAND_UI_PALETTE;
-    ui.opened = (sand_ui_selection_t){1, BRUSH_POUR};
+    open_palette_on(&ui, 1);
 
-    input_t close = no_input();
-    close.boot.released = true;
-
-    const unsigned actions = sand_ui_step(&ui, &close);
+    const unsigned actions = close_palette(&ui);
 
     TEST_ASSERT_TRUE(actions & SAND_UI_CLOSE_PALETTE);
     TEST_ASSERT_FALSE(actions & SAND_UI_SHOW_LABEL);
@@ -637,16 +643,12 @@ test_closing_without_changing_anything_requests_no_label(void) {
 static void
 test_closing_after_selecting_a_different_tile_requests_the_label(void) {
     sand_ui_t ui;
-    fixture(&ui);
-    ui.brush = 0;
-    ui.screen = SAND_UI_PALETTE;
+    open_palette_on(&ui, 0);
 
     sand_ui_tile_clicked(&ui, 2);
     TEST_ASSERT_EQUAL_INT(2, ui.brush);
 
-    input_t close = no_input();
-    close.boot.released = true;
-    const unsigned actions = sand_ui_step(&ui, &close);
+    const unsigned actions = close_palette(&ui);
 
     TEST_ASSERT_TRUE(actions & SAND_UI_CLOSE_PALETTE);
     TEST_ASSERT_TRUE(actions & SAND_UI_SHOW_LABEL);
@@ -655,17 +657,12 @@ test_closing_after_selecting_a_different_tile_requests_the_label(void) {
 static void
 test_closing_after_toggling_the_selected_tiles_mode_requests_the_label(void) {
     sand_ui_t ui;
-    fixture(&ui);
-    ui.brush = 0; /* MAT_SAND: emit-capable */
-    ui.modes[0] = BRUSH_POUR;
-    ui.screen = SAND_UI_PALETTE;
+    open_palette_on(&ui, 0); /* MAT_SAND: emit-capable, pouring */
 
     sand_ui_tile_clicked(&ui, 0);
     TEST_ASSERT_EQUAL_UINT8(BRUSH_SPAWN, ui.modes[0]);
 
-    input_t close = no_input();
-    close.boot.released = true;
-    const unsigned actions = sand_ui_step(&ui, &close);
+    const unsigned actions = close_palette(&ui);
 
     TEST_ASSERT_TRUE(actions & SAND_UI_CLOSE_PALETTE);
     TEST_ASSERT_TRUE(actions & SAND_UI_SHOW_LABEL);
