@@ -107,6 +107,9 @@ void stone_floor_fixture(void);
 /* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
 void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
 
+/* The eight gravity directions, clockwise from straight down. */
+extern const int gravity_dirs[8][2];
+
 /* sand_count() of the default fixture. */
 int grain_count(void);
 

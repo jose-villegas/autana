@@ -51,14 +51,15 @@ grain_count(void) {
     return sand_count(&s);
 }
 
+const int gravity_dirs[8][2] = {
+    {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
+};
+
 void
 assert_count_kept_in_every_direction(int (*count)(void), int expected, const char* msg) {
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
     for (int d = 0; d < 8; d++) {
         for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
+            sand_step(&s, gravity_dirs[d][0], gravity_dirs[d][1], 0);
             TEST_ASSERT_EQUAL_INT_MESSAGE(expected, count(), msg);
         }
     }

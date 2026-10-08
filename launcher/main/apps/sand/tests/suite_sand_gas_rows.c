@@ -157,16 +157,12 @@ test_the_exhaustive_mover_arms_every_row_it_lands_in(void) {
  * would only reach them by accident. */
 static void
 test_tilted_and_shaken_boards_leave_no_gas_stranded(void) {
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-
     for (int d = 0; d < 8; d++) {
         gas_rows_fixture();
         build_mixed_gas_board(false);
 
         for (int i = 0; i < 30; i++) {
-            sand_step(&gr, dirs[d][0], dirs[d][1], (i % 4 == 0) ? 200 : 0);
+            sand_step(&gr, gravity_dirs[d][0], gravity_dirs[d][1], (i % 4 == 0) ? 200 : 0);
         }
 
         assert_no_stranded_gas("a tilted or shaken board left gas in a row the spread pass was "
