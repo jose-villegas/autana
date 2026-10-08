@@ -834,22 +834,20 @@ test_a_same_row_reset_commits_but_a_different_row_does_not(void) {
 static void
 mirror_debounced_depth_line(sand_t* g, int fixed, int len, bool along_x, unsigned char* stable, unsigned char* top,
                             unsigned depth_out[]) {
+    const int dx = along_x ? 1 : 0, dy = 1 - dx;
     for (int i = 0; i < len; i++) {
-        const int x = along_x ? i : fixed, y = along_x ? fixed : i;
+        const int x = dx * i + dy * fixed, y = dy * i + dx * fixed;
         const cell_t here = sand_at(g, x, y);
-        const cell_t before = along_x ? sand_at(g, x - 1, y) : sand_at(g, x, y - 1);
-        const bool same = CELL_MATERIAL(before) == CELL_MATERIAL(here);
-        unsigned stable_depth;
+        const bool same = CELL_MATERIAL(sand_at(g, x - dx, y - dy)) == CELL_MATERIAL(here);
+        unsigned stable_depth = 0u;
 
-        if (material_of(here)->kind != KIND_LIQUID) {
-            stable_depth = 0u;
-        } else if (same) {
+        /* A boundary row asking for a reset commits only when it asks a
+         * second time running; anything else climbs one more. */
+        if (material_of(here)->kind == KIND_LIQUID && (same || *top != (unsigned char)i)) {
             stable_depth = *stable < 255u ? *stable + 1u : 255u;
-        } else if (*top == (unsigned char)i) {
-            stable_depth = 0u;
-        } else {
-            stable_depth = *stable < 255u ? *stable + 1u : 255u;
-            *top = (unsigned char)i;
+            if (!same) {
+                *top = (unsigned char)i;
+            }
         }
         *stable = (unsigned char)stable_depth;
         depth_out[i] = stable_depth;
