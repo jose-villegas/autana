@@ -35,7 +35,7 @@ from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
 BOARD_SCALE = 2
 # The host renderer that draws any scene file's objects along its camera path.
-VIEWER = pathlib.Path(__file__).resolve().parents[1] / "render/scenes/scene_viewer_render_host.sh"
+VIEWER = pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh"
 
 
 def placed_variant(scene, name):
@@ -67,11 +67,11 @@ def split_poses(fit, poses):
     return training, held_out
 
 
-def viewer_args(job, frames, dt_ms):
+def viewer_args(job, frames, dt_ms, scene):
     """The scene viewer's arguments that draw `job`'s object alone, portrait,
     for `frames` frames `dt_ms` apart along the scene camera's path."""
-    scene_id, object_name = job.asset_name.split(".", 1)
-    return f"--scene {scene_id} --object {object_name} --quarter 0 --frames {frames} --dt {dt_ms}"
+    from r3d.scene_asset import scene_id
+    return f"--scene {scene_id(scene)} --object {job.object.name} --quarter 0 --frames {frames} --dt {dt_ms}"
 
 
 def canonical(value):
@@ -272,14 +272,14 @@ def sweep_rows(out, points):
     return [json.loads((pathlib.Path(out) / point_name(point) / "result.json").read_text()) for point in points]
 
 
-def _score_mesh(args, name, mesh_path, score_dir, host):
+def _score_mesh(args, name, mesh_path, score_dir, host, scene):
     """Score a packed mesh through the host renderer."""
     from r3d.bake_fidelity import score, write_assets
 
-    return score(args, host, write_assets(name, mesh_path, score_dir), score_dir)[:2]
+    return score(args, host, write_assets(name, mesh_path, score_dir, scene), score_dir)[:2]
 
 
-def held_out_score(job, mesh_path, work, host, inputs=None):
+def held_out_score(job, mesh_path, work, host, scene, inputs=None):
     """Mean and p95 DeltaE76 from the host renderer against held-out references."""
     from types import SimpleNamespace
     from r3d.poses import read_poses
@@ -289,9 +289,9 @@ def held_out_score(job, mesh_path, work, host, inputs=None):
     _width, _height, _lens, _near, poses = read_poses(inputs / "held_out.txt")
     score_dir = work / "score"
     score_dir.mkdir(exist_ok=True)
-    args = SimpleNamespace(render_args=viewer_args(job, len(poses), fit.held_out_every_ms), reference=inputs / "reference_held_out",
+    args = SimpleNamespace(render_args=viewer_args(job, len(poses), fit.held_out_every_ms, scene), reference=inputs / "reference_held_out",
                            reference_scale=BOARD_SCALE)
-    return _score_mesh(args, job.asset_name, mesh_path, score_dir, host)
+    return _score_mesh(args, job.asset_name, mesh_path, score_dir, host, scene)
 
 
 def board_poses(work):
@@ -365,11 +365,11 @@ def sweep_main(argv):
         if host is None:
             from r3d.bake_fidelity import build_host
 
-            host = build_host(VIEWER, out / "host")
+            host = build_host(VIEWER, out / "host", scene_path)
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
                    smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
-        mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work)
+        mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work, scene=scene_path)
         from r3d.cost_model import load, mesh_rows, predict
         from r3d.lit_mesh import finest_triangles, read_lit_mesh
 

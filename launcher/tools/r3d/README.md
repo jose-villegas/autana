@@ -160,7 +160,7 @@ below `--min-free-gib`.
 sweeps the flat bake's knobs:
 
 ```sh
-$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST     --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
+$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_OBJECT --host HOST     --render-args "--quarter 0 --scene SCENE_ID --object FLAT_OBJECT --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
 ```
 
 It bakes the simplified geometry once, re-lights it for each variant into
@@ -291,7 +291,10 @@ from the chord between the front's end points after both axes are normalized.
 The [documentation stages](../render/doc_stages.py)
 rebuild fitted comparisons and sweeps with this recipe API, write measured
 Markdown blocks with the shared doc writer, and consume board captures to
-refit the cost weights. The GPU smoke mode publishes no images or tables.
+refit the cost weights. Host scoring uses the engine's
+[scene viewer](../render/scene_viewer.sh) with the supplied scene and renderer.
+[doc_images_demo.sh](../render/doc_images_demo.sh) owns the demo's CPU images
+and measured tables. The GPU smoke mode publishes no images or tables.
 
 ## Cost-aware fit
 

@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""Turns a raw device capture into a markdown report of suite_boot_anim_
-perf.c's per-checkpoint frame breakdown, the same idea as
-main/apps/render_lab/tools/report_cube_perf.py, but for boot_anim's own
-suite, whose output shape is different enough (only Total/Image/Present
-carry a full min/max/avg/med/p95 breakdown; Clear/Floor/Axes/Curve/Zeros/
-Title are logged as an average only, to keep six checkpoints' worth of
-console output from scrolling past what a 300s capture window can hold)
-that it needs its own parser rather than reusing cube's.
+"""Turn a device capture into a Markdown report of checkpoint frame costs.
 
-ESP_LOGI is the only persistent output a DEVICE_BUILD suite has here (no
-mounted filesystem, see report_cube_perf.py's own comment on why), so this
-generates the report on the host from a captured serial log instead.
+Only Total/Image/Present carry a full min/max/avg/med/p95 breakdown;
+Clear/Floor/Axes/Curve/Zeros/Title are logged as averages.
+A DEVICE_BUILD suite has no mounted filesystem, so the host generates
+this report from a captured serial log.
 
 Each checkpoint's own label states what point in the animation it froze
 time at (curve_climbing, crossfade_mid, ...), see suite_boot_anim_perf.c's
@@ -22,10 +16,6 @@ Usage:
     python tools/boot_anim/report_boot_anim_perf.py <raw_capture.txt> <out.md>
 
 Exit 2 means the capture has no checkpoint in it to report on.
-
-Lives in tools/, not test/suites/, the same convention gen_boot_anim_
-timeline.py and gen_boot_anim_image.py already follow for boot_anim's own
-host-side tooling; it is not app-owned the way cube's report generator is.
 """
 import argparse
 import re
