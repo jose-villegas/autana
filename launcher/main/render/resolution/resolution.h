@@ -6,10 +6,9 @@
  * Two policies share the steps. The stepped controller reacts: a window of
  * measured costs moves it one step at a time, with separate thresholds, a
  * cooldown that doubles after a reversal, and a panic drop for one frame far
- * over budget. The predictor acts first: its linear cost model starts from
- * the offline fit and refits from each frame's measured draw by recursive
- * least squares, with the fit as prior, bounded uncertainty, process noise
- * to keep tracking, and one outlier frame clipped. It prices every step from
+ * over budget. The predictor acts first: it scales and offsets the offline
+ * fit's price by what recent frames cost, with a small Kalman filter that
+ * leans back to the fit and clips one outlier frame. It prices every step from
  * what survived culling this frame, and the finest step that fits is drawn.
  *
  * Steps past `recovery_from` are recovery only: the stepped controller
@@ -93,9 +92,8 @@ float resolution_model_predict_us(const resolution_model_t* model, const resolut
 typedef struct {
     resolution_model_t model;
     int step;
-    resolution_model_t prior;
-    float covariance[4][4];
-    float prior_variance[4];
+    float scale, offset_us;
+    float covariance[2][2];
     float chosen_us; /* model price when the step was chosen */
     int switches;
 } resolution_predict_t;
@@ -106,6 +104,6 @@ void resolution_predict_init(resolution_predict_t* predict, const resolution_con
 /* The step for this frame, from the triangles culling kept. */
 int resolution_predict_choose(resolution_predict_t* predict, const resolution_config_t* config, int triangles);
 
-/* Draw cost refits the weights; the offline per-step upscale stays fixed. */
+/* Total draw and upscale cost adjusts the fit's scale and offset. */
 void resolution_predict_measured(resolution_predict_t* predict, const resolution_config_t* config, int triangles,
-                                 int32_t draw_us);
+                                 int32_t frame_us);

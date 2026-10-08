@@ -17,15 +17,15 @@
 /* The predictor goes finer only with this much of the budget to spare, so
  * a prediction at the edge does not flip between two steps. */
 #define PREDICT_FINER_MARGIN_PERCENT 8
-/* Half-weight prior uncertainty allows scene differences. */
-#define PRIOR_SHARE                  0.5F
-/* A scaled uncertainty floor lets zero-weight terms move. */
-#define PRIOR_FLOOR_US               1000.0F
-/* Process variance keeps the fit tracking after long flights. */
-#define PROCESS_SHARE                1e-5F
-/* Observation noise rejects draw-time jitter. */
+/* About 50 frames of memory tracks scene changes and leans back to the fit. */
+#define RHO                          0.98F
+/* Scene differences can change the fit's overall slope. */
+#define PRIOR_SCALE_SD               0.25F
+/* Fixed scene overhead can differ by a few milliseconds. */
+#define PRIOR_OFFSET_SD_US           3000.0F
+/* Observation noise rejects frame-time jitter. */
 #define NOISE_SHARE                  0.05F
-/* A noise floor keeps cheap draws from dominating the fit. */
+/* Cheap frames must not dominate the filter. */
 #define NOISE_FLOOR_US               100.0F
 
 /* Thousands of triangles and unit shares need comparable feature units. */
@@ -221,34 +221,25 @@ resolution_model_predict_us(const resolution_model_t* model, const resolution_co
 }
 
 static void
-scaled_weights(const resolution_model_t* model, float out[4]) {
-    out[0] = model->base_us / feature_scale[0];
-    out[1] = model->per_triangle_us / feature_scale[1];
-    out[2] = model->per_triangle_row_us / feature_scale[2];
-    out[3] = model->per_pixel_share_us / feature_scale[3];
-}
-
-static void
 reset_refit(resolution_predict_t* p) {
-    p->model = p->prior;
-    memset(p->covariance, 0, sizeof p->covariance);
-    for (int i = 0; i < 4; i++) {
-        p->covariance[i][i] = p->prior_variance[i];
-    }
+    p->scale = 1.0F;
+    p->offset_us = 0.0F;
+    p->covariance[0][0] = PRIOR_SCALE_SD * PRIOR_SCALE_SD;
+    p->covariance[1][1] = PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US;
+    p->covariance[0][1] = p->covariance[1][0] = 0.0F;
 }
 
 void
 resolution_predict_init(resolution_predict_t* predict, const resolution_config_t* config,
                         const resolution_model_t* model, int first_step) {
     assert(first_step >= 0 && first_step < config->step_count);
-    *predict = (resolution_predict_t){.prior = *model, .step = first_step};
-    float weights[4];
-    scaled_weights(model, weights);
-    for (int i = 0; i < 4; i++) {
-        const float deviation = fmaxf(PRIOR_SHARE * fabsf(weights[i]), PRIOR_FLOOR_US);
-        predict->prior_variance[i] = deviation * deviation;
-    }
+    *predict = (resolution_predict_t){.model = *model, .step = first_step};
     reset_refit(predict);
+}
+
+static float
+corrected_us(const resolution_predict_t* p, const resolution_config_t* config, int step, int triangles) {
+    return p->scale * resolution_model_predict_us(&p->model, config, step, triangles) + p->offset_us;
 }
 
 /* The finest step whose model cost fits `share` of the budget, among
@@ -258,7 +249,7 @@ finest_fitting(const resolution_predict_t* p, const resolution_config_t* config,
                int percent) {
     const float limit = (float)config->budget_us * (float)percent / 100.0F;
     for (int step = 0; step < count; step++) {
-        if (resolution_model_predict_us(&p->model, config, step, triangles) <= limit) {
+        if (corrected_us(p, config, step, triangles) <= limit) {
             return step;
         }
     }
@@ -274,7 +265,7 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
          * unless even it would pass the panic share. */
         const int floor = config->recovery_from - 1;
         const float panic = (float)config->budget_us * (float)config->panic_percent / 100.0F;
-        chosen = resolution_model_predict_us(&p->model, config, floor, triangles) <= panic ? floor : -1;
+        chosen = corrected_us(p, config, floor, triangles) <= panic ? floor : -1;
     }
     if (chosen < 0) {
         chosen = finest_fitting(p, config, triangles, config->step_count, config->panic_percent);
@@ -291,56 +282,29 @@ resolution_predict_choose(resolution_predict_t* p, const resolution_config_t* co
         p->step = chosen;
         p->switches++;
     }
-    p->chosen_us = resolution_model_predict_us(&p->model, config, p->step, triangles);
+    p->chosen_us = corrected_us(p, config, p->step, triangles);
     return p->step;
-}
-
-static bool
-bound_covariance(resolution_predict_t* p) {
-    for (int i = 0; i < 4; i++) {
-        for (int j = i; j < 4; j++) {
-            const float value = 0.5F * p->covariance[i][j] + 0.5F * p->covariance[j][i];
-            if (!isfinite(value)) {
-                return false;
-            }
-            p->covariance[i][j] = p->covariance[j][i] = value;
-        }
-        if (p->covariance[i][i] < 0.0F) {
-            return false;
-        }
-    }
-    for (int i = 0; i < 4; i++) {
-        if (p->covariance[i][i] > p->prior_variance[i]) {
-            const float factor = sqrtf(p->prior_variance[i] / p->covariance[i][i]);
-            for (int j = 0; j < 4; j++) {
-                p->covariance[i][j] *= factor;
-                p->covariance[j][i] *= factor;
-            }
-            p->covariance[i][i] = p->prior_variance[i];
-        }
-    }
-    return true;
 }
 
 void
 resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* config, int triangles,
-                            int32_t draw_us) {
-    float x[4], px[4], weights[4];
-    features(config, p->step, triangles, x);
-    scaled_weights(&p->model, weights);
-    float predicted = 0.0F;
-    for (int i = 0; i < 4; i++) {
-        x[i] *= feature_scale[i];
-        predicted += x[i] * weights[i];
-        p->covariance[i][i] += PROCESS_SHARE * p->prior_variance[i];
+                            int32_t frame_us) {
+    const float prior_variance[2] = {PRIOR_SCALE_SD * PRIOR_SCALE_SD, PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US};
+    const float x[2] = {resolution_model_predict_us(&p->model, config, p->step, triangles), 1.0F};
+    p->scale = 1.0F + RHO * (p->scale - 1.0F);
+    p->offset_us *= RHO;
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            p->covariance[i][j] =
+                RHO * RHO * p->covariance[i][j] + (i == j ? (1.0F - RHO * RHO) * prior_variance[i] : 0.0F);
+        }
     }
+    const float predicted = p->scale * x[0] + p->offset_us;
     const float noise = NOISE_SHARE * predicted;
     float variance = noise * noise + NOISE_FLOOR_US * NOISE_FLOOR_US;
-    for (int i = 0; i < 4; i++) {
-        px[i] = 0.0F;
-        for (int j = 0; j < 4; j++) {
-            px[i] += p->covariance[i][j] * x[j];
-        }
+    float px[2];
+    for (int i = 0; i < 2; i++) {
+        px[i] = p->covariance[i][0] * x[0] + p->covariance[i][1];
         variance += x[i] * px[i];
     }
     if (!isfinite(predicted) || !isfinite(variance) || variance <= 0.0F) {
@@ -348,25 +312,20 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
         return;
     }
     const float limit = 3.0F * sqrtf(variance);
-    const float innovation = fmaxf(-limit, fminf(limit, (float)draw_us - predicted));
-    for (int i = 0; i < 4; i++) {
-        const float gain = px[i] / variance;
-        weights[i] += gain * innovation;
-        if (!isfinite(weights[i])) {
-            reset_refit(p);
-            return;
-        }
-        weights[i] = fmaxf(0.0F, weights[i]);
-        for (int j = 0; j < 4; j++) {
-            p->covariance[i][j] -= gain * px[j];
+    const float innovation = fmaxf(-limit, fminf(limit, (float)frame_us - predicted));
+    p->scale += px[0] / variance * innovation;
+    p->offset_us += px[1] / variance * innovation;
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            p->covariance[i][j] -= px[i] / variance * px[j];
+            if (!isfinite(p->covariance[i][j])) {
+                reset_refit(p);
+                return;
+            }
         }
     }
-    if (!bound_covariance(p)) {
+    p->covariance[0][1] = p->covariance[1][0] = 0.5F * p->covariance[0][1] + 0.5F * p->covariance[1][0];
+    if (!isfinite(p->scale) || !isfinite(p->offset_us) || p->scale <= 0.0F) {
         reset_refit(p);
-        return;
     }
-    p->model.base_us = weights[0] * feature_scale[0];
-    p->model.per_triangle_us = weights[1] * feature_scale[1];
-    p->model.per_triangle_row_us = weights[2] * feature_scale[2];
-    p->model.per_pixel_share_us = weights[3] * feature_scale[3];
 }
