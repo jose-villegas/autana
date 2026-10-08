@@ -73,11 +73,11 @@ set(app_srcs
     "util/runtime/tune.c"
 )
 
-function(launcher_glob output pattern)
+function(launcher_glob output)
     if(CMAKE_SCRIPT_MODE_FILE)
-        file(GLOB_RECURSE files "${pattern}")
+        file(GLOB_RECURSE files ${ARGN})
     else()
-        file(GLOB_RECURSE files CONFIGURE_DEPENDS "${pattern}")
+        file(GLOB_RECURSE files CONFIGURE_DEPENDS ${ARGN})
     endif()
     set(${output} ${files} PARENT_SCOPE)
 endfunction()
@@ -207,9 +207,11 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
-    # perf scope replaces the shell suites outright with what apps declare.
+    # perf scope includes only what engine and app manifests declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
-        launcher_glob(perf_scope_files "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
+        launcher_glob(perf_scope_files
+            "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake"
+            "${CMAKE_CURRENT_LIST_DIR}/../test/scope_perf.cmake")
         set(perf_scope_srcs "")
         foreach(perf_scope_file IN LISTS perf_scope_files)
             include("${perf_scope_file}")

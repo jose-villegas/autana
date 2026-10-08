@@ -265,8 +265,8 @@ symbols in the two `.elf` files rather than assumed.
 ### A diagnostics build can be scoped
 
 A diagnostics build compiles every suite; the perf scope compiles only the
-sources apps declare in their `scope_perf.cmake`, for a frame-budget
-capture. A scoped build is an instrument and never a
+sources the engine and apps declare in their `scope_perf.cmake`, for a
+frame-budget capture. A scoped build is an instrument and never a
 gate, and its numbers compare only with other scoped captures.
 [`Build-Variants.md`](Build-Variants.md#a-diagnostics-build-can-be-scoped)
 
@@ -791,9 +791,10 @@ by a substring of the name, so treat it as a lookup, not an area map.
    `selftest.c`. Both runners discover `suite_*.c`, so a new suite joins the
    full scope automatically and can be run alone with
    `runsuite run_<name>_suite` on an already-flashed diagnostics build. If a
-   If a perf capture needs it, it must be an app's suite: declare it in that
-   app's `scope_perf.cmake`, together with every other source the run links.
-   The perf scope carries no shell suite (see "A diagnostics build can be scoped").
+   perf capture needs it, declare it in `launcher/test/scope_perf.cmake` for
+   an engine suite or the app's `scope_perf.cmake` for an app suite, together
+   with every other source the run links. The build discovers both kinds of
+   manifest (see "A diagnostics build can be scoped").
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section: `suite_job.c` runs every one of its tests on both, and fences
