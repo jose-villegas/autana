@@ -702,11 +702,9 @@ scene_two_core_big(sand_t* s) {
     }
 }
 
-/* SKIP COVERAGE. The rows below exist to make a skip fire that no row above
- * reaches, so report_fingerprint.sh's forced-work comparison says something
- * about it - its coverage table names the site each one is for. Most leave
- * the stone floor out on purpose: stone is a conductor and carries heat, and
- * either is enough to keep the skip they test from ever applying. */
+/* SKIP COVERAGE: each row below makes a skip fire that no row above reaches,
+ * so the forced-work comparison covers it. Most have no stone floor: stone
+ * conducts and carries heat, which keeps the skip from ever applying. */
 
 /* Fire with nothing to burn and nothing that conducts: the burning cell's
  * neighbour scan and conduction are skipped, board-wide. */
