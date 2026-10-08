@@ -88,31 +88,23 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
 ## Expanded frames
 
-A scene drawn at exactly half the panel size in both axes composes 1:1 into
-`gfx_half_picture()`. Depth-zero pixels become the scene's clear colour.
-`gfx_expand_frame()` marks every strip dirty and holds the picture until
-`gfx_present_wait()` completes. The present doubles rows into its bounce
-slots and replays the shell's registered UI overlay there. Indexed pictures
-and expanded frames use the same strip loop, without interlace or partial
-clear. Raw framebuffer drawing is guarded while a frame is expanded.
+An expanded frame holds an exact-half picture in `gfx_half_picture()`;
+`scene_compose()` copies into it and `scene_shell_compose()` calls
+`gfx_expand_frame()`. A paused or undrawn scene keeps its last expanded
+picture. Presentation doubles it into send strips until
+`gfx_present_wait()` completes. Raw framebuffer drawing is guarded during
+that interval.
 
-`ui_end()` bins commands for strip replay during an expanded frame. The shell
-clears the previous overlay after the present completes and queues its home
-hint before the app builds new commands. A frame with no UI replays no HUD.
-Readback uses the same expansion and overlay path, including when the
-requested row is odd.
+`ui_end()` bins commands instead of drawing into an expanded frame. The
+shell queues its home hint before the app builds the UI, then its frame
+overlay replays the bin and the development build mark into each strip.
+Readback uses the same expansion and overlay path.
 
 The development tunable `gfx.half_separate` selects the picture's placement:
 `0` uses the framebuffer's first quarter; `1` lazily allocates a half-size
 PSRAM picture and frees it on mode exit. Allocation failure uses the
 framebuffer. Release uses the framebuffer placement. Other render sizes
 compose directly into the full framebuffer.
-
-![Full upscale and expanded readback with the HUD, in panel orientations](images/render/expanded-present.png)
-
-The host comparison includes the HUD and its text halos. Both paths produce
-identical pixels; the difference column is black. The revision comparison
-uses [render_compare.sh](../launcher/tools/render/render_compare.sh).
 
 ## Dirty tracking
 
@@ -181,7 +173,7 @@ flowchart TB
   in place drops data past 40 MHz.
 - A rejected transfer marks the whole screen dirty, so the next present
   repairs it.
-- Indexed mode skips the run logic: `run_present_indexed()` expands each dirty
+- Indexed mode skips the run logic: `run_present_strips()` expands each dirty
   strip whole through the LUT, straight into a bounce slot.
 
 ## Present: who runs it

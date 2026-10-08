@@ -25,7 +25,7 @@ typedef struct {
     uint16_t* half_pixels; /* NULL disables expansion */
 } scene_target_t;
 
-/* Whether a camera is active and the scene not paused. */
+/* Whether a camera needs a frame pass, including a paused expanded picture. */
 bool scene_has_active_camera(void);
 void scene_render(uint32_t dt_ms, int quarter, int width, int height);
 bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);

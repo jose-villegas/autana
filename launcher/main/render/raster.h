@@ -65,14 +65,10 @@ size_t raster_scratch_bytes(const raster_t* raster);
 /* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
 raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
 
-/* raster_draw() split in two, so a caller can price sizes between them.
- * raster_census() culls every instance into the scratch block's list,
- * raster_culled_length() entries, and returns what survived;
- * raster_draw_culled() draws that list at the raster's size now without
- * culling again. The list holds, in the same scratch block, for the same
- * camera, quarter and instances, at any size of an upscaled raster whose
- * destination size is unchanged; without upscaling, only at the size it was
- * taken at. */
+/* The census list lets a caller price sizes before drawing. It stays valid
+ * in the same scratch block for unchanged camera, quarter and instances.
+ * Upscaled rasters may change render size with a fixed destination; other
+ * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter);
 void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter);

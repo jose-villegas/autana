@@ -20,6 +20,7 @@
 #ifndef DEVICE_BUILD
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
+#include "shell/shell_frame.h"
 #include "ui/ui.h"
 #include "util/runtime/tune.h"
 #endif
@@ -1113,6 +1114,11 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 }
 
 #ifndef DEVICE_BUILD
+int
+display_quarter_now(void) {
+    return 0;
+}
+
 static void
 expanded_fixture(void) {
     fixture();
@@ -1254,6 +1260,65 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
 }
 
 static void
+test_shell_expanded_pass_replays_build_mark_without_raw_writes(void) {
+    expanded_fixture();
+    ui_init();
+    shell_frame_init("1234567");
+    gfx_set_frame_overlay(shell_frame_overlay);
+    render_context_set_scale(render_context_main(), 50);
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_TRUE(gfx_frame_expanded());
+    const unsigned trips = gfx_fb_guard_trips_for_test();
+    build_expanded_ui(UI_TEXT_OUTLINED);
+    shell_frame_extras();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+    }
+    TEST_ASSERT_EQUAL_UINT(trips, gfx_fb_guard_trips_for_test());
+    gfx_set_frame_overlay(ui_replay_band);
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.held + (size_t)y * GFX_WIDTH);
+    }
+    TEST_ASSERT_TRUE(memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT) != 0);
+    gfx_present();
+}
+
+static void
+test_paused_or_empty_expanded_scene_retains_its_picture(void) {
+    for (int separate = 0; separate <= 1; separate++) {
+        expanded_picture(separate);
+        gfx_present();
+        for (int pause = 1; pause >= 0; pause--) {
+            scene_set_paused(pause != 0);
+            if (!pause) {
+                scene_t* scene = scene_loaded_at(0);
+                scene_entity_set_enabled(scene, scene_find(scene, "red"), false);
+                scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
+            }
+            scene_shell_render(16);
+            scene_shell_compose(16);
+            TEST_ASSERT_TRUE(gfx_frame_expanded());
+            for (int y = 0; y < GFX_HEIGHT; y++) {
+                gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+            }
+            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+            gfx_present();
+        }
+        const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
+        TEST_ASSERT_FALSE(scene_compose(16, 0, &full));
+        const scene_target_t half = {full.pixels, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+        TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
+        scene_t* scene = scene_loaded_at(0);
+        scene_entity_set_enabled(scene, scene_find(scene, "red"), true);
+        TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
+        scene_unload(scene);
+        TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
+        suite_run_test_cleanup();
+    }
+}
+
+static void
 test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     expanded_picture(0);
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
@@ -1279,6 +1344,8 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
 void
 run_scene_suite(void) {
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_shell_expanded_pass_replays_build_mark_without_raw_writes);
+    RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
     RUN_TEST(test_expanded_scene_in_framebuffer_matches_upscale);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);

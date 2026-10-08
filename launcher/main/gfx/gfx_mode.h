@@ -1,7 +1,8 @@
 /*
  * gfx_mode: the mode-grant arithmetic behind gfx_mode_enter(), as a
  * standalone, ESP-IDF-free module so a host suite can drive it without a
- * framebuffer or a panel.
+ * framebuffer or a panel. A request asks for a layout and interlace; the
+ * grant records the available layout and geometry.
  */
 #pragma once
 

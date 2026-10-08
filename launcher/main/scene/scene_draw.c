@@ -17,12 +17,13 @@ typedef struct {
 
 static active_t active;
 static bool paused;
+static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
 
 bool
 scene_has_active_camera(void) {
-    return active.scene != NULL && !paused;
+    return active.scene != NULL && (!paused || expanded);
 }
 
 void
@@ -40,6 +41,8 @@ scene_activate(scene_t* scene, const char* camera) {
     }
     active = (active_t){scene, index};
     rendered = false;
+    stepped = false;
+    expanded = false;
     return true;
 }
 
@@ -47,6 +50,8 @@ void
 scene_deactivate(void) {
     active = (active_t){NULL, 0};
     rendered = false;
+    stepped = false;
+    expanded = false;
 }
 
 void
@@ -126,13 +131,15 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
 
 bool
 scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
+    if (target->half_pixels == NULL) {
+        expanded = false;
+    }
     if (paused) {
-        return false;
+        return expanded;
     }
     if (!stepped) {
         scene_render(dt_ms, quarter, target->width, target->height);
     }
-    bool expanded = false;
     if (rendered && target->pixels != NULL) {
         expanded = render_context_compose(render_context_main(), target->pixels, target->half_pixels);
     }

@@ -64,8 +64,10 @@ still being sent. `scene_compose()` writes the half picture when the draw is
 exactly half the panel in both axes, otherwise the full framebuffer, once the
 send is done; if `scene_render()` did not run (the first frame after
 activating), it draws first. An app gets this overlap whenever a camera is
-active, with or without `update()`. With no camera active the loop is the plain
-one. Every frame redraws the whole picture, a static scene included. A camera
+active, with or without `update()`. A paused expanded picture keeps the
+overlap so each pass composes it again without rendering. With no camera
+active the loop is the plain one. Unpaused frames redraw the whole picture,
+a static scene included. A camera
 needs the full-framebuffer layout; in band mode the scene is drawn into the
 scratch but there is nothing to upscale it into.
 

@@ -19,6 +19,7 @@
 #include "input/tilt.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
+#include "shell/shell_frame.h"
 #include "shell/shell_system.h"
 #include "ui/system_navigation.h"
 #include "ui/ui.h"
@@ -386,7 +387,7 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 
 void
 shell_apps_init(void) {
-    gfx_set_frame_overlay(ui_replay_band);
+    gfx_set_frame_overlay(shell_frame_overlay);
     system_navigation_init(&system_navigation);
     tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
 }

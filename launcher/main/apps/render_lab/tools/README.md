@@ -20,33 +20,6 @@ with `"%.1f"`, and so are the Cornell scenes, which are float throughout.
 The fps text comes from the host fixture - time the board with a device
 capture. The Gouraud scene rotates when stepped over several frames.
 
-### Expanded presentation
-
-At exactly half the panel size, the scene composes a half picture and gfx
-expands it while sending strips. The HUD replays over those strips. The host
-harness uses `gfx_read_panel_row()`, so its captures include the expansion,
-text halos and overlay order.
-
-![Full upscale and expanded strips with the HUD](../../../../../docs/images/render/expanded-present.png)
-
-The full upscale and expanded readback produce identical pixels in the
-pictured orientations. Compare the two paths with the existing revision
-comparison tool; each reference can also be a checkout directory:
-
-```sh
-./launcher/tools/render/render_compare.sh \
-  --script launcher/main/apps/render_lab/tools/render_lab_render_host.sh \
-  --crops 4 -o /tmp/expanded-present FULL_UPSCALE_REF EXPANDED_REF \
-  --render landscape "--quarter 1 --scene sponza --frames 2" \
-  --render portrait "--quarter 0 --scene sponza --frames 2" \
-  --render flipped "--quarter 3 --scene sponza --frames 2"
-```
-
-On development firmware, `autana tune gfx.half_separate 0` selects the
-framebuffer's first quarter; `autana tune gfx.half_separate 1` selects a
-separate PSRAM half picture. The separate allocation is freed on mode exit.
-Release uses the framebuffer placement.
-
 ### Depth views
 
 `--view shaded|depth|tiles` shows a lit-mesh scene's frame as the renderer

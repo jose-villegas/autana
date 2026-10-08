@@ -276,11 +276,8 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
-/* Draws every instance through its fitted lens: culled with that lens into
- * the scratch block's list first when `stats` counts what survived, or from
- * raster_census()'s list when it is NULL. The attachments begin before the
- * first and resolve after the last. Inlined into both entries, so the draw
- * chain needs only one entry's frame. */
+/* A NULL stats pointer uses the census list; otherwise each instance is
+ * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const camera_t* camera, int quarter, raster_stats_t* stats) {
     assert(raster->instance_count > 0);

@@ -1,9 +1,8 @@
 /*
- * gfx: picture ownership, drawing and presentation.
- *
- * The shell and apps share buffers. Exact-half scenes expand in send strips,
- * where the UI replays. gfx_rgb() converts plain 0xRRGGBB into the panel's
- * byte-swapped RGB565 format. See docs/Gfx-and-Presentation.md.
+ * gfx: shell and apps share one RGB565 PSRAM framebuffer (368x448x2 = 322 KiB).
+ * A second framebuffer costs a per-frame PSRAM copy apps cannot afford.
+ * Expanded frames replay overlays over doubled half-picture strips.
+ * Colours are plain 0xRRGGBB; gfx_rgb() handles the panel's byte swap.
  */
 #pragma once
 
@@ -348,13 +347,8 @@ void gfx_heal_restore_defaults(void);
 
 bool gfx_heal_active(void);
 
-/*
- * Mode: a full PSRAM framebuffer, an internal-SRAM band ring for a
- * transient renderer, or a persistent internal-RAM index image.
- * Requested from enter(), released with gfx_mode_exit() from exit(). An
- * interlace request is granted (gfx_mode.h) but changes nothing drawn;
- * gfx_set_interlace() is the switch that does.
- */
+/* Band and indexed layouts need their own storage. Interlace grants describe
+ * the request; gfx_set_interlace() controls the strip sends. */
 
 /* Grants `request`, allocates whatever the granted layout needs, and
  * returns the grant. Asserts the current mode is already GFX_LAYOUT_FULL_FB:
