@@ -432,7 +432,7 @@ test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
 
 /* A band edge cutting straight through the glyph's own rows, the case
  * ui_replay_band() creates for real: the target's own row range narrower
- * than SIM_DIM, clipping both forms the same way gfx_target_clip_y()
+ * than SIM_DIM, clipping both forms the same way gfx_target_clip_rect()
  * always does. */
 static void
 test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
@@ -551,7 +551,7 @@ sim_walk_boxes(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned 
     }
 }
 
-/* draw_glyph_font()/draw_glyph_font_halo()'s own merged-box shape: one
+/* draw_glyph_font() in halo mode: one
  * dilated-box halo pass, one plain-box ink pass. */
 static void
 sim_draw_merged(gfx_target_t target, const gfx_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
