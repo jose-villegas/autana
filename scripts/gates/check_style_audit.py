@@ -10,6 +10,7 @@ run; WARN prints but only fails under --strict. `--fix` applies every rule's
 fixer, then re-audits, so the exit code reflects what actually remains.
 `--rule` runs one rule; `--file` scopes to files whose path contains the
 given text and exits 2 (never a false "clean") if that matches nothing.
+`--paths FILE...` checks exact paths while retaining tree context.
 
 Two rules a script cannot judge reliably were left out rather than scripted
 badly: journey words in prose docs (find_narrative_comments.py's own
@@ -38,7 +39,7 @@ ERROR, WARN = "ERROR", "WARN"
 
 BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".otf", ".ttf",
                      ".woff", ".woff2", ".xcf", ".bin", ".elf", ".o", ".a", ".exe",
-                     ".dll", ".pyc", ".gz", ".zip", ".wav", ".mp3", ".mp4", ".pdf"}
+                     ".dll", ".pyc", ".gz", ".zip", ".wav", ".mp3", ".mp4", ".pdf", ".glb"}
 
 
 class Finding:
@@ -96,18 +97,22 @@ def relpath(root, path):
 # Walkers: each reads a file exactly once and hands every registered rule of
 # its kind the same parsed data.
 
-def _doc_walk(root):
+def _doc_walk(root, files=None):
     for path in documentation(root):
+        if files is not None and relpath(root, path) not in files:
+            continue
         raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
         yield path, raw
 
 
-def _c_walk(root):
+def _c_walk(root, files=None):
     """First-party .c/.h files: vendored trees and generated files keep
     their upstream or generator-owned form, the same exemption
     check-format.sh and check_comment_length.py's EXCLUDED give them."""
     root = pathlib.Path(root)
     for rel in tracked_files(root, ["*.c", "*.h"]):
+        if files is not None and rel not in files:
+            continue
         if any(rel.startswith(e) for e in EXCLUDED):
             continue
         path = root / rel
@@ -116,9 +121,11 @@ def _c_walk(root):
         yield path, path.read_text(encoding="utf-8", errors="replace")
 
 
-def _text_walk(root):
+def _text_walk(root, files=None):
     root = pathlib.Path(root)
     for rel in tracked_files(root, []):
+        if files is not None and rel not in files:
+            continue
         p = pathlib.Path(rel)
         if p.suffix.lower() in BINARY_EXTENSIONS:
             continue
@@ -727,7 +734,7 @@ def rule_heading_comment(root, path, text, comments):
             yield c.line, f'"{t}" is a section label inside a function body - extract a named helper instead'
 
 
-def run_audit(root, rule_filter=None, file_filter=None):
+def run_audit(root, rule_filter=None, file_filter=None, files=None):
     """Run every active rule's walker exactly once per matching file,
     returning (findings, files_scanned)."""
     active = [r for r in RULES if not rule_filter or r.id == rule_filter]
@@ -743,7 +750,7 @@ def run_audit(root, rule_filter=None, file_filter=None):
 
     doc_rules = [r for r in active if r.kind == "doc"]
     if doc_rules:
-        for path, raw in _doc_walk(root):
+        for path, raw in _doc_walk(root, files):
             if not keep(path):
                 continue
             rel = relpath(root, path)
@@ -754,7 +761,7 @@ def run_audit(root, rule_filter=None, file_filter=None):
 
     c_rules = [r for r in active if r.kind in ("c_comment", "c_line")]
     if c_rules:
-        for path, text in _c_walk(root):
+        for path, text in _c_walk(root, files):
             if not keep(path):
                 continue
             rel = relpath(root, path)
@@ -772,7 +779,7 @@ def run_audit(root, rule_filter=None, file_filter=None):
 
     text_rules = [r for r in active if r.kind == "text"]
     if text_rules:
-        for path, text in _text_walk(root):
+        for path, text in _text_walk(root, files):
             if not keep(path):
                 continue
             rel = relpath(root, path)
@@ -813,6 +820,10 @@ def run_fix(root, findings):
 
 
 def main(argv):
+    files = None
+    if "--paths" in argv:
+        at = argv.index("--paths")
+        files, argv = argv[at + 1:], argv[:at]
     root = "."
     fix = strict = False
     rule_filter = file_filter = None
@@ -838,7 +849,7 @@ def main(argv):
         return 2
 
     try:
-        findings, scanned = run_audit(root, rule_filter, file_filter)
+        findings, scanned = run_audit(root, rule_filter, file_filter, files)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
@@ -848,7 +859,7 @@ def main(argv):
 
     if fix and any(f.fixable for f in findings):
         run_fix(root, findings)
-        findings, scanned = run_audit(root, rule_filter, file_filter)
+        findings, scanned = run_audit(root, rule_filter, file_filter, files)
 
     for f in findings:
         print(f)

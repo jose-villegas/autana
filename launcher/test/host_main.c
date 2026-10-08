@@ -61,7 +61,7 @@ static void
 name_the_test_that_died(int signal_number) {
     (void)fflush(stdout);
     (void)printf(
-        "%s:%u:%s:FAIL: the process died on signal %d (an assert, heap_arena's report above, or an unmapped read)\n",
+        "%s:%u:%s:FAIL: the process died on signal %d (a sanitizer trap, assert, heap error or unmapped read)\n",
         Unity.TestFile == NULL ? "?" : Unity.TestFile, (unsigned)Unity.CurrentTestLineNumber,
         Unity.CurrentTestName == NULL ? "?" : Unity.CurrentTestName, signal_number);
     (void)fflush(stdout);
@@ -73,6 +73,10 @@ int
 main(int argc, char** argv) {
     (void)signal(SIGABRT, name_the_test_that_died);
     (void)signal(SIGSEGV, name_the_test_that_died);
+    (void)signal(SIGILL, name_the_test_that_died);
+#ifdef SIGBUS
+    (void)signal(SIGBUS, name_the_test_that_died);
+#endif
     UNITY_BEGIN();
 
     if (argc > 1) {

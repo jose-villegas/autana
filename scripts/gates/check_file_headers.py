@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail on a module of the firmware or its suites with no header comment.
 
-    python scripts/gates/check_file_headers.py
+    python scripts/gates/check_file_headers.py [--paths FILE...]
 
 A module is a .c and its .h with the same name in the same folder; one of
 them opens with a comment that says what the module is (a `#pragma once`
@@ -28,7 +28,8 @@ def in_scope(rp):
     return (rp.startswith(SCOPE) and not name.startswith("suite_"))
 
 
-def problems(root="."):
+def problems(root=".", files=None):
+    selected = {rp.rsplit(".", 1)[0] for rp in files} if files is not None else None
     modules = {}
     for path in sources(root, tracked=True):
         rp = path.relative_to(root).as_posix()
@@ -36,6 +37,8 @@ def problems(root="."):
             modules.setdefault(rp.rsplit(".", 1)[0], []).append(rp)
     found = []
     for stem, files in sorted(modules.items()):
+        if selected is not None and stem not in selected:
+            continue
         texts = {rp: (pathlib.Path(root) / rp).read_text(encoding="utf-8", errors="replace") for rp in files}
         if not any(file_header(rp, text) for rp, text in texts.items()):
             found.append(f"{sorted(files)[-1]}: no header comment - open it with one saying what the module is")
@@ -43,7 +46,7 @@ def problems(root="."):
 
 
 def main():
-    found = problems()
+    found = problems(files=sys.argv[2:] if sys.argv[1:2] == ["--paths"] else None)
     for line in found:
         print(line)
     print(f"{len(found)} module(s) without a header comment")

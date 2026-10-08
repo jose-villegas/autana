@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail on a comment or engine document below `apps/` that names a particular app.
 
-    python scripts/gates/check_comment_layers.py [--context]
+    python scripts/gates/check_comment_layers.py [--context] [--paths FILE...]
 
 An app is a folder designed to be deleted whole, so a comment in a lower layer
 naming one is a dangling reference by construction: delete the app and the
@@ -80,7 +80,7 @@ def documents(root, names):
             yield rp
 
 
-def problems(root=".", context=False):
+def problems(root=".", context=False, files=None):
     names = app_names(root)
     word = name_pattern(names)
 
@@ -92,6 +92,8 @@ def problems(root=".", context=False):
 
     found = []
     for rp in sources(root):
+        if files is not None and rp not in files:
+            continue
         for c in scan(rp, read(rp)):
             named = sorted(set(canonical(m.group(), names) for m in hits(c.text)))
             if named:
@@ -99,6 +101,8 @@ def problems(root=".", context=False):
                 if context:
                     found.append(f"      {c.text[:160]}")
     for rp in documents(root, names):
+        if files is not None and rp not in files:
+            continue
         text = read(rp)
         lines = text.splitlines()
         for m in hits(text):
@@ -110,7 +114,9 @@ def problems(root=".", context=False):
 
 
 def main():
-    found = problems(context="--context" in sys.argv[1:])
+    args = sys.argv[1:]
+    files = args[args.index("--paths") + 1:] if "--paths" in args else None
+    found = problems(context="--context" in args, files=files)
     for line in found:
         print(line)
     count = sum(1 for line in found if not line.startswith(" "))

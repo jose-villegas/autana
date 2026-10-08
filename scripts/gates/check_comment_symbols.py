@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail on a comment citing something that does not exist.
 
-    python scripts/gates/check_comment_symbols.py [--require-idf] [root]
+    python scripts/gates/check_comment_symbols.py [--require-idf] [root] [--paths FILE...]
 
 A trim that garbles a cited name leaves a comment pointing at nothing, which
 is worse than the long comment it replaced. Four kinds of citation are
@@ -51,7 +51,7 @@ def comments(root):
             yield rp, c
 
 
-def problems(root, outside, unchecked=None):
+def problems(root, outside, unchecked=None, files=None):
     """Every unresolved citation under `root`, as "path:line: message".
     `outside` is an idf_vocabulary.OutsideVocabulary, or None when there is
     no ESP-IDF to ask: a `name()` the tree lacks then goes into `unchecked`
@@ -62,6 +62,8 @@ def problems(root, outside, unchecked=None):
     out = []
     unchecked = [] if unchecked is None else unchecked
     for rp, c in found:
+        if files is not None and rp not in files:
+            continue
         text = c.text
         where = f"{rp}:{c.line}"
         for m in CITED.finditer(text):
@@ -98,6 +100,10 @@ def problems(root, outside, unchecked=None):
 
 
 def main(argv):
+    files = None
+    if "--paths" in argv:
+        at = argv.index("--paths")
+        files, argv = argv[at + 1:], argv[:at]
     require_idf = "--require-idf" in argv
     argv = [arg for arg in argv if arg != "--require-idf"]
     root = argv[0] if argv else "launcher"
@@ -106,7 +112,7 @@ def main(argv):
         print(required_missing(outside), file=sys.stderr)
         return 2
     unchecked = []
-    found = problems(root, outside, unchecked)
+    found = problems(root, outside, unchecked, files)
     for line in found:
         print(line)
     if outside is None:
