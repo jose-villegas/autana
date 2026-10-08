@@ -94,7 +94,8 @@ requests".
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
-the dynamic-resolution report write `out/tables/NAME.md`. The shared writer
+the dynamic-resolution report write one Markdown table per block name into
+the output tree's tables folder. The shared writer
 replaces the body between an HTML
 comment containing `generated: NAME sha256=HASH` and one containing
 `/generated: NAME`, preserving the document's other text and line endings.
