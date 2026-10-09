@@ -14,11 +14,14 @@
  * sliver's depth step can reach 2^22; with that bound and at most a screen of
  * steps from the triangle's corner, every sum stays inside int32. */
 #define ATTRIBUTES  4
-#define DEPTH_SCALE 16776960.0f /* 65535 << 8 */
+#define DEPTH_MAX   ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
+#define DEPTH_SCALE ((float)DEPTH_MAX)
 #define COLOR_SCALE 256.0f
 #define STEP_MAX    4194304.0f
 
-static const int32_t value_max[ATTRIBUTES] = {16776960, 65280, 65280, 65280};
+_Static_assert(((int64_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT) <= INT32_MAX, "16.8 depth fits int32");
+
+static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 
 int r3d_span_stop_after;
 
@@ -127,7 +130,7 @@ fill_span(const r3d_span_target_t* target, const gradients_t* g, const int32_t r
     int32_t gg = v[2];
     int32_t b = v[3];
     for (int x = x_first; x <= x_last; x++) {
-        const uint16_t zq = (uint16_t)(z >> 8);
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
         if (zq > depth[x]) {
             depth[x] = zq;
             color[x] = r3d_span_pack(r, gg, b);
@@ -161,7 +164,7 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
     uint16_t* depth = gfx_render_target_depth(&target->rows, y);
     uint16_t* out = gfx_render_target_color(&target->rows, y);
     for (int x = x_first; x <= x_last; x++) {
-        const uint16_t zq = (uint16_t)(z >> 8);
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
         if (zq > depth[x]) {
             depth[x] = zq;
             out[x] = color;
@@ -287,7 +290,7 @@ writer_rows(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIB
         const int x_first = left->q < 0 ? 0 : left->q;
         const int x_last = right->q - 1 > last_column ? last_column : right->q - 1;
         if (x_first <= x_last) {
-            int32_t z = (int32_t)f->flat_z << 8;
+            int32_t z = (int32_t)f->flat_z << R3D_DEPTH_SHIFT;
             int32_t dz = 0;
             if (!f->flat) {
                 span_step(f->g, row, 0, x_first - f->g->x_origin, x_last - x_first, &z, &dz);
@@ -356,7 +359,7 @@ sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_
 static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const float third = 1.0F / 3.0F;
-    f->flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * 65535.0F);
+    f->flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * (float)R3D_DEPTH_NEAREST);
     f->flat_color = r3d_span_pack((int32_t)(mathf_clamp((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
                                   (int32_t)(mathf_clamp((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
                                   (int32_t)(mathf_clamp((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
@@ -428,7 +431,7 @@ r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
     const int64_t low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
     const int64_t high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
     const int64_t lifted = high - (low < 0 ? low : 0);
-    return (int32_t)((lifted < value_max[0] ? lifted : value_max[0]) >> 8);
+    return (int32_t)((lifted < value_max[0] ? lifted : value_max[0]) >> R3D_DEPTH_SHIFT);
 }
 
 bool
@@ -570,7 +573,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     if (e.centres.x1 - e.centres.x0 <= SMALL_MAX_SIDE && e.centres.y1 - e.centres.y0 <= SMALL_MAX_SIDE) {
         set_flat(&f, a, b, c);
         for (int y = box.y0; y < box.y1; y++) {
-            write_span(target, y, box.x0, box.x1 - 1, (int32_t)f.flat_z << 8, 0);
+            write_span(target, y, box.x0, box.x1 - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);
         }
         return;
     }
