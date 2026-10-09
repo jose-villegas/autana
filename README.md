@@ -8,13 +8,13 @@
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendered mesh flythroughs. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
 <table>
-<tr><th width="33%">Falling Sand, board turning</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand title screen</th></tr>
-<tr><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-menu.png" width="100%" alt="The Falling Sand title screen with start, load, options, guide and exit"></td></tr>
-<tr><th colspan="3">Sponza flythrough</th></tr>
-<tr><td colspan="3"><img src="docs/images/overview/render-lab-sponza.gif" width="448" alt="A camera moving through the sunlit Crytek Sponza atrium, drawn with the fitted full mesh"></td></tr>
+<tr><th width="33%">Boot animation</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand, board turning</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/boot-anim.gif" width="100%" alt="The boot animation growing a grid and moving the camera through it before fading to black"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td></tr>
+<tr><th width="33%">Falling Sand title screen</th><th width="33%">Sponza, baked light</th><th width="33%">Sponza, flat shading</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/sand-menu.png" width="100%" alt="The static Falling Sand title screen with start, load, options, guide and exit"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/render/sponza-flat.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with flat shading"></td></tr>
 </table>
 
-Every image is a host render of the real firmware drawing code at the panel's 448x368, shown here at a smaller size, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.
+These images are host renders of the real firmware drawing code, sized to fit this grid. The boot clip follows the startup animation's timeline, the launcher backdrop responds to scripted rocking and lists the apps a release build carries, the sand clip runs the real simulation with scripted tilt, and the Sponza clips follow a camera flythrough with baked light or flat shading.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 

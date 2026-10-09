@@ -167,6 +167,17 @@ run ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" -i "$L/sweep-palett
     -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
     -loop 0 "$OUT/overview/launcher-home.gif"
 
+B=$WORK/boot_anim
+run sh launcher/tools/render/scenes/boot_anim_render_host.sh --build-only -o "$B" > "$WORK/boot_anim.log"
+boot_ms=$(sed -n 's/^#define BOOT_ANIM_MS \([0-9]*\).*/\1/p' launcher/main/boot/boot_anim_timeline.h)
+run "$B/boot_anim_render" 0 --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16 \
+    -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
+run ffmpeg -hide_banner -loglevel error -y -i "$B/boot.avi" \
+    -vf "fps=15,palettegen=stats_mode=diff" "$B/boot-palette.png"
+run ffmpeg -hide_banner -loglevel error -y -i "$B/boot.avi" -i "$B/boot-palette.png" \
+    -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
+    -loop 0 "$OUT/overview/boot-anim.gif"
+
 # The UI toolkit's gallery views.
 U=$WORK/ui_widgets
 run sh launcher/tools/render/scenes/ui_widgets_render_host.sh -o "$U" > "$WORK/ui_widgets.log"
