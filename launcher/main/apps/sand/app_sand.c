@@ -79,6 +79,7 @@
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
+#include "util/scalar/mathx.h"
 
 static const char* TAG = "sand";
 
@@ -948,8 +949,8 @@ gravity_bearing_q16(int gx, int gy) {
     if (denom == 0) {
         return 0; /* flat or free fall: no bearing to report */
     }
-    const int64_t p_q16 = ((int64_t)gx << 16) / denom; /* -65536..65536 */
-    return (int)(gy < 0 ? (p_q16 - 65536) : (65536 - p_q16));
+    const int64_t p_q16 = ((int64_t)gx << MATHX_SHIFT) / denom; /* -MATHX_ONE..MATHX_ONE */
+    return (int)(gy < 0 ? (p_q16 - MATHX_ONE) : (MATHX_ONE - p_q16));
 }
 
 static bool

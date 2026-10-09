@@ -24,8 +24,7 @@
 #include <stdint.h>
 
 #include "util/scalar/mathi.h"
-
-#define SPRING_LINE_ONE           (1 << 16)
+#include "util/scalar/mathx.h"
 
 /* One tick of simulated time. A wave crosses at most one column per tick,
  * which is what bounds both how fast a ripple can look and how far the
@@ -37,10 +36,10 @@
 #define SPRING_LINE_MAX_TICKS     8
 
 /* Put to rest below an eighth of a pixel and 4 px/s. */
-#define SPRING_LINE_REST_OFFSET   (SPRING_LINE_ONE / 8)
-#define SPRING_LINE_REST_VELOCITY (SPRING_LINE_ONE / 64)
+#define SPRING_LINE_REST_OFFSET   (MATHX_ONE / 8)
+#define SPRING_LINE_REST_VELOCITY (MATHX_ONE / 64)
 
-#define SPRING_LINE_MAX_OFFSET    (120 * SPRING_LINE_ONE)
+#define SPRING_LINE_MAX_OFFSET    (120 * MATHX_ONE)
 
 typedef struct {
     int32_t* offset;

@@ -33,9 +33,7 @@
 #include "gfx/draw/icon.h"
 #include "microui.h"
 #include "util/scalar/fixed.h"
-
-#define UI_FP_SHIFT 16
-#define UI_FP_ONE   (1 << UI_FP_SHIFT)
+#include "util/scalar/mathx.h"
 
 typedef int32_t ui_fp_t;
 
@@ -59,14 +57,14 @@ typedef struct {
 
 static inline int64_t
 ui_fp_round(int64_t v) {
-    return fx_round_shift(v, UI_FP_SHIFT);
+    return fx_round_shift(v, MATHX_SHIFT);
 }
 
 /* Multiply two Q16.16 numbers, rounding the result to Q16.16. The product of
  * two Q16.16 ints is implicitly Q32.32; fx_mul_round() brings it back down. */
 static inline ui_fp_t
 ui_fp_mul(ui_fp_t a, ui_fp_t b) {
-    return (ui_fp_t)fx_mul_round(a, b, UI_FP_SHIFT);
+    return (ui_fp_t)fx_mul_round(a, b, MATHX_SHIFT);
 }
 
 /* Divide two Q16.16 numbers, rounding the result to Q16.16. `den` must be
@@ -74,12 +72,12 @@ ui_fp_mul(ui_fp_t a, ui_fp_t b) {
  * against zero. */
 static inline ui_fp_t
 ui_fp_div(ui_fp_t num, ui_fp_t den) {
-    return (ui_fp_t)fx_div_round(num, den, UI_FP_SHIFT);
+    return (ui_fp_t)fx_div_round(num, den, MATHX_SHIFT);
 }
 
 static inline ui_transform_t
 ui_transform_identity(void) {
-    return (ui_transform_t){UI_FP_ONE, 0, 0, UI_FP_ONE, 0, 0};
+    return (ui_transform_t){MATHX_ONE, 0, 0, MATHX_ONE, 0, 0};
 }
 
 /* Rotation by `turn` quarter turns (mod 4, negative allowed), about a
@@ -87,20 +85,20 @@ ui_transform_identity(void) {
  * unchanged in size when the UI turns. The domain expected is the
  * LOGICAL canvas: for an odd turn that is viewport_h wide, viewport_w
  * tall (see ui_width()/ui_height()), for turn 0 or 2 it is viewport_w x
- * viewport_h. Each matrix entry is exactly 0, UI_FP_ONE or -UI_FP_ONE,
- * translations exact integers scaled by UI_FP_ONE, exact in Q16.16, no
+ * viewport_h. Each matrix entry is exactly 0, MATHX_ONE or -MATHX_ONE,
+ * translations exact integers scaled by MATHX_ONE, exact in Q16.16, no
  * rounding to compound. */
 static inline ui_transform_t
 ui_transform_quarter_turn(int turn, int viewport_w, int viewport_h) {
     const int t = ((turn % 4) + 4) % 4;
-    const ui_fp_t w = (ui_fp_t)viewport_w << UI_FP_SHIFT;
-    const ui_fp_t h = (ui_fp_t)viewport_h << UI_FP_SHIFT;
+    const ui_fp_t w = (ui_fp_t)viewport_w << MATHX_SHIFT;
+    const ui_fp_t h = (ui_fp_t)viewport_h << MATHX_SHIFT;
 
     switch (t) {
-        case 1: /* one quarter turn clockwise */ return (ui_transform_t){0, UI_FP_ONE, -UI_FP_ONE, 0, w, 0};
-        case 2: /* half turn */ return (ui_transform_t){-UI_FP_ONE, 0, 0, -UI_FP_ONE, w, h};
+        case 1: /* one quarter turn clockwise */ return (ui_transform_t){0, MATHX_ONE, -MATHX_ONE, 0, w, 0};
+        case 2: /* half turn */ return (ui_transform_t){-MATHX_ONE, 0, 0, -MATHX_ONE, w, h};
         case 3: /* three quarter turns clockwise (one counter-clockwise) */
-            return (ui_transform_t){0, -UI_FP_ONE, UI_FP_ONE, 0, 0, h};
+            return (ui_transform_t){0, -MATHX_ONE, MATHX_ONE, 0, 0, h};
         default: return ui_transform_identity();
     }
 }
