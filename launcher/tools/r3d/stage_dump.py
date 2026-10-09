@@ -15,14 +15,6 @@ from r3d import mesh_import, ray_query  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 
 OUT = []
-if os.environ.get("PIN_JIT"):
-    import ctypes
-    import drjit
-    import mitsuba
-    core = ctypes.CDLL(os.path.join(os.path.dirname(drjit.__file__), "libdrjit-core.so"))
-    cpu, features, width = os.environ["PIN_JIT"].split(";")
-    mitsuba.set_variant("llvm_ad_rgb")
-    core._Z19jit_llvm_set_targetPKcS0_j(cpu.encode(), features.encode(), ctypes.c_uint32(int(width)))
 DUMP = pathlib.Path(sys.argv[3]) if len(sys.argv) > 3 else None
 
 
