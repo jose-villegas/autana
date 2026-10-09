@@ -5,7 +5,8 @@ name: Web build
 # calls would otherwise break Pages only after merging. main's
 # pages-trigger.yml calls it with the pull request's merge commit, which is
 # merged into this branch in the runner. The build runs only when the pull
-# request changes a file that build_web.sh --inputs lists.
+# request changes a file that build_web.sh --inputs lists before or after it:
+# a header the pull request deletes is an input only before.
 #
 # A workflow of its own, not an input to pages.yml: a called workflow whose
 # deploy job asks for pages: write fails to start under a caller that does
@@ -25,7 +26,7 @@ permissions:
 
 jobs:
   scope:
-    name: Reads a changed file
+    name: Changed build inputs
     runs-on: ubuntu-24.04
     outputs:
       touched: ${{ steps.scope.outputs.touched }}
@@ -41,8 +42,13 @@ jobs:
         env:
           REF: ${{ inputs.ref }}
         run: |
-          sh launcher/main/apps/sand/tools/web/build_web.sh --inputs >inputs.txt
-          git diff --name-only "$REF^1" "$REF" >changed.txt
+          INPUTS=launcher/main/apps/sand/tools/web/build_web.sh
+          git checkout -q HEAD^1
+          git merge -q --no-edit "$REF^1"
+          sh "$INPUTS" --inputs >inputs.txt
+          git checkout -q -
+          sh "$INPUTS" --inputs >>inputs.txt
+          git diff --name-only --no-renames "$REF^1" "$REF" >changed.txt
           if grep -Fxf inputs.txt changed.txt; then
             echo touched=true >>"$GITHUB_OUTPUT"
           else
