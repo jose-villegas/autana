@@ -7,7 +7,8 @@ Blender's defaults (centimetres, Y up), the form an FBX arrives in. The
 animations are keyed on whole frames of --fps (default 30), so pass the rate
 the .glb was keyed at or its last key is lost. The bone shapes Blender's
 importer adds are not exported. It makes the FBX fixtures the converter's
-round-trip tests read; the .glb is only read.
+round-trip tests read (tests/data/exported_from_glb.fbx, kept out of the demo
+folders); the .glb is only read.
 """
 import argparse
 import sys

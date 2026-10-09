@@ -1,6 +1,7 @@
 """Checks that a model exported to FBX and converted back is the model: the
 same glTF skinned mesh, posed in each of its clips, and the same static mesh.
-The pair is a .glb and the .fbx Blender wrote from it (gltf/glb_to_fbx.py);
+The pair is a demo's .glb and data/exported_from_glb.fbx, which Blender wrote from it
+(gltf/glb_to_fbx.py, the command in its header; rewrite it when the .glb changes);
 vertices are matched by position, because the FBX splits a vertex wherever
 its normal changes."""
 
@@ -17,7 +18,7 @@ from r3d import gltf_mesh, gltf_skin  # noqa: E402
 
 DEMO = pathlib.Path(__file__).resolve().parents[2] / "demo" / "capybara"
 GLB = DEMO / "capybara.glb"
-FBX = DEMO / "capybara.fbx"
+FBX = pathlib.Path(__file__).resolve().parent / "data" / "exported_from_glb.fbx"
 
 FPS = 30
 # Blender resamples the clips onto whole frames and the FBX holds Euler angles,
