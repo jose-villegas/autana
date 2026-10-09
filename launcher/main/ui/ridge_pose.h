@@ -15,7 +15,8 @@
 
 #include "util/scalar/mathi.h"
 
-#define RIDGE_POSE_ONE (1 << 14)
+#define RIDGE_POSE_SHIFT 14
+#define RIDGE_POSE_ONE   (1 << RIDGE_POSE_SHIFT)
 
 typedef struct {
     int32_t down_x;

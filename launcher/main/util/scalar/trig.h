@@ -1,8 +1,8 @@
 /*
  * trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn
- * and the result has TRIG_SIN_SHIFT fractional bits, bounded by TRIG_SIN_MAX. A quarter-wave table of 65 entries, interpolated,
- * which is 256 steps a turn before interpolation and exact at the quarter
- * points.
+ * and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. A
+ * quarter-wave table of 65 entries, interpolated, which is 256 steps a turn
+ * before interpolation and exact at the quarter points.
  *
  * `static inline`, like fixed.h beside it: some callers want one per point
  * drawn.
@@ -22,7 +22,7 @@ static const int16_t trig_sin_quarter[65] = {
     10278, 11039, 11793, 12539, 13279, 14010, 14732, 15446, 16151, 16846, 17530, 18204, 18868,
     19519, 20159, 20787, 21403, 22005, 22594, 23170, 23731, 24279, 24811, 25329, 25832, 26319,
     26790, 27245, 27683, 28105, 28510, 28898, 29268, 29621, 29956, 30273, 30571, 30852, 31113,
-    31356, 31580, 31785, 31971, 32137, 32285, 32412, 32521, 32609, 32678, 32728, 32757, TRIG_SIN_MAX,
+    31356, 31580, 31785, 31971, 32137, 32285, 32412, 32521, 32609, 32678, 32728, 32757, 32767,
 };
 
 /* Interpolated, not snapped. Table: 256 steps, 1.4 degrees. Snapping errors

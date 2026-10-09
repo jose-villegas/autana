@@ -23,10 +23,9 @@
 #include "util/scalar/mathi.h"
 #include "util/scalar/mathx.h"
 
-#define RIDGE_DEPTH2_ONE   (2 * RIDGE_POSE_ONE)
-#define RIDGE_DEPTH2_SHIFT __builtin_ctz(RIDGE_DEPTH2_ONE)
-
-_Static_assert((1 << RIDGE_DEPTH2_SHIFT) == RIDGE_DEPTH2_ONE, "Depth2 pixels have a power-of-two scale");
+/* One panel pixel of depth2: doubled coordinates times a RIDGE_POSE_ONE pose. */
+#define RIDGE_DEPTH2_SHIFT (RIDGE_POSE_SHIFT + 1)
+#define RIDGE_DEPTH2_ONE   (1 << RIDGE_DEPTH2_SHIFT)
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
