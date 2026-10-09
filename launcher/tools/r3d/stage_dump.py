@@ -2,6 +2,7 @@
 """SCRATCH (5eu5): bake one mesh and print a hash of every stage's output and every ray query."""
 import hashlib
 import json
+import os
 import pathlib
 import sys
 import time
@@ -14,6 +15,14 @@ from r3d import mesh_import, ray_query  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 
 OUT = []
+if os.environ.get("PIN_JIT"):
+    import ctypes
+    import drjit
+    import mitsuba
+    core = ctypes.CDLL(os.path.join(os.path.dirname(drjit.__file__), "libdrjit-core.so"))
+    cpu, features, width = os.environ["PIN_JIT"].split(";")
+    mitsuba.set_variant("llvm_ad_rgb")
+    core._Z19jit_llvm_set_targetPKcS0_j(cpu.encode(), features.encode(), ctypes.c_uint32(int(width)))
 DUMP = pathlib.Path(sys.argv[3]) if len(sys.argv) > 3 else None
 
 
@@ -54,23 +63,28 @@ def wrap(module, name, label=None):
     setattr(module, name, wrapper)
 
 
-calls = [0]
-original_first_hits = ray_query.RayQuery.first_hits
+calls = {}
 
 
-def first_hits(self, origins, directions):
-    result = original_first_hits(self, origins, directions)
-    calls[0] += 1
-    n = calls[0]
-    if n <= 400:
-        record(f"ray#{n}", result, rays=len(origins), input=digest([np.asarray(origins), np.asarray(directions)]))
-    if DUMP and n == int(sys.argv[4]):
-        np.savez_compressed(DUMP, origins=np.asarray(origins), directions=np.asarray(directions), hit=result[0],
-                            distance=result[1], tri=result[2])
-    return result
+def traced(cls, name, mask=None):
+    original = getattr(cls, name)
+
+    def wrapper(self, *args):
+        result = original(self, *args)
+        n = calls[name] = calls.get(name, 0) + 1
+        shown = result
+        if mask:
+            hit = result[0]
+            shown = (hit, np.where(hit, result[1], 0), np.where(hit, result[2], -1))
+        record(f"{name}#{n}", shown, rays=len(args[0]), input=digest([np.asarray(a) for a in args[:2]]))
+        return result
+    setattr(cls, name, wrapper)
 
 
-ray_query.RayQuery.first_hits = first_hits
+traced(ray_query.RayQuery, "first_hits", mask=True)
+traced(ray_query.RayQuery, "blocked")
+from r3d import path_bake  # noqa: E402
+traced(path_bake.PathLight, "bounce")
 for fn in ("load_source", "drop_masked", "visible_triangles", "weld_keeping", "densify", "shade_lit", "simplify"):
     wrap(mesh_import, fn)
 

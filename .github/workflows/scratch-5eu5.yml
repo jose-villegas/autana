@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.12', '3.13']
+        job: [1, 2, 3, 4]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -23,17 +23,24 @@ jobs:
       - run: git lfs pull --exclude="" && git submodule update --init --depth 1 third_party/upstream/meshoptimizer
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: '3.13'
       - run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get update && sudo apt-get install -y --no-install-recommends llvm
           grep -m1 "model name" /proc/cpuinfo; nproc; dpkg -l | grep libllvm; g++ --version | head -1
           python -c "import numpy; numpy.show_runtime()"
-      - run: python launcher/tools/r3d/stage_dump.py launcher/demo/sponza/sponza.scene.toml atrium ${{ env.DUMP_ARGS }} | tee dump.jsonl
-        env:
-          DUMP_ARGS: ''
+      - name: dump three ways
+        run: |
+          python -c "import drjit as dr, mitsuba as mi; mi.set_variant('llvm_ad_rgb'); print('llvm', dr.detail.llvm_version())"
+          grep -m1 "model name" /proc/cpuinfo | tee cpu.txt
+          python launcher/tools/r3d/stage_dump.py launcher/demo/sponza/sponza.scene.toml atrium > default.jsonl
+          PIN_JIT="haswell;+avx2,+fma,+avx,+sse4.2,+f16c,+bmi,+bmi2,+lzcnt,+popcnt,+movbe;8" python launcher/tools/r3d/stage_dump.py launcher/demo/sponza/sponza.scene.toml atrium > pin.jsonl
+          NPY_DISABLE_CPU_FEATURES="X86_V4 AVX512_ICL" PIN_JIT="haswell;+avx2,+fma,+avx,+sse4.2,+f16c,+bmi,+bmi2,+lzcnt,+popcnt,+movbe;8" python launcher/tools/r3d/stage_dump.py launcher/demo/sponza/sponza.scene.toml atrium > pin-npy.jsonl
+          tail -n1 default.jsonl pin.jsonl pin-npy.jsonl
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: dump-${{ matrix.python }}
-          path: dump.jsonl
+          name: dump-${{ matrix.job }}
+          path: |
+            *.jsonl
+            cpu.txt
