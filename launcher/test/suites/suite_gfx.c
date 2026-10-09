@@ -47,8 +47,8 @@
 
 static const char* TAG = "device_tests";
 
-/* Regression ceilings are worst + max(spread, 2% of worst) across three
- * fresh-boot S3 portrait SELFTEST captures. Shipping landscape costs 17-37%
+/* Regression ceilings are worst + max(spread, 2% of worst) across a 5-run
+ * S3 portrait board capture (autana suite run_gfx_suite --runs 5). Shipping landscape costs 17-37%
  * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this
@@ -899,22 +899,20 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
                one_band, full / 2);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, (int)one_band, "but it must still actually send something");
 
-    /* One band, un-pipelined, the same reference every ratio test below
-     * this one measures, and the tightest of the lot: 3,400 / 3,398 / 3,398
-     * / 3,399 us across four captures, a 0.06% spread. 3,550 us leaves
-     * about 4.4% over the observed maximum, tight because the reference
-     * itself is this stable; a looser margin here would just be slack that
-     * a real regression could hide in. */
+    /* One band, un-pipelined: the reference every ratio test below
+     * measures, and among the most stable rows here, so its margin is the
+     * file's rule and no looser - slack beyond it is room a real
+     * regression could hide in. */
     perf_guard("one band alone cost more than its stable observed price - the bus "
                "clock or the QSPI setup may have regressed",
-               one_band, 3550);
+               one_band, 2331);
 }
 
 /* The ratio tests below take a band presented alone as their reference,
- * which is the UN-PIPELINED price: 3,405 us. Inside a real frame
- * send_full_row() (gfx_present.c) queues without waiting and gfx_present() drains
- * every band at the end, so seven bands come to 18,147 us, not 7 x 3,405.
- * Sanity-checking one figure against the other by multiplying is not
+ * which is the UN-PIPELINED price. Inside a real frame send_full_row()
+ * (gfx_present.c) queues without waiting and gfx_present() drains every
+ * band at the end, so seven bands cost less than seven times one band;
+ * sanity-checking one figure against the other by multiplying is not
  * valid. */
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
@@ -952,12 +950,10 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                "for itself",
                narrow, full_band);
 
-    /* 757 / 750 / 766 / 743 us across four captures, a 3% spread, wider
-     * than the full-band reference because this path does a memcpy into
-     * gather_buf on top of the same DMA wait, and that copy is what varies.
-     * 850 us leaves about 11% over the observed maximum: room for that
-     * spread plus some, without being loose enough to miss the gather path
-     * regressing back towards full-band cost. */
+    /* Wider spread than the full-band reference because this path does a
+     * memcpy into gather_buf on top of the same DMA wait, and that copy is
+     * what varies. Pegged before gfx_present() moved to the core-1 present
+     * task; the row has not met it since. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed",
                narrow, 850);
@@ -999,13 +995,8 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
                "matter to whether gathering pays off",
                wide, full_band);
 
-    /* 562 / 605 / 576 / 591 us across four captures, the widest spread of
-     * any gathered-piece test here, about 7.6%, from the same memcpy-plus-
-     * DMA-wait shape as the narrow strip above but at a different aspect
-     * ratio. 700 us leaves about 16% over the observed maximum, wider than
-     * the narrow strip's margin because this test's own captures already
-     * moved twice as much; the margin tracks the spread it is guarding,
-     * not a fixed percentage. */
+    /* The same memcpy-plus-DMA-wait shape as the narrow strip above at a
+     * different aspect ratio, and the same pre-present-task peg. */
     perf_guard("the gathered wide-short box cost more than its observed price - "
                "the gather-copy path may have regressed",
                wide, 700);
@@ -1097,15 +1088,12 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
                "still cost less than the whole band",
                two_corners, full_band);
 
-    /* 1,914 / 1,917 / 1,916 / 1,914 us across four captures, a 0.16%
-     * spread, nearly as tight as the full-band reference itself, because
-     * two independent gather-and-waits dominated by DMA time leave little
-     * room for the copy-side jitter the single-piece gathers above show.
-     * 2,000 us leaves about 4.3% over the observed maximum: tight, to
-     * match how tight the reference is. */
+    /* Nearly as stable as the full-band reference, because two
+     * independent gather-and-waits dominated by DMA time leave little room
+     * for the copy-side jitter the single-piece gathers above show. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
-               two_corners, 2000);
+               two_corners, 1301);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1149,8 +1137,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
 
     /* No ratio against full_band on purpose: whether the fallback beats a
      * full band is the open question this test measures. The absolute is
-     * safe to peg: 869/882/875/877 us across four captures, a 1.5% spread;
-     * 980 leaves about 11% over, room for a different fallback shape. */
+     * safe to peg; this one also predates the core-1 present task. */
     perf_guard("three far-apart marks' fallback send cost more than its observed "
                "price",
                three_marks, 980);
@@ -1197,7 +1184,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
 
     /* No ratio: whether gathering at this size helps is the open question a
      * sweep of GATHER_MAX_PIXELS is for. */
-    perf_guard("near-budget split", near_budget, 2064);
+    perf_guard("near-budget split", near_budget, 1700);
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
@@ -1241,7 +1228,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
                "less than sending the coarse box spanning both",
                two_marks, full_band);
 
-    perf_guard("two marks in one cell", two_marks, 2976);
+    perf_guard("two marks in one cell", two_marks, 1460);
 }
 
 /* The drawing calls narrow the dirty region themselves: no app-side

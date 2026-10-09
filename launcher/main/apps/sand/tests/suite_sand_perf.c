@@ -2814,7 +2814,7 @@ test_present_cost_against_a_falling_sand_scene(void) {
      * "Performance discipline"); the only
      * movable thing is HOW MANY strips get sent, shown by the strip-send
      * counts beside the timing. */
-    perf_target("present: falling sand", mean_us, 5810, 6690);
+    perf_target("present: falling sand", mean_us, 5050, 5810);
 #endif
 }
 
@@ -2876,7 +2876,7 @@ static void
 test_present_cost_against_the_lava_stress_scene(void) {
     const int64_t mean_us =
         present_cost_of_scene(37u, build_lava_stress_scene, 30, 20, "lava stress", "lava stress scene");
-    perf_guard("present: lava stress", mean_us, 9030);
+    perf_guard("present: lava stress", mean_us, 8350);
 }
 
 static void
@@ -2888,7 +2888,7 @@ test_present_cost_against_the_thermal_shock_scene(void) {
      * this lattice dirties every strip every frame, so an oracle sends the
      * same 164,864 pixels. Watch pixels sent. A failure likely means the
      * scene dirties MORE pixels, not a slower present. */
-    perf_guard("present: thermal shock", mean_us, 12170);
+    perf_guard("present: thermal shock", mean_us, 11320);
 }
 
 /* Present cost with column-precise dirty tracking, against the two scenes
