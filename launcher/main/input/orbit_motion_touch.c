@@ -14,7 +14,10 @@ orbit_motion_touch_init(orbit_motion_touch_t* touch) {
  * goes left), down tilts its top toward the eye (the eye goes up). */
 static void
 steer(orbit_motion_touch_t* touch, const input_t* input, viewport_t viewport, orbit_motion_input_t* out) {
-    int ux0, uy0, ux1, uy1;
+    int ux0;
+    int uy0;
+    int ux1;
+    int uy1;
     viewport_physical_to_upright(viewport, touch->last_x, touch->last_y, &ux0, &uy0);
     viewport_physical_to_upright(viewport, input->x, input->y, &ux1, &uy1);
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;

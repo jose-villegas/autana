@@ -5,10 +5,10 @@
 #include <string.h>
 
 #include "render/r3d_pipeline.h"
-#include "render/r3d_project.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster.h"
 #include "render/raster_show.h"
+#include "util/scalar/mathf.h"
 
 /* While drawing, the attachment holds each pixel's tag: 0 for anything
  * that did not move, i + 1 for instance i that did. Resolving turns the tag
@@ -153,7 +153,7 @@ moved(const row_map_t* r, float u, float v, float w) {
     if (!(pz > 0.0F)) {
         return unknown;
     }
-    const float inv = r3d_reciprocal(pz);
+    const float inv = mathf_recip(pz);
     const int8_t dx = half_pixels((((r->u[0] * u) + r->at[0] + (r->w[0] * w)) * inv) - u);
     const int8_t dy = half_pixels((((r->u[1] * u) + r->at[1] + (r->w[1] * w)) * inv) - v);
     return dx == RASTER_MOTION_UNKNOWN || dy == RASTER_MOTION_UNKNOWN ? unknown : (raster_motion_px_t){dx, dy};
