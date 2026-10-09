@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=fbc39b81fc3799202621ea7a1d4823afe5c2569a24aaf0103ab89840dba88d88 -->
+<!-- generated: shared-helpers sha256=bd1d48ebf5008efcb6f21d6913ba016286d4ac8b45a6a31478ffaa4aa8d29035 -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -149,7 +149,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/main/util/runtime/timing.h](../launcher/main/util/runtime/timing.h) | timing: the clock and the pause, so a caller above the drivers asks for time without naming the scheduler. | `timing_now_us, timing_sleep_ms, timing_yield` |
 | [launcher/main/util/runtime/tune.h](../launcher/main/util/runtime/tune.h) | tune, numbers a developer can change on a running device, by name, over the console: "SET ridge.theme_rgb 0x1199C8". | `TUNE, TUNE_ENABLED, TUNE_GENERATION, TUNE_NAME_MAX, TUNE_OWNER, tune_count, tune_entry, tune_entry_t, tune_find, tune_handle_line, tune_owner_t, tune_register, tune_registry_handle_line, tune_registry_t, tune_reply_fn, tune_shared, what, what##_tunable_register` |
 | [launcher/main/util/scalar/fixed.h](../launcher/main/util/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. | `fx_div_round, fx_div_round_wide, fx_mul_floor, fx_mul_round, fx_round_shift, fx_round_shift32` |
-| [launcher/main/util/scalar/mathf.h](../launcher/main/util/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (math_template.h). | `mathf_add, mathf_clamp, mathf_div, mathf_divide_wide, mathf_divisor_t, mathf_dot2c, mathf_dot3_divisor, mathf_dot3c, mathf_four, mathf_half_cos, mathf_half_sin, mathf_mul, mathf_neg, mathf_one, mathf_product_difference, mathf_sqrt, mathf_sub, mathf_two, mathf_wadd, mathf_wide_t, mathf_wmul, mathf_zero` |
+| [launcher/main/util/scalar/mathf.h](../launcher/main/util/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (math_template.h). | `mathf_add, mathf_clamp, mathf_div, mathf_dot2c, mathf_dot3c, mathf_four, mathf_half_cos, mathf_half_sin, mathf_mul, mathf_neg, mathf_one, mathf_sqrt, mathf_sub, mathf_two, mathf_wadd, mathf_wmul, mathf_zero` |
 | [launcher/main/util/scalar/mathi.h](../launcher/main/util/scalar/mathi.h) | mathi: plain integer scalar operations, for grid, pixel and cell coordinates. | `mathi_abs, mathi_add, mathi_clamp, mathi_even_ceil, mathi_even_floor, mathi_isqrt64, mathi_len, mathi_max, mathi_min, mathi_mul, mathi_neg, mathi_one, mathi_sign, mathi_size_ceil, mathi_sub, mathi_wadd, mathi_wmul, mathi_zero` |
 | [launcher/main/util/scalar/rng.h](../launcher/main/util/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. | `rng_avalanche32, rng_below, rng_chance, rng_hash, rng_next, rng_seed, rng_t` |
 | [launcher/main/util/scalar/trig.h](../launcher/main/util/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: 65536 is one turn and the result is Q15. | `trig_cos, trig_sin, trig_sin_quadrant` |

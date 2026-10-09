@@ -375,7 +375,7 @@ test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift(void) {
 }
 
 static void
-test_fixed_matrix_apply_and_affine_operations_match_float(void) {
+test_fixed_matrix_apply_matches_float(void) {
     const mat4f_t mf = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
                                       (vec3f_t){2.0F, 1.0F, 0.5F});
     mat4x_t mx;
@@ -386,12 +386,6 @@ test_fixed_matrix_apply_and_affine_operations_match_float(void) {
     }
     const vec3f_t p = {0.5F, 1.5F, -1.0F};
     assert_x_near_f(mat4f_apply(&mf, p), mat4x_apply(&mx, vec3x_from_vec3f(p)), 1e-3F);
-    const mat4x_t identity = mat4x_identity(), round_trip = mat4x_mul(mat4x_invert_affine(mx), mx);
-    for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 4; c++) {
-            TEST_ASSERT_INT32_WITHIN(32, identity.m[r][c], round_trip.m[r][c]);
-        }
-    }
 }
 
 static void
@@ -409,64 +403,6 @@ test_fixed_affine_product_applies_the_right_matrix_first(void) {
             TEST_ASSERT_EQUAL_INT32(full.m[r][c], affine.m[r][c]);
         }
     }
-}
-
-static void
-check_fixed_affine_scale(int32_t scale, int32_t inverse_scale, bool placed) {
-    mat4x_t m = mat4x_identity(), expected = mat4x_identity();
-    for (int axis = 0; axis < 3; axis++) {
-        m.m[axis][axis] = scale;
-        expected.m[axis][axis] = inverse_scale;
-    }
-    if (placed) {
-        m.m[0][0] = m.m[1][1] = 0;
-        m.m[0][1] = -scale;
-        m.m[1][0] = scale;
-        m.m[0][3] = MATHX_ONE;
-        m.m[1][3] = -2 * MATHX_ONE;
-        m.m[2][3] = 3 * MATHX_ONE;
-        expected.m[0][0] = expected.m[1][1] = 0;
-        expected.m[0][1] = inverse_scale;
-        expected.m[1][0] = -inverse_scale;
-        expected.m[0][3] = 2 * inverse_scale;
-        expected.m[1][3] = inverse_scale;
-        expected.m[2][3] = -3 * inverse_scale;
-    }
-    const mat4x_t inverse = mat4x_invert_affine(m);
-    const mat4x_t identity = mat4x_identity();
-    const mat4x_t left = mat4x_mul_affine(inverse, m), right = mat4x_mul_affine(m, inverse);
-    for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 4; c++) {
-            TEST_ASSERT_EQUAL_INT32(expected.m[r][c], inverse.m[r][c]);
-            TEST_ASSERT_EQUAL_INT32(identity.m[r][c], left.m[r][c]);
-            TEST_ASSERT_EQUAL_INT32(identity.m[r][c], right.m[r][c]);
-        }
-    }
-}
-
-static void
-test_fixed_affine_inverse_preserves_translated_rotated_scales(void) {
-    check_fixed_affine_scale(MATHX_ONE / 64, 64 * MATHX_ONE, true);
-    check_fixed_affine_scale(64 * MATHX_ONE, MATHX_ONE / 64, true);
-    check_fixed_affine_scale(256 * MATHX_ONE, MATHX_ONE / 256, true);
-}
-
-static void
-test_fixed_affine_inverse_preserves_small_scale(void) {
-    check_fixed_affine_scale(MATHX_ONE / 64, 64 * MATHX_ONE, false);
-    check_fixed_affine_scale(MATHX_ONE / 64, 64 * MATHX_ONE, true);
-}
-
-static void
-test_fixed_affine_inverse_preserves_large_scale(void) {
-    check_fixed_affine_scale(64 * MATHX_ONE, MATHX_ONE / 64, false);
-    check_fixed_affine_scale(64 * MATHX_ONE, MATHX_ONE / 64, true);
-}
-
-static void
-test_fixed_affine_inverse_preserves_larger_scale(void) {
-    check_fixed_affine_scale(256 * MATHX_ONE, MATHX_ONE / 256, false);
-    check_fixed_affine_scale(256 * MATHX_ONE, MATHX_ONE / 256, true);
 }
 
 /* A swizzle family as rows of name and function, built by the template's own
@@ -571,12 +507,8 @@ suite_math_numbers(void) {
     RUN_TEST(test_int16_arithmetic_and_conversion_saturate_at_the_int16_range);
     RUN_TEST(test_int32_dot_widens_to_int64);
     RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
-    RUN_TEST(test_fixed_matrix_apply_and_affine_operations_match_float);
+    RUN_TEST(test_fixed_matrix_apply_matches_float);
     RUN_TEST(test_fixed_affine_product_applies_the_right_matrix_first);
-    RUN_TEST(test_fixed_affine_inverse_preserves_translated_rotated_scales);
-    RUN_TEST(test_fixed_affine_inverse_preserves_small_scale);
-    RUN_TEST(test_fixed_affine_inverse_preserves_large_scale);
-    RUN_TEST(test_fixed_affine_inverse_preserves_larger_scale);
     RUN_TEST(test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);

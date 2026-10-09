@@ -251,16 +251,57 @@ test_affine_product_and_inverse_match_full_matrices(void) {
                                      (vec3f_t){2.0F, 1.0F, 0.5F});
     const mat4f_t b = mat4f_from_trs((vec3f_t){-3.0F, 1.0F, 2.0F}, quatf_from_euler((vec3f_t){-0.2F, 0.5F, 0.3F}),
                                      (vec3f_t){0.5F, 3.0F, 2.0F});
-    const mat4f_t full = mat4f_mul(a, b), affine = mat4f_mul_affine(a, b);
-    const mat4f_t identity = mat4f_identity(), round_trip = mat4f_mul(mat4f_invert_affine(a), a);
-    assert_vec3(mat4f_apply(&a, mat4f_apply(&b, (vec3f_t){1.0F, 1.0F, 1.0F})),
-                mat4f_apply(&full, (vec3f_t){1.0F, 1.0F, 1.0F}));
-    assert_mat4(&full, &affine);
-    assert_mat4(&identity, &round_trip);
+    {
+        const mat4f_t full = mat4f_mul(a, b), affine = mat4f_mul_affine(a, b);
+        assert_vec3(mat4f_apply(&a, mat4f_apply(&b, (vec3f_t){1.0F, 1.0F, 1.0F})),
+                    mat4f_apply(&full, (vec3f_t){1.0F, 1.0F, 1.0F}));
+        assert_mat4(&full, &affine);
+    }
+    {
+        const mat4f_t identity = mat4f_identity(), round_trip = mat4f_mul(mat4f_invert_affine(a), a);
+        assert_mat4(&identity, &round_trip);
+    }
+}
+
+static void
+test_affine_inverse_preserves_small_and_large_scales(void) {
+    const float scales[] = {1.0F / 64.0F, 64.0F, 256.0F};
+    const float inverse_scales[] = {64.0F, 1.0F / 64.0F, 1.0F / 256.0F};
+    const mat4f_t identity = mat4f_identity();
+    for (unsigned i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        for (int placed = 0; placed < 2; placed++) {
+            const float scale = scales[i], inverse_scale = inverse_scales[i];
+            mat4f_t m = identity, expected = identity;
+            for (int axis = 0; axis < 3; axis++) {
+                m.m[axis][axis] = scale;
+                expected.m[axis][axis] = inverse_scale;
+            }
+            if (placed) {
+                m.m[0][0] = m.m[1][1] = 0.0F;
+                m.m[0][1] = -scale;
+                m.m[1][0] = scale;
+                m.m[0][3] = 1.0F;
+                m.m[1][3] = -2.0F;
+                m.m[2][3] = 3.0F;
+                expected.m[0][0] = expected.m[1][1] = 0.0F;
+                expected.m[0][1] = inverse_scale;
+                expected.m[1][0] = -inverse_scale;
+                expected.m[0][3] = 2.0F * inverse_scale;
+                expected.m[1][3] = inverse_scale;
+                expected.m[2][3] = -3.0F * inverse_scale;
+            }
+            const mat4f_t inverse = mat4f_invert_affine(m);
+            const mat4f_t left = mat4f_mul_affine(inverse, m), right = mat4f_mul_affine(m, inverse);
+            assert_mat4(&expected, &inverse);
+            assert_mat4(&identity, &left);
+            assert_mat4(&identity, &right);
+        }
+    }
 }
 
 void
 suite_math(void) {
+    RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);
     RUN_TEST(test_affine_product_and_inverse_match_full_matrices);
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
