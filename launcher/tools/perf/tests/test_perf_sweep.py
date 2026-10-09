@@ -110,13 +110,19 @@ class SweepTests(unittest.TestCase):
     def test_seeded_plan_visits_all_points_each_round(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root, (1, 2))
-            first = tool.plan(args)
-            self.assertEqual(first, tool.plan(args))
-            self.assertEqual(len(first["flashes"]), 2)
-            for flash in first["flashes"]:
-                for order in flash["rounds"]:
-                    self.assertEqual(sorted(order), list(range(6)))
-            self.assertNotEqual(first["flashes"][0]["rounds"][0], first["flashes"][0]["rounds"][1])
+            schedules = []
+            for rng_seed in (0, 1, 42):
+                with self.subTest(rng_seed=rng_seed):
+                    args.rng_seed = rng_seed
+                    first = tool.plan(args)
+                    self.assertEqual(first, tool.plan(args))
+                    self.assertEqual(len(first["flashes"]), 2)
+                    for flash in first["flashes"]:
+                        for order in flash["rounds"]:
+                            self.assertEqual(sorted(order), list(range(6)))
+                    schedules.append(first["flashes"])
+            self.assertNotEqual(schedules[0], schedules[1])
+            self.assertNotEqual(schedules[1], schedules[2])
 
     def test_all_metric_kinds(self):
         metrics, units = tool.metrics(FIXTURE, FIXTURE)
