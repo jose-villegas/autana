@@ -591,7 +591,9 @@ def lock_rows(found, lock, made=None):
     """Rows for the bakes `found` need: the lock's own, else those in `made`; raises naming the rest."""
     rows, missing = [], []
     for bake in found:
-        row = lock.get(bake.key) or (made or {}).get(bake.key)
+        row = lock.get(bake.key)
+        if row is None or (row.get("seeded") and bake.key in (made or {})):
+            row = (made or {}).get(bake.key)  # a run's make replaces a seeded row, never a made one
         if row is None:
             missing.append(describe(bake, "no CI run has made this key", bake_again(bake)))
             continue
