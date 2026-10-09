@@ -24,6 +24,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
+from r3d.gltf_mesh import load_gltf_mesh  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, lfs_pointer_oid, load_import_settings, load_scene, source_files,
@@ -63,18 +64,32 @@ def load_source(settings, texture_dtype=np.float64):
     for path in source_files(settings):
         if lfs_pointer_oid(path) is not None:
             raise SettingsError(f'{path}: Git LFS source is not pulled; run git lfs pull --exclude=""')
+    if settings.source["path"].suffix.lower() == ".glb":
+        return load_glb_source(settings)
     obj_path = settings.source["path"]
     materials = load_mtl(obj_path.with_suffix(".mtl"))
     p, uv, tri_v, tri_t, tri_m, names = load_obj(obj_path)
     log(f"loaded {len(p)} vertices, {len(tri_v)} triangles, {len(names)} materials")
     textures = load_textures(obj_path.parent, materials, names, texture_dtype)
     return SimpleNamespace(p=p, uv=uv, tri_v=tri_v, tri_t=tri_t, tri_m=tri_m, names=names, materials=materials,
-                           textures=textures)
+                           textures=textures, colors=None)
+
+
+def load_glb_source(settings):
+    """A glTF binary as the OBJ path's source: untextured, its colour per vertex."""
+    mesh = load_gltf_mesh(settings.source["path"])
+    tri_v = np.array(mesh.tri_v, dtype=np.int64)
+    log(f"loaded {len(mesh.positions)} vertices, {len(tri_v)} triangles, {len(mesh.names)} materials")
+    return SimpleNamespace(p=np.array(mesh.positions, dtype=np.float64), uv=np.zeros((0, 2)), tri_v=tri_v,
+                           tri_t=tri_v.copy(), tri_m=np.array(mesh.tri_m, dtype=np.int64), names=mesh.names,
+                           materials={}, textures=[None] * len(mesh.names),
+                           colors=np.array(mesh.colors, dtype=np.float64))
 
 
 def albedo_at(src, points, spacing, material):
     kd = src.materials.get(src.names[material], {}).get("Kd", (1.0, 1.0, 1.0))
-    return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd)
+    return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd,
+                         src.colors)
 
 
 PATH_LIGHTS = {}
