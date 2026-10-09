@@ -164,8 +164,11 @@ divide a fixed cycle cost. `r3d_camera_to_screen_x()` in
 and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
 
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
-falls short. Float division (`__divsf3`) is already the FPU's
-`div0.s`/`divn.s` sequence; a hand-written reciprocal is slower.
+falls short. Float division (`__divsf3`) is the FPU's exact
+`div0.s`/`divn.s` sequence behind a call. A reciprocal per vertex uses
+`mathf_recip()` in `launcher/main/util/scalar/mathf.h` instead: the FPU's
+`recip0.s` seed and two Newton steps, within an ulp and about three times
+cheaper on the board.
 
 Signed division rounds toward zero. An arithmetic right shift rounds negative
 values differently, so signed division by a power of two can require rounding
