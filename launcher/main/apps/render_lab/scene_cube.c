@@ -12,18 +12,18 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "core/memory.h"
 #include "esp_log.h"
 #include "gfx/draw/gfx_box.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "math/linear/transformf.h"
+#include "math/linear/vec2i.h"
 #include "render/r3d_line_camera.h"
 #include "render/r3d_span.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
-#include "util/math/transformf.h"
-#include "util/math/vec2i.h"
-#include "util/runtime/memory.h"
 
 #define CUBE_DISTANCE       3.0F
 #define CAMERA_FOCAL_LENGTH 2.0F

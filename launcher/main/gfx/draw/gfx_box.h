@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 typedef struct {
     int x0, y0, x1, y1;

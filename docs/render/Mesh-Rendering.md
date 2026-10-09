@@ -6,8 +6,8 @@ in [Mesh-Import.md](Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
-offline. It sits beside `gfx/`, and the only other thing it includes is
-`util/`, so boot and apps both call it. The one exception is `r3d_scene.h`, which
+offline. It sits beside `gfx/`, and the only other things it includes are
+`core/` and `math/`, so boot and apps both call it. The one exception is `r3d_scene.h`, which
 reads `anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
@@ -86,7 +86,7 @@ suite or host tool include them.
 ## The maths
 
 The line camera, the boot animation, the animation tracks and the raster all
-take their types from `util/math/`, documented in
+take their types from `math/linear/`, documented in
 [../math/README.md](../math/README.md): the raster's lens and motion maps are
 `mat4f_t`, composed with `mat4f_mul_affine()`, inverted with
 `mat4f_invert_affine()` and applied to each vertex with `mat4f_apply()`.
@@ -156,7 +156,7 @@ manager draws the active camera through the engine's one context,
 
 The work before the framebuffer runs in the app's `update()`, overlapped
 with sending the previous frame. Each stage is split between the two cores,
-core 1's half dispatched through `util/runtime/job.h`. It runs inline when core 1
+core 1's half dispatched through `core/job.h`. It runs inline when core 1
 is busy, and always on a host.
 
 ```mermaid

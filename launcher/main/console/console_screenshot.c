@@ -10,10 +10,10 @@
 #include "console/console_verbs.h"
 
 #include "console/device_state.h"
-#include "util/encode/json_splice.h"
-#include "util/encode/screenshot.h"
-#include "util/runtime/frame_watch.h"
-#include "util/runtime/memory.h"
+#include "console/json_splice.h"
+#include "console/screenshot.h"
+#include "core/frame_watch.h"
+#include "core/memory.h"
 
 #include "esp_log.h"
 

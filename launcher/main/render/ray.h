@@ -10,8 +10,8 @@
 
 #include <stdbool.h>
 
+#include "math/linear/vec3f.h"
 #include "render/viewport.h"
-#include "util/math/vec3f.h"
 
 typedef struct {
     vec3f_t origin, forward, right, up;

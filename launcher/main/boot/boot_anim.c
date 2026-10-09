@@ -32,15 +32,15 @@
 #include <string.h>
 
 #include "boot/boot_anim_image.h"
+#include "core/build_variant.h"
+#include "core/timing.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/timing.h"
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */

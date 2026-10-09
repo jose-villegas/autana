@@ -90,7 +90,7 @@ flowchart LR
 ```
 
 The green-bordered nodes above are already in the tree, not proposed:
-`frameTime` ([`util/runtime/frame_cost.{h,c}`](../tools/Frame-Cost.md)), `cubePerf`
+`frameTime` ([`core/frame_cost.{h,c}`](../tools/Frame-Cost.md)), `cubePerf`
 (`apps/render_lab/tools/report_cube_perf.sh`), `busRoot` (`GFX_QSPI_HZ`,
 `gfx_heal.h`), `corePresent` (the present task pinned to core 1,
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/present/gfx_band.h`,
@@ -116,7 +116,7 @@ into an internal-SRAM band ring and never writes PSRAM at all. Present
 copies full-width strips out of the PSRAM framebuffer into two internal
 DMA buffers and sends them at 80 MHz QSPI: ~10.2-10.9 ms per full frame
 (device measurement). Render/rasterize durations below are shape only;
-[`util/runtime/frame_cost`](../tools/Frame-Cost.md) reports an app's own.
+[`core/frame_cost`](../tools/Frame-Cost.md) reports an app's own.
 
 ```
 time (ms) 0         10        20        30        40
@@ -956,7 +956,7 @@ cheapest path to something that is unmistakably a game.
    overdraw between neighbours), near-plane clipping, and the
    perspective-correction cadence, all pixel-exact against a slow
    reference on the host. small3dlib's vector, matrix and projection
-   routines are `util/math/`'s float vector, quaternion, matrix and transform types, and the component is deleted. The first
+   routines are `math/linear/`'s float vector, quaternion, matrix and transform types, and the component is deleted. The first
    piece is in the tree: `render/r3d_span.h` fills depth-tested Gouraud
    spans into a window of rows, and `render/r3d_pipeline.h` culls,
    transforms and clips a mesh whose light is baked into vertex colours.

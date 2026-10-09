@@ -194,7 +194,7 @@ the *whole* step, not just whichever pass ran first. If you add a pass, it
 goes here too, before `finalize_settling()`, not after.
 
 Most of these passes can split across both cores through the same
-primitive, `job_run_core1()`/`job_wait()` (`util/runtime/job.h`): one copied
+primitive, `job_run_core1()`/`job_wait()` (`core/job.h`): one copied
 context, run on core 1 if its worker is idle, otherwise inline. The main
 sweep, the liquid cross-flow pass, both gas sub-passes and a reacting
 cell's own local rules all cut the board into one grid of square chunks.

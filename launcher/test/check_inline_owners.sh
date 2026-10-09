@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Proves the clock read and the heap calls in util/runtime/timing.h and util/runtime/memory.h
+# Proves the clock read and the heap calls in core/timing.h and core/memory.h
 # vanish into their callers, built as the board builds them (ESP_PLATFORM,
 # the IDF headers stood in for by stubs/) and as a host render does (the C
 # library's heap): a caller's object names the underlying calls itself and
@@ -29,8 +29,8 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cat >"$work/caller.c" <<'SRC'
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
+#include "core/memory.h"
+#include "core/timing.h"
 
 void* hold;
 long long now;

@@ -16,6 +16,7 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
+#include "core/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
@@ -25,11 +26,10 @@
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
+#include "services/tune.h"
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/tune.h"
 
 extern const render_lab_scene_t scene_cube;
 extern const render_lab_scene_t scene_wire_plane;

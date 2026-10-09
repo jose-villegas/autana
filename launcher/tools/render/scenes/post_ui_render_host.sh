@@ -19,7 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=post_ui
 scene_sources="
-main/util/runtime/tune.c
+main/services/tune.c
 main/selftest/post_ui.c
 main/selftest/post_layout.c
 tools/render/scenes/post_ui_render_host.c

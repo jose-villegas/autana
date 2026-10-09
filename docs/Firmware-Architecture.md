@@ -58,7 +58,7 @@ flowchart TB
         Boot["boot/<br/><i>the startup animation</i>"]
         Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end
-    subgraph R4["services"]
+    subgraph R4["UI, console and scenes"]
         Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
@@ -82,35 +82,39 @@ flowchart TB
     subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
     end
-    subgraph R10["chip services"]
-        Runtime["util/runtime/<br/><i>time, memory, settings, jobs, frame cost, tunables, build id</i>"]:::hw
+    subgraph R10["device services"]
+        Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
     end
-    subgraph R10b["motion"]
-        Motion["util/motion/<br/><i>tween, easing, springs, orbiting a target</i>"]
+    subgraph R10b["the platform core"]
+        Core["core/<br/><i>two-core jobs, memory placement, time, frame cost and watch, build variant</i>"]:::hw
     end
-    subgraph R11["pure code"]
-        UtilMath["util/math/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
-        Encode["util/encode/<br/><i>JSON splice, BMP and base64</i>"]
+    subgraph R11["motion"]
+        Motion["math/motion/<br/><i>tween, easing, springs, orbiting a target</i>"]
     end
-    subgraph R12["scalars and the build"]
-        Scalar["util/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
-        Build["util/build/<br/><i>which build variant this is</i>"]
+    subgraph R12["vectors"]
+        Linear["math/linear/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
+    end
+    subgraph R12b["scalars"]
+        Scalar["math/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
     end
     subgraph R13["board"]
         Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R10b --> R11 --> R12 --> R13
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R10b --> R11 --> R12 --> R12b --> R13
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
-- **util/ is two kinds of code.** `util/runtime/` holds the services that
-  reach the chip, each with a host half; the other util/ subfolders never
-  touch the chip and never include `util/runtime/`. Each subfolder has its
-  own row above.
+- **core/ and math/ are the base.** `core/` is the platform every layer
+  targets: work splits across the two cores through `core/job.h` (one
+  core-1 job beside the caller's own work), memory is placed by kind
+  through `core/memory.h`, and time, frame cost and the frame watch sit
+  beside them. `math/` never touches the chip and includes nothing above
+  it, so every layer, `core/` included, may use it: `scalar/` per number
+  type, `linear/` vectors to transforms over it, `motion/` over both.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
@@ -125,7 +129,7 @@ flowchart TB
   `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
   `display/display_shell.h` (`display_start`, `display_sample_orientation`),
   `display/display.h` (the system panel clock) and
-  `util/runtime/{timing,settings,memory}.h`; they call this firmware's own
+  `core/{timing,memory}.h` and `services/settings.h`; they call this firmware's own
   drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
@@ -134,9 +138,9 @@ flowchart TB
   under `shell/` on an ESP-IDF, FreeRTOS, NVS or BSP include or call,
   logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
 - **The vendor timer and heap have one owner each.** Code above the drivers
-  reads time with `timing_now_us()` (`util/runtime/timing.h`, inlined to the
+  reads time with `timing_now_us()` (`core/timing.h`, inlined to the
   hardware timer's own call) and places or measures memory by kind with
-  `util/runtime/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
+  `core/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
   `MEMORY_PSRAM`), whose header says which heap is beneath it on each
   platform. In the firmware, its suites and its tools the same gate fails
   any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
@@ -156,7 +160,7 @@ flowchart TB
 ### 1. There is exactly one framebuffer
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
-(`MEMORY_PSRAM` in `util/runtime/memory.h`), so it does not count against the
+(`MEMORY_PSRAM` in `core/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
 is room in PSRAM for a second one and no time for it: a per-frame catch-up
 copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
@@ -174,7 +178,7 @@ framebuffer while it holds one. See
 The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as
 tall as that window. A full colour+depth pair would want ~1.3 MB here.
-`util/math/` supplies the float vector, quaternion, matrix and transform maths
+`math/linear/` supplies the float vector, quaternion, matrix and transform maths
 the line camera and the boot scene share, and no rasterizer.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
@@ -354,13 +358,13 @@ pass. The app's side is in
 
 A frame that allocates, frees or logs every time it runs pays for it every
 frame. A development build watches for that at runtime
-(`util/runtime/frame_watch.h`); release compiles none of it.
+(`core/frame_watch.h`); release compiles none of it.
 
 | | |
 |---|---|
 | The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing (a frozen device, which still answers the console) joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
-| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`util/runtime/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
+| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`core/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
 | Counts | `autana debug framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 

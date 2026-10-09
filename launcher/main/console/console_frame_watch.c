@@ -2,7 +2,7 @@
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
-#include "util/runtime/frame_watch.h"
+#include "core/frame_watch.h"
 
 #include <stdio.h>
 

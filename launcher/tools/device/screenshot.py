@@ -19,7 +19,7 @@ ESP_LOG output in particular, is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
 The device streams its frame as a 24bpp BMP (see screenshot_bmp_header() in
-util/encode/screenshot.h), the simplest thing to emit from a microcontroller with
+console/screenshot.h), the simplest thing to emit from a microcontroller with
 no image library on it, but nothing here ever writes that BMP to disk:
 bmp_bytes_to_png() below converts it to PNG entirely in memory, and a
 capture's output gets only the PNG. This is genuinely lossless, not just

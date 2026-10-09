@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "util/build/build_variant.h"
+#include "core/build_variant.h"
 
 /* Runtime toggle for the panel-grid overlay layer: outlines whichever grid
  * cells are actually sent each frame, cyan for a full-row send and yellow

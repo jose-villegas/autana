@@ -21,8 +21,8 @@ scene_name=render_lab
 scene_sources="
 main/app/app_arena.c
 main/app/app_registry.c
-main/util/runtime/tune.c
-main/util/runtime/job.c
+main/services/tune.c
+main/core/job.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c
@@ -40,7 +40,7 @@ main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
-main/util/motion/orbit_motion.c
+main/math/motion/orbit_motion.c
 main/input/gesture.c
 main/input/orbit_motion_touch.c
 main/ui/ui.c

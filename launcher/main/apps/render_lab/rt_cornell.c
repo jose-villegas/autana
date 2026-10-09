@@ -13,10 +13,10 @@
 #include <math.h>
 #include <stddef.h>
 
+#include "core/job.h"
 #include "rt_cornell_scene.h"
 #include "rt_geometry.h"
 #include "rt_refine.h"
-#include "util/runtime/job.h"
 
 #define LIGHT_EMISSIVE_RGB        0xFFF6E0u
 
