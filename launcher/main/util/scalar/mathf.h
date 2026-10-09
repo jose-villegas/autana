@@ -95,3 +95,21 @@ static inline float
 mathf_wmul(float a, float b) {
     return a * b;
 }
+
+typedef float mathf_wide_t;
+typedef float mathf_divisor_t;
+
+static inline mathf_wide_t
+mathf_product_difference(float a, float b, float c, float d) {
+    return (a * b) - (c * d);
+}
+
+static inline mathf_divisor_t
+mathf_dot3_divisor(float a0, float b0, float a1, float b1, float a2, float b2) {
+    return 1.0F / (((a0 * b0) + (a1 * b1)) + (a2 * b2));
+}
+
+static inline float
+mathf_divide_wide(float numerator, mathf_divisor_t divisor) {
+    return numerator * divisor;
+}

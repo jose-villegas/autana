@@ -51,19 +51,19 @@
     /* The affine input's 3x3 part must be invertible in this number type. */                                          \
     static inline P##_t P##_invert_affine(P##_t m) {                                                                   \
         P##_t out = P##_identity();                                                                                    \
+        OPS##_wide_t cofactors[3][3];                                                                                  \
         for (int r = 0; r < 3; r++) {                                                                                  \
             for (int c = 0; c < 3; c++) {                                                                              \
                 const int r1 = (c + 1) % 3, r2 = (c + 2) % 3;                                                          \
                 const int c1 = (r + 1) % 3, c2 = (r + 2) % 3;                                                          \
-                out.m[r][c] = OPS##_sub(OPS##_mul(m.m[r1][c1], m.m[r2][c2]), OPS##_mul(m.m[r1][c2], m.m[r2][c1]));     \
+                cofactors[r][c] = OPS##_product_difference(m.m[r1][c1], m.m[r2][c2], m.m[r1][c2], m.m[r2][c1]);        \
             }                                                                                                          \
         }                                                                                                              \
-        const T det = OPS##_add(OPS##_add(OPS##_mul(m.m[0][0], out.m[0][0]), OPS##_mul(m.m[0][1], out.m[1][0])),       \
-                                OPS##_mul(m.m[0][2], out.m[2][0]));                                                    \
-        const T inv = OPS##_div(OPS##_one(), det);                                                                     \
+        const OPS##_divisor_t divisor =                                                                                \
+            OPS##_dot3_divisor(m.m[0][0], cofactors[0][0], m.m[0][1], cofactors[1][0], m.m[0][2], cofactors[2][0]);    \
         for (int r = 0; r < 3; r++) {                                                                                  \
             for (int c = 0; c < 3; c++) {                                                                              \
-                out.m[r][c] = OPS##_mul(out.m[r][c], inv);                                                             \
+                out.m[r][c] = OPS##_divide_wide(cofactors[r][c], divisor);                                             \
             }                                                                                                          \
             out.m[r][3] =                                                                                              \
                 OPS##_neg(OPS##_add(OPS##_add(OPS##_mul(out.m[r][0], m.m[0][3]), OPS##_mul(out.m[r][1], m.m[1][3])),   \

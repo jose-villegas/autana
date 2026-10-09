@@ -12,6 +12,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "util/scalar/fixed.h"
@@ -27,6 +28,80 @@ mathx_saturate(int64_t v) {
         return INT32_MAX;
     }
     return v < INT32_MIN ? INT32_MIN : (int32_t)v;
+}
+
+/* Products retain all Q32.32 bits. The divisor scales its Q48.48 dot product
+ * by a common power of two to fit int64; both dot accumulators must fit.
+ * Quotients round only after division, avoiding a Q16.16 reciprocal. */
+typedef int64_t mathx_wide_t;
+
+typedef struct {
+    int64_t value;
+    int shift;
+} mathx_divisor_t;
+
+static inline mathx_wide_t
+mathx_product_difference(int32_t a, int32_t b, int32_t c, int32_t d) {
+    return ((int64_t)a * b) - ((int64_t)c * d);
+}
+
+static inline mathx_divisor_t
+mathx_dot3_divisor(int32_t a0, int64_t b0, int32_t a1, int64_t b1, int32_t a2, int64_t b2) {
+    const int32_t a[] = {a0, a1, a2};
+    const int64_t b[] = {b0, b1, b2};
+    int64_t largest_a = 0, largest_b = 0;
+    for (int i = 0; i < 3; i++) {
+        const int64_t av = a[i] < 0 ? -(int64_t)a[i] : a[i];
+        const int64_t bv = b[i] < 0 ? -b[i] : b[i];
+        if (av > largest_a) {
+            largest_a = av;
+        }
+        if (bv > largest_b) {
+            largest_b = bv;
+        }
+    }
+    int shift = 0;
+    const int64_t limit = largest_a == 0 ? INT64_MAX : INT64_MAX / (sizeof a / sizeof a[0] + 1) / largest_a;
+    while (largest_b > limit) {
+        largest_b /= 2;
+        shift++;
+    }
+    const int64_t factor = (int64_t)1 << shift;
+    int64_t high = 0, low = 0;
+    for (int i = 0; i < 3; i++) {
+        high += (int64_t)a[i] * (b[i] / factor);
+        low += (int64_t)a[i] * (b[i] % factor);
+    }
+    return (mathx_divisor_t){high + (shift == 0 ? low : fx_round_shift(low, shift)), shift};
+}
+
+static inline int32_t
+mathx_divide_wide(int64_t numerator, mathx_divisor_t divisor) {
+    if (divisor.value == 0) {
+        return numerator > 0 ? INT32_MAX : (numerator < 0 ? INT32_MIN : 0);
+    }
+    const bool negative = (numerator < 0) != (divisor.value < 0);
+    const uint64_t n = numerator < 0 ? (uint64_t)-numerator : (uint64_t)numerator;
+    const uint64_t d = divisor.value < 0 ? (uint64_t)-divisor.value : (uint64_t)divisor.value;
+    uint64_t quotient = n / d, remainder = n % d;
+    for (int bit = divisor.shift; bit < 2 * MATHX_SHIFT; bit++) {
+        if (quotient > (uint64_t)INT32_MAX) {
+            return negative ? INT32_MIN : INT32_MAX;
+        }
+        quotient *= 2;
+        remainder *= 2;
+        if (remainder >= d) {
+            quotient++;
+            remainder -= d;
+        }
+    }
+    if (remainder >= (d / 2) + (d % 2)) {
+        quotient++;
+    }
+    if (quotient > (uint64_t)INT32_MAX) {
+        return negative ? INT32_MIN : INT32_MAX;
+    }
+    return negative ? -(int32_t)quotient : (int32_t)quotient;
 }
 
 static inline int32_t

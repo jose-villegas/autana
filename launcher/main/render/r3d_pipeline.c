@@ -67,6 +67,19 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     lens->height = height;
 }
 
+/* Returns the placement as a matrix on position ticks: its position, in model
+ * units, scaled by position_scale ticks per unit. */
+static mat4f_t
+r3d_placement_matrix(const r3d_placement_t* placement, int position_scale) {
+    const vec3f_t p = vec3f_scale(placement->position, (float)position_scale);
+    return (mat4f_t){{
+        {placement->m[0][0], placement->m[0][1], placement->m[0][2], p.x},
+        {placement->m[1][0], placement->m[1][1], placement->m[1][2], p.y},
+        {placement->m[2][0], placement->m[2][1], placement->m[2][2], p.z},
+        {0.0F, 0.0F, 0.0F, 1.0F},
+    }};
+}
+
 void
 r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
     lens->m = mat4f_mul_affine(lens->m, r3d_placement_matrix(placement, position_scale));
