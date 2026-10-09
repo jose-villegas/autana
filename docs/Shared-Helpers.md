@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=f9111c02201879fa0a3ef083f88461807cc9263adaf82e425cb3cb4b3018e079 -->
+<!-- generated: shared-helpers sha256=d04159e19735e50dd90aecfa922a39e5a635f6694457cfc4688ab7c2ba741f9f -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -164,6 +164,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/tools/gen/gfx_palette_gen.h](../launcher/tools/gen/gfx_palette_gen.h) | gfx_palette_gen, host-only build-time helpers for GFX_LAYOUT_INDEXED: the OKLab colour space every palette generator measures with, and the tables derived from a finished palette (the reverse RGB565 -&gt; index map and the per-(index, Bayer phase) dither tables gfx_indexed.h reads). | `gfx_lab_dist2, gfx_lab_t, gfx_lin_t, gfx_lin_to_lab, gfx_palette_gen_build_dither16, gfx_palette_gen_build_dither_cell, gfx_palette_gen_build_dither_checker2, gfx_palette_gen_build_index_map, gfx_palette_gen_build_lut_nearest, gfx_rgb_to_lin` |
 | [launcher/tools/gltf/gltf_read.py](../launcher/tools/gltf/gltf_read.py) | Read a binary glTF 2.0 file: accessors, animations and their samplers. | `CHUNK_BIN, CHUNK_JSON, COMPONENT_FORMATS, GLB_MAGIC, NORMALIZED_DIVISORS, TYPE_WIDTHS, animation_duration, is_rotation, load_glb, parse_glb, quat_slerp, read_accessor, read_animation, sample_keys` |
 | [launcher/tools/gltf/gltf_write.py](../launcher/tools/gltf/gltf_write.py) | Write a binary glTF 2.0 holding nodes, cameras, animations and meshes. | `ARRAY_BUFFER, CHUNK_BIN, CHUNK_JSON, COMPONENT_FORMATS, ELEMENT_ARRAY_BUFFER, FLOAT, GLB_MAGIC, UNSIGNED_INT, UNSIGNED_SHORT, WIDTH_NAMES, build_glb` |
+| [launcher/tools/native/shared_library.py](../launcher/tools/native/shared_library.py) | A shared library built once from source with the host compiler and loaded through ctypes. | `build_shared, find_compiler` |
 | [launcher/tools/perf/layout_measure.py](../launcher/tools/perf/layout_measure.py) | Seeded capture acquisition and variance estimates shared by performance tools. | `FilterOverlap, MEAN_RE, NUMBER_RE, REPO, REPORT_LINE, RUN_LINE, analyse, autana_command, capture_metadata, capture_refusal, capture_tests, captured_runs, cell, filter_limits, make_table, parse_markdown, parse_report, required_seeds, run_flash, run_stamped, shapiro, split_filters, validate_filters` |
 | [launcher/tools/perf/phase_report.py](../launcher/tools/perf/phase_report.py) | Markdown tables over a device capture's per-phase frame costs. | `STATS, comparison_lines, fps, phase_stats, phase_table_lines, write_phase_report` |
 | [launcher/tools/perf/seed_statistics.py](../launcher/tools/perf/seed_statistics.py) | Inference on independent layout seed means, without external dependencies. | `beta_fraction, compare, holm, minimum_seeds, permutation, permutation_samples, regularized_beta, row_test, t_cdf, t_quantile` |

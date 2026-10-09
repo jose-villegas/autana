@@ -6,12 +6,11 @@ glTF wants it: metres, right-handed, +Y up (see ufbx_glue.c)."""
 import ctypes
 import os
 import pathlib
-import shutil
-import subprocess
-import sys
 from types import SimpleNamespace
 
 import numpy as np
+
+from native.shared_library import build_shared, find_compiler
 
 from . import log
 
@@ -29,29 +28,14 @@ CHANNEL_WIDTHS = {TRANSLATION: 3, ROTATION: 4, SCALE: 3}
 _lib = None
 
 
-def _compiler():
-    for name in (os.environ.get("CC"), "cc", "gcc", "clang"):
-        if name and shutil.which(name):
-            return shutil.which(name)
-    raise SystemExit("no C compiler found to build ufbx: set CC")
-
-
 def _library():
     global _lib
     if _lib is not None:
         return _lib
     if not (UFBX / "ufbx.c").exists():
         raise SystemExit(f"{UFBX} is missing: run `git submodule update --init third_party/upstream/ufbx`")
-    CACHE.mkdir(exist_ok=True)
-    suffix = ".dll" if sys.platform == "win32" else ".so"
-    path = CACHE / f"ufbx_glue{suffix}"
-    sources = (GLUE, UFBX / "ufbx.c", UFBX / "ufbx.h")
-    if not path.exists() or path.stat().st_mtime < max(s.stat().st_mtime for s in sources):
-        cc = _compiler()
-        log(f"building {path.name} with {cc}")
-        extra = ["-static"] if sys.platform == "win32" else ["-fPIC"]
-        subprocess.run([cc, "-O2", "-shared", *extra, f"-I{UFBX}", "-o", str(path), str(GLUE), "-lm"], check=True)
-    lib = ctypes.CDLL(str(path))
+    lib = build_shared("ufbx_glue", CACHE, (GLUE,), find_compiler("CC", ("cc", "gcc", "clang"), "C"),
+                       flags=(f"-I{UFBX}",), libraries=("-lm",), depends=(UFBX / "ufbx.c", UFBX / "ufbx.h"), log=log)
     size_t, c_int, c_void_p, c_char_p = ctypes.c_size_t, ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p
     for name, restype, argtypes in (
         ("fbxg_open", c_void_p, (c_char_p, c_char_p, size_t)),

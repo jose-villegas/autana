@@ -18,6 +18,8 @@
 
 /* glTF stores at most four influences per vertex. */
 #define FBXG_INFLUENCES 4
+/* A node's translation xyz, rotation xyzw and scale xyz. */
+#define FBXG_TRS_VALUES 10
 
 typedef struct fbxg_scene {
     ufbx_scene* scene;
@@ -88,16 +90,10 @@ FBXG_API int
 fbxg_node_transform(fbxg_scene* s, size_t i, double* trs) {
     const ufbx_node* n = s->scene->nodes.data[i];
     const ufbx_transform* t = &n->local_transform;
-    trs[0] = t->translation.x;
-    trs[1] = t->translation.y;
-    trs[2] = t->translation.z;
-    trs[3] = t->rotation.x;
-    trs[4] = t->rotation.y;
-    trs[5] = t->rotation.z;
-    trs[6] = t->rotation.w;
-    trs[7] = t->scale.x;
-    trs[8] = t->scale.y;
-    trs[9] = t->scale.z;
+    const double values[FBXG_TRS_VALUES] = {t->translation.x, t->translation.y, t->translation.z, t->rotation.x,
+                                            t->rotation.y,    t->rotation.z,    t->rotation.w,    t->scale.x,
+                                            t->scale.y,       t->scale.z};
+    memcpy(trs, values, sizeof values);
     return n->parent ? (int)n->parent->typed_id : -1;
 }
 
