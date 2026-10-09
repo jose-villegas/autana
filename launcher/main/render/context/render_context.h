@@ -45,7 +45,7 @@ typedef struct {
 
 #define RENDER_VIEW_UNKNOWN -2
 #define RENDER_VIEW_SHADED  0
-#define RENDER_VIEW_COUNT   4
+#define RENDER_VIEW_COUNT   4 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
