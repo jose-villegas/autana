@@ -12,7 +12,6 @@
  */
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "util/scalar/fixed.h"
