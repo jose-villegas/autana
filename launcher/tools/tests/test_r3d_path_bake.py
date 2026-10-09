@@ -58,7 +58,7 @@ def corridor(albedo=0.5, wall_faces_floor=True, wall_kd=None):
         tris += [[base, base + 1, base + 2], [base, base + 2, base + 3]]
         tri_m += [index] * 2
     p, tri_v = np.array(corners, dtype=float), np.array(tris)
-    source = SimpleNamespace(p=p, uv=np.zeros((8, 2)), tri_v=tri_v, tri_t=tri_v, tri_m=np.array(tri_m),
+    source = SimpleNamespace(colors=None, p=p, uv=np.zeros((8, 2)), tri_v=tri_v, tri_t=tri_v, tri_m=np.array(tri_m),
                              names=["floor", "wall"],
                              materials={"floor": {"Kd": grey(albedo)}, "wall": {"Kd": wall_kd or grey(albedo)}},
                              textures=[None, None])

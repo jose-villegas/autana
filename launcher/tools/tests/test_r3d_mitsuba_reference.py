@@ -48,7 +48,7 @@ def make_source(quads, kd=(1.0, 1.0, 1.0), texture=None, materials=None, uv_scal
         tris += [[base, base + 1, base + 2], [base, base + 2, base + 3]]
         tri_m += [materials[index]] * 2
     names = [f"material{i}" for i in range(len(colours))]
-    source = SimpleNamespace(p=np.array(corners, dtype=float), uv=np.array(uvs), tri_v=np.array(tris), tri_t=np.array(tris),
+    source = SimpleNamespace(colors=None, p=np.array(corners, dtype=float), uv=np.array(uvs), tri_v=np.array(tris), tri_t=np.array(tris),
                              tri_m=np.array(tri_m), names=names, materials={n: {"Kd": c} for n, c in zip(names, colours)},
                              textures=[texture] + [None] * (len(colours) - 1))
     source.corner_normals = corner_normals(source.p, source.tri_v)

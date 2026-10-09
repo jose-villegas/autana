@@ -17,6 +17,9 @@ from asset.asset_pack import NAME_BYTES
 
 RESERVED_LIGHTS = ("point", "spot")
 
+# The mesh sources an import reads: an OBJ with its MTL and textures, or a binary glTF.
+SOURCE_SUFFIXES = (".obj", ".glb")
+
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
 LIGHT_FIELDS = {
@@ -271,8 +274,8 @@ def load_import_settings(path):
     for name in source:
         text(source[name], f"source.{name}")
     source["path"] = (path.parent / source["path"]).resolve()
-    if source["path"].suffix.lower() != ".obj":
-        raise SettingsError("source.path has an unsupported extension; supported: .obj")
+    if source["path"].suffix.lower() not in SOURCE_SUFFIXES:
+        raise SettingsError(f"source.path has an unsupported extension; supported: {', '.join(SOURCE_SUFFIXES)}")
     output = values["output"]
     check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
     directory = text(output["directory"], "output.directory")
@@ -309,10 +312,12 @@ def load_import_settings(path):
 
 
 def source_files(settings):
-    """The OBJ, its sibling MTL and every texture the loader reads."""
+    """The source and every file it reads: an OBJ's sibling MTL and textures; a glTF binary holds its own."""
     from r3d.obj import TEXTURE_KEYS, load_mtl
 
     path = settings.source["path"]
+    if path.suffix.lower() == ".glb":
+        return [path]
     material = path.with_suffix(".mtl")
     files = {path, material}
     for entry in load_mtl(material).values():

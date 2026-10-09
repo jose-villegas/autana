@@ -734,7 +734,7 @@ class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
         settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set())
-        source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+        source = SimpleNamespace(colors=None, p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
                                  names=["m"], textures=[None], materials={})
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
@@ -751,7 +751,7 @@ class BakeStepTests(unittest.TestCase):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
         settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set())
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
-        source = SimpleNamespace(p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]), names=["m"],
+        source = SimpleNamespace(colors=None, p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]), names=["m"],
                                  textures=[None], materials={})
         given = {}
 
@@ -794,7 +794,7 @@ class ReferenceObjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
             scene = load_scene(write_scene(directory, objects, bounced))
-            source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+            source = SimpleNamespace(colors=None, p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
                                      names=["m"], textures=[None], materials={})
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
