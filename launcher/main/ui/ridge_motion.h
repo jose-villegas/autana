@@ -6,14 +6,18 @@
  * slope, and the wave is pushed down it and coasts on after.
  *
  * Pure: time, the slope and how much of each are passed in, heights come
- * out. Heights are Q4; phases are trig.h's, TRIG_TURN to
- * the turn.
+ * out. Heights have RIDGE_HEIGHT_SHIFT fractional bits; phases are
+ * trig.h's, TRIG_TURN to the turn; a slope is a ridge_pose.h unit.
  */
 #pragma once
 
 #include <stdint.h>
 
+#include "ui/ridge_pose.h"
 #include "util/scalar/trig.h"
+
+#define RIDGE_HEIGHT_SHIFT 4
+#define RIDGE_HEIGHT_ONE   (1 << RIDGE_HEIGHT_SHIFT)
 
 /* How much of each. Passed in rather than compiled in because these are
  * judged by eye, on the device, and a caller may be changing them live. */
@@ -49,7 +53,7 @@ ridge_motion_advance(ridge_motion_t* motion, const ridge_motion_params_t* params
     motion->breath_ms = (motion->breath_ms + dt_ms) % breath_ms;
 
     int64_t momentum = motion->momentum_q8;
-    momentum += (int64_t)slope_q14 * params->push * (int64_t)dt_ms / 16384;
+    momentum += (int64_t)slope_q14 * params->push * (int64_t)dt_ms / RIDGE_POSE_ONE;
     /* A share of a small momentum rounds to nothing, and the wave would run
      * a little fast for ever after one tilt: it always loses at least 1. */
     int64_t lost = momentum * (int64_t)dt_ms / (params->coast_ms > 0 ? params->coast_ms : 1);

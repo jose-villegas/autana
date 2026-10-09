@@ -20,6 +20,7 @@
 #include "render/r3d_project.h"
 #include "util/math/mat4x.h"
 #include "util/math/vec_convert.h"
+#include "util/scalar/mathx.h"
 
 /* One meter in camera space, and the focal length's one. */
 #define R3D_X_UNIT_ONE    512

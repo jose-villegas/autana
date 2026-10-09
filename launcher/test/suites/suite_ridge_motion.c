@@ -134,10 +134,10 @@ static void
 test_a_slope_the_other_way_can_turn_the_wave_back(void) {
     ridge_motion_t motion = {0};
     for (int frame = 0; frame < 60; frame++) {
-        ridge_motion_advance(&motion, &params, 16, -16384);
+        ridge_motion_advance(&motion, &params, 16, -RIDGE_POSE_ONE);
     }
     const int before = crest_column(&motion);
-    ridge_motion_advance(&motion, &params, 100, -16384);
+    ridge_motion_advance(&motion, &params, 100, -RIDGE_POSE_ONE);
     TEST_ASSERT_LESS_THAN_INT(0, crest_travel(before, crest_column(&motion)));
 }
 
@@ -145,7 +145,7 @@ static void
 test_momentum_is_bounded_however_long_the_slope_lasts(void) {
     ridge_motion_t motion = {0};
     for (int frame = 0; frame < 5000; frame++) {
-        ridge_motion_advance(&motion, &params, 16, 16384);
+        ridge_motion_advance(&motion, &params, 16, RIDGE_POSE_ONE);
         TEST_ASSERT_TRUE(motion.momentum_q8 <= RIDGE_SPEED_MAX);
     }
 }

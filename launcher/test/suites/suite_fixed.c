@@ -185,8 +185,7 @@ test_the_same_helpers_serve_both_shift_8_and_shift_16(void) {
     TEST_ASSERT_EQUAL_INT32(256, fx_mul_floor(256, 256, 8));
     TEST_ASSERT_EQUAL_INT32(256, fx_mul_round(256, 256, 8));
 
-    /* Q16.16 uses MATHX_ONE for "one times one is one";
-     * the same helpers accept MATHX_SHIFT. */
+    /* Q16.16 "one times one is one", as mathx.h needs. */
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, fx_mul_floor(MATHX_ONE, MATHX_ONE, MATHX_SHIFT));
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, fx_mul_round(MATHX_ONE, MATHX_ONE, MATHX_SHIFT));
 

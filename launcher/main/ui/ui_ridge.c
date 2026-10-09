@@ -146,7 +146,8 @@ static bool allocation_tried;
 
 static int
 round_q4(int value) {
-    return value >= 0 ? (value + 8) / 16 : (value - 8) / 16;
+    return value >= 0 ? (value + RIDGE_HEIGHT_ONE / 2) / RIDGE_HEIGHT_ONE
+                      : (value - RIDGE_HEIGHT_ONE / 2) / RIDGE_HEIGHT_ONE;
 }
 
 static uint32_t
@@ -273,11 +274,13 @@ build_layers(void) {
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         for (int layer = 0; layer < 2; layer++) {
             const uint32_t phase = ((uint32_t)x * TRIG_TURN / (uint32_t)wavelength[layer]) - travelled[layer];
-            const int echo = spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / 16);
-            const int wave = amplitude[layer] * trig_sin((uint16_t)phase) / 2048 * gain / 256;
-            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * 16) + wave + echo);
+            const int echo =
+                spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / RIDGE_HEIGHT_ONE);
+            const int wave = amplitude[layer] * trig_sin((uint16_t)phase) / (1 << (TRIG_SIN_SHIFT - RIDGE_HEIGHT_SHIFT))
+                             * gain / 256;
+            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * RIDGE_HEIGHT_ONE) + wave + echo);
         }
-        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * 16));
+        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * RIDGE_HEIGHT_ONE));
     }
 }
 
@@ -314,7 +317,7 @@ raster_segment(int layer, int x0, int y0, int x1, int y1) {
  * 64-bit division: a library call on this chip, four per curve point. */
 static inline __attribute__((always_inline)) int
 pose_scale(int32_t value) {
-    return value >= 0 ? value >> 14 : -((-value) >> 14);
+    return value >= 0 ? value >> RIDGE_POSE_SHIFT : -((-value) >> RIDGE_POSE_SHIFT);
 }
 
 /* The pose the ridge is drawn at: the eased pose snapped to 0.5 degree
@@ -1281,7 +1284,7 @@ shape_this_frame(uint32_t dt_ms) {
     }
     const ridge_motion_params_t params = {.breath_ms = breath_ms,
                                           .breath_depth = breath_depth,
-                                          .wave_height_q4 = front_amplitude * 16,
+                                          .wave_height_q4 = front_amplitude * RIDGE_HEIGHT_ONE,
                                           .wave_length = front_wavelength,
                                           .wave_passes_in_ms = front_period_ms,
                                           .push = tilt_push,

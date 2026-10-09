@@ -38,7 +38,7 @@ trig_sin_quadrant(uint32_t r) {
     return a + (((b - a) * (int32_t)(r & 0xFF)) >> 8);
 }
 
-/* sin of a TRIG_TURN phase, scaled by TRIG_SIN_SHIFT. */
+/* Sine of phase, TRIG_TURN to the turn; TRIG_SIN_SHIFT fractional bits. */
 static inline int32_t
 trig_sin(uint16_t phase) {
     const uint32_t quadrant = (uint32_t)phase >> (TRIG_TURN_SHIFT - 2);

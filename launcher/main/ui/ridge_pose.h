@@ -4,8 +4,8 @@
  * point lies along it.
  *
  * Pure: time, gravity and every threshold are passed in rather than read
- * from a tunable, so the maths runs the same off the device. Poses are Q14
- * unit vectors in Q14.
+ * from a tunable, so the maths runs the same off the device. Poses are unit
+ * vectors with RIDGE_POSE_SHIFT fractional bits.
  */
 #pragma once
 
