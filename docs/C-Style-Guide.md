@@ -98,8 +98,10 @@ committed. It also checks executable bits and file-scoped text rules. Install
 the Python dependencies with `python -m pip install -r scripts/gates/requirements.txt`.
 Run `scripts/gates/check-text-rules-staged.sh` by hand for the same text checks.
 The commands and flags come from steps marked `STAGED_TEXT_GATE` in
-`.github/workflows/comment-rules.yml`; the hook adds `--paths` to select files
-in a temporary index snapshot. Header companions and citation vocabulary
+`.github/workflows/comment-rules.yml`, run side by side on a temporary index
+snapshot. A step marked `"true"` is file-scoped: the hook adds `--paths` and
+the staged files. One marked `"snapshot"` checks the whole tree, such as a
+generated catalogue or document against its sources, and runs as it is. Header companions and citation vocabulary
 also come from the index. Without ESP-IDF, the citation check reports which
 external names it cannot verify; CI requires the SDK.
 

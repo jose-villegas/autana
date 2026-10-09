@@ -147,7 +147,7 @@ _Static_assert(SAND_AMBIENT_HEAT > 0 && SAND_AMBIENT_HEAT < SAND_SHOCK_HEAT && S
 
 /* STARTING POINTS on a 16-step colour cycle, close in hue and lightness.
  * Shared with SAND_CULLET_RAMP's phase-0 colours below, so a build that
- * never calls material_set_cullet_phase() (a host test) still shows the
+ * uses a zero-initialised frame still shows the
  * same cullet a running frame does at rest. GLINT is pure white for one
  * phase. */
 #define CULLET_CYCLE_A      0xCFEAF2 /* pale cyan */
@@ -524,16 +524,6 @@ static const gfx_color_t stone_edge_speckle[MATERIAL_VARIANTS][8] = {
 #define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
 #endif
 
-/* liquid_spec[mask] corrects a flat fill-level ramp: two rim cells at the
- * same fill level need different shading depending on whether their open
- * side faces toward or away from gravity (a pool's lit top vs. an
- * overhang's shaded underside). Set once a frame by material_set_gravity(),
- * not read per cell, since material_colours() runs hot, per cell, per row.
- * Sized by MATERIAL_EDGE_MASK_COUNT (cardinal edges only), not
- * MATERIAL_VARIANTS - both are 16 today by coincidence, not a relationship
- * to rely on. */
-static int8_t liquid_spec[MATERIAL_EDGE_MASK_COUNT];
-
 /* Adjust if rim highlight is too strong or faint */
 #define SPEC_STRENGTH 10
 
@@ -547,8 +537,8 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
         return 0;
     }
     const int raw_q8 = nx * ux_q8 + ny * uy_q8;
-    const int norm_q8 = (nx != 0 && ny != 0) ? 181 : 256;
-    const int spec_q8 = (raw_q8 * norm_q8) / 256; /* now in [-256,256] */
+    const int norm_q8 = (nx != 0 && ny != 0) ? MATERIAL_Q8_DIAGONAL : MATERIAL_Q8_ONE;
+    const int spec_q8 = (raw_q8 * norm_q8) / MATERIAL_Q8_ONE; /* now in [-256,256] */
     /* Rounded, not truncated: truncation weakens one side's rim. */
     return (int8_t)(-fx_round_shift32(spec_q8 * SPEC_STRENGTH, 8));
 }
@@ -559,22 +549,22 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
  * sand_paint_row_n() instead, since gravity alone cannot predict a cell's
  * surroundings. */
 void
-material_set_gravity(int gx, int gy) {
+material_frame_set_gravity(material_frame_t* f, int gx, int gy) {
     const int len = mathi_len(gx, gy);
     if (len == 0) {
         /* No "up" for light, so no rim highlight. */
         for (unsigned m = 0; m < MATERIAL_EDGE_MASK_COUNT; m++) {
-            liquid_spec[m] = 0;
+            f->liquid_spec[m] = 0;
         }
         return;
     }
 
-    /* Unit vector of MINUS gravity, scaled by 256 for highlight catching. */
-    const int ux_q8 = (-gx * 256) / len;
-    const int uy_q8 = (-gy * 256) / len;
+    /* Unit vector of MINUS gravity, scaled to MATERIAL_Q8_ONE for highlight catching. */
+    const int ux_q8 = (-gx * MATERIAL_Q8_ONE) / len;
+    const int uy_q8 = (-gy * MATERIAL_Q8_ONE) / len;
 
     for (unsigned mask = 0; mask < MATERIAL_EDGE_MASK_COUNT; mask++) {
-        liquid_spec[mask] = liquid_spec_for_mask(mask, ux_q8, uy_q8);
+        f->liquid_spec[mask] = liquid_spec_for_mask(mask, ux_q8, uy_q8);
     }
 }
 
@@ -582,12 +572,12 @@ void
 material_shine_direction(int gx, int gy, int* ux_q8, int* uy_q8) {
     const int len = mathi_len(gx, gy);
     if (len == 0) {
-        *ux_q8 = 181;
-        *uy_q8 = 181;
+        *ux_q8 = MATERIAL_Q8_DIAGONAL;
+        *uy_q8 = MATERIAL_Q8_DIAGONAL;
         return;
     }
-    *ux_q8 = (-(gx + gy) * 181) / len;
-    *uy_q8 = ((gx - gy) * 181) / len;
+    *ux_q8 = (-(gx + gy) * MATERIAL_Q8_DIAGONAL) / len;
+    *uy_q8 = ((gx - gy) * MATERIAL_Q8_DIAGONAL) / len;
 }
 
 /* Perpendicular to gravity, not a fixed grid axis - so the wood-leaf wind
@@ -598,12 +588,12 @@ void
 material_wood_leaf_wind_axis(int gx, int gy, int* ux_q8, int* uy_q8) {
     const int len = mathi_len(gx, gy);
     if (len == 0) {
-        *ux_q8 = 256;
+        *ux_q8 = MATERIAL_Q8_ONE;
         *uy_q8 = 0;
         return;
     }
-    *ux_q8 = (-gy * 256) / len;
-    *uy_q8 = (gx * 256) / len;
+    *ux_q8 = (-gy * MATERIAL_Q8_ONE) / len;
+    *uy_q8 = (gx * MATERIAL_Q8_ONE) / len;
 }
 
 /* Ring order matches sand_priv.h's own ring_dir() (0 = down, clockwise) -
@@ -616,8 +606,7 @@ static const int8_t wood_leaf_ring[8][2] = {
 /* Recomputing fresh every frame flips right at a tie between neighbouring
  * ring directions, popping every wood cell whose top5 just changed in one
  * frame, see Shading-and-Colour.md, "hysteresis hides the seam, it does
- * not remove it". `*last_down` is the caller's own state, like
- * glass_last_phase. */
+ * not remove it". `*last_down` is the caller's own state. */
 void
 material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
     const int len = mathi_len(gx, gy);
@@ -670,32 +659,6 @@ static const uint8_t water_foam_threshold[WATER_FOAM_CURVATURE_MAX + 1] = {
     5, /* curvature 2, medium - foams on 5 of 8 */
     7, /* curvature 3+, heavy - foams on 7 of 8 */
 };
-
-/* See material_set_foam_phase() in material_palette.h. Zero until first frame sets
- * it. */
-static unsigned foam_phase;
-
-void
-material_set_foam_phase(unsigned phase) {
-    foam_phase = phase;
-}
-
-/* Cullet phase: see material_set_cullet_phase() in material_palette.h. Starts at
- * zero, setting anchor colors; other phases use static entries. */
-static unsigned cullet_phase;
-
-void
-material_set_cullet_phase(unsigned phase) {
-    cullet_phase = phase;
-}
-
-/* Zero until first frame sets it */
-static int glass_phase;
-
-void
-material_set_glass_phase(int phase) {
-    glass_phase = phase;
-}
 
 /* A short gust, not a slow ramp - a symmetric triangle read as one broad
  * pulse. WOOD_LEAF_WAVE_SCREEN_SPAN_MS is a multiple of
@@ -769,7 +732,7 @@ liquid_interior(uint8_t id, unsigned depth) {
 }
 
 static inline __attribute__((always_inline)) bool
-water_foams(unsigned hash, unsigned mask) {
+water_foams(const material_frame_t* f, unsigned hash, unsigned mask) {
     const unsigned empty_count = material_popcount8(mask);
     unsigned curvature = (empty_count > 3) ? (empty_count - 3) : (3 - empty_count);
     if (curvature > WATER_FOAM_CURVATURE_MAX) {
@@ -781,27 +744,28 @@ water_foams(unsigned hash, unsigned mask) {
      * leaving the foam set unchanged on about half of all phase steps;
      * addition has no such alignment to preserve. Safe only because foam is
      * the sole consumer of water's hash. */
-    const unsigned dithered = hash + foam_phase * 0x9E37u;
+    const unsigned dithered = hash + f->foam_phase * 0x9E37u;
     return (dithered & 7u) < water_foam_threshold[curvature];
 }
 
 /* Rim cell uses fill-indexed lookup shifted by liquid_spec[] indexed by
- * CARDINAL bits; see material_set_gravity() and MATERIAL_EDGE_CARDINAL in
+ * CARDINAL bits; see material_frame_set_gravity() and MATERIAL_EDGE_CARDINAL in
  * material_palette.h. */
 static inline __attribute__((always_inline)) gfx_color_t
-liquid_rim(uint8_t id, uint8_t v, unsigned hash, unsigned mask, unsigned cardinal) {
-    const int idx = mathi_clamp((int)v + liquid_spec[cardinal], 0, MASS_MAX);
-    if (id == MAT_WATER && water_foams(hash, mask)) {
+liquid_rim(const material_frame_t* f, uint8_t id, uint8_t v, unsigned hash, unsigned mask, unsigned cardinal) {
+    const int idx = mathi_clamp((int)v + f->liquid_spec[cardinal], 0, MASS_MAX);
+    if (id == MAT_WATER && water_foams(f, hash, mask)) {
         return water_foam;
     }
     return palette[CELL_MAKE(id, (uint8_t)idx)];
 }
 
 static inline __attribute__((always_inline)) material_pattern_t
-liquid_colours(cell_t c, uint8_t v, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]) {
+liquid_colours(const material_frame_t* f, cell_t c, uint8_t v, unsigned hash, unsigned mask, unsigned depth,
+               gfx_color_t out[3]) {
     const uint8_t id = CELL_MATERIAL(c);
     const unsigned cardinal = mask & MATERIAL_EDGE_CARDINAL;
-    paint_solid(out, cardinal == 0 ? liquid_interior(id, depth) : liquid_rim(id, v, hash, mask, cardinal));
+    paint_solid(out, cardinal == 0 ? liquid_interior(id, depth) : liquid_rim(f, id, v, hash, mask, cardinal));
     return MATERIAL_FLAT;
 }
 
@@ -812,16 +776,16 @@ palette_colours(cell_t c, gfx_color_t out[3]) {
 }
 
 static inline __attribute__((always_inline)) material_pattern_t
-sand_colours(cell_t c, uint8_t v, unsigned hash, gfx_color_t out[3]) {
+sand_colours(const material_frame_t* f, cell_t c, uint8_t v, unsigned hash, gfx_color_t out[3]) {
     if (v < SAND_CULLET_BASE) {
         return palette_colours(c, out);
     }
     const unsigned i =
-        ((v - SAND_CULLET_BASE) * (CULLET_CYCLE_LEN / SAND_CULLET_SHADES) + cullet_phase) & (CULLET_CYCLE_LEN - 1);
+        ((v - SAND_CULLET_BASE) * (CULLET_CYCLE_LEN / SAND_CULLET_SHADES) + f->cullet_phase) & (CULLET_CYCLE_LEN - 1);
 
     /* GLINT: Flash white; mix uses hash & phase, not RNG. Rarity
      * controlled by CULLET_GLINT_ONE_IN. */
-    const bool glint = ((hash + cullet_phase * 0x9E37u) % CULLET_GLINT_ONE_IN) == 0;
+    const bool glint = ((hash + f->cullet_phase * 0x9E37u) % CULLET_GLINT_ONE_IN) == 0;
     paint_solid(out, glint ? CULLET_GLINT : cullet_cycle[i]);
     return MATERIAL_FLAT;
 }
@@ -862,14 +826,14 @@ extended_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t
 }
 
 static inline __attribute__((always_inline)) material_pattern_t
-glass_colours(uint8_t v, unsigned hash, unsigned mask, gfx_color_t out[3]) {
+glass_colours(const material_frame_t* f, uint8_t v, unsigned hash, unsigned mask, gfx_color_t out[3]) {
     /* `mask != 0` wrong; see MATERIAL_EDGE_CARDINAL. */
     const bool edge = (mask & MATERIAL_EDGE_CARDINAL) != 0;
 
     /* glass_phase slides every cell's starting point together, so the whole
      * pane drifts as one rather than each cell wandering on its own; fine
      * enough to move by a small angle without a table. */
-    const unsigned frac = (unsigned)(((int)(hash & 0xFFu) + glass_phase) & 0xFF);
+    const unsigned frac = (unsigned)(((int)(hash & 0xFFu) + f->glass_phase) & 0xFF);
 
     /* uint32_t, not gfx_color_t - `base` is 0xRRGGBB, not packed by
      * GFX_RGB(). gfx_color_t drops red byte, causing "glass reads green
@@ -907,20 +871,21 @@ wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out
 }
 
 material_pattern_t
-material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]) {
+material_colours(const material_frame_t* f, cell_t c, unsigned hash, unsigned mask, unsigned depth,
+                 gfx_color_t out[3]) {
     const uint8_t v = CELL_VARIANT(c);
 
     /* `depth` is stale under the dirty-row optimisation for a row this frame
      * skipped - see local_depth_row_a[]/local_depth_row_b[] in app_sand.c. */
 
     if (material_of(c)->kind == KIND_LIQUID) {
-        return liquid_colours(c, v, hash, mask, depth, out);
+        return liquid_colours(f, c, v, hash, mask, depth, out);
     }
 
     switch (CELL_MATERIAL(c)) {
-        case MAT_SAND: return sand_colours(c, v, hash, out);
+        case MAT_SAND: return sand_colours(f, c, v, hash, out);
         case MAT_EXTENDED: return extended_colours(c, v, hash, depth, out);
-        case MAT_GLASS: return glass_colours(v, hash, mask, out);
+        case MAT_GLASS: return glass_colours(f, v, hash, mask, out);
         case MAT_STONE: return stone_colours(v, hash, mask, out);
         case MAT_WOOD: return wood_colours(c, v, hash, depth, out);
         default: return palette_colours(c, out);

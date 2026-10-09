@@ -1,17 +1,24 @@
 """Read a binary glTF 2.0 file: accessors, animations and their samplers.
 
-Standard library only, so asset tests and bakers share one reader. The
+Standard library only (an FBX source is converted by tools/fbx on demand), so
+asset tests and bakers share one reader. The
 sampler follows the glTF 2.0 spec (LINEAR, STEP, CUBICSPLINE; quaternions
 slerp), and is the reference the C runtime in main/anim/ is held to.
 """
 
 import json
 import math
+import pathlib
 import struct
 
 GLB_MAGIC = 0x46546C67
 CHUNK_JSON = 0x4E4F534A
 CHUNK_BIN = 0x004E4942
+
+GLB_SUFFIX = ".glb"
+FBX_SUFFIX = ".fbx"
+# The files a tool reads as a scene: a glTF binary, or an FBX converted to one.
+ASSET_SUFFIXES = (GLB_SUFFIX, FBX_SUFFIX)
 
 COMPONENT_FORMATS = {
     5120: ("b", 1),
@@ -30,6 +37,15 @@ def load_glb(path):
     with open(path, "rb") as handle:
         data = handle.read()
     return parse_glb(data)
+
+
+def load_asset(path):
+    """Return (document, binary chunk) of a scene file, .glb or .fbx. An FBX is
+    converted once to a .glb (tools/fbx/fbx_to_glb.py), cached by content."""
+    if pathlib.Path(path).suffix.lower() == FBX_SUFFIX:
+        from fbx.fbx_to_glb import cached_glb
+        path = cached_glb(path)
+    return load_glb(path)
 
 
 def parse_glb(data):

@@ -159,12 +159,13 @@ typedef struct {
 
 static void
 paint_full_frame_full(const uint8_t* grid) {
+    material_frame_t f = {0};
     gfx_color_t* fb = gfx_framebuffer();
     for (int cy = 0; cy < CM_GRID_H; cy++) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            material_colours(grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
+            material_colours(&f, grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
             gfx_color_t* p = fb + (size_t)(cy * CM_CELL) * GFX_WIDTH + (size_t)(cx * CM_CELL);
             for (int dy = 0; dy < CM_CELL; dy++) {
                 for (int dx = 0; dx < CM_CELL; dx++) {
@@ -193,13 +194,14 @@ cm_bbox_extend(int cx, int cy, int* x0, int* y0, int* x1, int* y1) {
 static int
 paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, const uint8_t* class_table,
                          const gfx_color_t* cell_table, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
+    material_frame_t f = {0};
     uint8_t* img = gfx_indexed_image();
     int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            material_colours(grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
+            material_colours(&f, grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
             const int i = cy * CM_GRID_W + cx;
             const uint8_t new_idx = (uint8_t)material_palette256_index(col[0]);
             const uint8_t old_idx = img[i];

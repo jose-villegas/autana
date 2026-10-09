@@ -2,18 +2,10 @@
  * Portable suite: palette - grid arithmetic and hit-testing for the material
  * picker overlay.
  *
- * The centred partial last row is the fiddly part and the main reason this
- * module is host-tested at all - get it wrong and the bottom few materials
- * are unhittable or answer to the wrong index. These tests lean on that case
- * specifically, at SAND_BRUSH_COUNT and at a couple of others,
- * rather than trusting the arithmetic by eye.
- *
- * Columns are derived at runtime: palette_cols(screen_w) computes them from
- * whatever width is actually available (see palette.h's "WHY DERIVED,
- * NOT FIXED"), so every test below calls palette_cols()
- * itself and threads the result through, the same way app_sand.c's
- * draw_palette() does - which is what tests the derivation, rather than
- * merely re-checking fixed-4 arithmetic under a new name.
+ * The centred partial last row is the fiddly part: wrong, and the bottom
+ * materials are unhittable or answer to the wrong index. Every test takes
+ * its columns from palette_cols(), as draw_palette() does, so the
+ * derivation itself is tested, at SAND_BRUSH_COUNT and a few other counts.
  */
 
 #include <stdbool.h>

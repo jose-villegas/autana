@@ -1,16 +1,9 @@
 /*
- * Portable suite: measures the peak bytes each of this app's microui
- * screens' command list reaches, driving the REAL palette_screen_draw()/
- * brush_screen_draw()/title_screen_draw()/options_screen_draw() against a
- * real microui (ui_init() + ui_begin(), the same calls app_sand.c makes)
- * rather than a
- * hand-mirrored reconstruction, see docs/Building-a-Screen.md.
- *
- * The palette is sized with the app's own sand_brushes[]. Every scenario
- * below picks the worst case a real visit can reach (tile 0 selected AND every
- * emit-eligible tile flagged BRUSH_SPAWN, the longest name in each option
- * table, the DITHER list open) rather than whatever a fresh sand_ui_t
- * happens to zero-initialize to.
+ * Portable suite: the peak bytes each microui screen's command list reaches,
+ * drawn by the real screen functions on a real microui (see
+ * docs/Building-a-Screen.md), with the app's own sand_brushes[]. Each
+ * scenario takes the worst case a visit can reach (every tile a source, the
+ * longest names, the DITHER list open), not a zeroed sand_ui_t.
  */
 
 #include <string.h>
@@ -72,7 +65,7 @@ test_brush_screen_command_list_fits_budget(void) {
         .brushes = sand_brushes,
         .modes = modes,
         .brush_count = SAND_BRUSH_COUNT,
-        .brush = SAND_BRUSH_COUNT - 1, /* "Gunpowder" - the longest material name */
+        .brush = sand_brush_longest_name(),
         .mode = SAND_MODE_DETONATE,
     };
     for (int i = 0; i < SAND_MODE_COUNT; i++) {

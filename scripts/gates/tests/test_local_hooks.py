@@ -2,32 +2,51 @@
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import unittest
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tracked import tracked_files
 from gate_tree import ShellGateTestCase
 
 
 class LocalHookTests(ShellGateTestCase):
     def setUp(self):
         super().setUp()
-        shutil.copytree(ROOT / 'scripts', self.root / 'scripts',
-                        ignore=shutil.ignore_patterns('__pycache__'))
-        shutil.copytree(ROOT / 'launcher/tools/build', self.root / 'launcher/tools/build')
-        (self.root / 'launcher/tools/render').mkdir(parents=True)
-        shutil.copyfile(ROOT / 'launcher/tools/render/generated_blocks.py',
-                        self.root / 'launcher/tools/render/generated_blocks.py')
+        # Tracked files only: CI installs thousands of untracked npm files under
+        # scripts/, which the fixture would otherwise copy and stage.
+        for path in tracked_files(ROOT, ('scripts', 'launcher/tools/build',
+                                         'launcher/tools/render/generated_blocks.py')):
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / path, self.root / path)
         (self.root / '.github/workflows').mkdir(parents=True)
-        shutil.copyfile(ROOT / '.github/workflows/comment-rules.yml',
-                        self.root / '.github/workflows/comment-rules.yml')
+        # CI's file-scoped gates as they are; its whole-tree ones need the
+        # real documents, so test_a_snapshot_gate_judges_the_index_as_a_whole
+        # declares its own.
+        workflow = yaml.safe_load((ROOT / '.github/workflows/comment-rules.yml').read_text())
+        for job in workflow['jobs'].values():
+            job['steps'] = [step for step in job['steps']
+                            if step.get('env', {}).get('STAGED_TEXT_GATE') != 'snapshot']
+        self.workflow = workflow
+        self.save_workflow()
         (self.root / 'launcher/main/apps/example').mkdir(parents=True)
         self.git('init', '-q')
         self.git('config', 'user.name', 'Test')
         self.git('config', 'user.email', 'test@example.invalid')
+        # No background gc or maintenance may still be writing when the
+        # temporary tree is removed.
+        self.git('config', 'gc.auto', '0')
+        self.git('config', 'maintenance.auto', 'false')
         self.git('add', '.github/workflows/comment-rules.yml')
         self.write('launcher/main/apps/example/development_only.cmake', '')
         self.git('add', 'scripts', 'launcher/tools')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'fixture tools')
+
+    def save_workflow(self):
+        (self.root / '.github/workflows/comment-rules.yml').write_text(yaml.safe_dump(self.workflow))
 
     def git(self, *args):
         return subprocess.check_output(['git', *args], cwd=self.root, text=True).strip()
@@ -78,6 +97,33 @@ class LocalHookTests(ShellGateTestCase):
         result = self.gate('check-text-rules-staged.sh')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('no header comment', result.stdout + result.stderr)
+
+    def test_a_snapshot_gate_judges_the_index_as_a_whole(self):
+        # Fails when any snapshot file says "stale", and when handed --paths.
+        self.write('scripts/gates/stale_gate.py',
+                   'import pathlib, sys\n'
+                   'assert "--paths" not in sys.argv, "a snapshot gate gets no paths"\n'
+                   'root = pathlib.Path(__file__).resolve().parents[2]\n'
+                   'found = [p for p in root.rglob("*.txt") if "stale" in p.read_text()]\n'
+                   'print("stale:", *found) if found else print("current")\n'
+                   'sys.exit(1 if found else 0)\n')
+        steps = next(iter(self.workflow['jobs'].values()))['steps']
+        steps.append({'name': 'Catalogue', 'env': {'STAGED_TEXT_GATE': 'snapshot'},
+                      'run': 'python3 scripts/gates/stale_gate.py'})
+        self.save_workflow()
+        self.git('add', '.github/workflows/comment-rules.yml')
+        path = 'docs/catalogue.txt'
+        self.write(path, 'stale\n')
+        (self.root / path).write_text('current\n')
+        result = self.gate('check-text-rules-staged.sh')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('stale:', result.stdout + result.stderr)
+        self.assertIn('regenerate', result.stdout + result.stderr)
+        self.git('add', path)
+        (self.root / path).write_text('stale\n')
+        result = self.gate('check-text-rules-staged.sh')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('current', result.stdout)
 
     def test_push_c_range_runs_sanitized_tests_and_refuses_failure(self):
         self.write('note.txt', 'base\n')

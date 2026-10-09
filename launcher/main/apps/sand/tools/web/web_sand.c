@@ -36,6 +36,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_indexed.h"
 #include "input/tilt.h"
+#include "util/scalar/fixed.h"
 
 /* The scale JS sends gravity in: one g, matching the IMU's own counts. */
 #define WEB_COUNTS_PER_G  4096
@@ -223,15 +224,15 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
     const int shake = tilt_shake(&tilt);
     const int jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
 
-    material_set_gravity(gx, gy);
+    material_frame_set_gravity(&paint_frame.material, gx, gy);
     material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
     material_wood_leaf_wind_axis(gx, gy, &paint_frame.wood_leaf_wind_ux_q8, &paint_frame.wood_leaf_wind_uy_q8);
     material_wood_leaf_top5(gx, gy, &wood_leaf_top5_down, paint_frame.wood_leaf_top5);
     sand_paint_clock_wind(&paint_clock, &paint_frame, dt_ms);
-    sand_paint_clock_foam(&paint_clock, dt_ms);
+    sand_paint_clock_foam(&paint_clock, &paint_frame, dt_ms);
     (void)sand_paint_clock_shine(&paint_clock, &paint_frame, dt_ms);
-    (void)sand_paint_clock_cullet(&paint_clock, dt_ms);
-    (void)sand_paint_clock_glass(&paint_clock, gx, gy);
+    (void)sand_paint_clock_cullet(&paint_clock, &paint_frame, dt_ms);
+    (void)sand_paint_clock_glass(&paint_frame, gx, gy);
     (void)sand_paint_clock_wood_leaf(&paint_clock, &paint_frame, dt_ms);
 
     if (tilt_in_free_fall(&tilt)) {
@@ -267,7 +268,7 @@ cell_at(int x_px, int y_px, int* cx, int* cy) {
 
 static int
 radius_cells(int px) {
-    return (px + (cell_px / 2)) / cell_px;
+    return fx_div_round(px, cell_px, 0);
 }
 
 /* Pours or erases at a fixed rate while the pointer is held, catching up at most SAND_MAX_CATCHUP steps. */

@@ -158,10 +158,17 @@ key_rgb888(uint16_t key) {
 static uint8_t seen[G_COUNT][KEYS];
 static uint32_t used[G_COUNT][KEYS];
 
+static material_frame_t
+base_frame(void) {
+    material_frame_t f = {0};
+    material_frame_set_gravity(&f, GRAVITY_X, GRAVITY_Y);
+    return f;
+}
+
 static void
-record(cell_t c, unsigned hash, unsigned mask, unsigned depth, bool base_state) {
+record(const material_frame_t* mf, cell_t c, unsigned hash, unsigned mask, unsigned depth, bool base_state) {
     gfx_color_t out[3];
-    const material_pattern_t pat = material_colours(c, hash, mask, depth, out);
+    const material_pattern_t pat = material_colours(mf, c, hash, mask, depth, out);
     const group_t g = group_of(c, depth);
     uint8_t bits = PIN_NONE;
     bits |= base_state ? PIN_STATE : 0u;
@@ -174,25 +181,17 @@ record(cell_t c, unsigned hash, unsigned mask, unsigned depth, bool base_state) 
     }
 }
 
-static void
-set_base_state(void) {
-    material_set_gravity(GRAVITY_X, GRAVITY_Y);
-    material_set_foam_phase(0);
-    material_set_cullet_phase(0);
-    material_set_glass_phase(0);
-}
-
-/* Gravity only reaches material_colours() through the 16-entry rim table,
- * so a ring of directions covers every table it can build. */
+/* material_frame_set_gravity() depends only on gravity's direction, so
+ * a ring of directions covers every rim table it can build. */
 #define GRAVITY_RING_STEPS 72
 
 static void
-enumerate_full_sweep(void) {
+enumerate_full_sweep(const material_frame_t* mf) {
     for (unsigned c = 0; c < 256u; c++) {
         for (unsigned depth = 0; depth <= 256u; depth++) {
             for (unsigned mask = 0; mask < 256u; mask++) {
                 for (unsigned hash = 0; hash < 256u; hash++) {
-                    record((cell_t)c, hash, mask, depth, true);
+                    record(mf, (cell_t)c, hash, mask, depth, true);
                 }
             }
         }
@@ -200,47 +199,49 @@ enumerate_full_sweep(void) {
 }
 
 static void
-enumerate_liquid_masks(unsigned c) {
+enumerate_liquid_masks(const material_frame_t* mf, unsigned c) {
     for (unsigned mask = 0; mask < 256u; mask++) {
         for (unsigned hash = 0; hash < 16u; hash++) {
-            record((cell_t)c, hash, mask, 0u, false);
+            record(mf, (cell_t)c, hash, mask, 0u, false);
         }
     }
 }
 
 static void
-enumerate_liquid_phase(unsigned phase) {
-    material_set_foam_phase(phase);
+enumerate_liquid_phase(material_frame_t* mf, unsigned phase) {
+    mf->foam_phase = phase;
     for (unsigned c = 0; c < 256u; c++) {
         if (material_of((cell_t)c)->kind == KIND_LIQUID) {
-            enumerate_liquid_masks(c);
+            enumerate_liquid_masks(mf, c);
         }
     }
 }
 
 static void
-enumerate_liquid_gravity_step(int i) {
+enumerate_liquid_gravity_step(material_frame_t* mf, int i) {
     const double a = 2.0 * M_PI * i / GRAVITY_RING_STEPS;
     const int gx = i == GRAVITY_RING_STEPS ? 0 : (int)lround(1000.0 * cos(a));
     const int gy = i == GRAVITY_RING_STEPS ? 0 : (int)lround(1000.0 * sin(a));
-    material_set_gravity(gx, gy);
+    material_frame_set_gravity(mf, gx, gy);
     for (unsigned phase = 0; phase < 16u; phase++) {
-        enumerate_liquid_phase(phase);
+        enumerate_liquid_phase(mf, phase);
     }
 }
 
 static void
 enumerate_liquid_gravity(void) {
+    material_frame_t mf = base_frame();
     for (int i = 0; i <= GRAVITY_RING_STEPS; i++) {
-        enumerate_liquid_gravity_step(i);
+        enumerate_liquid_gravity_step(&mf, i);
     }
 }
 
 static void
 enumerate_glass_cullet(void) {
+    material_frame_t mf = base_frame();
     for (unsigned phase = 0; phase < 64u; phase++) {
-        material_set_cullet_phase(phase);
-        material_set_glass_phase((int)phase * 37);
+        mf.cullet_phase = phase;
+        mf.glass_phase = (int)phase * 37;
         for (unsigned c = 0; c < 256u; c++) {
             const uint8_t m = CELL_MATERIAL(c);
             if (m != MAT_SAND && m != MAT_GLASS) {
@@ -248,7 +249,7 @@ enumerate_glass_cullet(void) {
             }
             for (unsigned mask = 0; mask < 16u; mask++) {
                 for (unsigned hash = 0; hash < 256u; hash++) {
-                    record((cell_t)c, hash, mask, 0u, false);
+                    record(&mf, (cell_t)c, hash, mask, 0u, false);
                 }
             }
         }
@@ -257,14 +258,11 @@ enumerate_glass_cullet(void) {
 
 static void
 enumerate(void) {
-    set_base_state();
-    enumerate_full_sweep();
+    material_frame_t mf = base_frame();
+    enumerate_full_sweep(&mf);
 
     enumerate_liquid_gravity();
-    set_base_state();
-
     enumerate_glass_cullet();
-    set_base_state();
 }
 
 static int
@@ -476,12 +474,12 @@ static int8_t leaf_top5[5][2];
 static uint32_t leaf_time_ms;
 
 static void
-paint_begin(uint32_t time_ms) {
+paint_begin(material_frame_t* mf, uint32_t time_ms) {
     const int gx = GRAVITY_X, gy = GRAVITY_Y;
-    material_set_gravity(gx, gy);
-    material_set_foam_phase(7);
-    material_set_cullet_phase(5);
-    material_set_glass_phase(0);
+    material_frame_set_gravity(mf, gx, gy);
+    mf->foam_phase = 7;
+    mf->cullet_phase = 5;
+    mf->glass_phase = 0;
     material_shine_direction(gx, gy, &shine_ux_q8, &shine_uy_q8);
     material_wood_leaf_wind_axis(gx, gy, &wind_ux_q8, &wind_uy_q8);
     int last_down = 0;
@@ -696,7 +694,8 @@ column_liquid_source(const paint_row_ctx_t* ctx, int cx, int step, bool* cross_r
 }
 
 static void
-paint_column(const paint_row_ctx_t* ctx, int cy, int cx, int* herr, gfx_color_t* fb, uint8_t* grp) {
+paint_column(material_frame_t* mf, const paint_row_ctx_t* ctx, int cy, int cx, int* herr, gfx_color_t* fb,
+             uint8_t* grp) {
     const unsigned mask = cell_edge_mask(ctx->row, ctx->above, ctx->below, cx, ctx->w);
     const bool is_water = CELL_MATERIAL(ctx->row[cx]) == MAT_WATER;
     const unsigned hash =
@@ -720,20 +719,20 @@ paint_column(const paint_row_ctx_t* ctx, int cy, int cx, int* herr, gfx_color_t*
     const unsigned depth = cell_shading_depth(ctx->above, ctx->row, ctx->below, cx, ctx->w, hash, cy, depth_liquid);
 
     gfx_color_t col[3];
-    const material_pattern_t pat = material_colours(ctx->row[cx], hash, mask, depth, col);
+    const material_pattern_t pat = material_colours(mf, ctx->row[cx], hash, mask, depth, col);
     const group_t g = group_of(ctx->row[cx], depth);
     paint_cell_block(fb, grp, cx * CELL_PX, cy * CELL_PX, col, pat, g);
 }
 
 static void
-paint_row(const uint8_t* grid, int cy, gfx_color_t* fb, uint8_t* grp) {
+paint_row(material_frame_t* mf, const uint8_t* grid, int cy, gfx_color_t* fb, uint8_t* grp) {
     const paint_row_ctx_t ctx = paint_row_context(grid, cy);
     const int cx_first = depth_h_reverse ? ctx.w - 1 : 0;
     const int cx_step = depth_h_reverse ? -1 : 1;
     int herr = 0;
 
     for (int cx_i = 0; cx_i < ctx.w; cx_i++) {
-        paint_column(&ctx, cy, cx_first + cx_i * cx_step, &herr, fb, grp);
+        paint_column(mf, &ctx, cy, cx_first + cx_i * cx_step, &herr, fb, grp);
     }
 
     uint8_t* tmp = depth_cur_row;
@@ -745,10 +744,11 @@ paint_row(const uint8_t* grid, int cy, gfx_color_t* fb, uint8_t* grp) {
 /* Two whole frames: the depth debounce commits a boundary on its second ask. */
 static void
 paint_frame(const uint8_t* grid, gfx_color_t* fb, uint8_t* grp, uint32_t time_ms) {
-    paint_begin(time_ms);
+    material_frame_t mf = {0};
+    paint_begin(&mf, time_ms);
     for (int frame = 0; frame < 2; frame++) {
         for (int cy = 0; cy < GRID_H; cy++) {
-            paint_row(grid, cy, fb, grp);
+            paint_row(&mf, grid, cy, fb, grp);
         }
     }
 }
@@ -939,13 +939,14 @@ static bool pinned[G_COUNT][KEYS];
 
 static void
 pin_depth_steps(void) {
+    material_frame_t mf = {0};
     for (unsigned m = MAT_EMPTY + 1u; m < MAT_COUNT; m++) {
         if (material_by_id((material_id_t)m)->kind != KIND_LIQUID) {
             continue;
         }
         for (unsigned d = 0; d <= MATERIAL_LIQUID_DEPTH_BAND; d++) {
             gfx_color_t out[3];
-            material_colours(CELL_MAKE(m, MASS_MAX), 0u, 0u, d, out);
+            material_colours(&mf, CELL_MAKE(m, MASS_MAX), 0u, 0u, d, out);
             pinned[group_of(CELL_MAKE(m, MASS_MAX), d)][gfx_color_swap(out[0])] = true;
         }
     }
@@ -1197,9 +1198,9 @@ ramp_start(const char* name, bool designed) {
 }
 
 static void
-ramp_add(cell_t c, unsigned hash, unsigned mask, unsigned depth) {
+ramp_add(const material_frame_t* mf, cell_t c, unsigned hash, unsigned mask, unsigned depth) {
     gfx_color_t out[3];
-    material_colours(c, hash, mask, depth, out);
+    material_colours(mf, c, hash, mask, depth, out);
     ramp.g[ramp.n] = group_of(c, depth);
     ramp.key[ramp.n] = gfx_color_swap(out[0]);
     ramp.n++;
@@ -1256,8 +1257,9 @@ ramp_finish(FILE* f) {
 
 static void
 ramps_per_material(FILE* f) {
+    material_frame_t mf = base_frame();
     char name[48];
-    material_set_gravity(0, 0);
+    material_frame_set_gravity(&mf, 0, 0);
     const material_id_t row_mats[] = {MAT_WATER, MAT_OIL,   MAT_LAVA, MAT_ACID, MAT_GAS, MAT_FIRE,
                                       MAT_STEAM, MAT_SMOKE, MAT_SNOW, MAT_DIRT, MAT_WOOD};
     for (size_t i = 0; i < sizeof row_mats / sizeof row_mats[0]; i++) {
@@ -1266,7 +1268,7 @@ ramps_per_material(FILE* f) {
         snprintf(name, sizeof name, "%s variant 0-15", material_by_id(m)->name);
         ramp_start(name, true);
         for (unsigned v = (m == MAT_WOOD ? 1u : 0u); v < 16u; v++) {
-            ramp_add(CELL_MAKE(m, v), 1u, liquid ? MATERIAL_EDGE_UP : 0u, 0u);
+            ramp_add(&mf, CELL_MAKE(m, v), 1u, liquid ? MATERIAL_EDGE_UP : 0u, 0u);
         }
         ramp_finish(f);
         if (!liquid) {
@@ -1275,107 +1277,106 @@ ramps_per_material(FILE* f) {
         snprintf(name, sizeof name, "%s depth 0-24", material_by_id(m)->name);
         ramp_start(name, true);
         for (unsigned d = 0; d <= MATERIAL_LIQUID_DEPTH_BAND; d++) {
-            ramp_add(CELL_MAKE(m, MASS_MAX), 1u, 0u, d);
+            ramp_add(&mf, CELL_MAKE(m, MASS_MAX), 1u, 0u, d);
         }
         ramp_finish(f);
     }
-    set_base_state();
 }
 
 static void
 ramps_sand_and_cullet(FILE* f) {
+    material_frame_t mf = base_frame();
     ramp_start("sand dune 0-11", true);
     for (unsigned v = 0; v < SAND_DUNE_SHADES; v++) {
-        ramp_add(CELL_MAKE(MAT_SAND, v), 0u, 0u, 0u);
+        ramp_add(&mf, CELL_MAKE(MAT_SAND, v), 0u, 0u, 0u);
     }
     ramp_finish(f);
 
     ramp_start("cullet cycle phase 0-15", true);
     for (unsigned p = 0; p < 16u; p++) {
-        material_set_cullet_phase(p);
-        ramp_add(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 0u);
+        mf.cullet_phase = p;
+        ramp_add(&mf, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 0u);
     }
     ramp_finish(f);
-    set_base_state();
 }
 
 static void
-ramps_stone_grain_heat(FILE* f, int edge, unsigned mask) {
+ramps_stone_grain_heat(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
     for (unsigned k = 0; k < 8u; k++) {
         snprintf(name, sizeof name, "stone%s grain %u heat 0-15", edge ? " edge" : "", k);
         ramp_start(name, true);
         for (unsigned v = 0; v < 16u; v++) {
-            ramp_add(CELL_MAKE(MAT_STONE, v), k, mask, 0u);
+            ramp_add(mf, CELL_MAKE(MAT_STONE, v), k, mask, 0u);
         }
         ramp_finish(f);
     }
 }
 
 static void
-ramps_stone_heat_grain(FILE* f, int edge, unsigned mask) {
+ramps_stone_heat_grain(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
     for (unsigned v = 0; v < 16u; v++) {
         snprintf(name, sizeof name, "stone%s heat %u grain 0-7", edge ? " edge" : "", v);
         ramp_start(name, true);
         for (unsigned k = 0; k < 8u; k++) {
-            ramp_add(CELL_MAKE(MAT_STONE, v), k, mask, 0u);
+            ramp_add(mf, CELL_MAKE(MAT_STONE, v), k, mask, 0u);
         }
         ramp_finish(f);
     }
 }
 
 static void
-ramps_glass_heat(FILE* f, int edge, unsigned mask) {
+ramps_glass_heat(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
     snprintf(name, sizeof name, "glass%s heat 0-15", edge ? " edge" : "");
     ramp_start(name, true);
     for (unsigned v = 0; v < 16u; v++) {
-        ramp_add(CELL_MAKE(MAT_GLASS, v), 0u, mask, 0u);
+        ramp_add(mf, CELL_MAKE(MAT_GLASS, v), 0u, mask, 0u);
     }
     ramp_finish(f);
 }
 
 static void
-ramps_glass_shimmer(FILE* f, int edge, unsigned mask) {
+ramps_glass_shimmer(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
     for (unsigned v = 0; v < 16u; v++) {
         snprintf(name, sizeof name, "glass%s heat %u shimmer 0-255", edge ? " edge" : "", v);
         ramp_start(name, false);
         for (unsigned h = 0; h < 256u; h++) {
-            ramp_add(CELL_MAKE(MAT_GLASS, v), h, mask, 0u);
+            ramp_add(mf, CELL_MAKE(MAT_GLASS, v), h, mask, 0u);
         }
         ramp_finish(f);
     }
 }
 
 static void
-ramps_stone_and_glass_edge(FILE* f, int edge) {
+ramps_stone_and_glass_edge(const material_frame_t* mf, FILE* f, int edge) {
     const unsigned mask = edge ? MATERIAL_EDGE_UP : 0u;
-    ramps_stone_grain_heat(f, edge, mask);
-    ramps_stone_heat_grain(f, edge, mask);
-    ramps_glass_heat(f, edge, mask);
-    ramps_glass_shimmer(f, edge, mask);
+    ramps_stone_grain_heat(mf, f, edge, mask);
+    ramps_stone_heat_grain(mf, f, edge, mask);
+    ramps_glass_heat(mf, f, edge, mask);
+    ramps_glass_shimmer(mf, f, edge, mask);
 }
 
 static void
-ramps_stone_and_glass(FILE* f) {
+ramps_stone_and_glass(const material_frame_t* mf, FILE* f) {
     for (int edge = 0; edge < 2; edge++) {
-        ramps_stone_and_glass_edge(f, edge);
+        ramps_stone_and_glass_edge(mf, f, edge);
     }
 }
 
 static void
-ramps_wood_and_leaf(FILE* f) {
+ramps_wood_and_leaf(const material_frame_t* mf, FILE* f) {
     char name[48];
     ramp_start("wood grain 0-7", true);
     for (unsigned k = 0; k < 8u; k++) {
-        ramp_add(CELL_MAKE(MAT_WOOD, 0), k, 0u, 0u);
+        ramp_add(mf, CELL_MAKE(MAT_WOOD, 0), k, 0u, 0u);
     }
     ramp_finish(f);
     ramp_start("wood-leaf gust 0-255", false);
     for (unsigned d = 1; d <= 256u; d++) {
-        ramp_add(CELL_MAKE(MAT_WOOD, 0), 0u, 0u, d);
+        ramp_add(mf, CELL_MAKE(MAT_WOOD, 0), 0u, 0u, d);
     }
     ramp_finish(f);
 
@@ -1388,7 +1389,7 @@ ramps_wood_and_leaf(FILE* f) {
         snprintf(name, sizeof name, "%s grain 0-7", grains[i].name);
         ramp_start(name, true);
         for (unsigned k = 0; k < 8u; k++) {
-            ramp_add(grains[i].c, k, 0u, 0u);
+            ramp_add(mf, grains[i].c, k, 0u, 0u);
         }
         ramp_finish(f);
     }
@@ -1396,51 +1397,52 @@ ramps_wood_and_leaf(FILE* f) {
         snprintf(name, sizeof name, "leaf grain %u gust 0-255", k);
         ramp_start(name, false);
         for (unsigned d = 1; d <= 256u; d++) {
-            ramp_add(MATX(MATX_LEAF), k, 0u, d);
+            ramp_add(mf, MATX(MATX_LEAF), k, 0u, d);
         }
         ramp_finish(f);
     }
     ramp_start("leaf grain 0-7 at rest", true);
     for (unsigned k = 0; k < 8u; k++) {
-        ramp_add(MATX(MATX_LEAF), k, 0u, 1u);
+        ramp_add(mf, MATX(MATX_LEAF), k, 0u, 1u);
     }
     ramp_finish(f);
 }
 
 static void
-ramps_root_and_gunpowder(FILE* f) {
+ramps_root_and_gunpowder(const material_frame_t* mf, FILE* f) {
     char name[48];
     const unsigned root_depths[] = {0u, 2u, 3u, 4u};
     for (unsigned s = 0; s < 4u; s++) {
         snprintf(name, sizeof name, "root age %u grain 0-7", s);
         ramp_start(name, true);
         for (unsigned k = 0; k < 8u; k++) {
-            ramp_add(MATX(MATX_ROOT), k, 0u, root_depths[s]);
+            ramp_add(mf, MATX(MATX_ROOT), k, 0u, root_depths[s]);
         }
         ramp_finish(f);
     }
     ramp_start("root age 0-3", true);
     for (unsigned s = 0; s < 4u; s++) {
-        ramp_add(MATX(MATX_ROOT), 0u, 0u, root_depths[s]);
+        ramp_add(mf, MATX(MATX_ROOT), 0u, 0u, root_depths[s]);
     }
     ramp_finish(f);
     ramp_start("gunpowder moisture 0-4", true);
-    ramp_add(GUNPOWDER_CELL(2), 0u, 0u, 0u);
+    ramp_add(mf, GUNPOWDER_CELL(2), 0u, 0u, 0u);
     for (unsigned m = 3; m <= 6u; m++) {
-        ramp_add(GUNPOWDER_CELL(m), 0u, 0u, 0u);
+        ramp_add(mf, GUNPOWDER_CELL(m), 0u, 0u, 0u);
     }
     ramp_finish(f);
 }
 
 static void
 report_ramps(FILE* f) {
+    material_frame_t mf = base_frame();
     fprintf(f, "\nRAMPS: designed ramps whose steps collapsed, and any ramp that returns to an index.\n");
     fprintf(f, "  A merged step's dE is how far apart the two original neighbouring colours were.\n");
     ramps_per_material(f);
     ramps_sand_and_cullet(f);
-    ramps_stone_and_glass(f);
-    ramps_wood_and_leaf(f);
-    ramps_root_and_gunpowder(f);
+    ramps_stone_and_glass(&mf, f);
+    ramps_wood_and_leaf(&mf, f);
+    ramps_root_and_gunpowder(&mf, f);
     fprintf(f, "  %d ramps checked: %d designed ramps collapsed a step, %d returned to an index\n", ramps_total,
             ramps_collapsed, ramps_broken);
 }

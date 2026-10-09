@@ -55,6 +55,13 @@ CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\
         "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n")
 
 
+def scaled_cube(size):
+    """CUBE with its 8-unit side made `size`."""
+    vertices, faces = CUBE.split("usemtl")
+    lines = [" ".join(["v"] + [str(float(c) * size / 8) for c in line.split()[1:]]) for line in vertices.splitlines()]
+    return "\n".join(lines) + "\nusemtl" + faces
+
+
 def write_import(directory, name="mesh.import.toml", source=SOURCE, output=OUTPUT, body=""):
     path = pathlib.Path(directory) / name
     path.write_text(source + output + body)
@@ -596,10 +603,10 @@ class SceneTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AuthoredImportTests(unittest.TestCase):
-    def bake(self, directory, scene=None, output=OUTPUT, head="", name="mesh.scene.toml"):
+    def bake(self, directory, scene=None, output=OUTPUT, head="", name="mesh.scene.toml", obj=CUBE):
         """Runs the importer on an import, or on the scene whose objects are `scene`."""
         root = pathlib.Path(directory)
-        (root / "m.obj").write_text(CUBE)
+        (root / "m.obj").write_text(obj)
         (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
         import_path = write_import(root, output=output)
         path = write_scene(root, scene, head, name=name) if scene else import_path
@@ -649,6 +656,19 @@ class AuthoredImportTests(unittest.TestCase):
         self.assertEqual(written, ["hall.mesh.mesh"])
         target = 255.0 * np.array([0.5, 0.25, 0.125])
         self.assertFalse((np.abs(lit.rgb - target) <= 8).all(), "a lit mesh is not its albedo")
+
+    @needs_mitsuba
+    def test_a_lit_bake_welds_on_its_own_position_scale_so_a_small_model_keeps_its_triangles(self):
+        size = 0.01  # model units far below one: a centimetre cube modelled in metres
+        scale = 65536
+        objects = renderer(extra="bake = true\n") + sun_object()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            output = f'[output]\ndirectory = "."\nname = "mesh"\nposition_scale = {scale}\n'
+            self.assertEqual(self.bake(directory, objects, output=output, head=HEAD.replace("0.5", str(size / 100)),
+                                       name="hall.scene.toml", obj=scaled_cube(size)), 0)
+            lit = read_lit_mesh(root / "hall.mesh.mesh")
+        self.assertEqual(len(lit.tris), 12)
 
 
 class ClearIntersector:
@@ -729,13 +749,18 @@ class FitLayoutTests(unittest.TestCase):
                                      job.asset_path.name)
 
 
+def triangle_source(p):
+    """A loaded source of one untextured, uncoloured triangle at the corners p."""
+    return SimpleNamespace(colors=None, p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+                           names=["m"], textures=[None], materials={})
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
         settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set())
-        source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
-                                 names=["m"], textures=[None], materials={})
+        source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
                 mock.patch.object(mesh_import, "RayQuery"), \
@@ -751,8 +776,7 @@ class BakeStepTests(unittest.TestCase):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
         settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set())
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
-        source = SimpleNamespace(p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]), names=["m"],
-                                 textures=[None], materials={})
+        source = triangle_source(p)
         given = {}
 
         def simplify(pos, rgb, tris, labels, *rest, **options):
@@ -794,8 +818,7 @@ class ReferenceObjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
             scene = load_scene(write_scene(directory, objects, bounced))
-            source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
-                                     names=["m"], textures=[None], materials={})
+            source = triangle_source(np.zeros((3, 3)))
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
                     mock.patch.object(reference_render, "RayQuery"), \

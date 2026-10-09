@@ -86,10 +86,13 @@ cache line is 32 bytes. Full field-by-field reasoning:
 struct comments.
 
 `materials[]`/`reactions[]` (movement and fire chemistry) live in
-`material.c`; `material_colours()` and `palette[256]` (purely visual, see
+`material.c`; `material_colours(const material_frame_t*, ...)` and
+`palette[256]` (purely visual, see
 [`Shading-and-Colour.md`](Shading-and-Colour.md)) live in
 `material_palette.c` instead, so a change to how a material looks never
-touches the file the hot sweep reads.
+touches the file the hot sweep reads. The
+[`f` input](Shading-and-Colour.md#the-pipeline) describes who fills the
+material frame passed to `material_colours()`.
 
 ### Getting more than sixteen materials out of one nibble
 

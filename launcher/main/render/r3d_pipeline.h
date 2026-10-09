@@ -21,7 +21,7 @@
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/viewport.h"
-#include "util/math/vec3f.h"
+#include "util/math/mat4f.h"
 #include "util/scalar/mathi.h"
 
 #if defined(ESP_PLATFORM)
@@ -32,7 +32,7 @@
  * Lens space: x and y are already pixels at unit depth, turned for the
  * panel's quarter, so a screen position is centre + (x, y) / z. */
 typedef struct {
-    float m[3][4]; /* position ticks to lens space */
+    mat4f_t m; /* position ticks to lens space */
     float center_x, center_y;
     float near_z; /* model units */
     int width, height;
