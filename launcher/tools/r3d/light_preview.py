@@ -4,7 +4,7 @@ share of chosen materials in direct sun. --save writes the one rotation given in
 
     python launcher/tools/r3d/light_preview.py SCENE.scene.toml --rotation PITCH YAW [--rotation PITCH YAW ...]
         [--camera NAME] [--at SECONDS ...] [--share MATERIAL ...] [--object NAME] [--light NAME]
-        [--size WxH] [--spp N] [--out PNG] [--no-show] [--save]
+        [--indirect K ...] [--size WxH] [--spp N] [--out PNG] [--no-show] [--save]
 
 A rotation is the light object's [pitch, yaw] in degrees, as the scene file writes it (roll is kept): pitch is the
 angle from straight up, yaw turns it about the vertical. --camera names a camera object (default: the first) whose
@@ -13,8 +13,11 @@ the --object renderer (default: the first) and prints, per rotation, the share o
 per pose, of their visible pixels. The sheet has one row per rotation, the scene's rotation first. Run from a
 terminal, it opens the sheet in the image viewer when written; --no-show (or output to a pipe) only prints its path.
 
-The stills are r3d.mitsuba_reference's, at the scene's exposure and tone map. Its path tracer has no ambient term,
-so a scene's [ambient] is left out of the stills.
+The stills are r3d.mitsuba_reference's, at the scene's exposure and tone map, traced to the bake's bounce count
+with its albedo boost. --indirect K scales their bounced light as the bake's [indirect] intensity does: each tile
+is the direct light plus K times what the bounces add (a direct-only trace subtracted from the full one); one row
+per rotation and K, K the scene's intensity when not given (0 when the renderer bakes no bounced light). Its path
+tracer has no ambient term, so a scene's [ambient] is left out of the stills.
 """
 
 import argparse
@@ -44,6 +47,8 @@ AREA_SAMPLES = 40000
 # Height of a caption line under a tile, and width of the label column, in pixels.
 CAPTION = 16
 LABEL_WIDTH = 260
+# Mitsuba's path depth of direct light alone: the camera ray and the light's.
+DIRECT_DEPTH = 2
 
 
 def toward(rotation):
@@ -129,6 +134,7 @@ def main(argv=None):
     parser.add_argument("--camera", help="the camera object whose path gives the poses (default: the first)")
     parser.add_argument("--at", nargs="+", type=float, default=[0.0], metavar="SECONDS")
     parser.add_argument("--share", nargs="+", default=[], metavar="MATERIAL")
+    parser.add_argument("--indirect", nargs="+", type=float, metavar="K", help="bounced-light scales to compare")
     parser.add_argument("--size", default="320x240")
     parser.add_argument("--spp", type=int, default=64)
     parser.add_argument("--out", help="the sheet's path (default: light_preview.png in the temporary directory)")
@@ -172,12 +178,19 @@ def main(argv=None):
             parser.error(f"--share {pattern!r} names no material of the source")
         shares[pattern] = np.isin(source.tri_m, chosen)
 
+    bounced = job.bake.indirect is not None and job.renderer.indirect
+    scales = args.indirect if args.indirect is not None else [scene.indirect.intensity if bounced else 0.0]
+    if any(k < 0 for k in scales):
+        parser.error("--indirect must not be negative")
+    # A path of depth 2 is direct light only; each bounce the bake traces adds one.
+    depth = DIRECT_DEPTH + (job.bake.indirect.bounces if bounced else mitsuba_reference.DEFAULT_DEPTH - DIRECT_DEPTH)
     rows = []
     query = None
     rng = np.random.default_rng(1)
-    for rotation in rotations:
+    for number, rotation in enumerate(rotations):
         sun["direction"] = toward(rotation).tolist()
-        tracer = mitsuba_reference.prepare(source, traced_lights, job.settings.double_sided, keep_textures=True)
+        tracer = mitsuba_reference.prepare(source, traced_lights, job.settings.double_sided, keep_textures=True,
+                                           albedo_boost=scene.indirect.albedo_boost)
         if query is None:
             query = RayQuery(source.p, source.tri_v, variant=tracer.mi.variant())
             samples = {pattern: area_samples(source, np.flatnonzero(mask), AREA_SAMPLES, rng)
@@ -194,25 +207,31 @@ def main(argv=None):
         line = [describe(rotation)]
         area = {p: in_sun(query, *samples[p], direction, job.bake.ray_offset).mean() for p in shares}
         line += ["%s area in sun %.1f%%" % (p, 100 * v) for p, v in area.items()]
-        tiles = []
+        tiles = {k: [] for k in scales}
         for pose, (locations, normal, faces) in zip(poses, hits):
-            linear, covered = tracer.trace(pose, width, height, lens, near, args.spp)
+            direct, covered = tracer.trace(pose, width, height, lens, near, args.spp, max_depth=DIRECT_DEPTH)
+            full = tracer.trace(pose, width, height, lens, near, args.spp, max_depth=depth)[0] if any(scales) else direct
             caption = []
             for pattern, mask in shares.items():
                 seen = mask[faces]
                 caption.append("%s %s" % (pattern, "%.0f%% lit" % (100 * in_sun(query, locations[seen], normal[seen],
                                 direction, job.bake.ray_offset).mean()) if seen.any() else "not in view"))
-            tiles.append((device_picture(linear, covered, scene.tonemap_white, camera.background), ", ".join(caption)))
-        print(("scene  " if not rows else "       ") + "  ".join(line), flush=True)
-        rows.append((line, tiles))
+            for k in scales:
+                linear = direct + k * (full - direct)
+                tiles[k].append((device_picture(linear, covered, scene.tonemap_white, camera.background),
+                                 ", ".join(caption)))
+        for k in scales:
+            tag = "scene" if number == 0 else f"#{number}"
+            print(f"{tag:6} " + "  ".join(line + ["indirect %g" % k]), flush=True)
+            rows.append((tag, line[:1] + ["indirect %g" % k] + line[1:], tiles[k]))
 
     sheet = Image.new("RGB", (LABEL_WIDTH + width * len(poses), CAPTION + len(rows) * (height + CAPTION)), (24, 24, 24))
     draw = ImageDraw.Draw(sheet)
     for column, seconds in enumerate(args.at):
         draw.text((LABEL_WIDTH + column * width + 4, 2), f"{cameras[0].name} t={seconds:g}s", fill="white")
-    for index, (line, tiles) in enumerate(rows):
+    for index, (tag, line, tiles) in enumerate(rows):
         y = CAPTION + index * (height + CAPTION)
-        labels = ["scene" if index == 0 else f"#{index}"] + line[0].replace(" toward", "\ntoward").replace(
+        labels = [tag] + line[0].replace(" toward", "\ntoward").replace(
             " elevation", "\nelevation").split("\n") + line[1:]
         for k, label in enumerate(labels):
             draw.text((6, y + 4 + 14 * k), label, fill=(255, 220, 120) if k == 0 else "white")
