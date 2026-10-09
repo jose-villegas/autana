@@ -4,7 +4,7 @@
  * AVX-512 host and an AVX2 one. Loaded with RTLD_GLOBAL before
  * Mitsuba, this definition of Mitsuba's namespaced rtcNewDevice comes first in
  * the lookup and appends `cap` to the configuration before calling Embree's
- * own, which r3d/isa binds by address. */
+ * own, which r3d/isa.py binds by address. */
 
 #include <stddef.h>
 #include <stdio.h>

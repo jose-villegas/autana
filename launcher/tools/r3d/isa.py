@@ -10,7 +10,7 @@ pinned, a reference render's too: it costs about a tenth more time on an AVX-512
 
 The same code gives the same bits on CPUs of one vendor, not across vendors: Embree's AVX2 and SSE kernels start
 reciprocals from rcpps, whose estimate AMD and Intel each define their own way, so an AMD host and an Intel one still
-differ by an ulp (2 of the Sponza atrium's 17 376 triangles). AVX-512's rcp14 is exact on both, but leaves out the
+differ by an ulp (a few triangles in 17 000 after simplifying). AVX-512's rcp14 is exact on both, but leaves out the
 AVX2-only CPUs, many hosted runners among them.
 
 The pin needs Linux on x86-64 with AVX2 and FMA, where it stops the process when it cannot build or bind (no C
@@ -26,10 +26,10 @@ import sys
 
 from native.shared_library import build_shared, find_compiler
 
-from .. import log
+from . import log
 
 HERE = pathlib.Path(__file__).resolve().parent
-CACHE = HERE.parent / ".cache"
+CACHE = HERE / ".cache"
 SOURCE = HERE / "embree_cap.c"
 JIT_CPU = "x86-64-v3"
 JIT_FEATURES = "+avx2,+fma"

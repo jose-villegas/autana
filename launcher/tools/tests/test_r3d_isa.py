@@ -1,4 +1,4 @@
-"""Checks that Mitsuba's CPU backend traces the same bits on every x86-64 Linux host of one vendor (r3d/isa): Dr.Jit
+"""Checks that Mitsuba's CPU backend traces the same bits on every x86-64 Linux host of one vendor (r3d/isa.py): Dr.Jit
 compiles for x86-64-v3 at 8 lanes, Embree runs capped at AVX2, and the hit distances of a fixed triangle soup and the
 bounced light of a fixed corridor hash to what every pinned host of that vendor makes. Unpinned, an AVX-512 host moves
 both by an ulp; AMD and Intel differ because AVX2's reciprocal estimates are the vendor's own."""
