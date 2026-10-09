@@ -313,7 +313,7 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
         const float nearest = fmaxf(v[0].z, fmaxf(v[1].z, v[2].z));
         (void)draw_fixture_triangle(&v[0], &v[1], &v[2]);
         for (int p = 0; p < W * H; p++) {
-            TEST_ASSERT_TRUE_MESSAGE(depth[p] <= nearest * 65535.0f + 256.0f,
+            TEST_ASSERT_TRUE_MESSAGE(depth[p] <= nearest * (float)R3D_DEPTH_NEAREST + 256.0f,
                                      "a pixel came out nearer than any corner");
         }
     }
@@ -903,7 +903,7 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     const int32_t wall = c->depth[0];
     const r3d_span_target_t t = r3d_span_target(c->color, c->depth, c->w, 0, c->h);
     const r3d_span_box_t box = {5, 15, 3, 9};
-    const int32_t step = 1 << 8;
+    const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(wall - 1, r3d_span_plane_bound((wall - 10) * step, step, 0, box));
     TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 10) * step, step, 0, box), box));
     TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 5) * step, 0, step, box), box));
@@ -920,7 +920,7 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
 static void
 test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
     const r3d_span_box_t box = {0, 11, 0, 1};
-    const int32_t step = 1 << 8;
+    const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(10, r3d_span_plane_bound(-3 * step, step, 0, box));
     TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
 }

@@ -16,7 +16,7 @@
 typedef uint16_t tag_t;
 _Static_assert(sizeof(tag_t) == sizeof(raster_motion_px_t), "a tag resolves in place");
 
-#define DEPTH_SCALE (1.0F / 65535.0F)
+#define DEPTH_SCALE (1.0F / (float)R3D_DEPTH_NEAREST)
 
 /* a * b, both affine maps as 3x4 matrices. */
 static void
