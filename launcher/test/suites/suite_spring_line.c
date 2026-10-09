@@ -76,13 +76,13 @@ test_a_new_line_is_at_rest_and_a_tick_does_nothing(void) {
 static void
 test_a_poke_wakes_only_the_columns_it_touches(void) {
     fixture_begin();
-    spring_line_poke(&line, CENTRE, 10, -SPRING_LINE_ONE);
+    spring_line_poke(&line, CENTRE, 10, -MATHX_ONE);
     TEST_ASSERT_FALSE(spring_line_at_rest(&line));
     TEST_ASSERT_EQUAL_INT(CENTRE - 10, line.active_lo);
     TEST_ASSERT_EQUAL_INT(CENTRE + 11, line.active_hi);
-    TEST_ASSERT_EQUAL_INT32(-SPRING_LINE_ONE, velocity[CENTRE]);
+    TEST_ASSERT_EQUAL_INT32(-MATHX_ONE, velocity[CENTRE]);
     TEST_ASSERT_EQUAL_INT32(0, velocity[CENTRE - 10]);
-    TEST_ASSERT_TRUE(velocity[CENTRE - 5] < 0 && velocity[CENTRE - 5] > -SPRING_LINE_ONE);
+    TEST_ASSERT_TRUE(velocity[CENTRE - 5] < 0 && velocity[CENTRE - 5] > -MATHX_ONE);
     TEST_ASSERT_EQUAL_INT32(velocity[CENTRE - 5], velocity[CENTRE + 5]);
     fixture_end();
 }
@@ -90,8 +90,8 @@ test_a_poke_wakes_only_the_columns_it_touches(void) {
 static void
 test_a_poke_off_either_end_is_clipped(void) {
     fixture_begin();
-    spring_line_poke(&line, -3, 8, SPRING_LINE_ONE);
-    spring_line_nudge(&line, COLUMNS + 2, 8, SPRING_LINE_ONE);
+    spring_line_poke(&line, -3, 8, MATHX_ONE);
+    spring_line_nudge(&line, COLUMNS + 2, 8, MATHX_ONE);
     TEST_ASSERT_EQUAL_INT(0, line.active_lo);
     TEST_ASSERT_EQUAL_INT(COLUMNS, line.active_hi);
     TEST_ASSERT_TRUE(velocity[0] > 0 && offset[COLUMNS - 1] > 0);
@@ -101,7 +101,7 @@ test_a_poke_off_either_end_is_clipped(void) {
 static void
 test_the_wave_spreads_one_column_a_tick_and_evenly_both_ways(void) {
     fixture_begin();
-    spring_line_nudge(&line, CENTRE, 6, -8 * SPRING_LINE_ONE);
+    spring_line_nudge(&line, CENTRE, 6, -8 * MATHX_ONE);
     for (int tick = 1; tick <= 40; tick++) {
         spring_line_tick(&line);
         TEST_ASSERT_TRUE(line.active_lo >= CENTRE - 6 - tick && line.active_hi <= CENTRE + 7 + tick);
@@ -120,8 +120,8 @@ test_the_wave_spreads_one_column_a_tick_and_evenly_both_ways(void) {
 static void
 test_energy_never_exceeds_its_start_and_keeps_falling(void) {
     fixture_begin();
-    spring_line_nudge(&line, CENTRE, 12, -20 * SPRING_LINE_ONE);
-    spring_line_poke(&line, 40, 5, 2 * SPRING_LINE_ONE);
+    spring_line_nudge(&line, CENTRE, 12, -20 * MATHX_ONE);
+    spring_line_poke(&line, 40, 5, 2 * MATHX_ONE);
     const int64_t start = energy();
     int64_t a_hundred_ago = start;
     bool ok = true;
@@ -148,8 +148,8 @@ test_it_comes_to_rest_at_every_setting_and_exactly(void) {
         line.tension = settings[s][0];
         line.stiffness = settings[s][1];
         line.damping = settings[s][2];
-        spring_line_poke(&line, 70, 24, -(SPRING_LINE_ONE * 3 / 2));
-        spring_line_nudge(&line, 150, 9, 15 * SPRING_LINE_ONE);
+        spring_line_poke(&line, 70, 24, -(MATHX_ONE * 3 / 2));
+        spring_line_nudge(&line, 150, 9, 15 * MATHX_ONE);
 
         TEST_ASSERT_LESS_THAN_INT_MESSAGE(MAX_TICKS, ticks_until_rest(), "still moving");
         for (int x = 0; x < COLUMNS; x++) {
@@ -163,7 +163,7 @@ test_it_comes_to_rest_at_every_setting_and_exactly(void) {
 static void
 test_a_runaway_offset_is_clamped(void) {
     fixture_begin();
-    spring_line_poke(&line, CENTRE, 4, 100 * SPRING_LINE_ONE);
+    spring_line_poke(&line, CENTRE, 4, 100 * MATHX_ONE);
     for (int tick = 0; tick < 50; tick++) {
         spring_line_tick(&line);
         for (int x = 0; x < COLUMNS; x++) {
@@ -176,7 +176,7 @@ test_a_runaway_offset_is_clamped(void) {
 static void
 test_advance_runs_whole_ticks_carries_the_rest_and_caps_a_stall(void) {
     fixture_begin();
-    spring_line_nudge(&line, CENTRE, 12, -30 * SPRING_LINE_ONE);
+    spring_line_nudge(&line, CENTRE, 12, -30 * MATHX_ONE);
     TEST_ASSERT_EQUAL_INT(0, spring_line_advance(&line, SPRING_LINE_TICK_MS - 1));
     TEST_ASSERT_EQUAL_INT(1, spring_line_advance(&line, 1));
     TEST_ASSERT_EQUAL_INT(4, spring_line_advance(&line, 4 * SPRING_LINE_TICK_MS));
@@ -190,18 +190,18 @@ test_apply_reports_what_changed_and_how_far_then_goes_silent(void) {
     int16_t rest[COLUMNS];
     int16_t drawn[COLUMNS];
     for (int x = 0; x < COLUMNS; x++) {
-        rest[x] = (int16_t)(1600 + x);
+        rest[x] = (int16_t)((100 * SPRING_LINE_OUT_ONE) + x);
         drawn[x] = rest[x];
     }
     int lo, hi;
     TEST_ASSERT_EQUAL_INT(0, spring_line_apply(&line, rest, drawn, &lo, &hi));
     TEST_ASSERT_EQUAL_INT(0, hi - lo);
 
-    spring_line_nudge(&line, CENTRE, 10, -(5 * SPRING_LINE_ONE + SPRING_LINE_ONE / 2));
+    spring_line_nudge(&line, CENTRE, 10, -(5 * MATHX_ONE + MATHX_ONE / 2));
     TEST_ASSERT_EQUAL_INT(6, spring_line_apply(&line, rest, drawn, &lo, &hi));
     TEST_ASSERT_TRUE(lo > CENTRE - 10 && lo <= CENTRE - 8);
     TEST_ASSERT_TRUE(hi < CENTRE + 11 && hi >= CENTRE + 9);
-    TEST_ASSERT_EQUAL_INT16(rest[CENTRE] - 88, drawn[CENTRE]);
+    TEST_ASSERT_EQUAL_INT16(rest[CENTRE] - (5 * SPRING_LINE_OUT_ONE + SPRING_LINE_OUT_ONE / 2), drawn[CENTRE]);
     TEST_ASSERT_EQUAL_INT16(rest[CENTRE - 20], drawn[CENTRE - 20]);
 
     TEST_ASSERT_EQUAL_INT(0, spring_line_apply(&line, rest, drawn, &lo, &hi));

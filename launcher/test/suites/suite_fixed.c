@@ -18,6 +18,7 @@
 
 #include "util/scalar/fixed.h"
 #include "util/scalar/mathi.h"
+#include "util/scalar/mathx.h"
 
 /* fx_mul_floor() against a hand-written ((int64_t)a * b) >> shift */
 
@@ -34,8 +35,8 @@ test_mul_floor_matches_a_hand_written_widened_shift(void) {
         {-300, 1, 8, "negative product, remainder near the boundary"},
         {3, 5, 8, "small positive, not an exact multiple"},
         {-7, -9, 8, "negative times negative (positive product)"},
-        {65536, 65536, 16, "Q16.16 identity multiply"},
-        {-65536, 65536, 16, "Q16.16 negated identity multiply"},
+        {MATHX_ONE, MATHX_ONE, MATHX_SHIFT, "Q16.16 identity multiply"},
+        {-MATHX_ONE, MATHX_ONE, MATHX_SHIFT, "Q16.16 negated identity multiply"},
     };
 
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
@@ -119,7 +120,11 @@ test_floor_and_round_agree_on_exact_multiples(void) {
         int shift;
         int32_t expect;
     } cases[] = {
-        {256, 2, 8, 2}, {-256, 2, 8, -2}, {0, 1, 8, 0}, {65536, 3, 16, 3}, {-65536, 3, 16, -3},
+        {256, 2, 8, 2},
+        {-256, 2, 8, -2},
+        {0, 1, 8, 0},
+        {MATHX_ONE, 3, MATHX_SHIFT, 3},
+        {-MATHX_ONE, 3, MATHX_SHIFT, -3},
     };
 
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
@@ -180,20 +185,19 @@ test_the_same_helpers_serve_both_shift_8_and_shift_16(void) {
     TEST_ASSERT_EQUAL_INT32(256, fx_mul_floor(256, 256, 8));
     TEST_ASSERT_EQUAL_INT32(256, fx_mul_round(256, 256, 8));
 
-    /* Q16.16 "one times one is one", as ui_transform.h's UI_FP_ONE would
-     * need, the same function, just given a different shift. */
-    TEST_ASSERT_EQUAL_INT32(65536, fx_mul_floor(65536, 65536, 16));
-    TEST_ASSERT_EQUAL_INT32(65536, fx_mul_round(65536, 65536, 16));
+    /* Q16.16 "one times one is one", as mathx.h needs. */
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, fx_mul_floor(MATHX_ONE, MATHX_ONE, MATHX_SHIFT));
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, fx_mul_round(MATHX_ONE, MATHX_ONE, MATHX_SHIFT));
 
     /* And fx_div_round() at both scales too: `x` divided by itself is
      * exactly one, at either shift. */
     TEST_ASSERT_EQUAL_INT32(256, fx_div_round(100, 100, 8));
-    TEST_ASSERT_EQUAL_INT32(65536, fx_div_round(100, 100, 16));
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, fx_div_round(100, 100, MATHX_SHIFT));
 }
 
 static void
 test_div_round_takes_the_most_negative_int32(void) {
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(65536, fx_div_round(INT32_MIN, INT32_MIN, 16),
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(MATHX_ONE, fx_div_round(INT32_MIN, INT32_MIN, MATHX_SHIFT),
                                     "INT32_MIN divided by itself is exactly 1.0 in Q16.16");
     TEST_ASSERT_EQUAL_INT32_MESSAGE(-32768, fx_div_round(INT32_MIN, 1 << 24, 8),
                                     "-2^31 / 2^24 is exactly -128, -32768 in Q24.8");

@@ -209,15 +209,15 @@ boot_anim_wave_height(int32_t r_q12, uint32_t now_ms, int32_t amp_q12, int32_t w
         return 0;
     }
 
-    const uint32_t space_phase = (uint32_t)(((int64_t)r_q12 * 65536) / wavelength_q12);
+    const uint32_t space_phase = (uint32_t)(((int64_t)r_q12 * TRIG_TURN) / wavelength_q12);
     const uint32_t time_phase =
-        (period_ms == 0) ? 0u : (uint32_t)(((uint64_t)(now_ms % period_ms) * 65536u) / period_ms);
+        (period_ms == 0) ? 0u : (uint32_t)(((uint64_t)(now_ms % period_ms) * TRIG_TURN) / period_ms);
 
-    /* Wraps mod 65536 by uint16_t truncation */
+    /* Wraps mod TRIG_TURN by uint16_t truncation */
     const uint16_t phase = (uint16_t)(space_phase - time_phase);
     const int32_t sin_q15 = trig_sin(phase);
 
-    const int32_t amp_zeta_q12 = (int32_t)(((int64_t)amp_q12 * sin_q15) >> 15);
+    const int32_t amp_zeta_q12 = (int32_t)(((int64_t)amp_q12 * sin_q15) >> TRIG_SIN_SHIFT);
 
     return boot_anim_zeta_to_t_q8(amp_zeta_q12);
 }
@@ -473,7 +473,7 @@ boot_anim_title_wobble(int32_t d_q12) {
     const uint16_t phase = (uint16_t)((d2_q12 * BOOT_ANIM_TITLE_TURNS_PHASE) >> BOOT_ANIM_Q);
 
     const int32_t amp = (BOOT_ANIM_TITLE_AMPLITUDE_PX * d_q12) >> BOOT_ANIM_Q;
-    return (int)((amp * trig_sin(phase)) >> 15);
+    return (int)((amp * trig_sin(phase)) >> TRIG_SIN_SHIFT);
 }
 
 static inline uint8_t
@@ -484,9 +484,9 @@ boot_anim_title_wave_reach(uint32_t now_ms) {
 static inline int
 boot_anim_title_wave(int i, uint32_t now_ms) {
     const uint32_t t = (now_ms + (uint32_t)i * BOOT_ANIM_TITLE_WAVE_STAGGER_MS) % BOOT_ANIM_TITLE_WAVE_PERIOD_MS;
-    const uint16_t phase = (uint16_t)((t * 65536u) / BOOT_ANIM_TITLE_WAVE_PERIOD_MS);
+    const uint16_t phase = (uint16_t)((t * TRIG_TURN) / BOOT_ANIM_TITLE_WAVE_PERIOD_MS);
     const int32_t amp = (BOOT_ANIM_TITLE_WAVE_AMPLITUDE_PX * boot_anim_title_wave_reach(now_ms)) / 255;
-    return (int)((amp * trig_sin(phase)) >> 15);
+    return (int)((amp * trig_sin(phase)) >> TRIG_SIN_SHIFT);
 }
 
 /* Row starts at a FIXED BOOT_ANIM_TITLE_VIEW_X/Y, not read live: the
