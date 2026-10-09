@@ -1,5 +1,6 @@
 #include "render/r3d_lit_mesh.h"
 
+#include <math.h>
 #include <stddef.h>
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
@@ -132,4 +133,22 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
         return status;
     }
     return r3d_lit_mesh_from_asset(&asset, mesh);
+}
+
+void
+r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float* radius) {
+    const float units = 1.0F / (float)mesh->position_scale;
+    const r3d_lit_node_t* root = &mesh->nodes[0];
+    const vec3f_t mid = {(float)(root->lo[0] + root->hi[0]) * 0.5F * units,
+                         (float)(root->lo[1] + root->hi[1]) * 0.5F * units,
+                         (float)(root->lo[2] + root->hi[2]) * 0.5F * units};
+    float furthest = 0.0F;
+    for (int i = 0; i < mesh->vertex_count; i++) {
+        const vec3f_t p = {(float)mesh->positions[i][0] * units, (float)mesh->positions[i][1] * units,
+                           (float)mesh->positions[i][2] * units};
+        const vec3f_t d = vec3f_sub(p, mid);
+        furthest = fmaxf(furthest, vec3f_dot(d, d));
+    }
+    *centre = mid;
+    *radius = sqrtf(furthest);
 }
