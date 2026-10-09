@@ -280,6 +280,17 @@ scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity) {
     return NULL;
 }
 
+const r3d_lit_mesh_t*
+scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
+    assert(entity < scene->asset.entity_count);
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
+        if (scene->renderers[i].entity == entity) {
+            return &scene->renderers[i].mesh;
+        }
+    }
+    return NULL;
+}
+
 int
 scene_camera_index(const scene_t* scene, const char* camera) {
     for (int i = 0; i < scene->asset.camera_count; i++) {
