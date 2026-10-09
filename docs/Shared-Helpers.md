@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=62d09bae91a38fc065ce7783a4a31594379538cc4236a8b3701da89430f873a2 -->
+<!-- generated: shared-helpers sha256=bd1d48ebf5008efcb6f21d6913ba016286d4ac8b45a6a31478ffaa4aa8d29035 -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -117,7 +117,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/main/ui/ui_canvas_marks.h](../launcher/main/ui/ui_canvas_marks.h) | ui_canvas_marks: which screen rect each window was last painted over, so a window that stops being drawn has its rect repainted rather than left showing what it last drew. | `ui_canvas_marks_painted, ui_canvas_marks_reset, ui_canvas_marks_t, ui_canvas_marks_take_vanished` |
 | [launcher/main/ui/ui_control_center.h](../launcher/main/ui/ui_control_center.h) | ui_control_center: control center widgets and the layout matching the current panel size. | `ui_control_center_baked_layout, ui_control_center_dim_backdrop, ui_control_center_draw, ui_control_center_frame, ui_control_center_frame_layout` |
 | [launcher/main/ui/ui_internal.h](../launcher/main/ui/ui_internal.h) | ui_internal: the seam between ui_build.c (builds a frame's command list; host-portable) and ui.c (paints one; needs the real framebuffer). | `ui_effective_transform, ui_end_pointer_frame, ui_font_scaled_t, ui_resolve_font_scaled, ui_to_logical` |
-| [launcher/main/ui/ui_launcher.h](../launcher/main/ui/ui_launcher.h) | ui_launcher: home-screen app selection and scroll interaction. | `ui_launcher_draw, ui_launcher_frame, ui_launcher_init` |
+| [launcher/main/ui/ui_launcher.h](../launcher/main/ui/ui_launcher.h) | ui_launcher: home-screen app selection and scroll interaction. | `LAUNCHER_HEAL_ROWS, ui_launcher_draw, ui_launcher_frame, ui_launcher_heal_opt_in, ui_launcher_init` |
 | [launcher/main/ui/ui_layout.h](../launcher/main/ui/ui_layout.h) | Rectangle storage shared by authored screen tables. | `ui_layout_rect_t` |
 | [launcher/main/ui/ui_pointer.h](../launcher/main/ui/ui_pointer.h) | ui_pointer: input_t to a short list of pointer events, held not tapped. | `UI_POINTER_DOWN, UI_POINTER_DRAG_THRESHOLD, UI_POINTER_MAX_EVENTS, UI_POINTER_MOVE, UI_POINTER_SCROLL, UI_POINTER_UP, ui_pointer_aim, ui_pointer_event_t, ui_pointer_kind_t, ui_pointer_step, ui_pointer_t` |
 | [launcher/main/ui/ui_ridge.h](../launcher/main/ui/ui_ridge.h) | ui_ridge: interactive ridge animation driven by touch, tilt and elapsed time. | `ui_ridge_dissolve_restarts_for_test, ui_ridge_dissolving_for_test, ui_ridge_gradient_lag_for_test, ui_ridge_paint, ui_ridge_paint_reference_for_test, ui_ridge_reset_for_test, ui_ridge_restart_boot_for_test, ui_ridge_set_ambient, ui_ridge_set_gravity, ui_ridge_settle, ui_ridge_step` |

@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "unity.h"
 
+#include "display/display.h"
 #include "suites.h"
 #include "test_harness.h"
 #include "util/runtime/timing.h"
@@ -36,12 +37,18 @@ __wrap_esp_system_console_put_char(char c) {
 
 /* Unity requires these once per binary. The test ran and was measured in
  * timing.c, where no TEST_PASS() can skip it; tearDown() runs under an
- * abort frame of Unity's own, so it is where the verdict is asserted. */
+ * abort frame of Unity's own, so it is where the verdict is asserted. Both
+ * reset the panel clock and heal to the shell's own state, as an app's start
+ * and exit do, so no test inherits what the screen before it or an earlier
+ * test set - a failed assert included. */
 void
-setUp(void) {}
+setUp(void) {
+    display_restore_system_state();
+}
 
 void
 tearDown(void) {
+    display_restore_system_state();
     suite_judge_watched_test();
 }
 

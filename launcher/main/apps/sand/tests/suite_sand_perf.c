@@ -263,6 +263,7 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
+#include "panel_clock_pin.h"
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/timing.h"
 #include "xtensa/xt_perf_consts.h"
@@ -2554,28 +2555,6 @@ test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
  * mirror_app_sand_marking()'s gfx_mark_dirty() calls has to agree with. */
 #define REAL_CELL_PX 2
 
-/* A present's cost is mostly bus time, so a timed present must PIN the panel
- * clock rather than inherit whatever an earlier test left the link at. The
- * begin presents once so the link reopen lands outside the timed window. */
-typedef struct {
-    int before_hz;
-} panel_clock_scope_t;
-
-static panel_clock_scope_t
-panel_clock_scope_begin(int hz) {
-    const panel_clock_scope_t scope = {.before_hz = gfx_panel_clock_hz()};
-    gfx_set_panel_clock_hz(hz);
-    gfx_heal_restore_defaults();
-    gfx_present();
-    return scope;
-}
-
-static void
-panel_clock_scope_end(panel_clock_scope_t scope) {
-    gfx_set_panel_clock_hz(scope.before_hz);
-    gfx_heal_restore_defaults();
-}
-
 /* REPRODUCING, NOT CALLING: draw_dirty_row()/draw_one_row()/paint_row()
  * (app_sand.c) are static, inlined at their one call site - sharing a hot
  * per-call function across a translation-unit boundary previously cost a
@@ -2638,7 +2617,7 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
                           int measured_steps, int* full_bands, int* gathered, int* partial_bands, int64_t* sim_us_out,
                           int64_t* mark_us_out, int64_t* present_us_out) {
     const two_core_scope_t core = two_core_scope_begin(true);
-    const panel_clock_scope_t clock = panel_clock_scope_begin(GFX_PANEL_CLOCK_FAST_HZ);
+    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking(cells, w, h, dirty_rows, row_x0, row_x1, row_n);
@@ -2675,7 +2654,6 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
     if (present_us_out != NULL) {
         *present_us_out = present_us / measured_steps;
     }
-    panel_clock_scope_end(clock);
     two_core_scope_end(core);
 
     return present_us / measured_steps;
@@ -2964,7 +2942,7 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
     sand_track_dirty_cols(s, dirty_x0, dirty_x1);
 
     const two_core_scope_t core = two_core_scope_begin(true);
-    const panel_clock_scope_t clock = panel_clock_scope_begin(GFX_PANEL_CLOCK_FAST_HZ);
+    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, NULL);
@@ -2988,7 +2966,6 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
     if (pixels_sent_out != NULL) {
         *pixels_sent_out = pixels_sent / measured_steps;
     }
-    panel_clock_scope_end(clock);
     two_core_scope_end(core);
     return present_us / measured_steps;
 }
@@ -3630,7 +3607,6 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
     static const char* const brush_names[] = {"sand", "water"};
     static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80", "80+heal"};
     const two_core_scope_t core = two_core_scope_begin(true);
-    const panel_clock_scope_t clock = panel_clock_scope_begin(GFX_PANEL_CLOCK_FAST_HZ);
     bool unhealed_row_sent_heal = false;
 
     for (int brush = 0; brush < 2; brush++) {
@@ -3648,11 +3624,10 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
             }
         }
     }
-    panel_clock_scope_end(clock);
     two_core_scope_end(core);
 
-    /* Asserted only after both scopes end: a failing assert longjmps out,
-     * and a clock left at 40 MHz slows every later present in this boot. */
+    /* Asserted only after the two-core scope ends: a failing assert longjmps
+     * out of it. */
     TEST_ASSERT_FALSE_MESSAGE(unhealed_row_sent_heal, "only the heal row may send heal strips");
 }
 
