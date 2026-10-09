@@ -2,7 +2,7 @@
 """Fail on a generated file that its own banner's command no longer makes.
 
     python scripts/gates/check_generated_files.py [--jobs N] [path ...]
-    python scripts/gates/check_generated_files.py --write-table
+    python scripts/gates/check_generated_files.py --write-table | --check-table
 
 A tracked file is generated when one of its first five lines carries
 MARKER. The first non-blank line after the marker, stripped of comment
@@ -26,8 +26,9 @@ A banner whose command names a <placeholder> input, finds no script, or
 does not name its own file as output fails: a file nobody can regenerate is
 a committed fixture, and carries no banner.
 
-A run over every file also checks the engine and app tables of generated
-outputs against what --write-table would write.
+--check-table checks the engine and app tables of generated outputs against
+what --write-table would write, without running any banner; each table's
+marker names it, so the generated-document gate runs it.
 """
 import argparse
 import concurrent.futures
@@ -50,6 +51,7 @@ DIFF_LINES = 20
 # The engine's table is kept beside the generators' rules.
 TABLE_DOC = "launcher/tools/gen/README.md"
 TABLE_BLOCK = "generated-files"
+TABLE_CHECK = "python scripts/gates/check_generated_files.py --check-table"
 
 
 def is_generated(text):
@@ -199,39 +201,40 @@ def table(root, names, doc=TABLE_DOC):
     return "\n".join(rows) + "\n"
 
 
+def tables(root, names, check=False):
+    """Write each document's table of `names`, or with `check` count the
+    stale ones; a document that cannot take its table counts as failed."""
+    failed = 0
+    for doc, (block, outputs) in table_documents(names).items():
+        try:
+            stale = replace_block(root / doc, block, table(root, outputs, doc), check, TABLE_CHECK)
+        except (ValueError, OSError) as error:
+            print(f"FAIL {doc}: {error}")
+            failed += 1
+            continue
+        if stale and check:
+            print(f"FAIL {doc}: its table of generated files is stale; run this gate with --write-table")
+            failed += 1
+    return failed
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("paths", nargs="*", help="generated files to check (default: every one, and the table)")
+    parser.add_argument("paths", nargs="*", help="generated files to check (default: every one)")
     parser.add_argument("--root", type=pathlib.Path, default=REPO)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--write-table", action="store_true", help=f"rewrite the table in {TABLE_DOC} and exit")
+    parser.add_argument("--check-table", action="store_true", help="check only the tables, running no banner")
     args = parser.parse_args()
     root = args.root.resolve()
-    if args.write_table:
-        for doc, (block, names) in table_documents(generated_files(root)).items():
-            try:
-                replace_block(root / doc, block, table(root, names, doc))
-            except (ValueError, OSError) as error:
-                print(f"FAIL {doc}: {error}")
-                return 1
-        return 0
+    if args.write_table or args.check_table:
+        return int(tables(root, generated_files(root), args.check_table) > 0)
     names = [pathlib.Path(p).resolve().relative_to(root).as_posix() for p in args.paths] or generated_files(root)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         results = list(pool.map(lambda name: check(root, name), names))
     for name, problem in zip(names, results):
         print(f"ok   {name}" if problem is None else f"FAIL {name}: {problem}")
     failed = sum(problem is not None for problem in results)
-    if not args.paths:
-        for doc, (block, outputs) in table_documents(names).items():
-            try:
-                stale = replace_block(root / doc, block, table(root, outputs, doc), check=True)
-            except (ValueError, OSError) as error:
-                print(f"FAIL {doc}: {error}")
-                failed += 1
-                continue
-            if stale:
-                print(f"FAIL {doc}: its table of generated files is stale; run this gate with --write-table")
-                failed += 1
     print(f"generated files: {len(names)} checked, {failed} failed")
     return int(failed > 0)
 
