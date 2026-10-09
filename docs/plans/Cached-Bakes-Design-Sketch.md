@@ -88,7 +88,7 @@ flowchart LR
 | host-tests, qemu-tests, build-release, doc-images, doc-images-gpu | `uses: ./.github/workflows/bakes.yml` first, then their own steps | so a PR that changes a recipe is baked before anything consumes it, and main is never cold |
 | `launcher/main/CMakeLists.txt` pack command, `run_tests.sh`, render scripts | `build_pack.py`, which calls `fetch` per mesh entry | every build; downloads only on a local miss |
 | A contributor with the tools | `bake.py bake [PATH]`: `produce` for each missing key, local cache only, never published [A] | after a recipe edit, before CI has run |
-| Host tools that read the export (`report_skin_light.sh`, the FBX test) | `bake.py path launcher/demo/capybara/capybara.import.toml` prints the cached `.glb` | instead of a tracked path |
+| Host tools that read the export (`report_skin_light.sh`, the FBX round-trip test) | `bake.py path launcher/demo/capybara/capybara.import.toml` prints the cached `.glb` | instead of a tracked path |
 
 Only same-repository PRs can publish; a fork's PR fails at the CPU job naming
 the missing keys, and a maintainer re-runs it [A].
