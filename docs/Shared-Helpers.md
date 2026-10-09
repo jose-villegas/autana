@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=58e8e495760717fdf15f13139af77bd7e3b9c70145a0af74ca028042e932013d -->
+<!-- generated: shared-helpers sha256=aacb23018d8b34852d72b08615795e8639b5026a1c0d200d77d5023c3e19b20e -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -136,7 +136,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/main/util/math/mat4x.h](../launcher/main/util/math/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. | `` |
 | [launcher/main/util/math/math_const.h](../launcher/main/util/math/math_const.h) | math_const: the circle constants float maths uses, in radians, and the natural log of 2, which turns a half-life into a rate. | `MATH_LN2, MATH_PI, MATH_TAU` |
 | [launcher/main/util/math/quatf.h](../launcher/main/util/math/quatf.h) | quatf: a float rotation, plus the one operation only floats have, slerp. | `quatf_slerp` |
-| [launcher/main/util/math/transformf.h](../launcher/main/util/math/transformf.h) | transformf: a transform of a float: position, rotation, scale and the cached model matrix. | `TRANSFORMF_IDENTITY` |
+| [launcher/main/util/math/transformf.h](../launcher/main/util/math/transformf.h) | transformf: a transform of a float: position, rotation, scale and the cached model matrix. | `TRANSFORMF_IDENTITY, transformf_rotate_around` |
 | [launcher/main/util/math/vec2i.h](../launcher/main/util/math/vec2i.h) | vec2i: a 2-component vector of an int32. | `` |
 | [launcher/main/util/math/vec3f.h](../launcher/main/util/math/vec3f.h) | vec3f: a 3-component vector of a float. | `vec3f_from_octahedral, vec3f_octahedral` |
 | [launcher/main/util/math/vec_convert.h](../launcher/main/util/math/vec_convert.h) | vec_convert: moving a vector between number types, always by an explicit call named for its destination and source (vec3f_from_vec3x, vec3s_from_vec3f, ...), never an implicit cast. | `MATH_FLOAT_INT_LIMIT, mathf_round_i32, mathf_round_s, mathf_to_x, mathx_to_f, vec2f_from_vec2i, vec2f_from_vec2s, vec2f_from_vec2x, vec2i_from_vec2f, vec2i_from_vec2s, vec2s_from_vec2f, vec2s_from_vec2i, vec2x_from_vec2f, vec3f_from_vec3i, vec3f_from_vec3s, vec3f_from_vec3x, vec3i_from_vec3f, vec3i_from_vec3s, vec3s_from_vec3f, vec3s_from_vec3i, vec3x_from_vec3f` |
