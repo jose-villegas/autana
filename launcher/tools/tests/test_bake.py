@@ -253,6 +253,24 @@ class LockTests(unittest.TestCase):
         self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.mesh").read_bytes(), b"mesh")
         self.assertNotIn("never", [call.args[0] for call in get.call_args_list])
 
+    def test_a_refused_rename_onto_the_same_bytes_is_done_and_leaves_no_scratch(self):
+        target = self.cache / "a.mesh"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"same")
+        with mock.patch("os.replace", side_effect=PermissionError("held")):
+            self.assertEqual(bake.place(b"same", target), target)
+        self.assertEqual(sorted(path.name for path in self.cache.iterdir()), ["a.mesh"])
+
+    def test_a_refused_rename_onto_other_bytes_retries_then_fails_naming_it(self):
+        target = self.cache / "a.mesh"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"other")
+        with mock.patch("os.replace", side_effect=PermissionError("held")) as rename, \
+                mock.patch("time.sleep"), self.assertRaisesRegex(bake.BakeMissing, "a.mesh: another process holds it"):
+            bake.place(b"new", target)
+        self.assertEqual(rename.call_count, bake.PLACE_ATTEMPTS)
+        self.assertEqual(sorted(path.name for path in self.cache.iterdir()), ["a.mesh"])
+
     def test_a_process_can_have_a_cache_of_its_own(self):
         with mock.patch.dict("os.environ", {bake.CACHE_VARIABLE: str(self.cache)}):
             self.assertEqual(bake.default_cache(), self.cache)

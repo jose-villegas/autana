@@ -36,10 +36,7 @@ def index_path(key, cache):
 
 def write_atomically(target, text):
     """Writes by rename, so a build reading the cache meanwhile never sees half a file."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", dir=target.parent, delete=False, encoding="utf-8") as scratch:
-        scratch.write(text)
-    os.replace(scratch.name, target)
+    keys.place(text.encode("utf-8"), target)
 
 
 def made(key, cache):

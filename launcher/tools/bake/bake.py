@@ -51,6 +51,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tokenize
 import tomllib
 import urllib.error
@@ -69,6 +70,9 @@ RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEA
 API_URL = "https://api.github.com/repos/jose-villegas/autana"
 MESH_SUFFIX = ".mesh"
 DOWNLOAD_TIMEOUT_S = 60
+# A rename into the cache another process holds open is retried this often, waiting a growing step.
+PLACE_ATTEMPTS = 8
+PLACE_WAIT_S = 0.05
 RUN_ARTIFACTS = "bakes-*"
 CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
@@ -488,16 +492,35 @@ def cached(row, suffix, cache):
     return pathlib.Path(cache) / f"{row['sha256']}{suffix}"
 
 
+def place(data, target, sha256=None):
+    """Writes `data` to `target` by rename, so no reader ever sees half a file. Builds run side by side
+    share the cache: on Windows a rename onto a file another process has open is refused, so when the
+    target already holds these bytes the write is done, and otherwise it is retried briefly. The
+    scratch file never stays behind."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as scratch:
+        scratch.write(data)
+    try:
+        for attempt in range(PLACE_ATTEMPTS):
+            try:
+                os.replace(scratch.name, target)
+                return target
+            except PermissionError:
+                if target.is_file() and (sha256 or hashlib.sha256(data).hexdigest()) == file_sha256(target):
+                    return target
+                time.sleep(PLACE_WAIT_S * (attempt + 1))
+        raise BakeMissing(f"{target}: another process holds it; the write was refused {PLACE_ATTEMPTS} times")
+    finally:
+        if os.path.exists(scratch.name):
+            os.unlink(scratch.name)
+
+
 def store(path, row, suffix, cache):
     """Copies `path` into the cache under its locked SHA-256, by rename, so a cut copy leaves nothing."""
     target = cached(row, suffix, cache)
     if target.is_file() and file_sha256(target) == row["sha256"]:
         return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as scratch:
-        scratch.write(pathlib.Path(path).read_bytes())
-    os.replace(scratch.name, target)
-    return target
+    return place(pathlib.Path(path).read_bytes(), target, row["sha256"])
 
 
 def describe(bake, why, again):
@@ -526,15 +549,9 @@ def download(row, suffix, cache):
         if error.code == 404:
             return None
         raise
-    target = cached(row, suffix, cache)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as scratch:
-        scratch.write(data)
     if hashlib.sha256(data).hexdigest() != row["sha256"]:
-        os.unlink(scratch.name)
         raise BakeMissing(f"{RELEASE_URL}{name} does not have the SHA-256 its name and the lock give")
-    os.replace(scratch.name, target)
-    return target
+    return place(data, cached(row, suffix, cache), row["sha256"])
 
 
 def fetch_all(found, lock, cache, offline=False):
