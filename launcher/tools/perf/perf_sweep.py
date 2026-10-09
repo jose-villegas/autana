@@ -132,16 +132,13 @@ def metrics(capture, table):
     rows.update(parse_report(table))
     for name, value in rows.items():
         add(name, value)
+    # Stages from the suite's own line only: the shell's periodic frame_cost
+    # line also lands in a capture, from whatever ran before the suite.
     for line in text.splitlines():
-        if "ms/frame avg/worst:" in line:
-            segment = line.split("ms/frame avg/worst:", 1)[1]
-        elif "scale_split:" in line and " | " in line:
+        if "scale_split:" in line and " | " in line:
             segment = line.split(" | ", 1)[1]
-        else:
-            continue
-        for name, average, worst in STAGE.findall(segment.split("| total", 1)[0]):
-            add(name + ".avg", float(average) * US_PER_MS)
-            add(name + ".worst", float(worst) * US_PER_MS)
+            for name, average, _ in STAGE.findall(segment.split("| total", 1)[0]):
+                add(name, float(average) * US_PER_MS)
     for match in SPANS.finditer(text):
         for field, value in zip(SPAN_FIELDS, match.groups()[2:]):
             add(f"spans.{match[1]}x{match[2]}.{field}", int(value))
@@ -150,6 +147,15 @@ def metrics(capture, table):
             add(match[1] + ".cycles", int(match[2]), "cycles/call")
             add(match[1] + "." + match[5], int(match[6]), "events/call")
     return {name: mean(samples) for name, samples in values.items()}, units
+
+
+def capture_metrics(item):
+    """One capture's metrics keyed `suite/name`, read from its files, so a
+    report re-derives them when the parsing changes."""
+    rows, units = metrics(item["capture"], item["table"])
+    prefix = item["suite"] + "/"
+    return ({prefix + key: value for key, value in rows.items()},
+            {prefix + key: value for key, value in units.items()})
 
 
 def write_json(path, payload):
@@ -229,13 +235,11 @@ def run(args, runner=None):
                                 table = make_table(template, capture, args.out / (capture_stem + ".md"),
                                                    build["project"], args.timeout)
                                 item["table"] = str(table)
-                                rows, units = metrics(capture, table)
+                                rows, units = capture_metrics(item)
                                 if not rows:
                                     raise RuntimeError(f"{suite}: no metrics in capture or table {table}")
                                 owners, instructions = capture_metadata(capture, rows)
-                                item.update(metrics={suite + "/" + key: value for key, value in rows.items()},
-                                            units={suite + "/" + key: value for key, value in units.items()},
-                                            owners=owners, instructions=instructions)
+                                item.update(metrics=rows, units=units, owners=owners, instructions=instructions)
                                 failures = 0
                             except SweepStop as error:
                                 item["error"] = str(error)
@@ -283,19 +287,27 @@ def report(directory):
     directory = Path(directory)
     saved = json.loads((directory / "plan.json").read_text(encoding="utf-8"))
     multi_seed = len(saved["seeds"]) >= 2
-    gathered, units = {}, {}
+    gathered, units, shared = {}, {}, None
     for capture in saved["captures"]:
         if capture.get("error"):
             continue
-        units.update(capture.get("units", {}))
-        for metric, value in capture.get("metrics", {}).items():
+        found, found_units = (capture_metrics(capture) if capture.get("table") and Path(capture["capture"]).exists()
+                              else (capture.get("metrics", {}), capture.get("units", {})))
+        units.update(found_units)
+        # A metric some capture lacks is not the suite's measurement.
+        shared = set(found) if shared is None else shared & set(found)
+        for metric, value in found.items():
             key = (capture["build"], capture["point"], metric)
             gathered.setdefault(key, {}).setdefault(capture["seed"], {})[capture["round"]] = value
-    observations = {}
-    for key, seeds in gathered.items():
-        observations[key] = ([mean(runs.values()) for runs in seeds.values() if len(runs) == saved["runs"]]
-                             if multi_seed else [value for runs in seeds.values() for value in runs.values()])
-    metrics_list = sorted({key[2] for key in observations})
+    gathered = {key: seeds for key, seeds in gathered.items() if key[2] in (shared or set())}
+    # A knob point and its build's baseline run on the same images, so layout
+    # is shared and the interleaved run is the unit; two builds differ in
+    # layout, so there the seed mean is.
+    runs = {key: [value for by_round in seeds.values() for value in by_round.values()]
+            for key, seeds in gathered.items()}
+    seed_means = {key: {seed: mean(by_round.values()) for seed, by_round in seeds.items()
+                        if len(by_round) == saved["runs"]} for key, seeds in gathered.items()}
+    metrics_list = sorted({key[2] for key in gathered})
     left, right, keys = {}, {}, {}
     for build in range(len(saved["builds"])):
         for point in range(len(saved["points"])):
@@ -304,29 +316,39 @@ def report(directory):
             for metric in metrics_list:
                 cell = str(len(keys))
                 keys[cell] = (build, point, metric)
-                left[cell] = observations.get((0, 0, metric), [])
-                right[cell] = observations.get((build, point, metric), [])
+                if point:
+                    left[cell] = runs.get((build, 0, metric), [])
+                    right[cell] = runs.get((build, point, metric), [])
+                else:
+                    left[cell] = list(seed_means.get((0, 0, metric), {}).values())
+                    right[cell] = list(seed_means.get((build, 0, metric), {}).values())
     decisions = compare(left, right, saved["threshold"], saved["alpha"], saved["rng_seed"])
     scored = {}
     for cell, decision in decisions.items():
-        key = keys[cell]
-        if decision["verdict"] not in ("improved", "regressed", "no change", "inconclusive"):
-            decision.update(verdict="inconclusive", reason="missing or nonpositive observations")
-        if not multi_seed and key[0] != 0:
+        build, point, metric = keys[cell]
+        moved = decision["verdict"] in ("improved", "regressed")
+        if not point and not multi_seed:
             decision.update(verdict="inconclusive", reason="one flash per build cannot separate a build from its layout")
-        elif not multi_seed and decision["verdict"] in ("improved", "regressed") and abs(decision["ratio"] - 1) * 100 <= saved["threshold"]:
-            decision.update(verdict="inconclusive", reason="difference does not exceed threshold")
-        scored[key] = decision
+        elif decision["verdict"] not in ("improved", "regressed", "no change", "inconclusive"):
+            decision.update(verdict="inconclusive", reason="missing or nonpositive observations")
+        elif point and moved and abs(decision["ratio"] - 1) * 100 <= saved["threshold"]:
+            decision.update(verdict="inconclusive", reason="within the threshold")
+        elif point and moved:
+            base, here = seed_means.get((build, 0, metric), {}), seed_means.get((build, point, metric), {})
+            signs = {here[seed] > base[seed] for seed in base.keys() & here.keys()}
+            if len(signs) > 1:
+                decision.update(verdict="inconclusive", reason="seeds disagree on the direction")
+        scored[(build, point, metric)] = decision
     rows = []
     for build, entry in enumerate(saved["builds"]):
         for point, knobs in enumerate(saved["points"]):
             cells = {}
             for metric in metrics_list:
-                values = observations.get((build, point, metric), [])
+                values = runs.get((build, point, metric), [])
                 cells[metric] = dict(scored.get((build, point, metric), {}),
                                      mean=mean(values) if values else None, observations=values)
             rows.append(dict(build=entry["label"], point=point, knobs=knobs, metrics=cells))
-    result = dict(unit="seed mean" if multi_seed else "run", rows=rows, units=units)
+    result = dict(unit="run within a build, seed mean across builds", rows=rows, units=units)
     write_json(directory / "sweep.json", result)
     lines = ["# Parameter sweep", ""]
     if saved.get("hot_tunables"):
@@ -335,21 +357,22 @@ def report(directory):
         lines.append(f"Build {build['label']}: {build['project']}; build ids: {json.dumps(build['build_ids'], sort_keys=True)}")
     lines += ["", f"Seeds: {saved['seeds']}; runs per flash: {saved['runs']}; RNG seed: {saved['rng_seed']}.",
               f"{len(saved['flashes'])} flashes: one per build per seed; knobs changed over the console.",
-              f"Observation unit: {result['unit']}. " +
-              ("Layout noise is in the variance of per-seed means." if multi_seed else
-               "The layout floor was not measured; only a significant difference beyond the threshold counts. "
-               "Across builds, one flash per build cannot separate a build from its layout."),
+              "Knob points against their build's baseline: interleaved runs on the same images, so layout is "
+              "shared; a move counts when significant, beyond the threshold, and in the same direction on every "
+              "seed. Builds against the first build: per-seed means, which carry layout noise" +
+              ("." if multi_seed else "; one flash per build cannot separate a build from its layout."),
               f"Threshold: +/-{saved['threshold']:g}%; alpha: {saved['alpha']:g}; Holm across all point/metric cells.", ""]
     if saved.get("error"):
         lines += ["Stopped: " + saved["error"], ""]
-    lines += ["| Build / point | " + " | ".join(f"{metric} ({units.get(metric, 'us')})" for metric in metrics_list) + " |",
-              "| --- | " + " | ".join("---" for _ in metrics_list) + " |"]
-    for row in rows:
-        label = row["build"] + " / " + ", ".join(f"{knob}={value}" for knob, value in row["knobs"].items())
+    # One row per metric, one column per point: points are few, metrics many.
+    labels = [row["build"] + " / " + ", ".join(f"{knob}={value}" for knob, value in row["knobs"].items())
+              for row in rows]
+    lines += ["| Metric | " + " | ".join(labels) + " |", "| --- |" + " ---: |" * len(rows)]
+    for metric in metrics_list:
         cells = []
-        for metric in metrics_list:
+        for row in rows:
             cell = row["metrics"][metric]
-            text = f"{cell['mean']:.3f}" if cell["mean"] is not None else "not measured"
+            text = f"{cell['mean']:.0f}" if cell["mean"] is not None else "not measured"
             if "verdict" in cell:
                 if cell.get("ratio") is not None:
                     text += f" ({(cell['ratio'] - 1) * 100:+.2f}%)"
@@ -357,7 +380,7 @@ def report(directory):
                 if cell.get("reason"):
                     text += " — " + cell["reason"]
             cells.append(text)
-        lines.append("| " + label + " | " + " | ".join(cells) + " |")
+        lines.append(f"| {metric} ({units.get(metric, 'us')}) | " + " | ".join(cells) + " |")
     (directory / "sweep.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return result
 

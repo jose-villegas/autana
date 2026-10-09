@@ -93,6 +93,24 @@ class SweepTests(unittest.TestCase):
             self.assertEqual(cell["verdict"], "inconclusive")
             self.assertIn("cannot separate", cell["reason"])
 
+    def test_a_point_counts_only_when_every_seed_agrees(self):
+        for flip, verdict in ((False, "improved"), (True, "inconclusive")):
+            with self.subTest(flip=flip), tempfile.TemporaryDirectory() as root:
+                args = arguments(root, (1, 2, 3))
+                saved = tool.plan(args)
+                for seed in (1, 2, 3):
+                    for round_index in range(args.runs):
+                        for point in (0, 1):
+                            factor = .9 if point and not (flip and seed == 3) else 1
+                            factor = 1.02 if point and flip and seed == 3 else factor
+                            saved["captures"].append(dict(build=0, point=point, seed=seed, round=round_index,
+                                metrics={"suite/frame": (10000 + round_index) * factor},
+                                units={"suite/frame": "us"}))
+                args.out.mkdir()
+                (args.out / "plan.json").write_text(json.dumps(saved))
+                cell = tool.report(args.out)["rows"][1]["metrics"]["suite/frame"]
+                self.assertEqual(cell["verdict"], verdict)
+
     def test_seeded_plan_visits_all_points_each_round(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root, (1, 2))
@@ -115,8 +133,8 @@ class SweepTests(unittest.TestCase):
     def test_all_metric_kinds(self):
         metrics, units = tool.metrics(FIXTURE, FIXTURE)
         self.assertEqual(metrics["frame"], 10000)
-        self.assertEqual(metrics["r3d.draw.avg"], 1250)
-        self.assertEqual(metrics["r3d.draw.worst"], 2000)
+        self.assertEqual(metrics["r3d.draw"], 1250)
+        self.assertNotIn("ui.paint", metrics)
         self.assertEqual(metrics["spans.184x224.fill"], 40)
         self.assertEqual(metrics["r3d.draw.cycles"], 500)
         self.assertEqual(metrics["r3d.draw.d_stall_all"], 20)
@@ -163,7 +181,7 @@ class SweepTests(unittest.TestCase):
                 args.out.mkdir()
                 (args.out / "plan.json").write_text(json.dumps(saved))
                 result = tool.report(args.out)
-                self.assertEqual(result["unit"], "seed mean" if len(seeds) > 1 else "run")
+                self.assertEqual(result["unit"], "run within a build, seed mean across builds")
                 verdicts = [row["metrics"]["suite/frame"]["verdict"] for row in result["rows"][1:]]
                 self.assertEqual(verdicts[:3], ["improved", "regressed", "no change"])
                 table = (args.out / "sweep.md").read_text()
@@ -171,7 +189,7 @@ class SweepTests(unittest.TestCase):
                 self.assertIn("suite/frame", table)
                 self.assertIn("r3d_span.small_max_side=2", table)
                 if len(seeds) == 1:
-                    self.assertIn("layout floor was not measured", table)
+                    self.assertIn("cannot separate a build from its layout", table)
 
 
 if __name__ == "__main__":

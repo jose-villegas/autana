@@ -144,8 +144,10 @@ capture of the first suite, which waits for the image to boot and is
 discarded, so no point takes the first capture after a boot. Default device images
 keep `TUNE_HOT` values constant. Every round visits the Cartesian product of knob values in a fresh,
 recorded random order. The first build and first value of each knob form the
-baseline. Knobs reset after each flash; the wrapper restores `origin/main`'s
-release image afterwards unless `--no-restore` is passed.
+baseline. Each capture sets its point's knobs under its own lock
+(`autana suite --set`), so whoever holds the board between two captures cannot
+change what is measured. The wrapper restores `origin/main`'s release image
+afterwards unless `--no-restore` is passed.
 
 ```sh
 launcher/tools/perf/perf_sweep.sh --knob r3d_span.small_max_side=2,3,4 \
@@ -167,13 +169,15 @@ launcher/tools/perf/perf_sweep.sh --knob r3d_span.small_max_side=2,3,4 \
 | `--dry-run` | Print flashes, capture count and point order without board access |
 | `--no-restore` | Omit the wrapper's release restore |
 
-The table includes timing rows, frame-cost stage averages and worst times,
-one-core span fields and per-call counters. With multiple seeds, complete
-per-seed means are the observations, so layout noise contributes to variance.
-With one seed, runs are the observations and the layout floor is not measured;
-comparisons across builds are inconclusive. With one seed, a significant difference must exceed
-the threshold to count as improved or regressed. `seed_statistics.compare()`
-applies Welch, TOST, permutation agreement and Holm across the table's cells.
+The table has one row per metric every capture reported: timing rows, the
+suite's own frame-cost stage averages, one-core span fields and per-call
+counters. A knob point is compared with its build's baseline point on the same
+images, so layout is shared and the interleaved runs are the observations; it
+counts as improved or regressed when significant, beyond the threshold, and in
+the same direction on every seed. A build is compared with the first build by
+per-seed means, which carry layout noise; with one seed that comparison is
+inconclusive. `seed_statistics.compare()` applies Welch, TOST, permutation
+agreement and Holm across the table's cells.
 
 `plan.json` and per-capture JSON retain failures; two consecutive capture
 failures stop acquisition. Rebuild the generated report with

@@ -1,3 +1,4 @@
+I (900) frame_cost: ms/frame avg/worst: ui.paint 0.45/3.4  r3d.draw 27.00/40.0 | total 27.45
 frame both cores: mean 10000us
 scale_split: 184x224 poses=4 tris=8 frame mean/p50/max us 10000/9900/11000 | r3d.draw 1.25/2.0  r3d.upscale 0.50/0.8 | total 1.75
 scale_spans: 184x224 one core us/pose setup 10 rows 20 span_setup 30 fill 40 clear 5
