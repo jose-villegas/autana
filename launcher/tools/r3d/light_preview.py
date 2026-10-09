@@ -31,10 +31,10 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from anim import track_host  # noqa: E402
+from anim import tracks_asset  # noqa: E402
 from r3d import mitsuba_reference  # noqa: E402
 from r3d.import_settings import load_scene, rotate  # noqa: E402
-from r3d.poses import camera_rays, parse_poses  # noqa: E402
+from r3d.poses import camera_rays  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.reference_render import device_picture, source_for  # noqa: E402
 
@@ -43,8 +43,6 @@ AREA_SAMPLES = 40000
 # Height of a caption line under a tile, and width of the label column, in pixels.
 CAPTION = 16
 LABEL_WIDTH = 260
-# The camera path is sampled this often and --at picks the nearest sample.
-POSE_STEP_MS = 100
 
 
 def toward(rotation):
@@ -83,6 +81,24 @@ def save_rotation(text, name, rotation):
         offset = start.end()
         return text[:offset] + found[0] + text[offset + len(body):]
     raise ValueError(f"the scene file has no object named {name!r}")
+
+
+def path_poses(animation, node, times):
+    """[eye, forward] of camera node `node` at each time in seconds along the clip a .anim.toml names, by the Python
+    sampler (no compiler needed): its translation, and its rotation turning -Z, as track_host --poses writes them."""
+    tracks, duration_ms = tracks_asset.decode(tracks_asset.bake(animation))
+    found = {track["name"]: track for track in tracks}
+    if f"{node}/translation" not in found or f"{node}/rotation" not in found:
+        raise ValueError(f"{animation}: no translation and rotation tracks for node {node!r}")
+    poses = []
+    for seconds in times:
+        seconds = seconds % (duration_ms / 1000) if duration_ms else 0.0
+        eye = np.array(tracks_asset.sample(found[f"{node}/translation"], seconds))
+        x, y, z, w = tracks_asset.sample(found[f"{node}/rotation"], seconds)
+        # The quaternion turning (0, 0, -1).
+        forward = -np.array([2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)])
+        poses.append(np.concatenate([eye, forward]))
+    return poses
 
 
 def area_samples(source, triangles, count, rng):
@@ -142,10 +158,8 @@ def main(argv=None):
         parser.error(f"no camera {args.camera or ''} with a path")
     camera = cameras[0].component
     width, height = map(int, args.size.split("x"))
-    text = track_host.poses(camera.path.animation, camera.path.node, POSE_STEP_MS, width, height,
-                            camera.half_fov_short_tan, camera.near_z)
-    _w, _h, lens, near, path = parse_poses(text)
-    poses = [path[min(len(path) - 1, round(seconds * 1000 / POSE_STEP_MS))] for seconds in args.at]
+    lens, near = camera.half_fov_short_tan, camera.near_z
+    poses = path_poses(camera.path.animation, camera.path.node, args.at)
 
     source, job = source_for(scene, args.object, lit=False)
     traced_lights = [light for light in scene.lights if light["type"] != "ambient"]
