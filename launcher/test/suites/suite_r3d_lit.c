@@ -21,6 +21,7 @@
 #include "render/raster_show.h"
 #include "render/ray.h"
 #include "util/runtime/memory.h"
+#include "util/runtime/tune.h"
 
 #define W 64
 #define H 48
@@ -1819,6 +1820,30 @@ census_raster(const r3d_instance_t* instances, int count) {
 /* The raster at size `z` of `sizes`, drawn directly and then from a census
  * taken at the next size: the same picture, depth and survivors. */
 static void
+test_cull_off_keeps_every_cluster(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const r3d_instance_t instance = {.mesh = &p->mesh};
+    raster_t raster = census_raster(&instance, 1);
+    const camera_t camera = camera_down_minus_z(10000.0f, 400, 1.0f);
+    const tune_entry_t* entry = tune_find(tune_shared(), "render.cull");
+    TEST_ASSERT_NOT_NULL(entry);
+    const int32_t saved = *entry->value;
+    *entry->value = 1;
+    const raster_stats_t on = raster_draw(&raster, &camera, 0);
+    *entry->value = 0;
+    const raster_stats_t off = raster_draw(&raster, &camera, 0);
+    *entry->value = saved;
+    TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
+    TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
+    int triangles = 0;
+    for (int i = 0; i < p->mesh.cluster_count; i++) {
+        triangles += p->mesh.clusters[i].triangle_count;
+    }
+    TEST_ASSERT_EQUAL_INT(triangles, off.triangles);
+}
+
+static void
 expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int sizes[][2], int z) {
     uint16_t* want = frame_held.want;
     raster->width = sizes[z][0];
@@ -2397,6 +2422,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_frame_workspace_is_aligned);
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
+    RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);

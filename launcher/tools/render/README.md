@@ -41,3 +41,21 @@ python launcher/tools/render/code_layout.py --write launcher/build.diag
 A changed layout is measured between revisions with the Sponza performance
 suite through `launcher/tools/perf/perf_compare.sh`. A slower layout is retuned
 with `RENDER_ENTRY_OFFSET` before the generated file is written.
+
+## Meshlet size captures
+
+`meshlet_capture.py prepare --scene PATH --sizes 16 32 64` copies tracked firmware
+sources into `launcher/tools/results/meshlet-sizes/tree`, re-clusters the committed
+scene triangles through `rebake.py`, and builds the size packs in one development
+build directory. `--open-app NAME --scene-command VERB ARGS...` includes
+opening the viewer and selecting the scene in the printed commands. It prints board commands for the capturing session; it never
+accesses the board. `select --row ROW` restores a prepared bake and builds its
+pack. `stamp` requires matching before/after build IDs and records the pack hash.
+
+`meshlet_sizes.py --scene PATH [--object NAME]` validates captures, regenerates
+bakes and their packs, and writes `Render-Pipeline.md#meshlet-sizes`. The selected
+renderer defaults to the scene's first renderer and must have an identity
+placement. Its camera's whole loop is sampled every 0.5 seconds at the default
+render size from the firmware headers. The table averages board frame-cost
+windows and uses the cost model's submitted-triangle feature for host counts.
+Missing captures, stamps, mismatched build IDs, pack hashes or render sizes fail.

@@ -47,6 +47,12 @@ DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
 
 if [ "${1:-}" = --stage ]; then
+    if [ "${2:-}" = meshlets ]; then
+        shift 2
+        . "$ROOT/scripts/lib/python.sh"
+        PYTHON=$(find_python numpy scipy) || exit 2
+        exec "$PYTHON" "$TOOLS_DIR/meshlet_sizes.py" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
+    fi
     if [ "${2:-}" = gpu ]; then
         shift 2
         exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"

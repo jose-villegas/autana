@@ -159,3 +159,20 @@ and measure the lighting again:
 ```sh
 launcher/tools/r3d/skin_light/report_skin_light.sh launcher/demo/capybara/capybara.glb gallop
 ```
+
+## Meshlet size captures
+
+Prepare scratch development builds of the shipped flythrough and print the
+board capture commands:
+
+```sh
+python launcher/tools/render/meshlet_capture.py prepare \
+  --scene launcher/demo/sponza/sponza.scene.toml --sizes 16 32 64 \
+  --open-app "Render Lab" --scene-command render scene sponza
+```
+
+The capture session runs the printed commands with the default camera, scale
+and shaded view. Each stamped monitor log records the firmware build ID and
+selected pack hash. Refresh the table from committed captures with
+`sh launcher/tools/render/render_doc_images.sh --stage meshlets`; the named
+block belongs to [Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).

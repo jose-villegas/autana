@@ -121,7 +121,7 @@ def load(path):
     return weights, np.array(rows), np.array(ms), labels
 
 
-def mesh_rows(path, poses_path):
+def mesh_rows(path, poses_path, cull=True):
     """One feature row per pose of a poses file for a generated mesh."""
     from r3d.appearance_simplify import projection
     from r3d.lit_mesh import finest_triangles, read_lit_mesh
@@ -138,7 +138,7 @@ def mesh_rows(path, poses_path):
         matrix = projection(pose[:3], pose[3:], width, height, lens, near)
         clip = np.concatenate([positions, np.ones((len(positions), 1))], axis=1) @ matrix.T
         drawn, heights, pixels = triangle_terms(np, clip, tris, double.astype(bool), width, height)
-        seen = clusters_in_view(boxes, matrix)
+        seen = clusters_in_view(boxes, matrix) if cull else np.ones(len(boxes), dtype=bool)
         rows.append(features(sizes[seen].sum(), drawn, heights, pixels, seen.sum()))
     return np.array(rows)
 
