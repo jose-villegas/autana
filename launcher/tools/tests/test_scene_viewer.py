@@ -1,6 +1,7 @@
 """The scene-file viewer through the shared harness, using temporary authored assets."""
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -75,16 +76,34 @@ path = { animation = "fly.anim.toml", node = "camera" }
         with Image.open(out) as image:
             return image.copy()
 
+    def test_every_declared_view_name_is_accepted(self):
+        run, _ = self.render("--view", "invalid")
+        self.assertNotEqual(run.returncode, 0)
+        names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
+        header = (TOOLS.parent / "main/render/context/render_context.h").read_text()
+        count = int(re.search(r"#define RENDER_VIEW_COUNT\s+(\d+)", header)[1])
+        self.assertEqual(len(names), count + 1)
+        self.assertEqual(names[0], "shaded")
+        for name in names:
+            with self.subTest(name=name):
+                run, out = self.render("--view", name)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertTrue(out.is_file())
+
     def test_selected_renderer_is_nonblank_and_has_declared_size(self):
         picture = self.pixels("--object", "card")
         self.assertEqual(picture.size, (448, 368))
         colours = dict((rgb, count) for count, rgb in picture.getcolors(picture.width * picture.height))
         self.assertGreater(colours.get((255, 40, 16), 0), 1000, "fixture triangle was not drawn")
 
-    def test_depth_differs_from_shaded(self):
-        shaded = self.pixels("--object", "card")
-        depth = self.pixels("--object", "card", "--view", "depth")
-        self.assertNotEqual(shaded.tobytes(), depth.tobytes())
+    def test_each_view_differs_from_shaded(self):
+        run, _ = self.render("--view", "invalid")
+        names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
+        shaded = self.pixels("--object", "card", "--view", "shaded")
+        for name in names[1:]:
+            with self.subTest(name=name):
+                picture = self.pixels("--object", "card", "--view", name)
+                self.assertNotEqual(shaded.tobytes(), picture.tobytes())
 
     def test_unknown_object_names_it_and_lists_renderers(self):
         run, out = self.render("--object", "missing")

@@ -28,10 +28,10 @@ with `"%.1f"`, and so are the Cornell scenes, which are float throughout.
 The fps text comes from the host fixture - time the board with a device
 capture. The Gouraud scene rotates when stepped over several frames.
 
-### Depth views
+### Debug views
 
-`--view shaded|depth|tiles` shows a lit-mesh scene's frame as the renderer
-left it (`shaded`, the default), as its depth buffer, or as that depth
+`--view shaded|depth|tiles|motion|meshlets` selects the declared context view.
+Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each
 tile's farthest depth, so the views are what the renderer holds at the
@@ -47,9 +47,14 @@ renderer's resolution, half the panel's each way, upscaled like the shaded
 one. They are `|nopin`, like the shaded Sponza renders: the camera path is
 float, so which pixels a triangle reaches can differ by compiler.
 `--view` sets the tunable `render_lab.view`, so on a development build
-`autana tune render_lab.view 2` switches the same views live. `--view` on a
+`autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
+values follow the render_view_t table order in render/context/render_context.c. `--view` on a
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
+Motion paints offsets red for x and green for y. Meshlets paints each mesh
+cluster a flat hue, with disjoint IDs across instances.
+
+![The meshlets view: full, lite and fitted](../../../../../docs/images/render/sponza-meshlets.png)
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.

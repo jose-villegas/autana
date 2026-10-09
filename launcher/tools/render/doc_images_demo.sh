@@ -3,7 +3,7 @@
 # The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only]
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
@@ -18,7 +18,10 @@ set -eu
 
 . scripts/lib/run.sh
 
-[ "$#" = 4 ] || { echo "$0: needs OUT WORK SCENE OBJECT" >&2; exit 2; }
+[ "$#" = 4 ] || { [ "$#" = 5 ] && [ "$5" = --meshlets-only ]; } || {
+    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only]" >&2
+    exit 2
+}
 SCENE=$3
 DEMO=$(dirname "$SCENE")
 ID=$(basename "$SCENE" .scene.toml)
@@ -29,6 +32,16 @@ W=$2
 run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
+
+for object in "$FULL" "${FULL}_lite" "${FULL}_fitted"; do
+    run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets-$object.bmp" \
+        --scene "$ID" --object "$object" --view meshlets 2> "$W/meshlets-$object.log"
+done
+run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/${ID}-meshlets.png" \
+    --still-column full "$W/meshlets-$FULL.bmp" \
+    --still-column lite "$W/meshlets-${FULL}_lite.bmp" \
+    --still-column fitted "$W/meshlets-${FULL}_fitted.bmp"
+[ "${5:-}" != --meshlets-only ] || exit 0
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare, small enough to sit side by side in a table.
@@ -52,6 +65,7 @@ demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
 demo_gif ${ID}-depth --scene "$ID" --object "$FULL" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$FULL" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$FULL" --view motion
+demo_gif ${ID}-meshlets --scene "$ID" --object "$FULL" --view meshlets
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.

@@ -76,22 +76,3 @@ void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quar
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
-
-/* The 8x8 pixel tile RASTER_SHOW_DEPTH_TILES reduces the depth to: the unit
- * a hierarchical depth test would cull by. */
-#define RASTER_SHOW_TILE 8
-
-/* What raster_show() puts in the colour buffer. */
-typedef enum {
-    RASTER_SHOW_SHADED,      /* the baked colours as drawn */
-    RASTER_SHOW_DEPTH,       /* the depth buffer as a grey ramp */
-    RASTER_SHOW_DEPTH_TILES, /* the farthest depth of each RASTER_SHOW_TILE square */
-    RASTER_SHOW_ATTACHMENT   /* + k: further attachment k's own view, else shaded */
-} raster_show_t;
-
-/* Development builds only: a release caller fails at link. Between draw and
- * upscale, overwrites the colour buffer from the depth: nearest white,
- * farthest black over the drawn range; a tile is empty if any pixel is.
- * Empty pixels take `clear`, as upscaling does, so pick one that is no
- * grey. */
-void raster_show(const raster_t* raster, raster_show_t mode);

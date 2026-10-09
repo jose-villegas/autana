@@ -145,6 +145,7 @@ $MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/raster_motion.c
+$MAIN_DIR/render/raster_meshlets.c
 $MAIN_DIR/render/r3d_pipeline.c
 $MAIN_DIR/render/upscale.c
 $MAIN_DIR/render/resolution/resolution.c

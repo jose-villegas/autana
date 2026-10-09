@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "render/camera.h"
 #include "render/r3d_instance.h"
@@ -37,6 +38,16 @@ typedef struct {
 } render_context_frame_t;
 
 typedef struct {
+    const char* name;
+    size_t state_bytes;
+    raster_attachment_t (*attachment)(void* state);
+} render_view_t;
+
+#define RENDER_VIEW_UNKNOWN -2
+#define RENDER_VIEW_SHADED  0
+#define RENDER_VIEW_COUNT   4 /* table rows; views run 0 to this */
+
+typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
@@ -47,7 +58,10 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    raster_show_t debug_view;
+    int view; /* zero is shaded; table rows start at one */
+    void* view_state;
+    raster_attachment_t view_attachment;
+    const raster_attachment_t* view_attached[1];
     render_context_frame_t frame;
 } render_context_t;
 
@@ -67,8 +81,16 @@ void render_context_set_scale(render_context_t* context, int percent);
 void render_context_set_dynamic_resolution(render_context_t* context, const resolution_config_t* config,
                                            const resolution_model_t* model, int first_step);
 
-/* Between draw and upscale, shows the frame as `mode` says; development only. */
-void render_context_set_debug_view(render_context_t* context, raster_show_t mode);
+/* Development views, or RENDER_VIEW_SHADED to detach the view. */
+void render_context_set_view(render_context_t* context, int view);
+/* The declared row, or NULL for shaded, an unknown index or a release build. */
+const render_view_t* render_context_view(int view);
+
+/* A view number, RENDER_VIEW_SHADED, or RENDER_VIEW_UNKNOWN for an unknown name. */
+int render_context_view_named(const char* name);
+
+/* Comma-separated names, shaded first, followed by the table order. */
+void render_context_print_views(FILE* out);
 
 /* Draws `count` instances through `camera` for a destination of `width` by
  * `height`, turned for `quarter`; false when there is no scratch for it. */
