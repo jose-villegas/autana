@@ -290,15 +290,20 @@ def variant_request(verb, args, flags, project):
 def flash(args):
     project = resolve_project()
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope"), project)
+    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--hot-tunables"), project)
     refuse_release_seed(seed, variant)
+    if "--hot-tunables" in seen and variant == "release":
+        sys.exit("autana: --hot-tunables needs dev or diag")
     quiet = "--quiet" in seen
+    hot_tunables = "--hot-tunables" in seen
     perf_scope = "--perf-scope" in seen
     command = device_command(
         "flash", "--variant", variant, "--worktree", project,
     )
     if perf_scope:
         command.append("--perf-scope")
+    if hot_tunables:
+        command.append("--hot-tunables")
     if seed is not None:
         command += ["--layout-seed", seed]
     return subprocess.call(command) if quiet else run_streaming_its_log(command)
@@ -326,8 +331,10 @@ def build(args):
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("build", args, ("--perf-scope",), project)
+    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables"), project)
     refuse_release_seed(seed, variant)
+    if "--hot-tunables" in seen and variant == "release":
+        sys.exit("autana: --hot-tunables needs dev or diag")
     flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
     return device_module().build_worktree(project, variant, flags)
 
@@ -470,11 +477,14 @@ def selftest(args):
     verbose = "--verbose" in rest
     if verbose:
         rest.remove("--verbose")
+    hot_tunables = "--hot-tunables" in rest
+    if hot_tunables:
+        rest.remove("--hot-tunables")
     perf_scope = "--perf-scope" in rest
     if perf_scope:
         rest.remove("--perf-scope")
     out, rest = pop_value(rest, "--out")
-    usage = "usage: autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]"
+    usage = "usage: autana selftest [seconds] [--verbose] [--perf-scope] [--hot-tunables] [--out PATH]"
     reject_unknown("selftest", rest)
     seconds = seconds_argument(rest, 3000.0, usage)
     project = resolve_project()
@@ -486,6 +496,8 @@ def selftest(args):
         command.append("--verbose")
     if perf_scope:
         command.append("--perf-scope")
+    if hot_tunables:
+        command.append("--hot-tunables")
     if out:
         command += ["--out", out]
     return subprocess.call(command)
@@ -612,7 +624,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--layout-seed N] [--verbose] [--out PATH] [--expect-build-id ID] | "
+              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--verbose] [--out PATH] [--expect-build-id ID] | "
               "autana suite list [text]")
 
 
@@ -647,6 +659,9 @@ def suite(args):
     flash = "--flash" in rest
     if flash:
         rest.remove("--flash")
+    hot_tunables = "--hot-tunables" in rest
+    if hot_tunables:
+        rest.remove("--hot-tunables")
     perf_scope = "--perf-scope" in rest
     if perf_scope:
         rest.remove("--perf-scope")
@@ -686,6 +701,8 @@ def suite(args):
         command += ["--suite", name]
     if perf_scope:
         command.append("--perf-scope")
+    if hot_tunables:
+        command.append("--hot-tunables")
     if seed is not None:
         command += ["--layout-seed", seed]
     if verbose:
@@ -1222,7 +1239,7 @@ def literal(name, value):
     return f"0x{int(value):06X}" if name.endswith("_rgb") else str(int(value))
 
 
-TUNE_LINE = re.compile(r"^TUNE\(\s*(\w+)\s*,\s*(\w+)\s*,", re.MULTILINE)
+TUNE_LINE = re.compile(r"^TUNE(?:_HOT)?\(\s*(\w+)\s*,\s*(\w+)\s*,", re.MULTILINE)
 
 
 def declarations(project):
@@ -1248,7 +1265,7 @@ def save():
         source = where[name]
         owner, what = name.split(".", 1)
         text = source.read_bytes().decode("utf-8")
-        declared = re.search(r"^TUNE\(\s*" + re.escape(owner) + r"\s*,\s*" + re.escape(what) + r"\s*,\s*([^,]+?)\s*,",
+        declared = re.search(r"^TUNE(?:_HOT)?\(\s*" + re.escape(owner) + r"\s*,\s*" + re.escape(what) + r"\s*,\s*([^,]+?)\s*,",
                              text, re.MULTILINE)
         if declared is None:
             print(f"  {name}: no TUNE({owner}, {what}, ...) in {source.name} - skipped")
@@ -1372,18 +1389,18 @@ def debug(args):
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N]",
+            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables]",
              "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N]",
+            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
              "build and flash this project; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--verbose]",
+            ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]",
              "run suites under one lock; --flash builds and flashes first; seconds caps a "
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",

@@ -95,8 +95,12 @@ def plan(args):
                 order = list(range(len(points)))
                 rng.shuffle(order)
                 rounds.append(order)
-            flashes.append(dict(build=build, seed=seed, rounds=rounds, suites=suites))
-    return dict(builds=builds, points=points, seeds=args.seeds, runs=args.runs,
+            command = ["--project", entry["project"], "flash", "diag",
+                       "--perf-scope", "--layout-seed", str(seed)]
+            if args.knob:
+                command.append("--hot-tunables")
+            flashes.append(dict(build=build, seed=seed, rounds=rounds, suites=suites, command=command))
+    return dict(builds=builds, points=points, seeds=args.seeds, runs=args.runs, hot_tunables=bool(args.knob),
                 rng_seed=rng_seed, flashes=flashes, captures=[], threshold=args.threshold,
                 alpha=args.alpha, timeout=args.timeout, wait=args.wait)
 
@@ -173,8 +177,7 @@ def run(args, runner=None):
             flashed = False
             try:
                 status_snapshot(args.out, stem, "before", runner, args.autana, identity=True, wait=args.wait)
-                code, lines, wall = command(["--project", build["project"], "flash", "diag",
-                                             "--perf-scope", "--layout-seed", str(flash["seed"])], stem)
+                code, lines, wall = command(flash["command"], stem)
                 if code:
                     raise RuntimeError(f"flash exited {code}; see {stem}.log")
                 flash["build_id"] = booted_build_id(build["project"], lines)
@@ -316,6 +319,8 @@ def report(directory):
     result = dict(unit="seed mean" if multi_seed else "run", rows=rows, units=units)
     write_json(directory / "sweep.json", result)
     lines = ["# Parameter sweep", ""]
+    if saved.get("hot_tunables"):
+        lines += ["knobs live: built with --hot-tunables", ""]
     for build in saved["builds"]:
         lines.append(f"Build {build['label']}: {build['project']}; build ids: {json.dumps(build['build_ids'], sort_keys=True)}")
     lines += ["", f"Seeds: {saved['seeds']}; runs per flash: {saved['runs']}; RNG seed: {saved['rng_seed']}.",

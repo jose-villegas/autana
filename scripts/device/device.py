@@ -968,9 +968,12 @@ def flash_commands(bash, worktree, variant, build_flags=()):
 
 
 def layout_flags(args):
-    """build.sh's flag for a layout seed; none for the plain build."""
+    """Image selection flags passed through to build.sh."""
     seed = getattr(args, "layout_seed", 0)
-    return ["--layout-seed", str(seed)] if seed else []
+    flags = ["--layout-seed", str(seed)] if seed else []
+    if getattr(args, "hot_tunables", False):
+        flags.append("--hot-tunables")
+    return flags
 
 
 def build_directory(worktree, variant):
@@ -1328,7 +1331,7 @@ def selftest(args, store, board):
     shape with a suite name to send."""
     worktree = str(Path(args.worktree).resolve())
     started_at = now()
-    extra_flags = ["--autorun"]
+    extra_flags = ["--autorun"] + layout_flags(args)
     if args.perf_scope:
         extra_flags.append("--perf-scope")
     flash_args = argparse.Namespace(owner=args.owner, purpose=args.purpose + " (flash)",
@@ -1582,8 +1585,8 @@ def batch(args, store, board):
     if args.out and (len(args.suite) != 1 or args.runs != 1):
         raise RuntimeError("--out only makes sense with exactly one --suite and --runs 1 - "
                            "several captures cannot all land on one path")
-    if (args.perf_scope or getattr(args, "layout_seed", 0)) and not args.flash:
-        raise RuntimeError("--perf-scope and --layout-seed select the image built - "
+    if (args.perf_scope or layout_flags(args)) and not args.flash:
+        raise RuntimeError("--perf-scope, --layout-seed and --hot-tunables select the image built - "
                            "they need --flash")
     single = len(args.suite) == 1 and args.runs == 1
     worktree = str(Path(args.worktree).resolve())
@@ -1749,6 +1752,8 @@ def main(argv=None):
     flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
     flash_parser.add_argument("--worktree", required=True)
     flash_parser.add_argument("--out")
+    flash_parser.add_argument("--hot-tunables", action="store_true",
+                              help="build with live hot-path tunables")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
     flash_parser.add_argument("--layout-seed", type=int, default=0,
@@ -1784,6 +1789,8 @@ def main(argv=None):
     selftest_parser.add_argument("--worktree", required=True)
     selftest_parser.add_argument("--out")
     selftest_parser.add_argument("--verbose", action="store_true")
+    selftest_parser.add_argument("--hot-tunables", action="store_true",
+                              help="build with live hot-path tunables")
     selftest_parser.add_argument("--perf-scope", action="store_true",
                                  help="build the perf-scoped image")
     # 3000 s leaves headroom over a full run's measured time, see
@@ -1821,6 +1828,8 @@ def main(argv=None):
     batch_parser.add_argument("--verbose", action="store_true")
     batch_parser.add_argument("--no-flash", dest="flash", action="store_false", default=True,
                               help="capture against the image already on the board")
+    batch_parser.add_argument("--hot-tunables", action="store_true",
+                              help="build with live hot-path tunables")
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
     batch_parser.add_argument("--layout-seed", type=int, default=0,

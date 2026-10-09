@@ -604,6 +604,11 @@ class FlashCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertNotIn("--perf-scope", command)
 
+    def test_hot_tunables_are_forwarded(self):
+        with project_call() as called:
+            autana.flash(["diag", "--quiet", "--hot-tunables"])
+        self.assertIn("--hot-tunables", called.call_args[0][0])
+
     def test_layout_seed_is_forwarded(self):
         with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet", "--layout-seed", "4"])
@@ -665,6 +670,16 @@ class BuildCommandTests(unittest.TestCase):
     def test_perf_scope_is_forwarded(self):
         _, built = self.build("diag", "--perf-scope")
         built.assert_called_once_with("C:/wt", "diag", ["--perf-scope"])
+
+    def test_hot_tunables_are_forwarded_to_the_build(self):
+        _, built = self.build("diag", "--hot-tunables")
+        built.assert_called_once_with("C:/wt", "diag", ["--hot-tunables"])
+
+    def test_hot_tunables_on_release_are_refused(self):
+        device = autana.device_module()
+        with mock.patch.object(device, "build_worktree") as built, self.assertRaises(SystemExit):
+            autana.build(["rel", "--hot-tunables"])
+        built.assert_not_called()
 
     def test_layout_seed_is_forwarded_to_the_build(self):
         _, built = self.build("diag", "--layout-seed", "3")
@@ -1750,6 +1765,11 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
         with project_call() as called:
             autana.suite(["run_gfx_suite", "--flash", "--perf-scope"])
         self.assertIn("--perf-scope", called.call_args[0][0])
+
+    def test_hot_tunables_are_forwarded(self):
+        with project_call() as called:
+            autana.suite(["run_gfx_suite", "--flash", "--hot-tunables"])
+        self.assertIn("--hot-tunables", called.call_args[0][0])
 
     def test_layout_seed_is_forwarded(self):
         with project_call() as called:

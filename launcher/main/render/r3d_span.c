@@ -29,9 +29,9 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_MAX_SIDE 2
 
 TUNE_OWNER(r3d_span);
-TUNE(r3d_span, small_max_side, SMALL_MAX_SIDE, 0, 8);
-TUNE(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
-TUNE(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
+TUNE_HOT(r3d_span, small_max_side, SMALL_MAX_SIDE, 0, 8);
+TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
+TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
 int r3d_span_stop_after;
 

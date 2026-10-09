@@ -117,7 +117,9 @@ class SweepTests(unittest.TestCase):
                     first = tool.plan(args)
                     self.assertEqual(first, tool.plan(args))
                     self.assertEqual(len(first["flashes"]), 2)
+                    self.assertTrue(first["hot_tunables"])
                     for flash in first["flashes"]:
+                        self.assertIn("--hot-tunables", flash["command"])
                         for order in flash["rounds"]:
                             self.assertEqual(sorted(order), list(range(6)))
                     schedules.append(first["flashes"])
@@ -154,6 +156,7 @@ class SweepTests(unittest.TestCase):
                 self.assertEqual(len(captures), 2 if failed else 12)
                 self.assertTrue(all("--expect-build-id" in call for call in captures))
                 self.assertEqual(sum("flash" in call for call in fake.calls), 1)
+                self.assertTrue(all("--hot-tunables" in call for call in fake.calls if "flash" in call))
                 self.assertTrue(any("reset" in call for call in fake.calls))
 
     def test_report_units_verdicts_and_table(self):

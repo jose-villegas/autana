@@ -323,6 +323,9 @@ idf_component_register(
 )
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
+    if(TUNE_HOT_LIVE)
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE TUNE_HOT_LIVE=1)
+    endif()
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
 
     # The FPU has no double: a float promoted to one, or a double constant in
