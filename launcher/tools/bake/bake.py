@@ -25,8 +25,9 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 (the lock keeps its row). `lock` drops the rows nothing needs;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written, so every locked file can be published; `--seed`
-locks the keys LOCK lacks from the files in the tree as they are, keeping
-every row it has, and marks each new row `seeded`: its bytes
+locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
+of the stale row for the same output when there is one, else the tree's file,
+and each new row is marked `seeded`: its bytes
 were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
@@ -596,12 +597,20 @@ def check(found, lock):
     return problems
 
 
-def seed(found, cache):
-    """Rows locking the tree's own files, each copied into the cache and marked seeded: the bytes are
-    carried over from the tree, not made by the code their key names. A run that makes the key again
-    writes a row without the mark."""
+def seed(found, cache, stale=()):
+    """Rows for keys LOCK lacks, each marked seeded: the bytes are carried over, not made by the code
+    their key names. They come from a `stale` row for the same output when there is one (a re-key
+    keeps what a run made, its file fetched as any locked file), else from the tree's own file. A run
+    that makes the key again writes a row without the mark."""
     rows, missing = [], []
+    previous = {row["output"]: row for row in stale}
     for bake in found:
+        if bake.output in previous:
+            old = previous[bake.output]
+            fetch_all([bake], {bake.key: old}, cache)
+            rows.append({**{name: old[name] for name in ("output", "source", "sha256", "size")},
+                         "key": bake.key, "seeded": True})
+            continue
         if not bake.tree.is_file():
             missing.append(describe(bake, f"{relative(bake.tree)} is not in the tree to seed from", bake_again(bake)))
             continue
@@ -789,7 +798,9 @@ def main(argv=None):
         elif args.command == "lock":
             if args.seed:
                 held = [bake for bake in found if bake.key in lock]
-                rows = lock_rows(held, lock) + seed([bake for bake in found if bake.key not in lock], cache)
+                needed = {bake.key for bake in found}
+                stale = [row for key, row in lock.items() if key not in needed]
+                rows = lock_rows(held, lock) + seed([bake for bake in found if bake.key not in lock], cache, stale)
             elif args.from_run is not None:
                 from bake import produce
 

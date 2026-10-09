@@ -275,6 +275,21 @@ class LockTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {bake.CACHE_VARIABLE: str(self.cache)}):
             self.assertEqual(bake.default_cache(), self.cache)
 
+    def test_a_rekeyed_output_keeps_the_bytes_its_stale_row_locked(self):
+        refit = b"LMSH refit"
+        stale = {**self.row, "key": "o" * 64, "sha256": hashlib.sha256(refit).hexdigest(), "size": len(refit), "run": 5}
+        bake.place(refit, bake.cached(stale, bake.MESH_SUFFIX, self.cache))
+        found = [bake_of("k" * 64, self.tree)]
+        written = []
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock", return_value={"o" * 64: stale}), \
+                mock.patch.object(bake, "write_lock", side_effect=written.append), \
+                mock.patch("urllib.request.urlopen") as network, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
+        network.assert_not_called()
+        self.assertEqual(written[0], [{"output": "one.mesh", "source": "a.scene.toml", "key": "k" * 64,
+                                       "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
+
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
         with mock.patch.object(bake, "bakes", return_value=found), \
