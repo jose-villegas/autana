@@ -39,6 +39,7 @@ extern const render_lab_scene_t scene_wire_capsule;
 extern const render_lab_scene_t scene_raytrace;
 extern const render_lab_scene_t scene_pathtrace;
 extern const render_lab_scene_t scene_sponza;
+extern const render_lab_scene_t scene_capybara;
 extern const render_lab_scene_t scene_sponza_lite;
 extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
@@ -60,6 +61,7 @@ static const render_lab_scene_t* const scenes[] = {
     &scene_sponza_fitted,
     &scene_sponza_fitted_full,
     &scene_sponza_flat_fitted,
+    &scene_capybara,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -485,14 +487,19 @@ render_lab_invalidate(void) {
     current_scene()->invalidate();
 }
 
-/* The scene's own update(), if it has one, overlapped with the send of the
- * frame drawn last pass. A scene switch or the menu takes effect in frame(),
+/* The scene's own steer() and update(), where it has them, overlapped with
+ * the send of the frame drawn last pass. A scene switch or the menu takes effect in frame(),
  * which runs after this, so a scene must cope with frame() arriving without
  * a matching update(). */
 static void
 render_lab_update(uint32_t dt_ms, const input_t* input) {
-    (void)input;
-    if (!menu_open && current_scene()->update != NULL) {
+    if (menu_open) {
+        return;
+    }
+    if (current_scene()->steer != NULL) {
+        current_scene()->steer(dt_ms, input);
+    }
+    if (current_scene()->update != NULL) {
         current_scene()->update(dt_ms);
     }
 }
