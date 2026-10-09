@@ -19,6 +19,8 @@
 #define COLOR_SCALE 256.0f
 #define STEP_MAX    4194304.0f
 
+_Static_assert(((int64_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT) <= INT32_MAX, "16.8 depth fits int32");
+
 static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 
 int r3d_span_stop_after;
