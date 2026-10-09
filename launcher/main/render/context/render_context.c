@@ -47,11 +47,11 @@ render_context_view_named(const char* name) {
 
 void
 render_context_print_views(FILE* out) {
-    fputs("shaded", out);
+    (void)fputs("shaded", out);
     for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
         const render_view_t* row = render_context_view(i);
         if (row != NULL) {
-            fprintf(out, ", %s", row->name);
+            (void)fprintf(out, ", %s", row->name);
         }
     }
 }
