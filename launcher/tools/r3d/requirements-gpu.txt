@@ -1,0 +1,5 @@
+# The appearance fit's GPU packages, as README.md's fit environment installs them
+# (torch from the CUDA 12.8 index, nvdiffrast built from its v0.4.0 tag). A fit's key
+# counts these pins and bake.py refuses to fit in an environment that differs.
+torch==2.11.0+cu128
+nvdiffrast==0.4.0
