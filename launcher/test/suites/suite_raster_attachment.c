@@ -13,11 +13,11 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "core/memory.h"
 #include "render/context/render_context.h"
 #include "render/raster_meshlets.h"
 #include "render/raster_motion.h"
 #include "render/raster_show.h"
-#include "util/runtime/memory.h"
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"
 #endif

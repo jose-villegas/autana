@@ -296,7 +296,7 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called. The
-wire and cube scenes project in float (`util/math/`) and are pinned too:
+wire and cube scenes project in float (`math/linear/`) and are pinned too:
 their pixels are whole-pixel truncations of single-precision sums, built
 without fast-math or FMA, and their rotations call `sinf` and `cosf`, whose
 last bit differs between libms and moves a pixel only at a truncation

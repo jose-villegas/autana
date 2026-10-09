@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
-#include "util/math/vec3f.h"
+#include "math/linear/vec3f.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;

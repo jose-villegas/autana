@@ -21,13 +21,13 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/orbit_motion_touch.h"
+#include "math/motion/orbit_motion.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "util/motion/orbit_motion.h"
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 static const char* TAG = "capybara";
 

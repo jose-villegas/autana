@@ -30,12 +30,12 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* const TAG = "device_tests";
 

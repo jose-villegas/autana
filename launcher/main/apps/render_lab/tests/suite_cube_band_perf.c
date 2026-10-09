@@ -26,6 +26,7 @@
 
 #include "esp_log.h"
 
+#include "core/timing.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
@@ -34,7 +35,6 @@
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/runtime/timing.h"
 
 /* app_render_lab.c's own toggle and lifecycle, exposed the same way
  * suite_cube_perf.c already relies on. */

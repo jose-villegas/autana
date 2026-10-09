@@ -16,9 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/frame_watch.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
-#include "util/runtime/frame_watch.h"
 
 typedef enum { NEVER, ONCE, EVERY, TURNS } how_often_t;
 

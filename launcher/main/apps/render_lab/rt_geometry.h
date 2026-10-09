@@ -4,7 +4,7 @@
  * one light, nearest hit and occlusion. No scene DATA lives here - a scene
  * is built and owned by whoever traces it, such as rt_cornell_scene.c.
  *
- * ESP-IDF-free and host-testable, on the float vector of util/math/.
+ * ESP-IDF-free and host-testable, on the float vector of math/linear/.
  */
 #pragma once
 

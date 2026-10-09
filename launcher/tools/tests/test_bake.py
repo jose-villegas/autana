@@ -80,7 +80,7 @@ class NativeTests(unittest.TestCase):
     def test_the_pose_samplers_c_and_headers_are_in_the_mesh_stage(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
-                         "launcher/main/util/scalar/mathf.h"} <= set(names))
+                         "launcher/main/math/scalar/mathf.h"} <= set(names))
 
     def test_a_compiled_submodule_counts_as_its_pinned_commit(self):
         names = bake.native_inputs(bake.stage_files("mesh"))

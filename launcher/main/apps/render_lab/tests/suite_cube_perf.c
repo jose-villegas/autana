@@ -25,10 +25,10 @@
 #include "esp_log.h"
 
 #include "app/app.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 /* scene_cube.c's own toggle - each test sets this explicitly (see
  * run_perf_capture()'s with_partial parameter) rather than trusting

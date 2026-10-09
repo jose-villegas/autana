@@ -10,11 +10,11 @@
 #include <math.h>
 
 #include "gfx/gfx.h"
+#include "math/motion/orbit_motion.h"
 #include "render/camera.h"
 #include "render/r3d_pipeline.h"
 #include "suites.h"
 #include "unity.h"
-#include "util/motion/orbit_motion.h"
 
 #define LENS_TAN      0.5F
 #define SPHERE_RADIUS 0.8F

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when docs/math/README.md and util/math/ disagree about what exists.
+"""Fail when docs/math/README.md and math/linear/ disagree about what exists.
 
     python scripts/gates/check_math_docs.py [--root ROOT]
 
@@ -32,7 +32,7 @@ import pathlib
 import re
 import sys
 
-MATH = pathlib.Path("launcher/main/util/math")
+MATH = pathlib.Path("launcher/main/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
 
 FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")

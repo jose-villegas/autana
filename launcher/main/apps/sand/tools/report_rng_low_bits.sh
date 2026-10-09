@@ -45,7 +45,7 @@ OUT_BIN="$BUILD_DIR/rng_low_bits"
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
     "$SCRIPT_DIR/rng_low_bits.c" \
-    "$MAIN_DIR/util/runtime/job.c" \
+    "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_chunk_sched.c" \
     "$SAND_DIR/sand_impulse.c" \

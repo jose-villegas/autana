@@ -9,7 +9,7 @@
  * Camera-space points are int32 in 1/512 of a meter, the resolution a pixel
  * needs and one a 32-bit product with a Q9 focal length cannot overflow at.
  * The view's matrix entries are Q9 too, so mat4x_apply() of a Q16.16 point
- * (util/scalar/mathx.h) lands in that space with no further shift. Header-only,
+ * (math/scalar/mathx.h) lands in that space with no further shift. Header-only,
  * static inline and ESP-IDF-free.
  */
 #pragma once
@@ -17,10 +17,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/linear/mat4x.h"
+#include "math/linear/vec_convert.h"
+#include "math/scalar/mathx.h"
 #include "render/r3d_project.h"
-#include "util/math/mat4x.h"
-#include "util/math/vec_convert.h"
-#include "util/scalar/mathx.h"
 
 /* One meter in camera space, and the focal length's one. */
 #define R3D_X_UNIT_ONE    512
