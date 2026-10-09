@@ -19,11 +19,14 @@ def find_compiler(variable, names, language):
     raise SystemExit(f"no {language} compiler found: set {variable}")
 
 
-def build_shared(name, cache, sources, compiler, flags=(), windows_flags=(), depends=(), libraries=(), log=print):
+def build_shared(name, cache, sources, compiler, flags=(), windows_flags=(), depends=(), libraries=(), log=print,
+                 mode=ctypes.DEFAULT_MODE):
     """Compiles `sources` into cache/<name>.dll or .so unless that is current
     against them and `depends`, and returns it loaded. `flags` are for every
     platform, `libraries` follow the sources; Windows also gets `windows_flags` and a static runtime, other
-    systems position-independent code."""
+    systems position-independent code. `mode` is ctypes.CDLL's. The library is
+    written under a name of this process's and renamed into place, so processes
+    building it at once never load a half-written file."""
     cache.mkdir(exist_ok=True)
     windows = sys.platform == "win32"
     path = cache / f"{name}{'.dll' if windows else '.so'}"
@@ -31,6 +34,8 @@ def build_shared(name, cache, sources, compiler, flags=(), windows_flags=(), dep
     if not path.exists() or path.stat().st_mtime < max(p.stat().st_mtime for p in watched):
         log(f"building {path.name} with {compiler}")
         platform_flags = ["-static", *windows_flags] if windows else ["-fPIC"]
-        subprocess.run([compiler, "-O2", "-shared", *platform_flags, *flags, "-o", str(path), *map(str, sources), *libraries],
-                       check=True)
-    return ctypes.CDLL(str(path))
+        building = path.with_suffix(f".{os.getpid()}{path.suffix}")
+        subprocess.run([compiler, "-O2", "-shared", *platform_flags, *flags, "-o", str(building), *map(str, sources),
+                        *libraries], check=True)
+        os.replace(building, path)
+    return ctypes.CDLL(str(path), mode=mode)

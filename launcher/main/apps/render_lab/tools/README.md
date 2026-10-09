@@ -129,9 +129,10 @@ nothing in the build reads it.
 every loop as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
-measurement. After editing the `.blend`, export it again with Blender
-through the model-agnostic exporter, naming the loops (the file also
-holds the rig's own `capyrigAction`):
+measurement. The export is a cached bake: `capybara.import.toml` names the
+`.blend` and the loops to export (the file also holds the rig's own
+`capyrigAction`), and `launcher/tools/bake/bake.py` runs the model-agnostic
+exporter in Blender. By hand, it is:
 
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \

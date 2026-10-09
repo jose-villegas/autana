@@ -33,14 +33,20 @@ mesh. Nothing here runs on the board.
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
+| [light_preview.py](light_preview.py) | Tries a scene's directional light at other rotations before a bake: a path-traced still per rotation and camera-path time, the share of chosen materials in direct sun (`--share floor`), the bounced light at other `[indirect]` intensities (`--indirect 2 1`), and `--save` to write the chosen rotation into the scene file. |
 | [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Mesh-Import.md#bounced-light-implementation). |
 | [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
 | [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
+| [isa.py](isa.py) | Pins Mitsuba's CPU backend to one instruction set before Mitsuba loads: Dr.Jit's LLVM kernels for x86-64-v3 at 8 lanes, Embree capped at AVX2 through [embree_cap.c](embree_cap.c), so ray results depend on the CPU's vendor alone. |
 
 The environment is pinned in [requirements.txt](requirements.txt), and the
 simplifier needs the meshoptimizer submodule and a host C++ compiler (`CXX`,
 else `c++` or `g++`). The bake traces its rays on Mitsuba's LLVM variant, so it also
 needs libLLVM and Dr.Jit needs libatomic1 (`apt install libatomic1 llvm` on Linux); without them the bake stops with an error.
+[isa.py](isa.py) compiles those rays for x86-64-v3 (AVX2 and FMA) at 8 lanes and caps Embree at AVX2, building a
+small C library with the host C compiler (`CC`, else `cc`, `gcc` or `clang`), so a recipe bakes to the same bytes on
+every x86-64 Linux host of one vendor (AMD and Intel differ by an ulp; see its docstring); elsewhere it logs that the
+bake may differ.
 Git LFS is a prerequisite for source bakes on Windows and Linux.
 From `launcher/`:
 

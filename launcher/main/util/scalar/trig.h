@@ -1,8 +1,8 @@
 /*
- * trig, sine and cosine of a 16-bit phase, in integers: 65536 is one turn
- * and the result is Q15. A quarter-wave table of 65 entries, interpolated,
- * which is 256 steps a turn before interpolation and exact at the quarter
- * points.
+ * trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn
+ * and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. A
+ * quarter-wave table of 65 entries, interpolated, which is 256 steps a turn
+ * before interpolation and exact at the quarter points.
  *
  * `static inline`, like fixed.h beside it: some callers want one per point
  * drawn.
@@ -10,6 +10,12 @@
 #pragma once
 
 #include <stdint.h>
+
+#define TRIG_TURN_SHIFT   16
+#define TRIG_TURN         (1u << TRIG_TURN_SHIFT)
+#define TRIG_QUARTER_TURN (TRIG_TURN / 4)
+#define TRIG_SIN_SHIFT    15
+#define TRIG_SIN_MAX      ((1 << TRIG_SIN_SHIFT) - 1)
 
 static const int16_t trig_sin_quarter[65] = {
     0,     804,   1608,  2410,  3212,  4011,  4808,  5602,  6393,  7179,  7962,  8739,  9512,
@@ -32,21 +38,21 @@ trig_sin_quadrant(uint32_t r) {
     return a + (((b - a) * (int32_t)(r & 0xFF)) >> 8);
 }
 
-/* sin of a 16-bit phase (65536 == one turn), Q15. */
+/* Sine of phase, TRIG_TURN to the turn; TRIG_SIN_SHIFT fractional bits. */
 static inline int32_t
 trig_sin(uint16_t phase) {
-    const uint32_t quadrant = (uint32_t)phase >> 14;
-    const uint32_t rest = (uint32_t)phase & 0x3FFF;
+    const uint32_t quadrant = (uint32_t)phase >> (TRIG_TURN_SHIFT - 2);
+    const uint32_t rest = (uint32_t)phase & (TRIG_QUARTER_TURN - 1);
 
     switch (quadrant) {
         case 0: return trig_sin_quadrant(rest);
-        case 1: return trig_sin_quadrant(16384u - rest);
+        case 1: return trig_sin_quadrant(TRIG_QUARTER_TURN - rest);
         case 2: return -trig_sin_quadrant(rest);
-        default: return -trig_sin_quadrant(16384u - rest);
+        default: return -trig_sin_quadrant(TRIG_QUARTER_TURN - rest);
     }
 }
 
 static inline int32_t
 trig_cos(uint16_t phase) {
-    return trig_sin((uint16_t)(phase + 16384u));
+    return trig_sin((uint16_t)(phase + TRIG_QUARTER_TURN));
 }
