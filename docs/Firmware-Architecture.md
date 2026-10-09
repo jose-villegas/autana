@@ -160,8 +160,8 @@ is room in PSRAM for a second one and no time for it: a per-frame catch-up
 copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
 and a full frame over QSPI is bus-bound, not CPU-bound
 ([Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
-bus-bound"). The decision and its measurements are decision B in
-[plans/Autana-Rendering-Roadmap.md](plans/Autana-Rendering-Roadmap.md).
+bus-bound"). See the
+[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy).
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an

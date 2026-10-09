@@ -80,6 +80,22 @@ development build's `HEAPMARK` lines. The host model's budget is recorded in
 `launcher/tools/device/device_profiles/esp32s3.sh`; it is not a live heap
 measurement of every build variant.
 
+### PSRAM throughput
+
+Device measurements put PSRAM reads at 33–58 MB/s depending on access
+pattern, versus 365–724 MB/s for internal RAM. Sequential copies measure
+about 58 MB/s out of PSRAM, 47 MB/s into it and 22 MB/s from PSRAM to PSRAM.
+Writes incur cache-line loads before writeback, so bulk copies are costly
+beside the arithmetic they support. These are measured access-pattern
+ranges, not a guarantee for a particular buffer or clock configuration.
+Prefer internal SRAM for hot working data where it fits, and read PSRAM
+for bulk or cold content. The [presentation memory policy](../Gfx-and-Presentation.md#presentation-memory-policy)
+explains how retained framebuffers and the band ring use these tiers.
+
+At 240 MHz, one core has about 24 cycles per physical pixel at 60 fps,
+48 at 30 fps, or 97 per half-resolution pixel at 60 fps. These are clock
+and pixel-count budgets, not measured rendering costs.
+
 ### Cache is carved from the same pool
 
 | Cache | Build configuration | Access |

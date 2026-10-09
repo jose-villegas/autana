@@ -7,7 +7,6 @@
  * transform, clip and fill on both cores. One scene per bake shares this code.
  */
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -146,9 +145,8 @@ scene_sponza_invalidate(void) {}
 
 /* The shell has already drawn the scene into the framebuffer. */
 static void
-scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
+scene_sponza_frame(uint32_t dt_ms) {
     (void)dt_ms;
-    assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
     apply_budget();
 #if TUNE_ENABLED
     render_context_set_view(render_context_main(), render_lab_view());
@@ -176,7 +174,7 @@ sponza_status(void) {
 /* What every bake's scene shares; each names itself, its key and its bake's enter. */
 #define SPONZA_SCENE_FIELDS                                                                                            \
     .frame = scene_sponza_frame, .exit = scene_sponza_exit, .invalidate = scene_sponza_invalidate,                     \
-    .status = sponza_status, .needs_full_framebuffer = true, .shows_view_modes = true
+    .status = sponza_status, .shows_view_modes = true
 
 const render_lab_scene_t scene_sponza = {
     .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};

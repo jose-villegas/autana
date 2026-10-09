@@ -1966,7 +1966,6 @@
 2	launcher/main/apps/input_lab/touch_probe.c:37	touch_probe_record
 2	launcher/main/apps/input_lab/touch_probe.c:104	touch_probe_shuffle
 2	launcher/main/apps/render_lab/app_render_lab.c:164	enter_layout
-2	launcher/main/apps/render_lab/app_render_lab.c:349	render_lab_coverage_mark
 2	launcher/main/apps/render_lab/app_render_lab.c:458	render_lab_update
 2	launcher/main/apps/render_lab/scene_sponza.c:56	enter_with
 2	launcher/main/apps/render_lab/scene_sponza.c:113	sponza_status

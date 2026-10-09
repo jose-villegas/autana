@@ -1,6 +1,6 @@
 /*
- * r3d: what a scene includes to draw a baked lit mesh or trace rays: the
- * camera, the raster, the viewport, the ray camera and the float vector.
+ * r3d: what a scene includes to draw a baked lit mesh: the camera,
+ * raster, viewport and float vector.
  * Cull, transform and fill (r3d_pipeline.h, r3d_span.h) are render/'s own,
  * public only to its suites and host tools.
  */

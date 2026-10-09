@@ -29,12 +29,12 @@ static void
 test_hud_screen_command_list_fits_budget(void) {
     fixture();
 
-    /* Exercise all HUD boxes with the fitted scene name and a mesh status. */
+    /* Scene status buffers hold at most 47 visible characters. */
     const render_lab_hud_screen_state_t state = {
         .fps_value = 999.9F,
         .scene_title = "Sponza Fitted Full",
         .scene_title_alpha = 255,
-        .status = "448x368 20000 tris",
+        .status = "no asset 'abcdefghijklmnopqrstuvwxyz': flash it",
     };
 
     const input_t input = {0};
@@ -48,8 +48,6 @@ test_menu_screen_command_list_fits_budget(void) {
     fixture();
 
     const render_lab_menu_screen_state_t state = {
-        .partial_updates_on = true,
-        .band_mode_on = true,
         .scene_name = "Sponza Fitted Full",
     };
 

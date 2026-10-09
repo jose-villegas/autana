@@ -2,7 +2,7 @@
 #
 # Render this app's scenes on a host, with no board and no flash cycle.
 #
-#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>] [--update-baseline]
+#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
@@ -62,6 +62,9 @@ scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 # every compiler. The tests in tools/tests compare the views with each other.
 #
 scene_renders="
+sponza-landscape-hud|--quarter 1 --scene sponza --frames 2|448x368|nopin
+sponza-portrait-hud|--quarter 0 --scene sponza --frames 2|368x448|nopin
+sponza-title-fading|--quarter 1 --scene sponza --frames 110|448x368|nopin
 sponza-landscape|--quarter 1 --no-hud --scene sponza --frames 2|448x368|nopin
 sponza-portrait|--quarter 0 --no-hud --scene sponza --frames 2|368x448|nopin
 sponza-flipped|--quarter 3 --no-hud --scene sponza --frames 2|448x368|nopin

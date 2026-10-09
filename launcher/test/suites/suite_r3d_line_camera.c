@@ -1,5 +1,5 @@
 /*
- * Portable suite: the line camera, its viewport fit and upright roll.
+ * Portable suite: the line camera, its viewport fit.
  * Each check supplies its own pose, length unit and viewport.
  */
 
@@ -101,53 +101,11 @@ test_viewport_centre_and_scale_fit_the_shorter_axis(void) {
     check_viewport_centre_and_scale(400, 300, 200, 150, 150.0F); /* landscape: width is longer */
 }
 
-/* r3d_line_camera_upright() */
-
-static void
-check_up_point_moves_toward_the_quarters_own_edge(int quarter, int expect_dx_sign, int expect_dy_sign) {
-    transformf_t model = TRANSFORMF_IDENTITY;
-    const r3d_line_camera_t camera = r3d_line_camera_upright(camera_fixture(), quarter);
-    const viewport_t viewport = {.width = 368, .height = 448, .quarter = 0};
-    const r3d_line_view_t view = r3d_line_camera_view(camera, &model, viewport);
-
-    const vec3f_t target = r3d_to_camera_space((vec3f_t){0.0F, 0.0F, 5.0F}, &view);
-    const vec3f_t up = r3d_to_camera_space((vec3f_t){0.0F, 1.0F, 5.0F}, &view);
-    int tx, ty, ux, uy;
-    TEST_ASSERT_TRUE(r3d_project_point_cs(target, &view, &tx, &ty));
-    TEST_ASSERT_TRUE(r3d_project_point_cs(up, &view, &ux, &uy));
-
-    const int dx = ux - tx;
-    const int dy = uy - ty;
-
-    if (expect_dx_sign == 0) {
-        TEST_ASSERT_EQUAL_INT(0, dx);
-    } else {
-        TEST_ASSERT_TRUE(expect_dx_sign > 0 ? dx > 0 : dx < 0);
-    }
-    if (expect_dy_sign == 0) {
-        TEST_ASSERT_EQUAL_INT(0, dy);
-    } else {
-        TEST_ASSERT_TRUE(expect_dy_sign > 0 ? dy > 0 : dy < 0);
-    }
-}
-
-/* Screen y grows downward, so "up" moving toward the panel's TOP edge is a
- * negative dy; quarter 1..3 roll that same world point toward the right,
- * bottom and left edges in turn. */
-static void
-test_a_point_above_the_target_projects_toward_each_quarters_own_up_edge(void) {
-    check_up_point_moves_toward_the_quarters_own_edge(0, 0, -1);
-    check_up_point_moves_toward_the_quarters_own_edge(1, 1, 0);
-    check_up_point_moves_toward_the_quarters_own_edge(2, 0, 1);
-    check_up_point_moves_toward_the_quarters_own_edge(3, -1, 0);
-}
-
 void
 run_r3d_line_camera_suite(void) {
     RUN_TEST(test_an_on_axis_point_lands_on_the_viewport_centre);
     RUN_TEST(test_view_matrix_matches_the_hand_built_one_for_two_unrelated_poses);
     RUN_TEST(test_viewport_centre_and_scale_fit_the_shorter_axis);
-    RUN_TEST(test_a_point_above_the_target_projects_toward_each_quarters_own_up_edge);
 }
 
 SUITE_REGISTER(run_r3d_line_camera_suite);

@@ -749,12 +749,9 @@ and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly.
 `suite_gfx_band_run.c` drives `gfx_band_run()` over host malloc'd band
-buffers. Only the DMA send and strip-bounce aliasing need the device, so an
-app's device-only perf suite times a full-redraw renderer's band-mode path
-against its full-framebuffer path on the same scene.
+buffers. Only the DMA send and strip-bounce aliasing need the device.
 
-`ui_launcher.c`'s microui
-integration is driven by `suite_ui_launcher.c`.
+`ui_launcher.c`'s microui integration is driven by `suite_ui_launcher.c`.
 
 The framework is Unity, the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF

@@ -10,11 +10,7 @@
 #define HUD_INSET_PX    16
 #define HUD_LINE_GAP_PX 4
 
-/* mu_text() draws only its own ink. Under render_lab_partial_updates a scene only
- * erases its OWN last bounding box, never this one, so old text the
- * repainted line doesn't overdraw would stay on screen without this opaque
- * backing - painted through the same mu command list already hashed, at
- * no cost on frames where nothing changed. */
+/* Opaque backing keeps HUD text legible over the scene. */
 static mu_Rect
 draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
     const mu_Rect box = mu_rect(x, y, gfx_text_width(text, -1) + 8, gfx_text_height() + 4);
@@ -25,9 +21,8 @@ draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
 }
 
 /* Centred on the highest HUD row whose corner box it clears: `row_right[i]`
- * is where row i's box ends, 0 for an empty row. The box stays opaque while
- * the ink fades: a dithered box would leave the pixels it no longer covers
- * showing last frame's title wherever no scene erases them. */
+ * is where row i's box ends, 0 for an empty row. The backing stays opaque
+ * to keep fading text legible over the scene. */
 #define HUD_CORNER_ROWS 2
 
 static void

@@ -87,7 +87,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no**: a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | the launcher, any microui screen | a software 3D renderer | a frame that is a grid of palette indices |
+| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices |
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
@@ -217,7 +217,24 @@ sequenceDiagram
 
 The wait is mandatory: DMA is still reading the buffer until it returns.
 
+## Presentation memory policy
+
+Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
+by core 1 into internal DMA buffers while core 0 updates app state; drawing
+waits for that read to finish. A catch-up copy between PSRAM framebuffers
+costs 6–15 ms per frame at about 22 MB/s, so presentation uses one retained
+framebuffer. Full-frame strip presentation measures about 10.2–10.9 ms at
+80 MHz QSPI on the device. The mesh raster is a measured exception: its
+colour and depth targets and upscaled framebuffer are written in PSRAM.
+See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
+memory throughput and placement.
+
 ## The band ring
+
+The ring overlaps drawing and sending, so frame time approaches the larger
+of render cost and transfer cost, plus setup and slot waits, rather than
+their sum. Device timing is required to establish the overlap for a caller;
+host state-machine tests do not measure the panel bus.
 
 A picture is either **persistent**, a framebuffer or index image read by gfx
 on core 1 after `frame()`, or **transient**, an app's `draw_band` callback,

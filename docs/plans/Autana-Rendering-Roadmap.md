@@ -17,9 +17,9 @@ transfer. See [Firmware Architecture](../Firmware-Architecture.md) and
 The mesh runtime uses baked lighting, span rasterization, clipping and
 visibility data. Render Lab's Sponza variants exercise scene loading,
 camera clips, dynamic resolution and the context views. The boot animation
-and motion view share the projection helpers in `render/r3d_project.h`;
-`render/r3d_line_camera.h` and `render/r3d_project_x.h` supply the line
-camera and fixed-point projection paths.
+uses `render/r3d_line_camera.h` to place its camera and
+`render/r3d_project_x.h` for fixed-point projection. The motion view uses
+the float projection helpers in `render/r3d_project.h`.
 
 Bulk memory comes from the [app arena](../Building-an-App.md#app-memory)
 at entry. Internal SRAM is the scarce resource for hot buffers; PSRAM can
@@ -50,6 +50,18 @@ Verify [compiler decisions](../notes/Flashing-and-Toolchain.md#verify-compiler-d
 with disassembly. Keep hot loops within the configured instruction cache,
 check divide widths and signed rounding, and measure the stripped shipping
 image. Measurement switches that skip real work belong only in probes.
+
+## Automated regression gates
+
+Add a build-time internal-RAM gate that budgets static storage, stacks and
+the largest hot allocation together for every build variant. A change that
+exceeds the budget must fail the build rather than rely on manual heap
+measurements.
+
+Add an inlining-cliff gate over the final image's disassembly: flag hot
+loops whose helper calls or code growth cross the instruction-cache budget.
+Keep this gate active throughout rendering work, with device timings to
+validate compiler changes.
 
 ## FPS with gyro and buttons
 
