@@ -920,10 +920,11 @@ b5(gfx_color_t c) {
 
 static void
 test_a_root_darkens_as_more_root_grows_around_it(void) {
+    material_frame_t f = {0};
     gfx_color_t col[3];
     gfx_color_t by_count[6];
     for (unsigned n = 0; n < 6u; n++) {
-        material_colours(MATX(MATX_ROOT), 3u, 0u, n, col);
+        material_colours(&f, MATX(MATX_ROOT), 3u, 0u, n, col);
         by_count[n] = col[0];
     }
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(by_count[0], by_count[1],
@@ -944,14 +945,15 @@ test_a_root_darkens_as_more_root_grows_around_it(void) {
  * wood beside it catches (material_colours(), MATX_LEAF case). */
 static void
 test_leaf_tints_toward_the_wave_highlight(void) {
+    material_frame_t f = {0};
     gfx_color_t at_rest[3], mid[3], peak[3], other_hash_peak[3];
 
     /* hash 0's own base grain sits at LEAF_DARK, below the highlight's own
      * green, so blending toward it must raise green monotonically. */
-    material_colours(MATX(MATX_LEAF), 0u, 0u, 0u, at_rest);
-    material_colours(MATX(MATX_LEAF), 0u, 0u, 129u, mid);
-    material_colours(MATX(MATX_LEAF), 0u, 0u, 256u, peak);
-    material_colours(MATX(MATX_LEAF), 5u, 0u, 256u, other_hash_peak);
+    material_colours(&f, MATX(MATX_LEAF), 0u, 0u, 0u, at_rest);
+    material_colours(&f, MATX(MATX_LEAF), 0u, 0u, 129u, mid);
+    material_colours(&f, MATX(MATX_LEAF), 0u, 0u, 256u, peak);
+    material_colours(&f, MATX(MATX_LEAF), 5u, 0u, 256u, other_hash_peak);
 
     TEST_ASSERT_TRUE_MESSAGE(g6(mid[0]) > g6(at_rest[0]) && g6(mid[0]) < g6(peak[0]),
                              "the midpoint must sit strictly between the base grain and the peak");
@@ -1094,11 +1096,12 @@ test_wood_near_leaf_widens_coverage_with_more_slots(void) {
  * wood_colours(). */
 static void
 test_unlit_wood_tints_green_only_beside_a_leaf(void) {
+    material_frame_t f = {0};
     const cell_t wood = CELL_MAKE(MAT_WOOD, 0);
     gfx_color_t away[3], beside[3];
 
-    const material_pattern_t pat_away = material_colours(wood, 3u, 0u, 0u, away);
-    const material_pattern_t pat_beside = material_colours(wood, 3u, 0u, 129u, beside);
+    const material_pattern_t pat_away = material_colours(&f, wood, 3u, 0u, 0u, away);
+    const material_pattern_t pat_beside = material_colours(&f, wood, 3u, 0u, 129u, beside);
 
     TEST_ASSERT_EQUAL_MESSAGE(MATERIAL_SPECKLED, pat_away, "plain wood keeps its grained pattern");
     TEST_ASSERT_EQUAL_MESSAGE(MATERIAL_FLAT, pat_beside, "the live blend has no per-cell grain");
@@ -1111,12 +1114,13 @@ test_unlit_wood_tints_green_only_beside_a_leaf(void) {
  * = WOOD_LEAF_TINT_HI) and monotonic in between - see wood_colours(). */
 static void
 test_wood_leaf_tint_blends_smoothly_between_its_anchors(void) {
+    material_frame_t f = {0};
     const cell_t wood = CELL_MAKE(MAT_WOOD, 0);
     gfx_color_t lo[3], mid[3], hi[3];
 
-    material_colours(wood, 3u, 0u, 1u, lo);
-    material_colours(wood, 3u, 0u, 129u, mid);
-    material_colours(wood, 3u, 0u, 256u, hi);
+    material_colours(&f, wood, 3u, 0u, 1u, lo);
+    material_colours(&f, wood, 3u, 0u, 129u, mid);
+    material_colours(&f, wood, 3u, 0u, 256u, hi);
 
     TEST_ASSERT_TRUE_MESSAGE(g6(mid[0]) > g6(lo[0]) && g6(mid[0]) < g6(hi[0]),
                              "the midpoint must sit strictly between the two anchors, not equal "
@@ -1224,16 +1228,17 @@ test_wood_leaf_wind_axis_stays_perpendicular_to_gravity(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, uy_q8, "zero gravity defaults to sweeping along grid-x");
 }
 
-/* Distinct gfx_color_t body colours material_colours(c, hash, 0, depth, .)
+/* Distinct gfx_color_t body colours material_colours(&f, c, hash, 0, depth, .)
  * returns across hash 0..7, asserting along the way that every one of them
  * draws with `expect_pattern` (the message names which cell is on trial). */
 static int
 distinct_hash_colours(cell_t c, uint8_t depth, material_pattern_t expect_pattern, const char* why) {
+    material_frame_t f = {0};
     gfx_color_t col[3] = {0, 0, 0};
     int distinct = 0;
     gfx_color_t seen[8];
     for (unsigned hash = 0; hash < 8u; hash++) {
-        const material_pattern_t pat = material_colours(c, hash, 0u, depth, col);
+        const material_pattern_t pat = material_colours(&f, c, hash, 0u, depth, col);
         TEST_ASSERT_EQUAL_MESSAGE(expect_pattern, pat, why);
 
         bool known = false;
@@ -1301,9 +1306,10 @@ test_the_right_extended_materials_are_grained(void) {
  * check is replaced with confirming the mirror instead. */
 static void
 test_metal_shine_does_not_vary_between_cells(void) {
+    material_frame_t f = {0};
     gfx_color_t a[3], b[3];
-    material_colours(MATX(MATX_METAL), 0u, 0u, 255u, a);
-    material_colours(MATX(MATX_METAL), 5u, 0u, 255u, b);
+    material_colours(&f, MATX(MATX_METAL), 0u, 0u, 255u, a);
+    material_colours(&f, MATX(MATX_METAL), 5u, 0u, 255u, b);
 
     TEST_ASSERT_EQUAL_MESSAGE(a[1], a[0],
                               "metal's line colour must mirror its body - there is no separate "
