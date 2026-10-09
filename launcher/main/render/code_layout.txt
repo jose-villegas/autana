@@ -23,7 +23,6 @@ r3d_span_triangle_impl	function	20	2790	88
 r3d_span_triangle_impl	bnez-back	8	39	2
 r3d_span_triangle_impl	j-back	0	154	5
 r3d_span_triangle_impl	loop	9	4	1
-r3d_span_triangle_impl	bbci-back	12	31	2
 r3d_span_triangle_impl	bnez-back	28	48	3
 r3d_span_triangle_impl	j-back	10	165	6
 r3d_span_triangle_impl	j-back	28	377	13
