@@ -89,15 +89,23 @@ jobs:
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
       - name: Generated document bodies match their recorded hashes
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
 
       - name: Shared-owner catalogue matches source
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 launcher/tools/gen/shared_helpers.py --check
 
       - name: Documentation constants match source
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_constants.py
 
       - name: The math reference names every function the headers define
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_math_docs.py
 
       - name: Documentation names the supported board

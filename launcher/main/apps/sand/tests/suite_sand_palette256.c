@@ -62,6 +62,7 @@ channel_error_sq(gfx_color_t a, gfx_color_t b) {
  * only guards against the table degrading to a uniform nearest search. */
 static void
 test_every_material_bytes_body_colour_maps_within_budget(void) {
+    material_frame_t f = {0};
     int sampled = 0, exact = 0;
     for (unsigned c = 0; c < 256u; c++) {
         if (!is_real_cell((cell_t)c)) {
@@ -69,7 +70,7 @@ test_every_material_bytes_body_colour_maps_within_budget(void) {
         }
         for (unsigned hash = 0; hash <= 255u; hash += 255u) {
             gfx_color_t out[3];
-            material_colours((cell_t)c, hash, 0u, 0u, out);
+            material_colours(&f, (cell_t)c, hash, 0u, 0u, out);
 
             const int idx = material_palette256_index(out[0]);
             TEST_ASSERT_GREATER_OR_EQUAL_INT(SAND_PALETTE_UI_ENTRIES, idx);
@@ -120,6 +121,7 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
  * comment (sand_paint_row.h) for why one index byte forces this adaptation. */
 static void
 test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
+    material_frame_t f = {0};
     int shine_ux_q8, shine_uy_q8;
     material_shine_direction(1000, 0, &shine_ux_q8, &shine_uy_q8);
 
@@ -130,7 +132,7 @@ test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
         for (int cx = 0; cx < 24; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            const material_pattern_t pat = material_colours(metal, hash, 0u, 0u, col);
+            const material_pattern_t pat = material_colours(&f, metal, hash, 0u, 0u, col);
             TEST_ASSERT_EQUAL_INT(MATERIAL_HATCHED, pat);
 
             const int shine_q8 = (cx * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_ux_q8
@@ -211,12 +213,13 @@ static const scene_case_t scenes[] = {
 static void
 check_settled_cell_maps_and_expands(const uint8_t* row, int cx, int cy, const char* scene_name, const int* cell_sizes,
                                     size_t n_sizes) {
+    material_frame_t f = {0};
     const unsigned hash = material_grain_hash(cx, cy);
     const unsigned mask = ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0u)
                           | ((cx < SCENE_W - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0u);
 
     gfx_color_t out[3];
-    material_colours(row[cx], hash, mask, 0u, out);
+    material_colours(&f, row[cx], hash, mask, 0u, out);
     const int idx = material_palette256_index(out[0]);
 
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_PALETTE_UI_ENTRIES, idx, scene_name);

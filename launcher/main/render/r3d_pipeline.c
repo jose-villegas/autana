@@ -37,9 +37,10 @@ r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, view
     const float ticks_to_units = 1.0F / (float)position_scale;
 
     const viewport_quarter_axes_t a = viewport_quarter_axes(viewport.quarter);
-    set_row(lens->m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
-    set_row(lens->m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
-    set_row(lens->m[2], f, eye, 1.0F, ticks_to_units);
+    lens->m = mat4f_identity();
+    set_row(lens->m.m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
+    set_row(lens->m.m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
+    set_row(lens->m.m[2], f, eye, 1.0F, ticks_to_units);
     lens->center_x = (float)viewport.width * 0.5F;
     lens->center_y = (float)viewport.height * 0.5F;
     lens->near_z = near_z;
@@ -55,8 +56,8 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
     for (int j = 0; j < 4; j++) {
-        lens->m[0][j] *= scale_x;
-        lens->m[1][j] *= scale_y;
+        lens->m.m[0][j] *= scale_x;
+        lens->m.m[1][j] *= scale_y;
     }
     lens->center_x = (float)width * 0.5F;
     lens->center_y = (float)height * 0.5F;
@@ -66,29 +67,22 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     lens->height = height;
 }
 
-void
-r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
-    const float to_ticks = (float)position_scale;
-    const vec3f_t p = placement->position;
-    for (int k = 0; k < 3; k++) {
-        const float c0 = lens->m[k][0];
-        const float c1 = lens->m[k][1];
-        const float c2 = lens->m[k][2];
-        for (int j = 0; j < 3; j++) {
-            lens->m[k][j] = (c0 * placement->m[0][j]) + (c1 * placement->m[1][j]) + (c2 * placement->m[2][j]);
-        }
-        lens->m[k][3] += to_ticks * ((c0 * p.x) + (c1 * p.y) + (c2 * p.z));
-    }
+/* Returns the placement as a matrix on position ticks: its position, in model
+ * units, scaled by position_scale ticks per unit. */
+static mat4f_t
+r3d_placement_matrix(const r3d_placement_t* placement, int position_scale) {
+    const vec3f_t p = vec3f_scale(placement->position, (float)position_scale);
+    return (mat4f_t){{
+        {placement->m[0][0], placement->m[0][1], placement->m[0][2], p.x},
+        {placement->m[1][0], placement->m[1][1], placement->m[1][2], p.y},
+        {placement->m[2][0], placement->m[2][1], placement->m[2][2], p.z},
+        {0.0F, 0.0F, 0.0F, 1.0F},
+    }};
 }
 
-static inline vec3f_t
-to_lens(const r3d_lens_t* lens, float x, float y, float z) {
-    const float(*m)[4] = lens->m;
-    return (vec3f_t){
-        (m[0][0] * x) + (m[0][1] * y) + (m[0][2] * z) + m[0][3],
-        (m[1][0] * x) + (m[1][1] * y) + (m[1][2] * z) + m[1][3],
-        (m[2][0] * x) + (m[2][1] * y) + (m[2][2] * z) + m[2][3],
-    };
+void
+r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
+    lens->m = mat4f_mul_affine(lens->m, r3d_placement_matrix(placement, position_scale));
 }
 
 #define PLANE_COUNT    5
@@ -113,7 +107,7 @@ frustum_planes(const r3d_lens_t* lens, plane_t planes[PLANE_COUNT]) {
     for (int p = 0; p < PLANE_COUNT; p++) {
         for (int j = 0; j < 4; j++) {
             planes[p].w[j] =
-                in_lens[p][0] * lens->m[0][j] + in_lens[p][1] * lens->m[1][j] + in_lens[p][2] * lens->m[2][j];
+                in_lens[p][0] * lens->m.m[0][j] + in_lens[p][1] * lens->m.m[1][j] + in_lens[p][2] * lens->m.m[2][j];
         }
         planes[p].w[3] += in_lens[p][3];
     }
@@ -148,7 +142,7 @@ classify_box(const int16_t lo[3], const int16_t hi[3], const plane_t planes[PLAN
 
 static float
 box_depth(const r3d_lens_t* lens, const int16_t lo[3], const int16_t hi[3]) {
-    const float* f = lens->m[2];
+    const float* f = lens->m.m[2];
     return (f[0] * 0.5F * ((float)lo[0] + (float)hi[0])) + (f[1] * 0.5F * ((float)lo[1] + (float)hi[1]))
            + (f[2] * 0.5F * ((float)lo[2] + (float)hi[2])) + f[3];
 }
@@ -279,7 +273,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     bool unbounded = false;
     for (int v = c->vertex_first; v < end; v++) {
         const int16_t* p = mesh->positions[v];
-        const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         r3d_pipeline_vertex_t* out = &cs[v];
         if (l.z <= lens->near_z) {
             out->iz = 0.0F;
@@ -513,7 +507,7 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-        const vec3f_t l = to_lens(lens, (float)p[0], (float)p[1], (float)p[2]);
+        const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
     }
     draw_clipped(lens, double_sided, face_color, target, work);
