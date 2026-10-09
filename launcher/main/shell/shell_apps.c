@@ -65,6 +65,11 @@ shell_exit_edge_for_quarter(int quarter) {
     return edge_for_quarter[quarter];
 }
 
+gesture_edge_t
+shell_home_edge(void) {
+    return shell_exit_edge_for_quarter(display_quarter_now());
+}
+
 /* chrome */
 
 static void

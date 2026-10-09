@@ -19,6 +19,7 @@
 #include "util/runtime/tune.h"
 
 extern const render_lab_scene_t scene_sponza;
+extern const render_lab_scene_t scene_capybara;
 extern const render_lab_scene_t scene_sponza_lite;
 extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
@@ -28,6 +29,7 @@ extern const render_lab_scene_t scene_sponza_flat_fitted;
 static const render_lab_scene_t* const scenes[] = {
     &scene_sponza,        &scene_sponza_lite,        &scene_sponza_flat,
     &scene_sponza_fitted, &scene_sponza_fitted_full, &scene_sponza_flat_fitted,
+    &scene_capybara,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -272,6 +274,23 @@ render_lab_exit(void) {
     gfx_mode_exit();
 }
 
+/* The scene's own steer() and update(), where it has them, overlapped with
+ * the send of the frame drawn last pass. A scene switch or the menu takes effect in frame(),
+ * which runs after this, so a scene must cope with frame() arriving without
+ * a matching update(). */
+static void
+render_lab_update(uint32_t dt_ms, const input_t* input) {
+    if (menu_open) {
+        return;
+    }
+    if (current_scene()->steer != NULL) {
+        current_scene()->steer(dt_ms, input);
+    }
+    if (current_scene()->update != NULL) {
+        current_scene()->update(dt_ms);
+    }
+}
+
 /* "render scenes" lists every scene's key and name and which one shows;
  * "render scene <key>" switches to the scene with exactly that key, at the
  * next frame. Replies are "RENDER ..." lines then "RENDER_END", or
@@ -322,6 +341,7 @@ app_t app_render_lab = {
     .summary = "Baked mesh flythroughs",
     .enter = render_lab_enter,
     .frame = render_lab_frame,
+    .update = render_lab_update,
     .exit = render_lab_exit,
     .home_gesture = true,
 #if CONFIG_LAUNCHER_DEVELOPMENT
