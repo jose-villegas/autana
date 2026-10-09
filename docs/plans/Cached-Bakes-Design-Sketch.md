@@ -59,6 +59,7 @@ def tool_digest(entry_script) -> str
 def fetch(bake, lock, cache=CACHE, offline=False) -> Path  # lock row, then local or release bytes, sha256 checked
 def produce(bake, cache=CACHE) -> Path          # runs the baker into the local cache (needs its tools)
 def lock(bakes, produced) -> None               # rewrites bakes.lock: one row per needed key, sorted
+                                                # (--from-run N takes rows and files from a CI run)
 def publish(lock) -> None                       # main only: uploads each locked file the release lacks
 ```
 
@@ -105,13 +106,13 @@ flowchart LR
     Fetch --> Local["local cache"]
     Fetch -- miss --> Rel["release 'bakes'"]
     Local --> Pack["build_pack.py"]
-    PR["bakes.yml on a PR:<br/>bake, artifact, lock commit"] --> Lock
+    PR["bakes.yml on a PR:<br/>bake, artifact with its lock"] -- "bake.py lock --from-run" --> Lock
     Main["bakes.yml on main:<br/>publish locked files"] --> Rel
 ```
 
 | Caller | Calls | When |
 |---|---|---|
-| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh`, `reference`, `blend` keys; uploads them as the run's artifact; commits the rewritten `bakes.lock` to the PR branch [A] | every PR; seconds when the lock already holds every key |
+| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh`, `reference`, `blend` keys; uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
 | `bakes.yml` GPU job (self-hosted runner) | the same for `fit` | on a dispatch for the branch, when the maintainer's machine is up; skippable, and while skipped the lock check names the missing fit |
 | `bakes.yml` on main | `publish`: takes each locked file from its `run`'s artifact, checks its sha256, uploads it | every push to main |
 | host-tests, qemu-tests, build-release, doc-images, doc-images-gpu | `uses: ./.github/workflows/bakes.yml` first | so a PR's bakes exist before anything consumes them |
@@ -143,7 +144,7 @@ build_pack.py: 1 bake is not available:
   sponza.atrium_fitted.mesh  key 3f2a...c9  asked for by launcher/demo/sponza/sponza.scene.toml (atrium_fitted)
     bakes.lock has no row for this key: the recipe, a source or the fitter changed
     bake it: python launcher/tools/bake/bake.py bake launcher/demo/sponza   (needs a CUDA GPU)
-    or run the Bakes workflow's GPU job on your branch
+    or run the Bakes workflow's GPU job on your branch, then: bake.py lock --from-run N
 ```
 
 Other cases name the same three things: a locked file missing from the cache
@@ -179,19 +180,23 @@ whose sha256 differs from the lock.
 
 | | Estimate |
 |---|---|
-| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` drops files no lock on main, an open PR or a firmware release tag names |
+| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (open question 3) |
 | CI, warm | one `bakes.yml` call per consumer workflow: checkout and key computation, under a minute [A] |
 | CI, cold | plain bakes minutes each [A]; references 45 to 69 CPU minutes each; fits about 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references |
 | First build, fresh clone | about 2 MB download, keys in under a second [A] |
 | Saved | no rebake adds its blobs to every clone's history |
 
-## Open questions
+## Open questions (the maintainer's; Rendering's recommendation first)
 
-1. **A fit on a PR waits for the maintainer's machine.** The GPU job is
-   skippable; until it runs, the PR fails naming the missing fit. Is that
-   acceptable, or should a fit PR merge with the lock row added by a
-   follow-up from main's GPU run?
-2. **The lock commit from CI** pushes to the PR branch; or the author runs
-   `bake.py lock --from-run N` locally. Which?
-3. **Old commits** after pruning can only build packs with the tools;
-   firmware release tags are kept.
+1. **A fit PR and the GPU runner.** (a) The PR stays open and work goes on,
+   but it cannot merge with a lock miss: the check names the fit and the
+   maintainer dispatches the GPU job when the machine is up. (b) The fit PR
+   merges and main's GPU run adds the lock row in a follow-up.
+2. **Who writes the lock on a PR.** (a) CI writes it into the run's
+   artifact and fails when the committed lock differs; the author runs
+   `bake.py lock --from-run N` and commits. No bot commits. (b) CI commits it
+   to the PR branch.
+3. **Pruning.** (a) Never drop a file a lock reachable from main names;
+   older files go after a stated age, and an old commit then rebakes from
+   source with a loud "not byte-identical to the lock" warning, since fits
+   are not deterministic. (b) Keep everything.
