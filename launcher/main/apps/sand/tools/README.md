@@ -38,7 +38,7 @@ are checked.
 
 ## Generated files
 
-<!-- generated: generated-files-sand sha256=bed1e804bdc4a2730410835527645a3c08ffd6bb2030cdd3f9aab5523bee7a4a -->
+<!-- generated: generated-files-sand check: python scripts/gates/check_generated_files.py --check-table -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [icons_dither.h](../icons_dither.h) | [gen_icons.py](../../../../tools/gen/gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h` |
