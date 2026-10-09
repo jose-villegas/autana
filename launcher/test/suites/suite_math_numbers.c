@@ -478,9 +478,14 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
     }
 }
 
-/* Within an ulp of the quotient, measured on the side the result landed.
- * Both signs, a geometric sweep over 2^-20..2^20 plus each octave's edges
- * (a power of two, its neighbours and the largest mantissa below it). */
+/* Within an ulp of the quotient, measured on the side the result landed:
+ * both signs, a geometric sweep over 2^-20..2^20 and each octave's edges (a
+ * power of two, its neighbours, the largest mantissa below it). On the
+ * sweep it is the quotient nearly always; the edges round off it more. */
+#define RECIP_OCTAVES       20      /* magnitudes 2^-20..2^20 */
+#define RECIP_SWEEP_STEP    1.0137F /* about 50 samples an octave */
+#define RECIP_EXACT_PERCENT 99
+
 static void
 check_reciprocal(float x, int* count, int* exact) {
     const float want = 1.0F / x;
@@ -496,18 +501,22 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     int count = 0;
     int exact = 0;
     for (int sign = -1; sign <= 1; sign += 2) {
-        for (float a = 1.0F / 1048576.0F; a < 1048576.0F; a *= 1.0137F) {
+        for (float a = ldexpf(1.0F, -RECIP_OCTAVES); a < ldexpf(1.0F, RECIP_OCTAVES); a *= RECIP_SWEEP_STEP) {
             check_reciprocal((float)sign * a, &count, &exact);
         }
-        for (int e = -20; e <= 20; e++) {
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(count * RECIP_EXACT_PERCENT / 100, exact);
+    int edges = 0;
+    int edges_exact = 0;
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (int e = -RECIP_OCTAVES; e <= RECIP_OCTAVES; e++) {
             const float power = (float)sign * ldexpf(1.0F, e);
-            check_reciprocal(power, &count, &exact);
-            check_reciprocal(nextafterf(power, 0.0F), &count, &exact);
-            check_reciprocal(nextafterf(power, 2.0F * power), &count, &exact);
-            check_reciprocal(nextafterf(2.0F * power, 0.0F), &count, &exact);
+            check_reciprocal(power, &edges, &edges_exact);
+            check_reciprocal(nextafterf(power, 0.0F), &edges, &edges_exact);
+            check_reciprocal(nextafterf(power, 2.0F * power), &edges, &edges_exact);
+            check_reciprocal(nextafterf(2.0F * power, 0.0F), &edges, &edges_exact);
         }
     }
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(count * 99 / 100, exact);
 }
 
 void
