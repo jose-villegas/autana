@@ -50,6 +50,7 @@ typedef struct {
 
 /* Values refreshed by the frame update before painting. */
 typedef struct {
+    material_frame_t material;
     int shine_ux_q8;
     int shine_uy_q8;
     int shine_offset;
@@ -385,7 +386,7 @@ sand_paint_row_n(sand_paint_row_state_t* s, const sand_paint_frame_t* pf, gfx_co
         sp_note_cell_row_flags(s, cy, cx, row[cx], here_liquid, leaf_shading);
 
         gfx_color_t col[3];
-        const material_pattern_t pat = material_colours(row[cx], hash, mask, depth, col);
+        const material_pattern_t pat = material_colours(&pf->material, row[cx], hash, mask, depth, col);
 
         if (pat == MATERIAL_HATCHED) {
             sp_note_row_flag(s, cy, cx, SAND_PAINT_ROW_FLAG_SHINE);

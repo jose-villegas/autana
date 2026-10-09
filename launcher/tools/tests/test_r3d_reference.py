@@ -25,7 +25,7 @@ def plane_source(corners):
     """A one-material quad of two triangles facing +z, white, unlit by anything but the scene."""
     source = SimpleNamespace(
         p=np.array(corners), uv=np.zeros((4, 2)), tri_v=np.array([[0, 1, 2], [0, 2, 3]]), tri_t=np.array([[0, 1, 2], [0, 2, 3]]),
-        tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None],
+        tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None], colors=None,
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.bounce = None
