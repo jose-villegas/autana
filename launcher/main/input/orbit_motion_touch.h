@@ -1,9 +1,11 @@
 /*
  * orbit_motion_touch: one finger on the panel turned into orbit_motion
  * steering. A drag turns whatever orbits with the finger, as if spinning a
- * turntable; a double tap asks for home. A touch that lands in the strip along the home-gesture edge
- * or the edge opposite it (where the control centre opens) belongs to the
- * shell, so it never steers or taps.
+ * turntable. A double tap asks for home; tap and then drag the second press
+ * up or down instead, and it zooms: down brings it closer. A touch that
+ * lands in the strip along the home-gesture edge or the edge opposite it
+ * (where the control centre opens) belongs to the shell, so it never
+ * steers, zooms or taps.
  *
  * Pure: the frame's input_t, the panel's size and turn, and which edge holds
  * the home gesture come in; orbit_motion.h's orbit_motion_input_t comes out.
@@ -21,6 +23,10 @@
 /* A drag across the picture's shorter side turns the orbit this far. */
 #define ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE MATH_PI
 
+/* A zoom drag across the picture's shorter side changes the distance 4
+ * times over: its log changes by ln 4. */
+#define ORBIT_MOTION_TOUCH_ZOOM_PER_SHORT_SIDE (2.0F * MATH_LN2)
+
 /* A touch that strays no further than this from where it landed, and lifts
  * within ORBIT_MOTION_TOUCH_TAP_MAX_MS, is a tap rather than a drag. */
 #define ORBIT_MOTION_TOUCH_TAP_SLOP_PX         12
@@ -31,6 +37,7 @@
 
 typedef struct {
     bool steering;         /* the finger down now landed outside the shell's strips */
+    bool zooming;          /* and it is a tap's second press: it zooms rather than turns */
     int last_x, last_y;    /* where it was last frame, panel pixels */
     uint32_t down_ms;      /* how long it has been down */
     bool strayed;          /* it has moved past ORBIT_MOTION_TOUCH_TAP_SLOP_PX */

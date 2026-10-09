@@ -75,6 +75,11 @@ source = "launcher/demo/sponza/sponza.scene.toml"
 run = 12345678901                  # the CI run whose artifact holds them, until main publishes
 ```
 
+A row `lock --seed` wrote instead carries `seeded = true` and no `run`: its
+bytes were carried over from the files the tree held, not made by the code its
+key names. `check` accepts it and lists the seeded rows; a run that makes the
+key again writes the row without the mark.
+
 The lock is not a list kept by hand: rows come from `bakes()`, and CI fails
 when it lacks a needed key or holds an unneeded one. It pins what a fit
 made, since a fit is not reproducible (torch is seeded but not

@@ -2,7 +2,6 @@
  * console_freeze: FREEZE, RESUME and STEP. See console_freeze.h.
  */
 #include "console/console_freeze.h"
-#include "console/console_latch.h"
 #include "console/console_verbs.h"
 
 #include "esp_log.h"
@@ -19,17 +18,20 @@ static const char* TAG = "freeze";
 /* The digits of STEP_MAX: what CONSOLE_VERB() sizes its line against. */
 #define STEP_ARGS_MAX 4
 
-/* One latch for all three verbs: they are three ways of saying the same
- * thing (what the loop should do next), so a later one replacing an
- * earlier one still waiting is right, which is exactly what a latch does
- * (console_latch.h). The leading character says which verb wrote it. */
-static console_latch_t command;
+/* All three verbs share one request kind: they are three ways of saying
+ * what the loop should do next, so a later one replaces an earlier one
+ * still waiting. */
+static void
+post(bool frozen, int steps) {
+    const console_frame_request_t request = {.kinds = CONSOLE_FRAME_FREEZE, .frozen = frozen, .steps = steps};
+    (void)console_frame_post(console_frame_mailbox(), &request);
+}
 
 static void
 console_verb_freeze(const char* args, console_reply_fn reply) {
     (void)args;
     (void)reply;
-    console_latch_set(&command, "f");
+    post(true, 0);
 }
 
 CONSOLE_VERB(freeze, 0, console_verb_freeze)
@@ -38,66 +40,44 @@ static void
 console_verb_resume(const char* args, console_reply_fn reply) {
     (void)args;
     (void)reply;
-    console_latch_set(&command, "r");
+    post(false, 0);
 }
 
 CONSOLE_VERB(resume, 0, console_verb_resume)
 
-/* STEP with nothing after it is STEP 1. */
+/* STEP with nothing after it, or less than 1, is STEP 1. */
 static void
 console_verb_step(const char* args, console_reply_fn reply) {
     (void)reply;
-    char line[STEP_ARGS_MAX + 2];
-    line[0] = 's';
-    console_latch_copy(line + 1, sizeof(line) - 1, args);
-    console_latch_set(&command, line);
+    long n = strtol(args, NULL, 10);
+    if (n < 1) {
+        n = 1;
+    }
+    post(true, n > STEP_MAX ? STEP_MAX : (int)n);
 }
 
 CONSOLE_VERB(step, STEP_ARGS_MAX, console_verb_step)
 
-static int
-step_credit(const char* digits) {
-    if (digits[0] == '\0') {
-        return 1;
+/* Read and written only on the frame loop. */
+static bool frozen;
+static int credit;
+
+void
+console_freeze_apply(const console_frame_request_t* requests) {
+    if (!(requests->kinds & CONSOLE_FRAME_FREEZE)) {
+        return;
     }
-    const long n = strtol(digits, NULL, 10);
-    if (n < 1) {
-        return 1;
-    }
-    return (n > STEP_MAX) ? STEP_MAX : (int)n;
+    frozen = requests->frozen;
+    credit = requests->steps;
+    /* On its own line for a harness, the same reason RUNSUITE_COMPLETE
+     * prints one (shell/shell.c). */
+    printf("\nFREEZE_STATE frozen=%d steps=%d\n", frozen ? 1 : 0, credit);
+    fflush(stdout);
+    ESP_LOGI(TAG, "frozen=%d steps=%d", frozen ? 1 : 0, credit);
 }
 
 bool
 console_freeze_frame_allowed(void) {
-    /* Read and written only here, so the credit needs no atomicity of its
-     * own: the console task's half of the handoff ends at the latch. */
-    static bool frozen;
-    static int credit;
-
-    char args[CONSOLE_ARGS_MAX];
-    if (console_latch_take(&command, args, sizeof args)) {
-        switch (args[0]) {
-            case 'f':
-                frozen = true;
-                credit = 0;
-                break;
-            case 'r':
-                frozen = false;
-                credit = 0;
-                break;
-            case 's':
-                frozen = true;
-                credit = step_credit(args + 1);
-                break;
-            default: break;
-        }
-        /* On its own line for a harness, the same reason
-         * RUNSUITE_COMPLETE prints one (shell/shell.c). */
-        printf("\nFREEZE_STATE frozen=%d steps=%d\n", frozen ? 1 : 0, credit);
-        fflush(stdout);
-        ESP_LOGI(TAG, "frozen=%d steps=%d", frozen ? 1 : 0, credit);
-    }
-
     if (!frozen) {
         return true;
     }

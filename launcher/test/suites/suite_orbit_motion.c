@@ -128,7 +128,7 @@ test_orbit_motion_pose_stands_at_the_distance_looking_at_the_target_and_level(vo
 
 static void
 drag(orbit_motion_t* orbit, float yaw_turn, float pitch_turn, int frames) {
-    const orbit_motion_input_t input = {yaw_turn, pitch_turn, true, false};
+    const orbit_motion_input_t input = {.yaw_turn = yaw_turn, .pitch_turn = pitch_turn, .held = true};
     for (int i = 0; i < frames; i++) {
         orbit_motion_update(orbit, &input, FRAME_S);
     }
@@ -238,9 +238,73 @@ test_orbit_motion_yaw_stays_within_one_turn_however_far_it_spins(void) {
     TEST_ASSERT_TRUE(fabsf(orbit.at.yaw) <= MATH_PI);
 }
 
+#define ZOOM_ROOM 0.5F  /* log distance either side of home */
+#define ZOOM_TURN 0.02F /* log distance a frame */
+
+/* At home with room to zoom ZOOM_ROOM either way. */
+static orbit_motion_t
+orbit_with_zoom_room(void) {
+    orbit_motion_t orbit = orbit_at(0.0F, 0.0F);
+    orbit.limits.log_dist_min = orbit.home.log_dist - ZOOM_ROOM;
+    orbit.limits.log_dist_max = orbit.home.log_dist + ZOOM_ROOM;
+    return orbit;
+}
+
+static void
+zoom(orbit_motion_t* orbit, float turn, int frames) {
+    const orbit_motion_input_t input = {.held = true, .zoom_turn = turn};
+    for (int i = 0; i < frames; i++) {
+        orbit_motion_update(orbit, &input, FRAME_S);
+    }
+}
+
+void
+test_orbit_motion_a_held_zoom_moves_the_distance_by_the_finger_without_turning(void) {
+    orbit_motion_t orbit = orbit_with_zoom_room();
+    const float home = orbit.at.log_dist;
+    zoom(&orbit, -ZOOM_TURN, DRAG_FRAMES);
+    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, home - ZOOM_TURN * DRAG_FRAMES, orbit.at.log_dist);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, orbit.at.yaw);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, orbit.at.pitch);
+}
+
+void
+test_orbit_motion_a_zoom_fling_moves_the_same_in_one_step_as_in_many(void) {
+    orbit_motion_t one = orbit_with_zoom_room();
+    zoom(&one, -ZOOM_TURN, DRAG_FRAMES);
+    orbit_motion_t many = one;
+    coast(&one, FLING_S, 1);
+    coast(&many, FLING_S, FINE_STEPS);
+    TEST_ASSERT_TRUE_MESSAGE(one.at.log_dist < many.home.log_dist - ZOOM_TURN * DRAG_FRAMES, "it kept zooming in");
+    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, one.at.log_dist, many.at.log_dist);
+    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, one.velocity.log_dist, many.velocity.log_dist);
+}
+
+void
+test_orbit_motion_a_zoom_stops_at_both_limits(void) {
+    orbit_motion_t orbit = orbit_with_zoom_room();
+    zoom(&orbit, -ZOOM_TURN * 10.0F, DRAG_FRAMES);
+    TEST_ASSERT_EQUAL_FLOAT(orbit.limits.log_dist_min, orbit.at.log_dist);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, orbit.velocity.log_dist);
+    zoom(&orbit, ZOOM_TURN * 20.0F, DRAG_FRAMES);
+    TEST_ASSERT_EQUAL_FLOAT(orbit.limits.log_dist_max, orbit.at.log_dist);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, orbit.velocity.log_dist);
+}
+
+void
+test_orbit_motion_a_reset_brings_the_distance_home_too(void) {
+    orbit_motion_t orbit = orbit_with_zoom_room();
+    zoom(&orbit, ZOOM_TURN, DRAG_FRAMES);
+    const orbit_motion_input_t reset = {.reset = true};
+    orbit_motion_update(&orbit, &reset, 0.0F);
+    coast(&orbit, SETTLE_S, FINE_STEPS);
+    TEST_ASSERT_FALSE(orbit.resetting);
+    TEST_ASSERT_EQUAL_FLOAT(orbit.home.log_dist, orbit.at.log_dist);
+}
+
 static void
 start_reset(orbit_motion_t* orbit) {
-    const orbit_motion_input_t reset = {0.0F, 0.0F, false, true};
+    const orbit_motion_input_t reset = {.reset = true};
     orbit_motion_update(orbit, &reset, 0.0F);
 }
 
@@ -308,6 +372,10 @@ run_orbit_motion_suite(void) {
     RUN_TEST(test_orbit_motion_a_reset_settles_exactly_at_home_without_overshooting);
     RUN_TEST(test_orbit_motion_a_reset_turns_the_short_way_round);
     RUN_TEST(test_orbit_motion_a_finger_cancels_a_reset);
+    RUN_TEST(test_orbit_motion_a_held_zoom_moves_the_distance_by_the_finger_without_turning);
+    RUN_TEST(test_orbit_motion_a_zoom_fling_moves_the_same_in_one_step_as_in_many);
+    RUN_TEST(test_orbit_motion_a_zoom_stops_at_both_limits);
+    RUN_TEST(test_orbit_motion_a_reset_brings_the_distance_home_too);
 }
 
 SUITE_REGISTER(run_orbit_motion_suite);

@@ -158,12 +158,11 @@ flowchart TB
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`MEMORY_PSRAM` in `util/runtime/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
-is room in PSRAM for a second one and no time for it: a per-frame catch-up
-copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
-and a full frame over QSPI is bus-bound, not CPU-bound
-([Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
-bus-bound"). The decision and its measurements are decision B in
-[plans/Autana-Rendering-Roadmap.md](plans/Autana-Rendering-Roadmap.md).
+is room in PSRAM for a second one; the
+[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
+explains the copy cost that keeps presentation on one retained framebuffer.
+See [transfer payload](notes/Display-and-Rendering.md#transfer-payload) for
+the QSPI bus budget.
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an
@@ -288,6 +287,32 @@ framebuffer before `frame()`, whether or not the app has an `update()`
 owns one raster scratch block, including the census list before the picture
 attachments. Dynamic resolution reserves the finest step's block, so choosing
 a render size preserves the census without a separate allocation.
+
+### Console requests
+
+In development builds a console verb that needs the frame loop (OPEN, HOME,
+APPS, RUNSUITE, FRAMEWATCH, SCREENSHOT, FREEZE, RESUME, STEP) only posts a
+request to one mailbox (`console/console_frame_request.h`); the console task
+never draws. Each pass takes everything posted, once, and applies what an
+early return would skip before anything can return:
+
+```mermaid
+sequenceDiagram
+    participant Console as console task
+    participant Mail as mailbox
+    participant Shell as shell pass
+    Console->>Mail: post, latest per kind, a second RUNSUITE refused
+    Shell->>Mail: take everything posted
+    Shell->>Shell: apply FREEZE, RESUME or STEP, answer FRAMEWATCH
+    Shell->>Shell: run a RUNSUITE, then report it done
+    Shell->>Mail: done, RUNSUITE accepted again
+    Shell->>Shell: OPEN, HOME or APPS
+    alt frozen, no STEP credit
+        Shell->>Shell: SCREENSHOT of the held frame
+    else running
+        Shell->>Shell: the app's frame, then a SCREENSHOT of it
+    end
+```
 
 ### Engine systems
 
