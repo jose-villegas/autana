@@ -106,7 +106,7 @@ test_grains_are_never_created_or_destroyed(void) {
 
     /* A slab dropped into the middle, then shaken through every gravity
      * direction. Whatever the rules do, the count must not drift. */
-    fill_box(&s, 1, 6, 1, 4, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 1, 1, 6, 4, SAND_FIRST_SHADE);
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(15, expected);
 
@@ -153,7 +153,7 @@ test_grains_fall_sideways_when_the_board_is_on_its_edge(void) {
 static void
 test_a_heap_settles_against_whichever_wall_is_down(void) {
     fixture();
-    fill_box(&s, 1, 4, 1, 4, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 1, 1, 4, 4, SAND_FIRST_SHADE);
 
     /* Long enough for everything to reach the right-hand wall and stop. */
     run_steps(&s, 60, 1, 0);
@@ -354,7 +354,7 @@ test_a_full_share_fills_the_whole_disc(void) {
 static void
 test_erase_removes_a_disc(void) {
     fixture();
-    fill_box(&s, 0, W, 0, H, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 0, 0, W, H, SAND_FIRST_SHADE);
 
     const int removed = sand_erase(&s, 4, 4, 2);
 
@@ -379,7 +379,7 @@ test_erasing_empty_space_removes_nothing(void) {
 static void
 test_erase_is_clipped_to_the_grid(void) {
     fixture();
-    fill_box(&s, 0, W, 0, H, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 0, 0, W, H, SAND_FIRST_SHADE);
 
     const int removed = sand_erase(&s, 0, 0, 3);
 
@@ -390,7 +390,7 @@ test_erase_is_clipped_to_the_grid(void) {
 static void
 test_erase_marks_the_rows_it_emptied(void) {
     dirty_fixture();
-    fill_box(&s, 0, W, 4, 5, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 0, 4, W, 5, SAND_FIRST_SHADE);
     memset(dirty, 0, H);
 
     sand_erase(&s, 4, 4, 1);

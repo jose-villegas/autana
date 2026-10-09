@@ -623,7 +623,7 @@ static void
 build_quality_water_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
     sand_init(real, big, w, h, 11u);
     sand_enable_sleeping(real, blocks);
-    fill_box(real, w / 4, (w * 3) / 4, 0, h / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(real, w / 4, 0, (w * 3) / 4, h / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 static void
@@ -666,7 +666,7 @@ static void
 build_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
     sand_init(real, big, REAL_W, REAL_H, 19u);
     sand_enable_sleeping(real, blocks);
-    fill_box(real, 0, REAL_W, 0, REAL_H, FIRE);
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, FIRE);
 }
 
 /* FEWER WARMUP STEPS THAN WATER, deliberately: fire BURNS OUT. Ten steps of
@@ -813,14 +813,14 @@ static void
 build_quality_sand_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
     sand_init(real, big, w, h, 11u);
     sand_enable_sleeping(real, blocks);
-    fill_box(real, w / 4, (w * 3) / 4, 0, h / 2, SAND_FIRST_SHADE);
+    sand_fill_box(real, w / 4, 0, (w * 3) / 4, h / 2, SAND_FIRST_SHADE);
 }
 
 static void
 build_quality_gas_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
     sand_init(real, big, w, h, 17u);
     sand_enable_sleeping(real, blocks);
-    fill_box(real, 0, w, h / 2, h, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_fill_box(real, 0, h / 2, w, h, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
 }
 
 static void
@@ -842,7 +842,7 @@ build_quality_mixed_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, in
             sand_set(real, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
-    fill_box(real, w / 4, (w * 3) / 4, (h * 2) / 3, h, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_fill_box(real, w / 4, (h * 2) / 3, (w * 3) / 4, h, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
 }
 
 static quality_bench_t
@@ -1374,7 +1374,7 @@ test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     sand_t* const real = real_board_open(&b, 5u);
 
     /* Every cell full, so nothing can move anywhere. */
-    fill_box(real, 0, REAL_W, 0, REAL_H, SAND_FIRST_SHADE);
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, SAND_FIRST_SHADE);
     sand_step(real, 0, 1, 0); /* one step to notice it is settled */
 
     const int steps = 50;
@@ -1400,7 +1400,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
     /* A big pour: the middle half of the screen's width, filled from the
      * floor up to half the screen's height - wide enough to span many
      * block-columns, deliberately not the whole grid. */
-    fill_box(real, REAL_W / 4, (REAL_W * 3) / 4, REAL_H / 2, REAL_H, SAND_FIRST_SHADE);
+    sand_fill_box(real, REAL_W / 4, REAL_H / 2, (REAL_W * 3) / 4, REAL_H, SAND_FIRST_SHADE);
     const int grains = sand_count(real);
 
     /* Let it fully settle first - every block should go to sleep, the
@@ -1437,7 +1437,7 @@ test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
 
     /* About 40% of the grid, full width, resting on the floor - the user's
      * own "fill the screen to about 40% with water in portrait". */
-    fill_box(real, 0, REAL_W, (REAL_H * 3) / 5, REAL_H, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(real, 0, (REAL_H * 3) / 5, REAL_W, REAL_H, CELL_MAKE(MAT_WATER, MASS_MAX));
     const int mass = (int)mass_of(real, REAL_W, REAL_H, MAT_WATER);
 
     /* Settle until every block sleeps - "with the water settled" is half the
@@ -1739,7 +1739,7 @@ test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
     sand_t* const real = real_board_open(&b, 31u);
 
     /* 40% of the grid, full width, against the ceiling - where gas ends up. */
-    fill_box(real, 0, REAL_W, 0, (REAL_H * 2) / 5, CELL_MAKE(MAT_GAS, 0));
+    sand_fill_box(real, 0, 0, REAL_W, (REAL_H * 2) / 5, CELL_MAKE(MAT_GAS, 0));
 
     /* Settle first: the turn should start from a body at rest, not from a
      * field still finding its own shape. */
@@ -1951,7 +1951,7 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
     real_board_t b;
     sand_t* const real = real_board_open(&b, 17u);
 
-    fill_box(real, 0, REAL_W, 0, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
     sand_set(real, 0, 0, FIRE);
     const int total = REAL_W * REAL_H;
 
@@ -2005,7 +2005,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     real_board_t b;
     sand_t* const real = real_board_open(&b, 19u);
 
-    fill_box(real, 0, REAL_W, 0, REAL_H, FIRE);
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, FIRE);
     const int total = REAL_W * REAL_H;
 
     const int steps = 10;
@@ -2032,7 +2032,7 @@ test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget(void) {
     real_board_t b;
     sand_t* const real = real_board_open(&b, 31U);
 
-    fill_box(real, 0, REAL_W, 0, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
 
     const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = timing_now_us();
@@ -2054,7 +2054,7 @@ test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget(void) {
     real_board_t b;
     sand_t* const real = real_board_open(&b, 19U);
 
-    fill_box(real, 0, REAL_W, 0, REAL_H, FIRE);
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, FIRE);
     const int total = REAL_W * REAL_H;
 
     const two_core_scope_t core = two_core_scope_begin(true);
@@ -2083,7 +2083,7 @@ test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_bud
     real_board_t b;
     sand_t* const real = real_board_open(&b, 17U);
 
-    fill_box(real, 0, REAL_W, 0, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
     sand_set(real, 0, 0, FIRE);
     const int total = REAL_W * REAL_H;
 
@@ -3020,8 +3020,8 @@ static void
 build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
     sand_init(real, big, REAL_W, REAL_H, 59u);
     sand_enable_sleeping(real, blocks);
-    fill_box(real, 0, POOL_UNEVEN_DEEP_X1, 0, REAL_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
-    fill_box(real, 0, POOL_UNEVEN_SHALLOW_X1, REAL_H / 2, REAL_H, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(real, 0, 0, POOL_UNEVEN_DEEP_X1, REAL_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(real, 0, REAL_H / 2, POOL_UNEVEN_SHALLOW_X1, REAL_H, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 #define PRESENT_COST_MEASURED_STEPS 20

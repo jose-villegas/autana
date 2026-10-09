@@ -44,6 +44,7 @@
 #include <io.h>
 #endif
 
+#include "apps/sand/tests/sand_fill.h"
 #include "material.h"
 #include "sand.h"
 #if defined(SAND_FORCE_WORK) || defined(SAND_COUNT_SKIPS)
@@ -118,12 +119,15 @@ typedef void (*scene_fn)(sand_t* s);
 #define FP_LEAF          MATX(MATX_LEAF)
 #define FP_ROOT          MATX(MATX_ROOT)
 
-/* Fills columns [x0, x1) of rows [y0, y1) with `cell`. */
+/* Sand where ((7 * x + 13 * y) & 3) == 0: about one cell in four.
+ * The fingerprint baseline pins this pattern. */
 static void
-fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t cell) {
+fill_sand_sprinkle(sand_t* s, int x0, int y0, int x1, int y1) {
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {
-            sand_set(s, x, y, cell);
+            if ((((x * 7) + (y * 13)) & 3) == 0) {
+                sand_set(s, x, y, FP_SAND);
+            }
         }
     }
 }
@@ -134,16 +138,8 @@ fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t cell) {
  * touch. */
 static void
 scene_dry_fall(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = 4; y < 28; y++) {
-        for (int x = 3; x < FP_W - 3; x++) {
-            if (((x * 7 + y * 13) & 3) == 0) {
-                sand_set(s, x, y, FP_SAND);
-            }
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    fill_sand_sprinkle(s, 3, 4, FP_W - 3, 28);
 }
 
 /* Scene 2: a water column against a wall, so the liquid pass and its
@@ -151,18 +147,10 @@ scene_dry_fall(sand_t* s) {
  * interleave rather than each getting the grid to itself. */
 static void
 scene_water_pool(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 20; y < FP_H - 1; y++) {
-        sand_set(s, 8, y, FP_STONE);
-        for (int x = 9; x < 40; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
-    for (int x = 12; x < 30; x++) {
-        sand_set(s, x, 6, FP_SAND);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 8, FP_H - 20, 9, FP_H - 1, FP_STONE);
+    sand_fill_box(s, 9, FP_H - 20, 40, FP_H - 1, FP_WATER);
+    sand_fill_box(s, 12, 6, 30, 7, FP_SAND);
 }
 
 /* Scene 3: lava meeting water over stone - quench, steam and the heat
@@ -170,50 +158,22 @@ scene_water_pool(sand_t* s) {
  * this app's per-cell cost now lives. */
 static void
 scene_lava_quench(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 12; y < FP_H - 1; y++) {
-        for (int x = 2; x < 30; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
-    for (int y = 8; y < 16; y++) {
-        for (int x = 6; x < 24; x++) {
-            sand_set(s, x, y, FP_LAVA);
-        }
-    }
-    for (int x = 34; x < 60; x++) {
-        sand_set(s, x, FP_H - 2, FP_SAND);
-        sand_set(s, x, FP_H - 3, FP_DIRT);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 2, FP_H - 12, 30, FP_H - 1, FP_WATER);
+    sand_fill_box(s, 6, 8, 24, 16, FP_LAVA);
+    sand_fill_box(s, 34, FP_H - 2, 60, FP_H - 1, FP_SAND);
+    sand_fill_box(s, 34, FP_H - 3, 60, FP_H - 2, FP_DIRT);
 }
 
 /* Scene 4: burning wood under a gas pocket. The gas pass, ignition and
  * smoke - the passes the other three scenes leave almost entirely idle. */
 static void
 scene_fire_gas(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 10; y < FP_H - 1; y++) {
-        for (int x = 4; x < 44; x++) {
-            sand_set(s, x, y, FP_WOOD);
-        }
-    }
-    for (int x = 10; x < 20; x++) {
-        sand_set(s, x, FP_H - 11, FP_FIRE);
-    }
-    for (int y = 18; y < 30; y++) {
-        for (int x = 20; x < 50; x++) {
-            sand_set(s, x, y, FP_GAS);
-        }
-    }
-    for (int y = 30; y < 36; y++) {
-        for (int x = 44; x < 58; x++) {
-            sand_set(s, x, y, FP_OIL);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 4, FP_H - 10, 44, FP_H - 1, FP_WOOD);
+    sand_fill_box(s, 10, FP_H - 11, 20, FP_H - 10, FP_FIRE);
+    sand_fill_box(s, 20, 18, 50, 30, FP_GAS);
+    sand_fill_box(s, 44, 30, 58, 36, FP_OIL);
 }
 
 /* Scene 5: lava sealed under a stone lid, lava-burst chance
@@ -228,9 +188,7 @@ static void
 scene_sealed_lava(sand_t* s) {
     sand_set_lava_burst(s, 255);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
 
     /* Three separate pockets, each a lava cell boxed on all 4 cardinal
      * AND all 4 diagonal neighbours by stone - unambiguously covered on
@@ -263,19 +221,9 @@ static void
 scene_wet_earth(sand_t* s) {
     sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 20; y < FP_H - 1; y++) {
-        for (int x = 4; x < 40; x++) {
-            sand_set(s, x, y, FP_DIRT);
-        }
-    }
-    for (int y = FP_H - 32; y < FP_H - 20; y++) {
-        for (int x = 8; x < 36; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 4, FP_H - 20, 40, FP_H - 1, FP_DIRT);
+    sand_fill_box(s, 8, FP_H - 32, 36, FP_H - 20, FP_WATER);
 }
 
 /* A planted bed, because nothing else here grows: setting GROW_REACH to 1 -
@@ -298,11 +246,7 @@ scene_plant_bed(sand_t* s) {
     for (int x = 4; x < FP_W; x += 8) {
         sand_set(s, x, bed_top - 1, MATX(MATX_PLANT));
     }
-    for (int y = bed_top - 8; y < bed_top - 4; y++) {
-        for (int x = 0; x < FP_W; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
+    sand_fill_box(s, 0, bed_top - 8, FP_W, bed_top - 4, FP_WATER);
 }
 
 /* Glass is immune for having no dissolvable at all; cullet is immune
@@ -338,9 +282,7 @@ scene_acid_bath(sand_t* s) {
      * the reason scene_sealed_lava forces the burst. */
     sand_set_acid_rain(s, 255);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
 
     for (int y = FP_H - 3; y < FP_H - 1; y++) {
         for (int x = 0; x < FP_W; x++) {
@@ -348,11 +290,7 @@ scene_acid_bath(sand_t* s) {
         }
     }
 
-    for (int y = FP_H - 12; y < FP_H - 3; y++) {
-        for (int x = 2; x < FP_W - 2; x++) {
-            sand_set(s, x, y, FP_ACID);
-        }
-    }
+    sand_fill_box(s, 2, FP_H - 12, FP_W - 2, FP_H - 3, FP_ACID);
 
     /* Alternating rows put exactly two steam in every 2x2, which is what
      * step_one_acid_rain_cell() demands - so its 4x4 scan actually runs
@@ -374,26 +312,16 @@ scene_acid_bath(sand_t* s) {
  * mechanisms - which is what lets this scene fail when one changes. */
 static void
 snow_thaw_floor(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
     for (int x = 15; x < FP_W; x += 16) {
-        for (int y = 40; y < FP_H - 1; y++) {
-            sand_set(s, x, y, FP_STONE);
-        }
+        sand_fill_box(s, x, 40, x + 1, FP_H - 1, FP_STONE);
     }
 }
 
 static void
 snow_thaw_bays(sand_t* s) {
-    for (int y = FP_H - 8; y < FP_H - 1; y++) {
-        for (int x = 0; x < 15; x++) {
-            sand_set(s, x, y, FP_WATER); /* thaws=4 - melts today */
-        }
-        for (int x = 16; x < 31; x++) {
-            sand_set(s, x, y, FP_WET_DIRT); /* inert today */
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 8, 15, FP_H - 1, FP_WATER);
+    sand_fill_box(s, 16, FP_H - 8, 31, FP_H - 1, FP_WET_DIRT);
 }
 
 /* Heat held FIVE cells from the snow through a conductor, because today
@@ -402,13 +330,9 @@ snow_thaw_bays(sand_t* s) {
  * Lava rather than a hot pane alone so the source is still hot at 300. */
 static void
 snow_thaw_heat_conductor(sand_t* s) {
-    for (int x = 32; x < 47; x++) {
-        sand_set(s, x, FP_H - 2, FP_LAVA);
-        sand_set(s, x, FP_H - 3, FP_HOT_GLASS);
-        for (int y = FP_H - 7; y < FP_H - 3; y++) {
-            sand_set(s, x, y, FP_STONE);
-        }
-    }
+    sand_fill_box(s, 32, FP_H - 2, 47, FP_H - 1, FP_LAVA);
+    sand_fill_box(s, 32, FP_H - 3, 47, FP_H - 2, FP_HOT_GLASS);
+    sand_fill_box(s, 32, FP_H - 7, 47, FP_H - 3, FP_STONE);
 }
 
 /* Settled snow resting ON something convertible: inert today, so turning it to
@@ -416,14 +340,8 @@ snow_thaw_heat_conductor(sand_t* s) {
  * chills and thaws, which nothing else here reaches. */
 static void
 snow_thaw_ice_bed(sand_t* s) {
-    for (int x = 48; x < FP_W; x++) {
-        for (int y = FP_H - 4; y < FP_H - 1; y++) {
-            sand_set(s, x, y, FP_STONE);
-        }
-        for (int y = FP_H - 7; y < FP_H - 4; y++) {
-            sand_set(s, x, y, FP_ICE);
-        }
-    }
+    sand_fill_box(s, 48, FP_H - 4, FP_W, FP_H - 1, FP_STONE);
+    sand_fill_box(s, 48, FP_H - 7, FP_W, FP_H - 4, FP_ICE);
 }
 
 static void
@@ -440,11 +358,7 @@ snow_thaw_blanket(sand_t* s) {
 /* Smoke warms (28) whatever it touches, and it starts on the snow. */
 static void
 snow_thaw_smoke(sand_t* s) {
-    for (int y = FP_H - 20; y < FP_H - 16; y++) {
-        for (int x = 0; x < FP_W; x++) {
-            sand_set(s, x, y, FP_SMOKE);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 20, FP_W, FP_H - 16, FP_SMOKE);
 }
 
 static void
@@ -470,14 +384,8 @@ static void
 scene_snow_crust(sand_t* s) {
     sand_set_crust(s, 4);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 9; y < FP_H - 1; y++) {
-        for (int x = 4; x < FP_W - 4; x++) {
-            sand_set(s, x, y, FP_SNOW);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 4, FP_H - 9, FP_W - 4, FP_H - 1, FP_SNOW);
 }
 
 /* A KEG STANDING IN WATER: exercises every soak/dry/convert rule
@@ -497,31 +405,15 @@ scene_powder_keg(sand_t* s) {
     sand_set_soak(s, 60);
     sand_set_soak_convert(s, 1);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = 40; y < FP_H - 1; y++) {
-        sand_set(s, 10, y, FP_STONE);
-        sand_set(s, 30, y, FP_STONE);
-    }
-    for (int y = FP_H - 10; y < FP_H - 1; y++) {
-        for (int x = 11; x < 30; x++) {
-            sand_set(s, x, y, FP_POWDER);
-        }
-    }
-    for (int y = FP_H - 16; y < FP_H - 10; y++) {
-        for (int x = 11; x < 30; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 10, 40, 11, FP_H - 1, FP_STONE);
+    sand_fill_box(s, 30, 40, 31, FP_H - 1, FP_STONE);
+    sand_fill_box(s, 11, FP_H - 10, 30, FP_H - 1, FP_POWDER);
+    sand_fill_box(s, 11, FP_H - 16, 30, FP_H - 10, FP_WATER);
 
     /* A dry half too, so the row also pins that dry powder does NOT convert -
      * the other half of what soaked_to promises. */
-    for (int y = FP_H - 10; y < FP_H - 1; y++) {
-        for (int x = 40; x < 58; x++) {
-            sand_set(s, x, y, FP_POWDER);
-        }
-    }
+    sand_fill_box(s, 40, FP_H - 10, 58, FP_H - 1, FP_POWDER);
 }
 
 /* Snow resting on DRY SAND and DRY DIRT, which nothing else here presents it
@@ -534,19 +426,13 @@ static void
 scene_snow_earth(sand_t* s) {
     sand_set_crust(s, 4);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
     for (int y = FP_H - 14; y < FP_H - 1; y++) {
         for (int x = 0; x < FP_W; x++) {
             sand_set(s, x, y, ((x / 8) & 1) ? FP_DIRT : FP_SAND);
         }
     }
-    for (int y = FP_H - 24; y < FP_H - 14; y++) {
-        for (int x = 4; x < FP_W - 4; x++) {
-            sand_set(s, x, y, FP_SNOW);
-        }
-    }
+    sand_fill_box(s, 4, FP_H - 24, FP_W - 4, FP_H - 14, FP_SNOW);
 }
 
 /* Acid and lava on GREENERY, which no row here has ever put them near, and
@@ -558,22 +444,14 @@ scene_snow_earth(sand_t* s) {
  * acid was long spent. The wall keeps the two from quenching each other. */
 static void
 plant_ruin_floor_and_earth(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 16; y < FP_H - 1; y++) {
-        for (int x = 0; x < FP_W; x++) {
-            sand_set(s, x, y, FP_WET_DIRT);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 0, FP_H - 16, FP_W, FP_H - 1, FP_WET_DIRT);
 }
 
 static void
 plant_ruin_trees(sand_t* s) {
     for (int x = 4; x < FP_W; x += 8) {
-        for (int y = FP_H - 14; y < FP_H - 4; y++) {
-            sand_set(s, x, y, FP_ROOT);
-        }
+        sand_fill_box(s, x, FP_H - 14, x + 1, FP_H - 4, FP_ROOT);
         for (int y = FP_H - 22; y < FP_H - 16; y++) {
             sand_set(s, x, y, FP_PLANT);
             sand_set(s, x - 1, y, FP_LEAF);
@@ -584,23 +462,13 @@ plant_ruin_trees(sand_t* s) {
 
 static void
 plant_ruin_wall(sand_t* s) {
-    for (int y = 0; y < FP_H; y++) {
-        for (int x = FP_W / 2 - 1; x <= FP_W / 2 + 1; x++) {
-            sand_set(s, x, y, FP_STONE);
-        }
-    }
+    sand_fill_box(s, (FP_W / 2) - 1, 0, (FP_W / 2) + 2, FP_H, FP_STONE);
 }
 
 static void
 plant_ruin_acid_and_lava(sand_t* s) {
-    for (int y = FP_H - 30; y < FP_H - 24; y++) {
-        for (int x = 0; x < FP_W / 2 - 1; x++) {
-            sand_set(s, x, y, FP_ACID);
-        }
-        for (int x = FP_W / 2 + 2; x < FP_W; x++) {
-            sand_set(s, x, y, FP_LAVA);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 30, (FP_W / 2) - 1, FP_H - 24, FP_ACID);
+    sand_fill_box(s, (FP_W / 2) + 2, FP_H - 30, FP_W, FP_H - 24, FP_LAVA);
 }
 
 static void
@@ -620,24 +488,12 @@ static void
 scene_gas_no_walk(sand_t* s) {
     sand_set_gas_walk(s, false);
 
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
     for (int x = 5; x < FP_W - 5; x += 15) {
-        for (int y = 10; y < 25; y++) {
-            sand_set(s, x, y, FP_STONE);
-        }
+        sand_fill_box(s, x, 10, x + 1, 25, FP_STONE);
     }
-    for (int y = 30; y < 40; y++) {
-        for (int x = 8; x < FP_W - 8; x++) {
-            sand_set(s, x, y, FP_GAS);
-        }
-    }
-    for (int y = FP_H - 10; y < FP_H - 1; y++) {
-        for (int x = 20; x < 40; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
+    sand_fill_box(s, 8, 30, FP_W - 8, 40, FP_GAS);
+    sand_fill_box(s, 20, FP_H - 10, 40, FP_H - 1, FP_WATER);
 }
 
 /* F2: acid meeting oil, absent from every scene above - acid_bath dissolves
@@ -646,19 +502,9 @@ scene_gas_no_walk(sand_t* s) {
  * residue/death draws) has no cover here otherwise. */
 static void
 scene_acid_oil(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int y = FP_H - 10; y < FP_H - 1; y++) {
-        for (int x = 4; x < FP_W - 4; x++) {
-            sand_set(s, x, y, FP_OIL);
-        }
-    }
-    for (int y = FP_H - 20; y < FP_H - 10; y++) {
-        for (int x = 4; x < FP_W - 4; x++) {
-            sand_set(s, x, y, FP_ACID);
-        }
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 4, FP_H - 10, FP_W - 4, FP_H - 1, FP_OIL);
+    sand_fill_box(s, 4, FP_H - 20, FP_W - 4, FP_H - 10, FP_ACID);
 }
 
 /* F3: a pane already past SAND_SHOCK_HEAT, touching snow directly - every
@@ -667,13 +513,9 @@ scene_acid_oil(sand_t* s) {
  * both unreached without this one. */
 static void
 scene_glass_shock_snow(sand_t* s) {
-    for (int x = 0; x < FP_W; x++) {
-        sand_set(s, x, FP_H - 1, FP_STONE);
-    }
-    for (int x = 4; x < FP_W - 4; x++) {
-        sand_set(s, x, FP_H - 2, FP_GLOWING_GLASS);
-        sand_set(s, x, FP_H - 3, FP_SNOW);
-    }
+    sand_fill_box(s, 0, FP_H - 1, FP_W, FP_H, FP_STONE);
+    sand_fill_box(s, 4, FP_H - 2, FP_W - 4, FP_H - 1, FP_GLOWING_GLASS);
+    sand_fill_box(s, 4, FP_H - 3, FP_W - 4, FP_H - 2, FP_SNOW);
 }
 
 /* F5: the water_pool shape, scaled up to whatever (w, h) main() hands it.
@@ -682,24 +524,13 @@ scene_glass_shock_snow(sand_t* s) {
  * two-core row needs its own larger board to ever engage the split. */
 static void
 scene_two_core_big(sand_t* s) {
-    const int w = s->w, h = s->h;
+    const int w = s->w;
+    const int h = s->h;
 
-    for (int x = 0; x < w; x++) {
-        sand_set(s, x, h - 1, FP_STONE);
-    }
-    for (int y = h - 60; y < h - 1; y++) {
-        sand_set(s, 20, y, FP_STONE);
-        for (int x = 21; x < w - 20; x++) {
-            sand_set(s, x, y, FP_WATER);
-        }
-    }
-    for (int y = 10; y < 80; y++) {
-        for (int x = 4; x < w - 4; x++) {
-            if (((x * 7 + y * 13) & 3) == 0) {
-                sand_set(s, x, y, FP_SAND);
-            }
-        }
-    }
+    sand_fill_box(s, 0, h - 1, w, h, FP_STONE);
+    sand_fill_box(s, 20, h - 60, 21, h - 1, FP_STONE);
+    sand_fill_box(s, 21, h - 60, w - 20, h - 1, FP_WATER);
+    fill_sand_sprinkle(s, 4, 10, w - 4, 80);
 }
 
 /* SKIP COVERAGE: each row below makes a skip fire that no row above reaches,
@@ -710,21 +541,21 @@ scene_two_core_big(sand_t* s) {
  * neighbour scan and conduction are skipped, board-wide. */
 static void
 scene_lone_flame(sand_t* s) {
-    fill_rect(s, 20, 20, 40, 26, FP_FIRE);
+    sand_fill_box(s, 20, 20, 40, 26, FP_FIRE);
 }
 
 /* Snow on water with no conductor: the cold cell never carries cold on. */
 static void
 scene_bare_snow(sand_t* s) {
-    fill_rect(s, 0, FP_H - 10, FP_W, FP_H, FP_WATER);
-    fill_rect(s, 10, 6, 50, 20, FP_SNOW);
+    sand_fill_box(s, 0, FP_H - 10, FP_W, FP_H, FP_WATER);
+    sand_fill_box(s, 10, 6, 50, 20, FP_SNOW);
 }
 
 /* Plants, wood and roots in dry dirt, and no liquid anywhere: drinking and
  * rooting are skipped for want of anything to draw. */
 static void
 scene_dry_garden(sand_t* s) {
-    fill_rect(s, 0, FP_H - 10, FP_W, FP_H, FP_DIRT);
+    sand_fill_box(s, 0, FP_H - 10, FP_W, FP_H, FP_DIRT);
     for (int x = 8; x < 56; x += 6) {
         sand_set(s, x, FP_H - 11, FP_PLANT);
         sand_set(s, x + 2, FP_H - 11, FP_WOOD);
@@ -739,8 +570,8 @@ scene_dry_garden(sand_t* s) {
 static void
 scene_soak_asleep(sand_t* s) {
     sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
-    fill_rect(s, 0, FP_H - 20, FP_W, FP_H, FP_DIRT);
-    fill_rect(s, 4, FP_H - 24, 10, FP_H - 20, FP_WATER);
+    sand_fill_box(s, 0, FP_H - 20, FP_W, FP_H, FP_DIRT);
+    sand_fill_box(s, 4, FP_H - 24, 10, FP_H - 20, FP_WATER);
 }
 
 /* A packed water column under gravity off the axis, on a board tall enough
@@ -749,7 +580,7 @@ scene_soak_asleep(sand_t* s) {
  * both settled bits, and cross-flow skips such a block outright. */
 static void
 scene_tilted_pool(sand_t* s) {
-    fill_rect(s, 0, s->h - 80, s->w, s->h, FP_WATER);
+    sand_fill_box(s, 0, s->h - 80, s->w, s->h, FP_WATER);
 }
 
 /* GRAVITY IS PER SCENE, and the six original rows keep the straight-down

@@ -34,14 +34,14 @@ void
 stone_floor_fixture(void) {
     fixture();
     sand_clear(&s);
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
 }
 
 void
 soaked_bed_fixture(cell_t bed) {
     stone_floor_fixture();
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    fill_box(&s, 0, W, H - 2, H - 1, bed);
+    sand_fill_box(&s, 0, H - 2, W, H - 1, bed);
 }
 
 void
@@ -54,9 +54,9 @@ wide_open(uint32_t seed) {
 int
 heat_conductor_row(sand_t* g, int len, cell_t target) {
     const int target_x = 2 + len;
-    fill_box(g, target_x - 1, target_x + 2, HEAT_ROW_Y + 1, HEAT_ROW_Y + 2, STONE);
+    sand_fill_box(g, target_x - 1, HEAT_ROW_Y + 1, target_x + 2, HEAT_ROW_Y + 2, STONE);
     sand_set(g, 1, HEAT_ROW_Y, FIRE);
-    fill_box(g, 2, target_x, HEAT_ROW_Y, HEAT_ROW_Y + 1, STONE);
+    sand_fill_box(g, 2, HEAT_ROW_Y, target_x, HEAT_ROW_Y + 1, STONE);
     sand_set(g, target_x, HEAT_ROW_Y, target);
     return target_x;
 }
@@ -73,7 +73,7 @@ sheltered_root_fixture(void) {
     fixture();
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-    fill_box(&s, ROOT_X - 2, ROOT_X + 3, ROOT_Y + 1, ROOT_Y + 2, STONE);
+    sand_fill_box(&s, ROOT_X - 2, ROOT_Y + 1, ROOT_X + 3, ROOT_Y + 2, STONE);
     sand_set(&s, ROOT_X, ROOT_Y - 1, CELL_MAKE(MAT_WOOD, 0));
     sand_set(&s, ROOT_X, ROOT_Y, MATX(MATX_ROOT));
 }
@@ -89,9 +89,9 @@ impulses_open(sand_t* g, int max) {
 void
 boxed_lit_square(sand_t* g) {
     const int h = g->h;
-    fill_box(g, 2, 3, h - 3, h - 1, STONE);
-    fill_box(g, 5, 6, h - 3, h - 1, STONE);
-    fill_box(g, 3, 5, h - 3, h - 1, GUNPOWDER_LIT_CELL);
+    sand_fill_box(g, 2, h - 3, 3, h - 1, STONE);
+    sand_fill_box(g, 5, h - 3, 6, h - 1, STONE);
+    sand_fill_box(g, 3, h - 3, 5, h - 1, GUNPOWDER_LIT_CELL);
 }
 
 bool
@@ -108,15 +108,6 @@ step_until_square_burns(sand_t* g, int max_steps) {
         }
     }
     return false;
-}
-
-void
-fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c) {
-    for (int y = y0; y < y1; y++) {
-        for (int x = x0; x < x1; x++) {
-            sand_set(g, x, y, c);
-        }
-    }
 }
 
 int

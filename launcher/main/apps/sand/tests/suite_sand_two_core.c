@@ -691,8 +691,8 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     sand_t s;
     sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 9u);
 
-    fill_box(&s, 0, TC_W, TC_H - 1, TC_H, STONE);
-    fill_box(&s, 2, TC_W - 2, 4, TC_H / 2, SAND);
+    sand_fill_box(&s, 0, TC_H - 1, TC_W, TC_H, STONE);
+    sand_fill_box(&s, 2, 4, TC_W - 2, TC_H / 2, SAND);
 
     sand_set_two_core_step(true);
     run_steps(&s, 400, 0, 1000);
@@ -1095,7 +1095,7 @@ tc_build_solid_body(sand_t* s, int side, cell_t fill, int* out_x0, int* out_y0) 
     const int x0 = side - TC_BODY_SIDE / 2;
     const int y0 = side - TC_BODY_SIDE / 2;
 
-    fill_box(s, x0, x0 + TC_BODY_SIDE, y0, y0 + TC_BODY_SIDE, fill);
+    sand_fill_box(s, x0, y0, x0 + TC_BODY_SIDE, y0 + TC_BODY_SIDE, fill);
     *out_x0 = x0;
     *out_y0 = y0;
 }
@@ -1337,7 +1337,7 @@ tc_fuse_blast_impulses(bool two_core) {
     sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
     sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
 
-    fill_box(&s, 0, TC_W, TC_H - 1, TC_H, STONE);
+    sand_fill_box(&s, 0, TC_H - 1, TC_W, TC_H, STONE);
     boxed_lit_square(&s);
 
     sand_set_two_core_step(two_core);
@@ -1371,8 +1371,8 @@ tc_lava_burst_impulses(bool two_core) {
      * many fit in the deferred queue. */
     sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
 
-    fill_box(&s, 0, TC_W, TC_H - 40, TC_H, STONE);
-    fill_box(&s, 4, TC_W - 4, TC_H - 36, TC_H - 6, CELL_MAKE(MAT_LAVA, MASS_MAX));
+    sand_fill_box(&s, 0, TC_H - 40, TC_W, TC_H, STONE);
+    sand_fill_box(&s, 4, TC_H - 36, TC_W - 4, TC_H - 6, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     sand_set_two_core_step(two_core);
     int peak = 0;
@@ -1424,7 +1424,7 @@ test_a_settled_chunk_does_no_row_work(void) {
     sand_t s;
     sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1u);
     void* scratch = lane_scratch_open(&s);
-    fill_box(&s, 0, TC_W, 0, TC_H, STONE);
+    sand_fill_box(&s, 0, 0, TC_W, TC_H, STONE);
 
     sand_set_two_core_step(true);
     sand_step(&s, 0, 1000, 0);
@@ -1474,7 +1474,7 @@ tc_build_falling_column(sand_t* s) {
 static void
 tc_build_dense_pile(sand_t* s) {
     tc_build_bordered_box(s);
-    fill_box(s, TC_W / 4, 3 * TC_W / 4, TC_H / 4, 3 * TC_H / 4, SAND);
+    sand_fill_box(s, TC_W / 4, TC_H / 4, 3 * TC_W / 4, 3 * TC_H / 4, SAND);
 }
 
 static uint32_t
@@ -2587,7 +2587,7 @@ tc_run_crossflow_and_hash(void) {
     uint8_t* blocks;
     sand_t s;
     sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 5u);
-    fill_box(&s, 0, TC_W, TC_H / 3, TC_H, CELL_MAKE(MAT_OIL, MASS_MAX));
+    sand_fill_box(&s, 0, TC_H / 3, TC_W, TC_H, CELL_MAKE(MAT_OIL, MASS_MAX));
     for (int x = 0; x < TC_W; x++) {
         sand_set(&s, x, TC_H / 3 - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + (x * 7) % MASS_MAX)));
     }
@@ -2746,7 +2746,7 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
 static void
 tc_build_settled_slab_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
-    fill_box(s, TC_W / 4, (TC_W * 3) / 4, TC_H / 3, TC_H, STONE);
+    sand_fill_box(s, TC_W / 4, TC_H / 3, (TC_W * 3) / 4, TC_H, STONE);
 }
 
 /* One narrow column of sand falling down an otherwise empty board - awake
@@ -2755,7 +2755,7 @@ tc_build_settled_slab_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
 static void
 tc_build_falling_column_scene(sand_t* s, uint8_t* cells, uint32_t seed) {
     sand_init(s, cells, TC_W, TC_H, seed);
-    fill_box(s, (TC_W / 2) - 2, (TC_W / 2) + 2, 0, TC_H / 8, SAND);
+    sand_fill_box(s, (TC_W / 2) - 2, 0, (TC_W / 2) + 2, TC_H / 8, SAND);
 }
 
 static void
