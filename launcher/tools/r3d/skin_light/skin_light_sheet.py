@@ -78,7 +78,7 @@ def main():
     parser.add_argument("out")
     skin_light_data.sheet_argument(parser)
     args = parser.parse_args()
-    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_glb(args.asset))
+    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_asset(args.asset))
     labels = (args.bench / "sheet.txt").read_text(encoding="utf-8").splitlines()
     raw = (args.bench / "sheet.bin").read_bytes()
     count = len(asset.positions)
