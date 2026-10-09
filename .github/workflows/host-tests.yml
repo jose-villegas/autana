@@ -28,6 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The packs' meshes come from the bake cache; fetching first names a missing bake on its own.
+      - name: Fetch the bakes launcher/bakes.lock names
+        run: time python3 launcher/tools/bake/bake.py fetch
       - run: bash launcher/test/run_tests.sh
       - run: bash launcher/test/run_tests.sh --sanitize
       - name: Upload host test log
