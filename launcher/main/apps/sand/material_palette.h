@@ -68,6 +68,15 @@ typedef enum {
 
 #define MATERIAL_EDGE_MASK_COUNT (MATERIAL_EDGE_CARDINAL + 1u)
 
+/* Frame inputs for painting. Zero-initialised means rest: no rim highlight
+ * and every phase zero. */
+typedef struct {
+    int8_t liquid_spec[MATERIAL_EDGE_MASK_COUNT]; /* By cardinal mask; equals MATERIAL_VARIANTS only by coincidence. */
+    unsigned foam_phase;                          /* Time phase for foam dither, independent of gravity. */
+    unsigned cullet_phase;                        /* Cullet colour-cycle step, advanced over real time. */
+    int glass_phase;                              /* Gravity direction snapshot; steady tilt keeps it fixed. */
+} material_frame_t;
+
 /* Test `(mask & MATERIAL_EDGE_CARDINAL) != 0` for "is this cell an edge at
  * all", never `mask != 0`: once the diagonal bits exist, a cell with every
  * cardinal neighbour occupied but one diagonal empty would newly read as an
@@ -79,7 +88,8 @@ typedef enum {
  * material_root_neighbours(), darker the more it has; a leaf, and wood
  * beside one, read the leaf wave's fraction plus one. Everything else
  * ignores it. */
-material_pattern_t material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth, gfx_color_t out[3]);
+material_pattern_t material_colours(const material_frame_t* f, cell_t c, unsigned hash, unsigned mask, unsigned depth,
+                                    gfx_color_t out[3]);
 
 static inline unsigned
 material_root_neighbours(const uint8_t* above, const uint8_t* row, const uint8_t* below, int cx, int w) {
@@ -139,7 +149,7 @@ material_wood_near_leaf(const uint8_t* above, const uint8_t* row, const uint8_t*
 
 /* See material_palette.c. `depth` is local to each puddle. Specular table
  * depends on gravity's direction. */
-void material_set_gravity(int gx, int gy);
+void material_frame_set_gravity(material_frame_t* f, int gx, int gy);
 
 /* Tracks board, slanting shine. Pure, stateless. Returns (1,1) for degenerate
  * input. */
@@ -154,17 +164,6 @@ void material_wood_leaf_wind_axis(int gx, int gy, int* ux_q8, int* uy_q8);
  * cell. `*last_down` is hysteresis state the caller owns and initialises
  * to 0 (straight down); see this function's own comment for why. */
 void material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]);
-
-/* Separate gravity setter. Phase is time, gravity direction. Test
- * independence. See material_colours() for foam. */
-void material_set_foam_phase(unsigned phase);
-
-/* Separate clock for cullet phase. See sand_colours() in material_palette.c. */
-void material_set_cullet_phase(unsigned phase);
-
-/* Not a clock: app_sand.c passes a gravity snapshot, so this names a
- * direction, not a rate, and a steady tilt leaves the phase fixed. */
-void material_set_glass_phase(int phase);
 
 /* Pure: see material_palette.c for the wave shape. `time_ms` is a plain
  * running clock app_sand.c owns; `pos` is the cell's coordinate along

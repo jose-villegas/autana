@@ -385,16 +385,17 @@ test_snow_cracks_glass_but_not_stone(void) {
  * are ever retuned. */
 static void
 test_an_edge_shows_less_temperature_than_the_body(void) {
+    material_frame_t f = {0};
     static const uint8_t tempered[] = {MAT_GLASS, MAT_STONE};
 
     for (unsigned k = 0; k < sizeof tempered / sizeof tempered[0]; k++) {
         const uint8_t m = tempered[k];
         gfx_color_t body[3], ed[3], hot[3], hot_ed[3];
 
-        material_colours(CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, 0u, 255u, body);
-        material_colours(CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, MATERIAL_EDGE_LEFT, 255u, ed);
-        material_colours(CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, 0u, 255u, hot);
-        material_colours(CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, MATERIAL_EDGE_LEFT, 255u, hot_ed);
+        material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, 0u, 255u, body);
+        material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, MATERIAL_EDGE_LEFT, 255u, ed);
+        material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, 0u, 255u, hot);
+        material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, MATERIAL_EDGE_LEFT, 255u, hot_ed);
 
         const gfx_color_t rest_body = body[0], rest_edge = ed[0];
         const gfx_color_t hot_body = hot[0], hot_edge = hot_ed[0];
@@ -425,9 +426,7 @@ test_an_edge_shows_less_temperature_than_the_body(void) {
  * behaviour and no other test would notice. */
 static void
 test_each_material_is_painted_the_way_it_should_be(void) {
-    /* A device run reaches here after suites that drive the app, which
-     * advances the phase; the host never compiles that code. */
-    material_set_cullet_phase(0u);
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     /* Deepest depth - every KIND_LIQUID material below is asserted to
      * paint EXACTLY its own body colour at this point, now that every
@@ -445,7 +444,7 @@ test_each_material_is_painted_the_way_it_should_be(void) {
              * roll on its own terms, checked deliberately rather than by
              * accident here. Wood gets depth 0: nonzero now means "beside a
              * leaf" for MAT_WOOD only, tested separately. */
-            const material_pattern_t pat = material_colours(c, 1u, 0u, m == MAT_WOOD ? 0u : 255u, col);
+            const material_pattern_t pat = material_colours(&f, c, 1u, 0u, m == MAT_WOOD ? 0u : 255u, col);
 
             char why[128];
             snprintf(why, sizeof why, "%s variant %d", material_by_id((material_id_t)m)->name, v);
@@ -478,19 +477,22 @@ test_each_material_is_painted_the_way_it_should_be(void) {
     }
 }
 
-/* Glass has a grain too - no longer required to stay quieter than
- * stone's, now that it runs all the way to GLASS_FROST rather than
- * wobbling a couple of fifteenths either side of its own colour. A wider
- * swing than stone's is the deliberate design now, not a bug to catch. */
+/* Every tilt phase must leave visible variation between cell hashes. */
 static void
-test_glass_grain_is_quieter_than_stone(void) {
-    gfx_color_t g0[3], g1[3];
-    material_colours(CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), 0u, 0u, 255u, g0);
-    material_colours(CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), 3u, 0u, 255u, g1);
-
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, colour_gap(g0[0], g1[0]),
-                                         "glass must vary from cell to cell at all - without it a pane is "
-                                         "one flat fill, which is what the grain exists to undo");
+test_glass_grain_varies_at_every_phase(void) {
+    material_frame_t f = {0};
+    for (int phase = 0; phase < 256; phase++) {
+        f.glass_phase = phase;
+        gfx_color_t base[3];
+        material_colours(&f, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), 0u, 0u, 255u, base);
+        bool varied = false;
+        for (unsigned hash = 1; hash < 256u; hash++) {
+            gfx_color_t col[3];
+            material_colours(&f, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), hash, 0u, 255u, col);
+            varied |= colour_gap(base[0], col[0]) > 0;
+        }
+        TEST_ASSERT_TRUE_MESSAGE(varied, "glass must vary from cell to cell at every phase");
+    }
 }
 
 /* Stone's speckle comes from the cell's POSITION, not from its variant.
@@ -504,6 +506,7 @@ test_glass_grain_is_quieter_than_stone(void) {
  * anything unstable would crawl and shimmer from frame to frame. */
 static void
 test_stone_speckles_by_position_at_every_temperature(void) {
+    material_frame_t f = {0};
     for (int v = 0; v < MATERIAL_VARIANTS; v++) {
         const cell_t c = CELL_MAKE(MAT_STONE, v);
         gfx_color_t seen[8];
@@ -511,7 +514,7 @@ test_stone_speckles_by_position_at_every_temperature(void) {
 
         for (unsigned h = 0; h < 8u; h++) {
             gfx_color_t col[3] = {0, 0, 0};
-            material_colours(c, h, 0u, 255u, col);
+            material_colours(&f, c, h, 0u, 255u, col);
             const gfx_color_t a = col[0];
             TEST_ASSERT_EQUAL_MESSAGE(col[0], col[1],
                                       "a speckled cell is one flat colour - the variation is "
@@ -538,8 +541,8 @@ test_stone_speckles_by_position_at_every_temperature(void) {
     /* Stable: the same cell asked twice gets the same answer. */
     gfx_color_t one[3], two[3];
     const cell_t c = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
-    material_colours(c, 12345u, 0u, 255u, one);
-    material_colours(c, 12345u, 0u, 255u, two);
+    material_colours(&f, c, 12345u, 0u, 255u, one);
+    material_colours(&f, c, 12345u, 0u, 255u, two);
     TEST_ASSERT_EQUAL_MESSAGE(one[0], two[0],
                               "the same cell must speckle the same way every time it is asked, "
                               "or a stone wall shimmers");
@@ -548,8 +551,9 @@ test_stone_speckles_by_position_at_every_temperature(void) {
 /*
  * Each of the four reserved cullet shades (SAND_CULLET_BASE ..
  * MATERIAL_VARIANTS - 1) is a starting point on a shared 16-step colour
- * cycle, not a fixed colour of its own. The phase is file-static state in
- * material.c, so every test below resets it to 0 before returning.
+ * cycle, not a fixed colour of its own. The phase is
+ * material_frame_t.cullet_phase; each test below starts from its own
+ * zero-initialised frame.
  */
 
 /* At rest the four shades are four distinct tints, not one colour repeated
@@ -557,7 +561,7 @@ test_stone_speckles_by_position_at_every_temperature(void) {
  * on more than the cell byte alone. */
 static void
 test_cullet_shades_are_four_distinct_tints(void) {
-    material_set_cullet_phase(0u);
+    material_frame_t f = {0};
 
     /* hash 1, not 0 - hash 0 at phase 0 is the one combination
      * CULLET_GLINT_ONE_IN's own roll (sand_colours(), material_palette.c) turns
@@ -568,7 +572,7 @@ test_cullet_shades_are_four_distinct_tints(void) {
     gfx_color_t col[SAND_CULLET_SHADES][3];
     for (int i = 0; i < SAND_CULLET_SHADES; i++) {
         const material_pattern_t pat =
-            material_colours(CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col[i]);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col[i]);
         TEST_ASSERT_EQUAL_MESSAGE(MATERIAL_FLAT, pat, "cullet is a shade, not a pattern - it must stay flat");
     }
 
@@ -579,8 +583,6 @@ test_cullet_shades_are_four_distinct_tints(void) {
             TEST_ASSERT_TRUE_MESSAGE(col[i][0] != col[j][0], why);
         }
     }
-
-    material_set_cullet_phase(0u);
 }
 
 /* The whole point of the feature: a cullet cell's PAINTED colour moves on
@@ -591,6 +593,7 @@ test_cullet_shades_are_four_distinct_tints(void) {
  * cycle is not a cycle. */
 static void
 test_cullet_changes_colour_as_the_phase_advances(void) {
+    material_frame_t f = {0};
     const cell_t c = CELL_MAKE(MAT_SAND, SAND_CULLET_BASE);
 
     /* hash 1, not 0, see test_cullet_shades_are_four_distinct_tints just
@@ -598,17 +601,16 @@ test_cullet_changes_colour_as_the_phase_advances(void) {
      * that this stays clear of the glint roll across every phase this loop
      * visits (0..CULLET_CYCLE_LEN) is checked directly in the CULLET GLINT
      * tests further down. */
-    material_set_cullet_phase(0u);
     gfx_color_t at_phase_0[3];
-    material_colours(c, 1u, 0u, 255u, at_phase_0);
+    material_colours(&f, c, 1u, 0u, 255u, at_phase_0);
 
     gfx_color_t prev[3];
     memcpy(prev, at_phase_0, sizeof prev);
 
     for (unsigned phase = 1; phase <= CULLET_CYCLE_LEN; phase++) {
         gfx_color_t col[3];
-        material_set_cullet_phase(phase);
-        material_colours(c, 1u, 0u, 255u, col);
+        f.cullet_phase = phase;
+        material_colours(&f, c, 1u, 0u, 255u, col);
 
         char why[64];
         snprintf(why, sizeof why, "phase %u must paint a different colour than phase %u", phase, phase - 1);
@@ -619,8 +621,6 @@ test_cullet_changes_colour_as_the_phase_advances(void) {
     TEST_ASSERT_EQUAL_MESSAGE(at_phase_0[0], prev[0],
                               "phase CULLET_CYCLE_LEN must wrap back to exactly phase 0's colour, "
                               "or the loop is not actually 16 steps long");
-
-    material_set_cullet_phase(0u);
 }
 
 /* An ordinary dune shade must never so much as glance at the phase - it is
@@ -628,25 +628,23 @@ test_cullet_changes_colour_as_the_phase_advances(void) {
  * touches nothing outside the reserved band. */
 static void
 test_dune_sand_ignores_the_cullet_phase(void) {
+    material_frame_t f = {0};
     gfx_color_t at_rest[SAND_DUNE_SHADES][3];
-    material_set_cullet_phase(0u);
     for (int v = 0; v < SAND_DUNE_SHADES; v++) {
-        material_colours(CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, at_rest[v]);
+        material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, at_rest[v]);
     }
 
     static const unsigned phases_to_try[] = {5u, CULLET_CYCLE_LEN};
     for (unsigned pi = 0; pi < sizeof phases_to_try / sizeof phases_to_try[0]; pi++) {
-        material_set_cullet_phase(phases_to_try[pi]);
+        f.cullet_phase = phases_to_try[pi];
         for (int v = 0; v < SAND_DUNE_SHADES; v++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, col);
             char why[80];
             snprintf(why, sizeof why, "dune shade %d must ignore cullet phase %u", v, phases_to_try[pi]);
             TEST_ASSERT_EQUAL_MESSAGE(at_rest[v][0], col[0], why);
         }
     }
-
-    material_set_cullet_phase(0u);
 }
 
 /* A grain that was a window must ALWAYS be tellable from beach sand, at
@@ -655,10 +653,10 @@ test_dune_sand_ignores_the_cullet_phase(void) {
  * indistinguishable from the sand it is sitting in. */
 static void
 test_cullet_never_dresses_as_beach(void) {
+    material_frame_t f = {0};
     gfx_color_t dune[SAND_DUNE_SHADES][3];
-    material_set_cullet_phase(0u);
     for (int v = 0; v < SAND_DUNE_SHADES; v++) {
-        material_colours(CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, dune[v]);
+        material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, dune[v]);
     }
 
     /* hash 1, not 0, through the whole phase range this loop covers
@@ -669,10 +667,10 @@ test_cullet_never_dresses_as_beach(void) {
      * is deliberately outside the pale band, and asserting against it here
      * would be asserting a constraint the feature was never given. */
     for (unsigned phase = 0; phase < CULLET_CYCLE_LEN; phase++) {
-        material_set_cullet_phase(phase);
+        f.cullet_phase = phase;
         for (int i = 0; i < SAND_CULLET_SHADES; i++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col);
             for (int v = 0; v < SAND_DUNE_SHADES; v++) {
                 char why[112];
                 snprintf(why, sizeof why, "cullet shade %d at phase %u must not match dune shade %d", i, phase, v);
@@ -680,8 +678,6 @@ test_cullet_never_dresses_as_beach(void) {
             }
         }
     }
-
-    material_set_cullet_phase(0u);
 }
 
 /* Pale is the whole design constraint on the cycle's four anchors (see
@@ -691,6 +687,7 @@ test_cullet_never_dresses_as_beach(void) {
  * fixed number: what matters is staying paler than sand ever gets. */
 static void
 test_cullet_stays_pale_at_every_phase(void) {
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const int darkest_dune_lum = panel_luminance(pal[CELL_MAKE(MAT_SAND, 0)]);
     const int pale_floor = darkest_dune_lum + 40;
@@ -698,10 +695,10 @@ test_cullet_stays_pale_at_every_phase(void) {
     /* hash 1, not 0, for the same reason as the other cullet-cycle tests
      * above - see test_cullet_shades_are_four_distinct_tints. */
     for (unsigned phase = 0; phase < CULLET_CYCLE_LEN; phase++) {
-        material_set_cullet_phase(phase);
+        f.cullet_phase = phase;
         for (int i = 0; i < SAND_CULLET_SHADES; i++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col);
             const int lum = panel_luminance(col[0]);
             char why[96];
             snprintf(why, sizeof why, "cullet shade %d at phase %u must stay pale (%d <= floor %d)", i, phase, lum,
@@ -709,8 +706,6 @@ test_cullet_stays_pale_at_every_phase(void) {
             TEST_ASSERT_TRUE_MESSAGE(lum > pale_floor, why);
         }
     }
-
-    material_set_cullet_phase(0u);
 }
 
 /*
@@ -728,15 +723,15 @@ test_cullet_stays_pale_at_every_phase(void) {
  * roll formula's shape. */
 static void
 test_a_cullet_glint_is_pure_white(void) {
-    material_set_cullet_phase(0u);
+    material_frame_t f = {0};
 
     gfx_color_t pale[3];
-    material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale);
 
     gfx_color_t glinting[3];
     unsigned hash = 0u;
     for (; hash < 4096u; hash++) {
-        material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, glinting);
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, glinting);
         if (glinting[0] != pale[0]) {
             break;
         }
@@ -746,8 +741,6 @@ test_a_cullet_glint_is_pure_white(void) {
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFFFFFF), glinting[0],
                                     "a glinting grain must be pure white, the panel's highest radiance");
-
-    material_set_cullet_phase(0u);
 }
 
 /* RARE, as asked - not blinking. The design is one grain in
@@ -757,16 +750,16 @@ test_a_cullet_glint_is_pure_white(void) {
  * still fails it. */
 static void
 test_cullet_glints_are_rare(void) {
-    material_set_cullet_phase(0u);
+    material_frame_t f = {0};
 
     gfx_color_t pale[3];
-    material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale);
 
     const unsigned n = 4096u;
     unsigned glints = 0u;
     for (unsigned hash = 0u; hash < n; hash++) {
         gfx_color_t col[3];
-        material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col);
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col);
         if (col[0] != pale[0]) {
             glints++;
         }
@@ -778,8 +771,6 @@ test_cullet_glints_are_rare(void) {
              "1/384 and 1/96",
              glints, n);
     TEST_ASSERT_TRUE_MESSAGE(glints >= n / 384u && glints <= n / 96u, why);
-
-    material_set_cullet_phase(0u);
 }
 
 /* Glistening, not blinking, means the SET of grains that glint has to move:
@@ -790,23 +781,23 @@ test_cullet_glints_are_rare(void) {
  * two. */
 static void
 test_cullet_glints_move_with_the_phase(void) {
+    material_frame_t f = {0};
     const unsigned n = 1024u;
 
-    material_set_cullet_phase(0u);
     gfx_color_t pale0[3];
-    material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale0);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale0);
 
-    material_set_cullet_phase(1u);
+    f.cullet_phase = 1u;
     gfx_color_t pale1[3];
-    material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale1);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale1);
 
     bool moved = false;
     for (unsigned hash = 0u; hash < n && !moved; hash++) {
         gfx_color_t col0[3], col1[3];
-        material_set_cullet_phase(0u);
-        material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col0);
-        material_set_cullet_phase(1u);
-        material_colours(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col1);
+        f.cullet_phase = 0u;
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col0);
+        f.cullet_phase = 1u;
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col1);
 
         const bool glinted0 = col0[0] != pale0[0];
         const bool glinted1 = col1[0] != pale1[0];
@@ -818,8 +809,6 @@ test_cullet_glints_move_with_the_phase(void) {
     TEST_ASSERT_TRUE_MESSAGE(moved, "the glinting set at phase 0 must differ from phase 1 over hashes "
                                     "0..1023 - a glint that never moved would be a blink, not a "
                                     "glisten");
-
-    material_set_cullet_phase(0u);
 }
 
 /* The roll lives inside the `v >= SAND_CULLET_BASE` branch of MAT_SAND's
@@ -830,16 +819,17 @@ test_cullet_glints_move_with_the_phase(void) {
  * confirms the phase alone touches nothing outside the cullet band. */
 static void
 test_dune_sand_never_glints(void) {
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
 
     static const unsigned phases_to_try[] = {0u, 3u};
     for (unsigned pi = 0; pi < sizeof phases_to_try / sizeof phases_to_try[0]; pi++) {
-        material_set_cullet_phase(phases_to_try[pi]);
+        f.cullet_phase = phases_to_try[pi];
         for (int v = 0; v < SAND_DUNE_SHADES; v++) {
             const gfx_color_t expect = pal[CELL_MAKE(MAT_SAND, (uint8_t)v)];
             for (unsigned hash = 0u; hash < 256u; hash++) {
                 gfx_color_t col[3];
-                material_colours(CELL_MAKE(MAT_SAND, (uint8_t)v), hash, 0u, 255u, col);
+                material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), hash, 0u, 255u, col);
                 char why[128];
                 snprintf(why, sizeof why,
                          "dune shade %d, hash %u, phase %u must stay the plain "
@@ -850,8 +840,6 @@ test_dune_sand_never_glints(void) {
             }
         }
     }
-
-    material_set_cullet_phase(0u);
 }
 
 void
@@ -868,7 +856,7 @@ run_sand_tone_suite(void) {
     RUN_TEST(test_snow_cracks_glass_but_not_stone);
     RUN_TEST(test_an_edge_shows_less_temperature_than_the_body);
     RUN_TEST(test_each_material_is_painted_the_way_it_should_be);
-    RUN_TEST(test_glass_grain_is_quieter_than_stone);
+    RUN_TEST(test_glass_grain_varies_at_every_phase);
     RUN_TEST(test_stone_speckles_by_position_at_every_temperature);
     RUN_TEST(test_cullet_shades_are_four_distinct_tints);
     RUN_TEST(test_cullet_changes_colour_as_the_phase_advances);
