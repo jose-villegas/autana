@@ -1,0 +1,39 @@
+name: Bakes
+
+# Publishes the files launcher/bakes.lock names to the `bakes` release, so a
+# build fetches them instead of baking (launcher/tools/bake/bake.py). Only
+# main publishes; a branch never writes the release. The first run creates
+# the release. The jobs that bake on a pull request join this workflow later.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'launcher/bakes.lock'
+      - 'launcher/tools/bake/**'
+      - '.github/workflows/bakes.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: bakes-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish locked bakes
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Upload each locked file the release lacks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python launcher/tools/bake/bake.py publish

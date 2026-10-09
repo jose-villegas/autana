@@ -163,6 +163,8 @@ renderer.
 | `mesh_import.py` | bakes a mesh and writes `<name>.mesh`, one entry, beside its import file |
 | `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
+| `build_pack.py --from-cache [DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` instead of the tree |
+| `bake/bake.py list\|lock --seed\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
 `launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
@@ -176,6 +178,15 @@ entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
+
+The meshes are on their way out of the tree
+([Cached-Bakes-Design-Sketch.md](../plans/Cached-Bakes-Design-Sketch.md)).
+`launcher/tools/bake/bake.py` keys each one on its recipe, its sources and
+the code that bakes it; `launcher/bakes.lock`, written only by that tool,
+records the bytes made for each key, and main publishes those files to the
+repository's `bakes` release. `build_pack.py --from-cache` builds the same
+packs from them, downloading into the user cache what is not there, and
+fails naming every mesh it cannot get.
 
 ### Flashing
 
