@@ -63,6 +63,12 @@ fixture(void) {
 }
 
 static void
+clear_fixture(gfx_color_t background) {
+    fixture();
+    gfx_clear(background);
+}
+
+static void
 perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
 #if CONFIG_LAUNCHER_QEMU
     /* Whether the ceiling was pegged on the board or is another present
@@ -178,9 +184,8 @@ test_colour_packing_matches_the_panel_format(void) {
 
 void
 test_clear_touches_every_pixel(void) {
-    fixture();
     const gfx_color_t c = gfx_rgb(0x123456);
-    gfx_clear(c);
+    clear_fixture(c);
     TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(c));
 }
 
@@ -245,11 +250,9 @@ test_gfx_invalidate_forces_full_clear_in_partial_mode(void) {
 
 void
 test_fill_rect_writes_exactly_its_own_area(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_fill_rect(10, 20, 30, 40, fg);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(30 * 40, count_pixels(fg), "a filled rect must cover exactly w*h pixels");
@@ -267,11 +270,9 @@ test_fill_rect_writes_exactly_its_own_area(void) {
 
 void
 test_dither_at_alpha_zero_draws_nothing(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_fill_rect_dither(10, 10, 40, 40, fg, 0);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_pixels(fg), "alpha 0 should draw nothing at all - not even one dither cell");
@@ -284,11 +285,9 @@ test_dither_at_alpha_zero_draws_nothing(void) {
  * docs/notes/Board-and-Memory.md). */
 void
 test_dither_at_alpha_255_matches_a_solid_fill_exactly(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_fill_rect_dither(10, 10, 40, 40, fg, 255);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(40 * 40, count_pixels(fg),
@@ -327,11 +326,9 @@ test_dither_coverage_is_monotonic_and_graduated(void) {
  * table's own period. */
 void
 test_dither_stays_in_phase_across_separate_calls(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_fill_rect_dither(10, 10, 80, 40, fg, 128);
 
     gfx_color_t one_call[4][8];
@@ -506,11 +503,9 @@ test_dithered_text_at_low_alpha_draws_fewer_pixels_than_solid(void) {
 
 void
 test_a_horizontal_line_covers_both_endpoints(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x00FF00);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_line(10, 30, 40, 30, fg);
 
     /* Inclusive at both ends: 40 - 10 + 1. A line that quietly drops its last
@@ -549,11 +544,9 @@ test_a_line_is_the_same_line_drawn_backwards(void) {
 
 void
 test_a_single_point_line_draws_one_pixel(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x00FFFF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_line(100, 100, 100, 100, fg);
 
     TEST_ASSERT_EQUAL_INT(1, count_pixels(fg));
@@ -562,11 +555,9 @@ test_a_single_point_line_draws_one_pixel(void) {
 
 void
 test_a_line_is_clipped_rather_than_wrapped(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     /* Starts off the left edge and off the top, ends on screen. The failure
      * this guards against is not a crash but a wrap: an unclipped write at
      * x = -1 lands at the far end of the previous row. */
@@ -581,11 +572,9 @@ test_a_line_is_clipped_rather_than_wrapped(void) {
 
 void
 test_a_line_entirely_off_screen_draws_nothing(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFF00);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_line(-100, -100, -10, -40, fg);
     gfx_line(GFX_WIDTH + 5, 10, GFX_WIDTH + 90, 200, fg);
 
@@ -594,11 +583,9 @@ test_a_line_entirely_off_screen_draws_nothing(void) {
 
 void
 test_a_line_honours_the_clip_rect(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x8888FF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_set_clip(20, 20, 10, 10);
     gfx_line(0, 25, GFX_WIDTH - 1, 25, fg);
     gfx_clear_clip();
@@ -633,11 +620,9 @@ test_an_additive_line_brightens_where_it_crosses_itself(void) {
 
 void
 test_an_open_line_leaves_its_first_pixel_alone(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x004000);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_line_ex(10, 40, 20, 40, fg, GFX_LINE_ADD | GFX_LINE_OPEN);
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(bg, pixel_at(10, 40), "an open line must not draw its starting pixel");
@@ -653,11 +638,9 @@ test_an_open_line_leaves_its_first_pixel_alone(void) {
  * contribution on every pixel. */
 void
 test_chained_open_segments_do_not_double_their_joints(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t step = gfx_rgb(0x002000);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_line_ex(10, 60, 20, 60, step, GFX_LINE_ADD);
     gfx_line_ex(20, 60, 30, 60, step, GFX_LINE_ADD | GFX_LINE_OPEN);
 
@@ -685,11 +668,9 @@ test_fill_rect_is_clipped_to_the_screen(void) {
 
 void
 test_fill_rect_entirely_off_screen_draws_nothing(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF0000);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_fill_rect(-200, -200, 50, 50, fg);
     gfx_fill_rect(GFX_WIDTH + 10, 0, 50, 50, fg);
     gfx_fill_rect(0, GFX_HEIGHT + 10, 50, 50, fg);
@@ -699,11 +680,9 @@ test_fill_rect_entirely_off_screen_draws_nothing(void) {
 
 void
 test_clip_rect_restricts_drawing(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFF00);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_set_clip(100, 100, 50, 50);
     gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, fg); /* try to cover everything */
     gfx_clear_clip();
@@ -715,11 +694,9 @@ test_clip_rect_restricts_drawing(void) {
 
 void
 test_pixel_outside_the_screen_is_ignored(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF0000);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_pixel(-1, 0, fg);
     gfx_pixel(0, -1, fg);
     gfx_pixel(GFX_WIDTH, 0, fg);
@@ -730,11 +707,9 @@ test_pixel_outside_the_screen_is_ignored(void) {
 
 void
 test_text_draws_and_advances(void) {
-    fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFFFF);
-
-    gfx_clear(bg);
+    clear_fixture(bg);
     gfx_text(0, 0, "II", fg);
 
     const int drawn = count_pixels(fg);
@@ -824,9 +799,7 @@ time_present(void) {
 
 static void
 test_an_unchanged_frame_costs_almost_nothing(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     const int64_t full = time_present(); /* clear marks everything */
 
     const int64_t unchanged = time_present(); /* nothing touched since */
@@ -856,9 +829,7 @@ test_an_unchanged_frame_costs_almost_nothing(void) {
  * of that involved. */
 static void
 test_full_present_cost_splits_into_bus_time_and_overhead(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x102030)); /* marks the whole screen dirty */
+    clear_fixture(gfx_rgb(0x102030)); /* marks the whole screen dirty */
     const int64_t present_us = time_present();
 
     const int64_t raw_start = timing_now_us();
@@ -883,9 +854,7 @@ test_full_present_cost_splits_into_bus_time_and_overhead(void) {
 
 static void
 test_a_partial_change_costs_less_than_a_full_frame(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     const int64_t full = time_present();
 
     /* One band of seven. */
@@ -908,6 +877,25 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
                one_band, 2331);
 }
 
+static void
+write_dirty_rectangle(int x0, int y0, int w, int h, gfx_color_t colour) {
+    gfx_color_t* const fb = gfx_framebuffer();
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            fb[((y0 + y) * GFX_WIDTH) + x0 + x] = colour;
+        }
+    }
+    gfx_mark_dirty(x0, y0, w, h);
+}
+
+static int64_t
+present_reference_band(gfx_color_t colour) {
+    clear_fixture(gfx_rgb(0x000000));
+    (void)time_present();
+    gfx_fill_rect(0, 0, GFX_WIDTH, 64, colour);
+    return time_present();
+}
+
 /* The ratio tests below take a band presented alone as their reference,
  * which is the UN-PIPELINED price. Inside a real frame send_full_row()
  * (gfx_present.c) queues without waiting and gfx_present() drains every
@@ -921,25 +909,12 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
  * mark_band() regardless of what it drew; see its comment). */
 static void
 test_a_narrow_change_costs_less_than_a_full_band(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present(); /* drain: everything now clean */
-
-    /* One full band, the existing fast path. */
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x204060));
-    const int64_t full_band = time_present();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x204060));
 
     /* A narrow strip within a band, written directly and marked with its
      * real bounds: a caller repainting a narrow changed strip. */
-    gfx_color_t* fb = gfx_framebuffer();
     const int w = 20;
-    for (int y = 0; y < 64; y++) {
-        for (int x = 0; x < w; x++) {
-            fb[y * GFX_WIDTH + x] = gfx_rgb(0x204060);
-        }
-    }
-    gfx_mark_dirty(0, 0, w, 64);
+    write_dirty_rectangle(0, 0, w, 64, gfx_rgb(0x204060));
     const int64_t narrow = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
@@ -966,25 +941,13 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
  * benefit at all. */
 static void
 test_a_short_wide_change_costs_less_than_a_full_band(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x602040));
-    const int64_t full_band = time_present();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x602040));
 
     /* Wide but short: most of the band's width, a sliver of its height:
      * the shape a sideways-falling stream leaves behind. */
-    gfx_color_t* fb = gfx_framebuffer();
     const int w = 300;
     const int h = 8;
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            fb[y * GFX_WIDTH + x] = gfx_rgb(0x602040);
-        }
-    }
-    gfx_mark_dirty(0, 0, w, h);
+    write_dirty_rectangle(0, 0, w, h, gfx_rgb(0x602040));
     const int64_t wide = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %dx%d px (gathered) %lld us", (long long)full_band, w, h,
@@ -1011,24 +974,12 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
  * logged above), so with the fixed per-transaction cost the floor is ~78%. */
 static void
 test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
-    const int64_t full_band = time_present();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x406020));
 
     /* Full width, 48 of the band's 64 rows: the shape a wide change
      * leaves that has not yet grown to fill its whole strip. */
-    gfx_color_t* fb = gfx_framebuffer();
     const int h = 48;
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < GFX_WIDTH; x++) {
-            fb[y * GFX_WIDTH + x] = gfx_rgb(0x406020);
-        }
-    }
-    gfx_mark_dirty(0, 0, GFX_WIDTH, h);
+    write_dirty_rectangle(0, 0, GFX_WIDTH, h, gfx_rgb(0x406020));
     const int64_t partial = time_present();
 
     ESP_LOGI(TAG,
@@ -1049,35 +1000,18 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
  * separate pools settling in the same horizontal band, say. */
 static void
 test_two_far_corners_cost_less_than_a_full_band(void) {
-    fixture();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x206020));
 
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x206020));
-    const int64_t full_band = time_present();
-
-    gfx_color_t* fb = gfx_framebuffer();
     const int size = 15;
 
     /* Top-left corner. */
-    for (int y = 0; y < size; y++) {
-        for (int x = 0; x < size; x++) {
-            fb[y * GFX_WIDTH + x] = gfx_rgb(0x206020);
-        }
-    }
-    gfx_mark_dirty(0, 0, size, size);
+    write_dirty_rectangle(0, 0, size, size, gfx_rgb(0x206020));
 
     /* Bottom-right corner: a different row range within the same band, a
      * different column, nothing in between touched. */
     const int y0 = 64 - size;
     const int x0 = GFX_WIDTH - size;
-    for (int y = 0; y < size; y++) {
-        for (int x = 0; x < size; x++) {
-            fb[(y0 + y) * GFX_WIDTH + x0 + x] = gfx_rgb(0x206020);
-        }
-    }
-    gfx_mark_dirty(x0, y0, size, size);
+    write_dirty_rectangle(x0, y0, size, size, gfx_rgb(0x206020));
 
     const int64_t two_corners = time_present();
 
@@ -1104,15 +1038,8 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
  * that a raised cap's three small sends are not guaranteed to beat. */
 static void
 test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
-    fixture();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x602060));
 
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x602060));
-    const int64_t full_band = time_present();
-
-    gfx_color_t* fb = gfx_framebuffer();
     const int size = 15;
     /* Cells 0, 1 and 2 (COL_WIDTH=92 each): adjacent, so these merge
      * into one 276px-wide coarse run, not three separate cell-level ones.
@@ -1122,12 +1049,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
     const int xs[3] = {5, 115, 230};
 
     for (int i = 0; i < 3; i++) {
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                fb[y * GFX_WIDTH + xs[i] + x] = gfx_rgb(0x602060);
-            }
-        }
-        gfx_mark_dirty(xs[i], 0, size, size);
+        write_dirty_rectangle(xs[i], 0, size, size, gfx_rgb(0x602060));
     }
 
     const int64_t three_marks = time_present();
@@ -1151,31 +1073,14 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
  * budget at 4096 and 6144, under it at the shipped 8192. */
 static void
 test_a_near_budget_split_crosses_the_gather_threshold(void) {
-    fixture();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x206040));
 
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x206040));
-    const int64_t full_band = time_present();
-
-    gfx_color_t* fb = gfx_framebuffer();
     const int small_size = 15;
     const int wide_x = 48, wide_w = 110, wide_h = 64;
 
-    for (int y = 0; y < small_size; y++) {
-        for (int x = 0; x < small_size; x++) {
-            fb[y * GFX_WIDTH + 2 + x] = gfx_rgb(0x206040);
-        }
-    }
-    gfx_mark_dirty(2, 0, small_size, small_size);
+    write_dirty_rectangle(2, 0, small_size, small_size, gfx_rgb(0x206040));
 
-    for (int y = 0; y < wide_h; y++) {
-        for (int x = 0; x < wide_w; x++) {
-            fb[y * GFX_WIDTH + wide_x + x] = gfx_rgb(0x206040);
-        }
-    }
-    gfx_mark_dirty(wide_x, 0, wide_w, wide_h);
+    write_dirty_rectangle(wide_x, 0, wide_w, wide_h, gfx_rgb(0x206040));
 
     const int64_t near_budget = time_present();
 
@@ -1194,30 +1099,13 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
  * leaf layer; this test is the one that actually exercises it. */
 static void
 test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
-    fixture();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x406020));
 
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
-    const int64_t full_band = time_present();
-
-    gfx_color_t* fb = gfx_framebuffer();
     const int size = 10;
 
-    for (int y = 0; y < size; y++) {
-        for (int x = 0; x < size; x++) {
-            fb[y * GFX_WIDTH + (5 + x)] = gfx_rgb(0x406020);
-        }
-    }
-    gfx_mark_dirty(5, 0, size, size);
+    write_dirty_rectangle(5, 0, size, size, gfx_rgb(0x406020));
 
-    for (int y = 0; y < size; y++) {
-        for (int x = 0; x < size; x++) {
-            fb[y * GFX_WIDTH + (70 + x)] = gfx_rgb(0x406020);
-        }
-    }
-    gfx_mark_dirty(70, 0, size, size);
+    write_dirty_rectangle(70, 0, size, size, gfx_rgb(0x406020));
 
     const int64_t two_marks = time_present();
 
@@ -1241,13 +1129,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
  * the board. */
 static void
 test_a_corner_label_costs_less_than_its_rows_full_width(void) {
-    fixture();
-
-    gfx_clear(gfx_rgb(0x000000));
-    (void)time_present();
-
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x406020));
-    const int64_t full_band = time_present();
+    const int64_t full_band = present_reference_band(gfx_rgb(0x406020));
 
     /* 4 glyphs at GFX_GLYPH_SCALE is 64 px wide and 16 tall, inside one
      * 92 px column, well inside one strip. */
@@ -1261,8 +1143,7 @@ test_a_corner_label_costs_less_than_its_rows_full_width(void) {
 
 static void
 test_drawing_marks_what_it_touched(void) {
-    fixture();
-    gfx_clear(gfx_rgb(0x000000));
+    clear_fixture(gfx_rgb(0x000000));
     gfx_present(); /* everything now clean */
 
     TEST_ASSERT_FALSE_MESSAGE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT),
