@@ -13,14 +13,14 @@ from gate_tree import ShellGateTestCase
 class LocalHookTests(ShellGateTestCase):
     def setUp(self):
         super().setUp()
-        # What git ignores in the real tree stays out of the fixture: CI installs
-        # the gates' npm dependencies (thousands of files) beside the scripts.
-        shutil.copytree(ROOT / 'scripts', self.root / 'scripts',
-                        ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
-        shutil.copytree(ROOT / 'launcher/tools/build', self.root / 'launcher/tools/build')
-        (self.root / 'launcher/tools/render').mkdir(parents=True)
-        shutil.copyfile(ROOT / 'launcher/tools/render/generated_blocks.py',
-                        self.root / 'launcher/tools/render/generated_blocks.py')
+        # Tracked files only: CI installs thousands of untracked npm files under
+        # scripts/, which the fixture would otherwise copy and stage.
+        tracked = subprocess.check_output(
+            ['git', 'ls-files', '-z', 'scripts', 'launcher/tools/build',
+             'launcher/tools/render/generated_blocks.py'], cwd=ROOT, text=True)
+        for path in filter(None, tracked.split('\0')):
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / path, self.root / path)
         (self.root / '.github/workflows').mkdir(parents=True)
         # CI's file-scoped gates as they are; its whole-tree ones need the
         # real documents, so test_a_snapshot_gate_judges_the_index_as_a_whole
