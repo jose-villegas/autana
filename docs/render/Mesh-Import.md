@@ -42,8 +42,14 @@ Keys before `;` are required; after it, optional.
 
 #### source
 
-`[source].path` names a local file relative to the import file. The supported
-extension is `.obj`, with its sibling `.mtl` and the textures the MTL names.
+`[source].path` names a local file relative to the import file:
+
+| Extension | Reads | Colour |
+|---|---|---|
+| `.obj` | its sibling `.mtl` and the textures the MTL names | the material's `Kd` and texture |
+| `.glb` | every mesh node's triangles, placed by the node; a skinned node's in its bind pose | per vertex: `COLOR_0` times the material's base colour |
+| `.fbx` | converted once to a `.glb` (`launcher/tools/fbx/fbx_to_glb.py`, cached by content), then read as one | as `.glb` |
+
 `credit` records the source attribution. Source files sit in
 `launcher/demo/*/source/`, which uses Git LFS (MTL and attribution files stay
 text) and which firmware clones exclude through `.lfsconfig`. Before a source

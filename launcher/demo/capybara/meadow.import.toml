@@ -1,0 +1,9 @@
+# The plane the capybara stands on.
+[source]
+path = "meadow.obj"
+credit = "A plain square written for this scene."
+
+[output]
+directory = "."
+name = "meadow"
+position_scale = 2048   # ticks per metre: the square reaches 8 m from the origin, inside int16

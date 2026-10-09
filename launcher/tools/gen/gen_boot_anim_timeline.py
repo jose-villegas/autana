@@ -80,7 +80,7 @@ def meters_to_q12(v):
 def load_motion(path):
     """{"duration": seconds} of the glTF animation the firmware bakes for the
     camera and the space."""
-    document, binary = gltf_read.load_glb(path)
+    document, binary = gltf_read.load_asset(path)
     animation = next((a for a in document.get("animations", [])
                       if a.get("name") == MOTION_ANIMATION), None)
     if animation is None:

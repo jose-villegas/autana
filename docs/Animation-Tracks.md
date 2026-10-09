@@ -52,14 +52,14 @@ times stay in step, and the clip's duration is the last key of any of them.
 
 ## The pack entry
 
-A `NAME.anim.toml` beside its `.glb` names one animation in it, and
+A `NAME.anim.toml` beside its `.glb` (or `.fbx`, converted to glTF once) names one animation in it, and
 `build_pack.py` finds every such file by searching, so no list is kept. A
 clip no scene names is a [pack](assets/README.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
 
 ```toml
-source = "NAME.glb"     # a .glb beside this one
+source = "NAME.glb"     # a .glb or .fbx beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
