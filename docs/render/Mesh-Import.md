@@ -222,8 +222,8 @@ beside its import file by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
 [`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). Two kinds of file
-drive it, in the manner of Unity's `.meta` beside an asset: an **import file**
-describes one mesh asset, and a **scene file** describes a scenario that
+drive it: an **import file** beside a source asset describes that one
+mesh asset, and a **scene file** describes a scenario that
 places meshes ([Scene-Files.md](Scene-Files.md)). Anything specific to one mesh is in its import file; anything
 about the scenario (lights, camera region, tone map) is in the scene file.
 [`launcher/tools/r3d/import_settings.py`](../../launcher/tools/r3d/import_settings.py)
