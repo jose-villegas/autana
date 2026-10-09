@@ -34,7 +34,7 @@ WIDTH_MAX = 4
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
 PATHS = ("translation", "rotation", "scale")
 POINTER = re.compile(r"^/([A-Za-z]+)/(\d+)/(.+)$")
-SOURCE = re.compile(r"[^/\\:]+\.glb")  # a file name: no folder, drive or path separator of either system
+SOURCE = re.compile(r"[^/\\:]+(?:%s)" % "|".join(re.escape(s) for s in gltf_read.ASSET_SUFFIXES), re.I)  # a file name: no folder, drive or path separator of either system
 
 
 class TracksError(ValueError):
@@ -191,7 +191,7 @@ def clip_id(path):
 
 
 def load_source(path):
-    """(the .glb's path, the animation's name) a .anim.toml names."""
+    """(the source's path, the animation's name) a .anim.toml names."""
     path = pathlib.Path(path)
     try:
         with open(path, "rb") as source:
@@ -199,10 +199,10 @@ def load_source(path):
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise TracksError("%s: %s" % (path, error)) from error
     if set(values) != {"source", "animation"} or not all(isinstance(v, str) and v for v in values.values()):
-        raise TracksError("%s: holds exactly source = \"x.glb\" and animation = \"<name>\"" % path)
+        raise TracksError("%s: holds exactly source = \"x.glb\" (or .fbx) and animation = \"<name>\"" % path)
     # Beside it, so whatever finds the .anim.toml finds its source too.
     if not SOURCE.fullmatch(values["source"]):
-        raise TracksError("%s: source %r is not a .glb in the same folder" % (path, values["source"]))
+        raise TracksError("%s: source %r is not a .glb or .fbx in the same folder" % (path, values["source"]))
     return path.parent / values["source"], values["animation"]
 
 
@@ -210,7 +210,7 @@ def bake(path):
     """The entry's bytes for a .anim.toml."""
     glb, animation = load_source(path)
     try:
-        document, binary = gltf_read.load_glb(glb)
+        document, binary = gltf_read.load_asset(glb)
     except (OSError, ValueError) as error:
         raise TracksError("%s: source %s: %s" % (path, glb, error)) from error
     tracks, duration_ms = clip_tracks(document, binary, find_animation(document, animation, glb))
