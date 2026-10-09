@@ -32,6 +32,7 @@
 
 static void
 test_a_liquid_body_paints_flat_inside(void) {
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const gfx_color_t body = pal[CELL_MAKE(MAT_WATER, MASS_MAX)];
 
@@ -50,11 +51,6 @@ test_a_liquid_body_paints_flat_inside(void) {
         grid[1][x] = CELL_MAKE(MAT_WATER, (x % 2) ? 7 : MASS_MAX);
     }
 
-    material_set_gravity(0, 0); /* interior painting must not care either
-                                    * way - there is no rim here to shade,
-                                    * and every material_colours() call below
-                                    * passes an explicit depth of its own */
-
     gfx_color_t seen = 0;
     bool have_seen = false;
     for (int x = 1; x < COMB_W - 1; x++) {
@@ -69,7 +65,7 @@ test_a_liquid_body_paints_flat_inside(void) {
                                       "it claims to");
 
         gfx_color_t col[3];
-        material_colours(c, 0u, mask, 255u, col);
+        material_colours(&f, c, 0u, mask, 255u, col);
 
         char why[96];
         snprintf(why, sizeof why,
@@ -97,12 +93,13 @@ test_a_liquid_body_paints_flat_inside(void) {
  * colour for being deep. 255 is past DEPTH_SATURATE_CELLS deliberately. */
 static void
 test_a_liquid_interior_is_shaded_by_depth(void) {
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const cell_t c = CELL_MAKE(MAT_WATER, MASS_MAX);
 
     gfx_color_t shallow[3], deep[3];
-    material_colours(c, 0u, 0u, 0u, shallow);
-    material_colours(c, 0u, 0u, 255u, deep);
+    material_colours(&f, c, 0u, 0u, 0u, shallow);
+    material_colours(&f, c, 0u, 0u, 255u, deep);
 
     TEST_ASSERT_TRUE_MESSAGE(panel_luminance(shallow[0]) > panel_luminance(deep[0]),
                              "a shallow interior cell (depth 0) must paint BRIGHTER than a deep "
@@ -128,12 +125,11 @@ test_a_liquid_interior_is_shaded_by_depth(void) {
  * variant on temperature, the one thing depth could be confused for. */
 static void
 test_only_a_liquid_interior_reads_depth(void) {
-    material_set_gravity(0, 0); /* no specular term to confuse the
-                                            * rim comparison with */
+    material_frame_t f = {0};
 
     gfx_color_t rim_shallow[3], rim_deep[3];
-    material_colours(CELL_MAKE(MAT_OIL, 8), 0u, MATERIAL_EDGE_UP, 0u, rim_shallow);
-    material_colours(CELL_MAKE(MAT_OIL, 8), 0u, MATERIAL_EDGE_UP, 255u, rim_deep);
+    material_colours(&f, CELL_MAKE(MAT_OIL, 8), 0u, MATERIAL_EDGE_UP, 0u, rim_shallow);
+    material_colours(&f, CELL_MAKE(MAT_OIL, 8), 0u, MATERIAL_EDGE_UP, 255u, rim_deep);
     TEST_ASSERT_EQUAL_MESSAGE(rim_shallow[0], rim_deep[0],
                               "a RIM liquid cell must paint identically at depth 0 and depth "
                               "255 - depth is the interior's business, not the rim's, which "
@@ -141,15 +137,15 @@ test_only_a_liquid_interior_reads_depth(void) {
                               "shift to show instead");
 
     gfx_color_t glass_shallow[3], glass_deep[3];
-    material_colours(CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 0u, glass_shallow);
-    material_colours(CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, glass_deep);
+    material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 0u, glass_shallow);
+    material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, glass_deep);
     TEST_ASSERT_EQUAL_MESSAGE(glass_shallow[0], glass_deep[0],
                               "glass must ignore depth entirely - it is not a liquid, and depth "
                               "must not leak into a code path that has nothing to do with it");
 
     gfx_color_t stone_shallow[3], stone_deep[3];
-    material_colours(CELL_MAKE(MAT_STONE, 5), 1u, 0u, 0u, stone_shallow);
-    material_colours(CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, stone_deep);
+    material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 0u, stone_shallow);
+    material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, stone_deep);
     TEST_ASSERT_EQUAL_MESSAGE(stone_shallow[0], stone_deep[0],
                               "and neither must stone - the same guarantee, on the other "
                               "non-liquid material whose variant could plausibly be confused "
@@ -166,7 +162,7 @@ test_only_a_liquid_interior_reads_depth(void) {
  * here. */
 static void
 test_a_liquid_rim_still_shows_its_fill(void) {
-    material_set_gravity(0, 0); /* no specular term to confuse this with */
+    material_frame_t f = {0};
 
     const gfx_color_t* pal = material_palette();
     /* Flat rim on the "up" side: MATERIAL_EDGE_UP plus its two leaning
@@ -177,8 +173,8 @@ test_a_liquid_rim_still_shows_its_fill(void) {
     const unsigned mask = MATERIAL_EDGE_UP | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT;
 
     gfx_color_t shallow[3], deep[3];
-    material_colours(CELL_MAKE(MAT_WATER, 1), 0u, mask, 255u, shallow);
-    material_colours(CELL_MAKE(MAT_WATER, MASS_MAX), 0u, mask, 255u, deep);
+    material_colours(&f, CELL_MAKE(MAT_WATER, 1), 0u, mask, 255u, shallow);
+    material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, mask, 255u, deep);
 
     TEST_ASSERT_EQUAL_MESSAGE(pal[CELL_MAKE(MAT_WATER, 1)], shallow[0],
                               "a rim cell must read its own fill level straight from the "
@@ -203,36 +199,32 @@ test_a_liquid_rim_still_shows_its_fill(void) {
  * so the leaning diagonals change curvature only. */
 static void
 test_a_liquid_rim_catches_the_light_from_above(void) {
+    material_frame_t f = {0};
     const uint8_t fill = 8; /* mid-ramp, so a shift in either direction
                                * has somewhere to go without clamping at
                                * either end and hiding the difference */
 
-    material_set_gravity(0, 1000); /* straight down */
-
-    gfx_color_t up[3], down[3];
-    material_colours(CELL_MAKE(MAT_WATER, fill), 0u, MATERIAL_EDGE_UP | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT,
-                     255u, up);
-    material_colours(CELL_MAKE(MAT_WATER, fill), 0u,
-                     MATERIAL_EDGE_DOWN | MATERIAL_EDGE_DOWN_LEFT | MATERIAL_EDGE_DOWN_RIGHT, 255u, down);
-
-    TEST_ASSERT_TRUE_MESSAGE(panel_luminance(up[0]) > panel_luminance(down[0]),
-                             "with gravity pulling straight down, the empty side facing UP - "
-                             "the top of a pool - must be the bright one; a sign flipped here "
-                             "would light the underside of every overhang instead of its top");
-
-    material_set_gravity(1000, 0); /* tilt: gravity now points right */
-
-    gfx_color_t left[3], right[3];
-    material_colours(CELL_MAKE(MAT_WATER, fill), 0u,
-                     MATERIAL_EDGE_LEFT | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_DOWN_LEFT, 255u, left);
-    material_colours(CELL_MAKE(MAT_WATER, fill), 0u,
-                     MATERIAL_EDGE_RIGHT | MATERIAL_EDGE_UP_RIGHT | MATERIAL_EDGE_DOWN_RIGHT, 255u, right);
-
-    TEST_ASSERT_TRUE_MESSAGE(panel_luminance(left[0]) > panel_luminance(right[0]),
-                             "and the highlight must follow the tilt rather than stay where it "
-                             "was - once gravity points right, the side facing LEFT is the one "
-                             "facing away from it, so that is the side that should catch the "
-                             "light now");
+    const unsigned masks[2][2] = {
+        {MATERIAL_EDGE_UP | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT,
+         MATERIAL_EDGE_DOWN | MATERIAL_EDGE_DOWN_LEFT | MATERIAL_EDGE_DOWN_RIGHT},
+        {MATERIAL_EDGE_LEFT | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_DOWN_LEFT,
+         MATERIAL_EDGE_RIGHT | MATERIAL_EDGE_UP_RIGHT | MATERIAL_EDGE_DOWN_RIGHT},
+    };
+    const char* messages[2] = {"with gravity pulling straight down, the empty side facing UP - "
+                               "the top of a pool - must be the bright one; a sign flipped here "
+                               "would light the underside of every overhang instead of its top",
+                               "and the highlight must follow the tilt rather than stay where it "
+                               "was - once gravity points right, the side facing LEFT is the one "
+                               "facing away from it, so that is the side that should catch the "
+                               "light now"};
+    for (unsigned axis = 0; axis < 2u; axis++) {
+        material_frame_set_gravity(&f, axis == 0u ? 0 : 1000, axis == 0u ? 1000 : 0);
+        gfx_color_t lit[3];
+        gfx_color_t shaded[3];
+        material_colours(&f, CELL_MAKE(MAT_WATER, fill), 0u, masks[axis][0], 255u, lit);
+        material_colours(&f, CELL_MAKE(MAT_WATER, fill), 0u, masks[axis][1], 255u, shaded);
+        TEST_ASSERT_TRUE_MESSAGE(panel_luminance(lit[0]) > panel_luminance(shaded[0]), messages[axis]);
+    }
 }
 
 /* material_shine_direction()'s degenerate case: no gravity to sweep toward,
@@ -704,6 +696,8 @@ enum { BLEND_TEST_CX = 0, BLEND_TEST_CY = BLEND_POOL_H - 1 };
 
 static void
 test_the_blend_has_no_jump_crossing_45_degrees(void) {
+    material_frame_t f = {0};
+
     enum { PW = BLEND_POOL_W, PH = BLEND_POOL_H };
 
     uint8_t* blend_pool_cells = malloc((size_t)PW * PH);
@@ -734,7 +728,7 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
         }
 
         gfx_color_t out[3];
-        material_colours(CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, depth, out);
+        material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, depth, out);
         lum[i] = panel_luminance(out[0]);
     }
 
@@ -743,8 +737,8 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
      * ever being retuned. Three quarters of that span is the threshold,
      * matching every earlier shape's own version of this test. */
     gfx_color_t shallow[3], deep[3];
-    material_colours(CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, 0u, shallow);
-    material_colours(CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, 255u, deep);
+    material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, 0u, shallow);
+    material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, 255u, deep);
     const int full_span = panel_luminance(shallow[0]) - panel_luminance(deep[0]);
     const int max_step = (full_span * 3) / 4;
 
@@ -1247,6 +1241,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
 
 static void
 test_every_liquid_interior_is_exactly_the_body_colour_when_saturated(void) {
+    material_frame_t f = {0};
     static const uint8_t liquids[] = {MAT_WATER, MAT_OIL, MAT_LAVA, MAT_ACID};
     const gfx_color_t* pal = material_palette();
 
@@ -1255,7 +1250,7 @@ test_every_liquid_interior_is_exactly_the_body_colour_when_saturated(void) {
         const gfx_color_t body = pal[CELL_MAKE(id, MASS_MAX)];
 
         gfx_color_t col[3];
-        material_colours(CELL_MAKE(id, MASS_MAX), 0u, 0u, 255u, col);
+        material_colours(&f, CELL_MAKE(id, MASS_MAX), 0u, 0u, 255u, col);
 
         char why[192];
         snprintf(why, sizeof why,
@@ -1284,6 +1279,8 @@ enum { SHALLOW_POOL_W = 4, SHALLOW_POOL_H = 20 };
 
 static void
 test_a_shallow_puddle_still_shows_real_darkening(void) {
+    material_frame_t f = {0};
+
     enum { PW = SHALLOW_POOL_W, PH = SHALLOW_POOL_H };
 
     uint8_t* shallow_pool_cells = malloc((size_t)PW * PH);
@@ -1311,10 +1308,10 @@ test_a_shallow_puddle_still_shows_real_darkening(void) {
     const cell_t c = CELL_MAKE(MAT_WATER, MASS_MAX);
     gfx_color_t near_surface_col[3], near_bottom_col[3];
     gfx_color_t shallowest[3], deepest[3];
-    material_colours(c, 0u, 0u, near_surface_depth, near_surface_col);
-    material_colours(c, 0u, 0u, near_bottom_depth, near_bottom_col);
-    material_colours(c, 0u, 0u, 0u, shallowest);
-    material_colours(c, 0u, 0u, 255u, deepest);
+    material_colours(&f, c, 0u, 0u, near_surface_depth, near_surface_col);
+    material_colours(&f, c, 0u, 0u, near_bottom_depth, near_bottom_col);
+    material_colours(&f, c, 0u, 0u, 0u, shallowest);
+    material_colours(&f, c, 0u, 0u, 255u, deepest);
 
     const int near_surface_lum = panel_luminance(near_surface_col[0]);
     const int near_bottom_lum = panel_luminance(near_bottom_col[0]);
@@ -2700,6 +2697,7 @@ static const struct {
 
 static void
 test_a_saturated_liquid_body_reads_the_same_shade_at_every_tilt_angle(void) {
+    material_frame_t f = {0};
     int lum[SATURATED_SWEEP_N];
     for (size_t i = 0; i < SATURATED_SWEEP_N; i++) {
         const int gx = SATURATED_SWEEP[i].gx, gy = SATURATED_SWEEP[i].gy;
@@ -2718,7 +2716,7 @@ test_a_saturated_liquid_body_reads_the_same_shade_at_every_tilt_angle(void) {
         const unsigned depth = depth_raw < MATERIAL_LIQUID_DEPTH_BAND ? depth_raw : MATERIAL_LIQUID_DEPTH_BAND;
 
         gfx_color_t out[3];
-        material_colours(CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, depth, out);
+        material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, depth, out);
         lum[i] = panel_luminance(out[0]);
     }
 
