@@ -17,6 +17,7 @@
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/present/gfx_indexed.h"
 
@@ -264,8 +265,19 @@ test_settled_scenes_map_and_expand_correctly_at_every_quality(void) {
     scene_grid = NULL;
 }
 
+/* Each 16-colour dither mode expands through its own generated table. */
+static void
+test_each_dither_mode_reads_its_own_table(void) {
+    TEST_ASSERT_EQUAL_PTR(sand_dither_none_lut, sand_dither_table_for(GFX_DITHER_NONE));
+    TEST_ASSERT_EQUAL_PTR(sand_dither_cell_checker, sand_dither_table_for(GFX_DITHER_CELL_CHECKER));
+    TEST_ASSERT_EQUAL_PTR(sand_dither_cell_bayer2, sand_dither_table_for(GFX_DITHER_CELL_BAYER2));
+    TEST_ASSERT_EQUAL_PTR(sand_dither_pixel_checker2, sand_dither_table_for(GFX_DITHER_PIXEL_CHECKER2));
+    TEST_ASSERT_EQUAL_PTR(sand_palette16_dither_rgb, sand_dither_table_for(GFX_DITHER_PIXEL_BAYER4));
+}
+
 void
 run_sand_palette256_suite(void) {
+    RUN_TEST(test_each_dither_mode_reads_its_own_table);
     RUN_TEST(test_every_material_bytes_body_colour_maps_within_budget);
     RUN_TEST(test_expansion_reproduces_the_real_lut_cell_for_cell);
     RUN_TEST(test_metal_shine_cells_get_a_different_index_in_256_and_16);

@@ -68,6 +68,10 @@ typedef enum {
 
 #define MATERIAL_EDGE_MASK_COUNT (MATERIAL_EDGE_CARDINAL + 1u)
 
+/* A Q8 unit length, and one axis of a Q8 unit diagonal (256 / sqrt 2). */
+#define MATERIAL_Q8_ONE          256
+#define MATERIAL_Q8_DIAGONAL     181
+
 /* Frame inputs for painting. Zero-initialised means rest: no rim highlight
  * and every phase zero. */
 typedef struct {

@@ -66,6 +66,17 @@ typedef struct {
     const gfx_color_t* repaint_cell_table;
 } sand_paint_frame_t;
 
+/* The frame painting starts from: shine on the (1,1) diagonal and wind
+ * along +x, so a frame drawn before the first gravity sample looks right.
+ * A macro so a static can start from it. */
+#define SAND_PAINT_FRAME_INIT                                                                                          \
+    {.shine_ux_q8 = MATERIAL_Q8_DIAGONAL,                                                                              \
+     .shine_uy_q8 = MATERIAL_Q8_DIAGONAL,                                                                              \
+     .wood_leaf_wind_ux_q8 = MATERIAL_Q8_ONE,                                                                          \
+     .wood_leaf_wind_sign = 1,                                                                                         \
+     .wood_leaf_top5 = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}},                                                  \
+     .repaint_kind = GFX_INDEXED_REPAINT_RAW}
+
 static inline void
 sand_paint_row_state_init(sand_paint_row_state_t* s) {
     *s = (sand_paint_row_state_t){0};

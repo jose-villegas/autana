@@ -412,7 +412,7 @@ stateDiagram-v2
     Lit --> Fire: burns out<br/>otherwise
 ```
 
-Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `app_sand.c`). `Damp`
+Painted gunpowder starts `Dry` (`GUNPOWDER_CELL(0)`, `sand_brushes.h`). `Damp`
 stands for moisture 1-3 and `Soaked` for `moist_max`; **Moisture damps
 ignition** below gives each level's odds.
 
