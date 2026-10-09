@@ -137,10 +137,9 @@ build_pack.py: 1 bake is not cached:
    `assets/README.md`, `launcher/demo/README.md`, the r3d and render-lab tools
    READMEs, `report_skin_light.sh`. Acceptance: `git grep -n "\.mesh\"\|capybara\.glb"`
    finds only code that builds those names.
-4. `capybara.fbx` is not a demo asset: the FBX round-trip test's fixture is
-   an export of the `.glb`, so it is the same `.glb -> .fbx` converter through
-   Blender, made at test time from the cached `.glb` or, if a test cannot run
-   Blender, a cached bake of its own [A, open question 3].
+4. `capybara.fbx` is not a demo asset and not a bake: the FBX round-trip
+   test exports it from the `.glb` at test time, or keeps it among that
+   test's own fixtures. The cache does not hold test fixtures.
 
 ## 6. Costs
 
@@ -161,8 +160,5 @@ build_pack.py: 1 bake is not cached:
    a chore and today's silent staleness.
 2. **The GPU runner as a PR check.** It is the maintainer's machine; a PR
    that needs a fit waits for it.
-3. **Test fixtures made by an expensive tool** (the FBX round trip): a
-   cached bake like any other, or exported at test time where Blender exists
-   and skipped elsewhere?
-4. **Old commits** after pruning can only build packs with the tools; firmware
+3. **Old commits** after pruning can only build packs with the tools; firmware
    release tags are kept.
