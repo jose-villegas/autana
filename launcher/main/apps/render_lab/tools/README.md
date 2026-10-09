@@ -162,17 +162,19 @@ launcher/tools/r3d/skin_light/report_skin_light.sh launcher/demo/capybara/capyba
 
 ## Meshlet size captures
 
-Prepare scratch development builds of the shipped flythrough and print the
-board capture commands:
+Prepare scratch row trees of the shipped flythrough and print the board commands:
 
 ```sh
 python launcher/tools/render/meshlet_capture.py prepare \
-  --scene launcher/demo/sponza/sponza.scene.toml --sizes 16 32 64 \
-  --open-app "Render Lab" --scene-command render scene sponza
+  --scene launcher/demo/sponza/sponza.scene.toml --sizes 16 32 64
 ```
 
-The capture session runs the printed commands with the default camera, scale
-and shaded view. Each stamped monitor log records the firmware build ID and
-selected pack hash. Refresh the table from committed captures with
+Run each printed `autana --wait 3600 --project TREE suite run_sponza_perf_suite
+--flash --out LOG` command with a shell timeout of at least 30 minutes. Each
+command builds a self-test image and holds one lock from flash through the suite
+capture. The suite measures the same fixed flythrough poses with culling enabled
+and disabled, restores the tunable, and prints build identity, mounted pack
+CRC-32, cluster size and culling state. The generator selects the shipped bake's
+pass for each size row and its cull-off pass for the shipped pack. Refresh with
 `sh launcher/tools/render/render_doc_images.sh --stage meshlets`; the named
 block belongs to [Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).

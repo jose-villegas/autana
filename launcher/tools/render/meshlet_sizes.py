@@ -1,6 +1,7 @@
 """Generate meshlet-size costs from board captures and scratch bakes."""
 import argparse
-import hashlib
+import statistics
+import zlib
 import pathlib
 import re
 import sys
@@ -9,7 +10,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d.cost_model import FEATURES, mesh_rows
-from r3d.dynres_report import frame_cost_means
+from r3d.dynres_report import frame_cost_means, frame_cost_windows
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import read_lit_mesh
 from r3d.poses import sample_camera_path
@@ -18,33 +19,49 @@ from generated_blocks import replace_block
 
 ROWS = ("cull-off", "16", "32", "64")
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw")
-IDENTITY = re.compile(r"MESHLET_CAPTURE build_id=([0-9a-f]{12}-dev) pack_sha256=([0-9a-f]{64}) size=(\d+) cull=([01])")
+IDENTITY = re.compile(r"MESHLET_CAPTURE build_id=([0-9a-f]{12}-diag) pack_crc32=([0-9a-f]{8}) size=(\d+) cull=([01]) period_ms=(\d+) pose_every_ms=(\d+)")
+BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+)", re.S)
 
 
-def capture_means(directory, expected_packs=None):
-    result, builds, packs = {}, set(), {}
+def capture_means(directory, object_name, expected_packs=None, expected_poses=None):
+    result, packs, poses = {}, {}, None
     for row in ROWS:
         path = pathlib.Path(directory) / f"meshlets-{row}-board.log"
         text = path.read_text(encoding="utf-8")
-        identities = IDENTITY.findall(text)
+        if re.search(r"\bFAIL\b", text):
+            raise ValueError(f"{path}: failed suite")
+        label = "cull_off" if row == "cull-off" else object_name
+        blocks = [match[0] for match in BLOCK.finditer(text) if match[1] == label]
+        if len(blocks) != 1:
+            raise ValueError(f"{path}: needs one suite FRAME COST block for {label}")
+        block = blocks[0]
+        identities = IDENTITY.findall(block)
         if len(identities) != 1:
-            raise ValueError(f"{path}: needs one capture build identity")
-        build, pack, size, cull = identities[0]
+            raise ValueError(f"{path}: needs one suite capture build identity")
+        build, pack, size, cull, period, every = identities[0]
         if (int(size), int(cull)) != (32 if row == "cull-off" else int(row), int(row != "cull-off")):
             raise ValueError(f"{path}: wrong size or cull setting")
         reported = re.findall(r"BUILD_ID[= ]([0-9a-f]{12}-\w+)", text)
-        if any(value != build for value in reported):
+        if any(value != build for value in reported) or any(identity[0] != build for identity in IDENTITY.findall(text)):
             raise ValueError(f"{path}: mismatched build id")
         if expected_packs is not None and pack != expected_packs[str(size)]:
             raise ValueError(f"{path}: pack hash differs from the row bake")
-        builds.add(build)
+        every, period = int(every), int(period)
+        if every <= 0 or period <= 0 or every % 1000:
+            raise ValueError(f"{path}: invalid suite pose interval")
+        frames = re.findall(rf"{re.escape(label)} t=\s*(\d+)s .*?both cores: frame\s+(\d+)us", block)
+        times = [int(time) * 1000 for time, _ in frames]
+        if times != list(range(0, period, every)) or (poses is not None and times != poses):
+            raise ValueError(f"{path}: needs the shared suite poses exactly once")
+        if expected_poses is not None and times != list(expected_poses):
+            raise ValueError(f"{path}: suite poses differ from the host camera samples")
+        poses = times
         packs[row] = pack
-        means = dict(frame_cost_means(path, include_total=True))
-        if any(stage not in means for stage in STAGES):
-            raise ValueError(f"{path}: missing frame stages or total")
-        result[row] = [*(means[stage] for stage in STAGES), means["frame.total"]]
-    if len(builds) != 1:
-        raise ValueError("captures must have the same build id")
+        means = dict(frame_cost_means(path, text=block))
+        if (any(not set(STAGES).issubset(dict(window)) for window in frame_cost_windows(path, block))
+                or block.count("ms/frame avg/worst:") != len(frames)):
+            raise ValueError(f"{path}: missing per-pose frame stages")
+        result[row] = [*(means[stage] for stage in STAGES), statistics.mean(int(us) for _, us in frames) / 1000]
     if packs["cull-off"] != packs["32"] or len({packs[row] for row in ("16", "32", "64")}) != 3:
         raise ValueError("captures need distinct size pack hashes, cull-off must use the shipped pack")
     return result
@@ -71,7 +88,6 @@ def default_size():
 
 def table(scene_path, captures, bakes, object_name=None):
     from meshlet_capture import rebake_scene
-    capture_means(captures)
     scene = load_scene(scene_path)
     camera = scene.camera.component
     jobs = [job for job in scene.renderers if job.object.name == object_name] if object_name else scene.renderers[:1]
@@ -80,11 +96,13 @@ def table(scene_path, captures, bakes, object_name=None):
     if any(not job.object.identity for job in jobs):
         raise ValueError("meshlet table requires unplaced mesh geometry")
     width, height = default_size()
-    poses = sample_camera_path(camera.path.animation, camera.path.node, 500, width, height,
+    from doc_stages import capture_viewport, markdown
+    for row in ROWS:
+        capture_viewport(captures / f"meshlets-{row}-board.log", (width, height))
+    poses = sample_camera_path(camera.path.animation, camera.path.node, 5000, width, height,
                                camera.half_fov_short_tan, camera.near_z)
     from r3d.build_pack import pack_bytes
     from r3d.scene_asset import scene_id
-    from doc_stages import capture_viewport, markdown
     packs = {}
     with tempfile.TemporaryDirectory() as directory:
         work = pathlib.Path(directory)
@@ -95,14 +113,12 @@ def table(scene_path, captures, bakes, object_name=None):
             paths = rebake_scene(scene_path, bakes / str(size), size)
             replacements = [f"{job.asset_name}={path}" for job, path in zip(scene.renderers, paths)]
             pack = pack_bytes([scene_path], replacements)[scene_id(scene_path)]
-            packs[str(size)] = hashlib.sha256(pack).hexdigest()
+            packs[str(size)] = f"{zlib.crc32(pack):08x}"
             paths = [path for path in paths if path.name in {job.asset_path.name for job in jobs}]
             host[str(size)] = host_columns(paths, poses_path)
             if size == 32:
                 host["cull-off"] = host_columns(paths, poses_path, cull=False)
-    means = capture_means(captures, packs)
-    for row in ROWS:
-        capture_viewport(captures / f"meshlets-{row}-board.log", (width, height))
+    means = capture_means(captures, jobs[0].object.name, packs, range(0, len(poses[-1]) * 5000, 5000))
     rows = []
     for row in ROWS:
         clusters, vertices, submitted = host[row]

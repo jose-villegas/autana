@@ -29,9 +29,12 @@
 #include "render/raster_motion.h"
 #include "scene/scene.h"
 #include "sponza_suite.h"
+#include "util/runtime/build_id.h"
+#include "util/runtime/frame_cost.h"
 #include "util/runtime/job.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
+#include "util/runtime/tune.h"
 
 static const char* TAG = "sponza_perf";
 
@@ -219,7 +222,21 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
     bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
+    const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
+    TEST_ASSERT_NOT_NULL(culling);
+    int size = 0;
+    for (int i = 0; i < mesh->cluster_count; i++) {
+        if (mesh->clusters[i].triangle_count > size) {
+            size = mesh->clusters[i].triangle_count;
+        }
+    }
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+    ESP_LOGI(TAG, "MESHLET_CAPTURE build_id=%s pack_crc32=%08x size=%d cull=%ld period_ms=%u pose_every_ms=%u",
+             build_id(), (unsigned)asset_crc32(pack->base, pack->size), size, (long)*culling->value, (unsigned)period,
+             (unsigned)SPONZA_POSE_EVERY_MS);
+    char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(report);
+    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
     int64_t frame_sum = 0;
     int64_t worst = 0;
     int samples = 0;
@@ -234,14 +251,23 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
+        (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
+        ESP_LOGI(TAG, "ms/frame avg/worst: %s", report);
         frame_sum += us;
         worst = us > worst ? us : worst;
         samples++;
     }
     ESP_LOGI(TAG, "%s both cores: mean %lldus (%.1f fps before present), worst %lldus", label,
              (long long)(frame_sum / samples), 1e6 * samples / (double)frame_sum, (long long)worst);
+    memory_free(report);
     bench_close(b);
     memory_free(b);
+}
+
+static void
+report_tune(const char* line) {
+    ESP_LOGI(TAG, "%s", line);
+    TEST_ASSERT_EQUAL_INT(0, strncmp(line, "TUNE_OK", 7));
 }
 
 void
@@ -251,10 +277,18 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     ESP_LOGI(TAG, "internal heap: free %u largest %u", (unsigned)memory_free_bytes(MEMORY_INTERNAL),
              (unsigned)memory_largest_block(MEMORY_INTERNAL));
     open_the_meshes();
+    const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
+    TEST_ASSERT_NOT_NULL(culling);
+    const int32_t saved = *culling->value;
+    TEST_ASSERT_TRUE(tune_handle_line("SET render.cull 1", report_tune));
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(sponza_bakes[i], &instance, NULL, NULL);
     }
+    TEST_ASSERT_TRUE(tune_handle_line("SET render.cull 0", report_tune));
+    const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
+    report_frame_cost("cull_off", &full, NULL, NULL);
+    TEST_ASSERT_TRUE(tune_handle_line(saved == 0 ? "SET render.cull 0" : "SET render.cull 1", report_tune));
     TEST_PASS();
 }
 

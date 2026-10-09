@@ -90,20 +90,22 @@ def ms(us):
     return f"{us / 1000:.1f}"
 
 
-def frame_cost_windows(path):
-    if path is None or not pathlib.Path(path).exists():
-        return None
+def frame_cost_windows(path, text=None):
+    if text is None:
+        if path is None or not pathlib.Path(path).exists():
+            return None
+        text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
     windows = [re.findall(r"(\S+) ([\d.]+)/[\d.]+", line.split("ms/frame avg/worst:", 1)[1])
-               for line in pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+               for line in text.splitlines()
                if "ms/frame avg/worst:" in line]
     if not windows or not all(windows):
         raise ValueError(f"{path}: no frame-cost windows")
     return windows
 
 
-def frame_cost_means(path, include_total=False):
+def frame_cost_means(path, include_total=False, text=None):
     """Every bracket in report order, averaged over its report windows."""
-    windows = frame_cost_windows(path)
+    windows = frame_cost_windows(path, text)
     if windows is None:
         return None
     values = {}
@@ -112,7 +114,7 @@ def frame_cost_means(path, include_total=False):
             values.setdefault(name, []).append(float(value))
     if include_total:
         totals = re.findall(r"ms/frame avg/worst:.*?\| total ([\d.]+)",
-                            pathlib.Path(path).read_text(encoding="utf-8", errors="replace"))
+                            (text if text is not None else pathlib.Path(path).read_text(encoding="utf-8", errors="replace")))
         if len(totals) != len(windows):
             raise ValueError(f"{path}: missing frame-cost totals")
         values["frame.total"] = list(map(float, totals))
