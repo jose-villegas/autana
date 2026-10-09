@@ -26,6 +26,7 @@
 
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_paint_clock.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "util/scalar/mathi.h"
@@ -1347,9 +1348,7 @@ enum {
 };
 
 /* ~30fps, matches the reproduction that found this. */
-#define REPAINT_DT_MS   33u
-/* Matches the wake timer in app_sand.c. */
-#define REPAINT_WAKE_MS 120u
+#define REPAINT_DT_MS 33u
 
 /* The ray walk's cross-frame state, one walk at a time: every test that
  * needs it allocates it, uses it and frees it, so no walk's 392 bytes sit
@@ -1398,18 +1397,6 @@ wake_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
     const int tri = (phase < 45) ? (-40 + (phase * 80) / 45) : (40 - ((phase - 45) * 80) / 45);
     *gx = tri + (int)rng_below(wobble, 21) - 10;
     *gy = 950 + (int)rng_below(wobble, 11) - 5;
-}
-
-/* advance_local_depth_wake(), mirrored: whether the wake tick fires this
- * frame, the remainder carried to the next. */
-static bool
-local_depth_wake_tick(uint32_t* elapsed_ms, uint32_t dt_ms, uint32_t wake_ms) {
-    *elapsed_ms += dt_ms;
-    if (*elapsed_ms < wake_ms) {
-        return false;
-    }
-    *elapsed_ms -= (*elapsed_ms / wake_ms) * wake_ms;
-    return true;
 }
 
 /* Marks every row of a w x h grid whose occupancy changed since
@@ -1522,7 +1509,8 @@ repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, 
     unsigned scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
-    const bool wake_fired = local_depth_wake_tick(&r->wake_elapsed_ms, REPAINT_DT_MS, REPAINT_WAKE_MS);
+    const bool wake_fired =
+        sand_paint_clock_periods(&r->wake_elapsed_ms, REPAINT_DT_MS, SAND_PAINT_LOCAL_DEPTH_WAKE_MS) != 0;
 
     bool row_dirty[REPAINT_H_MAX] = {0};
     local_depth_mark_occupancy_dirty(r->g, r->w, r->h, r->prev_occupied, row_dirty);
@@ -1997,7 +1985,6 @@ enum {
 };
 
 #define FLASH_TEST_DT_MS      33u
-#define FLASH_TEST_WAKE_MS    120u
 /* The device's own steady tilt magnitude, from the capture sidecars quoted
  * above (tilt_y 3342 in portrait). */
 #define FLASH_TEST_G          3342
@@ -2134,8 +2121,7 @@ flash_test_is_interior_liquid(int x, int y) {
 
 /* Wall-clock carried from the settle into whatever the caller does next, so
  * the wake tick's own phase is continuous across the two - the same reason
- * local_depth_wake_elapsed_ms is a file static in sand_paint_row.h rather than a
- * local. */
+ * sand_paint_clock_t outlives a frame in the app rather than being a local. */
 static uint32_t flash_wake_elapsed_ms;
 
 /* Builds the pool and settles it under portrait gravity, leaving
@@ -2175,7 +2161,8 @@ flash_test_settle(bool guard_chain, bool gate_reset) {
         sand_step(&fx.flash_test_grid, -12, FLASH_TEST_G, 0);
         flash_test_frame_reset(-12, FLASH_TEST_G, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
-        const bool wake_fired = local_depth_wake_tick(&flash_wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
+        const bool wake_fired =
+            sand_paint_clock_periods(&flash_wake_elapsed_ms, FLASH_TEST_DT_MS, SAND_PAINT_LOCAL_DEPTH_WAKE_MS) != 0;
         flash_test_paint(-12, FLASH_TEST_G, wake_fired);
     }
 }
@@ -2218,7 +2205,8 @@ flash_test_run(bool guard_chain, bool gate_reset) {
 
         flash_test_frame_reset(gx, gy, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
+        const bool wake_fired =
+            sand_paint_clock_periods(&wake_elapsed_ms, FLASH_TEST_DT_MS, SAND_PAINT_LOCAL_DEPTH_WAKE_MS) != 0;
         flash_test_paint(gx, gy, wake_fired);
 
         const int crossed = flash_test_count_crossed();
@@ -2329,7 +2317,8 @@ tremor_test_run(bool gate_reset, int* resets, int* changed) {
         flash_test_frame_reset(gx, gy, FLASH_TEST_W, FLASH_TEST_H, gate_reset, fx_ray, &flash_vdom_prev,
                                &flash_vrev_prev, &flash_hrev_prev, &fired);
         fires += fired ? 1 : 0;
-        const bool wake_fired = local_depth_wake_tick(&wake_elapsed_ms, FLASH_TEST_DT_MS, FLASH_TEST_WAKE_MS);
+        const bool wake_fired =
+            sand_paint_clock_periods(&wake_elapsed_ms, FLASH_TEST_DT_MS, SAND_PAINT_LOCAL_DEPTH_WAKE_MS) != 0;
         flash_test_paint(gx, gy, wake_fired);
     }
 
