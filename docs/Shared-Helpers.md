@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=296253baa8b5d885c86198d8d28848570dbb4b62b6056361328a88d5f56cf336 -->
+<!-- generated: shared-helpers sha256=4e3c9d652c4b949556002b27751ae756b19be6ed5a8eab2a5aea220dac1f6242 -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -71,7 +71,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/main/input/imu_sample.h](../launcher/main/input/imu_sample.h) | imu_sample: one accelerometer and gyroscope reading, and the pure arithmetic that turns it into screen-space gravity. | `IMU_COUNTS_PER_DPS, IMU_COUNTS_PER_G, imu_gravity_screen, imu_sample_t` |
 | [launcher/main/input/input.h](../launcher/main/input/input.h) | input: touch, buttons and motion. | `input_t` |
 | [launcher/main/input/input_shell.h](../launcher/main/input/input_shell.h) | input_shell: the shell's side of input: starting the touch, button and motion drivers, reading touch and buttons each frame into the input_t an app is handed, and reading gravity in screen axes on demand. | `input_poll, input_read_gravity, input_start` |
-| [launcher/main/input/orbit_motion_touch.h](../launcher/main/input/orbit_motion_touch.h) | orbit_motion_touch: one finger on the panel turned into orbit_motion steering. | `ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS, ORBIT_MOTION_TOUCH_TAP_MAX_MS, ORBIT_MOTION_TOUCH_TAP_SLOP_PX, ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE, orbit_motion_touch_init, orbit_motion_touch_step, orbit_motion_touch_t` |
+| [launcher/main/input/orbit_motion_touch.h](../launcher/main/input/orbit_motion_touch.h) | orbit_motion_touch: one finger on the panel turned into orbit_motion steering. | `ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS, ORBIT_MOTION_TOUCH_TAP_MAX_MS, ORBIT_MOTION_TOUCH_TAP_SLOP_PX, ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE, ORBIT_MOTION_TOUCH_ZOOM_PER_SHORT_SIDE, orbit_motion_touch_init, orbit_motion_touch_step, orbit_motion_touch_t` |
 | [launcher/main/input/tilt.h](../launcher/main/input/tilt.h) | tilt, turning raw accelerometer counts into a direction worth steering something with: which way is down in the plane of the screen, how hard, and how much the device is being shaken. | `TILT_FREE_FALL_PCT, TILT_MAX_DT_MS, TILT_SHAKE_FULL_PCT, TILT_SHAKE_TAU_MS, TILT_TAU_MOVING_MS, TILT_TAU_STILL_MS, TILT_TRUST_HI_PCT, TILT_TRUST_LO_PCT, tilt_in_free_fall, tilt_reset, tilt_shake, tilt_strength, tilt_t, tilt_update, tilt_x, tilt_y` |
 | [launcher/main/input/touch.h](../launcher/main/input/touch.h) | touch: reads the touch panel on its own schedule. | `TOUCH_POLL_HZ, touch_gesture_start, touch_gesture_take_completion, touch_inject, touch_read, touch_start, touch_take_sample_counts` |
 | [launcher/main/input/touch_calib.h](../launcher/main/input/touch_calib.h) | touch_calib: undoes a touch panel's measured misreporting. | `touch_calib_apply, touch_calib_fit_t, touch_calib_from_fit, touch_calib_t` |
