@@ -10,7 +10,7 @@
 #
 # --inputs lists, one repository path per line, every file the build reads:
 # the sources below, the headers they include (as a host cc sees them, $CC or
-# cc), and this directory. It needs no emcc.
+# cc), and the files tracked in this directory. It needs no emcc.
 #
 # POSIX sh, like the host test runner, so it runs under Git Bash on Windows.
 
@@ -46,7 +46,17 @@ if [ "${1:-}" = --inputs ]; then
     {
         echo "$DEPS" | sed 's/ *\\$//' | tr -s ' ' '\n'
         git -C "$ROOT" ls-files --full-name "$SCRIPT_DIR" | sed "s|^|$ROOT/|"
-    } | sed -n "s|^$ROOT/||p" | sort -u
+    } | sed -n "s|^$ROOT/||p" | sort -u >"$SCRIPT_DIR/inputs.tmp"
+    # Every source must come out as a repository path, or the list is wrong.
+    LISTED=$(grep -c '\.c$' "$SCRIPT_DIR/inputs.tmp" || true)
+    # shellcheck disable=SC2086
+    if [ "$LISTED" -ne "$(printf '%s\n' $SOURCES | wc -l)" ]; then
+        echo "--inputs: $LISTED of the sources came out under $ROOT" >&2
+        rm -f "$SCRIPT_DIR/inputs.tmp"
+        exit 1
+    fi
+    cat "$SCRIPT_DIR/inputs.tmp"
+    rm -f "$SCRIPT_DIR/inputs.tmp"
     exit 0
 fi
 
@@ -69,8 +79,7 @@ mkdir -p "$DIST_DIR"
 # cwrap and HEAPU8 let it call the web_* exports by name and read the frame
 # without a copy.
 # shellcheck disable=SC2086
-emcc -O3 -std=c11 -DNDEBUG -Wall -Wextra -Wno-unused-parameter \
-    -I "$MAIN_DIR" -I "$SAND_DIR" \
+emcc -O3 $FLAGS -Wall -Wextra -Wno-unused-parameter \
     $SOURCES \
     -o "$DIST_DIR/sand.js" \
     -s MODULARIZE=1 \
