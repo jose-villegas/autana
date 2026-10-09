@@ -311,7 +311,6 @@ test_boot_anim_performance_by_checkpoint(void) {
     TEST_IGNORE_MESSAGE("performance requires the device clock and display");
 #endif
     gfx_clear_clip();
-    gfx_set_partial_clear(false);
     gfx_invalidate();
 
     checkpoint_t checkpoints[7];
