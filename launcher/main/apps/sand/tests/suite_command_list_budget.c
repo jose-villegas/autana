@@ -1,19 +1,9 @@
 /*
- * Portable suite: measures the peak bytes each of this app's microui
- * screens' command list reaches, driving the REAL palette_screen_draw()/
- * brush_screen_draw()/title_screen_draw()/options_screen_draw() against a
- * real microui (ui_init() + ui_begin(), the same calls app_sand.c makes)
- * rather than a
- * hand-mirrored reconstruction, see docs/Building-a-Screen.md.
- *
- * production's own brushes[] lives in app_sand.c (the hardware entry
- * point, not host-compiled), so test_brushes[] below is a representative
- * copy of it FOR SIZING ONLY - suite_palette.c/suite_sand_ui.c/
- * suite_brush_screen.c cover the real behaviour. Every scenario below picks
- * the worst case a real visit can reach (tile 0 selected AND every
- * emit-eligible tile flagged BRUSH_SPAWN, the longest name in each option
- * table, the DITHER list open) rather than whatever a fresh sand_ui_t
- * happens to zero-initialize to.
+ * Portable suite: the peak bytes each microui screen's command list reaches,
+ * drawn by the real screen functions on a real microui (see
+ * docs/Building-a-Screen.md), with the app's own sand_brushes[]. Each
+ * scenario takes the worst case a visit can reach (every tile a source, the
+ * longest names, the DITHER list open), not a zeroed sand_ui_t.
  */
 
 #include <string.h>
@@ -28,6 +18,7 @@
 #include "ui/ui_transform.h"
 
 #include "apps/sand/material.h"
+#include "apps/sand/sand_brushes.h"
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/ui/brush_screen.h"
 #include "apps/sand/ui/options_screen.h"
@@ -43,29 +34,17 @@ fixture(void) {
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
 }
 
-static const sand_brush_t test_brushes[] = {
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SAND, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WATER, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_STONE, 0)), SAND_BRUSH_SOLID(CELL_MAKE(MAT_GAS, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_FIRE, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_WOOD, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_OIL, 0)),   SAND_BRUSH_SOLID(CELL_MAKE(MAT_LAVA, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_ACID, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_GLASS, 0)),
-    SAND_BRUSH_SOLID(CELL_MAKE(MAT_SNOW, 0)),  SAND_BRUSH_SOLID(CELL_MAKE(MAT_DIRT, 0)),
-    SAND_BRUSH_SOLID(MATX(MATX_ICE)),          SAND_BRUSH_SPARSE(MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT),
-    SAND_BRUSH_SOLID(GUNPOWDER_CELL(0)),
-};
-#define TEST_BRUSH_COUNT ((int)(sizeof(test_brushes) / sizeof(test_brushes[0])))
-
 static void
 test_palette_screen_command_list_fits_budget(void) {
     fixture();
 
-    static uint8_t modes[TEST_BRUSH_COUNT];
+    static uint8_t modes[SAND_BRUSH_COUNT];
     memset(modes, BRUSH_SPAWN, sizeof modes);
 
     sand_ui_t ui = {
-        .brushes = test_brushes,
+        .brushes = sand_brushes,
         .modes = modes,
-        .brush_count = TEST_BRUSH_COUNT,
+        .brush_count = SAND_BRUSH_COUNT,
         .brush = 0,
     };
 
@@ -79,14 +58,14 @@ static void
 test_brush_screen_command_list_fits_budget(void) {
     fixture();
 
-    static uint8_t modes[TEST_BRUSH_COUNT];
+    static uint8_t modes[SAND_BRUSH_COUNT];
     memset(modes, 0, sizeof modes);
 
     sand_ui_t ui = {
-        .brushes = test_brushes,
+        .brushes = sand_brushes,
         .modes = modes,
-        .brush_count = TEST_BRUSH_COUNT,
-        .brush = TEST_BRUSH_COUNT - 1, /* "Gunpowder" - the longest material name */
+        .brush_count = SAND_BRUSH_COUNT,
+        .brush = SAND_BRUSH_COUNT - 1, /* "Gunpowder" - the longest material name */
         .mode = SAND_MODE_DETONATE,
     };
     for (int i = 0; i < SAND_MODE_COUNT; i++) {

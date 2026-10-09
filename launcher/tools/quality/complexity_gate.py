@@ -470,13 +470,12 @@ def build_idf_entries(toolchain_root, vendored=False):
     return entries
 
 
-# apps/*/tools/*.c, excluded from the firmware and the host build alike
+# apps/*/tools/**/*.c, excluded from the firmware and the host build alike
 # by long-standing convention (main/CMakeLists.txt, run_tests.sh), but
 # check_main_coverage()'s own rglob("*.c") below reaches them anyway, so
 # parity means giving them real flags where that is possible at all: each
-# already has its own working
-# host compile line in a report_*.sh beside it (find_cc()'s compiler, this
-# project's own headers); -I main/apps/<app> is the one addition beyond
+# compiles on a host with the runner's flags (find_cc()'s compiler, this
+# project's own headers), at any depth below tools/; -I main/apps/<app> is the one addition beyond
 # the host runner's own flags every one of them needs, for its sibling
 # headers (material.h, sand.h, ...).
 TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
@@ -484,7 +483,7 @@ TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
 
 def build_tools_entries(host_flags, already_covered):
     entries = {}
-    for path in sorted((LAUNCHER_DIR / "main").glob("apps/*/tools/*.c")):
+    for path in sorted((LAUNCHER_DIR / "main").glob("apps/*/tools/**/*.c")):
         resolved = str(path.resolve())
         if resolved in already_covered:
             continue
@@ -717,7 +716,7 @@ def main():
     db_path, all_sources, counts = build_compile_db()
     print(f"compile database: {db_path} ({len(all_sources)} files - "
           f"{counts['idf']} from the diagnostics build, {counts['host']} "
-          f"host-only, {counts['tools']} apps/*/tools/*.c)")
+          f"host-only, {counts['tools']} apps/*/tools/**/*.c)")
 
     total_on_disk, missing = check_main_coverage(all_sources)
     print(f"launcher/main/ coverage: {total_on_disk} .c files on disk, "

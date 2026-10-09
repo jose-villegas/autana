@@ -33,9 +33,9 @@ cell, called from `sand_paint_row_n()` in `sand_paint_row.h`, the hottest loop
 in the app, once per cell per dirty row. Its inputs:
 
 - **`f`**: `&pf->material`, the `material_frame_t` in `sand_paint_frame_t`.
-  `app_sand.c` fills `liquid_spec` through `material_frame_set_gravity()`,
-  writes `foam_phase` from elapsed time, and writes `cullet_phase` and
-  `glass_phase` through `advance_cullet()` and `advance_glass_phase()`.
+  `app_sand.c` fills `liquid_spec` through `material_frame_set_gravity()`;
+  the clocks in `sand_paint_clock.h` write `foam_phase` and `cullet_phase`
+  from elapsed time and `glass_phase` from gravity's bearing.
 - **`hash`**: `material_grain_hash(cx, cy)`, a stable per-cell scramble so
   a speckled material shows the same grain in the same place frame to
   frame. Computed once per cell: a couple of multiplies and shift-xors.
@@ -336,7 +336,7 @@ material:
 |---|---|---|
 | Liquid rim | `f->liquid_spec[mask]` (`material_frame_set_gravity()`) | a 16-entry table by cardinal mask, precomputed once a frame, read by index per rim cell |
 | Metal (`MATERIAL_HATCHED`) | `material_shine_direction()` | a Q8 unit vector (minus gravity, turned 45 degrees) computed once a frame, walked per pixel (or sampled once per cell in indexed mode) to place the shine band |
-| Glass (`MATERIAL_SPECKLED`) | `f->glass_phase` (gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
+| Glass (`MATERIAL_SPECKLED`) | `f->glass_phase` (`sand_paint_clock_glass()`, gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
 
 All three read the same frame's gravity; none of them share code, because
 each solves a differently-shaped problem (a per-mask table, a swept
