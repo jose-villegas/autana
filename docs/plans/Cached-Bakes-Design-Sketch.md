@@ -153,12 +153,22 @@ whose sha256 differs from the lock.
 
 ## 5. Migration
 
-0. **Measure first** (before `bake.py`): bake `sponza.import.toml` on
+0. **Measure first** (before `bake.py`; results below): bake `sponza.import.toml` on
    Windows and on the CI ubuntu image at one commit and `cmp` each with the
    committed meshes; run one fit twice on the runner. This says whether a
    plain bake is reproducible and whether main's meshes are still fresh
    (`rebake.py` can rewrite a mesh without relighting it). A stale mesh is
    reported to the maintainer before seeding.
+
+   | Measured | Result |
+   |---|---|
+   | main's 8 meshes rebaked on the maintainer's machine (Debian under WSL) | byte-identical: fresh, safe to seed |
+   | the same bake on the hosted ubuntu runner (Python 3.13, another CPU) | capybara identical; the three plain sponza meshes differ, down to a few triangles |
+   | one fit run twice from the same references | different bytes each time |
+   | Windows | not measured: Mitsuba finds no libLLVM there |
+
+   A bake is therefore reproducible on one machine but not across machines,
+   and a fit not even on one, which is what the lock is for.
 1. Add `bake.py`, the `.blend` converter, `bakes.yml` and the `uses` in the
    consumer workflows; `build_pack.py`, `fitted_variant.py`,
    `render_compare.sh` and `doc_stages.py` take keys and files from it.
@@ -180,9 +190,9 @@ whose sha256 differs from the lock.
 
 | | Estimate |
 |---|---|
-| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
+| Storage | about 2 MB of pack inputs plus about 100 MB of reference frames per fit (103 MB measured, uncompressed) per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
 | CI, warm | one `bakes.yml` call per consumer workflow: checkout and key computation, under a minute [A] |
-| CI, cold | plain bakes minutes each [A]; references 45 to 69 CPU minutes each; fits about 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references |
+| CI, cold | the plain sponza and capybara bakes 5 minutes together on a hosted runner; references 26 to 69 CPU minutes each; fits 2.5 to 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references |
 | First build, fresh clone | about 2 MB download, keys in under a second [A] |
 | Saved | no rebake adds its blobs to every clone's history |
 
