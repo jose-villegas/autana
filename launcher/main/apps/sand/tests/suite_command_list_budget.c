@@ -54,6 +54,17 @@ test_palette_screen_command_list_fits_budget(void) {
     ui_budget_assert("sand palette");
 }
 
+static int
+longest_named_brush(void) {
+    int longest = 0;
+    for (int i = 1; i < SAND_BRUSH_COUNT; i++) {
+        if (strlen(material_name(sand_brushes[i].cell)) > strlen(material_name(sand_brushes[longest].cell))) {
+            longest = i;
+        }
+    }
+    return longest;
+}
+
 static void
 test_brush_screen_command_list_fits_budget(void) {
     fixture();
@@ -65,7 +76,7 @@ test_brush_screen_command_list_fits_budget(void) {
         .brushes = sand_brushes,
         .modes = modes,
         .brush_count = SAND_BRUSH_COUNT,
-        .brush = SAND_BRUSH_COUNT - 1, /* "Gunpowder" - the longest material name */
+        .brush = longest_named_brush(),
         .mode = SAND_MODE_DETONATE,
     };
     for (int i = 0; i < SAND_MODE_COUNT; i++) {
