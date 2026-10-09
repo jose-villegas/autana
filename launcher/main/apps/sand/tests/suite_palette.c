@@ -2,18 +2,10 @@
  * Portable suite: palette - grid arithmetic and hit-testing for the material
  * picker overlay.
  *
- * The centred partial last row is the fiddly part and the main reason this
- * module is host-tested at all - get it wrong and the bottom few materials
- * are unhittable or answer to the wrong index. These tests lean on that case
- * specifically, at BRUSH_COUNT's real value (15) and at a couple of others,
- * rather than trusting the arithmetic by eye.
- *
- * Columns are derived at runtime: palette_cols(screen_w) computes them from
- * whatever width is actually available (see palette.h's "WHY DERIVED,
- * NOT FIXED"), so every test below calls palette_cols()
- * itself and threads the result through, the same way app_sand.c's
- * draw_palette() does - which is what tests the derivation, rather than
- * merely re-checking fixed-4 arithmetic under a new name.
+ * The centred partial last row is the fiddly part: wrong, and the bottom
+ * materials are unhittable or answer to the wrong index. Every test takes
+ * its columns from palette_cols(), as draw_palette() does, so the
+ * derivation itself is tested, at SAND_BRUSH_COUNT and a few other counts.
  */
 
 #include <stdbool.h>
@@ -23,6 +15,7 @@
 #include "unity.h"
 
 #include "apps/sand/palette.h"
+#include "apps/sand/sand_brushes.h"
 #include "gfx/draw/gfx_draw.h"
 
 /* palette_cols(): the derivation itself */
@@ -76,7 +69,7 @@ test_palette_cols_clamps_to_the_max(void) {
 
 /* palette_tile_rect / palette_hit agreement, count = 14: a centred partial
  * last row, 3 full rows of 4 then a row of 2 - kept as its own case, distinct
- * from the count BRUSH_COUNT resolves to below, since the sweep tests
+ * from SAND_BRUSH_COUNT below, since the sweep tests
  * further down cover every count 1-16 generically and this one still pins
  * the specific 2-wide partial row by name. */
 
@@ -96,12 +89,10 @@ test_centre_of_every_tile_hits_its_own_index(void) {
     }
 }
 
-/* count = 15, the count BRUSH_COUNT resolves to (app_sand.c's own brushes[]
- * array), a centred partial last row, 3 full rows of 4 then a row of 3, a
- * differently-shaped partial row than 14's own 2-wide one. */
+/* The palette's real brush count, whatever partial last row it makes. */
 static void
 test_centre_of_every_tile_hits_its_own_index_at_brush_count(void) {
-    const int count = 15;
+    const int count = SAND_BRUSH_COUNT;
     const int cols = palette_cols(GFX_WIDTH);
     for (int i = 0; i < count; i++) {
         int x, y, w, h;

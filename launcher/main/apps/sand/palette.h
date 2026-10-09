@@ -63,8 +63,8 @@ int palette_cols(int screen_w);
 
 /* Rows a `count`-brush palette needs at `cols` columns, ceiling-divided so a
  * partial last row still gets counted. Both are compile-time constants at
- * PALETTE_FITS's only call site (BRUSH_COUNT and PALETTE_COLS_FOR(...) in
- * app_sand.c), which is what keeps PALETTE_FITS usable inside a
+ * PALETTE_FITS's only call site (SAND_BRUSH_COUNT and PALETTE_COLS_FOR(...) in
+ * sand_brushes.h), which is what keeps PALETTE_FITS usable inside a
  * _Static_assert. */
 #define PALETTE_ROWS(count, cols)   (((count) + (cols) - 1) / (cols))
 
