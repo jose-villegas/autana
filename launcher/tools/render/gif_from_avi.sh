@@ -17,6 +17,6 @@ gif_from_avi() {
     run ffmpeg -hide_banner -loglevel error -y "$@" -i "$gif_avi" \
         -vf "$gif_filters,palettegen=$gif_palette_options" "$gif_palette"
     run ffmpeg -hide_banner -loglevel error -y "$@" -i "$gif_avi" -i "$gif_palette" \
-        -filter_complex "[0:v]$gif_filters[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
+        -filter_complex "[0:v]${gif_filters}[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
         -loop 0 "$gif_out"
 }
