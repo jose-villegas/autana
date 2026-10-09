@@ -3,12 +3,10 @@
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
-#include <stdio.h>
-
 static void
 post(console_navigation_t navigation, const char* app) {
     console_frame_request_t request = {.kinds = CONSOLE_FRAME_NAVIGATE, .navigation = navigation};
-    (void)snprintf(request.app, sizeof request.app, "%s", app);
+    console_copy_text(request.app, sizeof request.app, app);
     (void)console_frame_post(console_frame_mailbox(), &request);
 }
 

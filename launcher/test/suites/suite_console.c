@@ -295,10 +295,10 @@ static bool
 post(frame_fixture_t* f, uint32_t kinds, console_navigation_t navigation, const char* text) {
     f->request = (console_frame_request_t){.kinds = kinds, .navigation = navigation};
     if (kinds & CONSOLE_FRAME_NAVIGATE) {
-        (void)snprintf(f->request.app, sizeof f->request.app, "%s", text);
+        console_copy_text(f->request.app, sizeof f->request.app, text);
     }
     if (kinds & CONSOLE_FRAME_RUNSUITE) {
-        (void)snprintf(f->request.suite, sizeof f->request.suite, "%s", text);
+        console_copy_text(f->request.suite, sizeof f->request.suite, text);
     }
     return console_frame_post(&f->mailbox, &f->request);
 }

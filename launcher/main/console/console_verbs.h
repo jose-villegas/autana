@@ -21,6 +21,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "util/runtime/tune.h"
 
@@ -68,6 +69,21 @@ console_append_char_max(char* line, int line_max, int* len, bool* overflowed, in
 static inline bool
 console_append_char(char* line, int* len, bool* overflowed, int c) {
     return console_append_char_max(line, CONSOLE_LINE_MAX, len, overflowed, c);
+}
+
+/* As much of `from` as `into` holds, always terminated: a verb's args into
+ * a request field its CONSOLE_VERB() bound already fits. */
+static inline void
+console_copy_text(char* into, size_t into_size, const char* from) {
+    if (into_size == 0) {
+        return;
+    }
+    size_t length = strlen(from);
+    if (length > into_size - 1) {
+        length = into_size - 1;
+    }
+    memcpy(into, from, length);
+    into[length] = '\0';
 }
 
 typedef void (*console_reply_fn)(const char* line);

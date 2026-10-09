@@ -11,15 +11,13 @@
 
 #include "esp_log.h"
 
-#include <stdio.h>
-
 static const char* TAG = "console";
 
 static void
 console_verb_runsuite(const char* args, console_reply_fn reply) {
     (void)reply;
     console_frame_request_t request = {.kinds = CONSOLE_FRAME_RUNSUITE};
-    (void)snprintf(request.suite, sizeof request.suite, "%s", args);
+    console_copy_text(request.suite, sizeof request.suite, args);
     if (!console_frame_post(console_frame_mailbox(), &request)) {
         ESP_LOGW(TAG, "RUNSUITE refused: the previous one has not finished");
         return;

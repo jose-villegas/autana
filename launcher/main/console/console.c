@@ -58,7 +58,7 @@ console_take_unclaimed_line(char* out, size_t out_size) {
     if (xQueueReceive(app_line_queue, item, 0) != pdTRUE) {
         return false;
     }
-    (void)snprintf(out, out_size, "%s", item);
+    console_copy_text(out, out_size, item);
     return true;
 }
 
