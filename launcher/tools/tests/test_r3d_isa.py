@@ -1,6 +1,7 @@
-"""Checks that Mitsuba's CPU backend traces the same bits on every x86-64 Linux host (r3d/isa): Dr.Jit compiles for
-x86-64-v3 at 8 lanes, Embree runs capped at AVX2, and the hit distances of a fixed triangle soup and the bounced light
-of a fixed corridor hash to what any pinned host makes. Unpinned, an AVX-512 host moves both by an ulp."""
+"""Checks that Mitsuba's CPU backend traces the same bits on every x86-64 Linux host of one vendor (r3d/isa): Dr.Jit
+compiles for x86-64-v3 at 8 lanes, Embree runs capped at AVX2, and the hit distances of a fixed triangle soup and the
+bounced light of a fixed corridor hash to what every pinned host of that vendor makes. Unpinned, an AVX-512 host moves
+both by an ulp; AMD and Intel differ because AVX2's reciprocal estimates are the vendor's own."""
 
 import hashlib
 import pathlib
@@ -25,10 +26,22 @@ from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
 PINNED = HAVE_MITSUBA and sys.platform == "linux" and platform.machine() == "x86_64" and isa.pin()
 needs_pin = unittest.skipIf(not (PINNED and have_llvm()), "the pin needs Linux on x86-64 with AVX2, FMA and libLLVM")
 
-# What a pinned host makes; a change to Mitsuba, Dr.Jit or these scenes changes them: rerun on any x86-64 Linux host
-# and record the digests the failure prints.
-HITS_SHA256 = "9964d47fe885de30264b20514999d430405205570e324d60534c2b403e75245f"
-BOUNCE_SHA256 = "81e5826f8e3441459cad0d3e1589a3e8081b8474dee550271f22359f1239ae14"
+# (hits, bounce) digests a pinned host of each vendor makes; a change to Mitsuba, Dr.Jit or these scenes changes them:
+# rerun on an x86-64 Linux host of each vendor and record the digests its failure prints.
+PINNED_SHA256 = {
+    "AuthenticAMD": ("9964d47fe885de30264b20514999d430405205570e324d60534c2b403e75245f",
+                     "81e5826f8e3441459cad0d3e1589a3e8081b8474dee550271f22359f1239ae14"),
+    "GenuineIntel": ("6e829de472b2bbba8a9b90115f072a73b3f8fa6e44f9476060ef34f8facc7487",
+                     "c7032957b091c7ea5737a32bdd4064401bc9ebd59c6a013878daf9f91d786d2b"),
+}
+
+
+def vendor():
+    """The CPU vendor /proc/cpuinfo names, None when it names none."""
+    for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
+        if line.startswith("vendor_id"):
+            return line.split(":", 1)[1].strip()
+    return None
 
 
 def digest(*arrays):
@@ -69,11 +82,16 @@ class PinnedIsa(unittest.TestCase):
         soup_hits()
         self.assertTrue(isa.embree_config().endswith("," + isa.EMBREE_CAP.decode()), isa.embree_config())
 
+    def pinned_sha256(self):
+        if vendor() not in PINNED_SHA256:
+            self.skipTest(f"no digests recorded for {vendor()}")
+        return PINNED_SHA256[vendor()]
+
     def test_hit_distances_are_the_pinned_bits(self):
-        self.assertEqual(digest(*soup_hits()), HITS_SHA256)
+        self.assertEqual(digest(*soup_hits()), self.pinned_sha256()[0])
 
     def test_bounced_light_is_the_pinned_bits(self):
-        self.assertEqual(digest(corridor_bounce()), BOUNCE_SHA256)
+        self.assertEqual(digest(corridor_bounce()), self.pinned_sha256()[1])
 
     def test_pinning_after_mitsuba_is_refused(self):
         with mock.patch.object(isa, "_state", None), self.assertRaisesRegex(RuntimeError, "before mitsuba"):

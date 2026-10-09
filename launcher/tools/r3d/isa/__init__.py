@@ -7,6 +7,11 @@ AVX2 one, an ulp moves a rounded colour, and the simplifier then keeps different
 kernel for x86-64-v3 (AVX2 and FMA) at 8 lanes and caps Embree at AVX2, the same code on every x86-64 CPU from
 2015 on. It must run before `import mitsuba`; `mitsuba_reference.import_mitsuba` calls it.
 
+The same code gives the same bits on CPUs of one vendor, not across vendors: Embree's AVX2 and SSE kernels start
+reciprocals from rcpps, whose estimate AMD and Intel each define their own way, so an AMD host and an Intel one still
+differ by an ulp (2 of the Sponza atrium's 17 376 triangles). AVX-512's rcp14 is exact on both, but leaves out the
+AVX2-only CPUs, many hosted runners among them.
+
 The pin needs Linux on x86-64 with AVX2 and FMA, a C compiler (CC, else cc, gcc or clang) and Dr.Jit as
 requirements.txt pins it; elsewhere it logs that bakes there may differ from other hosts' and leaves the defaults.
 """

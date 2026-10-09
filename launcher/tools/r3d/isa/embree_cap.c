@@ -1,7 +1,7 @@
-/* Caps the instruction set of the Embree device Mitsuba creates. Mitsuba's
- * libembree3 builds its device from a fixed configuration string, and Embree
- * picks its kernels by the host CPU, so the same rays return distances an ulp
- * apart on an AVX-512 host and an AVX2 one. Loaded with RTLD_GLOBAL before
+/* Caps the instruction set of the Embree device Mitsuba creates. Mitsuba
+ * creates it from a fixed configuration string, and Embree picks its kernels
+ * by the host CPU, so the same rays return distances an ulp apart on an
+ * AVX-512 host and an AVX2 one. Loaded with RTLD_GLOBAL before
  * Mitsuba, this definition of Mitsuba's namespaced rtcNewDevice comes first in
  * the lookup and appends `cap` to the configuration before calling Embree's
  * own, which r3d/isa binds by address. */
