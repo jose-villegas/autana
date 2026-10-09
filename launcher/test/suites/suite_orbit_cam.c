@@ -71,13 +71,10 @@ sphere_reach(const camera_t* camera, viewport_t viewport, float* reach_x, float*
     *reach_y = 0.0F;
     for (int i = 0; i < SPHERE_POINTS; i++) {
         const vec3f_t p = vec3f_add(TARGET, vec3f_scale(sphere_point(i, SPHERE_POINTS), SPHERE_RADIUS));
-        float q[3];
-        for (int r = 0; r < 3; r++) {
-            q[r] = (lens.m[r][0] * p.x) + (lens.m[r][1] * p.y) + (lens.m[r][2] * p.z) + lens.m[r][3];
-        }
-        TEST_ASSERT_TRUE_MESSAGE(q[2] > NEAR_Z, "the whole sphere is in front of the near plane");
-        *reach_x = fmaxf(*reach_x, fabsf(q[0] / q[2]));
-        *reach_y = fmaxf(*reach_y, fabsf(q[1] / q[2]));
+        const vec3f_t q = mat4f_apply(&lens.m, p);
+        TEST_ASSERT_TRUE_MESSAGE(q.z > NEAR_Z, "the whole sphere is in front of the near plane");
+        *reach_x = fmaxf(*reach_x, fabsf(q.x / q.z));
+        *reach_y = fmaxf(*reach_y, fabsf(q.y / q.z));
     }
 }
 
