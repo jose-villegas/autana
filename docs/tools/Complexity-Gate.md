@@ -32,8 +32,8 @@ file counted twice:
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
   treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.
-- **`apps/*/tools/**/*.c`** (sweep and report programs and the browser
-  build, at any depth, excluded from the firmware and the host build alike)
+- **`apps/*/tools/**/*.c`** (sweep and report programs, at any depth,
+  excluded from the firmware and the host build alike)
   get the host route's flags plus one additional include path for their
   sibling headers, since each compiles on a host.
 

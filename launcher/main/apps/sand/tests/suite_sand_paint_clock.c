@@ -23,7 +23,7 @@ test_the_shine_steps_two_px_per_whole_period_and_carries_the_rest(void) {
         {"under one period", {SHINE_MS - 1, 0, 0, 0}, {0, 0, 0, 0}, 0},
         {"exactly one", {SHINE_MS, 0, 0, 0}, {1, 0, 0, 0}, SAND_PAINT_SHINE_STEP_PX},
         {"a remainder carries", {SHINE_MS * 3 / 4, SHINE_MS * 3 / 4, 0, 0}, {0, 1, 0, 0}, SAND_PAINT_SHINE_STEP_PX},
-        {"several in one call", {3 * SHINE_MS + 1, 0, 0, 0}, {1, 0, 0, 0}, 3 * SAND_PAINT_SHINE_STEP_PX},
+        {"several in one call", {(3 * SHINE_MS) + 1, 0, 0, 0}, {1, 0, 0, 0}, 3 * SAND_PAINT_SHINE_STEP_PX},
         {"wraps at the period",
          {SHINE_MS * SHINE_STEPS_PER_PERIOD, SHINE_MS, 0, 0},
          {1, 1, 0, 0},
@@ -130,7 +130,7 @@ test_the_foam_phase_counts_whole_periods_since_the_start(void) {
     sand_paint_frame_t pf = SAND_PAINT_FRAME_INIT;
     sand_paint_clock_foam(c, &pf, SAND_PAINT_FOAM_PHASE_MS - 1);
     TEST_ASSERT_EQUAL_UINT(0, pf.material.foam_phase);
-    sand_paint_clock_foam(c, &pf, 2 * SAND_PAINT_FOAM_PHASE_MS + 1);
+    sand_paint_clock_foam(c, &pf, (2 * SAND_PAINT_FOAM_PHASE_MS) + 1);
     TEST_ASSERT_EQUAL_UINT(3, pf.material.foam_phase);
     free(c);
 }

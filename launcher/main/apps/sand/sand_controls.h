@@ -8,6 +8,12 @@
 #define SAND_ERASE_RADIUS_PX         16
 #define SAND_DETONATE_RADIUS_PX      50
 
+/* A px radius in whole cells, rounded to nearest, so a brush keeps its size. */
+#define SAND_RADIUS_CELLS(px, cell)  (((px) + (cell) / 2) / (cell))
+
+/* The default quality's cell size, in px. */
+#define SAND_CELL_NORMAL             4
+
 /* An erase removes emitters from wider than it sweeps: a point target needs
  * more aiming slack than an area does. */
 #define SAND_ERASE_EMITTER_RADIUS_PX 32

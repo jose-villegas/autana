@@ -40,7 +40,7 @@
 #include "ui/ui_transform.h"
 
 /* A real brush cell, mode and radius to draw - GUNPOWDER_CELL(0) is
- * "Gunpowder", the longest name in app_sand.c's brushes[] (see
+ * "Gunpowder", the longest name in sand_brushes[] (see
  * brush_screen.c's own comment on the name-shrink loop it forced). */
 #define PREVIEW_MATERIAL    GUNPOWDER_CELL(0)
 #define PREVIEW_MODE        SAND_MODE_PAINT

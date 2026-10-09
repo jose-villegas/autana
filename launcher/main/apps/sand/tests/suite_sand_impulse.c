@@ -2032,9 +2032,8 @@ test_without_a_buffer_explode_does_nothing(void) {
  */
 #define RICOCHET_W            44
 #define RICOCHET_H            40
-/* SAND_DETONATE_RADIUS_PX at NORMAL quality (4 px/cell), by the app's own
- * radius arithmetic. */
-#define RICOCHET_RADIUS       ((SAND_DETONATE_RADIUS_PX + 2) / 4)
+/* The DETONATE brush at the default quality's cell size. */
+#define RICOCHET_RADIUS       SAND_RADIUS_CELLS(SAND_DETONATE_RADIUS_PX, SAND_CELL_NORMAL)
 /* Off-grid, behind the wall, on purpose: a queued grain's direction is
  * away from the blast centre, so centring in the gap throws the wall into
  * itself. Also keeps the unconditional fire core off-grid, so nothing here

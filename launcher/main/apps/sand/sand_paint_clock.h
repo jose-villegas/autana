@@ -44,17 +44,6 @@ typedef struct {
 
 #define SAND_PAINT_CLOCK_INIT {.wind_flip_due_ms = SAND_PAINT_WIND_FLIP_BASE_MS}
 
-/* The frame the clocks start from: shine on the (1,1) diagonal and wind
- * along +x, so a frame drawn before the first gravity sample looks right.
- * A macro so a static can start from it. */
-#define SAND_PAINT_FRAME_INIT                                                                                          \
-    {.shine_ux_q8 = 181,                                                                                               \
-     .shine_uy_q8 = 181,                                                                                               \
-     .wood_leaf_wind_ux_q8 = 256,                                                                                      \
-     .wood_leaf_wind_sign = 1,                                                                                         \
-     .wood_leaf_top5 = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}},                                                  \
-     .repaint_kind = GFX_INDEXED_REPAINT_RAW}
-
 /* Whole periods of `period_ms` in `*elapsed_ms` after adding `dt_ms`; the remainder carries. */
 static inline uint32_t
 sand_paint_clock_periods(uint32_t* elapsed_ms, uint32_t dt_ms, uint32_t period_ms) {

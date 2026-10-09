@@ -198,12 +198,10 @@ test_the_nearest_footprint_distance_finds_a_cell_on_every_edge_of_the_ring(void)
 #define NEAREST_FOOTPRINT_CAP ((REAL_W > REAL_H ? REAL_W : REAL_H) - 1)
 
 /* The app's SAND_DETONATE_RADIUS_PX at the CELL_MIN scale REAL_W/REAL_H
- * represent, so a sweep reads on the real device's own scale. APP_IMPULSE_MAX is a fixed entry count sized from the device's
- * largest-contiguous-free-block budget, decoupled from this radius;
- * sand_explode() thins its seeding density automatically, evenly across
- * the disc, whenever it exceeds the buffer given, rather than truncating
- * the shape. */
-#define DUNE_BLAST_RADIUS     ((SAND_DETONATE_RADIUS_PX + CELL_MIN / 2) / CELL_MIN)
+ * represent, so a sweep reads on the real device's own scale. The impulse
+ * buffer is sized apart from this radius; sand_explode() thins its seeding
+ * evenly when the disc exceeds it rather than truncating the shape. */
+#define DUNE_BLAST_RADIUS     SAND_RADIUS_CELLS(SAND_DETONATE_RADIUS_PX, CELL_MIN)
 
 /* A FIXED ENTRY COUNT MIRRORING APP_IMPULSE_MAX, not a formula in
  * DUNE_BLAST_RADIUS, see APP_IMPULSE_MAX's own comment in app_sand.c for

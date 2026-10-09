@@ -34,8 +34,9 @@ in the app, once per cell per dirty row. Its inputs:
 
 - **`f`**: `&pf->material`, the `material_frame_t` in `sand_paint_frame_t`.
   `app_sand.c` fills `liquid_spec` through `material_frame_set_gravity()`;
-  the clocks in `sand_paint_clock.h` write `foam_phase` and `cullet_phase`
-  from elapsed time and `glass_phase` from gravity's bearing.
+  `sand_paint_clock.h` writes `foam_phase` and `cullet_phase` from elapsed
+  time, and `sand_paint_clock_glass()` writes `glass_phase` from gravity's
+  bearing.
 - **`hash`**: `material_grain_hash(cx, cy)`, a stable per-cell scramble so
   a speckled material shows the same grain in the same place frame to
   frame. Computed once per cell: a couple of multiplies and shift-xors.
@@ -517,8 +518,9 @@ is future work.
   second one.
 - **`sand_paint_row_n()` and `sand_paint_update_local_depth_gravity()` live in
   `sand_paint_row.h`** (`apps/sand/`). The host suite calls the same row walk
-  as the firmware. `app_sand.c` owns the wake timers and `mark_wake_hits()`;
-  row flags and their spans belong to `sand_paint_row_state_t`.
+  as the firmware. `sand_paint_clock.h` owns the wake timers; `app_sand.c`
+  holds one `sand_paint_clock_t` and owns `mark_wake_hits()`; row flags and
+  their spans belong to `sand_paint_row_state_t`.
 - **Prove every new cosmetic test load-bearing.** Verify red-then-green:
   make the minimal edit that should break the fix, confirm the new test
   actually fails and for the stated reason, restore the fix, confirm green.
