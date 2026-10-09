@@ -5,15 +5,15 @@
  * registry. A line nothing there claims is queued for the frame loop
  * (console_take_unclaimed_line()) instead of being logged and dropped.
  *
- * Every verb this dispatches to only sets a flag or writes a small reply;
- * none of them draw, none call into gfx or an app. That split matters most
+ * Every verb this dispatches to only posts a frame request
+ * (console_frame_request.h) or writes a small reply; none of them draw,
+ * none call into gfx or an app. That split matters most
  * for SCREENSHOT and RUNSUITE (console_screenshot.c, console_runsuite.c):
  * there is no lock on the framebuffer, so a capture (or worse, a suite
  * that draws and presents on its own) running on this task while the
  * render loop runs on the main one would be two tasks driving one panel.
  */
 #include "console/console.h"
-#include "console/console_latch.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "console/console_runsuite.h"
 #endif
@@ -42,7 +42,7 @@ console_shared(void) {
     return &shared;
 }
 
-/* A queue, not a latch: app lines are a stream, and a newer one must not
+/* A queue, not a frame request: app lines are a stream, and a newer one must not
  * silently overwrite an older one. Its storage comes from the heap at
  * console_start(). */
 #define APP_LINE_QUEUE_LEN 4
@@ -58,7 +58,7 @@ console_take_unclaimed_line(char* out, size_t out_size) {
     if (xQueueReceive(app_line_queue, item, 0) != pdTRUE) {
         return false;
     }
-    console_latch_copy(out, out_size, item);
+    (void)snprintf(out, out_size, "%s", item);
     return true;
 }
 

@@ -1,49 +1,30 @@
 /*
  * console_runsuite (RUNSUITE <name> [<pattern>[,<pattern>...]]): runs one
  * self-test suite, narrowed to tests whose name contains a pattern.
- * CONFIG_LAUNCHER_SELFTEST only. The verb sets a latch, as this task may not
- * draw (console.c); the shell frame loop calls suites_run_request().
+ * CONFIG_LAUNCHER_SELFTEST only. The verb posts a frame request, as this
+ * task may not draw (console.c); the shell frame loop calls
+ * suites_run_request().
  */
 #include "console/console_runsuite.h"
-#include "console/console_latch.h"
+#include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
 #include "esp_log.h"
-#include "suites.h"
+
+#include <stdio.h>
 
 static const char* TAG = "console";
-
-/* The one copy of the request: the verb fills it, the frame loop reads it in
- * place. Sized by the limits, not by CONSOLE_LINE_MAX, so no other console
- * buffer grows for it. */
-static char request[RUNSUITE_ARGS_MAX + 1];
-
-static volatile enum { IDLE, PENDING, RUNNING } state;
 
 static void
 console_verb_runsuite(const char* args, console_reply_fn reply) {
     (void)reply;
-    if (state != IDLE) {
+    console_frame_request_t request = {.kinds = CONSOLE_FRAME_RUNSUITE};
+    (void)snprintf(request.suite, sizeof request.suite, "%s", args);
+    if (!console_frame_post(console_frame_mailbox(), &request)) {
         ESP_LOGW(TAG, "RUNSUITE refused: the previous one has not finished");
         return;
     }
     ESP_LOGI(TAG, "RUNSUITE %s", args);
-    console_latch_copy(request, sizeof request, args);
-    state = PENDING;
 }
 
 CONSOLE_VERB_LONG(runsuite, RUNSUITE_ARGS_MAX, RUNSUITE_LINE_MAX, console_verb_runsuite)
-
-const char*
-console_runsuite_take_request(void) {
-    if (state != PENDING) {
-        return NULL;
-    }
-    state = RUNNING;
-    return request;
-}
-
-void
-console_runsuite_finish(void) {
-    state = IDLE;
-}

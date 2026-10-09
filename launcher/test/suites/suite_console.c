@@ -1,21 +1,25 @@
 /*
  * Portable suite: console_verbs (dispatch, registration discipline,
  * console_word_match(), console_find_clash(), the line assembler) and
- * console_latch (the frame-loop handoff), driven here with a registry and
- * latches this suite owns, never console_shared(), which only a device
- * build's CONSOLE_VERB() entries ever touch. Also the input-injection and
+ * console_frame_request (the frame-loop handoff), driven here with a
+ * registry and mailboxes this suite owns, never console_shared() or
+ * console_frame_mailbox(), which only a device build's verbs ever touch. Also the input-injection and
  * app-name parsers (console_inject_parse.h, console_navigation_parse.h),
  * pure enough to run on a host.
  */
 
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
+#include "test_cleanup.h"
 #include "unity.h"
 
+#include "console/console_frame_request.h"
 #include "console/console_inject_parse.h"
-#include "console/console_latch.h"
 #include "console/console_navigation_parse.h"
 #include "console/console_perf_parse.h"
 #include "console/console_verbs.h"
@@ -259,55 +263,138 @@ test_a_reply_is_up_to_the_verbs_own_handler(void) {
     TEST_ASSERT_EQUAL_STRING("SET_OK", replies[0]);
 }
 
+/* Per test, off the stack: a request is a few hundred bytes, and the suite
+ * also runs on the board's frame-loop task. */
+typedef struct {
+    console_frame_mailbox_t mailbox;
+    console_frame_request_t request; /* a post's; the racing writer's */
+    console_frame_request_t taken;
+    atomic_bool writing;
+} frame_fixture_t;
+
+static frame_fixture_t* frame;
+
 static void
-test_a_latch_is_taken_once_and_carries_its_args(void) {
-    console_latch_t latch = {0};
-    char out[CONSOLE_ARGS_MAX];
+free_frame(void) {
+    free(frame);
+    frame = NULL;
+}
 
-    TEST_ASSERT_FALSE(console_latch_take(&latch, out, sizeof out));
+static frame_fixture_t*
+frame_fixture(void) {
+    frame = malloc(sizeof *frame);
+    TEST_ASSERT_NOT_NULL(frame);
+    *frame = (frame_fixture_t){.mailbox = CONSOLE_FRAME_MAILBOX_INIT};
+    suite_set_test_cleanup(free_frame);
+    return frame;
+}
 
-    console_latch_set(&latch, "run_gfx_suite");
-    TEST_ASSERT_TRUE(latch.pending);
-    TEST_ASSERT_TRUE(console_latch_take(&latch, out, sizeof out));
-    TEST_ASSERT_EQUAL_STRING("run_gfx_suite", out);
-    TEST_ASSERT_FALSE(latch.pending);
-    TEST_ASSERT_FALSE(console_latch_take(&latch, out, sizeof out));
+static bool
+post(frame_fixture_t* f, console_frame_kind_t kind, console_navigation_t navigation, const char* text) {
+    f->request = (console_frame_request_t){.kinds = kind, .navigation = navigation};
+    (void)snprintf(f->request.app, sizeof f->request.app, "%s", text);
+    (void)snprintf(f->request.suite, sizeof f->request.suite, "%s", text);
+    return console_frame_post(&f->mailbox, &f->request);
 }
 
 static void
-test_a_second_set_before_a_take_keeps_the_newer_args(void) {
-    console_latch_t latch = {0};
-    char out[CONSOLE_ARGS_MAX];
+test_a_request_is_taken_once_with_its_fields(void) {
+    frame_fixture_t* f = frame_fixture();
 
-    console_latch_set(&latch, "first");
-    console_latch_set(&latch, "second");
-    TEST_ASSERT_TRUE(console_latch_take(&latch, out, sizeof out));
-    TEST_ASSERT_EQUAL_STRING("second", out);
+    console_frame_take(&f->mailbox, &f->taken);
+    TEST_ASSERT_EQUAL_UINT32(0, f->taken.kinds);
+
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "sand"));
+    console_frame_take(&f->mailbox, &f->taken);
+    TEST_ASSERT_EQUAL_UINT32(CONSOLE_FRAME_NAVIGATE, f->taken.kinds);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_NAVIGATION_OPEN, f->taken.navigation);
+    TEST_ASSERT_EQUAL_STRING("sand", f->taken.app);
+
+    console_frame_take(&f->mailbox, &f->taken);
+    TEST_ASSERT_EQUAL_UINT32(0, f->taken.kinds);
 }
 
 static void
-test_a_latch_truncates_args_that_do_not_fit_without_overflowing(void) {
-    console_latch_t latch = {0};
-    char out[CONSOLE_ARGS_MAX];
-    char long_args[CONSOLE_ARGS_MAX + 32];
+test_a_later_request_replaces_its_own_kind_and_leaves_the_others(void) {
+    frame_fixture_t* f = frame_fixture();
 
-    memset(long_args, 'x', sizeof long_args - 1);
-    long_args[sizeof long_args - 1] = '\0';
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "first"));
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "console"));
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_HOME, ""));
 
-    console_latch_set(&latch, long_args);
-    TEST_ASSERT_EQUAL_INT((int)sizeof(latch.args) - 1, (int)strlen(latch.args));
-    TEST_ASSERT_TRUE(console_latch_take(&latch, out, sizeof out));
-    TEST_ASSERT_EQUAL_INT((int)sizeof out - 1, (int)strlen(out));
+    console_frame_take(&f->mailbox, &f->taken);
+    TEST_ASSERT_EQUAL_UINT32(CONSOLE_FRAME_NAVIGATE | CONSOLE_FRAME_RUNSUITE, f->taken.kinds);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_NAVIGATION_HOME, f->taken.navigation);
+    TEST_ASSERT_EQUAL_STRING("", f->taken.app);
+    TEST_ASSERT_EQUAL_STRING("console", f->taken.suite);
+}
+
+/* RUNSUITE is held: one at a time, from its post until the frame loop says
+ * it is done, and a second is refused rather than replacing it. */
+static void
+test_a_held_request_refuses_another_until_it_is_done(void) {
+    frame_fixture_t* f = frame_fixture();
+
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "console"));
+    TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
+    console_frame_take(&f->mailbox, &f->taken);
+    TEST_ASSERT_EQUAL_STRING("console", f->taken.suite);
+    TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
+
+    console_frame_done(&f->mailbox, CONSOLE_FRAME_RUNSUITE);
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
+}
+
+/* How many requests the racing writer posts. */
+#define RACE_POSTS 20000
+
+/* OPEN with an app name of all 'o's, or HOME with all 'h's: a take that
+ * pairs one with the other's letters, or mixes letters, saw a post half
+ * written. */
+static void*
+race_writer(void* context) {
+    frame_fixture_t* f = context;
+    for (int i = 0; i < RACE_POSTS; i++) {
+        const bool open = (i % 2) == 0;
+        f->request.kinds = CONSOLE_FRAME_NAVIGATE;
+        f->request.navigation = open ? CONSOLE_NAVIGATION_OPEN : CONSOLE_NAVIGATION_HOME;
+        memset(f->request.app, open ? 'o' : 'h', sizeof f->request.app - 1);
+        (void)console_frame_post(&f->mailbox, &f->request);
+    }
+    atomic_store(&f->writing, false);
+    return NULL;
+}
+
+static bool
+taken_whole(const console_frame_request_t* taken) {
+    const char letter = taken->navigation == CONSOLE_NAVIGATION_OPEN ? 'o' : 'h';
+    for (size_t i = 0; i < sizeof taken->app - 1; i++) {
+        if (taken->app[i] != letter) {
+            return false;
+        }
+    }
+    return taken->app[sizeof taken->app - 1] == '\0';
 }
 
 static void
-test_taking_into_a_smaller_buffer_truncates_too(void) {
-    console_latch_t latch = {0};
-    char small[4];
+test_a_take_never_sees_a_post_half_written(void) {
+    frame_fixture_t* f = frame_fixture();
+    atomic_init(&f->writing, true);
+    pthread_t writer;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&writer, NULL, race_writer, f));
 
-    console_latch_set(&latch, "abcdef");
-    TEST_ASSERT_TRUE(console_latch_take(&latch, small, sizeof small));
-    TEST_ASSERT_EQUAL_STRING("abc", small);
+    int takes = 0;
+    int torn = 0;
+    while (atomic_load(&f->writing)) {
+        console_frame_take(&f->mailbox, &f->taken);
+        if (f->taken.kinds & CONSOLE_FRAME_NAVIGATE) {
+            takes++;
+            torn += taken_whole(&f->taken) ? 0 : 1;
+        }
+    }
+    (void)pthread_join(writer, NULL);
+    TEST_ASSERT_GREATER_THAN_INT(0, takes);
+    TEST_ASSERT_EQUAL_INT(0, torn);
 }
 
 /* console_word_match() is console_registry_handle_line()'s own matcher,
@@ -737,10 +824,10 @@ suite_console(void) {
     RUN_TEST(test_a_name_declared_twice_stays_with_the_first);
     RUN_TEST(test_registering_the_same_verb_object_twice_is_once);
     RUN_TEST(test_a_reply_is_up_to_the_verbs_own_handler);
-    RUN_TEST(test_a_latch_is_taken_once_and_carries_its_args);
-    RUN_TEST(test_a_second_set_before_a_take_keeps_the_newer_args);
-    RUN_TEST(test_a_latch_truncates_args_that_do_not_fit_without_overflowing);
-    RUN_TEST(test_taking_into_a_smaller_buffer_truncates_too);
+    RUN_TEST(test_a_request_is_taken_once_with_its_fields);
+    RUN_TEST(test_a_later_request_replaces_its_own_kind_and_leaves_the_others);
+    RUN_TEST(test_a_held_request_refuses_another_until_it_is_done);
+    RUN_TEST(test_a_take_never_sees_a_post_half_written);
     RUN_TEST(test_word_match_carries_what_follows_the_name);
     RUN_TEST(test_word_match_folds_case);
     RUN_TEST(test_find_clash_finds_an_app_prefix_that_folds_to_a_registered_verb);
