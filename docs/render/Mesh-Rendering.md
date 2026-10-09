@@ -6,9 +6,10 @@ in [Mesh-Import.md](Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
-offline. It sits beside `gfx/`, and the only other things it includes are
-`core/` and `math/`, so boot and apps both call it. The one exception is `r3d_scene.h`, which
-reads `anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
+offline. It sits above `gfx/`, whose render targets it draws into, and
+otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
+mesh from a pack), so boot and apps both call it. `r3d_scene.h` also reads
+`anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 

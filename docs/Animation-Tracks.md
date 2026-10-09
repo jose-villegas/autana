@@ -4,8 +4,8 @@
 keys, each a time and a value, and one call gives the value at any moment.
 It does not know what it drives: a caller maps the numbers onto a camera, a
 light, a material value, anything a scene exposes. Its layer is in
-[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`
-and `core/` and `math/` and allocates nothing.
+[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
+`core/` and `math/`, and allocates nothing.
 
 The format is glTF 2.0's own animation model, so a track authored in Blender
 or any other exporter plays back as it was made.

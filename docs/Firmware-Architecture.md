@@ -85,35 +85,36 @@ flowchart TB
     subgraph R10["device services"]
         Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
     end
-    subgraph R10b["the platform core"]
+    subgraph R11["the platform core"]
         Core["core/<br/><i>two-core jobs, memory placement, time, frame cost and watch, build variant</i>"]:::hw
     end
-    subgraph R11["motion"]
-        Motion["math/motion/<br/><i>tween, easing, springs, orbiting a target</i>"]
-    end
-    subgraph R12["vectors"]
-        Linear["math/linear/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
-    end
-    subgraph R12b["scalars"]
-        Scalar["math/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
-    end
-    subgraph R13["board"]
+    subgraph R12["board"]
         Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
+    subgraph R13["motion"]
+        Motion["math/motion/<br/><i>tween, easing, springs, orbiting a target</i>"]
+    end
+    subgraph R14["vectors"]
+        Linear["math/linear/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
+    end
+    subgraph R15["scalars"]
+        Scalar["math/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
+    end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R10b --> R11 --> R12 --> R12b --> R13
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
-- **core/ and math/ are the base.** `core/` is the platform every layer
-  targets: work splits across the two cores through `core/job.h` (one
-  core-1 job beside the caller's own work), memory is placed by kind
-  through `core/memory.h`, and time, frame cost and the frame watch sit
-  beside them. `math/` never touches the chip and includes nothing above
-  it, so every layer, `core/` included, may use it: `scalar/` per number
+- **core/ and math/ are the base.** Every layer above `core/` builds on
+  it: `core/job.h` hands one copied job at a time to core 1, and runs it
+  inline when core 1 is busy or on a host; `core/memory.h` places memory
+  by kind; time, frame cost, the frame watch and the build variant sit
+  beside them. `math/` is shared headers under every other layer, `board/`
+  included: it never touches the chip and includes nothing outside itself,
+  so the firmware and the host tools both use it. `scalar/` is per number
   type, `linear/` vectors to transforms over it, `motion/` over both.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
@@ -128,9 +129,8 @@ flowchart TB
   chip's vendor code only through modules that own it:
   `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
   `display/display_shell.h` (`display_start`, `display_sample_orientation`),
-  `display/display.h` (the system panel clock) and
-  `core/{timing,memory}.h` and `services/settings.h`; they call this firmware's own
-  drivers
+  `display/display.h` (the system panel clock), `core/{timing,memory}.h`
+  and `services/settings.h`; they call this firmware's own drivers
   (`imu_read`, `touch_read`) directly. A module's device half, where it has
   one, lives in a `*_device.c` beside it and is compiled for the board only,
   so the files a host builds stay pure.
