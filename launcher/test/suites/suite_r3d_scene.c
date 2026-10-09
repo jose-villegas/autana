@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -118,6 +119,58 @@ test_two_instances_appear_at_their_own_placements(void) {
 }
 
 static void
+test_position_ticks_keep_a_placed_instance_in_model_units(void) {
+    enum { POSITION_SCALE = 8 };
+
+    quad_t unit, ticks;
+    make_quad(&unit, 255, 0, 0, 0);
+    make_quad(&ticks, 255, 0, 0, 0);
+    for (int i = 0; i < 4; i++) {
+        for (int axis = 0; axis < 3; axis++) {
+            ticks.positions[i][axis] *= POSITION_SCALE;
+        }
+    }
+    for (int axis = 0; axis < 3; axis++) {
+        ticks.cluster.lo[axis] *= POSITION_SCALE;
+        ticks.cluster.hi[axis] *= POSITION_SCALE;
+        ticks.node.lo[axis] *= POSITION_SCALE;
+        ticks.node.hi[axis] *= POSITION_SCALE;
+    }
+    ticks.mesh.position_scale = POSITION_SCALE;
+    const r3d_placement_t placement = placed(3.0F, 0.0F, 1.0F);
+    const r3d_instance_t reference = {&unit.mesh, &placement}, scaled = {&ticks.mesh, &placement};
+    void* reference_scratch;
+    void* scaled_scratch;
+    const uint16_t* expected = draw(&reference, 1, &reference_scratch);
+    const uint16_t* actual = draw(&scaled, 1, &scaled_scratch);
+    TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(actual, 3.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(actual, 0.0F));
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(expected, actual, SIZE * SIZE);
+    free(reference_scratch);
+    free(scaled_scratch);
+}
+
+static void
+test_every_lens_operation_keeps_the_affine_bottom_row(void) {
+    const r3d_placement_t placement = placed(3.0F, 2.0F, 0.5F);
+    for (int quarter = 0; quarter < 4; quarter++) {
+        r3d_lens_t lens;
+        memset(&lens, 0x5a, sizeof lens);
+        r3d_lens_init(&lens, &CAMERA, 8, (viewport_t){SIZE, SIZE, quarter});
+        for (int operation = 0; operation < 3; operation++) {
+            if (operation == 1) {
+                r3d_lens_fit(&lens, SIZE / 2, SIZE);
+            } else if (operation == 2) {
+                r3d_lens_place(&lens, &placement, 8);
+            }
+            for (int c = 0; c < 4; c++) {
+                TEST_ASSERT_EQUAL_FLOAT(c == 3 ? 1.0F : 0.0F, lens.m.m[3][c]);
+            }
+        }
+    }
+}
+
+static void
 test_a_scale_widens_an_instance_about_its_position(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
@@ -188,6 +241,8 @@ void
 suite_r3d_scene(void) {
     RUN_TEST(test_a_mesh_with_no_placement_draws_where_it_is);
     RUN_TEST(test_two_instances_appear_at_their_own_placements);
+    RUN_TEST(test_position_ticks_keep_a_placed_instance_in_model_units);
+    RUN_TEST(test_every_lens_operation_keeps_the_affine_bottom_row);
     RUN_TEST(test_a_scale_widens_an_instance_about_its_position);
     RUN_TEST(test_a_rotation_turns_an_instance_about_its_position);
     RUN_TEST(test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first);
