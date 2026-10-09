@@ -3,7 +3,7 @@
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "92b4ecd7628e674a05b459ebccdd179c42d55ba34d9ec10c240bc0ab13b07e12"
+key = "3e61c39a73905d6626c927333e44f891f2ffda800e319a03003a2a8b41caf837"
 sha256 = "9024a2f573fdc2a0435c095cdf0ccd4b695b97d266abe512467e33157ae848b8"
 size = 15872
 seeded = true
@@ -11,16 +11,15 @@ seeded = true
 [[bake]]
 output = "capybara.glb"
 source = "launcher/demo/capybara/capybara.import.toml"
-key = "281d9c0f99e85e0424c4dc38179b5183b2f78311b47226dc5bba8d20dbbde892"
+key = "b9bea814615f88b18b82547d547132ffd95ef82acc48e6442ee87a4439bca5f0"
 sha256 = "bbbb63e802570a6b421c9fe3f96390c672e613183cf921158efea45c96a534c8"
 size = 343012
-run = 37977666607
-host = "Linux x86_64"
+seeded = true
 
 [[bake]]
 output = "capybara.meadow.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "d73acf34691682d710ad68e6ce82db1f5b880f31882b1fb946e79097666bf24a"
+key = "bbb9f26c6d11067aa57122ad878b246d42840f0433b754d5306768033021b842"
 sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
 size = 132
 seeded = true
@@ -28,7 +27,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "10d247eb1f1596e2c377367014b74b6092500a48080214e0ff1d6836f19ebb64"
+key = "1f5f0efe9cd8956d12649f3d29796587fb4accaf483eb54e5c69531ebbee2b5d"
 sha256 = "6aec5179d839348f5701d96b27b352f330f7ed5b264f4184b5bb3cf16e6e8098"
 size = 266100
 seeded = true
@@ -36,7 +35,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "dbba637ab0638aa5a3752365b8ae106ba17d04dbc2df3118c127869750a229db"
+key = "34544102e95ecdd042017e1fc62c9b23deba4faae2fe7bf9cc02514dc08e861e"
 sha256 = "9cd15eaa37d4e14a4f0080f3c5d6a0857024e575c9b2a8046f4ddb798dd7cc32"
 size = 144164
 seeded = true
@@ -44,7 +43,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "4a26703c1a150df100fa7730d0282a749796dd341effcbec343a411341b4a16e"
+key = "57685c77abd5215183dfe2d33f8f44b042148f872c020118b9cfbf168948f441"
 sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
 size = 277960
 seeded = true
@@ -52,7 +51,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_flat.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "d5c506b13664b371467b23fccc89333f48df4efbec341ad9258390d18090dde4"
+key = "fce4a8bfa7d9337895342daa1c1c67e46fbb888eb0f55783440824e7d3d31324"
 sha256 = "7ddae4c30f88db8f09fb6ace4d4f8d78d101eb92377dc498452b97535ac6f477"
 size = 244024
 seeded = true
@@ -60,7 +59,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "3ac111fdeb948122b503a682ef9e5f2af2c03245f8234aed4fad84e531e42db5"
+key = "07ab5c7acd939071ae1d0b7e462e1797762388370d0163318e4879b42088ea00"
 sha256 = "429c686bb58052cf62b46f42213f7caf2fec3fb33b9079880aa502d64b6c0d04"
 size = 250680
 seeded = true
@@ -68,7 +67,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_lite.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "8e6ece78bb1bf0b0b27f3e7797c0c97fd52ed46940d4006e49c2689612c79493"
+key = "7f1b2c82a423f7794650dd941ebe30e1f2d6e011c0e8f08dc1e0ac216c32086c"
 sha256 = "5111edfdace21164bc800307a0be024fbff16b42388255a3aad03fbdef4e6b4d"
 size = 130384
 seeded = true
