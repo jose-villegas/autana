@@ -289,11 +289,17 @@ frame_fixture(void) {
     return frame;
 }
 
+/* Fills only the fields of the kinds posted, so a merge that copied another
+ * kind's fields would clobber what is pending with blanks. */
 static bool
-post(frame_fixture_t* f, console_frame_kind_t kind, console_navigation_t navigation, const char* text) {
-    f->request = (console_frame_request_t){.kinds = kind, .navigation = navigation};
-    (void)snprintf(f->request.app, sizeof f->request.app, "%s", text);
-    (void)snprintf(f->request.suite, sizeof f->request.suite, "%s", text);
+post(frame_fixture_t* f, uint32_t kinds, console_navigation_t navigation, const char* text) {
+    f->request = (console_frame_request_t){.kinds = kinds, .navigation = navigation};
+    if (kinds & CONSOLE_FRAME_NAVIGATE) {
+        (void)snprintf(f->request.app, sizeof f->request.app, "%s", text);
+    }
+    if (kinds & CONSOLE_FRAME_RUNSUITE) {
+        (void)snprintf(f->request.suite, sizeof f->request.suite, "%s", text);
+    }
     return console_frame_post(&f->mailbox, &f->request);
 }
 
@@ -318,15 +324,20 @@ static void
 test_a_later_request_replaces_its_own_kind_and_leaves_the_others(void) {
     frame_fixture_t* f = frame_fixture();
 
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "first"));
+    const int steps = 3;
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_HOME, "first"));
+    f->request = (console_frame_request_t){.kinds = CONSOLE_FRAME_FREEZE, .frozen = true, .steps = steps};
+    TEST_ASSERT_TRUE(console_frame_post(&f->mailbox, &f->request));
     TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "console"));
-    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_HOME, ""));
+    TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "sand"));
 
     console_frame_take(&f->mailbox, &f->taken);
-    TEST_ASSERT_EQUAL_UINT32(CONSOLE_FRAME_NAVIGATE | CONSOLE_FRAME_RUNSUITE, f->taken.kinds);
-    TEST_ASSERT_EQUAL_INT(CONSOLE_NAVIGATION_HOME, f->taken.navigation);
-    TEST_ASSERT_EQUAL_STRING("", f->taken.app);
+    TEST_ASSERT_EQUAL_UINT32(CONSOLE_FRAME_NAVIGATE | CONSOLE_FRAME_RUNSUITE | CONSOLE_FRAME_FREEZE, f->taken.kinds);
+    TEST_ASSERT_EQUAL_INT(CONSOLE_NAVIGATION_OPEN, f->taken.navigation);
+    TEST_ASSERT_EQUAL_STRING("sand", f->taken.app);
     TEST_ASSERT_EQUAL_STRING("console", f->taken.suite);
+    TEST_ASSERT_TRUE(f->taken.frozen);
+    TEST_ASSERT_EQUAL_INT(steps, f->taken.steps);
 }
 
 /* RUNSUITE is held: one at a time, from its post until the frame loop says
@@ -339,7 +350,10 @@ test_a_held_request_refuses_another_until_it_is_done(void) {
     TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
     console_frame_take(&f->mailbox, &f->taken);
     TEST_ASSERT_EQUAL_STRING("console", f->taken.suite);
-    TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
+    /* Refused whole: the NAVIGATE riding with it is not merged either. */
+    TEST_ASSERT_FALSE(post(f, CONSOLE_FRAME_RUNSUITE | CONSOLE_FRAME_NAVIGATE, CONSOLE_NAVIGATION_OPEN, "gfx"));
+    console_frame_take(&f->mailbox, &f->taken);
+    TEST_ASSERT_EQUAL_UINT32(0, f->taken.kinds);
 
     console_frame_done(&f->mailbox, CONSOLE_FRAME_RUNSUITE);
     TEST_ASSERT_TRUE(post(f, CONSOLE_FRAME_RUNSUITE, CONSOLE_NAVIGATION_APPS, "gfx"));
