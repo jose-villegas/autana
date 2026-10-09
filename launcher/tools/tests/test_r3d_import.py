@@ -32,7 +32,7 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
-OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
+OUTPUT = '[output]\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
 SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'
@@ -40,13 +40,13 @@ VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE
 PLAIN_VARIANT = '[[variants]]\nname = "mesh"\n'
-VARIANT_OUTPUT = '[output]\ndirectory = "."\n'
+VARIANT_OUTPUT = '[output]\n'
 FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
-            'batch = 4, laplacian = 10.0, normal_weight = 1.0, sha256 = "ab", recipe_sha256 = "cd" }\n')
+            'batch = 4, laplacian = 10.0, normal_weight = 1.0 }\n')
 FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
        '[objects.mesh_renderer.fit.poses]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\n'
-       '[objects.mesh_renderer.fit.hashes]\nsha256 = "ab"\nrecipe_sha256 = "cd"\n')
+       '')
 INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
@@ -103,18 +103,25 @@ def tree_scenes():
     return sorted(path for path in (ROOT / "launcher").rglob("*.scene.toml") if not {"build", "results"} & set(path.parts))
 
 
+def fit_key(job, scene):
+    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides."""
+    from bake import bake
+
+    return bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["fit"]
+
+
 class ImportTests(unittest.TestCase):
     def rejects(self, pattern, body):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(SettingsError, pattern):
-                output = '[output]\ndirectory = "."\n' if "[[variants]]" in body else OUTPUT
+                output = '[output]\n' if "[[variants]]" in body else OUTPUT
                 load_import_settings(write_import(directory, output=output, body=body))
 
     def test_an_import_contains_geometry_only(self):
         body = ('[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
                 'thin = { material = "m", keep = 0.5 }\n' + SIMPLIFY.removeprefix("[geometry]\n") + VARIANT)
         with tempfile.TemporaryDirectory() as directory:
-            settings = load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n', body=body))
+            settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
         self.assertEqual((settings.seed, settings.alpha_keep, settings.thin.keep, settings.variants[0].triangles), (3, 0.5, 0.5, 10))
         self.assertFalse(hasattr(settings, "light"))
 
@@ -135,7 +142,7 @@ class ImportTests(unittest.TestCase):
 
     def test_variants_hold_only_their_name_and_triangle_budget(self):
         with tempfile.TemporaryDirectory() as directory:
-            settings = load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT))
+            settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
         self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10})
 
 
@@ -191,7 +198,7 @@ class ImportTests(unittest.TestCase):
             self.rejects("must be above 0", SIMPLIFY.replace("colour_deviation = 1.0", f"colour_deviation = {value}") + VARIANT)
         with tempfile.TemporaryDirectory() as directory:
             body = SIMPLIFY.replace("colour_deviation = 1.0", "colour_deviation = 0.01") + VARIANT
-            settings = load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n', body=body))
+            settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
         self.assertEqual(settings.simplify.colour_deviation, 0.01)
 
     def test_simplify_needs_a_budget_per_variant_and_a_budget_needs_simplify(self):
@@ -230,8 +237,8 @@ class SceneTests(unittest.TestCase):
                 load_scene(path)
 
     def two_imports(self, directory):
-        write_import(directory, "a.import.toml", output='[output]\ndirectory = "."\nname = "a"\n')
-        write_import(directory, "b.import.toml", output='[output]\ndirectory = "."\nname = "b"\n')
+        write_import(directory, "a.import.toml", output='[output]\nname = "a"\n')
+        write_import(directory, "b.import.toml", output='[output]\nname = "b"\n')
 
     def plain_import(self, directory):
         write_import(directory)
@@ -318,7 +325,9 @@ class SceneTests(unittest.TestCase):
         extra = 'variant = "mesh"\n' + FIT
         scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT))
         fit = scene.renderers[0].renderer.fit
-        self.assertEqual((fit.budget, fit.normal_weight, fit.sha256), (8, 1.0, "ab"))
+        self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
+        self.lit_rejects("fit.hashes is gone", extra + "[objects.mesh_renderer.fit.hashes]\nsha256 = \"ab\"\n",
+                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
         self.lit_rejects("cannot exceed", extra.replace("budget = 8", "budget = 11"), **options)
         self.lit_rejects("fit", extra.replace("steps = 20\n", ""), **options)
@@ -456,8 +465,6 @@ class SceneTests(unittest.TestCase):
                 load_scene(write_scene(directory, renderer() + renderer(name="mesh")))
 
     def test_a_scene_run_is_stamped_by_what_it_places(self):
-        from r3d.fitted_variant import recipe_digest
-
         extra = 'variant = "mesh"\n' + FIT
         fly = camera(path=True, region=False)
 
@@ -468,10 +475,9 @@ class SceneTests(unittest.TestCase):
                 write_import(root, output=VARIANT_OUTPUT, body=simplify + VARIANT)
                 scene = load_scene(write_scene(root, renderer(extra="bake = true\n" + PATH + fit) + sun_object() + fly, head))
                 job = scene.renderers[0]
-                return recipe_digest(job, scene)
+                return fit_key(job, scene)
 
         first = digest()
-        self.assertEqual(digest(fit=extra.replace('sha256 = "ab"', 'sha256 = "ef"')), first, "the recorded hashes are not the recipe")
         self.assertNotEqual(digest(fit=extra.replace("steps = 20", "steps = 21")), first)
         self.assertNotEqual(digest(head=HEAD.replace("ray_offset = 0.5", "ray_offset = 0.6")), first)
         self.assertNotEqual(digest(reach=2.0), first, "the camera clip's keys are the recipe")
@@ -482,8 +488,6 @@ class SceneTests(unittest.TestCase):
         self.assertNotEqual(digest(head=HEAD + "ao = { distance = 4.0, rays = 8 }\n"), first, "occlusion is part of the recipe")
 
     def test_the_recipe_digest_drops_indirect_for_an_opted_out_renderer(self):
-        from r3d.fitted_variant import recipe_digest
-
         def digest(bounces, opted_out=True):
             out = "indirect = false\n" if opted_out else ""
             with tempfile.TemporaryDirectory() as directory:
@@ -494,14 +498,14 @@ class SceneTests(unittest.TestCase):
                     root, renderer(extra='variant = "mesh"\nbake = true\n' + out + PATH + FIT) + sun_object()
                     + camera(path=True, region=False), head))
                 job = scene.renderers[0]
-                return recipe_digest(job, scene)
+                return fit_key(job, scene)
 
         self.assertEqual(digest(2), digest(3))
         self.assertNotEqual(digest(2, opted_out=False), digest(3, opted_out=False))
 
     def test_a_scene_renderer_owns_its_bake_settings(self):
         with tempfile.TemporaryDirectory() as directory:
-            write_import(directory, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
+            write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT)
             scene = load_scene(write_scene(
                 directory, renderer(extra='variant = "mesh"\nbake = true\nshading = "smooth"\n'
                                            'visibility = { source = "camera_path", every_ms = 100, size = [8, 6] }\n')
@@ -598,7 +602,7 @@ class SceneTests(unittest.TestCase):
         variants = VARIANT + VARIANT.replace('name = "mesh"', 'name = "copy"')
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(SettingsError, "same mesh"):
-                load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n', body=SIMPLIFY + variants))
+                load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + variants))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -637,14 +641,24 @@ class AuthoredImportTests(unittest.TestCase):
                 mesh = read_lit_mesh(pathlib.Path(directory) / "mesh.mesh")
             self.assertEqual((len(mesh.tris), len(mesh.pos)), (12, 8))
 
-    def test_an_import_writes_its_mesh_beside_the_import_file_not_in_the_output_directory(self):
+    def test_an_import_outside_the_repository_writes_its_mesh_beside_it_or_into_out(self):
         with tempfile.TemporaryDirectory() as directory:
-            pathlib.Path(directory, "generated").mkdir()
-            self.assertEqual(self.bake(directory, output='[output]\ndirectory = "generated"\nname = "mesh"\n'), 0)
-            beside = (pathlib.Path(directory) / "mesh.mesh").is_file()
-            elsewhere = list(pathlib.Path(directory, "generated").iterdir())
-        self.assertTrue(beside)
-        self.assertEqual(elsewhere, [])
+            self.assertEqual(self.bake(directory), 0)
+            self.assertTrue((pathlib.Path(directory) / "mesh.mesh").is_file())
+            out = pathlib.Path(directory, "elsewhere")
+            self.assertEqual(mesh_import.main([str(pathlib.Path(directory) / "mesh.import.toml"), "--out", str(out)]), 0)
+            self.assertTrue((out / "mesh.mesh").is_file())
+
+    def test_an_import_in_the_repository_is_a_bake_product(self):
+        inside = mesh_import.REPO / "launcher" / "demo" / "capybara" / "meadow.import.toml"
+        with contextlib.redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit):
+            mesh_import.main([str(inside)])
+        self.assertIn("bake.py bake", err.getvalue())
+
+    def test_an_output_directory_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(SettingsError, "output.directory is gone"):
+                load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n'))
 
     @needs_mitsuba
     def test_a_baked_renderer_writes_its_mesh_beside_the_scene_named_by_scene_and_object(self):
@@ -664,7 +678,7 @@ class AuthoredImportTests(unittest.TestCase):
         objects = renderer(extra="bake = true\n") + sun_object()
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            output = f'[output]\ndirectory = "."\nname = "mesh"\nposition_scale = {scale}\n'
+            output = f'[output]\nname = "mesh"\nposition_scale = {scale}\n'
             self.assertEqual(self.bake(directory, objects, output=output, head=HEAD.replace("0.5", str(size / 100)),
                                        name="hall.scene.toml", obj=scaled_cube(size)), 0)
             lit = read_lit_mesh(root / "hall.mesh.mesh")
@@ -721,32 +735,18 @@ class LightListTests(unittest.TestCase):
 
 class DigestTests(unittest.TestCase):
     def test_the_recipe_digest_ignores_equivalent_toml_layouts(self):
-        from r3d.fitted_variant import recipe_digest
-
         fit = FIT
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            write_import(root, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
+            write_import(root, output='[output]\n', body=SIMPLIFY + VARIANT)
             objects = renderer(extra='variant = "mesh"\nbake = true\nvisibility = { source = "camera_path", every_ms = 10, size = [8, 6] }\n' + fit)
             first = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE))
             alternate = (TONEMAP + AMBIENT + '[bake]\ncolour_merge_step = 6\nray_offset = 0.5\n')
             second = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), alternate,
                                             "other.scene.toml"))
-            first_digest = recipe_digest(first.renderers[0], first)
-            second_digest = recipe_digest(second.renderers[0], second)
+            first_digest = fit_key(first.renderers[0], first)
+            second_digest = fit_key(second.renderers[0], second)
         self.assertEqual(first_digest, second_digest)
-
-
-class FitLayoutTests(unittest.TestCase):
-    def test_checked_in_fit_recipes_match_their_recorded_digest(self):
-        from r3d.fitted_variant import recipe_digest
-
-        for path in tree_scenes():
-            scene = load_scene(path)
-            for job in scene.renderers:
-                if job.renderer.fit:
-                    self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256,
-                                     job.asset_path.name)
 
 
 def triangle_source(p):
@@ -789,23 +789,6 @@ class BakeStepTests(unittest.TestCase):
             renderer_ = SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=1))
             mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(given["colour_deviation"], 2.5)
-
-    def test_check_fitted_names_what_changed_and_what_to_do(self):
-        with tempfile.TemporaryDirectory() as directory:
-            target = pathlib.Path(directory) / "m.mesh"
-            target.write_bytes(b"mesh")
-            renderer_ = SimpleNamespace(variant=SimpleNamespace(name="m"), fit=SimpleNamespace(sha256="0", recipe_sha256="r"))
-            job = SimpleNamespace(renderer=renderer_, asset_path=target)
-            with mock.patch("r3d.fitted_variant.recipe_digest", return_value="other"):
-                with self.assertRaisesRegex(SystemExit, "recipe changed since the fit; rerun fitted_variant.py prepare[|]fit"):
-                    mesh_import.check_fitted(job, None)
-            with mock.patch("r3d.fitted_variant.recipe_digest", return_value="r"):
-                with self.assertRaisesRegex(SystemExit, "not the 0 the fit recorded; rerun fitted_variant.py"):
-                    mesh_import.check_fitted(job, None)
-                job.asset_path = target.with_name("gone.mesh")
-                with self.assertRaisesRegex(SystemExit, "gone.mesh is missing"):
-                    mesh_import.check_fitted(job, None)
-
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceObjectTests(unittest.TestCase):
@@ -893,22 +876,6 @@ class JobTests(unittest.TestCase):
         self.assertEqual(set(vars(jobs[0])), {"settings", "renderer", "object", "asset_name", "asset_path", "bake"})
 
 
-@unittest.skipIf(np is None, "the r3d environment is not installed")
-class FittedStampTests(unittest.TestCase):
-    def test_each_fitted_scene_output_matches_its_stamp(self):
-        from r3d.fitted_variant import recipe_digest
-
-        found = 0
-        for path in tree_scenes():
-            scene = load_scene(path)
-            for job in scene.renderers:
-                if job.renderer.fit:
-                    found += 1
-                    self.assertEqual(hashlib.sha256(job.asset_path.read_bytes()).hexdigest(), job.renderer.fit.sha256,
-                                     job.asset_path.name)
-        self.assertGreater(found, 0)
-
-
 class LocalSourceTests(unittest.TestCase):
     def test_lfs_pointer_oid_and_malformed_pointers(self):
         from r3d.import_settings import content_checksum, lfs_pointer_oid
@@ -970,7 +937,7 @@ class LocalSourceTests(unittest.TestCase):
                     load_import_settings(write_import(directory, source=source))
 
     def test_source_changes_invalidate_recipe_and_reference(self):
-        from r3d.fitted_variant import recipe_digest, reference_digest
+        from r3d.fitted_variant import reference_digest
 
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -980,20 +947,20 @@ class LocalSourceTests(unittest.TestCase):
             (asset / "m.mtl").write_text("newmtl m\nmap_Kd texture.weird\n")
             (asset / "texture.weird").write_bytes(b"texture")
             source = '[source]\npath = "asset/m.obj"\ncredit = "c"\n'
-            write_import(root, source=source, output='[output]\ndirectory = "."\n', body=SIMPLIFY + VARIANT)
+            write_import(root, source=source, output='[output]\n', body=SIMPLIFY + VARIANT)
             objects = renderer(extra='variant = "mesh"\nbake = true\n' + FIT)
             scene_path = write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE)
             scene = load_scene(scene_path)
             job = scene.renderers[0]
             for name in ("m.obj", "m.mtl", "texture.weird"):
-                before = recipe_digest(job, scene), reference_digest(job, scene)
+                before = fit_key(job, scene), reference_digest(job, scene)
                 path = asset / name
                 path.write_bytes(path.read_bytes() + b"\n# changed")
-                after = recipe_digest(job, scene), reference_digest(job, scene)
+                after = fit_key(job, scene), reference_digest(job, scene)
                 self.assertTrue(all(a != b for a, b in zip(before, after)), name)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
-        from r3d.fitted_variant import recipe_digest, reference_digest
+        from r3d.fitted_variant import reference_digest
 
         def digests(**clip):
             with tempfile.TemporaryDirectory() as directory:
@@ -1004,7 +971,7 @@ class LocalSourceTests(unittest.TestCase):
                                          + sun_object() + camera(path=True, region=False), HEAD)
                 scene = load_scene(scene_path)
                 job = scene.renderers[0]
-                return recipe_digest(job, scene), reference_digest(job, scene)
+                return fit_key(job, scene), reference_digest(job, scene)
 
         first = digests()
         for changed in (digests(reach=2.0), digests(degrees=30.0)):

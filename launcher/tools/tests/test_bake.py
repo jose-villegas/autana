@@ -9,6 +9,7 @@ import io
 import json
 import pathlib
 import platform
+import shutil
 import sys
 import tempfile
 import unittest
@@ -164,13 +165,6 @@ class StageTests(unittest.TestCase):
         self.assertNotEqual(keys["fit"], retool["fit"])
         rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"})
         self.assertTrue(all(keys[stage] != rebaked[stage] for stage in keys))
-
-    def test_recorded_fit_hashes_are_not_inputs(self):
-        job, scene = fitted_job()
-        recorded = copy.deepcopy(job)
-        recorded.renderer.fit.sha256 = recorded.renderer.fit.recipe_sha256 = "0" * 64
-        self.assertEqual(bake.stage_keys(job, scene, TOOL_KEYS), bake.stage_keys(recorded, scene, TOOL_KEYS))
-
 
 class LockTests(unittest.TestCase):
     def setUp(self):
@@ -455,7 +449,7 @@ class BlendTests(unittest.TestCase):
 
     def write(self, clips):
         (self.root / "rig.import.toml").write_text(
-            f'[source]\npath = "rig.blend"\ncredit = "c"\n{clips}[output]\ndirectory = "."\nname = "rig"\n')
+            f'[source]\npath = "rig.blend"\ncredit = "c"\n{clips}[output]\nname = "rig"\n')
 
     def found(self):
         return {found.kind: found for found in bake.bakes([self.root / "rig.import.toml"])}
@@ -476,7 +470,7 @@ class BlendTests(unittest.TestCase):
     def test_clips_belong_to_a_blend_source(self):
         (self.root / "m.glb").write_bytes(b"glTF")
         (self.root / "rig.import.toml").write_text(
-            '[source]\npath = "m.glb"\ncredit = "c"\nclips = ["walk"]\n[output]\ndirectory = "."\nname = "m"\n')
+            '[source]\npath = "m.glb"\ncredit = "c"\nclips = ["walk"]\n[output]\nname = "m"\n')
         with self.assertRaisesRegex(bake.SettingsError, "source.clips"):
             bake.bakes([self.root / "rig.import.toml"])
 
@@ -510,56 +504,63 @@ class BlendTests(unittest.TestCase):
             produce.produce(export, self.root / "cache", blender="blender")
 
 
-class TreeTests(unittest.TestCase):
-    def test_packs_built_from_a_seeded_cache_are_the_trees_packs(self):
-        found = bake.bakes([build_pack.DEFAULT_SEARCH])
-        self.assertTrue(found)
-        with tempfile.TemporaryDirectory() as directory:
-            cache = pathlib.Path(directory)
-            rows = bake.seed(found, cache)
-            with mock.patch.object(bake, "read_lock", return_value={row["key"]: row for row in rows}), \
-                    mock.patch("urllib.request.urlopen") as network:
-                cached = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
-            network.assert_not_called()
-        self.assertEqual(cached, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True))
+def filled_cache(directory):
+    """Every mesh the tree's lock names, in the cache `directory`: copied from the user cache, fetched
+    there first when it lacks one. Returns the mesh bakes and the lock."""
+    found = [item for item in bake.bakes([build_pack.DEFAULT_SEARCH]) if item.kind != "blend"]
+    lock = bake.read_lock()
+    for path in bake.fetch_all(found, lock, bake.default_cache()).values():
+        shutil.copyfile(path, pathlib.Path(directory) / path.name)
+    return found, lock
 
-    def test_a_mesh_no_bake_keys_fails_instead_of_taking_the_trees_copy(self):
-        found = bake.bakes([build_pack.DEFAULT_SEARCH])
-        dropped = next(item for item in found if item.kind == "mesh")
+
+class TreeTests(unittest.TestCase):
+    def test_packs_build_offline_from_a_filled_cache_as_they_do_online(self):
         with tempfile.TemporaryDirectory() as directory:
-            cache = pathlib.Path(directory)
-            rows = bake.seed(found, cache)
-            with mock.patch.object(bake, "read_lock", return_value={row["key"]: row for row in rows}), \
-                    mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
+            filled_cache(directory)
+            with mock.patch("urllib.request.urlopen") as network:
+                offline = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
+            network.assert_not_called()
+        self.assertEqual(offline, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
+
+    def test_a_mesh_no_bake_keys_fails_instead_of_taking_another_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            found, lock = filled_cache(directory)
+            dropped = found[0]
+            with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
-                build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
+                build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
         self.assertIn(dropped.output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
 
     def test_a_mesh_outside_the_repository_is_its_own_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            imported = write_import(root)
+            found, lock = filled_cache(root)
+            some_mesh = bake.cached(lock[found[0].key], bake.MESH_SUFFIX, root).read_bytes()
+            (root / "tree").mkdir()
+            imported = write_import(root / "tree")
             for entries in build_pack.pack_files([imported]).values():
                 for mesh in entries.values():
-                    mesh.write_bytes((bake.REPO / "launcher/demo/capybara/capybara.meadow.mesh").read_bytes())
+                    mesh.write_bytes(some_mesh)
             with mock.patch("urllib.request.urlopen") as network:
                 packs = build_pack.pack_bytes([imported], cache=root / "empty", offline=True)
             network.assert_not_called()
         self.assertEqual(list(packs), [imported.name.removesuffix(build_pack.IMPORT)])
 
     def test_a_replaced_mesh_is_never_fetched(self):
-        found = bake.bakes([build_pack.DEFAULT_SEARCH])
-        scratch = next(item for item in found if item.kind == "mesh")
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
-            rows = {row["key"]: row for row in bake.seed(found, cache) if row["key"] != scratch.key}
+            found, lock = filled_cache(cache)
+            scratch = found[0]
             mesh = cache / "scratch.mesh"
-            mesh.write_bytes(scratch.tree.read_bytes())
+            mesh.write_bytes(bake.cached(lock[scratch.key], bake.MESH_SUFFIX, cache).read_bytes())
             name = scratch.output.removesuffix(bake.MESH_SUFFIX)
-            with mock.patch.object(bake, "read_lock", return_value=rows),                     mock.patch("urllib.request.urlopen") as network:
+            rows = {key: row for key, row in lock.items() if key != scratch.key}
+            with mock.patch.object(bake, "read_lock", return_value=rows), \
+                    mock.patch("urllib.request.urlopen") as network:
                 packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], [f"{name}={mesh}"], cache=cache, offline=True)
             network.assert_not_called()
-        self.assertEqual(packs, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True))
+        self.assertEqual(packs, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
 
     def test_every_key_is_unique(self):
         keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH])]

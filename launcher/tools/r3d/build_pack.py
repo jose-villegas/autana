@@ -22,7 +22,7 @@ the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
 it. What the cache lacks is downloaded, so a cold cache needs the network once;
 --offline never downloads, and a bake that is not available fails, naming
 each. The lock is this repository's: a mesh of a scene outside it is the file
-beside it. --from-tree takes the meshes beside their files instead.
+beside it.
 --pack-of prints the pack that holds entry ID. Run from the repository
 root; standard library only, and no mesh is baked. Packs are build
 products, never committed.
@@ -138,12 +138,11 @@ def pack_jobs(paths):
     return packs, jobs
 
 
-def pack_bytes(paths, replace=(), cache=None, offline=False, tree=False):
+def pack_bytes(paths, replace=(), cache=None, offline=False):
     """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
-    or import outside it (a test's or a scratch scene) is the file beside it. `tree` takes every mesh
-    beside its file, for fixtures inside the repository that have no lock."""
+    or import outside it (a test's or a scratch scene) is the file beside it."""
     packs, jobs = pack_jobs(paths)
     replaced = {}
     for item in replace:
@@ -152,22 +151,21 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, tree=False):
         if holder is None or holder[mesh].name.endswith((SCENE, CLIP)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
-    if not tree:
-        from bake import bake
+    from bake import bake
 
-        locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
-        wanted = [found for found in bake.bakes_in(packs, locked)
-                  if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
-        fetched = {found.tree.resolve(): path for found, path in
-                   bake.fetch_all(wanted, bake.read_lock(), cache or bake.default_cache(), offline).items()}
-        unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
-                   if not source.name.endswith((SCENE, CLIP)) and entry not in replaced
-                   and source.resolve() in locked and source.resolve() not in fetched]
-        if unkeyed:
-            raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
-                                   "copy is never taken: " + ", ".join(unkeyed))
-        packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
-                 for name, entries in packs.items()}
+    locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
+    wanted = [found for found in bake.bakes_in(packs, locked)
+              if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
+    fetched = {found.tree.resolve(): path for found, path in
+               bake.fetch_all(wanted, bake.read_lock(), cache or bake.default_cache(), offline).items()}
+    unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
+               if not source.name.endswith((SCENE, CLIP)) and entry not in replaced
+               and source.resolve() in locked and source.resolve() not in fetched]
+    if unkeyed:
+        raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
+                               "copy is never taken: " + ", ".join(unkeyed))
+    packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
+             for name, entries in packs.items()}
     for name, entries in packs.items():
         entries.update((mesh, file) for mesh, file in replaced.items() if mesh in entries)
     missing = [str(source) for sources in packs.values() for source in sources.values() if not source.is_file()]
@@ -223,7 +221,6 @@ def main(argv=None):
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
     parser.add_argument("--bake-cache", metavar="DIR", help="the bake cache; the user cache when omitted")
     parser.add_argument("--offline", action="store_true", help="never download a bake the cache lacks")
-    parser.add_argument("--from-tree", action="store_true", help="take the meshes beside their files, not the cache")
     args = parser.parse_args(argv)
     paths = args.paths or [DEFAULT_SEARCH]
     try:
@@ -236,7 +233,7 @@ def main(argv=None):
         if not args.out:
             parser.error("-o DIR is required")
         cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
-        packs = pack_bytes(paths, args.replace, cache, args.offline, args.from_tree)
+        packs = pack_bytes(paths, args.replace, cache, args.offline)
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
