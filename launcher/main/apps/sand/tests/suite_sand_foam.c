@@ -31,16 +31,13 @@
 #include "apps/sand/tests/suite_sand_common.h"
 #include "util/scalar/mathi.h"
 
-/*
- * WATER'S FOAM - gathered at crevices, never on a flat run. Curvature
- * alone decides it (water_foams(), material_palette.c):
- * measured on sloshing water, a flat pool's rim is non-flat in 4% of its
- * cells and one two steps into a 75 degree tilt in 94%.
- *
- * `water_foam` is file-static, so these tests lean on
- * material_set_gravity(0, 0), which zeroes liquid_spec[] and gives "did
- * NOT foam" an exact answer: the plain fill-indexed palette entry.
- */
+/* Water's foam gathers at crevices: curvature alone decides
+ * (water_foams(), material_palette.c). Measured on sloshing water, a flat
+ * pool's rim is non-flat in 4% of its cells and one two steps into a
+ * 75 degree tilt in 94%. */
+
+/* Zero gravity removes the specular term, so a non-foaming rim must match
+ * the fill-indexed palette entry exactly. */
 
 /* Every test below reads this rim cell's own fill, at variant 12 - deep
  * enough that the pale/dark ends of the ramp are not near either clamp,
@@ -57,7 +54,7 @@
  * promised. */
 static void
 test_water_foams_where_its_rim_is_curved(void) {
-    material_set_gravity(0, 0);
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const gfx_color_t plain = pal[CELL_MAKE(MAT_WATER, FOAM_TEST_FILL)];
 
@@ -69,8 +66,8 @@ test_water_foams_where_its_rim_is_curved(void) {
     int spike_foamed = 0;
     for (unsigned hash = 0; hash < 8u; hash++) {
         gfx_color_t flat_col[3], spike_col[3];
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, flat_col);
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, spike_mask, 255u, spike_col);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, flat_col);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, spike_mask, 255u, spike_col);
 
         char why[192];
         snprintf(why, sizeof why,
@@ -102,8 +99,7 @@ test_water_foams_where_its_rim_is_curved(void) {
  * foams" at most combinations. */
 static void
 test_a_flat_rim_still_never_foams(void) {
-    material_set_gravity(0, 0); /* no specular term to confuse a
-                                            * pure foam comparison with */
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const gfx_color_t plain = pal[CELL_MAKE(MAT_WATER, FOAM_TEST_FILL)];
 
@@ -114,10 +110,10 @@ test_a_flat_rim_still_never_foams(void) {
     const unsigned flat_mask = MATERIAL_EDGE_UP | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT;
 
     for (unsigned phase = 0; phase < 8u; phase++) {
-        material_set_foam_phase(phase);
+        f.foam_phase = phase;
         for (unsigned hash = 0; hash < 8u; hash++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, col);
 
             char why[192];
             snprintf(why, sizeof why,
@@ -129,9 +125,6 @@ test_a_flat_rim_still_never_foams(void) {
             TEST_ASSERT_EQUAL_MESSAGE(plain, col[0], why);
         }
     }
-
-    material_set_foam_phase(0); /* leave global state as later tests
-                                   * assume it */
 }
 
 /* Oil, lava and acid share water's rim code path - the fill-indexed
@@ -144,7 +137,7 @@ test_a_flat_rim_still_never_foams(void) {
  * inputs, the other three must be provably immune to the same ones. */
 static void
 test_only_water_foams(void) {
-    material_set_gravity(0, 0);
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const unsigned spike_mask = MATERIAL_EDGE_LEFT | MATERIAL_EDGE_RIGHT | MATERIAL_EDGE_UP | MATERIAL_EDGE_DOWN
                                 | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT | MATERIAL_EDGE_DOWN_LEFT
@@ -157,7 +150,7 @@ test_only_water_foams(void) {
 
         for (unsigned hash = 0; hash < 8u; hash++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(id, FOAM_TEST_FILL), hash, spike_mask, 255u, col);
+            material_colours(&f, CELL_MAKE(id, FOAM_TEST_FILL), hash, spike_mask, 255u, col);
 
             char why[128];
             snprintf(why, sizeof why,
@@ -177,6 +170,7 @@ test_only_water_foams(void) {
  * `mask & MATERIAL_EDGE_CARDINAL` would light up as a rim. */
 static void
 test_a_liquid_interior_never_foams(void) {
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const gfx_color_t body = pal[CELL_MAKE(MAT_WATER, MASS_MAX)];
 
@@ -192,7 +186,7 @@ test_a_liquid_interior_never_foams(void) {
     for (unsigned k = 0; k < sizeof interior_masks / sizeof interior_masks[0]; k++) {
         for (unsigned hash = 0; hash < 8u; hash++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, interior_masks[k], 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, interior_masks[k], 255u, col);
 
             char why[192];
             snprintf(why, sizeof why,
@@ -216,12 +210,14 @@ test_a_liquid_interior_never_foams(void) {
  * this is the test that goes red. */
 static void
 test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
+    material_frame_t f = {0};
     const unsigned diagonal_only = MATERIAL_EDGE_UP_LEFT;
 
     {
         gfx_color_t interior[3], diagonal[3];
-        const material_pattern_t pat_i = material_colours(CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, interior);
-        const material_pattern_t pat_d = material_colours(CELL_MAKE(MAT_GLASS, 5), 1u, diagonal_only, 255u, diagonal);
+        const material_pattern_t pat_i = material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, interior);
+        const material_pattern_t pat_d =
+            material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, diagonal_only, 255u, diagonal);
 
         TEST_ASSERT_EQUAL_MESSAGE(pat_i, pat_d,
                                   "a lone diagonal neighbour must not change glass's pattern - "
@@ -234,8 +230,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
 
     {
         gfx_color_t interior[3], diagonal[3];
-        material_colours(CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, interior);
-        material_colours(CELL_MAKE(MAT_STONE, 5), 1u, diagonal_only, 255u, diagonal);
+        material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, interior);
+        material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, diagonal_only, 255u, diagonal);
 
         TEST_ASSERT_EQUAL_MESSAGE(interior[0], diagonal[0],
                                   "a lone diagonal neighbour must not switch stone onto its "
@@ -245,8 +241,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
 
     {
         gfx_color_t interior[3], diagonal[3];
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, 0u, 255u, interior);
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, diagonal_only, 255u, diagonal);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, 0u, 255u, interior);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, diagonal_only, 255u, diagonal);
 
         TEST_ASSERT_EQUAL_MESSAGE(interior[0], diagonal[0],
                                   "a lone diagonal neighbour must not turn an interior water "
@@ -256,26 +252,17 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     }
 }
 
-/* FOAM ANIMATES: a phase mixed into the dither, so the same shape shows a
- * DIFFERENT set of foamed cells from one frame to the next -
- * material_set_foam_phase() XORs a frame-global input into the hash
- * before the curvature threshold, so a cell's answer changes while its
- * curvature does not. All three tests below share the same
- * high-curvature mask - all eight neighbours empty - because a flat
- * mask's threshold is 0 and a flat cell cannot be made to foam by ANY
- * hash or phase. */
+/* Phase changes the foam dither independently of shape. A high-curvature
+ * mask can foam; a flat mask cannot at any hash or phase. */
 static const unsigned foam_spike_mask = MATERIAL_EDGE_LEFT | MATERIAL_EDGE_RIGHT | MATERIAL_EDGE_UP | MATERIAL_EDGE_DOWN
                                         | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT | MATERIAL_EDGE_DOWN_LEFT
                                         | MATERIAL_EDGE_DOWN_RIGHT;
 
-/* THE PHASE ITSELF CHANGES THE ANSWER, for one cell whose shape and hash
- * never change: sixteen phase values, two full periods of the 3-bit
- * dither, and both a foaming and a non-foaming phase must turn up.
- * Missing either half is a different failure - never foaming means
- * material_set_foam_phase() is not reaching the dither at all, always
- * foaming means the fixed hash or curvature is deciding it instead. */
+/* A fixed hash and shape must produce both foaming and plain rim colours
+ * across the phase cycle, so neither shape nor hash alone decides it. */
 static void
 test_foam_moves_between_frames(void) {
+    material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const gfx_color_t plain = pal[CELL_MAKE(MAT_WATER, FOAM_TEST_FILL)];
     const unsigned fixed_hash = 3u; /* arbitrary - any value works except
@@ -288,10 +275,10 @@ test_foam_moves_between_frames(void) {
     bool ever_plain = false;
 
     for (unsigned phase = 0; phase < 16u; phase++) {
-        material_set_foam_phase(phase);
+        f.foam_phase = phase;
 
         gfx_color_t col[3];
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), fixed_hash, foam_spike_mask, 255u, col);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), fixed_hash, foam_spike_mask, 255u, col);
 
         if (col[0] != plain) {
             ever_foamed = true;
@@ -299,14 +286,10 @@ test_foam_moves_between_frames(void) {
             ever_plain = true;
         }
     }
-    material_set_foam_phase(0); /* leave global state as later tests
-                                   * assume it, the same as material_set_
-                                   * gravity(0, 0) does at the top of other
-                                   * tests in this file */
 
     TEST_ASSERT_TRUE_MESSAGE(ever_foamed, "a fixed hash at maximum curvature must foam for at least one of "
                                           "the sixteen phases swept here - if it never does, "
-                                          "material_set_foam_phase() is not reaching the dither at all");
+                                          "foam_phase is not reaching the dither at all");
     TEST_ASSERT_TRUE_MESSAGE(ever_plain, "and the same fixed hash, same shape, must ALSO read as plain rim "
                                          "for at least one of those sixteen phases - foaming at every one of "
                                          "them means the cell's shape is what decided this, not the phase, "
@@ -316,11 +299,12 @@ test_foam_moves_between_frames(void) {
 /* Fills foamed[phase][hash] for all 8 phases and 8 hashes at mask `mask`. */
 static void
 fill_foam_table(unsigned mask, gfx_color_t plain, bool foamed[8][8]) {
+    material_frame_t f = {0};
     for (unsigned phase = 0; phase < 8u; phase++) {
-        material_set_foam_phase(phase);
+        f.foam_phase = phase;
         for (unsigned hash = 0; hash < 8u; hash++) {
             gfx_color_t col[3];
-            material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, mask, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, mask, 255u, col);
             foamed[phase][hash] = (col[0] != plain);
         }
     }
@@ -406,9 +390,6 @@ test_foam_never_stalls_between_frames(void) {
         assert_foam_not_degenerate(foamed, curvatures[m]);
         assert_foam_never_stalls(foamed, curvatures[m]);
     }
-
-    material_set_foam_phase(0); /* leave global state as later tests
-                                   * assume it */
 }
 
 /* test_foam_never_stalls_between_frames sweeps only 8 hash values - for
@@ -424,13 +405,14 @@ test_foam_never_stalls_between_frames(void) {
  * between phase_a and phase_b, at curvature `mask`. */
 static int
 count_foam_flips(unsigned mask, unsigned phase_a, unsigned phase_b) {
+    material_frame_t f = {0};
     int flips = 0;
     for (unsigned h = 0; h < (unsigned)FOAM_FLIP_SAMPLE; h++) {
         gfx_color_t col_a[3], col_b[3];
-        material_set_foam_phase(phase_a);
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_a);
-        material_set_foam_phase(phase_b);
-        material_colours(CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_b);
+        f.foam_phase = phase_a;
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_a);
+        f.foam_phase = phase_b;
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_b);
         if (col_a[0] != col_b[0]) {
             flips++;
         }
@@ -460,7 +442,6 @@ test_foam_flip_rate_stays_even_across_the_phase_cycle(void) {
             max_flips = flips;
         }
     }
-    material_set_foam_phase(0); /* leave global state as later tests assume it */
 
     char why[384];
     snprintf(why, sizeof why,

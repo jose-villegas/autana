@@ -100,7 +100,7 @@ raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_render_target_t
     const uint16_t* depth = gfx_render_target_depth(rows, y);
     uint16_t* tag = gfx_render_target_row(rows, writer->attachment, y);
     for (int x = x_first; x <= x_last; x++, z += dz) {
-        if ((uint16_t)(z >> 8) == depth[x]) {
+        if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
             tag[x] = (uint16_t)writer->value;
         }
     }

@@ -34,8 +34,9 @@ r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int ro
 /* A further attachment's part in a fill, chosen once per draw: after each
  * span's colour and depth, `span` is called with the span's depth, 16.8 at
  * x_first and stepping dz a pixel, so it can find the pixels this triangle
- * won (depth == z >> 8) and write its own there. A map that needs more than
- * depth and a value per draw, such as normals, rebuilds it in its resolve. */
+ * won (depth == z >> R3D_DEPTH_SHIFT) and write its own there. A map that
+ * needs more than depth and a value per draw, such as normals, rebuilds it in
+ * its resolve. */
 struct r3d_span_writer {
     void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
                  int32_t z, int32_t dz);
@@ -49,6 +50,8 @@ struct r3d_span_writer {
  * drawn pixel can equal. */
 #define R3D_DEPTH_EMPTY    0
 #define R3D_DEPTH_NEAREST  UINT16_MAX
+/* A span walks depth as 16.8: the 16-bit depth is z >> R3D_DEPTH_SHIFT. */
+#define R3D_DEPTH_SHIFT    8
 
 #define R3D_SUBPIXEL_SHIFT 4
 #define R3D_SUBPIXEL       (1 << R3D_SUBPIXEL_SHIFT)

@@ -134,7 +134,7 @@ class OcclusionMapTest(unittest.TestCase):
         p = np.array([[-40.0, -40.0, 0.0], [40.0, -40.0, 0.0], [40.0, 40.0, 0.0], [-40.0, 40.0, 0.0],
                       [0.0, -40.0, 0.0], [0.0, 40.0, 0.0], [0.0, 40.0, 40.0], [0.0, -40.0, 40.0]])
         tris = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
-        source = SimpleNamespace(p=p, tri_v=tris, tri_m=np.zeros(4, dtype=int), names=["m"], intersector=corner(),
+        source = SimpleNamespace(colors=None, p=p, tri_v=tris, tri_m=np.zeros(4, dtype=int), names=["m"], intersector=corner(),
                                  uv=np.zeros((8, 2)), tri_t=tris, materials={}, textures=[None])
         source.corner_normals = corner_normals(p, tris)
         job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.01, ao=ao))
