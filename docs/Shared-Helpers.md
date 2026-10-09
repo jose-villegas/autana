@@ -4,7 +4,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 
 ## Catalogue
 
-<!-- generated: shared-helpers sha256=90b5295b7d0f687084fee0853d5f9fb713340994164447a65d8b50fa3848ae32 -->
+<!-- generated: shared-helpers sha256=6b40b0bbccc1ce55b31a7774c54d94ed1c03668a07bbb2c738eb4f407ba19bbc -->
 | Owner | Purpose | Public names |
 |---|---|---|
 | [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_CONTROL_CENTER, EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_element_count, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
@@ -65,7 +65,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [launcher/main/gfx/present/gfx_present_guard.h](../launcher/main/gfx/present/gfx_present_guard.h) | gfx_present_guard: the "no present in flight" invariant every gfx_* entry point that reads or writes drawing state or the framebuffer checks, as a standalone, ESP-IDF-free module. | `GFX_PRESENT_GUARD, gfx_present_guard_begin, gfx_present_guard_check, gfx_present_guard_end` |
 | [launcher/main/input/button_fsm.h](../launcher/main/input/button_fsm.h) | button_fsm: raw button samples to press and release events. | `BUTTON_DEBOUNCE_US, BUTTON_HOLD_US, button_fsm_is_down, button_fsm_reset, button_fsm_t, button_fsm_take_held, button_fsm_take_pressed, button_fsm_take_released, button_fsm_update` |
 | [launcher/main/input/buttons.h](../launcher/main/input/buttons.h) | buttons: the board's two physical buttons, for the shell and for apps. | `BUTTONS_INJECT_BOOT, BUTTONS_INJECT_POWER, button_t, buttons_inject, buttons_inject_button_t, buttons_read, buttons_start` |
-| [launcher/main/input/gesture.h](../launcher/main/input/gesture.h) | gesture: recognising touch gestures from input state. | `GESTURE_EDGE_BOTTOM, GESTURE_EDGE_LEFT, GESTURE_EDGE_RIGHT, GESTURE_EDGE_TOP, GESTURE_HOME_SWIPE_DIST, GESTURE_HOME_ZONE_DEPTH, gesture_edge_t, gesture_is_edge_swipe, gesture_is_home_swipe` |
+| [launcher/main/input/gesture.h](../launcher/main/input/gesture.h) | gesture: recognising touch gestures from input state. | `GESTURE_EDGE_BOTTOM, GESTURE_EDGE_LEFT, GESTURE_EDGE_RIGHT, GESTURE_EDGE_TOP, GESTURE_HOME_SWIPE_DIST, GESTURE_HOME_ZONE_DEPTH, gesture_edge_t, gesture_in_edge_zone, gesture_is_edge_swipe, gesture_is_home_swipe, gesture_opposite_edge` |
 | [launcher/main/input/imu.h](../launcher/main/input/imu.h) | imu: the QMI8658 six-axis accelerometer and gyroscope. | `imu_init, imu_inject, imu_inject_release, imu_read, imu_ready` |
 | [launcher/main/input/imu_rotation.h](../launcher/main/input/imu_rotation.h) | imu_rotation: pure interpretation of the gyroscope's own rotation rate. | `imu_rotation_level` |
 | [launcher/main/input/imu_sample.h](../launcher/main/input/imu_sample.h) | imu_sample: one accelerometer and gyroscope reading, and the pure arithmetic that turns it into screen-space gravity. | `IMU_COUNTS_PER_DPS, IMU_COUNTS_PER_G, imu_gravity_screen, imu_sample_t` |
