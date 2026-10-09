@@ -1,6 +1,6 @@
 # Expensive bakes as cached build products: design sketch
 
-**Status:** approved, not built; step 0 (measurements) first. `[A]` marks an assumption or a
+**Status:** approved, partly built: keys, lock, fetch and the producer. `[A]` marks an assumption or a
 proposal of this sketch that nobody asked for.
 
 Where a source file is the truth, no derived copy is committed. Two kinds of

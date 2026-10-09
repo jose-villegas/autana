@@ -222,7 +222,9 @@ CUDA_HOME=$E PATH=$E/bin:$PATH \
     $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
 ```
 
-That gives PyTorch 2.11.0+cu128 and nvdiffrast 0.4.0; `TORCH_CUDA_ARCH_LIST`
+That gives the PyTorch and nvdiffrast that [requirements-gpu.txt](requirements-gpu.txt) pins; a fit's
+cache key counts those pins, and `bake/bake.py` refuses to fit in an environment that differs.
+[gpu_python.sh](gpu_python.sh) runs a script in this environment. `TORCH_CUDA_ARCH_LIST`
 names the target GPU's compute capability, queried above with `nvidia-smi`.
 Alternatively, `$E/bin/python -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
 prints the capability of the default CUDA device. Select the device that will

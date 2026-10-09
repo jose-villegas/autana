@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Cached bakes: the meshes a pack needs, named by a digest of what makes them.
 
-    python launcher/tools/bake/bake.py list [PATH ...]
-    python launcher/tools/bake/bake.py lock --seed [PATH ...] [--cache DIR]
+    python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit]
+    python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
+    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
     python launcher/tools/bake/bake.py publish
@@ -17,12 +18,18 @@ byte-reproducible even on one machine, and a mesh bake only on hosts of one
 CPU vendor: r3d/isa.py pins the ray tracer to AVX2, whose reciprocal estimates
 AMD and Intel each define their own way. The locked meshes are AMD's.
 
-`list` prints every bake with its key. `lock --seed` locks the meshes
-in the tree as they are and copies them into the cache. `check` fails when
-LOCK lacks a needed key or holds one nothing needs. `fetch` puts every
+`list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
+row for into the cache (produce.py), and with `--out` also copies what it made
+there, the folder a CI run uploads; `--only` limits it to the named outputs and
+`--again` re-makes them even when locked, to compare a new make with the lock
+(the lock keeps its row). `lock` drops the rows nothing needs;
+`--from-run N` adds the rows CI run N made, from its uploads, and is the only
+way a new row is written, so every locked file can be published; `--seed`
+locks the meshes in the tree as they are. `check` fails when LOCK lacks a
+needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
 never downloads. `publish`, on main in CI only, uploads each locked file the
-release lacks. The cache is %LOCALAPPDATA%/autana/bakes, else
+release lacks, taking a row's file from the run that made it. The cache is %LOCALAPPDATA%/autana/bakes, else
 $XDG_CACHE_HOME/autana/bakes, else ~/.cache/autana/bakes, shared by every
 clone. Standard library only; Python 3.12 or later.
 """
@@ -56,6 +63,7 @@ RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
 MESH_SUFFIX = ".mesh"
 DOWNLOAD_TIMEOUT_S = 60
+RUN_ARTIFACTS = "bakes-*"
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them.
 STAGES = {
@@ -64,6 +72,7 @@ STAGES = {
     "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
 }
 REQUIREMENTS_NAME = "requirements.txt"
+REQUIREMENTS_GLOB = "requirements*.txt"
 C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
 # Token kinds that carry no code: a comment or blank-line edit does not rebake.
 SKIPPED_TOKENS = {"COMMENT", "NL", "ENCODING"}
@@ -86,6 +95,9 @@ class Bake:
     key: str               # SHA-256 hex of everything that determines it
     suffix: str
     tree: pathlib.Path     # where the tree keeps it today
+    job: object = dataclasses.field(default=None, compare=False, repr=False)
+    scene: object = dataclasses.field(default=None, compare=False, repr=False)
+    stages: dict = dataclasses.field(default=None, compare=False, repr=False)
 
 
 def default_cache():
@@ -106,13 +118,20 @@ def git_lines(*args):
 
 @functools.cache
 def submodules():
-    """{path: pinned commit} of every submodule of this checkout, from the index: no checkout needed."""
+    """{path: pinned commit} of every submodule .gitmodules names, from the index: no checkout
+    needed. A submodule the index lacks fails, since its code would drop out of every key."""
     found = {}
     for line in git_lines("ls-files", "-s"):
         meta, _, path = line.partition("\t")
         mode, commit = meta.split()[:2]
         if mode == "160000":
             found[(REPO / path).resolve()] = commit
+    named = [line.split("=", 1)[1].strip() for line in (REPO / ".gitmodules").read_text(encoding="utf-8").splitlines()
+             if line.strip().startswith("path")]
+    lost = [path for path in named if (REPO / path).resolve() not in found]
+    if lost:
+        raise SettingsError(f"the checkout is incomplete: .gitmodules names {', '.join(lost)}, the index has "
+                            "no gitlink; keys made from it would leave that code out, so none are made")
     return found
 
 
@@ -230,6 +249,7 @@ def code_tokens(path):
                 if tokenize.tok_name[token.type] not in SKIPPED_TOKENS]
 
 
+@functools.cache
 def stage_files(stage):
     """The files whose code makes `stage`'s output: its entries' closure, stopping at another stage's
     entry script, whose key the stage already chains in."""
@@ -288,14 +308,39 @@ def native_inputs(files):
     return keyed
 
 
+def requirement_lines(path):
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return [line for line in lines if line]
+
+
+def package_name(text):
+    return re.split(r"[=<>!~\[@; ]", text, maxsplit=1)[0].lower().replace("-", "_").replace(".", "_")
+
+
+@functools.cache
+def requirement_pins(stage):
+    """(file, line) of every requirement a stage's key counts: each line of the requirements.txt
+    beside a stage file, and each line of any requirements*.txt under TOOLS naming a package a stage
+    file imports (the fit's GPU packages, for one)."""
+    paths = stage_files(stage)
+    imported = {package_name(name.split(".")[0]) for path in paths
+                for name, level in imported_names(module_facts(path)[0]) if level == 0 and name}
+    pins = set()
+    for near in {path.parent / REQUIREMENTS_NAME for path in paths}:
+        if near.is_file():
+            pins.update((relative(near), line) for line in requirement_lines(near))
+    for listed in TOOLS.rglob(REQUIREMENTS_GLOB):
+        pins.update((relative(listed), line) for line in requirement_lines(listed) if package_name(line) in imported)
+    return tuple(sorted(pins))
+
+
+@functools.cache
 def tool_digest(stage):
-    """The code of a stage: its files' tokens, what they compile and the requirements beside them."""
+    """The code of a stage: its files' tokens, what they compile and the requirements it counts."""
     paths = stage_files(stage)
     files = {relative(path): code_tokens(path) for path in paths}
     files.update(native_inputs(paths))
-    requirements = {relative(near): near.read_text(encoding="utf-8").split()
-                    for near in sorted({path.parent / REQUIREMENTS_NAME for path in paths}) if near.is_file()}
-    return digest([files, requirements])
+    return digest([files, [list(pin) for pin in requirement_pins(stage)]])
 
 
 def canonical(value):
@@ -364,7 +409,7 @@ def bakes_in(packs, jobs):
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
             found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
-                              suffix=MESH_SUFFIX, tree=source))
+                              suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys))
     return found
 
 
@@ -424,8 +469,9 @@ def describe(bake, why, again):
 
 def bake_again(bake):
     if bake.kind == "fit":
-        return "bake it: fitted_variant.py prepare and fit on a CUDA GPU, then bake.py lock"
-    return f"bake it: python launcher/tools/r3d/mesh_import.py {relative(bake.source)}, then bake.py lock"
+        return ("a fit needs the CUDA GPU: run the Bakes GPU workflow on this branch, then "
+                "bake.py lock --from-run N with that run")
+    return "push: the Bakes check bakes it on the pull request; then bake.py lock --from-run N with that run"
 
 
 def download(row, suffix, cache):
@@ -507,6 +553,26 @@ def seed(found, cache):
     return rows
 
 
+def run_files(run, folder):
+    """Downloads what CI run `run` uploaded into `folder`."""
+    subprocess.run(["gh", "run", "download", str(run), "--pattern", RUN_ARTIFACTS, "--dir", str(folder)], check=True)
+    return folder
+
+
+def lock_rows(found, lock, made=None):
+    """Rows for the bakes `found` need: the lock's own, else those in `made`; raises naming the rest."""
+    rows, missing = [], []
+    for bake in found:
+        row = lock.get(bake.key) or (made or {}).get(bake.key)
+        if row is None:
+            missing.append(describe(bake, "no CI run has made this key", bake_again(bake)))
+            continue
+        rows.append({name: row[name] for name in ("output", "source", "key", "sha256", "size", "run") if name in row})
+    if missing:
+        raise BakeMissing("cannot lock:\n" + "\n".join(missing))
+    return rows
+
+
 def release_assets():
     out = subprocess.run(["gh", "release", "view", RELEASE_TAG, "--json", "assets"], capture_output=True, text=True)
     if out.returncode:
@@ -534,10 +600,15 @@ def publish(found, lock, cache):
         if name in assets:
             continue
         path = cached(row, bake.suffix, cache)
+        if not (path.is_file() and file_sha256(path) == row["sha256"]) and "run" in row:
+            from bake import produce
+
+            with tempfile.TemporaryDirectory() as folder:
+                produce.import_run(run_files(row["run"], pathlib.Path(folder)), row["run"], cache)
         if not (path.is_file() and file_sha256(path) == row["sha256"]):
             if not (bake.tree.is_file() and file_sha256(bake.tree) == row["sha256"]):
-                raise BakeMissing(describe(bake, f"locked as {row['sha256']}, but no file with those bytes is here",
-                                           "run bake.py lock where it was made"))
+                raise BakeMissing(describe(bake, f"locked as {row['sha256']}, but neither run {row.get('run')} nor "
+                                           "the tree has those bytes", "lock it again from a run that made it"))
             path = store(bake.tree, row, bake.suffix, cache)
         subprocess.run(["gh", "release", "upload", RELEASE_TAG, str(path)], check=True)
         assets.add(name)
@@ -546,10 +617,16 @@ def publish(found, lock, cache):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("list", "lock", "check", "fetch", "publish"))
+    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "publish"))
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
+    parser.add_argument("--from-run", type=int, metavar="N", help="lock: add the rows CI run N made")
+    parser.add_argument("--kind", choices=("mesh", "fit"), help="list, bake: only this kind")
+    parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
+    parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
+    parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
+    parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_args(argv)
     from r3d.build_pack import DEFAULT_SEARCH
@@ -560,16 +637,47 @@ def main(argv=None):
         lock = read_lock()
         if args.command == "list":
             for bake in found:
+                if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
+                    continue
                 print(f"{bake.output}\t{bake.kind}\t{bake.key}\t{relative(bake.source)}")
+        elif args.command == "bake":
+            from bake import produce
+
+            wanted = [bake for bake in found if (args.again or bake.key not in lock) and args.kind in (None, bake.kind)
+                      and (not args.only or bake.output in args.only)]
+            unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
+            if unknown:
+                parser.error(f"--only: no bake makes {', '.join(unknown)}")
+            rows = [(None if args.again else produce.made(bake.key, cache)) or produce.produce(bake, cache)
+                    for bake in wanted]
+            for row in rows:
+                locked = lock.get(row["key"])
+                versus = "" if locked is None else (
+                    "; the same bytes as the lock" if locked["sha256"] == row["sha256"]
+                    else f"; differs from the lock's {locked['sha256']}, which keeps its row")
+                print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}{versus}")
+            if args.out:
+                produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
-            if not args.seed:
-                parser.error("lock needs --seed: the files that produce bakes come later")
-            write_lock(seed(found, cache))
-            print(f"locked {len(found)} bakes in {relative(LOCK)}")
+            if args.seed:
+                rows = seed(found, cache)
+            elif args.from_run is not None:
+                from bake import produce
+
+                with tempfile.TemporaryDirectory() as folder:
+                    made = produce.import_run(run_files(args.from_run, pathlib.Path(folder)), args.from_run, cache)
+                rows = lock_rows(found, lock, made)
+            else:
+                rows = lock_rows(found, lock)
+            write_lock(rows)
+            print(f"locked {len(rows)} bakes in {relative(LOCK)}")
         elif args.command == "check":
             problems = check(found, lock)
             if problems:
-                raise BakeMissing(f"{relative(LOCK)} is out of date:\n" + "\n".join(problems))
+                run = os.environ.get("GITHUB_RUN_ID")
+                after = (f"\nThis run made the mesh bakes: bake.py lock --from-run {run}, then commit {relative(LOCK)}."
+                         if run else "")
+                raise BakeMissing(f"{relative(LOCK)} is out of date:\n" + "\n".join(problems) + after)
         elif args.command == "fetch":
             for bake, path in fetch_all(found, lock, cache, args.offline).items():
                 print(f"{bake.output}\t{path}")
