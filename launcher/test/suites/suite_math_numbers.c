@@ -389,6 +389,23 @@ test_fixed_matrix_apply_matches_float(void) {
     assert_x_near_f(mat4f_apply(&mf, p), mat4x_apply(&mx, vec3x_from_vec3f(p)), 1e-3F);
 }
 
+static void
+test_fixed_affine_product_applies_the_right_matrix_first(void) {
+    const mat4x_t mx = mat4x_from_trs((vec3x_t){MATHX_ONE, -2 * MATHX_ONE, 3 * MATHX_ONE}, quatx_identity(),
+                                      (vec3x_t){2 * MATHX_ONE, MATHX_ONE, MATHX_ONE / 2});
+    const vec3f_t p = {0.5F, 1.5F, -1.0F};
+    const mat4x_t other = mat4x_from_trs((vec3x_t){2 * MATHX_ONE, MATHX_ONE, -MATHX_ONE}, quatx_identity(),
+                                         (vec3x_t){MATHX_ONE, 2 * MATHX_ONE, MATHX_ONE});
+    const mat4x_t full = mat4x_mul(mx, other), affine = mat4x_mul_affine(mx, other);
+    assert_x_near_f(vec3f_from_vec3x(mat4x_apply(&mx, mat4x_apply(&other, vec3x_from_vec3f(p)))),
+                    mat4x_apply(&affine, vec3x_from_vec3f(p)), 1e-3F);
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_EQUAL_INT32(full.m[r][c], affine.m[r][c]);
+        }
+    }
+}
+
 /* A swizzle family as rows of name and function, built by the template's own
  * iterator. The source holds 10, 20 and 30, so the letters in a name alone say
  * what the result holds; the row count catches an iterator that skips one. */
@@ -533,6 +550,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_int32_dot_widens_to_int64);
     RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
     RUN_TEST(test_fixed_matrix_apply_matches_float);
+    RUN_TEST(test_fixed_affine_product_applies_the_right_matrix_first);
     RUN_TEST(test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);
