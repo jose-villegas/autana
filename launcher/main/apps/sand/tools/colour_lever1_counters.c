@@ -86,6 +86,7 @@ step_settled_pour(sand_t* s, int step_i) {
  * onto far fewer of the 16. */
 static void
 shade_frame(const uint8_t* grid, uint8_t* idx256) {
+    const material_frame_t f = {0};
     for (int cy = 0; cy < GRID_H; cy++) {
         unsigned water_depth = 0;
         for (int cx = 0; cx < GRID_W; cx++) {
@@ -99,7 +100,7 @@ shade_frame(const uint8_t* grid, uint8_t* idx256) {
                 water_depth = 0;
             }
             gfx_color_t col[3];
-            material_colours(c, hash, 0u, depth, col);
+            material_colours(&f, c, hash, 0u, depth, col);
             idx256[cy * GRID_W + cx] = (uint8_t)material_palette256_index(col[0]);
         }
     }

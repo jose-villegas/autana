@@ -41,7 +41,7 @@ from r3d.light import (  # noqa: E402
     visible_from_path,
     visible_from_region,
 )
-from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, write_lit_mesh  # noqa: E402
 from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
@@ -115,15 +115,16 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce):
     """Vertices split along creases and lit on their own normals, near colours merged."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
-    key = np.concatenate([np.round(corner_pos * 16), np.round(corner_n * 64)], axis=1).astype(np.int64)
+    grid = WELD_PER_TICK * (job.settings.position_scale or POSITION_SCALE)
+    key = np.concatenate([np.round(corner_pos * grid), np.round(corner_n * 64)], axis=1).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
     albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
-    welded = np.unique(np.round(vpos * 16).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
+    welded = np.unique(np.round(vpos * grid).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
     radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, bounce,
                      bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
     vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
-    return merge_matching_colours(vpos, vrgb, vtris, job.bake.colour_merge_step)
+    return merge_matching_colours(vpos, vrgb, vtris, grid, job.bake.colour_merge_step)
 
 
 def shade_unlit(src, material, mp, mt):
