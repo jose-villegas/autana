@@ -1,4 +1,9 @@
-"""Run CI's marked file-scoped text gates against an index snapshot."""
+"""Run CI's marked gates against an index snapshot.
+
+A step marked STAGED_TEXT_GATE: "true" is file-scoped: it gets --paths and
+the staged files. One marked "snapshot" checks the whole tree (a generated
+catalogue against its sources, say) and runs on the snapshot as it is.
+"""
 import os
 import io
 from pathlib import Path
@@ -22,9 +27,9 @@ def main():
         return 0
     workflow = yaml.safe_load(subprocess.check_output(
         ['git', 'show', ':.github/workflows/comment-rules.yml'], cwd=root))
-    commands = [shlex.split(step['run'])
+    commands = [(shlex.split(step['run']), step['env']['STAGED_TEXT_GATE'] == 'true')
                 for job in workflow['jobs'].values() for step in job['steps']
-                if step.get('env', {}).get('STAGED_TEXT_GATE') == 'true']
+                if step.get('env', {}).get('STAGED_TEXT_GATE') in ('true', 'snapshot')]
     if not commands:
         print('No staged text gates declared in comment-rules.yml', file=sys.stderr)
         return 1
@@ -52,16 +57,26 @@ def main():
             blobs.read(1)
         (snapshot / 'launcher/main/apps').mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, GIT_DIR=git_dir, GIT_WORK_TREE=str(snapshot))
-        for command in commands:
+        # The gates read the snapshot and write nothing, so they run side by
+        # side: the hook takes as long as the slowest, not their sum. Each
+        # one's output is printed whole once it finishes.
+        running = []
+        for command, scoped in commands:
             command[0] = sys.executable
             command[1] = str(snapshot / command[1])
             # CI requires the SDK; local machines without it still check the
             # project vocabulary and print the citation gate's skipped notice.
             command = [arg for arg in command if arg != '--require-idf']
-            result = subprocess.run([*command, '--paths', *files], cwd=snapshot, env=env)
-            status = status or result.returncode
+            selected = ['--paths', *files] if scoped else []
+            running.append(subprocess.Popen([*command, *selected], cwd=snapshot, env=env,
+                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
+        for gate in running:
+            output, _ = gate.communicate()
+            sys.stdout.buffer.write(output)
+            status = status or gate.returncode
+        sys.stdout.flush()
     if status:
-        print('Fix the reported staged text and git add <those files>.\n'
+        print('Fix the reported staged text, or regenerate what is reported stale, and git add <those files>.\n'
               'Run scripts/gates/check-text-rules-staged.sh to check again.\n'
               'To skip: git commit --no-verify', file=sys.stderr)
     return status
