@@ -94,6 +94,38 @@ def target_of(operands):
     return int(match[1], 16) if match else None
 
 
+# The compiler places a literal pool among the code and jumps over it with a
+# short forward j. objdump decodes the pool's bytes as instructions, and a
+# "branch" among them moves with the addresses the pool holds, not with the
+# code, so it differs from build to build.
+POOL_JUMP_MAX = 32
+
+
+def skip_pools(found):
+    """The instructions outside any span a short forward j jumps over that
+    nothing outside it branches into: code skipped that way, an else block,
+    is always entered by a branch, and a pool never is."""
+    spans = []
+    for address, size, mnemonic, operands in found:
+        target = target_of(operands)
+        if mnemonic == "j" and target is not None and 0 < target - (address + size) <= POOL_JUMP_MAX:
+            spans.append((address + size, target))
+
+    def inside(address, span):
+        return span[0] <= address < span[1]
+
+    pools = [
+        span
+        for span in spans
+        if not any(
+            inside(target_of(operands), span)
+            for address, _, _, operands in found
+            if target_of(operands) is not None and not inside(address, span)
+        )
+    ]
+    return [ins for ins in found if not any(inside(ins[0], pool) for pool in pools)]
+
+
 def line_span(start, end, line_size):
     return ((end - 1) // line_size) - (start // line_size) + 1
 
@@ -107,7 +139,7 @@ def layout_entries(elf, nm, objdump, line_size, functions=FUNCTIONS):
     for function in functions:
         address, size = located[function]
         entries.append(LayoutEntry(function, "function", address, size, line_span(address, address + size, line_size)))
-        for instruction_address, size, mnemonic, operands in instructions(objdump, elf, function):
+        for instruction_address, size, mnemonic, operands in skip_pools(instructions(objdump, elf, function)):
             target = target_of(operands)
             if mnemonic in ("loop", "loopnez", "loopgtz") and target is not None:
                 start = instruction_address + size

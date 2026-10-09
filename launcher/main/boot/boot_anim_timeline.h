@@ -95,7 +95,7 @@
 /* drop shadow offset, pixels down (negative is up) */
 #define BOOT_ANIM_TITLE_SHADOW_DY 5
 
-/* shadow density, 0..255 - 0 invisible, 255 solid, between is a dithered fake transparency (see gfx_fill_rect_dither() in gfx.c) */
+/* shadow density, 0..255 - 0 invisible, 255 solid, between is a dithered fake transparency (see gfx_fill_rect_dither() in gfx_draw.c) */
 #define BOOT_ANIM_TITLE_SHADOW_ALPHA 128
 
 /* the photograph starts crossing in as the function crosses out */

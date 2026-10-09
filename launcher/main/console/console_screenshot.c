@@ -18,6 +18,7 @@
 #include "esp_log.h"
 
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
 
 #include <stdio.h>
 #include <stdlib.h>

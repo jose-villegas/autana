@@ -1,8 +1,8 @@
 # Text and Fonts
 
 What a font is here, how text gets drawn, and how to add a typeface. The
-descriptor is [`launcher/main/gfx/gfx_font.h`](../launcher/main/gfx/gfx_font.h);
-the drawing is `gfx_text_font()` in `gfx/gfx.c`. For text inside a microui
+descriptor is [`launcher/main/gfx/draw/gfx_font.h`](../launcher/main/gfx/draw/gfx_font.h);
+the drawing is `gfx_text_font()` in `gfx/draw/gfx_draw.c`. For text inside a microui
 screen see also [`Building-a-Screen.md`](Building-a-Screen.md).
 
 There is no font rasterizer on the device. A font is a bitmap table in flash.

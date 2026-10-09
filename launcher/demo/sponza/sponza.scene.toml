@@ -1,0 +1,158 @@
+# The reference scene shares one light rig and camera across its baked variants.
+tonemap_white = 0.35
+
+[sky]
+color = [0.55, 0.68, 0.9]
+intensity = 0.9
+rays = 48
+
+[ambient]
+color = [1.0, 1.0, 1.0]
+intensity = 0.005
+
+[indirect]
+intensity = 2.0
+
+[bake]
+ray_offset = 0.5
+colour_merge_step = 6
+indirect = { bounces = 2, rays = 64 }
+ao = { distance = 40.0, rays = 32, indirect = true }
+
+[[objects]]
+name = "sun"
+rotation = [22.450814295724417, -37.230418121890686, 0.0]   # toward (-0.25, 1.0, 0.329)
+
+[objects.light]
+type = "directional"
+color = [1.0, 0.92, 0.78]
+intensity = 3.0
+
+[[objects]]
+name = "camera"
+
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+background = 0x9CC0E6
+region = { min = [-1400.0, 20.0, -620.0], max = [1270.0, 1250.0, 550.0] }
+path = { animation = "flythrough.anim.toml", node = "camera" }
+
+[[objects]]
+name = "tour"
+
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+background = 0x9CC0E6
+path = { animation = "tour.anim.toml", node = "camera" }
+
+[[objects]]
+name = "atrium"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
+
+[[objects]]
+name = "atrium_flat"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza"
+bake = true
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
+visibility = { source = "camera_region", rounds = 160 }
+
+[[objects]]
+name = "atrium_lite"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_lite"
+bake = true
+visibility = { source = "camera_region", rounds = 160 }
+
+[[objects]]
+name = "atrium_fitted"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_fitted"
+bake = true
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+
+[objects.mesh_renderer.fit.prune]
+budget = 8672
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "9cd15eaa37d4e14a4f0080f3c5d6a0857024e575c9b2a8046f4ddb798dd7cc32"
+recipe_sha256 = "b6bb2e1258f8cb0e5262e3d4f0a1cd4119209891f644d0d5e974010d24056c67"
+
+[[objects]]
+name = "atrium_fitted_full"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_fitted_full"
+bake = true
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+
+[objects.mesh_renderer.fit.prune]
+budget = 17381
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
+recipe_sha256 = "8a8adbfce7367f3e1afbe4af92b460c8b3ab2602b9951c2bb89326a88da9ac0f"
+
+[[objects]]
+name = "atrium_flat_fitted"
+
+[objects.mesh_renderer]
+mesh = "sponza.import.toml"
+variant = "sponza_fitted_full"
+bake = true
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
+visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+
+[objects.mesh_renderer.fit.prune]
+budget = 17381
+coverage_every_ms = 100
+
+[objects.mesh_renderer.fit.poses]
+train_every_ms = 1000
+held_out_every_ms = 5000
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+
+[objects.mesh_renderer.fit.hashes]
+sha256 = "429c686bb58052cf62b46f42213f7caf2fec3fb33b9079880aa502d64b6c0d04"
+recipe_sha256 = "44cf6658939ae18a4f71911620b64f04cca9d5e59eddbed287af6a189170257a"

@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_target.h"
+#include "gfx/draw/gfx_target.h"
 
 #include <string.h>
 
@@ -54,25 +54,23 @@ test_a_rect_entirely_inside_the_target_is_untouched_by_clipping(void) {
  * a caller's clip never widens what the target itself can hold. */
 static void
 test_the_targets_own_row_range_narrows_a_wider_clip(void) {
-    int y0 = 0, y1 = 8;
     const gfx_target_t band = {full_buf, 2, 3, WIDTH}; /* rows [2, 5) only */
 
-    gfx_target_clip_y(band, 0, HEIGHT, &y0, &y1);
+    const gfx_box_t rect = gfx_target_clip_rect(band, (gfx_box_t){0, 0, WIDTH, HEIGHT}, (gfx_box_t){0, 0, WIDTH, 8});
 
-    TEST_ASSERT_EQUAL_INT(2, y0);
-    TEST_ASSERT_EQUAL_INT(5, y1);
+    TEST_ASSERT_EQUAL_INT(2, rect.y0);
+    TEST_ASSERT_EQUAL_INT(5, rect.y1);
 }
 
 /* The app's own clip rect must win when it is narrower than the target. */
 static void
 test_the_apps_clip_narrows_a_wider_target(void) {
-    int y0 = 0, y1 = 8;
     const gfx_target_t full = full_target();
 
-    gfx_target_clip_y(full, 3, 6, &y0, &y1);
+    const gfx_box_t rect = gfx_target_clip_rect(full, (gfx_box_t){0, 3, WIDTH, 6}, (gfx_box_t){0, 0, WIDTH, 8});
 
-    TEST_ASSERT_EQUAL_INT(3, y0);
-    TEST_ASSERT_EQUAL_INT(6, y1);
+    TEST_ASSERT_EQUAL_INT(3, rect.y0);
+    TEST_ASSERT_EQUAL_INT(6, rect.y1);
 }
 
 /* gfx_target_row() must translate an absolute row into the target's own

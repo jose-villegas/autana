@@ -67,6 +67,14 @@ class ReportPerformanceTest(unittest.TestCase):
         self.assertEqual(len(budget_rows), 1, report)
         self.assertEqual(budget_rows[0][3].strip(), "5210")
 
+    def test_a_step_line_naming_a_gas_pass_after_it_tables_the_step(self):
+        capture = BOOT + MEASURED.replace(
+            "sand_step on 184x224 with 9000 grains: 5210 us per step",
+            "packed landscape gas, 184x224: 5210 us for one step, gas pass 4300 us") + COMPLETE
+        done, report = self.run_reporter(capture)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("| 5210 |", report)
+
     def test_a_budget_test_that_logged_nothing_is_not_a_row(self):
         capture = (BOOT
                    + f"suite_sand_perf.c:346:{BUDGETED}:FAIL: the real grid must fit\n"

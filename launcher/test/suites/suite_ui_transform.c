@@ -9,9 +9,7 @@
  *
  * The viewport used throughout is the real panel's, so a wrong constant here
  * cannot quietly agree with a wrong constant in gfx.h; VIEW_W/VIEW_H are
- * spelled out as their own numbers instead of pulled from GFX_WIDTH/HEIGHT,
- * which this suite cannot include (gfx.h needs the BSP headers; see
- * ui_transform.h's own note on why it only takes microui.h).
+ * spelled out as their own numbers instead of pulled from GFX_WIDTH/HEIGHT.
  */
 
 #include <stdbool.h>

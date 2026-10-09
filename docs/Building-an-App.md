@@ -25,7 +25,7 @@ the shell, not `CMakeLists.txt`:
 
 ```c
 #include "app/app.h"
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_draw.h"
 
 static void yours_enter(void) { /* reset state */ }
 
@@ -179,6 +179,7 @@ sequenceDiagram
     end
     S->>P: gfx_present_wait()
     S->>S: the systems' compose phase
+    Note over S,G: a scene drawn at exactly half marks the frame expanded, so the UI bins for the present to replay
     S->>A: frame(dt_ms, input)
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)

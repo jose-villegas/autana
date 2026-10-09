@@ -1,40 +1,24 @@
 /*
- * Portable suite: the two latches behind gfx_request_full_redraw() (gfx.h).
+ * Portable suite: the two latches behind gfx_request_full_redraw() (gfx_present.h).
  *
  * gfx_full_redraw.h carries no ESP-IDF dependency, the same reason
  * gfx_dirty.h and gfx_present_guard.h do not; see suite_gfx_dirty.c.
- * gfx.c's real gfx_request_full_redraw() composes gfx_mark_all_dirty()
- * (dirty_mark_all() here) and gfx_invalidate() (gfx_band_force_all() here)
- * with gfx_full_redraw_latch(); this suite drives that same header state
- * directly, exactly as gfx.c's own translation unit does, with no panel or
- * BSP dependency to satisfy.
+ * gfx_present.c's real gfx_request_full_redraw() composes
+ * gfx_mark_all_dirty() (dirty_mark_all() here) and gfx_invalidate()
+ * (gfx_band_force_all() here) with gfx_full_redraw_latch(); this suite
+ * drives that same header state directly, with no panel to satisfy.
  */
 
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/gfx_dirty.h"
-#include "gfx/gfx_full_redraw.h"
+#include "gfx_shared_state.h"
 
-/* This suite only drives dirty_mark_all()/all_dirty; suite_gfx_dirty.c
- * already covers the run/leaf-refinement machinery gfx_dirty.h also
- * carries. Referencing the rest here just keeps this translation unit's own
- * copy of it from tripping -Wunused-function, the same reason
- * suite_gfx_present_guard.c does this. */
-static void
-touch_unused_dirty_symbols(void) {
-    (void)collect_runs_from_mask;
-    (void)collect_dirty_runs;
-    (void)run_is_leaf_eligible;
-    (void)leaf_mask_for_run;
-    (void)refine_run;
-    (void)plan_run;
-    (void)run_box;
-}
+#include "gfx/present/gfx_dirty.h"
+#include "gfx/present/gfx_full_redraw.h"
 
 static void
 fixture(void) {
-    touch_unused_dirty_symbols();
     all_dirty = false;
     cell_dirty = 0;
     gfx_band_force_all_dirty = false;
@@ -107,6 +91,8 @@ test_a_request_made_after_consuming_the_last_one_latches_again(void) {
 
 void
 run_gfx_full_redraw_suite(void) {
+    gfx_shared_state_t saved;
+    gfx_shared_state_save(&saved);
     RUN_TEST(test_band_force_starts_clear_after_the_fixture_resets_it);
     RUN_TEST(test_band_force_set_and_taken_once);
 
@@ -114,6 +100,7 @@ run_gfx_full_redraw_suite(void) {
     RUN_TEST(test_the_request_forces_the_next_band_frame);
     RUN_TEST(test_the_request_latches_pending_for_exactly_one_pass);
     RUN_TEST(test_a_request_made_after_consuming_the_last_one_latches_again);
+    gfx_shared_state_restore(&saved);
 }
 
 SUITE_REGISTER(run_gfx_full_redraw_suite);

@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""Turns a raw device capture into a markdown report of suite_boot_anim_
-perf.c's per-checkpoint frame breakdown, the same idea as
-main/apps/render_lab/tools/report_cube_perf.py, but for boot_anim's own
-suite, whose output shape is different enough (only Total/Image/Present
-carry a full min/max/avg/med/p95 breakdown; Clear/Floor/Axes/Curve/Zeros/
-Title are logged as an average only, to keep six checkpoints' worth of
-console output from scrolling past what a 300s capture window can hold)
-that it needs its own parser rather than reusing cube's.
+"""Turn a device capture into a Markdown report of checkpoint frame costs.
 
-ESP_LOGI is the only persistent output a DEVICE_BUILD suite has here (no
-mounted filesystem, see report_cube_perf.py's own comment on why), so this
-generates the report on the host from a captured serial log instead.
+Only Total/Image/Present carry a full min/max/avg/med/p95 breakdown;
+Clear/Floor/Axes/Curve/Zeros/Title are logged as averages.
+A DEVICE_BUILD suite has no mounted filesystem, so the host generates
+this report from a captured serial log.
 
 Each checkpoint's own label states what point in the animation it froze
 time at (curve_climbing, crossfade_mid, ...), see suite_boot_anim_perf.c's
@@ -22,15 +16,15 @@ Usage:
     python tools/boot_anim/report_boot_anim_perf.py <raw_capture.txt> <out.md>
 
 Exit 2 means the capture has no checkpoint in it to report on.
-
-Lives in tools/, not test/suites/, the same convention gen_boot_anim_
-timeline.py and gen_boot_anim_image.py already follow for boot_anim's own
-host-side tooling; it is not app-owned the way cube's report generator is.
 """
 import argparse
 import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "perf"))
+from phase_report import phase_stats, write_phase_report  # noqa: E402
 
 # "I (2795) boot_anim_perf: === BOOT_ANIM PERF curve_climbing (now_ms=1510, 60 samples) ==="
 HEADER_RE = re.compile(
@@ -52,7 +46,6 @@ AVG_PHASE_RE = re.compile(
 )
 
 PHASE_ORDER = ["Total", "Clear", "Floor", "Axes", "Curve", "Zeros", "Image", "Title", "Present"]
-FULL_PHASES = {"Total", "Image", "Present"}
 
 
 def parse_capture(capture_path: str):
@@ -91,20 +84,12 @@ def parse_capture(capture_path: str):
 
         fm = FULL_PHASE_RE.search(line)
         if fm and current_label is not None:
-            runs[current_label]["phases"][fm.group("phase")] = {
-                "min": int(fm.group("min")),
-                "max": int(fm.group("max")),
-                "avg": int(fm.group("avg")),
-                "med": int(fm.group("med")),
-                "p95": int(fm.group("p95")),
-            }
+            runs[current_label]["phases"][fm.group("phase")] = phase_stats(fm)
             continue
 
         am = AVG_PHASE_RE.search(line)
         if am and current_label is not None:
-            runs[current_label]["phases"][am.group("phase")] = {
-                "avg": int(am.group("avg")),
-            }
+            runs[current_label]["phases"][am.group("phase")] = phase_stats(am)
 
     return runs, order, duplicates
 
@@ -125,10 +110,6 @@ def incomplete_labels(runs, order):
         if gap:
             missing.append((label, gap))
     return missing
-
-
-def fps(us: int) -> str:
-    return f"{1000000.0 / us:.1f}" if us > 0 else "?"
 
 
 def main() -> int:
@@ -181,50 +162,8 @@ def main() -> int:
         lines.append(f"| `{label}` | {run['now_ms']} | {run['samples']} |")
     lines.append("")
 
-    lines.append("## Comparison (average, us)")
-    lines.append("")
-    lines.append("| Phase | " + " | ".join(f"`{label}`" for label in order) + " |")
-    lines.append("|---|" + "---:|" * len(order))
-    for phase in PHASE_ORDER:
-        row = [f"{phase} (us)"]
-        for label in order:
-            p = runs[label]["phases"].get(phase)
-            row.append(str(p["avg"]) if p else "?")
-        lines.append("| " + " | ".join(row) + " |")
-    lines.append("")
-    lines.append("| | " + " | ".join(order) + " |")
-    lines.append("|---|" + "---:|" * len(order))
-    for stat, stat_label in (("avg", "avg"), ("med", "median"), ("p95", "p95")):
-        row = [f"**Total fps ({stat_label})**"]
-        for label in order:
-            total = runs[label]["phases"].get("Total")
-            row.append(fps(total[stat]) if total and stat in total else "?")
-        lines.append("| " + " | ".join(row) + " |")
-    lines.append("")
-
-    for label in order:
-        run = runs[label]
-        lines.append(f"## `{label}` (now_ms={run['now_ms']}, {run['samples']} samples)")
-        lines.append("")
-        lines.append("| Phase | Min (us) | Max (us) | Avg (us) | Median (us) | P95 (us) |")
-        lines.append("|---|---:|---:|---:|---:|---:|")
-        for phase in PHASE_ORDER:
-            p = run["phases"].get(phase)
-            if p is None:
-                lines.append(f"| {phase} | ? | ? | ? | ? | ? |")
-                continue
-            bold = "**" if phase == "Total" else ""
-            if phase in FULL_PHASES:
-                lines.append(
-                    f"| {bold}{phase}{bold} | {p['min']} | {p['max']} | "
-                    f"{p['avg']} | {p['med']} | {p['p95']} |"
-                )
-            else:
-                lines.append(f"| {phase} | - | - | {p['avg']} | - | - |")
-        lines.append("")
-
-    with open(args.out_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    write_phase_report(args.out_path, lines, runs, order, PHASE_ORDER,
+                       lambda label, run: f"## `{label}` (now_ms={run['now_ms']}, {run['samples']} samples)")
 
     warning_count = len(gaps) + len(duplicates)
     suffix = f" ({warning_count} warning(s) - see stderr)" if warning_count else ""

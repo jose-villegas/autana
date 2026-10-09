@@ -34,7 +34,9 @@
 
 #include "boot/boot_anim.h"
 #include "boot/boot_anim_timeline.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "util/runtime/timing.h"
 
 /* boot_anim.c's own draw_* functions, exposed specifically for this suite;

@@ -1,0 +1,63 @@
+import pathlib
+import unittest
+import tempfile
+
+import dynres_report as report
+
+
+class DynresReportTests(unittest.TestCase):
+    def test_findings_compare_fast_path_steps_and_cost_references(self):
+        sizes = [(368, 448), (368, 224), (184, 448), (184, 298),
+                 (184, 224), (184, 179), (184, 149), (147, 179), (122, 149)]
+        splits = {size: {"mean": 1000} for size in sizes}
+        table = report.findings_table(splits, {})
+        for pair in ("184x298 minus 184x224", "184x224 minus 184x179",
+                     "184x179 minus 147x179", "184x149 minus 122x149"):
+            with self.subTest(pair=pair):
+                self.assertIn(pair, table)
+
+    def test_refit_metadata_merges_and_prices_the_prediction_note(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for i in range(2):
+                capture = pathlib.Path(directory) / f"capture-{i}.log"
+                capture.write_text(
+                    f"dynres_refit_cost: calls 1000 mean_us {i + 1}.250 max_us {i + 4}\n"
+                    f"dynres_refit: orbit width 66000 scale 1.300 offset_us {i + 2000}\n", encoding="utf-8")
+                paths.append(str(capture))
+            refit = {}
+            report.read_captures(paths, refit)
+            self.assertEqual({"calls": 1000, "mean_us": 2.25, "max_us": 5.0}, refit["cost"])
+            self.assertEqual({"scale": 1.3, "offset_us": 2001.0}, refit["correction"][("orbit", "width", 66000)])
+            self.assertIn("1000 calls, mean 2.250 us, max 5 us per call", report.prediction_table({}, refit))
+        self.assertNotIn("Online refit", report.prediction_table({}))
+
+    def test_committed_capture_remains_readable(self):
+        capture = pathlib.Path(__file__).resolve().parents[3] / "docs/render/data/dynamic-resolution-board.log"
+        splits, spans, ladders, runs = report.read_captures([str(capture)])
+        self.assertTrue(report.stages_table(splits, spans))
+        self.assertTrue(report.findings_table(splits, spans))
+        self.assertTrue(report.policies_table(report.policy_rows(runs, ladders, {}, splits)))
+
+
+    def test_camera_keys_records_errors_and_missing_quality(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "capture.log"
+            capture.write_text("dynres_step: width 0 184x224 upscale 1\n"
+                               "dynres_frames: camera predicted width 100 0 0:60:20:4:100 0:130:10:5:100\n"
+                               "dynres_frames: tour predicted width 100 0 0:90:10:4:100\n"
+                               "dynres_frames: tour fixed half 0 0 -1:90:10:4:0\n")
+            _, _, ladders, runs = report.read_captures([str(capture)])
+        self.assertEqual(len(runs), 3)
+        self.assertEqual(runs[("camera", "predicted", "width", 100)][0], (0, 60, 20, 4, 100))
+        rows = report.policy_rows(runs, ladders, {"camera": {(184, 224): [(0, 2.0, 0.9)]}}, {})
+        self.assertEqual([r["camera"] for r in rows], ["camera", "tour", "tour"])
+        self.assertEqual(rows[0]["delta_e"], 2.0)
+        self.assertIsNone(rows[1]["delta_e"])
+        table = report.prediction_table(runs)
+        self.assertIn("| camera | width | 0.1 | 2 | 30.0% | 40.0% | 50.0% |", table)
+        self.assertIn("| tour | width | 0.1 | 1 | 0.0% | 0.0% | 0.0% |", table)
+
+
+if __name__ == "__main__":
+    unittest.main()

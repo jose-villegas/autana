@@ -16,7 +16,7 @@ entity id (`scene_entity_t`). Nothing is allocated per entity.
 | `transforms[]` | entity | where it stands: a 3x3 and a position, what the raster reads |
 | `flags[]` | entity | enabled, and moved since the last draw |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
-| `cameras[]` | camera | lens, optional glTF path (the clip's two tracks, pointing into the pack), render scale, clear colour, its entity id |
+| `cameras[]` | camera | lens, optional glTF path (the clip's two tracks, pointing into the pack), clear colour, its entity id |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` and `transforms[]` |
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
@@ -37,8 +37,7 @@ pack, so on the board they read flash in place and cost no RAM.
 | `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
-| `scene_set_render_scale()` | the active camera's render size as a share of the screen |
-| `scene_stats()` | triangles and clusters the last draw kept |
+| `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)) |
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's
@@ -53,27 +52,32 @@ sequenceDiagram
     participant App as app
     Shell->>Core1: gfx_present_begin() sends the last frame
     Shell->>App: update(), if the app has one
-    Note over Shell: scene_render(): clocks, moved entities,<br/>raster_draw() on both cores into scratch
+    Note over Shell: scene_render(): clocks, moved entities,<br/>render_context_draw() on both cores into scratch
     Core1-->>Shell: gfx_present_wait()
-    Note over Shell: scene_compose(): raster_upscale()<br/>into the framebuffer
+    Note over Shell: scene_compose(): copy half picture<br/>or upscale into the framebuffer
     Shell->>App: frame() draws over the scene
     Shell->>Core1: next pass presents it
 ```
 
 `scene_render()` touches no framebuffer, so it runs while the last frame is
-still being sent. `scene_compose()` writes the framebuffer and runs once the
+still being sent. `scene_compose()` writes the half picture when the draw is
+exactly half the panel in both axes, otherwise the full framebuffer, once the
 send is done; if `scene_render()` did not run (the first frame after
 activating), it draws first. An app gets this overlap whenever a camera is
-active, with or without `update()`. With no camera active the loop is the plain
-one. Every frame redraws the whole picture, a static scene included. A camera
+active, with or without `update()`. A paused expanded picture keeps the
+overlap so each pass composes it again without rendering. With no camera
+active the loop is the plain one. Unpaused frames redraw the whole picture,
+a static scene included. A camera
 needs the full-framebuffer layout; in band mode the scene is drawn into the
 scratch but there is nothing to upscale it into.
 
 `scene_render()` advances the clock of every loaded scene, then rebuilds the
 placement of each renderer whose entity moved, fills `instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized
-for the largest enabled mesh and the render size, and grown only when a bigger
-one is drawn.
+for the largest enabled mesh's working buffers, every enabled instance's
+census slot and the render size. Dynamic resolution reserves the finest
+step's raster block; the census list stays at the same offset across steps.
+The block grows only when the required storage exceeds its capacity.
 
 ## Ownership
 

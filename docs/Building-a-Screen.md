@@ -59,7 +59,7 @@ autana screenshot --framebuffer -o shot.png  # lossless PNG, does not reset
 ```
 
 A screen can also be rendered on a host, with no board and no flash cycle,
-through the real drawing code and the real `gfx.c`:
+through the real drawing code and the real `gfx_draw.c`:
 
 ```sh
 ./launcher/tools/render/render_all_scenes.sh        # every declared scene
@@ -162,7 +162,7 @@ code that draws it.
 **Icons are always baked assets.** Do not assemble a symbol from
 `mu_draw_rect()` or other drawing primitives inside a renderer. Shared UI
 vocabulary belongs in `design/icons/system.*` and is baked into
-`gfx/icons_system.h`; app-owned symbols use the same generator inside the
+`gfx/draw/icons_system.h`; app-owned symbols use the same generator inside the
 app's folder. Drawing primitives remain appropriate for geometry such as
 panels, tracks and status indicators, not pictograms.
 

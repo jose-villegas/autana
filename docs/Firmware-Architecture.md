@@ -70,9 +70,11 @@ flowchart TB
         Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
         Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
     end
-    subgraph R7["drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer</i>"]:::hw
+    subgraph R7["rendering"]
         Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+    end
+    subgraph R7b["drawing"]
+        Gfx["gfx/<br/><i>the one framebuffer, draw/ into it, present/ it</i>"]:::hw
     end
     subgraph R8["animation"]
         Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
@@ -93,10 +95,10 @@ flowchart TB
         Build["util/build/<br/><i>which build variant this is</i>"]
     end
     subgraph R13["board"]
-        Board["board/<br/><i>this board's pins and peripherals</i>"]:::hw
+        Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
@@ -109,7 +111,9 @@ flowchart TB
   own row above.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
-  [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path).
+  [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
+  above gfx/ because it draws into gfx's
+  [render targets](Gfx-and-Presentation.md#render-targets).
 - **Drivers are split from the logic they feed.** `touch.c`, `buttons.c`
   and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
   `tilt` are pure and tested on a laptop. The same split runs through every
@@ -278,7 +282,10 @@ cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores). An app that
 loads a scene and activates its camera needs none of that: while a camera is
 active the shell draws it in the same overlap window and upscales it into the
 framebuffer before `frame()`, whether or not the app has an `update()`
-([Scene-Manager.md](render/Scene-Manager.md#each-frame)).
+([Scene-Manager.md](render/Scene-Manager.md#each-frame)). The render context
+owns one raster scratch block, including the census list before the picture
+attachments. Dynamic resolution reserves the finest step's block, so choosing
+a render size preserves the census without a separate allocation.
 
 ### Engine systems
 
@@ -444,8 +451,9 @@ the backdrop under it, re-scrims that region, then draws.
 ## Why microui, not LVGL
 
 The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
-LVGL interface removed; LVGL is not built. `gfx.c` drives the panel
-directly, and the BSP supplies board services and touch setup. Three
+LVGL interface removed; LVGL is not built. `board/board_panel.c` brings the
+panel up and `gfx/present/gfx_present.c` sends to it directly; the BSP
+supplies board services and touch setup. Three
 constraints point the same way:
 
 **Internal heap is tight even with the framebuffer in PSRAM.** A persistent

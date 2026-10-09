@@ -87,7 +87,7 @@ EXCLUDED_MAIN_FILES = {
 # own symbol is defined for it, since what such a file calls is often
 # declared only under that symbol.
 VARIANT_ONLY_FILES = {
-    "main/gfx/gfx_null_panel_device.c": ("main/gfx/gfx.c", "CONFIG_LAUNCHER_QEMU"),
+    "main/gfx/present/gfx_null_panel_device.c": ("main/gfx/present/gfx_present.c", "CONFIG_LAUNCHER_QEMU"),
 }
 
 VENDORED_DIR_NAMES = {"components", "managed_components"}
@@ -426,7 +426,7 @@ def build_idf_entries(toolchain_root, vendored=False):
     GCC-only flags it does not recognise stripped, and --sysroot/
     --gcc-toolchain added so its `#include_next` chain into newlib
     resolves. Real device flags otherwise; this is what makes
-    hardware-facing files (app_*.c, gfx.c, ui.c, boot/, board/, the
+    hardware-facing files (app_*.c, gfx/, ui.c, boot/, board/, the
     input/ drivers) measurable at all."""
     if not IDF_DB_PATH.exists():
         return {}
@@ -510,7 +510,7 @@ def build_compile_db():
     if not IDF_DB_PATH.exists():
         sys.exit(
             f"{IDF_DB_PATH} not found. This gate measures hardware-facing "
-            "files (app_*.c, gfx.c, ui.c, boot/, board/, input/) through "
+            "files (app_*.c, gfx/, ui.c, boot/, board/, input/) through "
             "the diagnostics build's own compile database - run "
             "./launcher/tools/build/build_diag_check.sh first (a full build, "
             "several minutes, foreground), then re-run this gate."

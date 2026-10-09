@@ -366,7 +366,7 @@ test_sand_paint_row_n_shades_a_settled_pool_by_depth_after_two_passes(void) {
 
     enum { CX = 1 };
 
-    /* The first fully-interior row: WATER_TOP itself is the rim (open air
+    /* The first fully-interior row: PAINT_ROW_WATER_TOP itself is the rim (open air
      * above it), so its own fill level would confound this comparison. */
     const int shallow_cy = PAINT_ROW_WATER_TOP + 1;
     const int deep_cy = PAINT_ROW_TEST_H - 1;

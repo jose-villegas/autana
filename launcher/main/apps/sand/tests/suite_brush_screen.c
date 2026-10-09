@@ -17,7 +17,7 @@
 #include "apps/sand/material.h"
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/ui/brush_screen.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"

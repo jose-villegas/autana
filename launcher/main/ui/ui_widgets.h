@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/icon.h"
+#include "gfx/draw/icon.h"
 #include "microui.h"
 #include "ui/ui_style.h"
 

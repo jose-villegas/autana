@@ -1,6 +1,6 @@
 /*
  * The launcher over its ridge backdrop, through the firmware's own ui.c and
- * gfx.c: what an idle home screen costs, what a touch wakes, and what is
+ * gfx/: what an idle home screen costs, what a touch wakes, and what is
  * left when the line comes back to rest.
  */
 
@@ -13,6 +13,7 @@
 
 #include "app/app.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"

@@ -13,8 +13,8 @@
 
 #include <stdint.h>
 
-#include "gfx/gfx_color.h"
-#include "gfx/gfx_palette.h"
+#include "gfx/draw/gfx_color.h"
+#include "gfx/draw/gfx_palette.h"
 
 /* OKLab, scaled by 100 so a distance reads like a CIE delta E (about 1-2 is a
  * just noticeable difference), from linear-light sRGB. Exported so every

@@ -19,7 +19,6 @@ scene_name=boot_anim
 scene_sources="
 main/anim/anim_track.c
 main/anim/anim_tracks.c
-main/gfx/gfx.c
 main/util/runtime/tune.c
 main/boot/boot_anim.c
 main/boot/boot_anim_motion.c

@@ -9,6 +9,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
@@ -18,12 +19,35 @@ from generated_blocks import apply_tables, tracked_files
 from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
+from r3d.scene_asset import scene_id
 
-SCENE = ROOT / "launcher/main/apps/render_lab/meshes/sponza.scene.toml"
-HOST_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
+HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
-VARIANTS = ("sponza", "lite", "flat", "fitted", "fitted-full")
+VARIANTS = ("lite", "flat", "fitted", "fitted-full", "flat-fitted")
+
+
+class Fitted(NamedTuple):
+    """One fitted object of the GPU stage: the prefix of its rows, the bake it is compared with, what else it
+    carries (the normal and budget sweeps, the path cull, a point in the budget table) and its sheet's columns,
+    (label, row) pairs."""
+    name: str
+    prefix: str
+    baked: str
+    sheet: tuple
+    sweeps: bool = False
+    path_cull: bool = False
+    budget_point: bool = False
+
+
+# The stage runs the rows in this order, so a sheet may name the rows of an earlier entry.
+FITTED = (
+    Fitted("_fitted", "lite", "_lite", (("GI bake", "lite-GI-bake"), ("GI fit", "lite-GI-fit")), sweeps=True),
+    Fitted("_fitted_full", "full", "", (("GI bake", "full-GI-bake"), ("GI fit", "full-GI-fit")),
+           path_cull=True, budget_point=True),
+    Fitted("_flat_fitted", "flat", "_flat",
+           (("flat bake", "flat-GI-bake"), ("lite fit", "lite-GI-fit"), ("flat fit", "flat-GI-fit"))),
+)
 
 
 def git_environment():
@@ -96,7 +120,53 @@ def markdown(headers, rows):
     return "\n".join(lines + ["| " + " | ".join(map(str, row)) + " |" for row in rows]) + "\n"
 
 
-def capture_rows(path, commit):
+MACHINE_FIELDS = ("CPU", "Cores/threads", "RAM", "GPU", "VRAM", "Driver", "CUDA", "OS", "Python", "Mitsuba", "PyTorch")
+
+
+def machine_probes(cpuinfo, meminfo, nvidia_smi, versions):
+    from r3d.process_budget import meminfo_bytes
+    cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo.splitlines() if line.startswith("model name"))
+    cores = set()
+    for block in cpuinfo.split("\n\n"):
+        fields = dict(line.split(":", 1) for line in block.splitlines() if ":" in line)
+        fields = {key.strip(): value.strip() for key, value in fields.items()}
+        if "core id" in fields:
+            cores.add((fields.get("physical id", "0"), fields["core id"]))
+    gpu = nvidia_smi.strip().splitlines()
+    devices = [tuple(value.strip() for value in line.split(",")) for line in gpu]
+    values = {"CPU": cpu, "Cores/threads": f"{len(cores) or 'unknown'}/{versions['threads']}",
+              "RAM": f"{meminfo_bytes(meminfo)['MemTotal'] / 1024 ** 3:.1f} GiB",
+              "GPU": "; ".join(row[0] for row in devices),
+              "VRAM": "; ".join(row[1] + " MiB" for row in devices),
+              "Driver": "; ".join(row[2] for row in devices), "CUDA": versions["CUDA"],
+              **{name: versions[name] for name in ("OS", "Python", "Mitsuba", "PyTorch")}}
+    return values
+
+
+def machine_table(probes=None):
+    if probes is None:
+        import platform
+        import importlib.metadata
+        import torch
+        gpu = subprocess.check_output(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
+                                       "--format=csv,noheader,nounits"], text=True, timeout=10)
+        probes = machine_probes(Path("/proc/cpuinfo").read_text(), Path("/proc/meminfo").read_text(), gpu,
+                                dict(threads=os.cpu_count(), CUDA=torch.version.cuda, OS=platform.platform(),
+                                     Python=platform.python_version(), Mitsuba=importlib.metadata.version("mitsuba"),
+                                     PyTorch=torch.__version__))
+    return markdown(["Machine", "Value"], [(key, probes[key]) for key in MACHINE_FIELDS])
+
+
+def bake_steps_table(variants):
+    def mib(value):
+        return "not available" if value is None else f"{value / 1024 ** 2:.1f}"
+    return markdown(["Variant", "Step", "Wall s", "Triangles in", "Triangles out", "Peak RAM MiB", "Peak VRAM MiB"],
+                    [(variant, row["step"], f'{row["wall_s"]:.3f}', row["triangles_in"], row["triangles_out"],
+                      mib(row["peak_ram_bytes"]), mib(row["peak_vram_bytes"]))
+                     for variant, rows in variants for row in rows])
+
+
+def capture_rows(path, commit, id, object_name):
     text = path.read_text(encoding="utf-8", errors="replace")
     import re
     builds = re.findall(r"\b([0-9a-f]{12,40})-diag\b", text)
@@ -104,31 +174,30 @@ def capture_rows(path, commit):
         raise ValueError(f"{path}: missing or mismatched diagnostics build identity")
     if re.search(r"\bFAIL\b", text):
         raise ValueError(f"{path}: failed suite")
-    aliases = {"atrium": "sponza", "atrium_lite": "lite", "atrium_flat": "flat",
-               "atrium_fitted": "fitted", "atrium_fitted_full": "fitted-full"}
+    aliases = {object_name: id, **{object_name + "_" + name.replace("-", "_"): name for name in VARIANTS}}
     names = [aliases.get(match.group("name"), match.group("name")) for match in MEAN_RE.finditer(text)]
     if len(names) != len(set(names)):
         raise ValueError(f"{path}: duplicate variant means; give one --capture per run")
     return {aliases.get(name, name): value / 1000 for name, value in parse_report(path).items()
 }
 
-def board_means(captures, commit):
-    runs = [capture_rows(path, commit) for path in captures]
+def board_means(captures, commit, id, object_name):
+    runs = [capture_rows(path, commit, id, object_name) for path in captures]
     for path, rows in zip(captures, runs):
-        missing = set(VARIANTS) - rows.keys()
+        missing = set((id, *VARIANTS)) - rows.keys()
         if missing:
             raise ValueError(f"{path}: missing variants {sorted(missing)}")
     return {
-name: statistics.median(rows[name] for rows in runs) for name in VARIANTS
+name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
 }
 
-def board_frames(captures, expected):
+def board_frames(captures, expected, id, object_name):
     import re
-    pattern = r"(sponza|lite|atrium|atrium_lite) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
+    pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
     values = {}
     for capture in captures:
         found = re.findall(pattern, capture.read_text(encoding="utf-8", errors="replace"))
-        parsed = [(dict(atrium="sponza", atrium_lite="lite").get(name, name), int(time), int(value) / 1000)
+        parsed = [({object_name: id, object_name + "_lite": "lite"}.get(name, name), int(time), int(value) / 1000)
                   for name, time, value in found]
         keys = [(name, time) for name, time, _ in parsed]
         if len(keys) != len(expected) or set(keys) != set(expected):
@@ -159,24 +228,22 @@ def board(args, out, work):
     source_paths += [":(glob)launcher/**/CMakeLists.txt", ":(glob)launcher/**/Kconfig*", ":(glob)launcher/sdkconfig*"]
     if subprocess.run(["git", "diff", "--quiet", commit, "--", *source_paths], cwd=ROOT).returncode:
         raise ValueError("board capture commit differs from current firmware sources")
-    means = board_means(args.capture, commit)
-    (out / "tables/sponza-board.md").write_text(markdown(["Mesh", "Median board ms"],
-        [(name, f"{means[name]:.3f}") for name in VARIANTS]), encoding="utf-8")
-    scene = load_scene(SCENE)
-    job = placed_variant(scene, "sponza_fitted")
-    header = ROOT / "launcher/main/apps/render_lab/sponza_content.h"
-    interval = re.search(r"#define\s+SPONZA_POSE_EVERY_MS\s+(\d+)", header.read_text())
-    if interval is None:
-        raise ValueError("cannot read the board suite pose interval")
-    every_ms = int(interval.group(1))
+    scene_path = args.scene
+    id = scene_id(scene_path)
+    means = board_means(args.capture, commit, id, args.object)
+    (out / f"tables/{id}-board.md").write_text(markdown(["Mesh", "Median board ms"],
+        [(name, f"{means[name]:.3f}") for name in (id, *VARIANTS)]), encoding="utf-8")
+    scene = load_scene(scene_path)
+    job = placed_variant(scene, args.object + "_fitted")
+    every_ms = job.renderer.fit.held_out_every_ms
     poses = camera_path_poses(scene, job.renderer.visibility, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
-    frame_values = board_frames(args.capture, [(name, index * every_ms // 1000) for name in ("sponza", "lite")
-                                             for index in range(len(poses[-1]))])
+    frame_values = board_frames(args.capture, [(name, index * every_ms // 1000) for name in (id, "lite")
+                                             for index in range(len(poses[-1]))], id, args.object)
     (work / "board-poses.txt").write_text(poses_text(*poses))
     rows, times, records = [], [], []
-    for name, asset in (("sponza", "atrium"), ("lite", "atrium_lite")):
+    for name, asset in ((id, args.object), ("lite", args.object + "_lite")):
         mesh = next(item.asset_path for item in scene.renderers if item.object.name == asset)
         features = mesh_rows(mesh, work / "board-poses.txt")
         for index, row in enumerate(features):
@@ -189,7 +256,7 @@ def board(args, out, work):
     body += "".join(f"frame {name} {index} {ms:.3f} " + " ".join(f"{value:.9g}" for value in row) + "\n"
                     for name, index, ms, row in records)
     (out / "board_cost_weights.txt").write_text(body)
-    (out / "tables/sponza-board-model.md").write_text(
+    (out / f"tables/{id}-board-model.md").write_text(
         markdown(["Feature", "Weight"], [(name, f"{value:.9g}") for name, value in zip(FEATURES, weights)]) + "\n" +
         markdown(["Mesh", "Pose", "Board ms", *FEATURES],
                  [(name, index, f"{ms:.3f}", *(f"{value:.9g}" for value in row)) for name, index, ms, row in records]), encoding="utf-8")
@@ -205,20 +272,20 @@ def board(args, out, work):
     return int(args.check and changed)
 
 
-def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
+def measure_worker(label, job, mesh, reference_inputs, work, host, weights, scene_path):
     from types import SimpleNamespace
     from r3d.bake_fidelity import score, write_assets
     from r3d.appearance_simplify import load_views, normal_error, start_mesh
     from r3d.lit_mesh import finest_triangles, read_lit_mesh
     from r3d.cost_model import predict, mesh_rows
+    from r3d.fitted_variant import viewer_args
     directory = work / label
     directory.mkdir(exist_ok=True)
     from r3d.poses import read_poses
     count = len(read_poses(reference_inputs / "held_out.txt")[-1])
-    settings = SimpleNamespace(render_args=f"--quarter 0 --no-hud --scene {job.renderer.variant.name.replace('_', '-')} "
-                                          f"--frames {count} --dt {job.renderer.fit.held_out_every_ms}",
+    settings = SimpleNamespace(render_args=viewer_args(job, count, job.renderer.fit.held_out_every_ms, scene_path),
                                reference=reference_inputs / "reference_held_out", reference_scale=2)
-    metrics = score(settings, host, write_assets(job.asset_name, mesh, directory), directory)
+    metrics = score(settings, host, write_assets(job.asset_name, mesh, directory, scene_path), directory)
     views, size = load_views([(str(reference_inputs / "held_out.txt"), str(settings.reference))], 2)
     angle = normal_error(start_mesh(mesh), views, size, angle_dir=directory / "angles")
     triangles = len(finest_triangles(read_lit_mesh(mesh))[2])
@@ -227,16 +294,22 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights):
     return row, directory / "frames.avi", {"triangles": triangles, "mean_delta_e": metrics[0],
                                          "p95_delta_e": metrics[1], "predicted_ms": predicted}
 
-def bake_worker(scene, job, index, prefix, baked_name, work):
-    from r3d.mesh_import import bake_geometry, camera_path_poses
+def recorded_call(function, *args):
+    from r3d.process_budget import StepRecorder
+    recorder = StepRecorder()
+    result = function(*args, recorder=recorder)
+    return result, recorder.rows
+
+
+def bake_worker(scene, job, path_cull, prefix, baked_name, work, recorder=None):
+    from r3d.mesh_import import bake_geometry, camera_path_poses, write_baked
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     directory = work / f"bake-{prefix}"
     directory.mkdir(exist_ok=True)
-    geometry = bake_geometry(baked, scene)
-    write_lit_mesh(directory, baked.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
-                   geometry.tri_double, **geometry.scale)
-    if index == 1:
+    geometry = bake_geometry(baked, scene, recorder)
+    write_baked(baked, scene, directory, baked.renderer.variant.name, geometry, recorder)
+    if path_cull:
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
         visibility = job.renderer.visibility
@@ -248,9 +321,10 @@ def bake_worker(scene, job, index, prefix, baked_name, work):
         culled_dir.mkdir(exist_ok=True)
         write_lit_mesh(culled_dir, "culled", geometry.positions, geometry.rgb, geometry.tris[seen],
                        geometry.tri_double[seen], **geometry.scale)
-    return directory / f"{baked.renderer.variant.name}.mesh", culled_dir / "culled.mesh" if index == 1 else None
+    return (directory / f"{baked.renderer.variant.name}.mesh",
+            culled_dir / "culled.mesh" if path_cull else None)
 
-def smoke_prepare(scene, job, inputs):
+def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.mesh_import import camera_path_poses
     from r3d.fitted_variant import poses_text
     from r3d.reference_render import main as reference_main
@@ -260,23 +334,24 @@ def smoke_prepare(scene, job, inputs):
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
     for name in ("reference", "reference_landscape", "reference_held_out"):
-        reference_main([str(SCENE), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
+        reference_main([str(scene_path), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
                         "--out", str(inputs / name), "--normals"])
 
-def prepare_variants(executor, scene, jobs, work, on_ready):
+def prepare_variants(executor, scene_path, scene, jobs, work, on_ready):
+    from functools import partial
     from concurrent.futures import Future
     from r3d.fitted_variant import prepare
     from r3d.process_budget import PREPARE_BYTES
     ready = [Future() for job in jobs]
-    prepares = [executor.submit(prepare, SCENE, scene, job, work / f"inputs-{prefix}", estimates=PREPARE_BYTES,
+    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, work / f"inputs-{fitted.prefix}", estimates=PREPARE_BYTES,
                                 priority=True)
-                for prefix, job in zip(("lite", "full"), jobs)]
+                for fitted, job in zip(FITTED, jobs)]
     for index, (job, future) in enumerate(zip(jobs, prepares)):
         def completed(future, index=index, job=job):
             try:
-                future.result()
+                result = future.result()
                 on_ready(index, job)
-                ready[index].set_result(None)
+                ready[index].set_result(result)
             except BaseException as error:
                 ready[index].set_exception(error)
         future.add_done_callback(completed)
@@ -316,8 +391,10 @@ def _gpu(args, out, work, executor):
     from functools import partial
     from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
-    scene = load_scene(SCENE)
-    jobs = [placed_variant(scene, name) for name in ("sponza_fitted", "sponza_fitted_full")]
+    scene_path = args.scene
+    scene = load_scene(scene_path)
+    id = scene_id(scene_path)
+    jobs = [placed_variant(scene, args.object + entry.name) for entry in FITTED]
     if len({job.renderer.fit.held_out_every_ms for job in jobs}) != 1:
         raise ValueError("GPU comparisons require a common held-out pose interval")
     stamp = current_stamp()
@@ -326,70 +403,77 @@ def _gpu(args, out, work, executor):
     inputs = work / "references"
     if args.smoke:
         job = jobs[0]
-        executor.submit(smoke_prepare, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
-        executor.submit(fit_point, {}, work / "fit", SCENE, scene, job, inputs, True,
+        executor.submit(smoke_prepare, scene_path, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
+        executor.submit(fit_point, {}, work / "fit", scene_path, scene, job, inputs, True,
                         work / "smoke.mesh", estimates=FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
-    host = build_host(HOST_SCRIPT, work / "host")
+    host = build_host(HOST_SCRIPT, work / "host", scene_path)
     rows, comparisons, sweep = [], {}, []
+    bake_steps = []
     weights, *_ = load(WEIGHTS)
 
     def measure(label, job, mesh, reference_inputs):
         row, frames, values = executor.submit(measure_worker, label, job, mesh, reference_inputs,
-                                              work, host, weights, estimates=MEASURE_BYTES, priority=True).result()
+                                              work, host, weights, scene_path, estimates=MEASURE_BYTES, priority=True).result()
         rows.append(row)
         comparisons[label] = frames
         return values
 
     fitted_futures, normal_futures, sweep_futures = {}, {}, {}
     def prepared(index, job):
-        prefix = "lite" if index == 0 else "full"
+        prefix = FITTED[index].prefix
         reference_inputs = work / f"inputs-{prefix}"
-        fitted_futures[prefix] = executor.submit(fit_point, {}, work / f"fit-{prefix}", SCENE, scene, job,
+        fitted_futures[prefix] = executor.submit(partial(recorded_call, fit_point), {}, work / f"fit-{prefix}", scene_path, scene, job,
                                                   reference_inputs, False, work / f"{prefix}.mesh", estimates=FIT_BYTES)
-        if index == 0:
+        if FITTED[index].sweeps:
             normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
             for normal in normal_weights:
                 if normal != job.renderer.fit.normal_weight:
                     variant = copy.deepcopy(job)
                     variant.renderer.fit.normal_weight = normal
                     name = f"normal-{normal:g}"
-                    normal_futures[normal] = executor.submit(fit_point, {}, work / name, SCENE, scene, variant, reference_inputs, estimates=FIT_BYTES)
+                    normal_futures[normal] = executor.submit(fit_point, {}, work / name, scene_path, scene, variant, reference_inputs, estimates=FIT_BYTES)
             budgets = list(dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
                                          if budget <= job.renderer.variant.triangles))
             points = [{"budget": budget, "cost_weight": cost} for budget in budgets for cost in (0.0, 0.1)]
             unfinished = [point for point in points if point["budget"] != job.renderer.fit.budget or point["cost_weight"]]
-            run_sweep_points(work, unfinished, partial(fit_point, scene_path=SCENE, scene=scene, job=job,
+            run_sweep_points(work, unfinished, partial(fit_point, scene_path=scene_path, scene=scene, job=job,
                              inputs=reference_inputs), executor=executor, deferred=sweep_futures)
 
-    ready = prepare_variants(executor, scene, jobs, work, prepared)
+    ready = prepare_variants(executor, scene_path, scene, jobs, work, prepared)
 
     for index, job in enumerate(jobs):
-        ready[index].result()
-        prefix = "lite" if index == 0 else "full"
+        prepared_result = ready[index].result()
+        entry = FITTED[index]
+        prefix = entry.prefix
         reference_inputs = work / f"inputs-{prefix}"
-        for label, baked_name in (("GI-bake", "atrium_lite" if index == 0 else "atrium"),):
-            baked_mesh, culled_mesh = executor.submit(bake_worker, scene, job, index, prefix, baked_name,
+        for label, baked_name in (("GI-bake", args.object + entry.baked),):
+            (baked_mesh, culled_mesh), steps = executor.submit(partial(recorded_call, bake_worker), scene, job, entry.path_cull, prefix, baked_name,
                                                         work, estimates=BAKE_BYTES, priority=True).result()
+            bake_steps.append((f"{prefix}-{label}", steps))
             measure(f"{prefix}-{label}", job, baked_mesh, reference_inputs)
-            if index == 1:
+            if entry.path_cull:
                 measure("full-path-culled", job, culled_mesh, reference_inputs)
                 run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
                      out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
                      reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
                      "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
                      comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
-        fitted = Path(fitted_futures[prefix].result()["mesh"])
+        fit_result, fit_steps = fitted_futures[prefix].result()
+        _, start_steps = prepared_result
+        bake_steps.append((f"{prefix}-fit-start", start_steps))
+        bake_steps.append((f"{prefix}-GI-fit", fit_steps))
+        fitted = Path(fit_result["mesh"])
         fitted_values = measure(f"{prefix}-GI-fit", job, fitted, reference_inputs)
-        if index == 1:
+        if entry.budget_point:
             sweep.append({"budget": job.renderer.fit.budget, "cost_weight": 0.0, **fitted_values})
         image = out / "render/gpu" / f"appearance-indirect-{prefix}.png"
+        columns = [part for label, row in entry.sheet for part in ("--bake", label, comparisons[row])]
         run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
              "--reference-bakes", reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
-             "--bake", "GI bake", comparisons[f"{prefix}-GI-bake"], "--bake", "GI fit", comparisons[f"{prefix}-GI-fit"],
-             "--crops", "3"], work / f"sheet-{prefix}.log")
-        if index == 0:
+             *columns, "--crops", "3"], work / f"sheet-{prefix}.log")
+        if entry.sweeps:
             normal_rows = []
             normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
             for normal in normal_weights:
@@ -399,9 +483,9 @@ def _gpu(args, out, work, executor):
                 mesh = fitted if normal == job.renderer.fit.normal_weight else Path(normal_futures[normal].result()["mesh"])
                 measure(name, job, mesh, reference_inputs)
                 normal_rows.append(rows[-1])
-            (out / "tables/sponza-normal.md").write_text(markdown(
+            (out / f"tables/{id}-normal.md").write_text(markdown(
                 ["Normal weight", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], normal_rows) +
-                "\n![Normal angle heatmaps](../../../../../docs/images/render/gpu/appearance-normal-heat.png)\n")
+                "\n![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)\n")
             command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
                        out / "render/gpu/appearance-normal-heat.png"]
             for normal in normal_weights:
@@ -423,20 +507,32 @@ def _gpu(args, out, work, executor):
             sweep = sweep_rows(work, points)
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
-    (out / "tables/sponza-budget.md").write_text(markdown(
+    (out / f"tables/{id}-budget.md").write_text(markdown(
         ["Budget", "Cost weight", "Triangles", "Held-out dE76", "Predicted ms"],
         [(row["budget"], row["cost_weight"], row["triangles"], f'{row["mean_delta_e"]:.3f}', f'{row["predicted_ms"]:.3f}')
-         for row in sweep]) + "\n![Budget and cost sweep](../../../../../docs/images/render/gpu/appearance-pareto.png)\n")
-    (out / "tables/sponza-gpu.md").write_text(markdown(
+         for row in sweep]) + "\n![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)\n")
+    (out / f"tables/{id}-gpu.md").write_text(markdown(
         ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], rows[:2] +
         [row for row in rows if row[0].startswith("full-")]) + "\n" + "\n".join(
-        f"![{prefix} GI bake and fit{suffix}](../../../../../docs/images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
+        f"![{prefix} GI bake and fit{suffix}](../images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
         for prefix in ("lite", "full") for suffix in ("", ".crops")) + "\n")
-    with (out / "tables/sponza-gpu.md").open("a") as output:
-        output.write("\n![Full bake and path cull](../../../../../docs/images/render/gpu/appearance-path-culled.png)\n")
+    # The cost model has no shading term and cannot price a flat mesh; the board table times it.
+    flat_sheet = next(entry.sheet for entry in FITTED if entry.prefix == "flat")
+    measured = {row[0]: row for row in rows}
+    (out / f"tables/{id}-flat-fit.md").write_text(markdown(
+        ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle"],
+        [measured[name][:-1] for _label, name in flat_sheet]) + "\n" + "\n".join(
+        f"![Flat bake, lite fit and flat fit{suffix}](../images/render/gpu/appearance-indirect-flat{suffix}.png)"
+        for suffix in ("", ".crops")) + "\n")
+    with (out / f"tables/{id}-gpu.md").open("a") as output:
+        output.write("\n![Full bake and path cull](../images/render/gpu/appearance-path-culled.png)\n")
         if (out / "render/gpu/appearance-path-culled.crops.png").exists():
-            output.write("\n![Path cull differences](../../../../../docs/images/render/gpu/appearance-path-culled.crops.png)\n")
-    (out / "measurements.json").write_text(json.dumps({"source": stamp, "rows": rows, "sweep": sweep}, indent=2) + "\n")
+            output.write("\n![Path cull differences](../images/render/gpu/appearance-path-culled.crops.png)\n")
+    machine = machine_table()
+    (out / "tables/bake-machine.md").write_text(machine)
+    (out / "tables/bake-steps.md").write_text(bake_steps_table(bake_steps))
+    (out / "measurements.json").write_text(json.dumps({"source": stamp, "rows": rows, "sweep": sweep,
+                                                        "bake_steps": bake_steps, "machine": machine}, indent=2) + "\n")
     apply_tables(ROOT, out / "tables")
     for image in (out / "render/gpu").glob("*.png"):
         target = ROOT / "docs/images/render/gpu" / image.name
@@ -477,6 +573,8 @@ def check_gpu(out):
 def main(argv=None):
     git_environment()
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scene", type=Path, required=True)
+    parser.add_argument("--object", required=True)
     parser.add_argument("--stage", choices=("gpu", "board"), required=True)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--check", action="store_true")

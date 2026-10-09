@@ -2,10 +2,9 @@
  * scene_sponza: Crytek Sponza flown through on a looping camera path.
  *
  * The scene manager owns the frame: this loads the scene, shows one of its
- * five bakes and draws the HUD, while the shell advances the camera and
- * draws it. Light is baked into the mesh, so a frame is only cull, transform,
- * clip and fill on both cores. Five scenes share this code, one per bake:
- * full, lite, flat, fitted and fitted full.
+ * bakes (sponza_bakes) and draws the HUD, while the shell advances the camera
+ * and draws it. Light is baked into the mesh, so a frame is only cull,
+ * transform, clip and fill on both cores. One scene per bake shares this code.
  */
 
 #include <assert.h>
@@ -16,7 +15,9 @@
 
 #include "esp_log.h"
 
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/present/gfx_present.h"
+#include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
@@ -25,6 +26,25 @@
 #include "util/runtime/tune.h"
 
 static const char* TAG = "sponza";
+
+/* The budget last handed to the scene; -1 for none yet. */
+static int applied_budget_ms = -1;
+
+static void
+apply_budget(void) {
+    const int budget_ms = render_lab_budget_ms();
+    if (budget_ms == applied_budget_ms) {
+        return;
+    }
+    applied_budget_ms = budget_ms;
+    if (budget_ms == 0) {
+        render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
+        return;
+    }
+    const resolution_config_t config =
+        resolution_config(sponza_ladder, SPONZA_LADDER_STEPS, SPONZA_LADDER_RECOVERY, budget_ms * 1000);
+    render_context_set_dynamic_resolution(render_context_main(), &config, &sponza_ladder_model, SPONZA_LADDER_HALF);
+}
 
 static scene_t* sponza;
 
@@ -51,7 +71,7 @@ record_failure(const scene_failure_t* why) {
     }
 }
 
-/* Loads the scene and shows sponza_bakes[shown], the one of its five bakes to draw. */
+/* Loads the scene and shows sponza_bakes[shown]. */
 static void
 enter_with(sponza_bake_t shown) {
     gfx_set_partial_clear(false);
@@ -74,10 +94,12 @@ enter_with(sponza_bake_t shown) {
         }
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
-    (void)scene_activate(sponza, NULL);
-    scene_set_render_scale(10000 / render_lab_scale());
+    (void)scene_activate(sponza, render_lab_start_camera);
+    render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
+    applied_budget_ms = -1;
+    apply_budget();
 #if TUNE_ENABLED
-    scene_set_debug_view(render_lab_view());
+    render_context_set_view(render_context_main(), render_lab_view());
 #endif
 }
 
@@ -107,7 +129,13 @@ scene_sponza_fitted_full_enter(void) {
 }
 
 static void
+scene_sponza_flat_fitted_enter(void) {
+    enter_with(SPONZA_BAKE_FLAT_FITTED);
+}
+
+static void
 scene_sponza_exit(void) {
+    render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     scene_unload(sponza);
     sponza = NULL;
 }
@@ -121,8 +149,9 @@ static void
 scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     (void)dt_ms;
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
+    apply_budget();
 #if TUNE_ENABLED
-    scene_set_debug_view(render_lab_view());
+    render_context_set_view(render_context_main(), render_lab_view());
 #endif
 }
 
@@ -132,78 +161,36 @@ sponza_status(void) {
     if (failure[0] != '\0') {
         return failure;
     }
-    if (snprintf(buf, sizeof buf, "%5d tris", scene_stats().triangles) < 0) {
+    /* Under a budget, the size the frame drew at, so a step shows on the panel. */
+    const render_context_frame_t r = render_context_frame(render_context_main());
+    const int wrote =
+        r.step < 0 ? snprintf(buf, sizeof buf, "%5d tris", render_context_frame(render_context_main()).stats.triangles)
+                   : snprintf(buf, sizeof buf, "%dx%d %5d tris", r.width, r.height,
+                              render_context_frame(render_context_main()).stats.triangles);
+    if (wrote < 0) {
         buf[0] = '\0';
     }
     return buf;
 }
 
+/* What every bake's scene shares; each names itself, its key and its bake's enter. */
+#define SPONZA_SCENE_FIELDS                                                                                            \
+    .frame = scene_sponza_frame, .exit = scene_sponza_exit, .invalidate = scene_sponza_invalidate,                     \
+    .status = sponza_status, .needs_full_framebuffer = true, .shows_view_modes = true
+
 const render_lab_scene_t scene_sponza = {
-    .name = "Sponza",
-    .key = "sponza",
-    .enter = scene_sponza_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_lite = {
-    .name = "Sponza Lite",
-    .key = "sponza-lite",
-    .enter = scene_sponza_lite_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza Lite", .key = "sponza-lite", .enter = scene_sponza_lite_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_flat = {
-    .name = "Sponza Flat",
-    .key = "sponza-flat",
-    .enter = scene_sponza_flat_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
+    .name = "Sponza Flat", .key = "sponza-flat", .enter = scene_sponza_flat_enter, SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_fitted = {
-    .name = "Sponza Fitted",
-    .key = "sponza-fitted",
-    .enter = scene_sponza_fitted_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
-
-const render_lab_scene_t scene_sponza_fitted_full = {
-    .name = "Sponza Fitted Full",
-    .key = "sponza-fitted-full",
-    .enter = scene_sponza_fitted_full_enter,
-    .frame = scene_sponza_frame,
-    .update = NULL,
-    .frame_band = NULL,
-    .exit = scene_sponza_exit,
-    .invalidate = scene_sponza_invalidate,
-    .status = sponza_status,
-    .needs_full_framebuffer = true,
-    .shows_view_modes = true,
-};
+    .name = "Sponza Fitted", .key = "sponza-fitted", .enter = scene_sponza_fitted_enter, SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_fitted_full = {.name = "Sponza Fitted Full",
+                                                     .key = "sponza-fitted-full",
+                                                     .enter = scene_sponza_fitted_full_enter,
+                                                     SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_flat_fitted = {.name = "Sponza Flat Fitted",
+                                                     .key = "sponza-flat-fitted",
+                                                     .enter = scene_sponza_flat_fitted_enter,
+                                                     SPONZA_SCENE_FIELDS};

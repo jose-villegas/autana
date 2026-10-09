@@ -22,10 +22,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gfx/draw/gfx_color.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
+#include "gfx/draw/icon.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_color.h"
-#include "gfx/gfx_font_roles.h"
-#include "gfx/icon.h"
 #include "icons_sand.h"
 #include "material.h"
 #include "material_palette.h"

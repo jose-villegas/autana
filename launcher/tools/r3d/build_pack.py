@@ -5,11 +5,13 @@
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml or a folder
-searched for all three; with none, launcher/main is searched. A root is a file
-nothing else names: NAME.scene.toml is pack NAME, holding the scene entry
-NAME, every mesh its renderers name and the clip its camera flies; an
-NAME.import.toml no scene places is pack NAME, holding its variants; an
-NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
+searched for all three; with none, launcher/main is searched. An app's
+demo_assets.toml adds launcher/demo/NAME for each NAME in its `demo` list;
+one inside launcher/demo is refused. A folder reached twice is searched
+once. A root is a file nothing else names: NAME.scene.toml is pack NAME,
+holding the scene entry NAME, every mesh its renderers name and the clip its
+camera flies; an NAME.import.toml no scene places is pack NAME, holding its
+variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
 a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
 from their files, each with its stem for id. Ids are unique within a pack,
@@ -29,26 +31,41 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset  # noqa: E402
-from r3d.import_settings import SettingsError, load_import_settings, load_scene  # noqa: E402
+from r3d.import_settings import SettingsError, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
+DEMO = REPO / "launcher" / "demo"
 SCENE, IMPORT, CLIP = ".scene.toml", ".import.toml", tracks_asset.SUFFIX
 PACK_SUFFIX = ".apak"
 
 
 def input_files(paths):
-    """The import, scene and clip files under `paths`, each folder searched."""
-    found = []
-    for path in map(pathlib.Path, paths):
+    """The import, scene and clip files under `paths` and app-selected demos;
+    manifests inside DEMO are refused, and each folder is searched once."""
+    found, searched = set(), set()
+    pending = list(map(pathlib.Path, paths))
+    while pending:
+        path = pending.pop(0).resolve()
+        if path in searched:
+            continue
+        searched.add(path)
         if path.is_dir():
-            found += sorted(p for p in path.rglob("*.toml") if p.name.endswith((IMPORT, SCENE, CLIP)))
+            found.update(p for p in path.rglob("*.toml") if p.name.endswith((IMPORT, SCENE, CLIP)))
+            for manifest in sorted(path.rglob("demo_assets.toml")):
+                if manifest.is_relative_to(DEMO.resolve()):
+                    raise SettingsError(f"{manifest}: only an app names demo assets")
+                for name in load_demo_assets(manifest):
+                    demo = DEMO / name
+                    if not demo.is_dir():
+                        raise SettingsError(f"{manifest}: no demo folder for {name!r}")
+                    pending.append(demo)
         elif path.name.endswith((IMPORT, SCENE, CLIP)):
-            found.append(path)
+            found.add(path)
         else:
             raise SettingsError(f"{path}: not an .import.toml, a .scene.toml, an .anim.toml or a folder")
-    return found
+    return sorted(found)
 
 
 def add_entry(entries, key, source, root):
@@ -59,14 +76,15 @@ def add_entry(entries, key, source, root):
 
 
 def scene_entries(path, scene):
-    """{entry id: its source} of a scene's pack: its entry, its meshes and its camera's clip."""
+    """{entry id: its source} of a scene's pack: its entry, its meshes and every camera's clip."""
     entries = {}
     add_entry(entries, scene_asset.scene_id(path), path, path)
     for item in scene.renderers:
         add_entry(entries, item.asset_name, item.asset_path, path)
-    clip = scene.camera.component.path if scene.camera else None
-    if clip:
-        add_entry(entries, clip.clip, clip.animation, path)
+    for camera in (obj for obj in scene.objects if obj.kind == "camera"):
+        clip = camera.component.path
+        if clip:
+            add_entry(entries, clip.clip, clip.animation, path)
     return entries
 
 
@@ -135,22 +153,27 @@ def pack_entry(key, source):
 def write_if_changed(path, data):
     if not path.is_file() or path.read_bytes() != data:
         path.write_bytes(data)
+        return True
+    return False
 
 
 def write_packs(out, packs, image=None):
     """Writes each pack to out/<name>.apak, removing any other .apak there, and
-    with `image` the partition image."""
+    with `image` the partition image; returns the names of the packs whose
+    bytes changed. Every pack is parsed first, so a bad one is never written."""
+    for pack in packs.values():
+        parse_pack(pack)
     out.mkdir(parents=True, exist_ok=True)
     for stale in out.glob("*" + PACK_SUFFIX):
         if stale.name.removesuffix(PACK_SUFFIX) not in packs:
             stale.unlink()
-    for name, pack in packs.items():
-        write_if_changed(out / f"{name}{PACK_SUFFIX}", pack)
+    changed = [name for name, pack in packs.items() if write_if_changed(out / f"{name}{PACK_SUFFIX}", pack)]
     if image is not None:
         data = build_directory(sorted(packs.items()))
         parse_directory(data)
         image.parent.mkdir(parents=True, exist_ok=True)
         write_if_changed(image, data)
+    return changed
 
 
 def main(argv=None):
@@ -173,12 +196,10 @@ def main(argv=None):
         if not args.out:
             parser.error("-o DIR is required")
         packs = pack_bytes(paths, args.replace)
-        contents = {name: parse_pack(pack) for name, pack in packs.items()}
-        write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None)
+        for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
+            print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
         parser.error(str(error))
-    for name, entries in contents.items():
-        print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(entries)))
     return 0
 
 

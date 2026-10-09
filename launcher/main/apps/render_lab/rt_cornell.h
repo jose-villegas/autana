@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #include "render/r3d.h"
 
 typedef ray_camera_t rt_cornell_camera_t;

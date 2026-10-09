@@ -9,9 +9,9 @@
  *===========================================================================*/
 #pragma once
 
-#include "gfx/gfx_color.h"
-#include "gfx/gfx_indexed.h"
-#include "gfx/gfx_palette.h"
+#include "gfx/draw/gfx_color.h"
+#include "gfx/present/gfx_indexed.h"
+#include "gfx/draw/gfx_palette.h"
 
 #define SAND_PALETTE_UI_ENTRIES 16
 

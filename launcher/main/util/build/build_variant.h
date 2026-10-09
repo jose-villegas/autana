@@ -28,3 +28,10 @@
 #endif
 
 #endif
+
+/* 1 in a development device build and on a host, where development-only code is tested. */
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+#define BUILD_VARIANT_DEVELOPMENT_OR_HOST 1
+#else
+#define BUILD_VARIANT_DEVELOPMENT_OR_HOST 0
+#endif

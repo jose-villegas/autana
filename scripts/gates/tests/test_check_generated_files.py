@@ -52,6 +52,31 @@ def header(command, value):
 
 
 class GateTests(unittest.TestCase):
+    def test_engine_table_exists_without_engine_outputs(self):
+        from check_generated_files import table_documents
+        self.assertEqual(table_documents([]), {TABLE_DOC: (TABLE_BLOCK, [])})
+        app = "launcher/main/apps/example/value.h"
+        self.assertEqual(table_documents([app])[TABLE_DOC], (TABLE_BLOCK, []))
+
+    def test_write_table_rejects_an_app_readme_without_its_block(self):
+        app = "launcher/main/apps/example/value.h"
+        doc = "launcher/main/apps/example/tools/README.md"
+        self.add(app, header("python tools/gen.py 1 > " + app, 1))
+        self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
+        self.add(doc, "# Tools\n")
+        done = subprocess.run([sys.executable, str(GATE), "--root", str(self.root), "--write-table"],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("FAIL " + doc, done.stdout)
+
+    def test_app_outputs_have_tables_in_their_own_tools_folder(self):
+        from check_generated_files import table_documents
+        names = ["launcher/main/gfx/generated.h", "launcher/main/apps/example/generated.h"]
+        self.assertEqual(table_documents(names), {
+            TABLE_DOC: (TABLE_BLOCK, [names[0]]),
+            "launcher/main/apps/example/tools/README.md": (TABLE_BLOCK + "-example", [names[1]]),
+        })
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -70,6 +95,36 @@ class GateTests(unittest.TestCase):
         path.write_text(text, encoding="utf-8", newline="\n")
         subprocess.run(["git", "add", "-A"], cwd=self.root, check=True)
         return path
+
+    def test_full_run_checks_and_rewrites_engine_and_underscore_app_tables(self):
+        import re
+        engine = "main/a.h"
+        app = "launcher/main/apps/synthetic_app/value.h"
+        doc = "launcher/main/apps/synthetic_app/tools/README.md"
+        self.generator("tools", app, source=GENERATOR.replace("tools/gen.py", "tools/app.py"), file="app.py")
+        self.add(engine, header("python tools/gen.py 1 > main/a.h", 1))
+        self.add(app, header(f"python tools/app.py 2 > {app}", 2))
+        self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
+        block = TABLE_BLOCK + "-synthetic-app"
+        app_doc = self.add(doc, f"<!-- generated: {block} -->\n<!-- /generated: {block} -->\n")
+        def gate(*args):
+            return subprocess.run([sys.executable, str(GATE), "--root", str(self.root), *args],
+                                  capture_output=True, text=True)
+        stale = gate()
+        self.assertEqual(stale.returncode, 1, stale.stdout + stale.stderr)
+        for owner in (TABLE_DOC, doc):
+            self.assertIn(f"FAIL {owner}", stale.stdout)
+        written = gate("--write-table")
+        self.assertEqual(written.returncode, 0, written.stdout + written.stderr)
+        fresh = gate()
+        self.assertEqual(fresh.returncode, 0, fresh.stdout + fresh.stderr)
+        for target in re.findall(r"\]\(([^)]+)\)", app_doc.read_text()):
+            self.assertTrue((app_doc.parent / target).is_file(), target)
+        app_doc.write_text("No generated block here.\n")
+        missing = gate()
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn(f"FAIL {doc}", missing.stdout)
+        self.assertNotIn("Traceback", missing.stderr)
 
     def test_finds_only_tracked_files_with_the_marker_in_their_first_five_lines(self):
         self.add("main/a.h", header("python tools/gen.py 1 > main/a.h", 1))

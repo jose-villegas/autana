@@ -7,6 +7,7 @@
 
 #include "ui/ui_control_center.h"
 
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 

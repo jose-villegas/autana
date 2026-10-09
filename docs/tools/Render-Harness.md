@@ -19,10 +19,47 @@ Open `launcher/tools/results/render/launcher_home/landscape.bmp`
 for the home screen. The reference below explains how scenes are declared,
 checked, and compared with device captures.
 
+## Viewing a scene file
+
+```sh
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
+```
+
+The viewer needs no app. It builds the scene file's pack with
+`build_pack.py`, including its baked meshes and camera clip, into the harness's
+results folder and selects it through `AUTANA_ASSET_DIR`. The scene file can
+live outside the repository; its mesh and clip references resolve beside it.
+Meshes must already be baked.
+
+Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
+all authored renderers. An unknown renderer reports the available names.
+`--camera NAME` selects a camera; omission activates the scene's default.
+The camera follows its own path at `--frames N` times `--dt MS` (defaults:
+30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
+context's view, with shaded as the default. The names match the declared
+`render_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+`--size WxH` fixes the internal render resolution through a one-step ladder;
+the output still has the panel's dimensions. Each render axis must fit the
+panel framebuffer, 368 by 448.
+
+`--quarter 0|1` selects portrait or landscape (default: landscape), and
+`--panel` writes the panel's native orientation. `-o FILE` saves the final
+frame as BMP; without it the BMP goes to stdout. `--video FILE.avi` also saves
+every frame through the shared harness's video writer.
+
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
-repository root. It makes the launcher's and the UI toolkit's images itself and runs each app's
+repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
+bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
+`scene_viewer.sh`, selecting one renderer with `--object NAME`.
+`doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
+meshlet still; its normal run also writes that image beside the view GIFs.
+Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
+`render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
+name of the scene's full renderer; the scene must also place `OBJECT_lite`,
+`OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
+The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
 `tools/doc_images.sh` for the app's own:
 
 ```sh
@@ -37,9 +74,11 @@ It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 ```
 
-An app's `tools/doc_images.sh` may also need the packages in
-`launcher/tools/r3d/requirements.txt` and the source model that the import fetches,
-SHA-256 checked, into `launcher/tools/r3d/.cache`; the workflow caches it.
+The demo image script needs the packages in
+`launcher/tools/r3d/requirements.txt`. Demo source models live in
+`launcher/demo/*/source/` under Git LFS; fetch them with
+`git lfs pull --exclude=""` before a reference render. The CPU workflow caches
+the LFS objects.
 A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
@@ -59,13 +98,14 @@ requests".
 | `overview/launcher-home.gif` | the same, rocking the board either way |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
-Measured CPU tables are refreshed with the images. App scripts write Markdown
-to out/tables/NAME.md. The shared writer replaces the body between an HTML
-comment containing `generated: NAME sha256=HASH` and one containing
+Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
+the dynamic-resolution report write one Markdown table per block name into
+the output tree's tables folder. The shared writer replaces the body between
+an HTML comment containing `generated: NAME sha256=HASH` and one containing
 `/generated: NAME`, preserving the document's other text and line endings.
-Names use lowercase letters, digits and hyphens and are unique
-across documents. The SHA-256 covers the body,
-including its boundary newlines, with CRLF normalized to LF.
+Names use lowercase letters, digits and hyphens and are unique across
+documents. The SHA-256 covers the body, including its boundary newlines, with
+CRLF normalized to LF.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
 fails on a body hash mismatch or malformed boundaries, without rendering.
 Change a measurement's source or generator and regenerate its block; a hash
@@ -75,6 +115,14 @@ changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
 the WSL CUDA environment; the board stage consumes a perf capture. Both use
 this writer.
+
+`--stage board` takes one `--capture PATH` per board run, all from the same
+diagnostics image, and uses their median; `--check` reports without writing.
+It rejects missing variants, missing or repeated per-pose timings, failed
+suites and mismatched build identities, and rewrites the board tables and
+`launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
+weights change. `--build-commit SHA` accepts a capture from that commit while
+the firmware sources still match.
 
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its source
@@ -240,7 +288,7 @@ passes, so a new scene is not blocked on one.
 
 **A pin only holds where the pixels are integer-exact**, since CI renders on
 a different compiler and C library than anyone's desk. The self-test report
-and the home screen are pinned: `gfx.c` does no float maths, and the scroll
+and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called. The
 wire and cube scenes project in float (`util/math/`) and are pinned too:

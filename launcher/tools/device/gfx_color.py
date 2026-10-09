@@ -1,8 +1,12 @@
-"""gfx_color: the firmware's RGB565 packing (launcher/main/gfx/gfx_color.h) for host tools.
+"""gfx_color: the firmware's RGB565 packing (launcher/main/gfx/draw/gfx_color.h) for host tools.
 
 Every function works on plain ints and on numpy integer arrays at least 16
 bits wide.
 """
+
+# The 8-bit levels one step of each RGB565 channel spans: red, green, blue,
+# the bits rgb565() drops from each.
+STEP = (1 << 3, 1 << 2, 1 << 3)
 
 
 def rgb565(r, g, b):

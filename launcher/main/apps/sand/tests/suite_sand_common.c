@@ -30,6 +30,112 @@ fixture(void) {
     sand_init(&s, cells, W, H, 12345u);
 }
 
+void
+stone_floor_fixture(void) {
+    fixture();
+    sand_clear(&s);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+}
+
+void
+soaked_bed_fixture(cell_t bed) {
+    stone_floor_fixture();
+    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    sand_fill_box(&s, 0, H - 2, W, H - 1, bed);
+}
+
+void
+wide_open(uint32_t seed) {
+    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "the wide grid must fit in what the framebuffer leaves");
+    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, seed);
+}
+
+int
+heat_conductor_row(sand_t* g, int len, cell_t target) {
+    const int target_x = 2 + len;
+    sand_fill_box(g, target_x - 1, HEAT_ROW_Y + 1, target_x + 2, HEAT_ROW_Y + 2, STONE);
+    sand_set(g, 1, HEAT_ROW_Y, FIRE);
+    sand_fill_box(g, 2, HEAT_ROW_Y, target_x, HEAT_ROW_Y + 1, STONE);
+    sand_set(g, target_x, HEAT_ROW_Y, target);
+    return target_x;
+}
+
+void
+use_app_rates(sand_t* g) {
+    sand_set_scatter(g, SAND_SCATTER_PER_MATERIAL);
+    sand_set_decay(g, SAND_DECAY_PER_MATERIAL);
+    sand_set_mobility(g, SAND_MOBILITY_PER_MATERIAL);
+}
+
+void
+sheltered_root_fixture(void) {
+    fixture();
+    sand_clear(&s);
+    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    sand_fill_box(&s, ROOT_X - 2, ROOT_Y + 1, ROOT_X + 3, ROOT_Y + 2, STONE);
+    sand_set(&s, ROOT_X, ROOT_Y - 1, CELL_MAKE(MAT_WOOD, 0));
+    sand_set(&s, ROOT_X, ROOT_Y, MATX(MATX_ROOT));
+}
+
+impulse_t*
+impulses_open(sand_t* g, int max) {
+    impulse_t* buf = malloc((size_t)max * sizeof *buf);
+    TEST_ASSERT_NOT_NULL_MESSAGE(buf, "the impulse queue must fit in what the framebuffer leaves");
+    sand_enable_impulses(g, buf, max);
+    return buf;
+}
+
+void
+boxed_lit_square(sand_t* g) {
+    const int h = g->h;
+    sand_fill_box(g, 2, h - 3, 3, h - 1, STONE);
+    sand_fill_box(g, 5, h - 3, 6, h - 1, STONE);
+    sand_fill_box(g, 3, h - 3, 5, h - 1, GUNPOWDER_LIT_CELL);
+}
+
+bool
+step_until_square_burns(sand_t* g, int max_steps) {
+    const int h = g->h;
+    for (int i = 0; i < max_steps; i++) {
+        sand_step(g, 0, 1000, 0);
+        for (int y = h - 3; y < h - 1; y++) {
+            for (int x = 3; x < 5; x++) {
+                if (!cell_is_gunpowder(sand_at(g, x, y))) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+int
+grain_count(void) {
+    return sand_count(&s);
+}
+
+const int gravity_dirs[8][2] = {
+    {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
+};
+
+void
+assert_count_kept_in_every_direction(int (*count)(void), int expected, const char* msg) {
+    for (int d = 0; d < 8; d++) {
+        for (int i = 0; i < 20; i++) {
+            sand_step(&s, gravity_dirs[d][0], gravity_dirs[d][1], 0);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, count(), msg);
+        }
+    }
+}
+
+void
+run_steps(sand_t* g, int steps, int gx, int gy) {
+    for (int i = 0; i < steps; i++) {
+        sand_step(g, gx, gy, 0);
+    }
+}
+
 /* Load a picture of a grid. Rows are given top to bottom, so the text reads
  * the way the screen looks. */
 void
@@ -63,9 +169,7 @@ settle_with_sleeping(const char* rows[], int count, int steps, int gx, int gy) {
     sand_enable_sleeping(&s, sleep_blocks);
     load(rows, count);
 
-    for (int i = 0; i < steps; i++) {
-        sand_step(&s, gx, gy, 0);
-    }
+    run_steps(&s, steps, gx, gy);
 }
 
 void
@@ -78,9 +182,7 @@ assert_nothing_left_to_do(int gx, int gy) {
     sand_init(&awake, cells, W, H, 999u);
     memcpy(cells, settled, sizeof(settled));
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&awake, gx, gy, 0);
-    }
+    run_steps(&awake, 60, gx, gy);
 
     TEST_ASSERT_EQUAL_MEMORY_MESSAGE(settled, cells, sizeof(settled),
                                      "a fully awake simulation found something to move that the sleeping "
@@ -438,4 +540,38 @@ void
 collect_core1_lane(void) {
     for (int tries = 0; tries < 20 && !job_wait(100); tries++) {}
     TEST_ASSERT_TRUE_MESSAGE(job_wait(0), "a core-1 lane never came back");
+}
+
+void
+sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h) {
+    *grid = malloc((size_t)w * (size_t)h);
+    *blocks = malloc(sand_sleep_block_bytes(w, h));
+    if (*grid == NULL || *blocks == NULL) {
+        free(*grid);
+        free(*blocks);
+        TEST_FAIL_MESSAGE("grid or block map failed to allocate");
+    }
+}
+
+static void
+init_sleeping(sand_t* g, uint8_t* grid, uint8_t* blocks, int w, int h, uint32_t seed) {
+    sand_init(g, grid, w, h, seed);
+    sand_enable_sleeping(g, blocks);
+}
+
+void
+sand_test_grid_init(sand_t* g, uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
+    sand_test_grid_buffers_open(grid, blocks, w, h);
+    init_sleeping(g, *grid, *blocks, w, h, seed);
+}
+
+/* Buffers before the sand_t: timed rows depend on this heap order. */
+sand_t*
+sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed) {
+    sand_test_grid_buffers_open(grid, blocks, w, h);
+
+    sand_t* const real = malloc(sizeof *real);
+    TEST_ASSERT_NOT_NULL(real);
+    init_sleeping(real, *grid, *blocks, w, h, seed);
+    return real;
 }

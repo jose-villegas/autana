@@ -330,6 +330,33 @@ field_docs_offsets_are_sound(void) {
     }
 }
 
+/*
+ * One row's worth of rows (materials[] name + reactions[]/extended_
+ * reactions[] row + movement kind), built once and reused for both the
+ * per-material section and the pairwise join table below.
+ */
+
+typedef struct {
+    const char* name;
+    const reaction_t* r;
+    material_kind_t kind;
+    uint8_t self_id;  /* the plain material id this row's own material is
+                        * (MAT_EXTENDED for every extended material, since
+                        * they share that one id and have no plain id of
+                        * their own), see emit_ignite()'s self check,
+                        * which needs this to tell "ignites into itself"
+                        * (wood) apart from "ignites into a third thing" */
+    uint8_t color_id; /* the raw byte a TARGET field would hold if it
+                        * named this exact material - a plain id for an
+                        * ordinary material, MATX(k) for an extended one.
+                        * Unlike self_id above (MAT_EXTENDED for every
+                        * extended material) this keeps k, because
+                        * material_hex() needs the real swatch cell to
+                        * look a colour up, not just which physics row the
+                        * material shares, see material_hex()'s own
+                        * comment. */
+} mrow_t;
+
 static const field_doc_t*
 field_doc(const char* name) {
     for (size_t i = 0; i < ARRAY_LEN(field_docs); i++) {
@@ -339,6 +366,11 @@ field_doc(const char* name) {
     }
     fprintf(stderr, "dump_reactions: field_doc(\"%s\") - no such field\n", name);
     exit(1);
+}
+
+static uint8_t
+field_u8(const mrow_t* row, const char* field) {
+    return *((const uint8_t*)row->r + field_doc(field)->offset);
 }
 
 /*
@@ -771,33 +803,6 @@ cause_marked(const char* field, size_t index) {
     return buf;
 }
 
-/*
- * One row's worth of rows (materials[] name + reactions[]/extended_
- * reactions[] row + movement kind), built once and reused for both the
- * per-material section and the pairwise join table below.
- */
-
-typedef struct {
-    const char* name;
-    const reaction_t* r;
-    material_kind_t kind;
-    uint8_t self_id;  /* the plain material id this row's own material is
-                        * (MAT_EXTENDED for every extended material, since
-                        * they share that one id and have no plain id of
-                        * their own), see emit_ignite()'s self check,
-                        * which needs this to tell "ignites into itself"
-                        * (wood) apart from "ignites into a third thing" */
-    uint8_t color_id; /* the raw byte a TARGET field would hold if it
-                        * named this exact material - a plain id for an
-                        * ordinary material, MATX(k) for an extended one.
-                        * Unlike self_id above (MAT_EXTENDED for every
-                        * extended material) this keeps k, because
-                        * material_hex() needs the real swatch cell to
-                        * look a colour up, not just which physics row the
-                        * material shares, see material_hex()'s own
-                        * comment. */
-} mrow_t;
-
 /* +1 for gunpowder: one row for all eight low-nibble codes 0xF8-0xFF, not
  * one per code - see build_rows()'s own comment on why. */
 static mrow_t all_rows[(MAT_COUNT - 1) + MATERIAL_EXTENDED_COUNT + 1];
@@ -1030,9 +1035,6 @@ static void
 adverb_exceptions_are_sound(void) {
     for (size_t i = 0; i < ARRAY_LEN(ADVERB_EXCEPTIONS); i++) {
         const adverb_exception_t* e = &ADVERB_EXCEPTIONS[i];
-        const field_doc_t* fd = field_doc(e->field); /* exits(1) itself if
-                                    * the field is not a real field_docs[]
-                                    * row */
         if (e->why == NULL || e->why[0] == '\0') {
             fprintf(stderr,
                     "dump_reactions: ADVERB_EXCEPTIONS[%zu] (%s) has no "
@@ -1055,7 +1057,7 @@ adverb_exceptions_are_sound(void) {
                     i, e->field, (unsigned)e->cell);
             exit(1);
         }
-        const uint8_t raw = *(const uint8_t*)((const unsigned char*)row->r + fd->offset);
+        const uint8_t raw = field_u8(row, e->field);
         const char* would_be = adverb(e->field, raw);
         if (strcmp(would_be, e->adverb) == 0) {
             fprintf(stderr,
@@ -2002,16 +2004,19 @@ collect_material_list(bool (*pred)(const mrow_t*), list_item_t* items, size_t ca
         if (!pred(&all_rows[i])) {
             continue;
         }
-        snprintf(items[count].name, sizeof(items[count].name), "%s", prose_name(all_rows[i].name));
+        const int written = snprintf(items[count].name, sizeof(items[count].name), "%s", prose_name(all_rows[i].name));
+        if (written < 0 || (size_t)written >= sizeof(items[count].name)) {
+            fprintf(stderr, "dump_reactions: material list name too long\n");
+            exit(1);
+        }
         material_hex(all_rows[i].color_id, items[count].color, sizeof(items[count].color));
         count++;
     }
     return count;
 }
 
-/* Generous headroom over the longest example built below (GRP_HARDEN,
- * eleven segments) so every seg_t[] here is a plain fixed-size local
- * array rather than anything allocated. */
+/* Recipes and their resolved segments share this bound; lists and optional
+ * rate gaps can expand one recipe part into several segments. */
 #define SEG_MAX 32
 
 static void
@@ -2081,12 +2086,268 @@ print_marked(const seg_t* segs, size_t n) {
     printf("\n");
 }
 
+typedef enum {
+    PART_END,
+    PART_GLUE,
+    PART_VERB,
+    PART_MATERIAL,
+    PART_TARGET,
+    PART_RATE,
+    PART_RATE_GAP,
+    PART_LIST,
+    PART_CAUSE,
+} example_part_kind_t;
+
+typedef struct {
+    example_part_kind_t kind;
+    const char* text;
+    bool (*members)(const mrow_t*);
+} example_part_t;
+
+typedef struct {
+    const char* subject;
+    const char* heading;
+    example_part_t parts[SEG_MAX];
+} example_t;
+
+static const example_t examples[] = {
+    /* emit_ignite, ignites_to == self_id */
+    {"Wood",
+     "Ignite - GRP_IGNITE: flammability, ignites_to, heat_sources (emit_ignite)",
+     {
+         {PART_VERB, "Catches", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_MATERIAL, "Fire", NULL},
+         {PART_RATE_GAP, "flammability", NULL},
+         {PART_GLUE, " from ", NULL},
+         {PART_LIST, NULL, pred_burns},
+         {PART_GLUE, ", and burns in place.", NULL},
+     }},
+    /* emit_burn, burns != 0, residue != 0, quench_to != 0 */
+    {"Fire",
+     "Burn - GRP_BURN: burns, residue, quench_to (emit_burn)",
+     {
+         {PART_GLUE, "Is a heat source in its own right; ", NULL},
+         {PART_RATE, "residue", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_VERB, "leaves", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_MATERIAL, "Smoke", NULL},
+         {PART_GLUE, " when it burns out. Touched by ", NULL},
+         {PART_LIST, NULL, is_quenching_liquid},
+         {PART_GLUE, ", becomes ", NULL},
+         {PART_TARGET, "quench_to", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_transform, heat_ramp == 0, heat_chance != 0, flaw_to == 0 */
+    {"Sand",
+     "Transform - GRP_TRANSFORM: heats_to, heat_chance, heat_sources (emit_transform)",
+     {
+         {PART_GLUE, "Beside ", NULL},
+         {PART_LIST, NULL, pred_burns},
+         {PART_GLUE, ", ", NULL},
+         {PART_VERB, "melts", NULL},
+         {PART_GLUE, " to ", NULL},
+         {PART_TARGET, "heats_to", NULL},
+         {PART_RATE_GAP, "heat_chance", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_temperature, heat_ramp == 0, conducts != 0 */
+    {"Metal",
+     "Temperature - GRP_TEMPERATURE: conducts (emit_temperature)",
+     {
+         {PART_VERB, "Passes heat on", NULL},
+         {PART_RATE_GAP, "conducts", NULL},
+         {PART_GLUE, ", without banking any of it itself.", NULL},
+     }},
+    /* emit_cold, chills != 0 */
+    {"Ice",
+     "Cold - GRP_COLD: chills (emit_cold)",
+     {
+         {PART_VERB, "Chills whatever it touches", NULL},
+         {PART_RATE_GAP, "chills", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_warmth, warms != 0 */
+    {"Steam",
+     "Warmth - GRP_WARMTH: warms (emit_warmth)",
+     {
+         {PART_VERB, "Warms whatever it touches", NULL},
+         {PART_RATE_GAP, "warms", NULL},
+         {PART_GLUE, ", without igniting or quenching anything.", NULL},
+     }},
+    /* emit_thaw, heats_to != 0 */
+    {"Snow",
+     "Thaw - GRP_THAW: thaws, heats_to (emit_thaw)",
+     {
+         {PART_VERB, "Melts in any liquid it touches", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_RATE, "thaws", NULL},
+         {PART_GLUE, ", becoming ", NULL},
+         {PART_TARGET, "heats_to", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_wet, soaks != 0, soaks_to != 0 */
+    {"Sand",
+     "Wet - GRP_WET: soaks, soaks_to, wetting_liquids (emit_wet)",
+     {
+         {PART_VERB, "Soaks up", NULL},
+         {PART_GLUE, " any ", NULL},
+         {PART_LIST, NULL, pred_wets_liquid},
+         {PART_GLUE, " it touches", NULL},
+         {PART_RATE_GAP, "soaks", NULL},
+         {PART_GLUE, ", becoming ", NULL},
+         {PART_TARGET, "soaks_to", NULL},
+         {PART_GLUE, " once it takes a unit in - ", NULL},
+         {PART_CAUSE, "soaks_to", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_acid, dissolves != 0, fizz != 0 */
+    {"Acid",
+     "Acid - GRP_ACID: dissolves, fizz (emit_acid)",
+     {
+         {PART_VERB, "Dissolves an adjacent cell", NULL},
+         {PART_RATE_GAP, "dissolves", NULL},
+         {PART_GLUE, ", ", NULL},
+         {PART_RATE, "fizz", NULL},
+         {PART_GLUE, " leaving ", NULL},
+         {PART_MATERIAL, "Smoke", NULL},
+         {PART_GLUE, " behind.", NULL},
+     }},
+    /* emit_grow, grows != 0 */
+    {"Plant",
+     "Grow - GRP_GROW: grows (emit_grow)",
+     {
+         {PART_VERB, "Grows into wet", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_MATERIAL, "Dirt", NULL},
+         {PART_RATE_GAP, "grows", NULL},
+         {PART_GLUE, ", against gravity, spending a level of that ", NULL},
+         {PART_MATERIAL, "Dirt", NULL},
+         {PART_GLUE, "'s moisture per cell.", NULL},
+     }},
+    /* emit_harden, hardens_to != 0 */
+    {"Plant",
+     "Harden - GRP_HARDEN: harden_chance, hardens_to, holds_line, clings_to (emit_harden)",
+     {
+         {PART_GLUE, "A straight run of 6 cells ", NULL},
+         {PART_RATE, "harden_chance", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_VERB, "hardens", NULL},
+         {PART_GLUE, " into ", NULL},
+         {PART_TARGET, "hardens_to", NULL},
+         {PART_GLUE, ", up to 2 cells wider at the foot than at the tip, and ", NULL},
+         {PART_RATE, "holds_line", NULL},
+         {PART_GLUE,
+          " a limb holds its own direction (rather than bending back toward gravity); the hardened body counts as part "
+          "of ",
+          NULL},
+         {PART_TARGET, "clings_to", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_regrow, sprouts != 0, sprouts_to != 0 */
+    {"Wood",
+     "Regrow - GRP_REGROW: sprouts, sprouts_to (emit_regrow)",
+     {
+         {PART_GLUE, "Standing in wet ", NULL},
+         {PART_MATERIAL, "Dirt", NULL},
+         {PART_GLUE, ", ", NULL},
+         {PART_VERB, "sprouts", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_TARGET, "sprouts_to", NULL},
+         {PART_GLUE, " beside itself", NULL},
+         {PART_RATE_GAP, "sprouts", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+    /* emit_shatter, shatters_to != 0 */
+    {"Glass",
+     "Shatter - GRP_SHATTER: shatters_to (emit_shatter)",
+     {
+         {PART_VERB, "Shatters", NULL},
+         {PART_GLUE, " into ", NULL},
+         {PART_TARGET, "shatters_to", NULL},
+         {PART_GLUE, " ", NULL},
+         {PART_CAUSE, "shatters_to", NULL},
+         {PART_GLUE, ".", NULL},
+     }},
+};
+
+static void
+example_material(seg_t* segs, size_t* n, list_item_t* material, uint8_t id) {
+    const int written = snprintf(material->name, sizeof(material->name), "%s", prose_name(to_name(id)));
+    if (written < 0 || (size_t)written >= sizeof(material->name)) {
+        fprintf(stderr, "dump_reactions: example material name too long\n");
+        exit(1);
+    }
+    material_hex(id, material->color, sizeof(material->color));
+    seg_material(segs, n, material->color, material->name);
+}
+
+static void
+example_rate(seg_t* segs, size_t* n, const mrow_t* row, const example_part_t* part) {
+    const uint8_t value = field_u8(row, part->text);
+    const char* word = adverb_cell(part->text, value, row->color_id);
+    if (part->kind == PART_RATE) {
+        seg_mark(segs, n, MARK_RATE, word);
+    } else {
+        seg_rate_gap(segs, n, word);
+    }
+}
+
+static void
+example_list(seg_t* segs, size_t* n, list_item_t* materials, size_t* material_count, const example_part_t* part) {
+    const size_t count = collect_material_list(part->members, &materials[*material_count], LIST_ITEM_MAX);
+    seg_list(segs, n, &materials[*material_count], count, " or ");
+    *material_count += count;
+}
+
+static void
+example_part(seg_t* segs, size_t* n, list_item_t* materials, size_t* material_count, const mrow_t* row,
+             const example_part_t* part) {
+    switch (part->kind) {
+        case PART_LIST: example_list(segs, n, materials, material_count, part); break;
+        case PART_MATERIAL:
+        case PART_TARGET: {
+            const uint8_t id = (part->kind == PART_TARGET) ? field_u8(row, part->text) : find_row(part->text)->color_id;
+            example_material(segs, n, &materials[(*material_count)++], id);
+            break;
+        }
+        case PART_RATE:
+        case PART_RATE_GAP: example_rate(segs, n, row, part); break;
+        case PART_CAUSE: seg_mark(segs, n, MARK_CAUSE, cause_at(part->text, 0)); break;
+        case PART_VERB: seg_mark(segs, n, MARK_VERB, part->text); break;
+        case PART_GLUE: seg_glue(segs, n, part->text); break;
+        case PART_END: break;
+    }
+}
+
 /* Plain sentence first, then the marked form immediately after - so the
  * section stays legible without a renderer (a raw diff, an editor, CI)
  * and not only on github.com. */
 static void
-print_example(const char* heading, const seg_t* segs, size_t n) {
-    printf("\n**%s**\n\n", heading);
+print_example(const example_t* example) {
+    const mrow_t* row = find_row(example->subject);
+    seg_t segs[SEG_MAX];
+    list_item_t materials[SEG_MAX];
+    size_t n = 0;
+    size_t material_count = 1;
+    material_hex(row->color_id, materials[0].color, sizeof(materials[0].color));
+    seg_material(segs, &n, materials[0].color, example->subject);
+    seg_glue(segs, &n, ": ");
+    for (size_t i = 0; i < ARRAY_LEN(example->parts); i++) {
+        const example_part_t* part = &example->parts[i];
+        if (part->kind == PART_END) {
+            break;
+        }
+        const size_t segment_limit = (part->kind == PART_LIST) ? (2 * LIST_ITEM_MAX) : 2;
+        const size_t material_limit = (part->kind == PART_LIST) ? LIST_ITEM_MAX : 1;
+        if ((n + segment_limit) > SEG_MAX || (material_count + material_limit) > SEG_MAX) {
+            fprintf(stderr, "dump_reactions: example too long: %s\n", example->heading);
+            exit(1);
+        }
+        example_part(segs, &n, materials, &material_count, row, part);
+    }
+    printf("\n**%s**\n\n", example->heading);
     print_plain(segs, n);
     printf("\n");
     print_marked(segs, n);
@@ -2182,358 +2443,8 @@ emit_anatomy(void) {
            "prefixed to the real per-material clause. Plain text first, "
            "then the same sentence with its slots marked.\n");
 
-    /* GRP_IGNITE - emit_ignite(): flammability, ignites_to == self_id,
-     * heat_sources. See emit_ignite() comment for "fire" and MAT_FIRE colour. */
-    {
-        const mrow_t* row = find_row("Wood");
-        char subject[COLOR_LEN];
-        char fire[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        material_hex(MAT_FIRE, fire, sizeof(fire));
-        list_item_t heat[LIST_ITEM_MAX];
-        const size_t heat_n = collect_material_list(pred_burns, heat, LIST_ITEM_MAX);
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Wood");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Catches");
-        seg_glue(segs, &n, " ");
-        seg_material(segs, &n, fire, "fire");
-        seg_rate_gap(segs, &n, adverb("flammability", row->r->flammability));
-        seg_glue(segs, &n, " from ");
-        seg_list(segs, &n, heat, heat_n, " or ");
-        seg_glue(segs, &n, ", and burns in place.");
-        print_example("Ignite - GRP_IGNITE: flammability, ignites_to, "
-                      "heat_sources (emit_ignite)",
-                      segs, n);
-    }
-
-    /* GRP_BURN - emit_burn(), the `burns` branch: residue, quench_to,
-     * quenching_liquids (derived, not a single field, see emit_burn()'s
-     * own comment on why "a quenching liquid" was replaced with the real,
-     * derived list). */
-    {
-        const mrow_t* row = find_row("Fire");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        char quench_name[32];
-        char quench_color[COLOR_LEN];
-        snprintf(quench_name, sizeof(quench_name), "%s", prose_name(to_name(row->r->quench_to)));
-        material_hex(row->r->quench_to, quench_color, sizeof(quench_color));
-        list_item_t quench[LIST_ITEM_MAX];
-        const size_t quench_n = collect_material_list(is_quenching_liquid, quench, LIST_ITEM_MAX);
-        char smoke_color[COLOR_LEN];
-        material_hex(MAT_SMOKE, smoke_color, sizeof(smoke_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Fire");
-        seg_glue(segs, &n, ": ");
-        seg_glue(segs, &n, "Is a heat source in its own right; ");
-        seg_mark(segs, &n, MARK_RATE, adverb("residue", row->r->residue));
-        seg_glue(segs, &n, " ");
-        seg_mark(segs, &n, MARK_VERB, "leaves");
-        seg_glue(segs, &n, " ");
-        seg_material(segs, &n, smoke_color, "smoke");
-        seg_glue(segs, &n, " when it burns out. Touched by ");
-        seg_list(segs, &n, quench, quench_n, " or ");
-        seg_glue(segs, &n, ", becomes ");
-        seg_material(segs, &n, quench_color, quench_name);
-        seg_glue(segs, &n, ".");
-        print_example("Burn - GRP_BURN: burns, residue, quench_to "
-                      "(emit_burn)",
-                      segs, n);
-    }
-
-    /* GRP_TRANSFORM - emit_transform(), the rolled (not banked) branch:
-     * heats_to, heat_chance, heat_sources. */
-    {
-        const mrow_t* row = find_row("Sand");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        list_item_t heat[LIST_ITEM_MAX];
-        const size_t heat_n = collect_material_list(pred_burns, heat, LIST_ITEM_MAX);
-        char heats_name[32];
-        char heats_color[COLOR_LEN];
-        snprintf(heats_name, sizeof(heats_name), "%s", prose_name(to_name(row->r->heats_to)));
-        material_hex(row->r->heats_to, heats_color, sizeof(heats_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Sand");
-        seg_glue(segs, &n, ": Beside ");
-        seg_list(segs, &n, heat, heat_n, " or ");
-        seg_glue(segs, &n, ", ");
-        seg_mark(segs, &n, MARK_VERB, "melts");
-        seg_glue(segs, &n, " to ");
-        seg_material(segs, &n, heats_color, heats_name);
-        /* adverb_cell(), not adverb() - Sand's heat_chance is exactly the
-         * row ADVERB_EXCEPTIONS overrides (see that table's own comment),
-         * so this example shows the same "slowly" a reader sees in the
-         * default Sand section below, not the silent middle the plain
-         * ladder alone would give it. */
-        seg_rate_gap(segs, &n, adverb_cell("heat_chance", row->r->heat_chance, row->color_id));
-        seg_glue(segs, &n, ".");
-        print_example("Transform - GRP_TRANSFORM: heats_to, heat_chance, "
-                      "heat_sources (emit_transform)",
-                      segs, n);
-    }
-
-    /* GRP_TEMPERATURE - emit_temperature(), the no-ramp branch: conducts
-     * alone. */
-    {
-        const mrow_t* row = find_row("Metal");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Metal");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Passes heat on");
-        seg_rate_gap(segs, &n, adverb("conducts", row->r->conducts));
-        seg_glue(segs, &n, ", without banking any of it itself.");
-        print_example("Temperature - GRP_TEMPERATURE: conducts "
-                      "(emit_temperature)",
-                      segs, n);
-    }
-
-    /* GRP_COLD - emit_cold(): chills. */
-    {
-        const mrow_t* row = find_row("Ice");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Ice");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Chills whatever it touches");
-        seg_rate_gap(segs, &n, adverb("chills", row->r->chills));
-        seg_glue(segs, &n, ".");
-        print_example("Cold - GRP_COLD: chills (emit_cold)", segs, n);
-    }
-
-    /* GRP_WARMTH - emit_warmth(): warms. */
-    {
-        const mrow_t* row = find_row("Steam");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Steam");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Warms whatever it touches");
-        seg_rate_gap(segs, &n, adverb("warms", row->r->warms));
-        seg_glue(segs, &n, ", without igniting or quenching anything.");
-        print_example("Warmth - GRP_WARMTH: warms (emit_warmth)", segs, n);
-    }
-
-    /* GRP_THAW - emit_thaw(), the heats_to != 0 branch: thaws, heats_to. */
-    {
-        const mrow_t* row = find_row("Snow");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        char heats_name[32];
-        char heats_color[COLOR_LEN];
-        snprintf(heats_name, sizeof(heats_name), "%s", prose_name(to_name(row->r->heats_to)));
-        material_hex(row->r->heats_to, heats_color, sizeof(heats_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Snow");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Melts in any liquid it touches");
-        seg_glue(segs, &n, " ");
-        seg_mark(segs, &n, MARK_RATE, adverb("thaws", row->r->thaws));
-        seg_glue(segs, &n, ", becoming ");
-        seg_material(segs, &n, heats_color, heats_name);
-        seg_glue(segs, &n, ".");
-        print_example("Thaw - GRP_THAW: thaws, heats_to (emit_thaw)", segs, n);
-    }
-
-    /* GRP_WET - emit_wet(), the soaks_to != 0 branch: soaks, soaks_to,
-     * and wetting_liquids (derived, not a single field). */
-    {
-        const mrow_t* row = find_row("Sand");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        list_item_t wet[LIST_ITEM_MAX];
-        const size_t wet_n = collect_material_list(pred_wets_liquid, wet, LIST_ITEM_MAX);
-        char soaks_name[32];
-        char soaks_color[COLOR_LEN];
-        snprintf(soaks_name, sizeof(soaks_name), "%s", prose_name(to_name(row->r->soaks_to)));
-        material_hex(row->r->soaks_to, soaks_color, sizeof(soaks_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Sand");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Soaks up");
-        seg_glue(segs, &n, " any ");
-        seg_list(segs, &n, wet, wet_n, " or ");
-        seg_glue(segs, &n, " it touches");
-        seg_rate_gap(segs, &n, adverb("soaks", row->r->soaks));
-        seg_glue(segs, &n, ", becoming ");
-        seg_material(segs, &n, soaks_color, soaks_name);
-        seg_glue(segs, &n, " once it takes a unit in - ");
-        seg_mark(segs, &n, MARK_CAUSE, cause_at("soaks_to", 0));
-        seg_glue(segs, &n, ".");
-        print_example("Wet - GRP_WET: soaks, soaks_to, wetting_liquids "
-                      "(emit_wet)",
-                      segs, n);
-    }
-
-    /* GRP_ACID - emit_acid(), the dissolves branch: dissolves (a genuine
-     * rate) and fizz (a one-shot chance) side by side - two different
-     * ladders, one slot marker. Neither field names a material, so this
-     * example has no MARK_MATERIAL segment beyond the subject. */
-    {
-        const mrow_t* row = find_row("Acid");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        char smoke_color[COLOR_LEN];
-        material_hex(MAT_SMOKE, smoke_color, sizeof(smoke_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Acid");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Dissolves an adjacent cell");
-        seg_rate_gap(segs, &n, adverb("dissolves", row->r->dissolves));
-        seg_glue(segs, &n, ", ");
-        /* `fizz` is FCHANCE - never silent, unlike `dissolves` just above -
-         * so this one keeps the unconditional seg_mark() the way every
-         * chance-scale field in this section does. */
-        seg_mark(segs, &n, MARK_RATE, adverb("fizz", row->r->fizz));
-        seg_glue(segs, &n, " leaving ");
-        seg_material(segs, &n, smoke_color, "smoke");
-        seg_glue(segs, &n, " behind.");
-        print_example("Acid - GRP_ACID: dissolves, fizz (emit_acid)", segs, n);
-    }
-
-    /* GRP_GROW - emit_grow(), the grows branch. "Wet DIRT", not the old
-     * hardcoded "wet soil", see pred_soil()'s own comment and this
-     * file's emit_grow(). Dirt is itself a material name now, so it gets
-     * its own MARK_MATERIAL segment rather than folding into the verb
-     * phrase the way "wet soil" once did. */
-    {
-        const mrow_t* row = find_row("Plant");
-        const mrow_t* dirt = find_row("Dirt");
-        char subject[COLOR_LEN];
-        char dirt_color[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        material_hex(dirt->color_id, dirt_color, sizeof(dirt_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Plant");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Grows into wet");
-        seg_glue(segs, &n, " ");
-        seg_material(segs, &n, dirt_color, "dirt");
-        seg_rate_gap(segs, &n, adverb("grows", row->r->grows));
-        seg_glue(segs, &n, ", against gravity, spending a level of that ");
-        seg_material(segs, &n, dirt_color, "dirt");
-        seg_glue(segs, &n, "'s moisture per cell.");
-        print_example("Grow - GRP_GROW: grows (emit_grow)", segs, n);
-    }
-
-    {
-        const mrow_t* row = find_row("Plant");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        char hardens_to[32];
-        char hardens_color[COLOR_LEN];
-        char clings_to[32];
-        char clings_color[COLOR_LEN];
-        snprintf(hardens_to, sizeof(hardens_to), "%s", prose_name(to_name(row->r->hardens_to)));
-        material_hex(row->r->hardens_to, hardens_color, sizeof(hardens_color));
-        snprintf(clings_to, sizeof(clings_to), "%s", prose_name(to_name(row->r->clings_to)));
-        material_hex(row->r->clings_to, clings_color, sizeof(clings_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Plant");
-        seg_glue(segs, &n, ": A straight run of 6 cells ");
-        seg_mark(segs, &n, MARK_RATE, adverb("harden_chance", row->r->harden_chance));
-        seg_glue(segs, &n, " ");
-        seg_mark(segs, &n, MARK_VERB, "hardens");
-        seg_glue(segs, &n, " into ");
-        seg_material(segs, &n, hardens_color, hardens_to);
-        seg_glue(segs, &n,
-                 ", up to 2 cells wider at the foot than at the "
-                 "tip, and ");
-        seg_mark(segs, &n, MARK_RATE, adverb("holds_line", row->r->holds_line));
-        seg_glue(segs, &n,
-                 " a limb holds its own direction (rather than "
-                 "bending back toward gravity); the hardened body counts "
-                 "as part of ");
-        seg_material(segs, &n, clings_color, clings_to);
-        seg_glue(segs, &n, ".");
-        print_example("Harden - GRP_HARDEN: harden_chance, hardens_to, "
-                      "holds_line, clings_to (emit_harden)",
-                      segs, n);
-    }
-
-    /* GRP_REGROW - emit_regrow(), the sprouts branch: sprouts, sprouts_to.
-     * "Wet DIRT", not the old hardcoded "wet soil", see the GRP_GROW
-     * example just above for the same fix, and pred_soil()'s comment. */
-    {
-        const mrow_t* row = find_row("Wood");
-        const mrow_t* dirt = find_row("Dirt");
-        char subject[COLOR_LEN];
-        char dirt_color[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        material_hex(dirt->color_id, dirt_color, sizeof(dirt_color));
-        char sprouts_name[32];
-        char sprouts_color[COLOR_LEN];
-        snprintf(sprouts_name, sizeof(sprouts_name), "%s", prose_name(to_name(row->r->sprouts_to)));
-        material_hex(row->r->sprouts_to, sprouts_color, sizeof(sprouts_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Wood");
-        seg_glue(segs, &n, ": Standing in wet ");
-        seg_material(segs, &n, dirt_color, "dirt");
-        seg_glue(segs, &n, ", ");
-        seg_mark(segs, &n, MARK_VERB, "sprouts");
-        seg_glue(segs, &n, " ");
-        seg_material(segs, &n, sprouts_color, sprouts_name);
-        seg_glue(segs, &n, " beside itself");
-        seg_rate_gap(segs, &n, adverb("sprouts", row->r->sprouts));
-        seg_glue(segs, &n, ".");
-        print_example("Regrow - GRP_REGROW: sprouts, sprouts_to "
-                      "(emit_regrow)",
-                      segs, n);
-    }
-
-    /* GRP_SHATTER - emit_shatter(): shatters_to, and MARK_CAUSE - one of
-     * two per-material clauses that ever print it (emit_spoils() is the
-     * other). Index 0, matching emit_shatter()'s own call, see that
-     * function's comment. */
-    {
-        const mrow_t* row = find_row("Glass");
-        char subject[COLOR_LEN];
-        material_hex(row->color_id, subject, sizeof(subject));
-        char shatters_name[32];
-        char shatters_color[COLOR_LEN];
-        snprintf(shatters_name, sizeof(shatters_name), "%s", prose_name(to_name(row->r->shatters_to)));
-        material_hex(row->r->shatters_to, shatters_color, sizeof(shatters_color));
-
-        seg_t segs[SEG_MAX];
-        size_t n = 0;
-        seg_material(segs, &n, subject, "Glass");
-        seg_glue(segs, &n, ": ");
-        seg_mark(segs, &n, MARK_VERB, "Shatters");
-        seg_glue(segs, &n, " into ");
-        seg_material(segs, &n, shatters_color, shatters_name);
-        seg_glue(segs, &n, " ");
-        seg_mark(segs, &n, MARK_CAUSE, cause_at("shatters_to", 0));
-        seg_glue(segs, &n, ".");
-        print_example("Shatter - GRP_SHATTER: shatters_to (emit_shatter)", segs, n);
+    for (size_t i = 0; i < ARRAY_LEN(examples); i++) {
+        print_example(&examples[i]);
     }
 }
 

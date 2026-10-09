@@ -29,8 +29,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_font.h"
-#include "gfx/icon.h"
+#include "gfx/draw/gfx_font.h"
+#include "gfx/draw/icon.h"
 #include "microui.h"
 #include "util/scalar/fixed.h"
 
@@ -212,7 +212,7 @@ ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
     ic->emit(ic->ctx, dst.x, dst.y, dst.w, dst.h);
 }
 
-/* icon_walk_blocks() (gfx/icon.h), with each emitted run mapped through `t`
+/* icon_walk_blocks() (gfx/draw/icon.h), with each emitted run mapped through `t`
  * before `emit` sees it, not just the enclosing `box`: transforming only
  * the box lands it correctly but leaves the glyph inside it upright under
  * any quarter turn, the bug MU_COMMAND_RECT/_TEXT never had. `box` is

@@ -179,7 +179,7 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/util/runtime/timing_wheel.h", CLOCK_READ),
             ("launcher/main/util/runtime/memory.c", HEAP_CALL),
             ("launcher/main/util/runtime/memory_extra.c", HEAP_CALL),
-            ("launcher/main/gfx/gfx_null_panel_device.c", CLOCK_READ + HEAP_CALL),
+            ("launcher/main/gfx/present/gfx_null_panel_device.c", CLOCK_READ + HEAP_CALL),
             ("launcher/main/input/input_device.c", CLOCK_READ),
             ("launcher/main/board/board.h", "#define FB_CAPS (MALLOC_CAP_SPIRAM)\n"),
         )

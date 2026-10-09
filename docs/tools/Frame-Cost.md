@@ -31,6 +31,13 @@ report flags a further one with ` +N dropped`, and a charge from any task but
 the frame loop's own with ` +N foreign`. On a host and in release the
 brackets compile to nothing.
 
+The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
+`r3d.draw`, `r3d.resolve` and `r3d.upscale`. Clip and span fill are inside
+`r3d.draw`; `r3d.resolve` runs only when an attachment has a resolve hook.
+The shell brackets presentation as `present`; when the frame loop overlaps the send
+with the next update, the bracket is `present.wait`, the time the frame waits
+for that send to finish.
+
 ## Hardware counters
 
 One name at a time can also be read against the S3's two performance

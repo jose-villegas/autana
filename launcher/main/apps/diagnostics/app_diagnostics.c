@@ -33,6 +33,8 @@
 #include "app/app.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_present.h"
 #include "input/imu.h"
 #include "selftest/post_layout.h"
 #include "selftest/post_ui.h"

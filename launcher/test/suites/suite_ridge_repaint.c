@@ -11,6 +11,8 @@
 
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
 #include "ui/ui_ridge.h"
 #include "util/runtime/memory.h"

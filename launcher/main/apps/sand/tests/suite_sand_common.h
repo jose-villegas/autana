@@ -17,6 +17,7 @@
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h" /* sand_chunk_share_t - a scope below pins it */
+#include "apps/sand/tests/sand_fill.h"
 
 /* Big enough for every case here, small enough to write out by hand. */
 #define W 8
@@ -38,9 +39,8 @@ extern uint8_t cells[W * H];
  * alive alongside another needs its own static, local to its one file. */
 typedef union {
     sand_t loc, splash_sim, crater_sim, cascade_test_sim, stir_sim, liq_cascade_sim, quench_sim, obst_pool, blend_pool,
-        debounce_test, hdebounce_test, depth_test, shallow_pool, wake_test_grid, band_test_grid, flash_test_grid,
-        shadow_test_grid, fizz_sim, dilute_sim, separated_dilute_sim, oil_dilute_sim, dilute_pour_sim, bubble_sim,
-        sleepy_bubble_sim;
+        debounce_test, depth_test, shallow_pool, wake_test_grid, band_test_grid, flash_test_grid, shadow_test_grid,
+        fizz_sim, dilute_sim, separated_dilute_sim, oil_dilute_sim, dilute_pour_sim, bubble_sim, sleepy_bubble_sim;
 } sand_test_fx_t;
 
 #define BLOCK_COLS ((W + SAND_BLOCK_W - 1) / SAND_BLOCK_W)
@@ -59,47 +59,98 @@ extern uint8_t sleep_blocks[BLOCK_COLS * BLOCK_ROWS];
 
 /* The second most-reused fixture after s/fixture() itself - every test
  * wide enough to need more than the 8x8 default, from water-levelling
- * through boiler/conduction/metal-rod tests, mallocs WIDE_W * WIDE_H bytes
- * into wide_cells and frees them once done, the same technique as every
- * other fixture in the split. */
+ * through boiler/conduction/metal-rod tests: wide_open() allocates
+ * wide_cells and the test frees it once done. */
 #define WIDE_W 32
 #define WIDE_H 20
 extern uint8_t* wide_cells;
 extern sand_t wide;
 
+/* Mallocs wide_cells and sand_init()s `wide` over it. The caller frees
+ * wide_cells. */
+void wide_open(uint32_t seed);
+
 /* The real screen size. Must match app_sand.c - duplicated rather than
  * shared because sand.h has no business knowing the screen size (see the
  * note at the top of sand.h). */
-#define REAL_W             184
-#define REAL_H             224
+#define REAL_W                           184
+#define REAL_H                           224
 
 /* A deliberately over-long grid, for reach-cap tests that cannot share
  * `wide`. CONDUCT_REACH_TEST mirrors sand_reactions.c's own
  * CONDUCT_REACH, which is private to that file; if the two ever drift
  * apart the tests that use this stop proving anything, so keep them
  * together. */
-#define CONDUCT_REACH_TEST 32
-#define CAP_W              (CONDUCT_REACH_TEST + 16)
-#define CAP_H              8
+#define CONDUCT_REACH_TEST               32
+#define CAP_W                            (CONDUCT_REACH_TEST + 16)
+#define CAP_H                            8
 
 /* Material shorthand. */
-#define WATER              CELL_MAKE(MAT_WATER, 8)
-#define STONE              CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
-#define SAND               CELL_MAKE(MAT_SAND, 8)
-#define GAS                CELL_MAKE(MAT_GAS, 8)
-#define FIRE               CELL_MAKE(MAT_FIRE, 8)
-#define WOOD               CELL_MAKE(MAT_WOOD, 0)
-#define STEAM              CELL_MAKE(MAT_STEAM, 8)
-#define SMOKE              CELL_MAKE(MAT_SMOKE, 8)
-#define EMBER              CELL_MAKE(MAT_WOOD, MATERIAL_VARIANTS - 1)
-#define OIL                CELL_MAKE(MAT_OIL, 8)
-#define LAVA               CELL_MAKE(MAT_LAVA, 8)
-#define GLASS              CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)
-#define SNOW               CELL_MAKE(MAT_SNOW, 8)
-#define ACID               CELL_MAKE(MAT_ACID, 8)
+#define WATER                            CELL_MAKE(MAT_WATER, 8)
+#define STONE                            CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT)
+#define SAND                             CELL_MAKE(MAT_SAND, 8)
+#define GAS                              CELL_MAKE(MAT_GAS, 8)
+#define FIRE                             CELL_MAKE(MAT_FIRE, 8)
+#define WOOD                             CELL_MAKE(MAT_WOOD, 0)
+#define STEAM                            CELL_MAKE(MAT_STEAM, 8)
+#define SMOKE                            CELL_MAKE(MAT_SMOKE, 8)
+#define EMBER                            CELL_MAKE(MAT_WOOD, MATERIAL_VARIANTS - 1)
+#define OIL                              CELL_MAKE(MAT_OIL, 8)
+#define LAVA                             CELL_MAKE(MAT_LAVA, 8)
+#define GLASS                            CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT)
+#define SNOW                             CELL_MAKE(MAT_SNOW, 8)
+#define ACID                             CELL_MAKE(MAT_ACID, 8)
+
+/* Asserts the default fixture's cell (x, y) holds material m. A macro, so a
+ * failure reports the test's own line. */
+#define ASSERT_MATERIAL_AT(m, x, y, msg) TEST_ASSERT_EQUAL_INT_MESSAGE((m), CELL_MATERIAL(sand_at(&s, (x), (y))), (msg))
 
 /* Resets the default fixture (s/cells) via sand_init(). */
 void fixture(void);
+
+/* fixture(), cleared, with a stone floor along the bottom row. */
+void stone_floor_fixture(void);
+
+/* The default fixture, cleared, soaking on: a root at (ROOT_X, ROOT_Y)
+ * sheltered by wood above it, on a stone ledge reaching two cells either
+ * side - a powder beside the root needs ledge past it, or it still has a
+ * diagonal to slide off into. */
+#define ROOT_X (W / 2)
+#define ROOT_Y 3
+void sheltered_root_fixture(void);
+
+/* The per-material scatter, decay and mobility app_sand.c runs with. */
+void use_app_rates(sand_t* g);
+
+/* Mallocs a queue of max impulses and enables it on g. The caller frees it. */
+impulse_t* impulses_open(sand_t* g, int max);
+
+/* A lit gunpowder 2x2 at columns 3-4 of the two rows above g's bottom row,
+ * stone either side of it; step_until_square_burns() steps g until one of
+ * its corners stops being gunpowder, and says whether one did. */
+void boxed_lit_square(sand_t* g);
+bool step_until_square_burns(sand_t* g, int max_steps);
+
+/* The eight gravity directions, clockwise from straight down. */
+extern const int gravity_dirs[8][2];
+
+/* sand_count() of the default fixture. */
+int grain_count(void);
+
+/* Steps the default fixture 20 times under each of the eight gravity
+ * directions, failing with msg the first time count() is not expected. */
+void assert_count_kept_in_every_direction(int (*count)(void), int expected, const char* msg);
+
+/* stone_floor_fixture() with soaking on and a full row of bed on the floor. */
+void soaked_bed_fixture(cell_t bed);
+
+/* Row HEAT_ROW_Y of g: fire at x = 1, a stone conductor `len` cells long
+ * from x = 2, then `target` on a three-cell stone shelf. Returns target's x. */
+#define HEAT_ROW_Y 2
+int heat_conductor_row(sand_t* g, int len, cell_t target);
+
+/* Steps g `steps` times under (gx, gy), no jostle. */
+void run_steps(sand_t* g, int steps, int gx, int gy);
 
 /* Loads a picture of a grid into s/cells. Rows are given top to bottom, so
  * the text reads the way the screen looks: 'o' a grain, anything else
@@ -236,3 +287,13 @@ void board_bookkeeping_close(void);
  * one hands the next a core still writing into memory about to be freed and
  * handed back. Waits it out before anything reads what it wrote. */
 void collect_core1_lane(void);
+
+/* Allocates g's grid and block map, then sand_init()s g with sleeping on.
+ * The caller frees both. */
+void sand_test_grid_init(sand_t* g, uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
+
+/* The caller owns all three allocations and frees them after its last step. */
+sand_t* sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t seed);
+
+/* Stack-owned simulations share the same per-test buffers as heap-owned ones. */
+void sand_test_grid_buffers_open(uint8_t** grid, uint8_t** blocks, int w, int h);

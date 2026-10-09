@@ -1,2 +1,2 @@
 [lfs]
-	fetchexclude = launcher/main/apps/*/meshes/*/**
+	fetchexclude = launcher/demo/*/source/**

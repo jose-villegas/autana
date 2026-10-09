@@ -343,7 +343,7 @@ TIMING_ORDER = [
      "drop shadow offset, pixels down (negative is up)"),
     ("title_shadow_alpha", "BOOT_ANIM_TITLE_SHADOW_ALPHA",
      "shadow density, 0..255 - 0 invisible, 255 solid, between is a "
-     "dithered fake transparency (see gfx_fill_rect_dither() in gfx.c)"),
+     "dithered fake transparency (see gfx_fill_rect_dither() in gfx_draw.c)"),
     ("image_start_ms", "BOOT_ANIM_IMAGE_START_MS",
      "the photograph starts crossing in as the function crosses out"),
     ("image_fade_ms", "BOOT_ANIM_IMAGE_FADE_MS",

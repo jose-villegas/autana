@@ -13,16 +13,20 @@
 #include "app/app.h"
 #include "display/display.h"
 #include "display/display_shell.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "input/gesture.h"
 #include "input/input.h"
 #include "input/input_shell.h"
 #include "input/touch.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
+#include "shell/shell_frame.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 #include "util/runtime/build_id.h"
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/frame_watch.h"
@@ -49,37 +53,6 @@ static const char* TAG = "shell";
 
 /* A stall must not reach an app as one long step. */
 #define FRAME_DT_MAX_MS 250
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-#define BUILD_MARK_GLYPH        8
-#define BUILD_MARK_CHARS        (1 + BUILD_ID_SHORT_CHARS)
-#define BUILD_MARK_SIZE         (BUILD_MARK_GLYPH * BUILD_MARK_CHARS)
-#define BUILD_MARK_RGB          0x384054
-/* The panel's rounded corners hide more than UI_MARGIN clears along an edge. */
-#define BUILD_MARK_CORNER_SHIFT 32
-
-static char build_mark_text[BUILD_MARK_CHARS + 1];
-
-/* Right-anchored to the upright screen's bottom-right corner, then mapped to
- * the framebuffer the way the UI's own text is. */
-static void
-draw_build_mark(void) {
-    const int quarter = display_quarter_now();
-    const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
-    const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
-    const mu_Rect upright =
-        ui_anchor_rect((mu_Rect){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
-                       -UI_MARGIN - BUILD_MARK_CORNER_SHIFT, -UI_MARGIN, BUILD_MARK_SIZE, BUILD_MARK_GLYPH);
-    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
-
-    if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
-        int x = 0;
-        int y = 0;
-        ui_text_glyph0_origin(gfx_font_ui(), box, quarter, 1, &x, &y);
-        gfx_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
-    }
-}
-#endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
@@ -172,10 +145,7 @@ check_console_prefix_clashes(void) {
 void
 shell_init(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int mark_length = snprintf(build_mark_text, sizeof(build_mark_text), "D%s", build_id_short());
-    if (mark_length < 0 || (size_t)mark_length >= sizeof(build_mark_text)) {
-        build_mark_text[0] = '\0';
-    }
+    shell_frame_init(build_id_short());
 #endif
     shell_apps_init();
 }
@@ -195,7 +165,8 @@ run_pending_selftest_suite(void) {
     if (request == NULL) {
         return;
     }
-    const suite_run_t run = suites_run_request(request);
+    static suite_run_t run;
+    suites_run_request(request, &run);
     if (!run.found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
@@ -353,9 +324,7 @@ report_gesture_completion(void) {
 
 static __attribute__((noinline)) void
 run_dev_frame_extras(input_t* input, const app_t* current) {
-    if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB) {
-        draw_build_mark();
-    }
+    shell_frame_extras();
     if (console_screenshot_take_request()) {
         console_screenshot_dump(input, current);
         gfx_request_full_redraw();
@@ -397,7 +366,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms)
 void
 shell_run(void) {
     const app_t* current = NULL; /* NULL means the launcher is showing */
-    input_t input = {0};
+    static input_t input;
     int64_t previous_us = timing_now_us();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t fps_window_start = previous_us;

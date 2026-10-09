@@ -10,7 +10,7 @@
 #include "unity.h"
 
 #include "apps/sand/sand_mode_swatches.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 
 #define LUT_SIZE   256
 #define UI_ENTRIES 16

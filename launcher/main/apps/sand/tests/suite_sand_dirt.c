@@ -40,22 +40,11 @@
  * shallower would be making matter out of nothing. */
 static void
 test_wet_sand_becomes_dirt_and_spends_the_water(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, 8));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     const int water_before = liquid_mass_of(MAT_WATER);
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(count_cells_of(MAT_DIRT) > 0,
                              "sand left sitting under water must turn into dirt - slowly, but "
@@ -79,11 +68,11 @@ note_wettest_dirt_in_row(int y, int* wettest) {
     }
 }
 
-/* Whether row y holds any dirt cell with nonzero moisture. */
+/* Whether row y of g (w wide) holds any dirt cell with nonzero moisture. */
 static bool
-row_has_wet_dirt(int y) {
-    for (int x = 0; x < W; x++) {
-        const cell_t c = sand_at(&s, x, y);
+row_has_wet_dirt(const sand_t* g, int w, int y) {
+    for (int x = 0; x < w; x++) {
+        const cell_t c = sand_at(g, x, y);
         if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
             return true;
         }
@@ -112,17 +101,8 @@ clear_material(sand_t* g, int w, int h, material_id_t m) {
  * did once. */
 static void
 test_dirt_takes_on_moisture_and_dries_out_again(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_DIRT, 0));
-    }
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_DIRT, 0));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int wettest = 0;
     for (int i = 0; i < 400; i++) {
@@ -137,7 +117,7 @@ test_dirt_takes_on_moisture_and_dries_out_again(void) {
     bool still_wet = true;
     for (int i = 0; i < 4000 && still_wet; i++) {
         sand_step(&s, 0, 1000, 0);
-        still_wet = row_has_wet_dirt(H - 2);
+        still_wet = row_has_wet_dirt(&s, W, H - 2);
     }
     TEST_ASSERT_FALSE_MESSAGE(still_wet, "and with the water gone it must dry back out, or one watering "
                                          "makes a patch fertile for good");
@@ -153,15 +133,8 @@ test_dirt_takes_on_moisture_and_dries_out_again(void) {
  * 400, not a tight peg. */
 static void
 test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL(wide_cells);
-    const int block_cols = (WIDE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
-    const int block_rows = (WIDE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
-    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 7u);
-    sand_enable_sleeping(&wide, blocks);
+    uint8_t* blocks;
+    sand_test_grid_init(&wide, &wide_cells, &blocks, WIDE_W, WIDE_H, 7u);
     sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
 
     const int floor_y = WIDE_H - 1;
@@ -173,24 +146,16 @@ test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
 
     /* Settle to sleep BEFORE the water drops - the bug only showed once the
      * board had already gone quiet once. */
-    for (int i = 0; i < 40; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 40, 0, 1000);
 
     const int water_y = dirt_y - 8;
-    for (int x = 0; x < WIDE_W; x++) {
-        sand_set(&wide, x, water_y, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    sand_fill_box(&wide, 0, water_y, WIDE_W, water_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int wetted_at = -1;
     for (int i = 0; i < 200 && wetted_at < 0; i++) {
         sand_step(&wide, 0, 1000, 0);
-        for (int x = 0; x < WIDE_W; x++) {
-            const cell_t c = sand_at(&wide, x, dirt_y);
-            if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
-                wetted_at = i + 1;
-                break;
-            }
+        if (row_has_wet_dirt(&wide, WIDE_W, dirt_y)) {
+            wetted_at = i + 1;
         }
     }
 
@@ -217,17 +182,6 @@ wide_count_dirt_in_row(int y) {
     return n;
 }
 
-static bool
-wide_row_has_wet_dirt(int y) {
-    for (int x = 0; x < WIDE_W; x++) {
-        const cell_t c = sand_at(&wide, x, y);
-        if (CELL_MATERIAL(c) == MAT_DIRT && CELL_MOISTURE(c) != 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 /* mark_block_has_moisture() (sand_reactions.c) is what keeps a NEWLY
  * converted dirt cell's block in the soak-only walk once the block goes to
  * sleep and no liquid is left nearby to hold BLOCK_LIQUID_NEAR up for it -
@@ -237,15 +191,8 @@ wide_row_has_wet_dirt(int y) {
  * the wetting side, mirrored here on the drying side. */
 static void
 test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL(wide_cells);
-    const int block_cols = (WIDE_W + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
-    const int block_rows = (WIDE_H + SAND_BLOCK_H - 1) / SAND_BLOCK_H;
-    uint8_t* blocks = malloc((size_t)block_cols * (size_t)block_rows);
-    TEST_ASSERT_NOT_NULL(blocks);
-
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 11u);
-    sand_enable_sleeping(&wide, blocks);
+    uint8_t* blocks;
+    sand_test_grid_init(&wide, &wide_cells, &blocks, WIDE_W, WIDE_H, 11u);
     sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
 
     const int floor_y = WIDE_H - 1;
@@ -272,9 +219,7 @@ test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
      * ordering test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it
      * uses, mirrored: this time sleep has to hold with the water gone. */
     clear_material(&wide, WIDE_W, WIDE_H, MAT_WATER);
-    for (int i = 0; i < 80; i++) {
-        sand_step(&wide, 0, 1000, 0);
-    }
+    run_steps(&wide, 80, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_awake_blocks(&wide),
                                   "setup: the bed must actually be asleep by now, or this test cannot "
                                   "tell a sleeping block's own drying from an awake one's");
@@ -282,7 +227,7 @@ test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
     bool still_wet = true;
     for (int i = 0; i < 6000 && still_wet; i++) {
         sand_step(&wide, 0, 1000, 0);
-        still_wet = wide_row_has_wet_dirt(sand_y);
+        still_wet = row_has_wet_dirt(&wide, WIDE_W, sand_y);
     }
 
     free(wide_cells);
@@ -393,9 +338,7 @@ test_a_dry_dirt_grain_keeps_its_tone_as_it_falls(void) {
     const cell_t grain = CELL_SOIL(MAT_DIRT, 5, 0);
     sand_set(&s, 3, 0, grain);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 3, 0, 1);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(grain, sand_at(&s, 3, 3),
                                     "a dry tone must travel with the grain, or a falling pile of dirt "
@@ -443,12 +386,7 @@ test_soil_loses_its_tone_across_a_wetting_and_gets_a_fresh_one_drying(void) {
  * percolation or ambient decay fires first on any one column is a roll. */
 static void
 test_soil_dries_biased_by_the_neighbour_it_just_watered(void) {
-    fixture();
-    sand_clear(&s);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    stone_floor_fixture();
     for (int x = 0; x < W; x += 2) {
         sand_set(&s, x, H - 3, CELL_SOIL(MAT_DIRT, 5, 1)); /* about to run dry */
         sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 5, 0)); /* dry, room for water */
@@ -564,9 +502,7 @@ test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
         }
     }
 
-    for (int i = 0; i < 3000; i++) {
-        sand_step(&t, 0, 1000, 0);
-    }
+    run_steps(&t, 3000, 0, 1000);
     clear_material(&t, DRY_BANK_W, DRY_BANK_H, MAT_WATER);
 
     bool wet = true;
@@ -634,16 +570,9 @@ test_soil_is_one_monotone_luminance_ramp(void) {
  * soaking; oil leaves it alone entirely. */
 static void
 test_only_water_wets_what_it_touches(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 6));
-        sand_set(&s, x, H - 3, CELL_SOIL(MAT_DIRT, 1, 0));
-        sand_set(&s, x, H - 4, CELL_MAKE(MAT_OIL, MASS_MAX));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, 6));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_SOIL(MAT_DIRT, 1, 0));
+    sand_fill_box(&s, 0, H - 4, W, H - 3, CELL_MAKE(MAT_OIL, MASS_MAX));
 
     for (int i = 0; i < 800; i++) {
         sand_step(&s, 0, 1000, 0);
@@ -685,9 +614,7 @@ test_soaking_is_off_unless_asked_for(void) {
         sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
     }
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_DIRT),
                                   "with soaking off, sand under water must stay sand - a mechanic "
@@ -702,21 +629,12 @@ test_soaking_is_off_unless_asked_for(void) {
  * dies at the first ring. */
 static void
 test_a_wetting_front_spreads_past_the_cells_it_touched(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, 8));
     /* One saturated grain of soil at one end, and no water anywhere: what
      * spreads has to be what that one cell is holding. */
     sand_set(&s, 0, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     int reach = -1;
     for (int x = 0; x < W; x++) {
@@ -739,14 +657,7 @@ test_a_wetting_front_spreads_past_the_cells_it_touched(void) {
  * is exactly conservative; this is what says so. */
 static void
 test_moisture_is_conserved_as_it_spreads(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, 8));
     sand_set(&s, 0, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     const int placed = (int)SOIL_MOISTURE_MAX;
 
@@ -776,14 +687,7 @@ test_moisture_is_conserved_as_it_spreads(void) {
  * up. */
 static void
 test_soil_a_wetting_front_converts_is_handed_a_real_share(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, 8));
     sand_set(&s, 0, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
 
     /* Caught the step it happens, before drying has taken any of it. */
@@ -874,20 +778,11 @@ test_a_shattered_pane_comes_back_as_cullet(void) {
  * nothing. */
 static void
 test_cullet_neither_drinks_water_nor_turns_into_soil(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
-
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     const int water_before = liquid_mass_of(MAT_WATER);
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_DIRT),
                                   "cullet left sitting under water must stay cullet - glass has no "
@@ -904,20 +799,11 @@ test_cullet_neither_drinks_water_nor_turns_into_soil(void) {
  * is what a player gets after breaking a window over soil. */
 static void
 test_wet_soil_does_not_bind_cullet_from_above(void) {
-    fixture();
-    sand_clear(&s);
-    sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
+    soaked_bed_fixture(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_DIRT, 0));
+    sand_fill_box(&s, 0, H - 4, W, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_DIRT, 0));
-        sand_set(&s, x, H - 4, CELL_MAKE(MAT_WATER, MASS_MAX));
-    }
-
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(W, count_cells_of(MAT_DIRT),
                                   "the watered bank must not have grown down into the cullet bed");
@@ -1053,9 +939,7 @@ test_water_percolates_diagonally_as_well_as_straight_down(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     /* One row above the floor, so the grains the water has to reach
      * are resting on it - a grain with empty space under it falls
      * out of the scene before any of this gets a turn. */

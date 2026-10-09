@@ -63,7 +63,7 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
     TEST_ASSERT_NOT_NULL(*scratch);
     raster.scratch = *scratch;
     raster_draw(&raster, &CAMERA, 0);
-    return r3d_pipeline_carve(&raster).color;
+    return raster_color(&raster);
 }
 
 /* A placement that scales every axis by `scale` and moves by (x, 0, z). */

@@ -116,9 +116,10 @@ menu "Launcher"
                 want: a gate is only a gate if it runs everything.
 
         config LAUNCHER_SELFTEST_SCOPE_PERF
-            bool "Perf - suites apps declare for a performance capture"
+            bool "Perf - suites declared for a performance capture"
             help
-                Only the sources apps declare in scope_perf.cmake are compiled.
+                Only the sources engine and apps declare in scope_perf.cmake
+                are compiled.
                 No other suite's .text or .bss is in the image, which buys
                 back the static-RAM headroom a capture needs.
 
@@ -149,7 +150,7 @@ menu "Launcher"
 
             Needs every strip sent from internal DMA RAM, never read in place
             from PSRAM: DMA from PSRAM shares the PSRAM bus's bandwidth, and at
-            80 MHz the panel receives dropped data (gfx.c, strip_bounce).
+            80 MHz the panel receives dropped data (gfx_present.c, strip_bounce).
 
             80 MHz is outside the panel's own rating: the CO5300 datasheet
             (6.4) gives a 50 MHz write maximum, 6.5 ns clock high/low (80
@@ -161,9 +162,9 @@ menu "Launcher"
             frame. 40 MHz is clean. Even-edged windows are still required
             at either clock, but do not make 80 clean.
 
-            The dirty-band thresholds in gfx.h were fitted to 40 MHz timings
-            and are wrong until re-measured - some of the win leaks back
-            otherwise.
+            The dirty-band thresholds in gfx_dirty.h were fitted to 40 MHz
+            timings and are wrong until re-measured - some of the win leaks
+            back otherwise.
 
     choice LAUNCHER_GFX_BAND_HEIGHT
         prompt "Band ring height (GFX_LAYOUT_BANDS)"

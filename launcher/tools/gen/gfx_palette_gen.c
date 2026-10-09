@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stdbool.h>
 
-#include "gfx/gfx_indexed.h"
+#include "gfx/present/gfx_indexed.h"
 
 static double
 srgb_to_linear(double c) {

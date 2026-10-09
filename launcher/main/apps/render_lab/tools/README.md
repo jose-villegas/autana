@@ -6,6 +6,14 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
+## Generated files
+
+<!-- generated: generated-files-render-lab sha256=d4251689721ad9a1de4306e41c402135d1c1365636be9b6b88c038de6d290d90 -->
+| Output | Generator | Run in | Command |
+|---|---|---|---|
+| [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
+<!-- /generated: generated-files-render-lab -->
+
 ## Host renders
 
 ```sh
@@ -20,10 +28,10 @@ with `"%.1f"`, and so are the Cornell scenes, which are float throughout.
 The fps text comes from the host fixture - time the board with a device
 capture. The Gouraud scene rotates when stepped over several frames.
 
-### Depth views
+### Debug views
 
-`--view shaded|depth|tiles` shows a lit-mesh scene's frame as the renderer
-left it (`shaded`, the default), as its depth buffer, or as that depth
+`--view shaded|depth|tiles|motion|meshlets` selects the declared context view.
+Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each
 tile's farthest depth, so the views are what the renderer holds at the
@@ -39,19 +47,55 @@ renderer's resolution, half the panel's each way, upscaled like the shaded
 one. They are `|nopin`, like the shaded Sponza renders: the camera path is
 float, so which pixels a triangle reaches can differ by compiler.
 `--view` sets the tunable `render_lab.view`, so on a development build
-`autana tune render_lab.view 2` switches the same views live. `--view` on a
+`autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
+values follow the render_view_t table order in render/context/render_context.c. `--view` on a
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
+Motion paints offsets red for x and green for y. Meshlets paints each mesh
+cluster a flat hue, with disjoint IDs across instances.
 
-A pose of the flythrough is `--frames` times `--dt`:
+![The meshlets view: full, lite and fitted](../../../../../docs/images/render/sponza-meshlets.png)
+
+A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
+selects a scene camera; omitted, it draws the first camera.
+
+`dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
+against the reference along that camera's clip, at intervals taken from
+the script and over the clip's full period. Per-path results belong in
+`docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
+
+Author and regenerate the tour animation with:
+
+```sh
+python launcher/tools/anim/camera_keys.py launcher/demo/sponza/tour.keys.toml launcher/demo/sponza/tour.glb
+```
+
+A host pose can be drawn with:
 
 ```sh
 render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 ```
 
+## On the board
+
+A development build answers these from any shell, so a measurement selects
+its scene by name rather than through the menu:
+
+| Command | Does |
+|---|---|
+| `autana render scenes` | every scene's key and name, and which one is showing |
+| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
+| `autana render partial on\|off` | partial updates, as the menu's toggle sets them |
+| `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
+| `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+
+A screenshot's state carries an `app` object naming the scene, whether the
+menu is open, the layout, partial updates and the scale, so two captures can
+be checked to have measured the same thing.
+
 ## Images in the docs
 
-`doc_images.sh` here makes these in `docs/images/overview/` and `docs/images/render/`, run by
+`doc_images.sh` here makes these in `docs/images/overview/`, run by
 `launcher/tools/render/render_doc_images.sh`; see "Images in these docs" in
 [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harness.md).
 
@@ -60,407 +104,30 @@ render_lab_render --scene sponza --frames 1 --dt 15000 --view depth -o depth.bmp
 | `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
 | `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
-| `render/sponza-{full,lite,flat,fitted,fitted-full}.gif` | the same three seconds of the flythrough, one GIF per bake |
-| `render/sponza-{depth,tiles}.gif` | those three seconds as the depth and depth-tile views of the full bake |
-| `render/bake-fidelity-sheet.png` | the flat bake against the source model at two poses, with the error heatmap (see Fidelity against the source) |
-| `render/bake-indirect-compare.png`, `render/bake-indirect-crops.png` | the physical reference beside the smooth bake without and with indirect light (the scene's physical look, bakes made without and with that field), each with its error heatmap against the reference at two poses, then the places the two bakes differ most with the reference above them (see Indirect light) |
-| `render/bake-indirect-look.png` | the physical reference beside the indirect bake at intensity 1, 2 and 3 and at an albedo boost of 2, each with its error heatmap, then each look's own reference and the error against it (see Indirect look) |
-| `render/bake-ao-compare.png`, `render/bake-ao-crops.png`, `render/bake-ao-map.png` | the reference beside the smooth bake without and with local occlusion at two poses with error heatmaps, the places they differ most, and the occlusion factor alone beside the reference (see Local occlusion) |
-| `render/compare-full-{lite,flat}.png`, `.crops.png` | full against lite and smooth against flat at the GIFs' last pose: both renders and their difference, then the places they differ most, enlarged |
-| `render/compare-lite-fitted.png`, `.crops.png` | lite against the fitted mesh at that pose, the same way |
-| `render/compare-full-fitted-full.png`, `.crops.png` | full against the fitted full mesh, the same way |
-| `render/appearance-{chosen,fitted-full}-heat.png`, `-reference.crops.png` | each fitted mesh against the reference: its heatmap sheet and the places it differs most (fitted full also its `-reference.png` sheet) |
-| `render/import-light.png`, `render/import-face-samples.png` | CPU albedo against baked light, and fixed face sampling against adaptive |
-| `render/gpu/*.png` | GPU recipe comparisons, path-cull differences, normal heatmaps and the budget/cost Pareto sheet |
 
-## The Sponza variants
-
-The Sponza scene places renderers over the import's variants
-([Scene-Files.md](../../../../../docs/render/Scene-Files.md)): it records bakes
-and appearance-fit recipes, culled to the camera's path, at lite's and full's
-budgets. The scenes `sponza`,
-`sponza-lite`, `sponza-flat`, `sponza-fitted` and `sponza-fitted-full` each draw one. Every row plays the
-same three seconds of the flythrough, so the rows compare. The depth and tile rows
-are the [view modes](../../../../../docs/render/Mesh-Rendering.md#view-modes)
-over the full mesh.
-
-| Variant | What it is | Triangles and vertices |
-|---|---|---|
-| ![Sponza flythrough, smooth](../../../../../docs/images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | `SPONZA_TRIANGLE_COUNT`, `SPONZA_VERTEX_COUNT` |
-| ![Sponza flythrough, lite](../../../../../docs/images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `SPONZA_LITE_TRIANGLE_COUNT`, `SPONZA_LITE_VERTEX_COUNT` |
-| ![Sponza flythrough, flat](../../../../../docs/images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `SPONZA_FLAT_TRIANGLE_COUNT`, `SPONZA_FLAT_VERTEX_COUNT` |
-| ![Sponza flythrough, fitted](../../../../../docs/images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | the `sponza.atrium_fitted` entry's counts |
-| ![Sponza flythrough, fitted full](../../../../../docs/images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | the `sponza.atrium_fitted_full` entry's counts |
-| ![Sponza flythrough, depth](../../../../../docs/images/render/sponza-depth.gif) | `RASTER_SHOW_DEPTH` over the full mesh | as full |
-| ![Sponza flythrough, depth tiles](../../../../../docs/images/render/sponza-tiles.gif) | `RASTER_SHOW_DEPTH_TILES` over the full mesh | as full |
-
-The counts are those of the five meshes in `meshes/`.
-`autana suite run_sponza_perf_suite` prints each variant's `both cores: mean`
-line (`test_sponza_frame_cost_along_the_flythrough`). The GIFs are made by the
-doc-images workflow
-([Render-Harness.md](../../../../../docs/tools/Render-Harness.md#images-in-these-docs)).
-
-Where the variants differ, at the pose the GIFs end on: each sheet is the two
-renders and their amplified difference, and the crops below it are the places
-that differ most, the first render above the second, enlarged.
-
-![Full against lite](../../../../../docs/images/render/compare-full-lite.png)
-![Full against lite, the places they differ most](../../../../../docs/images/render/compare-full-lite.crops.png)
-
-Lite spends fewer triangles, so small shapes merge or drop and edges step; the
-surfaces keep their colour.
-
-![Smooth against flat](../../../../../docs/images/render/compare-full-flat.png)
-![Smooth against flat, the places they differ most](../../../../../docs/images/render/compare-full-flat.crops.png)
-
-Flat shows each face in one colour, so a curtain's fold reads as bands where
-the smooth mesh blends.
-
-![Lite against fitted](../../../../../docs/images/render/compare-lite-fitted.png)
-![Lite against fitted, the places they differ most](../../../../../docs/images/render/compare-lite-fitted.crops.png)
-
-The fitted mesh has lite's budget, moved off what the flythrough never draws
-and fitted to the reference: arches, shadow edges and the banners' colours
-come back.
-
-![Full against fitted full](../../../../../docs/images/render/compare-full-fitted-full.png)
-![Full against fitted full, the places they differ most](../../../../../docs/images/render/compare-full-fitted-full.crops.png)
-
-The fitted full mesh is the same recipe at full's budget, so the same edges
-and colours come back on full's finer geometry.
-
-## Fidelity against the source
-
-The source model is lit per pixel at the same camera-path poses as the
-doc images. The generated fidelity table scores the committed bakes against
-that reference. Metric definitions are in
-[Mesh-Import.md](../../../../../docs/render/Mesh-Import.md#fidelity-against-a-reference).
-`doc_images.sh` owns the poses and measurement commands.
-
-<!-- generated: sponza-fidelity sha256=38de2a9526ed535ee1bdbb017b19a37f148542e8977c103494d3f16b0999d2af -->
-| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
-|---|---:|---:|---:|---:|---:|
-| Full smooth | 9.101 | 28.242 | 0.5931 | 16.798 | 7.397 |
-| Lite smooth | 11.040 | 34.597 | 0.5363 | 19.361 | 9.178 |
-| Flat, committed | 12.412 | 41.872 | 0.4454 | 22.516 | 10.152 |
-<!-- /generated: sponza-fidelity -->
-
-The flat and smooth bakes differ in how colour varies across a face. The
-generated comparison scores the same fidelity poses. The sheet and enlarged
-crops in [The Sponza variants](#the-sponza-variants)
-show where that difference lies.
-
-<!-- generated: sponza-flat-smooth sha256=3bdb5845938187516b8a3c18f2477d00fe6e07b396f793349c642e29eb1d02d9 -->
-| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
-|---|---:|---:|---:|---:|---:|
-| Flat against smooth, fidelity poses | 9.798 | 33.485 | 0.5455 | 17.543 | 8.473 |
-<!-- /generated: sponza-flat-smooth -->
-
-The flat sampling sweep re-bakes the current scene over the same geometry
-and scores it against the same reference. Rows are sorted by mean error.
-Labels beginning with min or max change the auto bounds; area scales the
-median face area; sky changes the sky-ray count. Sampling changes bake
-quality without adding work to the runtime renderer.
-
-<!-- generated: sponza-flat-sampling sha256=806ea9d68e6a624d177deb10147b5a0550ea38ad33bc6a3852405139d6bb8a11 -->
-| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
-|---|---:|---:|---:|---:|---:|
-| fixed64 | 11.040 | 34.283 | 0.5096 | 19.462 | 9.163 |
-| fixed32 | 11.060 | 34.031 | 0.5083 | 19.450 | 9.188 |
-| fixed16 | 11.116 | 34.546 | 0.5038 | 19.591 | 9.226 |
-| fixed8 | 11.258 | 34.665 | 0.4934 | 19.942 | 9.329 |
-| area0.25 | 11.561 | 37.603 | 0.4844 | 20.939 | 9.471 |
-| min4 | 11.683 | 37.344 | 0.4706 | 20.669 | 9.672 |
-| fixed4 | 11.720 | 37.645 | 0.4676 | 20.698 | 9.713 |
-| area0.5 | 12.002 | 40.511 | 0.4666 | 21.930 | 9.777 |
-| min2 | 12.141 | 39.861 | 0.4542 | 21.631 | 10.022 |
-| declared | 12.494 | 42.823 | 0.4429 | 22.691 | 10.216 |
-| max32 | 12.494 | 42.823 | 0.4429 | 22.691 | 10.216 |
-| fixed2 | 12.501 | 42.783 | 0.4399 | 21.973 | 10.389 |
-| max8 | 12.505 | 42.803 | 0.4430 | 22.702 | 10.228 |
-| sky512 | 12.524 | 42.736 | 0.4429 | 22.693 | 10.251 |
-| sky64 | 12.525 | 42.828 | 0.4421 | 22.686 | 10.253 |
-| sky256 | 12.527 | 42.739 | 0.4424 | 22.700 | 10.254 |
-| max4 | 12.549 | 43.257 | 0.4406 | 22.721 | 10.274 |
-| sky32 | 12.656 | 42.833 | 0.4419 | 22.719 | 10.404 |
-| sky16 | 13.003 | 42.851 | 0.4382 | 22.738 | 10.819 |
-| area2 | 13.138 | 46.215 | 0.4197 | 23.428 | 10.843 |
-| centroid | 13.181 | 47.239 | 0.4064 | 23.602 | 10.863 |
-| fixed1 | 13.587 | 47.571 | 0.3950 | 23.896 | 11.290 |
-<!-- /generated: sponza-flat-sampling -->
-
-The sheet of the committed flat bake, left to right the reference,
-the bake, the ΔE heatmap and the reference's edge pixels (magenta), with the
-heatmap's scale below. The error sits at lit arch edges, shadow boundaries and
-the foreground drapery. `doc_images.sh` regenerates the sheet.
-
-![Reference, flat bake, error heatmap and edge pixels](../../../../../docs/images/render/bake-fidelity-sheet.png)
-
-### Appearance fit of the lite and full meshes
-
-The GPU stage rebuilds GI bakes and fitted meshes from the scene's current
-recipes. It scores every mesh against the same held-out reference poses;
-triangle counts come from the output meshes. The sheets include reference
-heatmaps and enlarged differences. The generated comparison below reports
-appearance, normal error, path culling and predicted time. GPU fits are scratch
-recipe outputs; the board table measures the committed scene assets.
-
-<!-- generated: sponza-gpu sha256=2cf8f46f54fb4b95288b9dd3ab808d0e8a6e311991986fe57d44003bd73d4198 -->
-| Mesh | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
-|---|---|---|---|---|---|---|
-| lite-GI-bake | 8670 | 10.997 | 33.754 | 0.540 | 26.210 | 45.711 |
-| lite-GI-fit | 8672 | 5.621 | 15.171 | 0.751 | 15.685 | 45.790 |
-| full-GI-bake | 17374 | 9.033 | 27.568 | 0.599 | 21.154 | 57.443 |
-| full-path-culled | 11974 | 9.025 | 27.501 | 0.600 | 19.118 | 51.326 |
-| full-GI-fit | 17287 | 5.143 | 13.312 | 0.788 | 13.269 | 57.394 |
-
-![lite GI bake and fit](../../../../../docs/images/render/gpu/appearance-indirect-lite.png)
-![lite GI bake and fit.crops](../../../../../docs/images/render/gpu/appearance-indirect-lite.crops.png)
-![full GI bake and fit](../../../../../docs/images/render/gpu/appearance-indirect-full.png)
-![full GI bake and fit.crops](../../../../../docs/images/render/gpu/appearance-indirect-full.crops.png)
-
-![Full bake and path cull](../../../../../docs/images/render/gpu/appearance-path-culled.png)
-
-![Path cull differences](../../../../../docs/images/render/gpu/appearance-path-culled.crops.png)
-<!-- /generated: sponza-gpu -->
-
-### Budget and normal sweeps
-
-The budget sweep varies the lite recipe's pruning budget and cost weight.
-The full recipe fit is included as its own point. The Pareto sheet plots
-held-out appearance against predicted time. These
-predictions use the cost weights; refresh the board stage before interpreting
-them as a model of current hardware performance.
-
-<!-- generated: sponza-budget sha256=7d998b49e6f84be71d05b88168d5e10fe45df71c9e9279e651080e4ed1ee8f72 -->
-| Budget | Cost weight | Triangles | Held-out dE76 | Predicted ms |
-|---|---|---|---|---|
-| 4000 | 0.0 | 4000 | 5.935 | 37.718 |
-| 4000 | 0.1 | 4000 | 6.033 | 36.276 |
-| 6000 | 0.0 | 6000 | 5.700 | 41.387 |
-| 6000 | 0.1 | 6000 | 5.854 | 39.039 |
-| 8672 | 0.0 | 8672 | 5.621 | 45.790 |
-| 8672 | 0.1 | 8672 | 5.778 | 42.018 |
-| 17381 | 0.0 | 17287 | 5.143 | 57.394 |
-
-![Budget and cost sweep](../../../../../docs/images/render/gpu/appearance-pareto.png)
-<!-- /generated: sponza-budget -->
-
-The normal sweep varies the normal term while retaining the lite recipe's
-other settings. The angle heatmaps show where geometry differs from the source.
-
-<!-- generated: sponza-normal sha256=abac7427713e99934aa6113da9895854fcd8e5f87f1f6ed5320a03479660c8c0 -->
-| Normal weight | Triangles | Mean dE76 | p95 dE76 | SSIM | Normal angle | Predicted ms |
-|---|---|---|---|---|---|---|
-| normal-0 | 8672 | 5.653 | 15.296 | 0.750 | 19.838 | 45.484 |
-| normal-0.1 | 8672 | 5.665 | 15.459 | 0.749 | 18.525 | 45.563 |
-| normal-0.3 | 8672 | 5.636 | 15.157 | 0.751 | 17.769 | 45.628 |
-| normal-1 | 8672 | 5.621 | 15.171 | 0.751 | 15.685 | 45.790 |
-
-![Normal angle heatmaps](../../../../../docs/images/render/gpu/appearance-normal-heat.png)
-<!-- /generated: sponza-normal -->
-
-### Board measurements
-
-The board stage consumes captures from one firmware commit, takes the median
-of each variant's mean across captures, and fits cost weights from the full
-and lite per-pose timings. Its generated model table records the source rows.
-It does not access the board.
-
-<!-- generated: sponza-board sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
-Run the documented stage to populate this comparison from current inputs.
-<!-- /generated: sponza-board -->
-
-<!-- generated: sponza-board-model sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
-Run the documented stage to populate this comparison from current inputs.
-<!-- /generated: sponza-board-model -->
-
-### Refresh commands
-
-The import-light and face-sampling examples are regenerated by the CPU stage
-with its albedo bake and flat-sampling sweep.
-
-The `doc-images-gpu` workflow runs the full GPU stage on the self-hosted
-Linux GPU runner and opens or updates its own refresh PR,
-"docs: refresh GPU-rendered images", on `feature/refresh-doc-images-gpu`.
-It runs weekly, on manual dispatch, and on main pushes affecting its inputs.
-
-For a local run from Git Bash, use the documented WSL Ubuntu CUDA environment
-with both r3d requirements files installed. Host C/C++ compilers are needed
-for scoring. Run one GPU job at a time. The guard checks memory at stage
-start; later workers are admitted against live memory, as described in
-[Render-Harness](../../../../../docs/tools/Render-Harness.md#images-in-these-docs).
+Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
 ```sh
-DOC_PROJECT=$(pwd -W)
-MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 --cd "$DOC_PROJECT" -- bash -lc 'sh launcher/tools/render/run_doc_gpu.sh'
-MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 --cd "$DOC_PROJECT" -- bash -lc 'sh launcher/tools/render/run_doc_gpu.sh --check'
+PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out /path/to/work
 ```
 
-`--smoke` fits a few steps on a small reference set and writes scratch data
-only. It cannot update or check doc images. Full output is under
-`launcher/tools/results/doc_images/out/gpu/`; GPU images publish to
-`docs/images/render/gpu/`. CPU refreshes neither check nor remove GPU output.
-`--check` verifies the full stage's saved source stamp, tables and pixels,
-without training a second stochastic fit.
-
-Collect the perf-suite captures from the same diagnostics image, retaining
-its build identity in each capture. Pass one `--capture` per run:
-
-```sh
-python launcher/tools/render/doc_stages.py --stage board --capture /path/to/run1.txt --capture /path/to/run2.txt
-python launcher/tools/render/doc_stages.py --stage board --capture /path/to/run1.txt --capture /path/to/run2.txt --check
-```
-
-The stage rejects missing variants, per-pose timings, failed suites and
-mismatched build identities. `--build-commit SHA` accepts a capture from that commit only when the firmware
-sources still match; this lets a documentation-only commit retain its captures.
-It rewrites the board tables and
-`launcher/tools/r3d/board_cost_weights.txt`. Refresh GPU predictions after
-changing those weights. Board readings for scratch budget-sweep meshes need
-a firmware capture of those meshes; predicted ms is labelled separately.
-
-## Indirect light
-
-The Sponza scene's bake-indirect settings are recorded in
-`meshes/sponza.scene.toml` and described in
-[Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-indirect). It
-lifts the shadowed arcade ceilings and the sides of the columns the sun does
-not reach, and tints a column next to a banner with the banner's colour. The
-baked variants draw precomputed colours.
-
-The bounced light is validated in linear light by a floor beside a sunlit wall,
-whose bounced term must be half the wall's radiance, in
-[`test_r3d_path_bake.py`](../../../../tools/tests/test_r3d_path_bake.py). A
-Sponza bounce measurement must use its alpha-masked source and linear radiance,
-not source triangle counts or encoded vertex colours.
-
-The atrium's sunlit floor beneath a curtain is direct-light dominated. Its
-small coloured indirect term can disappear through the tone map and RGB565
-quantization even when there is substantial bounce light elsewhere.
-On a shaded column the indirect term can exceed direct light, but both terms
-remain close to black. The source reference resolves those local changes more
-finely than the vertex-colour mesh, so a per-pixel reference is the comparison
-for a suspected colour-bleed loss.
-
-The generated table scores the direct and indirect bakes of the full, lite and
-flat meshes against the source lit per pixel with physical bounced light, at the
-same poses as the fidelity sheet. All of them are bakes of the physical look,
-the scene without its `[indirect]` table and its occlusion; the direct-light
-counterparts also drop `[bake].indirect`. The reference resolves bounce detail
-finer than a triangle, which contributes to the remaining error.
-
-<!-- generated: sponza-indirect sha256=9795abf8d89c68fdc4f16711332ec9308ce0fb9599167d707ed6981a16710bf4 -->
-| Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
-|---|---:|---:|---:|---:|---:|
-| Full smooth, indirect light | 7.638 | 24.734 | 0.6619 | 16.380 | 5.978 |
-| Lite smooth, indirect light | 9.369 | 32.219 | 0.5932 | 19.985 | 7.364 |
-| Flat, indirect light | 10.281 | 39.895 | 0.5462 | 21.977 | 8.073 |
-| Full smooth, direct light | 10.595 | 27.822 | 0.5973 | 18.652 | 9.069 |
-| Lite smooth, direct light | 11.779 | 33.142 | 0.5485 | 20.965 | 10.047 |
-| Flat, direct light | 12.243 | 39.508 | 0.5368 | 22.919 | 10.235 |
-<!-- /generated: sponza-indirect -->
-
-The reference beside the smooth bake with direct and indirect light, each
-bake with its ΔE heatmap against the reference and the reference's edge pixels
-beside it. The error stays at silhouettes and
-shadow edges; the generated table measures their contribution.
-
-![Reference, direct-light bake and indirect bake, with error heatmaps](../../../../../docs/images/render/bake-indirect-compare.png)
-
-The places the two bakes differ most, the reference above them: a banner's
-colour on the column beside it, and the lit ceiling.
-
-![Where bounce light changes the picture](../../../../../docs/images/render/bake-indirect-crops.png)
-
-`doc_images.sh` regenerates the images from the physical look, the scene without
-its `[indirect]` table and its occlusion, and bakes it without `[bake].indirect`
-for the direct-light side. The reference is that look's, lit per pixel with
-physical bounced light; `render_compare.py` makes the sheets and crops against it.
-
-### Fitted variants against indirect light
-
-The GPU stage's [appearance comparison](#appearance-fit-of-the-lite-and-full-meshes)
-rebuilds the GI bake and GI fit at both recipe budgets against one current
-reference. Its generated sheets show the held-out error and enlarged differences.
-
-### Indirect look
-
-The scene's `[indirect]` table, described in
-[Scene-Files.md](../../../../../docs/render/Scene-Files.md#indirect), sets
-`intensity` (a multiplier on the bounced light) and `albedo_boost` (a
-multiplier on the reflectance bounces use, held below 1). The committed scene
-sets its own look in that table; this sheet, like the indirect images above,
-starts from the physical look, the scene without that table and without its
-occlusion. The reference reads the same table, so each
-look has two references: the physical one and one made with the look's own
-settings. The sheet bakes the same import at intensity 2 and 3 and at an albedo
-boost of 2 and shows, at the last pose, the physical reference above the bakes
-with their heatmaps against it, then each look's own reference with the
-heatmap against that:
-
-![Physical reference and each look's own, with the bakes and their error heatmaps](../../../../../docs/images/render/bake-indirect-look.png)
-
-The generated table scores each look against both references over the
-doc-image poses. The physical-reference columns include the look's difference
-from physical lighting; the own-reference column isolates bake fidelity.
-
-<!-- generated: sponza-indirect-look sha256=465b7c4a7e9b7af27e7b600af9d42f9be35ae80a49cd0bc82271eb642e4cc6bc -->
-| Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
-|---|---:|---:|---:|---:|
-| Direct light only | 10.595 | | 27.822 | 0.5973 |
-| intensity 1 | 7.638 | 7.638 | 24.734 | 0.6619 |
-| intensity 2 | 8.684 | 9.105 | 27.090 | 0.6280 |
-| intensity 3 | 10.493 | 10.069 | 28.921 | 0.5936 |
-| albedo boost 2 | 9.277 | 9.320 | 27.229 | 0.6203 |
-<!-- /generated: sponza-indirect-look -->
-
-## Local occlusion
-
-The scene's `[bake].ao` ([Scene-Files.md](../../../../../docs/render/Scene-Files.md#bake-ao))
-scales the ambient light, and with `indirect = true` the bounced light,
-by how closed in a point is. The committed scene sets it in
-`meshes/sponza.scene.toml`, whose ambient light is faint. These images start
-from the physical look instead, raise the
-ambient light in both bakes, which gives the occlusion something to scale, and
-add `ao` to one of them. The reference applies the
-occlusion at every pixel and the bake at every vertex, so the two heatmaps show
-where the bake's occlusion helps and where it overshoots.
-
-The sheet is the reference, the bake without occlusion and the bake with it at
-two poses, each with its error heatmap against the reference.
-
-![Reference, bake without occlusion and bake with it, with error heatmaps](../../../../../docs/images/render/bake-ao-compare.png)
-
-The places the two bakes differ most, the reference above them.
-
-![Where occlusion changes the picture](../../../../../docs/images/render/bake-ao-crops.png)
-
-The occlusion factor alone at the same two poses, white where nothing is near
-and dark where the surroundings close in, beside the reference frame. It is
-low where stone meets stone: column bases, under arches, the creases between
-walls and floor and around the pots. A curtain stays open on its visible side
-because a double-sided surface takes the less occluded of its two sides.
-
-![The occlusion factor beside the reference](../../../../../docs/images/render/bake-ao-map.png)
-
-`doc_images.sh` regenerates the images; `reference_render.py --occlusion` writes
-the factor map.
+`tests/test_sky_through_walls.py`
+checks the app flythrough against its sky-through-wall ceilings.
 
 ## Sponza poses
 
-The flythrough is a glTF camera animation, `../assets/flythrough.glb`, named
-by `../assets/flythrough.anim.toml`. Its poses for
-[`tools/r3d/report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
+The flythrough is a glTF camera animation, `launcher/demo/sponza/flythrough.glb`,
+named by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
+[`report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses
 `suite_sponza_perf.c` times (every `SPONZA_POSE_EVERY_MS`) and the size
 `sponza_content.h` names and the lens of the scene's camera object
-(`meshes/sponza.scene.toml`):
+(`launcher/demo/sponza/sponza.scene.toml`):
 
 ```sh
 python launcher/tools/anim/track_host.py \
-    launcher/main/apps/render_lab/assets/flythrough.anim.toml \
+    launcher/demo/sponza/flythrough.anim.toml \
     --every 5000 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh sponza.atrium -
@@ -468,7 +135,27 @@ python launcher/tools/anim/track_host.py \
 
 ## The capybara asset
 
-`../assets/capybara.blend` is a hand-modelled low-poly capybara (992
-triangles, 22 deform bones) with a control rig and five in-place loops at
-30 fps: `idle`, `walk`, `walk_fast`, `gallop` and `half_bound`. It is the source
-asset for skinned-mesh import; nothing in the build reads it yet.
+`launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
+with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
+`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
+nothing in the build reads it.
+
+`launcher/demo/capybara/capybara.glb` is its glTF export: deform bones only,
+every loop as an animation, four influences per vertex. Host tools that read
+glTF use it, such as the
+[skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
+measurement. After editing the `.blend`, export it again with Blender
+through the model-agnostic exporter, naming the loops (the file also
+holds the rig's own `capyrigAction`):
+
+```sh
+blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
+    launcher/demo/capybara/capybara.blend launcher/demo/capybara/capybara.glb \
+    --clips idle,walk,walk_fast,gallop,half_bound
+```
+
+and measure the lighting again:
+
+```sh
+launcher/tools/r3d/skin_light/report_skin_light.sh launcher/demo/capybara/capybara.glb gallop
+```
