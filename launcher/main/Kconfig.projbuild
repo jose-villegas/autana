@@ -171,9 +171,7 @@ menu "Launcher"
         default LAUNCHER_GFX_BAND_HEIGHT_32
         help
             Rows per band buffer for a full-redraw renderer's internal-SRAM
-            band ring (gfx.h) - a divisor of 448. 32 is the default absent
-            a device sweep saying otherwise; tools/sweeps/band_height_sweep.sh
-            builds one image per choice for that sweep.
+            band ring (gfx.h) - a divisor of 448.
 
         config LAUNCHER_GFX_BAND_HEIGHT_16
             bool "16 rows"

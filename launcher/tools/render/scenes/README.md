@@ -7,6 +7,7 @@
 | [boot_anim_render_baseline.txt](boot_anim_render_baseline.txt) | Pinned boot animation frame hashes. |
 | [launcher_home_render_host.c](launcher_home_render_host.c) | Launcher home screen drawing scene. |
 | [launcher_home_render_host.sh](launcher_home_render_host.sh) | Launcher home scene inputs and render points. |
+| [launcher_home_render_setup.c](launcher_home_render_setup.c), [header](launcher_home_render_setup.h), [sources](launcher_home_render_setup.sh) | Shared app rows, orientation, ridge setup and firmware sources for home and boot renders. |
 | [launcher_home_render_baseline.txt](launcher_home_render_baseline.txt) | Pinned launcher home frame hashes. |
 | [post_ui_render_host.c](post_ui_render_host.c) | Power on self test screen drawing scene. |
 | [post_ui_render_host.sh](post_ui_render_host.sh) | Power on self test scene inputs and render points. |

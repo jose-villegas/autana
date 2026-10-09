@@ -215,5 +215,5 @@ building on it.
 
 ## Related
 
-- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md): the
-  cycle budget and the frame architecture over the one framebuffer.
+- [Board and Memory](../notes/Board-and-Memory.md#cycle-budgets): per-core cycle budgets.
+- [Gfx and Presentation](../Gfx-and-Presentation.md#presentation-memory-policy): framebuffer and band-ring memory policy.
