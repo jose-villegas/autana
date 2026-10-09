@@ -7,7 +7,7 @@
 Per spp it renders `--seeds` independent seeds and reports the relative per-pixel noise of the linear image and the
 mean CIE76 dE between two device pictures of the same setting; per depth it reports how much a deeper cap changes
 the picture against the shallowest cap at the same seeds. Times separate the export, the first (cold) render,
-which compiles kernels, and the warm ones; peak GPU memory is sampled from nvidia-smi. Writes sweep.json and
+which compiles kernels, and the warm ones; GPU memory is sampled from nvidia-smi throughout each block. Writes sweep.json and
 sweep.md to the output folder.
 """
 
@@ -26,6 +26,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
+from r3d.process_budget import PeakSampler
 from r3d import mitsuba_reference
 from r3d.import_settings import load_scene
 from r3d.poses import read_poses
@@ -72,10 +73,11 @@ def guard_memory(floor):
 
 
 class VramPeak:
-    """The most GPU memory in use, in MiB, while the block runs, sampled from nvidia-smi."""
+    """Device-wide GPU memory in MiB, sampled throughout the block."""
 
-    def __init__(self, interval=0.1):
-        self.interval, self.peak, self._stop = interval, None, threading.Event()
+    def __init__(self, probe=None):
+        self.sampler = PeakSampler(lambda: ((probe or self.used)(),), interval=0.1)
+        self.peak = None
 
     @staticmethod
     def used():
@@ -88,22 +90,13 @@ class VramPeak:
         return max(int(line) for line in out.split())
 
     def __enter__(self):
-        def poll():
-            while not self._stop.is_set():
-                self.peak = max(self.peak, self.used())
-                time.sleep(self.interval)
-
-        self.peak = self.used()
-        if self.peak is not None:
-            self._thread = threading.Thread(target=poll, daemon=True)
-            self._thread.start()
+        self.sampler.__enter__()
+        self.peak = self.sampler.peaks[0]
         return self
 
-    def __exit__(self, *_):
-        if self.peak is not None:
-            self._stop.set()
-            self._thread.join()
-            self.peak = max(self.peak, self.used())
+    def __exit__(self, *error):
+        self.sampler.__exit__(*error)
+        self.peak = self.sampler.peaks[0]
 
 
 def timed(function):

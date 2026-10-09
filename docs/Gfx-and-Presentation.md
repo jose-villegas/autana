@@ -1,10 +1,23 @@
 # Gfx and Presentation
 
 How a draw call becomes pixels on the panel: the three draw targets, the dirty
-tracker, and the present path. The API is
-[`launcher/main/gfx/gfx.h`](../launcher/main/gfx/gfx.h); the implementation is
-`gfx/gfx.c` over the pure headers beside it. For what an app owes the shell
-see [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
+tracker, and the present path. A caller includes the header for what it does:
+
+| Header | What it declares |
+| --- | --- |
+| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()` |
+| [`gfx/draw/gfx_draw.h`](../launcher/main/gfx/draw/gfx_draw.h) | primitives, text and clipping |
+| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | dirty marking, present, the panel clock, heal |
+| [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
+| [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
+
+The code splits the same way: `draw/` holds `gfx_draw.c` and the pure headers
+it draws with; `present/` holds `gfx_present.c` (the present task and send
+paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
+they send with; `gfx/gfx_internal.h` holds the state they share. The
+panel link itself, QSPI and each revision's init sequence, is
+`board/board_panel.c`. For what an app owes the shell see
+[`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
 [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md).
 
 Two facts drive everything here. Sending is almost the whole cost of a frame
@@ -40,6 +53,25 @@ strip-sized buffers in internal DMA RAM that every send is copied through.
 Exactly one target is live at a time. Entering a band or indexed mode **frees
 the PSRAM framebuffer**; `gfx_mode_exit()` allocates it again.
 
+## Render targets
+
+`gfx_render_target.h`: a picture drawn off the panel as a set of
+attachments, each a per-pixel map with its own size per pixel. Colour comes
+first, in the panel's own format, then depth, then any further map a
+renderer attaches. Every attachment has the target's width and rows, so one
+row index finds a pixel in all of them.
+
+| Function | What it does |
+|---|---|
+| `gfx_render_target_bytes()` | the bytes every attachment takes, from each one's size per pixel |
+| `gfx_render_target_carve()` | points each attachment at its part of one block |
+| `gfx_render_target_window()` | the same picture's rows `[row0, row1)` |
+| `gfx_render_target_row()`, `_color()`, `_depth()` | an attachment's first pixel of a row |
+
+A target can be carved from a renderer's scratch block, or point its colour
+at a band buffer and its depth at a band of its own. What an attachment
+means beyond its size is its renderer's.
+
 ## Modes
 
 Requested with `gfx_mode_enter()` from an app's `enter()`, released with
@@ -60,17 +92,34 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
   `GFX_LAYOUT_FULL_FB`. Check the grant's `layout`, not the request's.
-- Only `GFX_RESOLUTION_FULL` without interlace renders today. The other
-  request fields grant correctly and nothing consumes them.
+- Geometry is the panel's full size. Per-axis interlace request fields are
+  granted but do not alter drawing; `gfx_set_interlace()` controls strip sends.
 - `GFX_BAND_HEIGHT` is 16, 32 or 64 rows by Kconfig, default 32, and always
   divides `GFX_HEIGHT`. On the device, at every band height, the two band
-  buffers alias `gfx.c`'s strip-bounce slots rather than allocating; a host
+  buffers alias `gfx_present.c`'s strip-bounce slots rather than allocating; a host
   build mallocs them.
+
+## Expanded frames
+
+An expanded frame holds an exact-half picture in `gfx_half_picture()`;
+`scene_compose()` copies into it and `scene_shell_compose()` calls
+`gfx_expand_frame()`. A paused or undrawn scene keeps its last expanded
+picture. Presentation doubles it into send strips until
+`gfx_present_wait()` completes. Raw framebuffer drawing is guarded during
+that interval.
+
+`ui_end()` bins commands instead of drawing into an expanded frame. The
+shell queues its home hint before the app builds the UI, then its frame
+overlay replays the bin and the development build mark into each strip.
+Readback uses the same expansion and overlay path.
+
+The half picture lives in gfx's own PSRAM buffer and costs 82 KB while a
+full-framebuffer app runs.
 
 ## Dirty tracking
 
-`gfx_dirty.h`: header-only and static, so marking inlines into the fill and
-pixel hot paths. One tracker serves all three modes.
+`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`,
+so marking inlines into the fill and pixel hot paths. One tracker serves all three modes.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
@@ -134,7 +183,7 @@ flowchart TB
   in place drops data past 40 MHz.
 - A rejected transfer marks the whole screen dirty, so the next present
   repairs it.
-- Indexed mode skips the run logic: `run_present_indexed()` expands each dirty
+- Indexed mode skips the run logic: `run_present_strips()` expands each dirty
   strip whole through the LUT, straight into a bounce slot.
 
 ## Present: who runs it
@@ -230,8 +279,8 @@ the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
 
 All four are safe only between frames. Palettes are a gfx type
-(`gfx/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
-curated ones ship in `gfx/gfx_palette_standard.h`, chosen at runtime by name.
+(`gfx/draw/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
+curated ones ship in `gfx/draw/gfx_palette_standard.h`, chosen at runtime by name.
 Building one is the app's work. The two steps every palette then needs,
 the colour -> index map and the dither table, are
 `tools/gen/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware
@@ -289,7 +338,7 @@ For a capture of what the panel shows:
 
 | Mode | `gfx_readback_begin()` |
 |---|---|
-| full framebuffer, indexed | `GFX_READBACK_READY` at once |
+| full framebuffer, expanded frame, indexed | `GFX_READBACK_READY` at once |
 | band ring | `GFX_READBACK_PENDING`: forces the next frame to redraw every band into a PSRAM snapshot; call once per frame until `GFX_READBACK_READY` |
 | band ring, no room for the snapshot | `GFX_READBACK_UNAVAILABLE` |
 

@@ -84,12 +84,12 @@ fi
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
 BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -ffp-contract=off -Wno-unused-parameter -g -O1"
 CFLAGS="$BASE_CFLAGS"
+# shellcheck source=../tools/build/host_make.sh
+. "$TEST_DIR/../tools/build/host_make.sh"
 if [ "$SANITIZE" = 1 ]; then
     # Instrumentation widens the ranges that format-truncation reasons about.
-    CFLAGS="$CFLAGS -fsanitize=undefined -fsanitize-recover=undefined -Wno-format-truncation"
-    case "$(uname -s)" in
-        Linux) CFLAGS="$CFLAGS -fsanitize=address -fno-omit-frame-pointer" ;;
-    esac
+    SANITIZER_FLAGS=$(host_sanitizer_flags "$CC_BIN") || exit 1
+    CFLAGS="$CFLAGS $SANITIZER_FLAGS -Wno-format-truncation"
 fi
 
 # --- the device's heap, on this machine ------------------------------------
@@ -118,6 +118,7 @@ $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
+$MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
 $MAIN_DIR/input/touch_point.c
@@ -143,17 +144,21 @@ $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
+$MAIN_DIR/render/raster_motion.c
+$MAIN_DIR/render/raster_meshlets.c
 $MAIN_DIR/render/r3d_pipeline.c
 $MAIN_DIR/render/upscale.c
+$MAIN_DIR/render/resolution/resolution.c
+$MAIN_DIR/render/context/render_context.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
+$MAIN_DIR/scene/scene_shell.c
 $MAIN_DIR/util/runtime/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c
-$MAIN_DIR/gfx/gfx.c
 $MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
@@ -164,11 +169,16 @@ $MAIN_DIR/ui/ui_ridge.c
 $MAIN_DIR/ui/ui_snap.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
-$MAIN_DIR/gfx/gfx_palette_standard.c
 $MAIN_DIR/../tools/gen/gfx_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 $TEST_DIR/../components/microui/src/microui.c
 "
+
+# Every gfx source but the device-only *_device.c, found rather than listed.
+for gfx_src in $(find "$MAIN_DIR/gfx" -name '*.c' ! -name '*_device.c' | sort); do
+    SOURCES="$SOURCES
+$gfx_src"
+done
 
 for suite_src in "$TEST_DIR"/suites/suite_*.c; do
     [ -e "$suite_src" ] || continue
@@ -245,6 +255,10 @@ if [ -z "${QUIET_INNER:-}" ]; then
     QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
     if [ -n "$QUIET_FAILURES" ]; then
         printf 'Test and sanitizer failures:\n%s\n' "$QUIET_FAILURES"
+        if printf '%s\n' "$QUIET_FAILURES" | grep -q ':FAIL: the process died on signal'; then
+            QUIET_SUMMARY='host test process terminated'
+            export QUIET_SUMMARY
+        fi
     fi
     if [ "$SANITIZE" = 1 ]; then
         QUIET_FINDINGS=$(grep 'runtime error:' "$QUIET_LOG" | sed -E 's/:[0-9]+: runtime error:/: runtime error:/' | sort -u || true)

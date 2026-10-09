@@ -11,11 +11,15 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "app/app.h"
 #include "app/app_arena.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "render_lab.h"
 #include "render_lab_mode_switch.h"
 #include "render_lab_scene.h"
@@ -39,12 +43,23 @@ extern const render_lab_scene_t scene_sponza_lite;
 extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
 extern const render_lab_scene_t scene_sponza_fitted_full;
+extern const render_lab_scene_t scene_sponza_flat_fitted;
 bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube,         &scene_wire_plane,  &scene_wire_cube,     &scene_wire_sphere,
-    &scene_wire_capsule, &scene_raytrace,    &scene_pathtrace,     &scene_sponza,
-    &scene_sponza_lite,  &scene_sponza_flat, &scene_sponza_fitted, &scene_sponza_fitted_full,
+    &scene_cube,
+    &scene_wire_plane,
+    &scene_wire_cube,
+    &scene_wire_sphere,
+    &scene_wire_capsule,
+    &scene_raytrace,
+    &scene_pathtrace,
+    &scene_sponza,
+    &scene_sponza_lite,
+    &scene_sponza_flat,
+    &scene_sponza_fitted,
+    &scene_sponza_fitted_full,
+    &scene_sponza_flat_fitted,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -57,6 +72,7 @@ static size_t scene_arena_mark;
  * by default. Read only at enter(), the same contract render_lab_band_mode
  * below documents. */
 const char* render_lab_start_scene_key;
+const char* render_lab_start_camera;
 
 /* Unknown or unset resolves to the first scene, never a hard error. */
 static int
@@ -88,17 +104,23 @@ bool render_lab_band_mode = true;
 bool render_lab_show_hud = true;
 
 TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RASTER_SHOW_SHADED, RASTER_SHOW_SHADED, RASTER_SHOW_DEPTH_TILES);
+TUNE(render_lab, view, RENDER_VIEW_SHADED, RENDER_VIEW_SHADED, RENDER_VIEW_COUNT);
 TUNE(render_lab, scale, 200, 100, 800);
+TUNE(render_lab, budget, 0, 0, 200);
 
-raster_show_t
+int
 render_lab_view(void) {
-    return (raster_show_t)view;
+    return (int)view;
 }
 
 int
 render_lab_scale(void) {
     return scale;
+}
+
+int
+render_lab_budget_ms(void) {
+    return budget;
 }
 
 bool
@@ -138,6 +160,10 @@ static render_lab_mode_switch_t mode_switch;
  * the top of the next frame, as the layout toggle is. */
 static bool scene_switch_pending;
 
+/* A scene the console asked for by key, switched to at the next frame like
+ * a menu tap; -1 for none. */
+static int scene_requested = -1;
+
 /* What gfx actually granted at enter(), not simply render_lab_band_mode,
  * which is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the
  * band ring fails to allocate, and render_lab_frame() has to follow the
@@ -165,7 +191,7 @@ enter_layout(void) {
     const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
     const gfx_mode_request_t mode_request = {
         .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
-        .resolution = GFX_RESOLUTION_FULL,
+
         .interlace_x = false,
         .interlace_y = false,
     };
@@ -196,6 +222,7 @@ render_lab_enter(void) {
     menu_open = false;
     mode_switch.pending = false;
     scene_switch_pending = false;
+    scene_requested = -1;
     last_layout_generation = ui_layout_generation();
 }
 
@@ -208,14 +235,19 @@ switch_layout(void) {
 }
 
 static void
-switch_to_next_scene(void) {
+switch_to_scene(int index) {
     current_scene()->exit();
     app_arena_rewind(scene_arena_mark);
-    current_scene_index = (current_scene_index + 1) % SCENE_COUNT;
+    current_scene_index = index;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
     switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
+}
+
+static void
+switch_to_next_scene(void) {
+    switch_to_scene((current_scene_index + 1) % SCENE_COUNT);
 }
 
 /* The persistent HUD: the scene and, over it, the fps line; nothing else
@@ -387,6 +419,12 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
         scene_switch_pending = false;
         switch_to_next_scene();
     }
+    if (scene_requested >= 0) {
+        if (scene_requested != current_scene_index) {
+            switch_to_scene(scene_requested);
+        }
+        scene_requested = -1;
+    }
 
     /* BOOT opens/closes the menu, rather than flipping a toggle directly.
      * Invalidation on open and close resets partial clear tracking: opening
@@ -459,6 +497,61 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
     }
 }
 
+/* "render scenes" lists every scene's key and name and which one shows;
+ * "render scene <key>" switches to the scene with exactly that key, at the
+ * next frame; "render partial on|off" sets partial updates, as the menu's
+ * toggle does. Replies are "RENDER ..." lines then "RENDER_END", or
+ * "RENDER_ERR <why>", so a script can measure one scene alike on any build. */
+static bool
+render_lab_console(const char* args) {
+    if (strcmp(args, "scenes") == 0) {
+        for (int i = 0; i < SCENE_COUNT; i++) {
+            (void)printf("RENDER scene=%s name=%s current=%d\n", scenes[i]->key, scenes[i]->name,
+                         i == current_scene_index);
+        }
+        (void)printf("RENDER_END\n");
+        (void)fflush(stdout);
+        return true;
+    }
+    if (strncmp(args, "scene ", 6) == 0) {
+        for (int i = 0; i < SCENE_COUNT; i++) {
+            if (strcmp(scenes[i]->key, args + 6) == 0) {
+                scene_requested = i;
+                (void)printf("RENDER scene=%s\nRENDER_END\n", scenes[i]->key);
+                (void)fflush(stdout);
+                return true;
+            }
+        }
+        (void)printf("RENDER_ERR unknown scene '%s'; `render scenes` lists them\n", args + 6);
+        (void)fflush(stdout);
+        return true;
+    }
+    const bool on = strcmp(args, "partial on") == 0;
+    if (on || strcmp(args, "partial off") == 0) {
+        render_lab_partial_updates = on;
+        gfx_invalidate();
+        (void)printf("RENDER partial=%s\nRENDER_END\n", on ? "on" : "off");
+        (void)fflush(stdout);
+        return true;
+    }
+    return false;
+}
+
+APP_CONSOLE("render", render_lab_console);
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* What a screenshot needs to say two captures measured the same thing. */
+static void
+render_lab_diagnostic_json(char* out, size_t len) {
+    if (snprintf(out, len, "{\"scene\":\"%s\",\"menu\":%s,\"bands\":%s,\"partial\":%s,\"scale\":%d}",
+                 current_scene()->key, menu_open ? "true" : "false", band_mode_active ? "true" : "false",
+                 render_lab_partial_updates ? "true" : "false", render_lab_scale())
+        < 0) {
+        out[0] = '\0';
+    }
+}
+#endif
+
 app_t app_render_lab = {
     .name = "Render Lab",
     .summary = "Software rendering experiments",
@@ -469,6 +562,10 @@ app_t app_render_lab = {
     .exit = render_lab_exit,
     .invalidate = render_lab_invalidate,
     .home_gesture = true,
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    .diagnostic_json = render_lab_diagnostic_json,
+#endif
+    .console = APP_CONSOLE_PTR(render_lab_console),
 };
 
 #if CONFIG_LAUNCHER_SELFTEST

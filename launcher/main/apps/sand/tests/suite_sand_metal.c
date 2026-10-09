@@ -50,9 +50,7 @@
 static void
 lava_beside_dirt(uint8_t moisture) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 2, H - 2, STONE); /* boxes the lava on its left */
     sand_set(&s, 3, H - 3, STONE); /* and above */
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -303,9 +301,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
 
 static void
 test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "wet-dirt-spoils grid must fit in what the framebuffer leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -377,9 +373,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
         sand_set(&flaw, lava_x + 1, y, CELL_SOIL(MAT_DIRT, 1, 0)); /* dry */
     }
 
-    for (int i = 0; i < 6000; i++) {
-        sand_step(&flaw, 0, 1000, 0);
-    }
+    run_steps(&flaw, 6000, 0, 1000);
 
     int stone_count = 0, metal_count = 0;
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
@@ -421,9 +415,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
 static void
 test_a_held_flame_smelts_dirt_as_lava_does(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 4, H - 2, CELL_SOIL(MAT_DIRT, 1, 0)); /* bone dry */
 
     const int budget = 3000;
@@ -486,12 +478,12 @@ test_heat_through_a_stone_wall_smelts_the_dirt_beyond_it(void) {
          * the fire and the dirt) staying MAT_STONE means dirt's one
          * downward neighbour was stone on every step, never flame. */
         for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, x, H - 3)),
-                                          "the wall must stay intact and unlit - if it changes, "
-                                          "either the fire reached it directly or the far-side hit "
-                                          "is landing on the conductor instead of past it, and "
-                                          "either way this test can no longer tell a conducted "
-                                          "smelt from a contact one");
+            ASSERT_MATERIAL_AT(MAT_STONE, x, H - 3,
+                               "the wall must stay intact and unlit - if it changes, "
+                               "either the fire reached it directly or the far-side hit "
+                               "is landing on the conductor instead of past it, and "
+                               "either way this test can no longer tell a conducted "
+                               "smelt from a contact one");
         }
     }
 
@@ -549,12 +541,8 @@ test_a_non_conducting_extended_cell_passes_no_heat_beyond_itself(void) {
 static void
 test_sand_still_becomes_glass_beside_the_new_dirt_branch(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_SAND, 8));
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+    sand_fill_box(&s, 1, H - 2, W - 1, H - 1, CELL_MAKE(MAT_SAND, 8));
 
     int made = 0;
     for (int i = 0; i < 2000 && !made; i++) {
@@ -582,10 +570,7 @@ steps_to_boil_through(int wall_len, cell_t wall_cell, int budget) {
     /* Self-contained, like steps_to_boil() above: malloc, use, free, all
      * within one call - the test below calls this twice and gets a
      * fresh grid each time. */
-    wide_cells = malloc((size_t)WIDE_W * WIDE_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "steps-to-boil-through grid must fit in what the framebuffer "
-                                             "leaves");
-    sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 3u);
+    wide_open(3u);
     sand_set_mobility(&wide, 0);
     /* This measures CONDUCTION speed, not water's own new resistance to
      * boiling once heat arrives - forced to 255 so a slow real `boils`
@@ -711,9 +696,7 @@ test_the_rod_terminates_at_conduct_reach_not_the_far_wall(void) {
         sand_set(&rod, bed_x0 + i, y, CELL_SOIL(MAT_DIRT, 1, 0));
     }
 
-    for (int i = 0; i < 6000; i++) {
-        sand_step(&rod, 0, 1000, 0);
-    }
+    run_steps(&rod, 6000, 0, 1000);
 
     /* The run is contiguous from the lava outward, so the first cell that
      * is NEITHER metal NOR stone ends it - reaction_t.flaw_to
@@ -790,18 +773,12 @@ static void
 acid_over(cell_t floor_cell, int floor_rows, int acid_rows) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
+    sand_fill_box(&s, 1, H - 1, W - 1, H, GLASS);
     for (int y = 1; y < H; y++) {
         sand_set(&s, 1, y, GLASS);
         sand_set(&s, W - 2, y, GLASS);
     }
-    for (int y = H - 1 - floor_rows; y < H - 1; y++) {
-        for (int x = 2; x < W - 2; x++) {
-            sand_set(&s, x, y, floor_cell);
-        }
-    }
+    sand_fill_box(&s, 2, H - 1 - floor_rows, W - 2, H - 1, floor_cell);
     for (int y = 1; y <= acid_rows; y++) {
         for (int x = 2; x < W - 2; x++) {
             sand_set(&s, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));
@@ -876,17 +853,26 @@ test_wood_and_steam_grain_count_is_conserved(void) {
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(12, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, sand_count(&s),
-                                          "a step must conserve wood and steam grains in every "
-                                          "gravity direction, the same as every other material");
-        }
-    }
+    assert_count_kept_in_every_direction(grain_count, expected,
+                                         "a step must conserve wood and steam grains in every "
+                                         "gravity direction, the same as every other material");
+}
+
+/* Stone on every side of the 2x2 pocket at (3,3)-(4,4) that the gas pass
+ * could move a cell out by, then the pocket: top row, then bottom row. */
+static void
+sealed_pocket(cell_t top_left, cell_t top_right, cell_t bottom_left, cell_t bottom_right) {
+    sand_set(&s, 3, 2, STONE);
+    sand_set(&s, 4, 2, STONE);
+    sand_set(&s, 2, 3, STONE);
+    sand_set(&s, 2, 4, STONE);
+    sand_set(&s, 5, 3, STONE);
+    sand_set(&s, 5, 4, STONE);
+
+    sand_set(&s, 3, 3, top_left);
+    sand_set(&s, 4, 3, top_right);
+    sand_set(&s, 3, 4, bottom_left);
+    sand_set(&s, 4, 4, bottom_right);
 }
 
 /* reaction_t.condenses is a rare per-step chance in real play, forced to 255
@@ -900,23 +886,13 @@ test_a_2x2_block_of_steam_condenses_into_one_water_cell(void) {
     sand_set_condenses(&s, 255);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 4, 3, STEAM);
-    sand_set(&s, 3, 4, STEAM);
-    sand_set(&s, 4, 4, STEAM);
+    sealed_pocket(STEAM, STEAM, STEAM, STEAM);
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "a forced roll must condense the square into water at its own "
-                                  "top-left corner");
+    ASSERT_MATERIAL_AT(MAT_WATER, 3, 3,
+                       "a forced roll must condense the square into water at its own "
+                       "top-left corner");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 3)), "and clear the other three corners of the square");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 4)), "and clear the other three corners of the square");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 4, 4)), "and clear the other three corners of the square");
@@ -935,23 +911,13 @@ test_condensation_needs_a_genuine_2x2_square(void) {
     sand_set_condenses(&s, 255);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 4, 3, STEAM);
-    sand_set(&s, 3, 4, STEAM);
-    sand_set(&s, 4, 4, STONE);
+    sealed_pocket(STEAM, STEAM, STEAM, STONE);
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "three steam cells beside one that is not steam must never "
-                                  "condense, even with the roll forced to succeed every time");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "three steam cells beside one that is not steam must never "
+                       "condense, even with the roll forced to succeed every time");
 }
 
 /* Acid rain - SAND_ACID_RAIN_CHANCE (sand.h), step_one_acid_rain_cell()
@@ -968,17 +934,7 @@ test_a_qualifying_gas_steam_pocket_collapses_into_one_cell(void) {
     sand_set_condenses(&s, 0);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 3, 4, STEAM);
-    sand_set(&s, 4, 3, GAS);
-    sand_set(&s, 4, 4, GAS);
+    sealed_pocket(STEAM, GAS, STEAM, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -1084,17 +1040,7 @@ test_acid_rain_needs_at_least_two_of_each_species(void) {
     sand_set_condenses(&s, 0);
     sand_set_mobility(&s, 0);
 
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 4, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 2, 4, STONE);
-    sand_set(&s, 5, 3, STONE);
-    sand_set(&s, 5, 4, STONE);
-
-    sand_set(&s, 3, 3, STEAM);
-    sand_set(&s, 4, 3, GAS);
-    sand_set(&s, 3, 4, GAS);
-    sand_set(&s, 4, 4, GAS);
+    sealed_pocket(STEAM, GAS, GAS, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
@@ -1105,15 +1051,12 @@ test_acid_rain_needs_at_least_two_of_each_species(void) {
      * "not MAT_WATER"). A future bug that cleared the block without
      * placing a residue - or picked the wrong corner - would pass the
      * weaker check and fail this one. */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "one steam cell short of the two-steam/two-gas requirement must "
-                                  "never collapse, even with the roll forced to succeed every time");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "and must leave the rest of the pocket exactly as it was");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, 4)),
-                                  "and must leave the rest of the pocket exactly as it was");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 4, 4)),
-                                  "and must leave the rest of the pocket exactly as it was");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "one steam cell short of the two-steam/two-gas requirement must "
+                       "never collapse, even with the roll forced to succeed every time");
+    ASSERT_MATERIAL_AT(MAT_GAS, 4, 3, "and must leave the rest of the pocket exactly as it was");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, 4, "and must leave the rest of the pocket exactly as it was");
+    ASSERT_MATERIAL_AT(MAT_GAS, 4, 4, "and must leave the rest of the pocket exactly as it was");
 }
 
 /* SAND_ACID_RAIN_CHANCE's own comment (sand.h): the surviving cell is a

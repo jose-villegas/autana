@@ -18,7 +18,7 @@
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_palette256.h"
-#include "gfx/gfx_indexed.h"
+#include "gfx/present/gfx_indexed.h"
 
 /* An OKLab dE around 2 is "just noticeable" per the palette study
  * (docs/sand/Shading-and-Colour.md); this is a plain RGB888 squared-channel

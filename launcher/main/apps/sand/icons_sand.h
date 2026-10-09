@@ -3,15 +3,15 @@
  *
  *     python tools/gen/gen_icons.py main/apps/sand/icons/sand.png main/apps/sand/icons/sand.json > main/apps/sand/icons_sand.h
  *
- * Baked from main/apps/sand/icons/sand.png (16x16 cells) - see gfx/icon.h for
- * icon_t's own fields and tools/gen/gen_icons.py for the PNG/SVG decode,
- * validation and packing this table was produced by.
+ * Baked from main/apps/sand/icons/sand.png (16x16 cells) - see
+ * gfx/draw/icon.h for icon_t's own fields and tools/gen/gen_icons.py for the
+ * PNG/SVG decode, validation and packing this table was produced by.
  *===========================================================================*/
 #pragma once
 
 #include <stdint.h>
 
-#include "gfx/icon.h"
+#include "gfx/draw/icon.h"
 
 typedef enum {
     ICON_SAND_POUR,

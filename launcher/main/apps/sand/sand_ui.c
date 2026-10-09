@@ -1,74 +1,47 @@
 #include "sand_ui.h"
 
-/* Opens the palette panel: transitions to SAND_UI_PALETTE and records
- * everything close_palette() needs to compare against. Arms
- * `swallow_release`, but ONLY when a finger is on the screen as the
- * panel opens: opening is a BOOT press, unrelated to a finger already
- * down, so a pour in progress when BOOT is released leaves a touch
- * dangling - its release arrives next frame with `screen` already
- * SAND_UI_PALETTE, resolving to a click on whatever tile the finger
- * happens to lift over. */
+/* The selection `screen`'s label confirms, see sand_ui_t.opened. */
+static sand_ui_selection_t
+selection(const sand_ui_t* ui, sand_ui_screen_t screen) {
+    if (screen == SAND_UI_PALETTE) {
+        return (sand_ui_selection_t){ui->brush, ui->modes[ui->brush]};
+    }
+    return (sand_ui_selection_t){(int)ui->mode, ui->radius_px[ui->mode]};
+}
+
+/* Opens the palette (BOOT) or brush screen (PWR). Arms `swallow_release`
+ * only when a finger is already down: a pour in progress would otherwise
+ * release onto a tile. Arming it with no finger down would eat the player's first real tap. */
 static unsigned
-open_palette(sand_ui_t* ui, bool touch_in_progress) {
-    ui->screen = SAND_UI_PALETTE;
-    /* Arming it unconditionally was wrong, and cost the common case to
-     * protect the rare one: with no finger down there is no dangling
-     * release to eat, so the flag ate the player's first deliberate tap
-     * on a tile instead and the panel only started responding on the
-     * second. `touch_in_progress` is simply input->down
-     * at the moment of opening - swallow a release only when there is
-     * genuinely one already owed. */
+open_panel(sand_ui_t* ui, sand_ui_screen_t screen, bool touch_in_progress, unsigned opened) {
+    ui->screen = screen;
     ui->swallow_release = touch_in_progress;
-    ui->opened_brush = ui->brush;
-    ui->opened_mode = ui->modes[ui->brush];
-    return SAND_UI_OPEN_PALETTE;
+    ui->opened = selection(ui, screen);
+    return opened;
 }
 
-/* Closes the palette panel. The forced repaint of the sand underneath it,
- * and the accumulator resets that keep the pause from cashing in as a
- * burst of catch-up steps, are app_sand.c's job - see
- * SAND_UI_CLOSE_PALETTE. Asks for the mode label via SAND_UI_SHOW_LABEL
- * only if the brush or its mode actually changed while open - the only
- * feedback closing gets, so it says nothing when there is nothing to
- * confirm. */
+/* Closes the open panel; app_sand.c repaints and resets the step
+ * accumulators. The label is asked for only if the selection changed while
+ * open, so closing says nothing when there is nothing to confirm. */
 static unsigned
-close_palette(sand_ui_t* ui) {
-    unsigned actions = SAND_UI_CLOSE_PALETTE;
-
-    if (ui->brush != ui->opened_brush || ui->modes[ui->brush] != ui->opened_mode) {
-        actions |= SAND_UI_SHOW_LABEL;
-    }
-
+close_panel(sand_ui_t* ui, unsigned closed) {
+    const sand_ui_selection_t now = selection(ui, ui->screen);
     ui->screen = SAND_UI_RUNNING;
-    return actions;
+    if (now.choice != ui->opened.choice || now.setting != ui->opened.setting) {
+        closed |= SAND_UI_SHOW_LABEL;
+    }
+    return closed;
 }
 
-/* Only reachable while SAND_UI_PALETTE. Closes on boot.released only,
- * mirroring where the panel opens in SAND_UI_RUNNING: it cannot close on
- * the SAME edge that opened it, since edges are read-and-cleared once
- * per frame before this function ever runs for the first time. Selecting
- * or toggling a tile is NOT decided here, see sand_ui.h's "WHO
- * HIT-TESTS AND WHO DECIDES". What is left is swallow_release's own
- * bookkeeping: disarm it the first frame a finger already down when
- * opened is lifted. */
+/* While a panel is open: `close` is its closing edge, never the opening
+ * one, as sand_ui_step() reads the screen once. Taps are decided elsewhere
+ * (sand_ui.h); this disarms `swallow_release` once the finger is up. */
 static unsigned
-handle_palette_input(sand_ui_t* ui, const input_t* input) {
-    /* On the RELEASE, never on the press. Closing on boot.pressed split a
-     * single physical press across two screens: the panel closed on the
-     * press edge, and the matching release arrived a frame later with
-     * screen back to SAND_UI_RUNNING, where handle_running_input() consumed
-     * it and cycled the brush - still guarded against though cycling is
-     * gone. input->boot.held is deliberately NOT handled: button_fsm
-     * suppresses the .released of a press turned .held, so holding does
-     * nothing here. */
-    if (input->boot.released) {
-        return close_palette(ui);
+handle_panel_input(sand_ui_t* ui, const input_t* input, bool close, unsigned closed) {
+    if (close) {
+        return close_panel(ui, closed);
     }
 
-    /* The dangling touch's own lift, not any particular click, see this
-     * function's own top comment. Checked every SAND_UI_PALETTE frame,
-     * not just once, because the finger can take more than one frame to
-     * actually come up. */
     if (ui->swallow_release && !input->down) {
         ui->swallow_release = false;
     }
@@ -85,13 +58,9 @@ handle_palette_input(sand_ui_t* ui, const input_t* input) {
  * function is ever handed already named a real tile. */
 unsigned
 sand_ui_tile_clicked(sand_ui_t* ui, int index) {
-    /* Swallow the first click after the panel opens with a finger already
-     * down, see `swallow_release`'s own comment on sand_ui_t, and
-     * handle_palette_input()'s own comment for the other half of this
-     * guard (disarming it on the finger's actual lift). This is the same
-     * family of bug BOOT already had to fix: an edge that outlives the
-     * state that produced it, read by whatever state happens to be
-     * current instead of the one it actually belongs to. */
+    /* Swallow the first click after opening with a finger already down;
+     * handle_panel_input() disarms this once that finger lifts. See
+     * sand_ui_t.swallow_release. */
     if (ui->swallow_release) {
         return 0;
     }
@@ -119,56 +88,6 @@ sand_ui_tile_clicked(sand_ui_t* ui, int index) {
     }
 
     return SAND_UI_REDRAW_PALETTE;
-}
-
-/* Opens the brush screen: transitions to SAND_UI_BRUSH and records what
- * close_brush() needs to compare against. Same swallow_release discipline
- * as open_palette() and for the same reason - a finger already on the
- * glass must not resolve into a segment tap - even though PWR itself has
- * no dangling release of its own to worry about (buttons.h). */
-static unsigned
-open_brush(sand_ui_t* ui, bool touch_in_progress) {
-    ui->screen = SAND_UI_BRUSH;
-    ui->swallow_release = touch_in_progress;
-    ui->opened_sand_mode = ui->mode;
-    ui->opened_radius = ui->radius_px[ui->mode];
-    return SAND_UI_OPEN_BRUSH;
-}
-
-/* Closes the brush screen, the SAND_UI_BRUSH counterpart to
- * close_palette() - same reasoning: SAND_UI_SHOW_LABEL fires only if the
- * mode or its radius actually changed while open. */
-static unsigned
-close_brush(sand_ui_t* ui) {
-    unsigned actions = SAND_UI_CLOSE_BRUSH;
-
-    if (ui->mode != ui->opened_sand_mode || ui->radius_px[ui->mode] != ui->opened_radius) {
-        actions |= SAND_UI_SHOW_LABEL;
-    }
-
-    ui->screen = SAND_UI_RUNNING;
-    return actions;
-}
-
-/* Only reachable while SAND_UI_BRUSH. PWR has no release edge (buttons.h),
- * so open and close both read `.pressed` - safe because sand_ui_step()
- * dispatches on the screen value from the START of the frame, so the
- * press that opened SAND_UI_BRUSH this call can never also reach this
- * check in the same call. BOOT is deliberately not read - it belongs to
- * the palette. Segment/slider taps are decided elsewhere; what is left
- * is swallow_release's own bookkeeping, mirroring
- * handle_palette_input(). */
-static unsigned
-handle_brush_screen_input(sand_ui_t* ui, const input_t* input) {
-    if (input->power.pressed) {
-        return close_brush(ui);
-    }
-
-    if (ui->swallow_release && !input->down) {
-        ui->swallow_release = false;
-    }
-
-    return 0;
 }
 
 /* What a tap on brush-mode segment `index` means, see this function's own
@@ -208,17 +127,17 @@ sand_ui_radius(const sand_ui_t* ui) {
     return ui->radius_px[ui->mode];
 }
 
-/* Only reachable while SAND_UI_RUNNING. BOOT opens the palette; PWR opens
- * the brush screen; both read the edge, never `.held`, for the same
- * reason open_palette()'s own call site does. */
+/* Only reachable while SAND_UI_RUNNING. BOOT's release opens the palette,
+ * PWR's press the brush screen. Neither reads `.held`: a press that becomes
+ * a hold gets no `.released` (button_fsm.h). */
 static unsigned
 handle_running_input(sand_ui_t* ui, const input_t* input) {
     if (input->boot.released) {
-        return open_palette(ui, input->down);
+        return open_panel(ui, SAND_UI_PALETTE, input->down, SAND_UI_OPEN_PALETTE);
     }
 
     if (input->power.pressed) {
-        return open_brush(ui, input->down);
+        return open_panel(ui, SAND_UI_BRUSH, input->down, SAND_UI_OPEN_BRUSH);
     }
 
     return 0;
@@ -234,12 +153,15 @@ sand_ui_step(sand_ui_t* ui, const input_t* input) {
         return 0;
     }
 
+    /* The palette closes on BOOT's release: closing on the press left its
+     * release to land in SAND_UI_RUNNING. PWR has no release edge
+     * (buttons.h), so the brush screen closes on `.pressed`. */
     if (ui->screen == SAND_UI_PALETTE) {
-        return handle_palette_input(ui, input);
+        return handle_panel_input(ui, input, input->boot.released, SAND_UI_CLOSE_PALETTE);
     }
 
     if (ui->screen == SAND_UI_BRUSH) {
-        return handle_brush_screen_input(ui, input);
+        return handle_panel_input(ui, input, input->power.pressed, SAND_UI_CLOSE_BRUSH);
     }
 
     return handle_running_input(ui, input);

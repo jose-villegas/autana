@@ -1,9 +1,10 @@
+/* ui_ridge: interactive ridge animation driven by touch, tilt and elapsed time. */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx.h"
+#include "gfx/draw/gfx_color.h"
 #include "input/input.h"
 
 /* Which way is down in the screen plane, as input/tilt.h reports it: `gx`

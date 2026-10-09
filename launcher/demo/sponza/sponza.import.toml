@@ -1,0 +1,34 @@
+[source]
+path = "source/sponza.obj"
+credit = "Crytek Sponza (Frank Meinl, Crytek; CC BY 3.0), from the OBJ in McGuire's Computer Graphics Archive, casual-effects.com/data."
+
+[output]
+directory = "."
+position_scale = 8
+
+[materials]
+double_sided = ["fabric_a", "fabric_c", "fabric_d", "fabric_e", "fabric_f", "fabric_g", "leaf", "chain", "Material__57"]
+
+[process]
+seed = 1
+
+[geometry]
+alpha_mask = { keep_alpha = 0.5 }
+thin = { material = "leaf", keep = 0.35 }
+simplify = { dense_edge = 45.0, props = ["vase", "vase_round", "vase_hanging", "flagpole", "chain", "leaf", "Material__57", "Material__298", "Material__25", "Material__47"], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }
+
+[[variants]]
+name = "sponza"
+triangles = 17381
+
+[[variants]]
+name = "sponza_lite"
+triangles = 8672
+
+[[variants]]
+name = "sponza_fitted"
+triangles = 9973
+
+[[variants]]
+name = "sponza_fitted_full"
+triangles = 19988

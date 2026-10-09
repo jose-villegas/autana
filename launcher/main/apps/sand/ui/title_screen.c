@@ -1,6 +1,6 @@
 #include "title_screen.h"
 
-#include "gfx/gfx_font_roles.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "ui/ui.h"
 #include "ui/ui_widgets.h"
 

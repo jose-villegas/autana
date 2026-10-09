@@ -49,36 +49,32 @@ console_verb_imu(const char* args, console_reply_fn reply) {
 }
 
 static void
+start_gesture(const char* args, bool (*parse)(const char* args, console_touch_gesture_t* out),
+              touch_gesture_completion_t kind, const char* usage) {
+    console_touch_gesture_t gesture;
+    if (parse(args, &gesture)) {
+        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, kind);
+    } else {
+        ESP_LOGW(TAG, "%s: '%s'", usage, args);
+    }
+}
+
+static void
 console_verb_tap(const char* args, console_reply_fn reply) {
     (void)reply;
-    console_touch_gesture_t gesture;
-    if (console_tap_parse(args, &gesture)) {
-        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, TOUCH_GESTURE_TAP);
-    } else {
-        ESP_LOGW(TAG, "TAP wants <x> <y>: '%s'", args);
-    }
+    start_gesture(args, console_tap_parse, TOUCH_GESTURE_TAP, "TAP wants <x> <y>");
 }
 
 static void
 console_verb_press(const char* args, console_reply_fn reply) {
     (void)reply;
-    console_touch_gesture_t gesture;
-    if (console_press_parse(args, &gesture)) {
-        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, TOUCH_GESTURE_PRESS);
-    } else {
-        ESP_LOGW(TAG, "PRESS wants <x> <y> [ms]: '%s'", args);
-    }
+    start_gesture(args, console_press_parse, TOUCH_GESTURE_PRESS, "PRESS wants <x> <y> [ms]");
 }
 
 static void
 console_verb_drag(const char* args, console_reply_fn reply) {
     (void)reply;
-    console_touch_gesture_t gesture;
-    if (console_drag_parse(args, &gesture)) {
-        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, TOUCH_GESTURE_DRAG);
-    } else {
-        ESP_LOGW(TAG, "DRAG wants <x0> <y0> <x1> <y1> <ms>: '%s'", args);
-    }
+    start_gesture(args, console_drag_parse, TOUCH_GESTURE_DRAG, "DRAG wants <x0> <y0> <x1> <y1> <ms>");
 }
 
 static void

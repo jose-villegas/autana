@@ -1,7 +1,7 @@
 /*
  * ui_internal: the seam between ui_build.c (builds a frame's command list;
  * host-portable) and ui.c (paints one; needs the real framebuffer). Neither
- * half links against gfx.c without the other, so nothing outside these two
+ * half links against gfx without the other, so nothing outside these two
  * files includes this; it is not a third public module, just the state and
  * helpers they share to stay one logical unit split across two link targets.
  */
@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 
-#include "gfx/gfx_font.h"
+#include "gfx/draw/gfx_font.h"
 #include "microui.h"
 #include "ui/ui_canvas_marks.h"
 #include "ui/ui_pointer.h"

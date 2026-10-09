@@ -11,7 +11,7 @@
  * as occupied too, and whatever consumes the report (gfx's own dirty
  * tracking) can never recover that gap, because it was never told about it
  * in the first place. Reporting up to ROW_MAX_RUNS separate runs instead
- * lets a consumer that CAN use the extra precision - gfx.c's per-cell
+ * lets a consumer that CAN use the extra precision - gfx_dirty.h's per-cell
  * tracking and its own contiguous-run merging - actually benefit from it.
  *
  * A single previous/current min/max union is enough to guarantee a cell
@@ -27,7 +27,7 @@
 /* Fixed cap on how many separate runs one row tracks, for both detection
  * and reconciliation - a row can never grow arbitrarily many small sends.
  * Changing it needs device measurement, as do GATHER_MAX_PIXELS and
- * LEAF_REFINE_MAX_RUNS in gfx/gfx_dirty.h. */
+ * LEAF_REFINE_MAX_RUNS in gfx/present/gfx_dirty.h. */
 #define ROW_MAX_RUNS 2
 
 /* Collects `row`'s contiguous non-`empty` bytes into up to ROW_MAX_RUNS
@@ -41,6 +41,27 @@ int row_runs_find(const uint8_t* row, int width, uint8_t empty, int* run_x0, int
  * behaviour this module generalises. [max_x0,x1) is empty (x0==width,
  * x1==0) if the row has no non-`empty` bytes at all. */
 void row_runs_span_fallback(const uint8_t* row, int width, uint8_t empty, int* x0, int* x1);
+
+/* row_runs_find() into the uint16_t lists row_runs_reconcile() takes, or the
+ * one row_runs_span_fallback() span when the row holds too many runs.
+ * Returns the run count. Inline: the app calls it once per dirty row. */
+static inline int
+row_runs_find_or_span(const uint8_t* row, int width, uint8_t empty, uint16_t* x0, uint16_t* x1) {
+    int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
+    const int n = row_runs_find(row, width, empty, run_x0, run_x1);
+    if (n < 0) {
+        int span_x0, span_x1;
+        row_runs_span_fallback(row, width, empty, &span_x0, &span_x1);
+        x0[0] = (uint16_t)span_x0;
+        x1[0] = (uint16_t)span_x1;
+        return 1;
+    }
+    for (int i = 0; i < n; i++) {
+        x0[i] = (uint16_t)run_x0[i];
+        x1[i] = (uint16_t)run_x1[i];
+    }
+    return n;
+}
 
 /* Reconciles this frame's runs against last send, so a shrunk or
  * vanished run still sends enough to clear its old pixels: a current

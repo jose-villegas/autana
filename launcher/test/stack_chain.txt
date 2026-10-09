@@ -1,0 +1,21 @@
+root boot_anim_run boot
+indirect boot_anim_draw_frame : shell_paint_home_under_boot
+root scene_render system
+root test_the_two_core_frame_matches_one_full_draw test
+root test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front test
+root test_a_triangle_over_any_side_of_the_screen_is_drawn test
+root test_a_census_list_draws_what_raster_draw_draws_at_any_size test
+indirect writer_rows r3d_span_triangle_write : raster_attachment_tag
+indirect shell_systems_update : scene_shell_render
+indirect instance_writers : raster_motion.c:writer raster_meshlets.c:writer
+indirect raster_draw raster_draw_culled : raster_motion.c:begin raster_meshlets.c:begin
+indirect resolve_slice : raster_motion.c:resolve
+indirect draw_slice : clear_color clear_depth raster_motion.c:clear raster_meshlets.c:clear
+indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show tiles_show
+indirect raster_show_map : raster_motion.c:pixel_color raster_meshlets.c:pixel_color
+indirect render_context_set_view : raster_depth_view raster_depth_tiles_view raster_motion_view raster_meshlets_view
+indirect job_run_core1 : lattice_row_job_worker seed_row_job_worker sweep_row_job_worker sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
+indirect expand_rows : shell_frame_overlay
+indirect send_heal_strips : send_fb_rows send_picture_rows
+indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
+indirect ui_end_over : ui_ridge_paint

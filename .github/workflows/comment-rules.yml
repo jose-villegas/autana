@@ -40,28 +40,58 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Every install comes before the first gate: Tool tests runs after a
+      # failed gate too, and a skipped install would fail it for nothing.
       - name: Workflow gate dependencies
         run: pip install -r scripts/gates/requirements.txt
+
+      # The exclusive-open tests drive the real serial library on a pty.
+      - name: pyserial
+        run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
+
+      # test_r3d_bake.py skips itself without numpy and scipy, and builds
+      # meshoptimizer's library from its submodule with the runner's compiler;
+      # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
+      - name: r3d bake environment
+        run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          sudo apt-get install -y --no-install-recommends llvm
+          git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      # test_check_math.mjs renders through GitHub's MathJax.
+      - name: Node gate dependencies
+        run: npm ci --prefix scripts/gates
 
       - name: Self-hosted workflows accept no pull request or comment events
         run: python3 scripts/gates/check_self_hosted_workflows.py
 
       - name: Length beside code, and header height
+        env:
+          STAGED_TEXT_GATE: "true"
         run: >
           python3 scripts/gates/check_comment_length.py
           --no-banners --limit 500 --header-limit 50 --top 0
 
       - name: Every firmware module opens with a header comment
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_file_headers.py
 
       - name: No comment or engine document below apps/ names an app
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_comment_layers.py
 
       - name: No comment records where code moved
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
       - name: Generated document bodies match their recorded hashes
         run: python3 scripts/gates/check_doc_generated.py
+
+      - name: Shared-owner catalogue matches source
+        run: python3 launcher/tools/gen/shared_helpers.py --check
 
       - name: Documentation constants match source
         run: python3 scripts/gates/check_doc_constants.py
@@ -87,6 +117,8 @@ jobs:
         run: python3 scripts/gates/check_shell_firmware.py
 
       - name: No tracker id, personal path, or misdirected include is tracked
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_style_audit.py
 
       # Warns, never fails: a changed function a document cites is a reason
@@ -95,25 +127,11 @@ jobs:
         if: github.event_name == 'pull_request'
         run: python3 scripts/gates/doc_citers.py --changed "origin/${{ github.base_ref }}"
 
-      # The exclusive-open tests drive the real serial library on a pty.
-      - name: pyserial
-        run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
-
-      # test_r3d_bake.py skips itself without numpy and scipy, and builds
-      # meshoptimizer's library from its submodule with the runner's compiler;
-      # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
-      - name: r3d bake environment
-        run: |
-          pip install -r launcher/tools/r3d/requirements.txt
-          sudo apt-get install -y --no-install-recommends llvm
-          git submodule update --init --depth 1 third_party/upstream/meshoptimizer
-
-      # test_check_math.mjs renders through GitHub's MathJax.
-      - name: Node gate dependencies
-        run: npm ci --prefix scripts/gates
-
       - name: No new token clone pairs
-        run: python3 scripts/gates/check_clones.py
+        run: python3 scripts/gates/check_clones.py --base "origin/${{ github.base_ref || 'main' }}"
+
+      - name: Simulation skip facts are read through the forced-work gate
+        run: python3 scripts/gates/check_skip_facts.py
 
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
@@ -149,6 +167,8 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Every name, file and heading a comment cites exists
+        env:
+          STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/check_comment_symbols.py --require-idf
 
       - name: Every documentation citation resolves

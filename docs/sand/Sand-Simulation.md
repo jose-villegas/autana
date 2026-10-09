@@ -1599,7 +1599,7 @@ returned.
 Device builds split the gravity sweep, the liquid cross-flow pass, and
 `finalize_settling()` across both cores this way; host builds default to
 the serial path, where `job_run_core1()` always runs its callback inline.
-The unbounded waits in gfx.c's present pipeline are still unchanged.
+The unbounded waits in gfx_present.c's present pipeline are still unchanged.
 
 ## The gravity-ward split: sand.c, sand_liquid.c, sand_impulse.c
 

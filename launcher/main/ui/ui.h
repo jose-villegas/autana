@@ -32,8 +32,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_font.h"
-#include "gfx/icon.h"
+#include "gfx/draw/gfx_font.h"
+#include "gfx/draw/icon.h"
 #include "input/input.h"
 #include "microui.h"
 #include "ui/ui_style.h"
@@ -162,7 +162,7 @@ int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
  *
  * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
  * is a parameter rather than an internal ui_width() call, which is what
- * keeps it host-testable without pulling in gfx.h/BSP.
+ * keeps it host-testable without reaching the framebuffer.
  */
 
 /* A rect `w` wide, `h` tall, horizontally centred within a canvas
@@ -180,7 +180,7 @@ ui_centered_rect(int canvas_w, int w, int h, int y) {
  * icon_walk_blocks(), streamed rather than collected, so an icon's run
  * count no longer bounds artwork. `rows` is separate from `icon` because
  * icon_t.offset indexes into its own header's blob, not a self-contained
- * pointer; see gfx/icon.h. */
+ * pointer; see gfx/draw/icon.h. */
 void ui_draw_icon(mu_Context* ctx, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like
@@ -216,7 +216,7 @@ bool ui_end_over(ui_backdrop_fn paint_backdrop);
 void ui_invalidate(void);
 
 /*
- * Band mode (gfx.h) has no retained framebuffer, so ui_end()'s hash-and-skip
+ * Band mode (gfx_mode.h) has no retained framebuffer, so ui_end()'s hash-and-skip
  * does not apply. Closes the frame like ui_end() does, but bins commands by
  * row range instead of painting; ui_replay_band() draws a band's share when
  * gfx_band_run() draws that band. Call once per frame from frame(). Pass
@@ -224,6 +224,9 @@ void ui_invalidate(void);
  * already cleared the band itself.
  */
 void ui_end_for_bands(uint32_t background_rgb);
+
+/* Discards the previous frame's replay and queued overlay rectangles. */
+void ui_clear_band_overlay(void);
 
 /* Draws whatever ui_end_for_bands() bin holds that overlaps [row0, row1):
  * call once per band, into gfx's current band draw target, after the

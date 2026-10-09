@@ -172,6 +172,10 @@ void plant_ruin_lava_pour(sand_t* s);
  * hundred steps and growth then stops - see the definition. */
 void plant_bed_rain(sand_t* s);
 
+/* Steps a plant bed PLANT_BED_SETTLE_STEPS under ordinary gravity, raining
+ * on it at steps PLANT_BED_RAIN_A and PLANT_BED_RAIN_B. */
+void plant_bed_settle(sand_t* s);
+
 /* The plant brush being POURED, which is a different scene from a bed that
  * grows: a loose heap in motion rather than a standing garden. Every other
  * plant scene reaches step_one_falling_cell()'s support walk a handful of

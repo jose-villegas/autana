@@ -45,8 +45,11 @@
 #include "app/app.h"
 #include "apps/sand/app_sand_test.h"
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_font_roles.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "icons_dither.h"
 #include "icons_sand.h"
 #include "input/imu.h"
@@ -166,8 +169,7 @@ static int wood_leaf_top5_down;
  * turned) can leave the index image already holding the value about to be
  * recomputed while the panel shows something else entirely (the overlay,
  * the wrong turn's pixels). Captured once per draw_dirty_rows() pass and
- * cleared there, the same idiom gfx.c's own band_force_all_dirty uses for
- * gfx_invalidate(). */
+ * cleared there, as gfx_band_force_all_dirty is for gfx_invalidate(). */
 static bool indexed_force_full_repaint;
 
 /* Once per start_sim(), not once per frame, see the emitter-marker/mode-
@@ -245,8 +247,7 @@ typedef struct {
     uint8_t* dirty_rows;    /* GRID_H_MAX bytes: which rows changed -
                             * only the first grid_h are in use at any
                             * quality below ULTRA */
-    uint8_t* sleep_blocks;  /* BLOCK_COLS_MAX*BLOCK_ROWS_MAX bytes:
-                            * settled blocks to skip - see
+    uint8_t* sleep_blocks;  /* sized for the largest grid - see
                             * sand_enable_sleeping() */
     uint8_t* step_stamps;   /* sized for the largest grid - see
                             * sand_enable_step_stamps() */
@@ -314,7 +315,6 @@ static void
 apply_gfx_enter_indexed(void) {
     gfx_mode_request_t req = {0};
     req.layout = GFX_LAYOUT_INDEXED;
-    req.resolution = GFX_RESOLUTION_FULL;
     req.index_grid_w = grid_w;
     req.index_grid_h = grid_h;
     req.cell_size = cell;
@@ -474,7 +474,7 @@ alloc_sim_buffers(sim_buffers_t* b) {
         b->dirty_rows = malloc(GRID_H_MAX);
     }
     if (b->sleep_blocks == NULL) {
-        b->sleep_blocks = malloc((size_t)BLOCK_COLS_MAX * BLOCK_ROWS_MAX);
+        b->sleep_blocks = malloc(sand_sleep_block_bytes(GRID_W_MAX, GRID_H_MAX));
     }
     if (b->grid == NULL) {
         b->grid = malloc((size_t)GRID_W_MAX * GRID_H_MAX);
@@ -765,22 +765,7 @@ draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, ui
     uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
 
     paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
-
-    int run_x0[ROW_MAX_RUNS], run_x1[ROW_MAX_RUNS];
-    const int n = row_runs_find(row, grid_w, SAND_EMPTY, run_x0, run_x1);
-    if (n < 0) {
-        int x0, x1;
-        row_runs_span_fallback(row, grid_w, SAND_EMPTY, &x0, &x1);
-        cur_x0[0] = (uint16_t)x0;
-        cur_x1[0] = (uint16_t)x1;
-        return 1;
-    }
-
-    for (int i = 0; i < n; i++) {
-        cur_x0[i] = (uint16_t)run_x0[i];
-        cur_x1[i] = (uint16_t)run_x1[i];
-    }
-    return n;
+    return row_runs_find_or_span(row, grid_w, SAND_EMPTY, cur_x0, cur_x1);
 }
 
 /* One row per bit here; unlike dirty_rows[] this scratch never survives
@@ -896,7 +881,7 @@ draw_dirty_rows(bool shine_moved, bool local_depth_woke, bool cullet_moved, bool
 
     /* Captured once, then cleared, so a request made mid-frame (the next
      * mark_sand_fully_dirty()) affects the NEXT pass, not this one - see
-     * indexed_force_full_repaint's own comment and gfx.c's identical
+     * indexed_force_full_repaint's own comment and gfx_full_redraw.h's identical
      * band_force_all_dirty idiom. */
     const bool force_full = indexed_force_full_repaint;
     indexed_force_full_repaint = false;

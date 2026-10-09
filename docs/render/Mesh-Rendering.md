@@ -25,10 +25,13 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
+| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
-| `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows and a depth plane of the same shape, from `render/r3d_span.h` |
-| `raster_show()` | Development builds: shows the depth instead of the colour, as a [view mode](#view-modes) |
+| `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
+| `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
+| `raster_show()` | Development builds: the attached [view](#view-modes) paints the colour before the upscale |
 | `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
@@ -61,12 +64,17 @@ would see the scene mirrored.
 | `camera.h` | The camera |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
-| `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture, and the view modes |
+| `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
+| `raster_show.h` | Development views paint colour from the raster maps |
+| `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
+| `raster_motion.h` | The motion-vector attachment: where each pixel's point was in the previous picture |
+| `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
+| `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
 | `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
-| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions |
+| `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
 | `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
 
@@ -85,18 +93,35 @@ raster's lens and cluster transform stay a 3x4 of their own.
 
 ```mermaid
 flowchart LR
-    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Lens
-    subgraph Render["raster_draw()"]
-        Lens["r3d_lens_init()<br/><i>for this viewport</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
-        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
-        Transform --> Draw["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Picture
+    subgraph Census["raster_census()"]
+        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Cull --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
+    Size["the render size"] --> Fit
+    List --> Fit
+    subgraph Draw["raster_draw_culled()"]
+        Fit["r3d_lens_init(), r3d_lens_fit(), r3d_lens_place()<br/><i>per instance, fitted to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+    end
+    DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `raster_draw()`, and
-`raster_upscale()` when it set `upscaled`. The stages inside are
-`r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
+A caller fills a camera, then calls `raster_draw()`, which culls and draws
+each instance in turn with one fitted lens shared by culling and drawing,
+and `raster_upscale()` with the destination width and height to compose
+that picture. A
+caller that picks the render size from what culling kept, as the render
+context does, calls `raster_census()`, sets the size, then
+`raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
+or tool that schedules them itself.
+
+Culling and clipping use caller-owned workspace sized by
+`r3d_pipeline_work_bytes()`. The raster's arena, sized by
+`raster_scratch_bytes()`, holds one workspace per row slice. Culling reuses
+the first workspace before drawing starts. Direct pipeline callers supply
+the workspace explicitly; simultaneous draws need distinct blocks.
 
 The stages are split so two cores can share them. Transforming disjoint
 cluster lists writes disjoint vertex ranges, and drawing touches only the
@@ -104,7 +129,26 @@ rows of its own target. `r3d_pipeline_transform()` also records the screen rows
 each cluster spans, so a core drawing half the rows skips a cluster wholly
 outside them. The raster draws at the caller's width and height and can
 upscale the result into a destination picture, so rendering at half the
-panel's size quarters the pixels and halves the rows and spans.
+panel's size quarters the pixels and halves the rows and spans. The lens
+frames the destination's shape and `r3d_lens_fit()` then scales each axis to
+the render size on its own, so a render may cut its height more than its
+width and still show the same view.
+
+### The render context
+
+A camera is perspective only. What a frame is drawn at belongs to the render
+context (`context/render_context.h`): it owns the raster and its scratch
+block, the render size and the debug view. A caller hands it instances, a
+camera and a clear colour, then a destination to upscale into. The scene
+manager draws the active camera through the engine's one context,
+`render_context_main()`, released when an app exits.
+
+| Call | Meaning |
+|---|---|
+| `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
+| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
+| `render_context_set_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
 ### On both cores
 
@@ -137,22 +181,29 @@ sequenceDiagram
 
 ### View modes
 
-Development builds can look at the depth a frame drew instead of its
-colour. `raster_show()` runs after `raster_draw()` and before
-`raster_upscale()`, and overwrites the raster's colour buffer from its
-depth buffer, which it reads as the render left it and never writes.
+Development builds select one row from the `render_view_t` table in
+`render/context/render_context.c`: depth, tiles, motion or meshlets.
+`render_context_set_view()` attaches that row and owns its zeroed PSRAM state.
+Switching frees the previous state; `RENDER_VIEW_SHADED` detaches it, and
+`render_context_release()` frees it. `render_context_view()` exposes the row's
+name and constructor to tools.
+
+`raster_show()` runs the attached view's `show` hook after drawing and before
+`raster_upscale()`. It repaints colour while leaving depth intact.
 
 ```mermaid
 flowchart LR
-    Render["raster_draw()<br/><i>colour and depth</i>"] --> Show
-    Show["raster_show(mode)<br/><i>colour from depth</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Render["the draw<br/><i>colour and depth</i>"] --> Show
+    Show["raster_show()<br/><i>attached view paints colour</i>"] --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-| Mode | The colour buffer becomes |
+| View | The colour buffer becomes |
 |---|---|
-| `RASTER_SHOW_SHADED` | untouched: the baked colours as drawn |
-| `RASTER_SHOW_DEPTH` | the depth as a grey ramp, nearest white and farthest black |
-| `RASTER_SHOW_DEPTH_TILES` | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth: the value a hierarchical depth test would cull against |
+| shaded | untouched: the baked colours as drawn |
+| depth | the depth as a grey ramp, nearest white and farthest black |
+| tiles | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth |
+| motion | mid-grey for none, red for x and green for y |
+| meshlets | a flat hue for each cluster, with disjoint IDs for each instance |
 
 The ramp is stretched over the range this frame drew, so it shows the most
 detail within a frame and is not comparable between frames. A pixel nothing
@@ -160,6 +211,83 @@ drew takes the raster's `clear`, the colour upscaling gives it, so it reads as e
 in every view; a tile holding one such pixel is empty. The views are at the
 raster's own size, before upscaling. `r3d_span.h` defines the depth encoding
 they read.
+
+The depth and depth-tile views along a flythrough:
+
+![The depth view along a flythrough](../images/render/sponza-depth.gif)
+![The depth-tile view along a flythrough](../images/render/sponza-tiles.gif)
+
+## Attachments
+
+A raster's picture is a render target
+([Gfx-and-Presentation.md](../Gfx-and-Presentation.md#render-targets)):
+colour and depth, then any further attachment the caller lists in
+`raster_t.attachments`. An attachment with pixels is carved from the scratch block at
+the drawn size, so a picture drawn at a new size carves anew, and none keeps
+pixels from one picture to the next. A view with `bytes_per_pixel == 0`
+reserves no scratch pixels. It is not cleared when its `clear` hook is NULL;
+depth and tiles have NULL clear hooks and use only colour and depth in their `show` hooks.
+
+```mermaid
+flowchart LR
+    Begin["begin<br/><i>once per picture</i>"] --> Draw["draw each instance<br/><i>colour, depth, and the span writer<br/>an attachment chose for it</i>"]
+    Draw --> Resolve["resolve<br/><i>both cores, disjoint rows</i>"]
+    Resolve --> Show["raster_show()"] --> Upscale["raster_upscale()"]
+```
+
+| Hook | When | What it may do |
+|---|---|---|
+| `clear` | the first instance of a picture, on its rows | start its pixels; the only hook colour and depth have |
+| `begin` | once per `raster_draw()`, before anything is drawn | read the camera and the instances, keep its own state |
+| `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
+| `resolve` | once every instance is drawn | turn what was written into the final map |
+| `show` | `raster_show()` | paint the colour from it |
+
+A writer finds the pixels its triangle won by their depth equalling the
+triangle's, so where two instances meet at exactly the same depth the pixel
+takes the later one's write. A writer sees depth and one value per instance, or its base plus the
+mesh cluster index when `r3d_span_writer_t.per_cluster` is true; a map that needs more, such as normals, rebuilds it from depth in
+its `resolve`.
+
+### Motion vectors
+
+`raster_motion.h`: for each pixel, the previous position of the point it
+shows minus this one, two signed bytes in half pixels of this picture.
+`RASTER_MOTION_UNKNOWN` marks a pixel nothing drew, the first picture, a
+point behind the previous camera, and motion past the range.
+
+The motion view along a flythrough, red for x and green for y:
+
+![The motion-vector view along a flythrough](../images/render/sponza-motion-vectors.gif)
+
+- **The camera.** `begin` builds this picture's lens and the previous
+  camera's lens at this picture's size. `resolve` takes each pixel back to
+  the world through its depth and projects it through the previous lens. So
+  a size change between pictures needs nothing special.
+- **Moving instances.** An instance is known by its placement's address. One
+  whose placement changed since the previous picture gets its own map, which
+  carries the point to where the mesh was. From the first instance that
+  moved on, every triangle writes its instance's tag (0 for anything still),
+  and `resolve` picks the map by it; before it, pixels keep the 0 they were
+  cleared to. On a picture where nothing moved, nothing is written while
+  drawing. A raster with motion attached draws at most
+  `RASTER_MOTION_INSTANCES_MAX` instances.
+- **The caller** owns a zeroed `raster_motion_t`, attaches
+  `raster_motion_view()`, and calls `raster_motion_forget()` after a
+  cut. The render context attaches it while the motion view is selected.
+
+### Meshlet IDs
+
+`raster_meshlets_view()` clears a 16-bit map to zero and resets its next ID
+to one before each draw. Its writer reserves each instance's cluster count
+and writes the reserved base plus the mesh's cluster index. The `show` hook
+maps IDs to hues through a multiplicative hash; zero takes the clear colour.
+IDs are distinct per draw for up to 65535 clusters.
+It needs no resolve pass.
+
+The meshlets view along the same flythrough, one hue per cluster:
+
+![The meshlets view along a flythrough](../images/render/sponza-meshlets.gif)
 
 ## Coverage and small triangles
 
@@ -203,8 +331,10 @@ fills its spans without those clamps, which would change nothing there.
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
-scope. A frame's per-vertex, per-cluster, colour and depth buffers are one
-block:
+scope. A frame's per-vertex and per-cluster buffers, census list, picture
+attachments and upscale maps are one block. The list follows the vertex and
+cluster buffers, before the picture, at an offset independent of render size.
+Its storage is padded to the picture attachments' alignment:
 `raster_scratch_bytes()` sizes it, the caller obtains it once and sets
 `scratch`, and each call carves it. The caller decides where it lives,
 so none of it has to take internal RAM.

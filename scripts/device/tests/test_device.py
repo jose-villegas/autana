@@ -39,6 +39,19 @@ def mock_store(token="token"):
     return store
 
 
+def suite_args(owner="agent"):
+    return Namespace(owner=owner, purpose="test", wait=0, suite="sand", out=None,
+                     max_seconds=1, idle_seconds=None, expect_build_id=None)
+
+
+@contextlib.contextmanager
+def recorded_serial(connection, root):
+    with mock.patch.object(device, "open_serial", return_value=connection), \
+         mock.patch.object(device, "records_root", return_value=root), \
+         mock.patch.object(device, "git_commit", return_value="deadbeef"):
+        yield
+
+
 class InterpreterTests(unittest.TestCase):
     """Any interpreter may start device.py: a report script's `python`, a
     person at a prompt, and only ESP-IDF's carries pyserial."""
@@ -375,8 +388,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_run_suite_prints_result_counts(self):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
-        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand",
-                         out=None, max_seconds=1, idle_seconds=None, expect_build_id=None)
+        args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(device, "open_when_free", return_value=connection), \
@@ -391,8 +403,7 @@ class DeviceTests(unittest.TestCase):
             b":623:test_a_timed_out_job_falls_back_inline:FAIL: Expected 1 Was 0\n"
             b"SUITE_DONE sand\n"
         ])
-        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand",
-                         out=None, max_seconds=1, idle_seconds=None, expect_build_id=None)
+        args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(device, "open_when_free", return_value=connection), \
@@ -418,16 +429,22 @@ class DeviceTests(unittest.TestCase):
         self.assertFalse(complete)
         self.assertEqual(found, ["TUNE a=1 min=0 max=2", "TUNE_EN"])
 
-    def send_args(self, line):
-        return Namespace(owner="agent", purpose="send", wait=0, line=line, reply="TUNE",
-                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=1, optional=False)
-
-    def test_send_writes_the_line_and_prints_the_reply(self):
-        connection = FakeConnection([b"I (5) shell: x\nTUNE_OK launcher.ridge_trail=200\n"])
+    def send_response(self, chunks, args):
+        connection = FakeConnection(chunks)
         store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection), \
              mock.patch("builtins.print") as printed:
-            status = device.send(self.send_args("SET launcher.ridge_trail 200"), store, BOARD)
+            status = device.send(args, store, BOARD)
+        return status, connection, printed
+
+    def send_args(self, line, reply="TUNE", until=None, seconds=1, optional=False):
+        return Namespace(owner="agent", purpose="send", wait=0, line=line, reply=reply,
+                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"] if until is None else until,
+                         seconds=seconds, optional=optional)
+
+    def test_send_writes_the_line_and_prints_the_reply(self):
+        status, connection, printed = self.send_response([b"I (5) shell: x\nTUNE_OK launcher.ridge_trail=200\n"],
+                                                          self.send_args("SET launcher.ridge_trail 200"))
         self.assertEqual(status, 0)
         self.assertEqual(connection.writes, [b"\nSET launcher.ridge_trail 200\n"])
         printed.assert_called_once_with("TUNE_OK launcher.ridge_trail=200")
@@ -451,55 +468,34 @@ class DeviceTests(unittest.TestCase):
         reply always starts with its own prefix in capitals, so send()
         completes as soon as that prefix's own _END arrives rather than
         waiting out the window."""
-        connection = FakeConnection([b"EXAMPLE status=ok\n", b"EXAMPLE_END\n"])
-        store = mock_store()
-        args = Namespace(owner="agent", purpose="send", wait=0, line="example status",
-                         reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True)
-        with mock.patch.object(device, "open_when_free", return_value=connection), \
-             mock.patch("builtins.print") as printed:
-            status = device.send(args, store, BOARD)
+        status, connection, printed = self.send_response([b"EXAMPLE status=ok\n", b"EXAMPLE_END\n"],
+                                                          self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))
         self.assertEqual(status, 0)
         printed.assert_called_once_with("EXAMPLE status=ok\nEXAMPLE_END")
 
     def test_send_forwards_an_app_command_and_fails_on_its_own_err_line(self):
-        connection = FakeConnection([b"EXAMPLE_ERR not running\n"])
-        store = mock_store()
-        args = Namespace(owner="agent", purpose="send", wait=0, line="example status",
-                         reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], seconds=1, optional=True)
-        with mock.patch.object(device, "open_when_free", return_value=connection), \
-             mock.patch("builtins.print"):
-            status = device.send(args, store, BOARD)
+        status, connection, printed = self.send_response([b"EXAMPLE_ERR not running\n"],
+                                                          self.send_args("example status", reply="EXAMPLE", until=["EXAMPLE_END", "EXAMPLE_ERR"], optional=True))
         self.assertEqual(status, 1)
 
     def test_send_optional_treats_silence_as_success(self):
         """TOUCH/IMU answer only when something is wrong; a timeout with
         nothing seen is that verb's normal happy path, not a failure."""
-        connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
-        store = mock_store()
-        args = Namespace(owner="agent", purpose="send", wait=0, line="TOUCH down 1 2",
-                         reply="TOUCH", until=["TOUCH"], seconds=0.05, optional=True)
-        with mock.patch.object(device, "open_when_free", return_value=connection), \
-             mock.patch("builtins.print") as printed:
-            status = device.send(args, store, BOARD)
+        status, connection, printed = self.send_response([b"I (1) shell: unrelated log line\n"],
+                                                          self.send_args("TOUCH down 1 2", reply="TOUCH", until=["TOUCH"], seconds=0.05, optional=True))
         self.assertEqual(status, 0)
         printed.assert_called_once_with("")
 
     def test_send_optional_still_prints_a_device_side_warning(self):
-        connection = FakeConnection([b"W (2) console: TOUCH wants <down|up> <x> <y>: 'bad'\n"])
-        store = mock_store()
-        args = Namespace(owner="agent", purpose="send", wait=0, line="TOUCH bad",
-                         reply="TOUCH", until=["TOUCH"], seconds=0.5, optional=True)
-        with mock.patch.object(device, "open_when_free", return_value=connection), \
-             mock.patch("builtins.print") as printed:
-            status = device.send(args, store, BOARD)
+        status, connection, printed = self.send_response([b"W (2) console: TOUCH wants <down|up> <x> <y>: 'bad'\n"],
+                                                          self.send_args("TOUCH bad", reply="TOUCH", until=["TOUCH"], seconds=0.5, optional=True))
         self.assertEqual(status, 0)
         printed.assert_called_once_with("TOUCH wants <down|up> <x> <y>: 'bad'")
 
     def test_send_without_optional_still_raises_on_silence(self):
         connection = FakeConnection([b"I (1) shell: unrelated log line\n"])
         store = mock_store()
-        args = Namespace(owner="agent", purpose="send", wait=0, line="TUNE", reply="TUNE",
-                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"], seconds=0.05, optional=False)
+        args = self.send_args("TUNE", seconds=0.05)
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "no reply"):
                 device.send(args, store, BOARD)
@@ -831,16 +827,13 @@ class RecordCaptureTests(unittest.TestCase):
 class RunSuiteDefaultPathTests(unittest.TestCase):
     def test_without_out_uses_the_default_path_and_writes_an_index_line(self):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
-        args = Namespace(owner="agent a", purpose="test", wait=0, suite="sand", out=None,
-                         max_seconds=1, idle_seconds=None, expect_build_id=None)
+        args = suite_args(owner="agent a")
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             fixed_now = datetime(2026, 9, 16, 12, 30, 45)
-            with mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "now", return_value=fixed_now), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+            with recorded_serial(connection, root), \
+                 mock.patch.object(device, "now", return_value=fixed_now):
                 self.assertEqual(device.run_suite(args, store, BOARD), 0)
             expected_log = root / "20260916" / "123045_runsuite-sand_agent-a.log"
             self.assertTrue(expected_log.is_file())
@@ -881,13 +874,11 @@ class FlashDefaultPathTests(unittest.TestCase):
         args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                          worktree=str(worktree), out=None)
         output = io.StringIO()
-        with mock.patch.object(device, "records_root", return_value=root), \
+        with recorded_serial(connection, root), \
              mock.patch.object(device, "now", return_value=datetime(2026, 9, 16, 12, 30, 45)), \
              mock.patch.object(device, "run_to_end", run), \
              mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
              mock.patch.object(device, "reset"), \
-             mock.patch.object(device, "open_serial", return_value=connection), \
-             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
              contextlib.redirect_stdout(output):
             with device.build_image(args, BOARD) as built:
                 device.write_image(built, store, BOARD)
@@ -1036,16 +1027,13 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
         connection = FakeConnection([
             b":1:test_one:PASS\n:2:test_two:FAIL: Expected 1 Was 0\nSUITE_DONE sand\n"
         ])
-        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
-                         max_seconds=1, idle_seconds=None, expect_build_id=None)
+        args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             fixed_now = datetime(2026, 9, 16, 12, 30, 45)
-            with mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "now", return_value=fixed_now), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+            with recorded_serial(connection, root), \
+                 mock.patch.object(device, "now", return_value=fixed_now):
                 self.assertEqual(device.run_suite(args, store, BOARD), 1)
             report_path = root / "20260916" / "123045_runsuite-sand_agent.md"
             self.assertTrue(report_path.is_file())
@@ -1055,14 +1043,11 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
 
     def test_a_broken_reporter_step_does_not_fail_the_suite_command(self):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
-        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
-                         max_seconds=1, idle_seconds=None, expect_build_id=None)
+        args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
-            with mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+            with recorded_serial(connection, root), \
                  mock.patch.object(device_report, "write_report_for_capture",
                                    side_effect=RuntimeError("disk full")):
                 self.assertEqual(device.run_suite(args, store, BOARD), 0)
@@ -1074,14 +1059,11 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
 
     def test_run_suite_records_the_ambient_cwd_as_worktree(self):
         connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
-        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None,
-                         max_seconds=1, idle_seconds=None, expect_build_id=None)
+        args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
-            with mock.patch.object(device, "open_serial", return_value=connection), \
-                 mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+            with recorded_serial(connection, root), \
                  mock.patch.object(device.Path, "cwd", return_value=Path("C:/some/worktree")):
                 device.run_suite(args, store, BOARD)
             entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
@@ -1858,17 +1840,22 @@ class ListenElfResolutionTests(unittest.TestCase):
 
 
 class ListenLifecycleTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def listen_environment(self, store, root, output):
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+             mock.patch.object(device, "records_root", return_value=root), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
+             contextlib.redirect_stdout(output):
+            yield
+
     def run_listen(self, connection, flags, output=None):
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = output or io.StringIO()
-            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-                 mock.patch.object(device, "open_when_free", return_value=connection), \
-                 mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
-                 mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
-                 contextlib.redirect_stdout(output):
+            with self.listen_environment(store, root, output), \
+                 mock.patch.object(device, "open_when_free", return_value=connection):
                 code = device.main(["--board", BOARD, "listen", *flags])
             entries = [json.loads(line) for line in (root / "index.jsonl").read_text().splitlines()]
             payload = Path(entries[-1]["capture_path"]).read_bytes()
@@ -1973,11 +1960,7 @@ class ListenLifecycleTests(unittest.TestCase):
         store = mock.Mock()
         store.acquire.side_effect = KeyboardInterrupt
         with tempfile.TemporaryDirectory() as directory, \
-             mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-             mock.patch.object(device, "records_root", return_value=Path(directory)), \
-             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
-             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
-             contextlib.redirect_stdout(io.StringIO()):
+             self.listen_environment(store, Path(directory), io.StringIO()):
             code = device.main(["--board", BOARD, "listen", "--follow"])
             entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
         self.assertEqual(code, 0)
@@ -1986,12 +1969,8 @@ class ListenLifecycleTests(unittest.TestCase):
     def test_interrupt_during_port_open_releases_lock(self):
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
-             mock.patch.object(device.device_lock, "LockStore", return_value=store), \
-             mock.patch.object(device, "open_when_free", side_effect=KeyboardInterrupt), \
-             mock.patch.object(device, "records_root", return_value=Path(directory)), \
-             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
-             mock.patch.object(device, "find_elf_for_build_id", return_value=None), \
-             contextlib.redirect_stdout(io.StringIO()):
+             self.listen_environment(store, Path(directory), io.StringIO()), \
+             mock.patch.object(device, "open_when_free", side_effect=KeyboardInterrupt):
             code = device.main(["--board", BOARD, "listen", "--follow"])
             entry = json.loads((Path(directory) / "index.jsonl").read_text().strip())
         self.assertEqual(code, 0)
@@ -2354,40 +2333,33 @@ class ScreenshotCommandTests(unittest.TestCase):
                 device.screenshot(args, store, BOARD)
             self.assertTrue((Path(directory) / "screenshot_20260916_123045.png").is_file())
 
-    def test_default_turns_the_framebuffer_to_the_board_shape_and_records_it(self):
-        connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 2}')])
+    def capture_marked(self, directory, orientation, **view):
+        connection = FakeConnection([self.wire_lines(
+            self.marked_bmp(), json.dumps({"orientation_quarter": orientation}))])
         store = mock_store()
+        out = str(Path(directory) / "shot.png")
+        args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0, **view)
+        with mock.patch.object(device, "open_when_free", return_value=connection):
+            device.screenshot(args, store, BOARD)
+        return out
+
+    def test_default_turns_the_framebuffer_to_the_board_shape_and_records_it(self):
         with tempfile.TemporaryDirectory() as directory:
-            out = str(Path(directory) / "shot.png")
-            args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0)
-            with mock.patch.object(device, "open_when_free", return_value=connection):
-                device.screenshot(args, store, BOARD)
+            out = self.capture_marked(directory, 2)
             self.assertEqual(self.image_shape(out), (3, 2))
             self.assertEqual(self.first_pixel(out), bytes((18, 17, 16)))
             self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 3)
 
     def test_framebuffer_mode_keeps_the_bytes_orientation_and_records_zero_turn(self):
-        connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 1}')])
-        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
-            out = str(Path(directory) / "shot.png")
-            args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0,
-                             framebuffer=True)
-            with mock.patch.object(device, "open_when_free", return_value=connection):
-                device.screenshot(args, store, BOARD)
+            out = self.capture_marked(directory, 1, framebuffer=True)
             self.assertEqual(self.image_shape(out), (2, 3))
             self.assertEqual(self.first_pixel(out), bytes((15, 14, 13)))
             self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 0)
 
     def test_as_shown_uses_the_captured_orientation_quarter(self):
-        connection = FakeConnection([self.wire_lines(self.marked_bmp(), '{"orientation_quarter": 2}')])
-        store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
-            out = str(Path(directory) / "shot.png")
-            args = Namespace(owner="agent", purpose="p", wait=0, out=out, timeout=1.0,
-                             as_shown=True)
-            with mock.patch.object(device, "open_when_free", return_value=connection):
-                device.screenshot(args, store, BOARD)
+            out = self.capture_marked(directory, 2, as_shown=True)
             self.assertEqual(self.image_shape(out), (2, 3))
             self.assertEqual(self.first_pixel(out), bytes((6, 5, 4)))
             self.assertEqual(json.loads(Path(directory, "shot.json").read_text())["image_turn_quarter"], 2)

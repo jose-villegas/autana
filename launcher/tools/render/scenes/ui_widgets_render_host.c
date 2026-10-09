@@ -9,8 +9,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "gfx/draw/icons_system.h"
 #include "gfx/gfx.h"
-#include "gfx/icons_system.h"
 #include "render_host.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"

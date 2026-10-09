@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "asset/asset_store.h"
-#include "gfx/gfx_color.h"
+#include "gfx/draw/gfx_color.h"
 #include "scene/scene_internal.h"
 #include "util/runtime/memory.h"
 
@@ -76,7 +76,6 @@ instantiate(const scene_asset_t* asset) {
                                                       .placement = &scene->transforms[c->entity],
                                                       .path = NULL},
                                              .entity = c->entity,
-                                             .render_scale_percent = 50,
                                              .clear = GFX_RGB(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
@@ -247,6 +246,17 @@ scene_loaded_count(void) {
 scene_t*
 scene_loaded_at(int index) {
     return loaded[index];
+}
+
+int
+scene_entity_count(const scene_t* scene) {
+    return scene->asset.entity_count;
+}
+
+const char*
+scene_entity_name(const scene_t* scene, scene_entity_t entity) {
+    assert(entity < scene->asset.entity_count);
+    return scene->asset.names[entity];
 }
 
 scene_entity_t

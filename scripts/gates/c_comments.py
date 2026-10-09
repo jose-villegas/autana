@@ -82,6 +82,16 @@ class Comment:
         return self.first
 
 
+def balanced_end(source, start, opening="{", closing="}"):
+    """Offset after a balanced delimiter pair; callers own literal masking."""
+    depth = 0
+    for at in range(start, len(source)):
+        depth += (source[at] == opening) - (source[at] == closing)
+        if depth == 0:
+            return at + 1
+    raise ValueError("unclosed " + opening)
+
+
 def tokens(source, literals=True):
     """Comment and literal spans; escaped quotes cannot start a comment."""
     i, n = 0, len(source)
@@ -174,12 +184,14 @@ def file_header(path, source):
     return comments[0] if comments else None
 
 
-def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True):
+def sources(root, *, tracked=False, extensions=(".c", ".h"), excluded=True, files=None):
     """C sources eligible for comment gates, with tracked-only selection optional."""
     root = pathlib.Path(root)
     paths = (root / name for name in tracked_files(root)) if tracked else committable(root)
     for path in paths:
         rp = path.relative_to(root).as_posix() if tracked else path.as_posix()
+        if files is not None and path.as_posix() not in files:
+            continue
         if path.suffix in extensions and (not excluded or not rp.startswith(EXCLUDED)):
             yield path
 

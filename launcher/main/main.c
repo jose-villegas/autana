@@ -1,6 +1,8 @@
 /*
- * The board's entry point: starts the hardware in a fixed order, then hands
- * the task to the shell (shell/shell.h), which never gives it back.
+ * The firmware that runs on the board: a shell that launches apps and draws
+ * every frame itself. This is its entry point; it starts the hardware in a
+ * fixed order, then hands the task to the shell (shell/shell.h), which never
+ * gives it back.
  */
 
 #include <stdbool.h>
@@ -10,6 +12,7 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "input/input_shell.h"
 #include "selftest/post.h"
 #include "selftest/post_layout.h"

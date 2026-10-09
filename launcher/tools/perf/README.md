@@ -128,5 +128,9 @@ are preserved beside the summary. Host tests use an injected runner:
 python -m unittest discover -s launcher/tools/perf/tests
 ```
 
+`phase_report.py` writes the phase tables for a reporter that turns one
+device capture into Markdown: each phase's average per run, Total as fps,
+then each run's min/max/avg/median/p95 per phase.
+
 See [Layout-Noise.md](../../../docs/tools/Layout-Noise.md) for seeded builds
 and pilot variance definitions.

@@ -9,18 +9,19 @@ last pixels, including after firmware crashes.
 
 ## Bring-up
 
-`launcher/main/gfx/gfx.c` owns SPI2, panel IO and panel initialization.
+`launcher/main/board/board_panel.c` owns SPI2, panel IO and panel initialization.
 `board_detect()` selects SH8601 with FT3168 touch or CO5300 with CST820 touch.
 Keep revision detection and panel offsets in the board layer rather than
 hardcoding a driver or applying the gap in drawing code.
 
-The panel-specific init tables in `gfx.c` are required alongside the driver;
+The panel-specific init tables in `board_panel.c` are required alongside the driver;
 driver defaults alone do not supply the board's panel settings.
 
 | Constraint | Guard |
 |---|---|
 | Bitmap submission queues an asynchronous DMA read | do not rewrite a submitted buffer until its transfer completes |
 | Multiple transfers can finish before the caller waits | `strip_sent` is a counting semaphore, with one take per queued transfer |
+| esp_lcd's SPI io ignores the `on_color_trans_done` return value | the callback calls `portYIELD_FROM_ISR` itself, or the waiting task resumes only at the next tick |
 | The panel expects byte-swapped RGB565 | construct colours through `gfx_rgb()` |
 | Panel windows require even edges | round windows outward with `mathi_even_floor()` and `mathi_even_ceil()` |
 | External-memory buffers cannot supply the fast panel path reliably | send through internal `MEMORY_DMA` bounce slots |
@@ -35,7 +36,7 @@ partial bands reduce bytes sent. Rendering and DMA can overlap, so timing an
 isolated band does not predict the cost of a pipelined frame.
 
 `CONFIG_LAUNCHER_GFX_QSPI_80MHZ` sets the boot clock, `GFX_QSPI_HZ`, in
-`launcher/main/gfx/gfx.h`. The shell may change it at run time through
+`launcher/main/gfx/present/gfx_present.h`. The shell may change it at run time through
 `gfx_set_panel_clock_hz()`. The SPI divider provides 40 or 80 MHz for these
 choices; requesting an intermediate value does not provide an intermediate
 panel clock.
@@ -62,7 +63,7 @@ panel received them correctly.
 A panel transaction has setup cost as well as payload cost. Sending one row
 per call can cost more than a larger merged transfer. Gather and run-merging
 thresholds `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` in
-`launcher/main/gfx/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
+`launcher/main/gfx/present/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
 device before changing the clock or those thresholds.
 
 ## Dirty-region costs
@@ -72,7 +73,7 @@ narrow changes, short wide changes and separated marks against each other.
 Use those tests for current costs rather than transferring isolated timings
 between clocks or render modes. Geometry and marking ownership are in
 [Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking) and
-`launcher/main/gfx/gfx_dirty.h`.
+`launcher/main/gfx/present/gfx_dirty.h`.
 
 Full-width partial bands are contiguous and need no gather packing. Narrow
 runs use bounce slots; the queued transfer must finish before its slot is

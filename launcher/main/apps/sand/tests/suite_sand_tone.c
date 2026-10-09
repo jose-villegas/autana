@@ -112,23 +112,13 @@ test_the_brush_and_the_setter_agree_about_every_material(void) {
  * forever. */
 static void
 test_snow_painted_into_water_melts(void) {
-    fixture();
-    sand_clear(&s);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int y = H - 4; y < H - 1; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-        }
-    }
+    stone_floor_fixture();
+    sand_fill_box(&s, 0, H - 4, W, H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
     sand_spawn(&s, W / 2, 1, 2, MAT_SNOW);
     TEST_ASSERT_TRUE_MESSAGE(count_cells_of(MAT_SNOW) > 0,
                              "fixture check: the brush has to put some snow on the board");
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_SNOW),
                                   "snow PAINTED into water must melt, on a board with no fire and "
@@ -151,21 +141,11 @@ test_snow_melts_in_any_liquid(void) {
 
     for (unsigned k = 0; k < sizeof liquids / sizeof liquids[0]; k++) {
         fixture();
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 1, STONE);
-        }
-        for (int y = H - 4; y < H - 1; y++) {
-            for (int x = 0; x < W; x++) {
-                sand_set(&s, x, y, CELL_MAKE(liquids[k], MASS_MAX));
-            }
-        }
-        for (int x = 2; x < W - 2; x++) {
-            sand_set(&s, x, 0, SNOW);
-        }
+        sand_fill_box(&s, 0, H - 1, W, H, STONE);
+        sand_fill_box(&s, 0, H - 4, W, H - 1, CELL_MAKE(liquids[k], MASS_MAX));
+        sand_fill_box(&s, 2, 0, W - 2, 1, SNOW);
 
-        for (int i = 0; i < 600; i++) {
-            sand_step(&s, 0, 1000, 0);
-        }
+        run_steps(&s, 600, 0, 1000);
 
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_SNOW),
                                       "snow left sitting in a liquid must melt - any liquid, not "
@@ -188,17 +168,9 @@ test_melting_snow_makes_water_not_more_of_the_liquid(void) {
 
     for (unsigned k = 0; k < sizeof liquids / sizeof liquids[0]; k++) {
         fixture();
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, H - 1, STONE);
-        }
-        for (int y = H - 3; y < H - 1; y++) {
-            for (int x = 0; x < W; x++) {
-                sand_set(&s, x, y, CELL_MAKE(liquids[k], MASS_MAX));
-            }
-        }
-        for (int x = 2; x < W - 2; x++) {
-            sand_set(&s, x, 0, SNOW);
-        }
+        sand_fill_box(&s, 0, H - 1, W, H, STONE);
+        sand_fill_box(&s, 0, H - 3, W, H - 1, CELL_MAKE(liquids[k], MASS_MAX));
+        sand_fill_box(&s, 2, 0, W - 2, 1, SNOW);
 
         bool water_seen = false;
         for (int i = 0; i < 600 && !water_seen; i++) {
@@ -221,17 +193,11 @@ test_melting_snow_makes_water_not_more_of_the_liquid(void) {
 static void
 test_snow_keeps_on_dry_ground(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, 0, SNOW);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+    sand_fill_box(&s, 1, 0, W - 1, 1, SNOW);
     const int fell = W - 2;
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(fell, count_cells_of(MAT_SNOW),
                                   "snow on bare stone must not melt - it melts in liquid and near "
@@ -250,9 +216,7 @@ test_stone_heats_up_next_to_lava(void) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2, STONE);
     }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 3, CELL_MAKE(MAT_LAVA, MASS_MAX));
-    }
+    sand_fill_box(&s, 1, H - 3, W - 1, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     int hottest = 0;
     for (int i = 0; i < 400; i++) {
@@ -318,9 +282,7 @@ test_water_cools_hot_stone_back_to_room_temperature(void) {
 
     fixture();
     sand_set(&s, 3, 3, CELL_MAKE(MAT_STONE, MATERIAL_VARIANTS - 1));
-    for (int i = 0; i < wet_steps; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, wet_steps, 0, 1000);
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(SAND_AMBIENT_HEAT, CELL_VARIANT(sand_at(&s, 3, 3)),
                                          "a DRY control cell, given the exact same number of steps that "
@@ -370,16 +332,10 @@ test_stone_never_melts_however_hot(void) {
     fixture();
     sand_clear(&s);
     const int walls = W;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, CELL_MAKE(MAT_STONE, MATERIAL_VARIANTS - 1));
-    }
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, CELL_MAKE(MAT_STONE, MATERIAL_VARIANTS - 1));
+    sand_fill_box(&s, 0, H - 2, W, H - 1, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
-    for (int i = 0; i < 800; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 800, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(walls, count_cells_of(MAT_STONE),
                                   "stone held at the top of its ramp under lava must still be stone "
@@ -395,9 +351,7 @@ test_snow_cracks_glass_but_not_stone(void) {
     fixture();
     sand_clear(&s);
     const int mid = W / 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     for (int x = 1; x < W - 1; x++) {
         /* left half stone, right half glass - both at the top of the ramp */
         sand_set(&s, x, H - 2, CELL_MAKE(x < mid ? MAT_STONE : MAT_GLASS, MATERIAL_VARIANTS - 1));
@@ -406,9 +360,7 @@ test_snow_cracks_glass_but_not_stone(void) {
     const int stone_before = count_cells_of(MAT_STONE);
     const int glass_before = count_cells_of(MAT_GLASS);
 
-    for (int i = 0; i < 80; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 80, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, reactions[MAT_STONE].shatters_to,
                                   "stone must name nothing in shatters_to - rock does not thermally "

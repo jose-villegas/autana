@@ -5,13 +5,14 @@
  * every app's own screen splits drawing from ui_begin()/ui_end() (see
  * docs/Building-a-Screen.md), not for reuse, but because ui_end() needs the
  * real framebuffer and ui_launcher_draw() alone does not, which is what
- * lets a host suite drive the real row layout without linking gfx.c.
+ * lets a host suite drive the real row layout without linking gfx.
  */
 
 #include "ui/ui_launcher.h"
 
 #include "app/app.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
 #include "util/runtime/frame_cost.h"

@@ -1,7 +1,9 @@
 /*
- * raster_show: the raster's development view modes, drawing its depth, or
- * each tile's farthest depth, in place of its colour.
+ * raster_show: development attachments paint colour from depth or their
+ * own per-pixel maps before upscale.
  */
+#include "render/raster_show.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -101,22 +103,68 @@ show_tiles(const picture_t* f, const depth_range_t* range) {
     }
 }
 
-void
-raster_show(const raster_t* raster, raster_show_t mode) {
-    if (mode == RASTER_SHOW_SHADED) {
-        return;
-    }
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    const picture_t picture = {b.color, b.depth, raster->width, raster->height, raster->clear};
+static void
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* target, bool tiles) {
+    (void)self;
+    const picture_t picture = {gfx_render_target_color(target, 0), gfx_render_target_depth(target, 0), raster->width,
+                               raster->height, raster->clear};
     const size_t count = (size_t)picture.width * (size_t)picture.height;
     const depth_range_t range = drawn_range(picture.depth, count);
     if (!range.any) {
         for (size_t i = 0; i < count; i++) {
             picture.color[i] = picture.clear;
         }
-    } else if (mode == RASTER_SHOW_DEPTH) {
+    } else if (!tiles) {
         show_depth(&picture, &range);
     } else {
         show_tiles(&picture, &range);
+    }
+}
+
+static void
+depth_show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* target, int index) {
+    (void)index;
+    show(self, raster, target, false);
+}
+
+static void
+tiles_show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* target, int index) {
+    (void)index;
+    show(self, raster, target, true);
+}
+
+raster_attachment_t
+raster_depth_view(void* state) {
+    (void)state;
+    return (raster_attachment_t){.show = depth_show};
+}
+
+raster_attachment_t
+raster_depth_tiles_view(void* state) {
+    (void)state;
+    return (raster_attachment_t){.show = tiles_show};
+}
+
+void
+raster_show_map(const gfx_render_target_t* picture, int index, uint16_t clear,
+                gfx_color_t (*color_of)(const void* pixel, uint16_t clear)) {
+    for (int y = picture->row0; y < picture->row1; y++) {
+        const char* pixels = gfx_render_target_row(picture, index, y);
+        gfx_color_t* color = gfx_render_target_color(picture, y);
+        for (int x = 0; x < picture->width; x++) {
+            color[x] = color_of(pixels, clear);
+            pixels += picture->attachment[index].bytes_per_pixel;
+        }
+    }
+}
+
+void
+raster_show(const raster_t* raster) {
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    for (int k = 0; k < raster->attachment_count; k++) {
+        const raster_attachment_t* a = raster->attachments[k];
+        if (a->show != NULL) {
+            a->show(a, raster, &b.picture, GFX_ATTACHMENT_FURTHER + k);
+        }
     }
 }

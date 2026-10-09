@@ -4,7 +4,6 @@ import contextlib
 import hashlib
 import io
 import pathlib
-import re
 import sys
 import tempfile
 import tomllib
@@ -16,6 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from r3d import build_pack
 from anim_probe import write_camera_clip  # noqa: E402
 
 try:
@@ -35,7 +35,7 @@ SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\ndirectory = "."\nname = "mesh"\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
-SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true }\n'
+SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'
 VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE
@@ -178,6 +178,15 @@ class ImportTests(unittest.TestCase):
         self.rejects("true or false", SIMPLIFY.replace("seal_seams = true", 'seal_seams = "no"') + VARIANT)
         self.rejects("must be an integer", SIMPLIFY + VARIANT.replace("= 10", "= 1.5"))
 
+    def test_simplify_needs_a_positive_colour_deviation(self):
+        self.rejects("colour_deviation is required", SIMPLIFY.replace(", colour_deviation = 1.0", "") + VARIANT)
+        for value in ("0", "-1.0"):
+            self.rejects("must be above 0", SIMPLIFY.replace("colour_deviation = 1.0", f"colour_deviation = {value}") + VARIANT)
+        with tempfile.TemporaryDirectory() as directory:
+            body = SIMPLIFY.replace("colour_deviation = 1.0", "colour_deviation = 0.01") + VARIANT
+            settings = load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n', body=body))
+        self.assertEqual(settings.simplify.colour_deviation, 0.01)
+
     def test_simplify_needs_a_budget_per_variant_and_a_budget_needs_simplify(self):
         self.rejects("needs variants", SIMPLIFY)
         self.rejects("triangles is required", SIMPLIFY + PLAIN_VARIANT)
@@ -189,13 +198,14 @@ class ImportTests(unittest.TestCase):
 
     def test_the_tools_name_no_scene(self):
         banned = set()
-        for path in ROOT.glob("launcher/main/apps/**/meshes/*.import.toml"):
+        files = build_pack.input_files([build_pack.DEFAULT_SEARCH, build_pack.DEMO])
+        for path in (file for file in files if file.name.endswith(build_pack.IMPORT)):
             values = tomllib.loads(path.read_text())
             banned.update(variant["name"].lower() for variant in values.get("variants", []))
             if "name" in values["output"]:
                 banned.add(values["output"]["name"].lower())
         banned.update(path.name.removesuffix(".scene.toml").lower()
-                      for path in ROOT.glob("launcher/main/apps/**/meshes/*.scene.toml"))
+                      for path in files if path.name.endswith(build_pack.SCENE))
         self.assertTrue(banned)
         for path in sorted((ROOT / "launcher/tools/r3d").rglob("*")):
             if path.suffix in (".py", ".md", ".txt") and ".cache" not in path.parts:
@@ -405,12 +415,12 @@ class SceneTests(unittest.TestCase):
         scene = load_scene(self.lit(head=HEAD + sky))
         self.assertEqual([item["type"] for item in scene.lights], ["directional", "sky", "ambient"])
 
-    def test_a_camera_carries_its_lens_and_region_and_a_scene_has_one(self):
+    def test_the_first_camera_carries_the_bake_lens_and_region(self):
         scene = load_scene(self.lit(REGION, objects=camera()))
         self.assertEqual(scene.camera.component.near_z, 1.0)
         self.assertEqual(scene.region[1], [1.0, 1.0, 1.0])
-        self.rejects("one camera", self.two_imports, renderer("a.import.toml") + camera(region=False)
-                     + camera(region=False).replace('"camera"', '"other"'))
+        self.rejects("first camera", self.two_imports, renderer("a.import.toml") + camera(region=False)
+                     + camera().replace('"camera"', '"other"'))
         self.rejects("half_fov_short_tan", self.two_imports, renderer("a.import.toml")
                      + '[[objects]]\nname = "c"\n[objects.camera]\nnear_z = 1.0\n')
         self.rejects("letters, digits and _", self.two_imports, renderer("a.import.toml")
@@ -737,6 +747,25 @@ class BakeStepTests(unittest.TestCase):
                 mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(seen, [own])
 
+    def test_the_simplifier_gets_the_imports_colour_deviation(self):
+        steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set())
+        p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        source = SimpleNamespace(p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]), names=["m"],
+                                 textures=[None], materials={})
+        given = {}
+
+        def simplify(pos, rgb, tris, labels, *rest, **options):
+            given.update(options)
+            return pos, rgb, tris, labels
+
+        with mock.patch.object(mesh_import, "load_source", return_value=source), \
+                mock.patch.object(mesh_import, "shade_unlit", return_value=(p, np.zeros((3, 3)), np.array([[0, 1, 2]]))), \
+                mock.patch.object(mesh_import, "simplify", side_effect=simplify):
+            renderer_ = SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=1))
+            mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
+        self.assertEqual(given["colour_deviation"], 2.5)
+
     def test_check_fitted_names_what_changed_and_what_to_do(self):
         with tempfile.TemporaryDirectory() as directory:
             target = pathlib.Path(directory) / "m.mesh"
@@ -780,6 +809,7 @@ class ReferenceObjectTests(unittest.TestCase):
         self.assertEqual(bounced_job.bake.indirect.bounces, 2)
 
 
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class PathLightForTests(unittest.TestCase):
     def setUp(self):
         mesh_import.PATH_LIGHTS.clear()

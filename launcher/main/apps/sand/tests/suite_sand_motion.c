@@ -170,11 +170,7 @@ test_the_average_direction_tracks_the_true_angle(void) {
 static void
 test_dithering_still_conserves_grains(void) {
     fixture();
-    for (int y = 1; y < 4; y++) {
-        for (int x = 1; x < 6; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    sand_fill_box(&s, 1, 1, 6, 4, SAND_FIRST_SHADE);
     const int expected = sand_count(&s);
 
     /* An awkward angle, so the direction changes from step to step. */
@@ -201,8 +197,10 @@ test_a_grain_falls_one_cell_per_step(void) {
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 2), "and keeps falling on the next step");
 }
 
+/* `with_water` drops one water cell into the corner gravity holds it in,
+ * away from the staircase, so the grid holds liquid. */
 static int
-landscape_slide_y(cell_t grain, int gravity_x) {
+landscape_slide_y(cell_t grain, int gravity_x, bool with_water) {
     const int motion_x = CELL_MATERIAL(grain) == MAT_GAS ? -gravity_x : gravity_x;
     const int start_x = motion_x > 0 ? 1 : W - 2;
 
@@ -215,6 +213,9 @@ landscape_slide_y(cell_t grain, int gravity_x) {
         sand_set(&s, x - motion_x, y + 1, STONE);
     }
     sand_set(&s, start_x, 1, grain);
+    if (with_water) {
+        sand_set(&s, gravity_x > 0 ? W - 1 : 0, H - 1, WATER);
+    }
 
     if (CELL_MATERIAL(grain) == MAT_GAS) {
         sand_set_decay(&s, 0);
@@ -238,18 +239,22 @@ landscape_slide_y(cell_t grain, int gravity_x) {
 static void
 test_landscape_sand_slides_at_most_once(void) {
     for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
-        const int y = landscape_slide_y(SAND, gravity_x);
+        const int y = landscape_slide_y(SAND, gravity_x, false);
         TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, y,
                                               "a forced landscape slide must not take another turn in a later row");
     }
 }
 
+/* Gas restricts its level sweep on the random walk alone: liquid on the
+ * grid, which keeps grains from restricting, must not loosen it. */
 static void
 test_landscape_gas_slides_at_most_once(void) {
-    for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
-        const int y = landscape_slide_y(GAS, gravity_x);
-        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(2, y,
-                                              "a forced landscape gas slide must not take another turn in a later row");
+    for (int with_water = 0; with_water <= 1; with_water++) {
+        for (int gravity_x = -1; gravity_x <= 1; gravity_x += 2) {
+            const int y = landscape_slide_y(GAS, gravity_x, with_water);
+            TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(
+                2, y, "a forced landscape gas slide must not take another turn in a later row");
+        }
     }
 }
 
@@ -272,9 +277,7 @@ test_a_grain_rests_on_the_floor(void) {
     fixture();
     sand_set(&s, 3, H - 1, SAND_FIRST_SHADE);
 
-    for (int i = 0; i < 5; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 5, 0, 1);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, H - 1),
                                   "the floor is solid - a grain must not fall out of the grid");
@@ -327,9 +330,7 @@ test_a_grain_in_a_pit_stays_put(void) {
     };
     load(before, 8);
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 10, 0, 1);
 
     static const char* after[] = {
         "........", "........", "........", "........", "........", "........", "...o....", "..ooo...",
@@ -353,9 +354,7 @@ test_a_settled_grid_reports_nothing_dirty(void) {
     sand_set(&s, 0, H - 1, SAND_FIRST_SHADE);
     memset(dirty, 0, H);
 
-    for (int i = 0; i < 10; i++) {
-        sand_step(&s, 0, 1, 0);
-    }
+    run_steps(&s, 10, 0, 1);
 
     for (int y = 0; y < H; y++) {
         TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, dirty[y],
@@ -383,11 +382,7 @@ test_every_changed_row_is_reported(void) {
      * stale pixels: run a busy grid, then check the report against a full
      * before-and-after comparison. */
     dirty_fixture();
-    for (int y = 1; y < 5; y++) {
-        for (int x = 1; x < 7; x++) {
-            sand_set(&s, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    sand_fill_box(&s, 1, 1, 7, 5, SAND_FIRST_SHADE);
 
     for (int i = 0; i < 90; i++) {
         uint8_t before[W * H];
@@ -481,7 +476,7 @@ test_a_clear_stays_full_width_after_a_later_narrow_mark(void) {
 
 /* The realistic case: a row already narrowed by ordinary sim activity
  * before the request, not the fresh sentinel every other test in this
- * group starts from - gfx_request_full_redraw() (gfx.h) reaches sand
+ * group starts from - gfx_request_full_redraw() (gfx_present.h) reaches sand
  * through exactly this sand_clear()-shaped reset. */
 static void
 test_a_clear_widens_an_already_narrowed_row_back_to_full_width(void) {
@@ -537,9 +532,7 @@ test_a_sideways_fall_does_not_dirty_a_settled_run_elsewhere_in_the_row(void) {
 static void
 test_load_counts_the_grains_stacked_above(void) {
     fixture();
-    for (int y = 3; y < H; y++) {
-        sand_set(&s, 2, y, SAND_FIRST_SHADE);
-    }
+    sand_fill_box(&s, 2, 3, 3, H, SAND_FIRST_SHADE);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, sand_load_above(&s, 2, H - 1, 0, 1),
                                   "the bottom of a five-grain column carries the other four");
@@ -572,9 +565,7 @@ test_open_sky_is_not_load(void) {
 static void
 test_load_is_measured_against_gravity(void) {
     fixture();
-    for (int x = 0; x < 4; x++) {
-        sand_set(&s, x, 3, SAND_FIRST_SHADE);
-    }
+    sand_fill_box(&s, 0, 3, 4, 4, SAND_FIRST_SHADE);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(3, sand_load_above(&s, 3, 3, 1, 0),
                                   "with gravity to the right, the grains to the LEFT are the ones "
@@ -620,9 +611,7 @@ test_a_surface_grain_still_slides(void) {
     };
     load(before, 8);
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 300, 1000, 0);
-    }
+    run_steps(&s, 200, 300, 1000);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_EMPTY, sand_at(&s, 2, 3),
                                     "an unloaded grain on top of a column must still topple off, or a "
@@ -634,9 +623,7 @@ test_friction_never_stops_a_grain_falling(void) {
     fixture();
     /* Buried under four grains, but with nothing underneath. Whatever is on
      * top of it, an unsupported grain falls - that is what unsupported means. */
-    for (int y = 0; y < 5; y++) {
-        sand_set(&s, 3, y, SAND_FIRST_SHADE);
-    }
+    sand_fill_box(&s, 3, 0, 4, 5, SAND_FIRST_SHADE);
 
     sand_step(&s, 0, 1, 0);
 
@@ -695,15 +682,11 @@ test_a_flat_bed_does_not_slide_on_a_slight_tilt(void) {
      * Room on both sides to slide into, so staying put is a real result. */
     for (int trial = 0; trial < 20; trial++) {
         sand_init(&s, cells, W, H, 31u + (uint32_t)trial);
-        for (int x = 2; x < 6; x++) {
-            sand_set(&s, x, H - 1, SAND_FIRST_SHADE);
-        }
+        sand_fill_box(&s, 2, H - 1, 6, H, SAND_FIRST_SHADE);
         const long before = centre_of_mass_x();
 
         /* About 14 degrees - a tilt you would not expect to pour sand. */
-        for (int i = 0; i < 200; i++) {
-            sand_step(&s, 250, 1000, 0);
-        }
+        run_steps(&s, 200, 250, 1000);
 
         TEST_ASSERT_EQUAL_INT_MESSAGE((int)before, (int)centre_of_mass_x(),
                                       "a flat bed must not migrate at a tilt below the angle of repose "
@@ -729,11 +712,7 @@ settled_base_x(int rows, uint32_t seed) {
     }
 
     sand_init(big, big_cells, BIG_W, BIG_H, seed);
-    for (int y = BIG_H - rows; y < BIG_H; y++) {
-        for (int x = 2; x < 8; x++) {
-            sand_set(big, x, y, SAND_FIRST_SHADE);
-        }
-    }
+    sand_fill_box(big, 2, BIG_H - rows, 8, BIG_H, SAND_FIRST_SHADE);
     for (int i = 0; i < 120; i++) {
         sand_step(big, 1200, 1000, 0); /* well past the angle of repose */
     }
@@ -781,14 +760,10 @@ test_a_steep_tilt_does_pour_the_bed(void) {
     /* The other side of the same rule: past the friction angle it MUST move,
      * or the sand is glued down rather than resting. About 50 degrees. */
     fixture();
-    for (int x = 2; x < 6; x++) {
-        sand_set(&s, x, H - 1, SAND_FIRST_SHADE);
-    }
+    sand_fill_box(&s, 2, H - 1, 6, H, SAND_FIRST_SHADE);
     const long before = centre_of_mass_x();
 
-    for (int i = 0; i < 200; i++) {
-        sand_step(&s, 1200, 1000, 0);
-    }
+    run_steps(&s, 200, 1200, 1000);
 
     TEST_ASSERT_GREATER_THAN_MESSAGE((int)before, (int)centre_of_mass_x(),
                                      "past the angle of repose the bed must pour downhill");
@@ -836,9 +811,7 @@ test_sand_poured_onto_a_sleeping_pile_still_falls(void) {
     /* The bed is now asleep. Drop a grain far above it. */
     sand_set(&s, 3, 0, SAND_FIRST_SHADE);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 6),
                                   "a grain dropped onto a sleeping pile must fall and land on it - if "
@@ -861,9 +834,7 @@ test_undermining_a_sleeping_pile_collapses_it(void) {
     sand_erase(&s, 3, 7, 0);
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 7), "the hole must actually have been made");
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 3, 7),
                                   "removing a grain must wake what was resting on it, or the pile hangs "
@@ -880,9 +851,7 @@ test_turning_the_board_wakes_a_sleeping_pile(void) {
     /* Now put the board on its side. Nothing has moved, so every row is
      * asleep - but every grain can now move, and only the change of direction
      * says so. */
-    for (int i = 0; i < 100; i++) {
-        sand_step(&s, 1000, 0, 0);
-    }
+    run_steps(&s, 100, 1000, 0);
 
     int at_right_wall = 0;
     for (int y = 0; y < H; y++) {

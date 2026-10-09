@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Fit a baked smooth mesh's vertex positions and colours to reference
-renders along a camera path, keeping its triangles (appearance-driven
-simplification, Hasselgren et al. 2021).
+"""Fit a baked mesh's vertex positions and colours to reference renders
+along a camera path, keeping its triangles (appearance-driven
+simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
+vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot]
 
---start is a baked smooth mesh, usually the simplifier's output at the
+--start is a baked smooth or flat mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
 the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
 own. A mesh is written as NAME.mesh by the same writer as mesh_import.py,
-under DIR, or DIR/shot<k>, and as a vertex-coloured OBJ beside it.
+under DIR, or DIR/shot<k>, and as a coloured OBJ beside it.
 
 The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
@@ -21,6 +22,7 @@ import argparse
 import pathlib
 import sys
 import time
+from typing import NamedTuple
 
 import numpy as np
 
@@ -39,18 +41,29 @@ from render_compare import lab  # noqa: E402
 FAR = 1.0e5
 
 
+class FitMesh(NamedTuple):
+    """What the fit moves and colours. points are the welded positions in
+    model units; vertex_point maps each vertex to its position, so a colour
+    seam cannot open into a crack when positions move. rgb (0..1) is one
+    colour per vertex, or per triangle when the mesh is flat."""
+    points: np.ndarray
+    rgb: np.ndarray
+    tris: np.ndarray
+    double: np.ndarray
+    scale: int
+    vertex_point: np.ndarray
+    flat: bool = False
+
+
 def start_mesh(path):
-    """(positions in model units, rgb 0..1, tris, double, position_scale,
-    vertex_point): a generated smooth mesh welded back to one vertex per
-    position and colour. vertex_point maps each vertex to its position, so a
-    colour seam cannot open into a crack when positions move."""
+    """The FitMesh of a generated mesh: a smooth one welded back to one
+    vertex per position and colour, a flat one to one per position."""
     mesh = read_lit_mesh(path)
-    if mesh.rgb is None:
-        raise ValueError("the start mesh must be a smooth (vertex-coloured) bake")
-    q, rgb, tris, double, _ = finest_triangles(mesh)
+    q, rgb, tris, double, face = finest_triangles(mesh)
+    flat = rgb is None
     points, vertex_point = np.unique(q, axis=0, return_inverse=True)
-    return (points / float(mesh.position_scale), rgb / 255.0, tris, double, mesh.position_scale,
-            vertex_point.reshape(-1))
+    return FitMesh(points / float(mesh.position_scale), (face if flat else rgb) / 255.0, tris, double, mesh.position_scale,
+                   vertex_point.reshape(-1), flat)
 
 
 def point_edges(tris, vertex_point):
@@ -126,14 +139,20 @@ def vertex_normals(points, tris, vertex_point):
 
 
 class Renderer:
-    """Draws the mesh as the device does: Gouraud vertex colours, single-sided
-    triangles culled when they face away, `clear` (0..1 RGB) where nothing is
-    drawn."""
+    """Draws the mesh as the device does: Gouraud vertex colours, or with
+    `flat` one colour per triangle, single-sided triangles culled when they
+    face away, `clear` (0..1 RGB) where nothing is drawn. A flat mesh is drawn
+    with three vertices of its own per triangle, so every edge between two
+    colours is antialiased and moves its positions."""
 
-    def __init__(self, tris, double, vertex_point, size, device, clear=(0.0, 0.0, 0.0)):
+    def __init__(self, tris, double, vertex_point, size, device, clear=(0.0, 0.0, 0.0), flat=False):
         import nvdiffrast.torch as dr
         import torch
 
+        if flat:
+            vertex_point = np.asarray(vertex_point)[tris].reshape(-1)
+            tris = np.arange(len(vertex_point)).reshape(-1, 3)
+        self.flat = flat
         self.dr = dr
         self.context = dr.RasterizeCudaContext(device=device)
         self.tris = torch.as_tensor(tris, dtype=torch.int32, device=device)
@@ -197,6 +216,8 @@ class Renderer:
         clip = clip[None].contiguous()
         width, height = self.size
         rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
+        if self.flat:
+            colours = colours.repeat_interleave(3, dim=0)
         colour, _ = self.dr.interpolate(colours[None].contiguous(), rast, tris)
         colour = torch.where(rast[..., 3:] > 0, colour, self.clear.expand_as(colour))
         colour = self.dr.antialias(colour.contiguous(), rast, clip, tris)
@@ -208,26 +229,25 @@ def coverage(mesh, views, size, device="cuda"):
     triangle no view sees, small for a sliver or a speck."""
     import torch
 
-    points0, _rgb, tris, double, _scale, vertex_point = mesh
-    render = Renderer(tris, double, vertex_point, size, device)
-    points = torch.as_tensor(points0, dtype=torch.float32, device=device)
-    total = torch.zeros(len(tris), dtype=torch.int64, device=device)
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
+    total = torch.zeros(len(mesh.tris), dtype=torch.int64, device=device)
     with torch.no_grad():
         for matrix, *_rest in views:
             ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
             ids = ids[ids >= 0]
-            total += torch.bincount(ids, minlength=len(tris))
+            total += torch.bincount(ids, minlength=len(mesh.tris))
     return total.cpu().numpy()
 
 
 def prune(mesh, shown, budget):
     """The mesh without the triangles that show least, down to `budget`:
     every triangle no view shows goes first, then those showing fewest
-    pixels."""
-    points0, rgb0, tris, double, scale, vertex_point = mesh
+    pixels. A flat mesh's colours go with their triangles."""
     order = np.argsort(-np.asarray(shown), kind="stable")
     keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
-    return points0, rgb0, tris[keep], np.asarray(double)[keep], scale, vertex_point
+    return mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
+                         double=np.asarray(mesh.double)[keep])
 
 
 def uniform_laplacian(points, edges):
@@ -278,9 +298,8 @@ def normal_error(mesh, views, size, device="cuda", angle_dir=None):
     where the mesh or the reference shows nothing."""
     import torch
 
-    points0, _rgb, tris, double, _scale, vertex_point = mesh
-    render = Renderer(tris, double, vertex_point, size, device)
-    points = torch.as_tensor(points0, dtype=torch.float32, device=device)
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
     angles = []
     with torch.no_grad():
         for index, (matrix, target, reference, eye) in enumerate(views):
@@ -300,11 +319,10 @@ def triangle_error(mesh, views, size, clear, device="cuda"):
     """Per triangle, the dE76 summed over the pixels it shows in every view."""
     import torch
 
-    points0, rgb0, tris, double, _scale, vertex_point = mesh
-    render = Renderer(tris, double, vertex_point, size, device, clear)
-    points = torch.as_tensor(points0, dtype=torch.float32, device=device)
-    colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device)
-    total = torch.zeros(len(tris), device=device)
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, clear, mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
+    colours = torch.as_tensor(mesh.rgb, dtype=torch.float32, device=device)
+    total = torch.zeros(len(mesh.tris), device=device)
     with torch.no_grad():
         for matrix, target, *_rest in views:
             matrix = torch.as_tensor(matrix, dtype=torch.float32, device=device)
@@ -318,10 +336,11 @@ def triangle_error(mesh, views, size, clear, device="cuda"):
 def refine(mesh, error, budget):
     """The mesh with the longest edge of its worst triangles split, both
     sides of the edge at once, until it holds about `budget` triangles: a
-    fitted coarse mesh warm-starts a finer one where its error is."""
+    fitted coarse mesh warm-starts a finer one where its error is. A flat
+    mesh's halves keep their triangle's colour."""
     from r3d.tessellate import split_marked_edges
 
-    points, rgb, tris, double, scale, vertex_point = mesh
+    points, rgb, tris, double, _scale, vertex_point, flat = mesh
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
@@ -339,13 +358,16 @@ def refine(mesh, error, budget):
                 if (min(pa, pb), max(pa, pb)) in marked_points:
                     marked.add((min(a, b), max(a, b)))
         positions, tris, midpoint, parent = split_marked_edges(positions, tris, marked)
-        colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), 3))])
-        for (a, b), m in midpoint.items():
-            colours[m] = (rgb[a] + rgb[b]) / 2
+        if flat:
+            colours = rgb[parent]
+        else:
+            colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), 3))])
+            for (a, b), m in midpoint.items():
+                colours[m] = (rgb[a] + rgb[b]) / 2
         rgb, double, error = colours, np.asarray(double)[parent], error[parent] / 2
         points, vertex_point = np.unique(positions, axis=0, return_inverse=True)
         vertex_point = vertex_point.reshape(-1)
-    return points, rgb, tris, double, scale, vertex_point
+    return mesh._replace(points=points, rgb=rgb, tris=tris, double=double, vertex_point=vertex_point)
 
 
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
@@ -358,7 +380,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     render size, and `normal_weight` times the L1 normal distance."""
     import torch
 
-    points0, rgb0, tris, double, _scale, vertex_point = mesh
+    points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
@@ -369,7 +391,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         orientation trains the same mesh."""
         height, width = targets[index].shape[:2]
         if (width, height) not in renderers:
-            renderers[width, height] = Renderer(tris, double, vertex_point, (width, height), device, clear)
+            renderers[width, height] = Renderer(tris, double, vertex_point, (width, height), device, clear, flat)
         return renderers[width, height]
 
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
@@ -415,16 +437,22 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
 
 def write_mesh(out_dir, name, points, rgb, mesh):
-    """The fitted mesh as <name>.mesh and <name>.obj; returns
-    the baked mesh's triangle count."""
+    """The fitted mesh as <name>.mesh and <name>.obj, a flat one's OBJ with
+    three vertices of each triangle's colour; returns the baked mesh's
+    triangle count."""
     from r3d.lit_mesh import write_lit_mesh
 
-    _p0, _c0, tris, double, scale, vertex_point = mesh
-    positions = points[vertex_point]
+    positions = points[mesh.vertex_point]
     colours = np.clip(np.rint(rgb * 255.0), 0, 255)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    baked = write_lit_mesh(out_dir, name, positions, colours, tris, double, position_scale=scale)
+    tris = mesh.tris
+    if mesh.flat:
+        baked = write_lit_mesh(out_dir, name, positions, None, tris, mesh.double, position_scale=mesh.scale,
+                               face_rgb=colours)
+        positions, rgb, tris = positions[tris].reshape(-1, 3), rgb.repeat(3, axis=0), np.arange(3 * len(tris)).reshape(-1, 3)
+    else:
+        baked = write_lit_mesh(out_dir, name, positions, colours, tris, mesh.double, position_scale=mesh.scale)
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
             obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))
@@ -436,7 +464,7 @@ def write_mesh(out_dir, name, points, rgb, mesh):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
-    parser.add_argument("--start", required=True, help="a smooth NAME.mesh to start from")
+    parser.add_argument("--start", required=True, help="a smooth or flat NAME.mesh to start from")
     parser.add_argument("--poses", action="append", required=True, help="a track_host.py poses file")
     parser.add_argument("--reference", action="append", required=True, help="reference_render.py output for the poses")
     parser.add_argument("--out", required=True)
@@ -468,7 +496,7 @@ def main(argv=None):
         parser.error("--start must be a NAME.mesh")
     name = start.stem
     mesh = start_mesh(start)
-    log(f"start: {len(mesh[2])} triangles, {len(mesh[0])} positions")
+    log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
@@ -481,11 +509,11 @@ def main(argv=None):
         fitted = mesh
         if args.refine_to is not None:
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
-            log(f"refined {len(mesh[2])} -> {len(fitted[2])} triangles")
+            log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
         if args.budget is not None:
             shown = coverage(fitted, pose_views(args.coverage_poses, args.scale) if args.coverage_poses else views, size)
             pruned = prune(fitted, shown, args.budget)
-            log(f"pruned {len(fitted[2]) - len(pruned[2])} triangles: {np.count_nonzero(shown == 0)} never shown")
+            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,

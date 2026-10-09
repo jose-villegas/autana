@@ -161,7 +161,9 @@ readability-isolate-declaration	main/boot/boot_anim.c	17
 readability-isolate-declaration	main/selftest/post_ui.c	1
 readability-isolate-declaration	main/console/console_inject.c	2
 readability-isolate-declaration	main/display/display.c	1
-readability-isolate-declaration	main/gfx/gfx.c	16
+readability-isolate-declaration	main/gfx/draw/gfx_draw.c	5
+readability-isolate-declaration	main/gfx/present/gfx_mode.c	1
+readability-isolate-declaration	main/gfx/present/gfx_present.c	3
 readability-isolate-declaration	main/input/buttons.c	1
 readability-isolate-declaration	main/input/touch.c	1
 readability-isolate-declaration	main/shell/shell.c	2
@@ -237,8 +239,11 @@ readability-math-missing-parentheses	main/boot/boot_anim.c	8
 readability-math-missing-parentheses	main/selftest/post_layout.c	1
 readability-math-missing-parentheses	main/selftest/post_ui.c	2
 readability-math-missing-parentheses	main/console/console_screenshot.c	4
-readability-math-missing-parentheses	main/gfx/gfx.c	41
-readability-math-missing-parentheses	main/gfx/gfx_null_panel_device.c	1
+readability-math-missing-parentheses	main/gfx/draw/gfx_draw.c	5
+readability-math-missing-parentheses	main/gfx/present/gfx_debug.c	23
+readability-math-missing-parentheses	main/gfx/present/gfx_mode.c	3
+readability-math-missing-parentheses	main/gfx/present/gfx_null_panel_device.c	1
+readability-math-missing-parentheses	main/gfx/present/gfx_present.c	10
 readability-math-missing-parentheses	main/input/tilt.c	10
 readability-math-missing-parentheses	main/input/touch_calib.c	10
 readability-math-missing-parentheses	main/ui/ui.c	2
@@ -303,7 +308,9 @@ readability-uppercase-literal-suffix	main/apps/sand/tools/serial_lag.c	3
 readability-uppercase-literal-suffix	main/apps/sand/tools/shading_palette.c	112
 readability-uppercase-literal-suffix	main/boot/boot_anim.c	9
 readability-uppercase-literal-suffix	main/selftest/post.c	3
-readability-uppercase-literal-suffix	main/gfx/gfx.c	8
+readability-uppercase-literal-suffix	main/gfx/present/gfx_debug.c	1
+readability-uppercase-literal-suffix	main/gfx/present/gfx_mode.c	2
+readability-uppercase-literal-suffix	main/gfx/present/gfx_present.c	5
 readability-uppercase-literal-suffix	main/input/buttons.c	2
 readability-uppercase-literal-suffix	main/input/tilt.c	1
 readability-uppercase-literal-suffix	main/input/touch.c	8

@@ -49,9 +49,9 @@ test_gas_rises_straight_up_under_ordinary_gravity(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with ordinary gravity pointing down, gas moves up - the opposite "
-                                  "direction from every other material");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, H - 2,
+                       "with ordinary gravity pointing down, gas moves up - the opposite "
+                       "direction from every other material");
 }
 
 static void
@@ -65,10 +65,10 @@ test_gas_falls_when_the_board_is_inverted(void) {
 
     sand_step(&s, 0, -1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, 1)),
-                                  "gas always moves AGAINST gravity, whatever direction that "
-                                  "currently is - inverted gravity means gas falls, not a hardcoded "
-                                  "upward move");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, 1,
+                       "gas always moves AGAINST gravity, whatever direction that "
+                       "currently is - inverted gravity means gas falls, not a hardcoded "
+                       "upward move");
 }
 
 static void
@@ -81,16 +81,14 @@ test_gas_rises_diagonally_under_tilted_gravity(void) {
                                      * average */
     sand_set(&s, 5, H - 1, GAS);
 
-    for (int i = 0; i < 3; i++) {
-        sand_step(&s, 1000, 1000, 0);
-    }
+    run_steps(&s, 3, 1000, 1000);
 
     TEST_ASSERT_NOT_EQUAL_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 5, H - 1)),
                                   "the grain must have left its starting cell");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 2, H - 4)),
-                                  "with gravity down-and-right, anti-gravity is up-and-left - three "
-                                  "steps of (-1,-1) should land it exactly three columns left and "
-                                  "three rows up from where it started");
+    ASSERT_MATERIAL_AT(MAT_GAS, 2, H - 4,
+                       "with gravity down-and-right, anti-gravity is up-and-left - three "
+                       "steps of (-1,-1) should land it exactly three columns left and "
+                       "three rows up from where it started");
 }
 
 /* The walk (the new default) trades away the exhaustive mover's exact
@@ -99,28 +97,38 @@ test_gas_rises_diagonally_under_tilted_gravity(void) {
  * proves nothing about that; only the MEAN of many cells over many steps
  * does, which is what these three tests check instead of an exact cell. */
 
+/* How many gas cells the default fixture holds, and the sums of their rows
+ * and columns. */
+typedef struct {
+    int count, row_sum, col_sum;
+} gas_spread_t;
+
+static gas_spread_t
+gas_spread(void) {
+    gas_spread_t g = {0, 0, 0};
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
+                g.count++;
+                g.row_sum += y;
+                g.col_sum += x;
+            }
+        }
+    }
+    return g;
+}
+
 static void
 test_gas_drifts_upward_under_ordinary_gravity(void) {
     fixture();
     const int start_row = H / 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, start_row, GAS);
-    }
+    sand_fill_box(&s, 0, start_row, W, start_row + 1, GAS);
 
-    for (int i = 0; i < 12; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 12, 0, 1000);
 
-    int count = 0;
-    int row_sum = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                count++;
-                row_sum += y;
-            }
-        }
-    }
+    const gas_spread_t g = gas_spread();
+    const int count = g.count;
+    const int row_sum = g.row_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -135,24 +143,13 @@ static void
 test_gas_drifts_downward_when_the_board_is_inverted(void) {
     fixture();
     const int start_row = H / 2;
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, start_row, GAS);
-    }
+    sand_fill_box(&s, 0, start_row, W, start_row + 1, GAS);
 
-    for (int i = 0; i < 12; i++) {
-        sand_step(&s, 0, -1000, 0);
-    }
+    run_steps(&s, 12, 0, -1000);
 
-    int count = 0;
-    int row_sum = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                count++;
-                row_sum += y;
-            }
-        }
-    }
+    const gas_spread_t g = gas_spread();
+    const int count = g.count;
+    const int row_sum = g.row_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -173,22 +170,12 @@ test_gas_drifts_against_tilted_gravity(void) {
         start_col_sum += x;
     }
 
-    for (int i = 0; i < 12; i++) {
-        sand_step(&s, 1000, 1000, 0);
-    }
+    run_steps(&s, 12, 1000, 1000);
 
-    int count = 0;
-    int row_sum = 0;
-    int col_sum = 0;
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            if (CELL_MATERIAL(sand_at(&s, x, y)) == MAT_GAS) {
-                count++;
-                row_sum += y;
-                col_sum += x;
-            }
-        }
-    }
+    const gas_spread_t g = gas_spread();
+    const int count = g.count;
+    const int row_sum = g.row_sum;
+    const int col_sum = g.col_sum;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(2, count,
                                          "setup: several gas cells must survive 12 steps, or a mean over "
@@ -207,14 +194,10 @@ test_gas_drifts_against_tilted_gravity(void) {
 static void
 test_gas_is_blocked_by_a_stone_ceiling(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, 0, STONE);
-    }
+    sand_fill_box(&s, 0, 0, W, 1, STONE);
     sand_set(&s, 3, H - 1, GAS);
 
-    for (int i = 0; i < 50; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 50, 0, 1000);
 
     /* Once blocked from rising further, a lone grain with open space on
      * both sides is free to drift sideways along the row (equalise_gas()
@@ -223,8 +206,7 @@ test_gas_is_blocked_by_a_stone_ceiling(void) {
      * is not "still at column 3", it is "the ceiling was never displaced,
      * and the grain is still one row below it, not through it". */
     for (int x = 0; x < W; x++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STONE, CELL_MATERIAL(sand_at(&s, x, 0)),
-                                      "a solid ceiling with no gap must never be displaced");
+        ASSERT_MATERIAL_AT(MAT_STONE, x, 0, "a solid ceiling with no gap must never be displaced");
     }
 
     bool found_gas_below_ceiling = false;
@@ -248,9 +230,7 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
         sand_set_mobility(&gas_rise_sim, 255);
         sand_set(&gas_rise_sim, GAS_RISE_W / 2, GAS_RISE_H / 2, GAS);
 
-        for (int step = 0; step < GAS_RISE_STEPS; step++) {
-            sand_step(&gas_rise_sim, 0, 1000, 0);
-        }
+        run_steps(&gas_rise_sim, GAS_RISE_STEPS, 0, 1000);
 
         int final_row = GAS_RISE_H;
         for (int y = 0; y < GAS_RISE_H; y++) {
@@ -278,10 +258,17 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
  * disagree about it. */
 enum { POCKET_INSIDE_X = 3, POCKET_INSIDE_Y = 3, POCKET_WALL = 1 };
 
-/* A gas grain sealed in stone on every side but one - shared by every
- * pocket-exit escape probe in this section, portrait or landscape. */
+/* The default fixture, reset with `seed`, every cell free to move and no
+ * scatter: a gas grain sealed in stone on every side but one - shared by
+ * every pocket-exit escape probe in this section, portrait or landscape. */
 static void
-build_sealed_gas_pocket(sand_t* g, int exit_x, int exit_y) {
+build_sealed_gas_pocket(uint32_t seed, int exit_x, int exit_y) {
+    sand_t* const g = &s;
+    sand_init(g, cells, W, H, seed);
+    sand_clear(g);
+    sand_set_mobility(g, 255);
+    sand_set_scatter(g, 0);
+
     sand_set(g, POCKET_INSIDE_X, POCKET_INSIDE_Y, GAS);
     for (int y = POCKET_INSIDE_Y - POCKET_WALL; y <= POCKET_INSIDE_Y + POCKET_WALL; y++) {
         for (int x = POCKET_INSIDE_X - POCKET_WALL; x <= POCKET_INSIDE_X + POCKET_WALL; x++) {
@@ -351,12 +338,7 @@ test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
     static char failure_message[64];
     int escaped_seeds = 0;
     for (uint32_t seed = 1; seed <= 16; seed++) {
-        sand_init(&s, cells, W, H, seed);
-        sand_clear(&s);
-        sand_set_mobility(&s, 255);
-        sand_set_scatter(&s, 0);
-
-        build_sealed_gas_pocket(&s, 2, 4);
+        build_sealed_gas_pocket(seed, 2, 4);
 
         escaped_seeds += (steps_until_gas_leaves_the_pocket(&s, 0, 1000, POCKET_ESCAPE_STEPS) != 0) ? 1 : 0;
     }
@@ -367,9 +349,7 @@ test_gas_escapes_through_a_down_diagonal_pocket_exit(void) {
 static void
 test_gas_disperses_across_a_ceiling(void) {
     fixture();
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, 0, STONE);
-    }
+    sand_fill_box(&s, 0, 0, W, 1, STONE);
     for (int y = 0; y < H; y++) {
         sand_set(&s, 0, y, STONE);
         sand_set(&s, W - 1, y, STONE);
@@ -379,13 +359,9 @@ test_gas_disperses_across_a_ceiling(void) {
      * first reaches the ceiling the rest are blocked from stacking through
      * it too. Whether they disperse sideways instead, or just pile up
      * behind the leader, is exactly what this test checks. */
-    for (int y = H - 4; y < H; y++) {
-        sand_set(&s, W / 2, y, GAS);
-    }
+    sand_fill_box(&s, W / 2, H - 4, (W / 2) + 1, H, GAS);
 
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 60, 0, 1000);
 
     int occupied_columns = 0;
     for (int x = 1; x < W - 1; x++) {
@@ -402,66 +378,43 @@ test_gas_disperses_across_a_ceiling(void) {
                                      "spread pass (equalise_gas()) is missing or broken");
 }
 
+/* Drops `faller` onto four rows of `medium` and asserts it reaches the
+ * bottom of its column within sixty steps. */
+static void
+assert_sinks_through(cell_t faller, cell_t medium, const char* why) {
+    fixture();
+    sand_fill_box(&s, 0, 4, W, H, medium);
+    sand_set(&s, 3, 3, faller);
+
+    run_steps(&s, 60, 0, 1000);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(CELL_MATERIAL(faller), CELL_MATERIAL(sand_at(&s, 3, H - 1)), why);
+}
+
 static void
 test_sand_sinks_through_gas(void) {
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, GAS);
-        }
-    }
-    sand_set(&s, 3, 3, SAND);
-
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "sand is denser than gas, so it must sink all the way through "
-                                  "rather than float on it");
+    assert_sinks_through(SAND, GAS,
+                         "sand is denser than gas, so it must sink all the way through "
+                         "rather than float on it");
 }
 
 static void
 test_water_sinks_through_gas(void) {
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, GAS);
-        }
-    }
-    sand_set(&s, 3, 3, WATER);
-
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WATER, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "water is denser than gas too, so it must sink through it the same "
-                                  "way sand does");
+    assert_sinks_through(WATER, GAS,
+                         "water is denser than gas too, so it must sink through it the same "
+                         "way sand does");
 }
 
 static void
 test_gas_grain_count_is_conserved(void) {
     fixture();
-    for (int y = 1; y < 4; y++) {
-        for (int x = 1; x < 6; x++) {
-            sand_set(&s, x, y, GAS);
-        }
-    }
+    sand_fill_box(&s, 1, 1, 6, 4, GAS);
     const int expected = sand_count(&s);
     TEST_ASSERT_EQUAL_INT(15, expected);
 
-    static const int dirs[8][2] = {
-        {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1},
-    };
-    for (int d = 0; d < 8; d++) {
-        for (int i = 0; i < 20; i++) {
-            sand_step(&s, dirs[d][0], dirs[d][1], 0);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(expected, sand_count(&s),
-                                          "a step must conserve gas grains in every gravity "
-                                          "direction, the same as it does for sand");
-        }
-    }
+    assert_count_kept_in_every_direction(grain_count, expected,
+                                         "a step must conserve gas grains in every gravity "
+                                         "direction, the same as it does for sand");
 }
 
 static void
@@ -495,9 +448,9 @@ test_gas_scatter_can_be_disabled(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with scatter off, gas rises exactly one cell per step in a "
-                                  "straight line - the same guarantee sand's own fall makes");
+    ASSERT_MATERIAL_AT(MAT_GAS, 3, H - 2,
+                       "with scatter off, gas rises exactly one cell per step in a "
+                       "straight line - the same guarantee sand's own fall makes");
 }
 
 static void
@@ -517,9 +470,7 @@ test_gas_decays_and_disappears_over_time(void) {
     /* At a forced 100% chance, life ticks down by exactly one per step -
      * gone on the step that takes it from 1 to 0, so full life takes
      * exactly that many steps to clear. */
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s),
                                   "gas must decay away to nothing given enough time - unlike every "
@@ -527,26 +478,33 @@ test_gas_decays_and_disappears_over_time(void) {
                                   "test_gas_grain_count_is_conserved)");
 }
 
+/* Spawns one cell of m at (3,4) with decay forced, lets it decay away, and
+ * asserts row 4 was marked dirty on the way. `pinned` holds it still, so the
+ * vanish lands at a known row instead of wherever it drifted. */
 static void
-test_gas_decaying_away_marks_its_row_dirty(void) {
+assert_decaying_away_marks_its_row(material_id_t m, bool pinned, const char* why) {
     dirty_fixture();
     sand_set_decay(&s, 255);
-    sand_set_mobility(&s, 0); /* stay put, so the vanish lands at a
-                                 * known row instead of wherever it drifted */
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_GAS), "setup: exactly one gas grain placed");
-    memset(dirty, 0, H);
-
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
+    if (pinned) {
+        sand_set_mobility(&s, 0);
     }
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the grain must have decayed away by now");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4],
-                                    "the row a gas grain decayed away in must be marked dirty, or its "
-                                    "last colour stays on the panel forever after the cell itself is "
-                                    "already empty - tick_decay()'s vanish branch must call "
-                                    "mark_rows() the same way its tick-down branch already does");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, m), "setup: exactly one cell placed");
+    memset(dirty, 0, H);
+
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the cell must have decayed away by now");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4], why);
+}
+
+static void
+test_gas_decaying_away_marks_its_row_dirty(void) {
+    assert_decaying_away_marks_its_row(MAT_GAS, true,
+                                       "the row a gas grain decayed away in must be marked dirty, or its "
+                                       "last colour stays on the panel forever after the cell itself is "
+                                       "already empty - tick_decay()'s vanish branch must call "
+                                       "mark_rows() the same way its tick-down branch already does");
 }
 
 /* The packed-row equalise skip (row_is_packed(), see
@@ -571,15 +529,15 @@ test_tilted_equalise_still_spreads_a_packed_row_under_the_sight_bound(void) {
 
     sand_step(&s, 1000, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 0, 2)),
-                                  "column 0's ray runs off the left edge on its first step and has "
-                                  "nowhere to go - it must stay put");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 0, 2,
+                       "column 0's ray runs off the left edge on its first step and has "
+                       "nowhere to go - it must stay put");
     TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 2)),
                              "column 3 must have left row 2 - if the tilted skip fired here, "
                              "the whole row's equalise body never ran and nothing would move");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 2, 3)),
-                                  "column 3's grain must land one diagonal step down-left, in the "
-                                  "row that was open");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 2, 3,
+                       "column 3's grain must land one diagonal step down-left, in the "
+                       "row that was open");
     TEST_ASSERT_EQUAL_INT_MESSAGE(W, count_of(MAT_FIRE),
                                   "whole-grain gas conserves its count - this is a move, not a loss");
 }
@@ -603,8 +561,7 @@ test_fire_ignites_an_adjacent_flammable_neighbour(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "a flammable neighbour touching fire must ignite");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 4, 3, "a flammable neighbour touching fire must ignite");
 }
 
 /* An igniting gas cell touching a KIND_STATIC neighbour bursts instead of
@@ -625,10 +582,7 @@ test_a_confined_gas_pocket_bursts_instead_of_just_catching(void) {
      * not empty air standing in for one. */
     fire_room(3, 4);
     sand_set_mobility(&s, 0);
-    impulse_t* confined_gas_impulse_buf = malloc((size_t)(W * H) * sizeof *confined_gas_impulse_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(confined_gas_impulse_buf, "confined-gas-pocket impulse queue must fit in what the "
-                                                           "framebuffer leaves");
-    sand_enable_impulses(&s, confined_gas_impulse_buf, W * H);
+    impulse_t* confined_gas_impulse_buf = impulses_open(&s, W * H);
     sand_set(&s, 3, 3, FIRE);
     sand_set(&s, 4, 3, GAS);
 
@@ -684,15 +638,13 @@ test_direct_reaction_calls_rearm_confined_blasts(void) {
 
     for (size_t seed = 0; seed < sizeof seeds / sizeof seeds[0]; seed++) {
         uint8_t* cells = malloc(CW * CH);
-        impulse_t* impulses = malloc((size_t)(CW * CH) * sizeof *impulses);
         TEST_ASSERT_NOT_NULL(cells);
-        TEST_ASSERT_NOT_NULL(impulses);
 
         sand_t board;
         sand_init(&board, cells, CW, CH, seeds[seed]);
         sand_set_flammability(&board, 255);
         sand_set_decay(&board, 0);
-        sand_enable_impulses(&board, impulses, CW * CH);
+        impulse_t* impulses = impulses_open(&board, CW * CH);
 
         unsigned blasts[POCKET_COUNT];
         unsigned explosions[POCKET_COUNT];
@@ -739,15 +691,13 @@ burst_board_from_frame(uint8_t fill) {
     enum { BW = 6 * 40, BH = 5, BURST_STEPS = 3 };
 
     uint8_t* cells = malloc(BW * BH);
-    impulse_t* impulses = malloc(sizeof(*impulses) * BW * BH);
     TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
     memset(&s, fill, sizeof s);
     sand_init(&s, cells, BW, BH, 29u);
     sand_set_mobility(&s, 0);
-    sand_enable_impulses(&s, impulses, BW * BH);
+    impulse_t* impulses = impulses_open(&s, BW * BH);
     for (int i = 0; i < 6; i++) {
         build_confined_gas_pocket(&s, 10 + i * 40);
     }
@@ -787,14 +737,12 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     enum { CELL_COUNT = 6, CELL_SPACING = 40, CW = CELL_COUNT * CELL_SPACING, CH = 5 };
 
     uint8_t* cells = calloc(CW * CH, 1);
-    impulse_t* impulses = malloc((size_t)(CW * CH) * sizeof *impulses);
     TEST_ASSERT_NOT_NULL(cells);
-    TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t chain;
     sand_init(&chain, cells, CW, CH, 29u);
     sand_set_mobility(&chain, 0);
-    sand_enable_impulses(&chain, impulses, CW * CH);
+    impulse_t* impulses = impulses_open(&chain, CW * CH);
 
     for (int i = 0; i < CELL_COUNT; i++) {
         build_confined_gas_pocket(&chain, 10 + i * CELL_SPACING);
@@ -823,11 +771,7 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
 static void
 test_an_open_gas_pocket_still_just_catches_fire(void) {
     fixture();
-    impulse_t* confined_gas_impulse_buf = malloc((size_t)(W * H) * sizeof *confined_gas_impulse_buf);
-    TEST_ASSERT_NOT_NULL_MESSAGE(confined_gas_impulse_buf,
-                                 "open-gas-pocket impulse queue must fit in what the framebuffer "
-                                 "leaves");
-    sand_enable_impulses(&s, confined_gas_impulse_buf, W * H);
+    impulse_t* confined_gas_impulse_buf = impulses_open(&s, W * H);
     sand_set_mobility(&s, 0); /* keep the gas from rising away before
                                  * reactions gets a turn at it this same
                                  * step, see test_fire_is_not_smothered_
@@ -869,13 +813,13 @@ test_extinguishing_wins_over_igniting(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "fire touching water must be extinguished, and now becomes steam "
-                                  "rather than simply vanishing - see reaction_t.quench_to");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "extinguishing must win outright over igniting - a gas neighbour "
-                                  "must not catch fire in the same step the fire that would have "
-                                  "lit it was put out");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "fire touching water must be extinguished, and now becomes steam "
+                       "rather than simply vanishing - see reaction_t.quench_to");
+    ASSERT_MATERIAL_AT(MAT_GAS, 4, 3,
+                       "extinguishing must win outright over igniting - a gas neighbour "
+                       "must not catch fire in the same step the fire that would have "
+                       "lit it was put out");
 }
 
 static void
@@ -891,9 +835,7 @@ test_fire_burns_out_and_disappears_over_time(void) {
                                   "random shade - random_cell() already generalises this for any "
                                   "decay != 0 material, gas included");
 
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, MATERIAL_VARIANTS - 1, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s),
                                   "fire must burn out to nothing given enough time, the same "
@@ -912,61 +854,42 @@ test_fire_rises_and_disperses_like_gas(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with ordinary gravity pointing down, fire moves up - the same "
-                                  "kind = KIND_GAS movement gas already has, replacing the "
-                                  "immobile-ember behaviour this test used to assert");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, H - 2,
+                       "with ordinary gravity pointing down, fire moves up - the same "
+                       "kind = KIND_GAS movement gas already has, replacing the "
+                       "immobile-ember behaviour this test used to assert");
 }
 
 /* Mirrors test_sand_sinks_through_gas exactly - fire's displacement rules
  * are identical to gas's (density-based, not a blanket refusal). See
- * test_fire_is_smothered_when_fully_buried below for burying fire out
+ * test_a_fire_buried_on_all_four_sides_goes_out below for burying fire out
  * completely, via smothering rather than contact. */
 static void
 test_sand_sinks_through_fire(void) {
-    fixture();
-    for (int y = 4; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, FIRE);
-        }
-    }
-    sand_set(&s, 3, 3, SAND);
-
-    for (int i = 0; i < 60; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_SAND, CELL_MATERIAL(sand_at(&s, 3, H - 1)),
-                                  "sand is denser than fire (60 > 15), so it must sink all the "
-                                  "way through rather than be blocked by it - a single touch does "
-                                  "not smother fire, it just passes through uneventfully");
+    assert_sinks_through(SAND, FIRE,
+                         "sand is denser than fire (60 > 15), so it must sink all the "
+                         "way through rather than be blocked by it - a single touch does "
+                         "not smother fire, it just passes through uneventfully");
 }
 
+/* Fire at (3,3) on the default fixture, with the given cardinal
+ * neighbours - SAND_EMPTY leaves that side open. */
 static void
-test_fire_is_smothered_when_fully_buried(void) {
-    fixture();
+surround_fire(cell_t above, cell_t below, cell_t left, cell_t right) {
     sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, STONE); /* above */
-    sand_set(&s, 3, 4, STONE); /* below */
-    sand_set(&s, 2, 3, STONE); /* left */
-    sand_set(&s, 4, 3, STONE); /* right */
-
-    sand_step(&s, 0, 1000, 0);
-
-    TEST_ASSERT_TRUE_MESSAGE(CELL_IS_EMPTY(sand_at(&s, 3, 3)),
-                             "fire buried on all four sides by something denser must smother "
-                             "out - the only way sand puts fire out, since a single touch "
-                             "just lets sand sink through uneventfully (see "
-                             "test_sand_sinks_through_fire above)");
+    const cell_t sides[4] = {above, below, left, right};
+    static const int at[4][2] = {{3, 2}, {3, 4}, {2, 3}, {4, 3}};
+    for (int i = 0; i < 4; i++) {
+        if (sides[i] != SAND_EMPTY) {
+            sand_set(&s, at[i][0], at[i][1], sides[i]);
+        }
+    }
 }
 
 static void
 test_fire_is_not_smothered_with_a_gap(void) {
     fixture();
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, STONE); /* above */
-    sand_set(&s, 2, 3, STONE); /* left */
-    sand_set(&s, 4, 3, STONE); /* right */
+    surround_fire(STONE, SAND_EMPTY, STONE, STONE);
     /* Diagonal-up neighbours also need blocking, not just the straight
      * cardinal ones - try_slide()'s own fallback would otherwise carry
      * fire diagonally out of (3,3) via the two open corners before
@@ -982,9 +905,9 @@ test_fire_is_not_smothered_with_a_gap(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "one open side is enough for air to reach it - smothered() "
-                                  "requires ALL four neighbours to be denser, not just three");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, 3,
+                       "one open side is enough for air to reach it - smothered() "
+                       "requires ALL four neighbours to be denser, not just three");
 }
 
 static void
@@ -997,28 +920,21 @@ test_fire_is_not_smothered_by_gas(void) {
                                  * never touches these neighbours anyway
                                  * (different material, not empty), so
                                  * this alone is enough to pin fire */
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, GAS);
-    sand_set(&s, 3, 4, GAS);
-    sand_set(&s, 2, 3, GAS);
-    sand_set(&s, 4, 3, GAS);
+    surround_fire(GAS, GAS, GAS, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "gas is not denser than fire (10 < 15), so a gas-only surround "
-                                  "must not smother it - otherwise any sufficiently large, dense "
-                                  "pocket of fire/gas would extinguish itself from the inside "
-                                  "out");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, 3,
+                       "gas is not denser than fire (10 < 15), so a gas-only surround "
+                       "must not smother it - otherwise any sufficiently large, dense "
+                       "pocket of fire/gas would extinguish itself from the inside "
+                       "out");
 }
 
 static void
 test_liquid_wins_over_smothering(void) {
     fixture();
-    sand_set(&s, 3, 3, FIRE);
-    sand_set(&s, 3, 2, STONE);
-    sand_set(&s, 2, 3, STONE);
-    sand_set(&s, 4, 3, STONE);
+    surround_fire(STONE, SAND_EMPTY, STONE, STONE);
     /* The two upward diagonals also need blocking, not just the three
      * cardinal sides - leaving the straight-up cell blocked alone still
      * leaves try_slide()'s diagonal fallback free to carry fire out to
@@ -1042,14 +958,14 @@ test_liquid_wins_over_smothering(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "fire touching water on even one side must extinguish via the "
-                                  "liquid rule (becoming steam, not simply vanishing - see "
-                                  "reaction_t.quench_to) - smothered() itself would have said no "
-                                  "here too (it explicitly excludes liquid neighbours from "
-                                  "counting towards a smother, even though water is denser than "
-                                  "fire), so this confirms that exclusion does not accidentally "
-                                  "block the liquid path from still working");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "fire touching water on even one side must extinguish via the "
+                       "liquid rule (becoming steam, not simply vanishing - see "
+                       "reaction_t.quench_to) - smothered() itself would have said no "
+                       "here too (it explicitly excludes liquid neighbours from "
+                       "counting towards a smother, even though water is denser than "
+                       "fire), so this confirms that exclusion does not accidentally "
+                       "block the liquid path from still working");
 }
 
 static void
@@ -1077,8 +993,7 @@ test_igniting_a_neighbour_marks_its_row_dirty(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "setup: the gas neighbour must have ignited");
+    ASSERT_MATERIAL_AT(MAT_FIRE, 3, 3, "setup: the gas neighbour must have ignited");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[3],
                                     "the row the newly-ignited neighbour is in must be marked dirty, "
                                     "or its cell changes colour on the panel without ever being "
@@ -1088,22 +1003,11 @@ test_igniting_a_neighbour_marks_its_row_dirty(void) {
 
 static void
 test_fire_burning_out_marks_its_row_dirty(void) {
-    dirty_fixture();
-    sand_set_decay(&s, 255);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_spawn(&s, 3, 4, 0, MAT_FIRE), "setup: exactly one fire cell placed");
-    memset(dirty, 0, H);
-
-    for (int i = 0; i < MATERIAL_VARIANTS - 1; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s), "setup: the fire cell must have burned out by now");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, dirty[4],
-                                    "the row a fire cell burned out in must be marked dirty, or its "
-                                    "last colour stays on the panel forever after the cell itself is "
-                                    "already empty - tick_decay()'s vanish branch already does this "
-                                    "correctly (shared with gas), this pins it down for fire too");
+    assert_decaying_away_marks_its_row(MAT_FIRE, false,
+                                       "the row a fire cell burned out in must be marked dirty, or its "
+                                       "last colour stays on the panel forever after the cell itself is "
+                                       "already empty - tick_decay()'s vanish branch already does this "
+                                       "correctly (shared with gas), this pins it down for fire too");
 }
 
 static void
@@ -1115,21 +1019,19 @@ test_fire_spreads_through_a_connected_pocket_in_one_step(void) {
                                      * it, so the pass is pinned to isolate
                                      * reaction scan order, not gas motion */
     sand_set(&s, 0, 0, FIRE);
-    for (int x = 1; x < W; x++) {
-        sand_set(&s, x, 0, GAS);
-    }
+    sand_fill_box(&s, 1, 0, W, 1, GAS);
 
     sand_step(&s, 0, 1000, 0);
 
     for (int x = 1; x < W; x++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, x, 0)),
-                                      "a straight line of gas laid out AHEAD of the reactions "
-                                      "pass's own fixed scan direction (row-major, left to right) "
-                                      "must ignite all the way through in a single step - the "
-                                      "confirmed explosion-like cascade, not creeping spread. A "
-                                      "line laid out BEHIND the scan direction would need several "
-                                      "steps instead - a documented, accepted scan-order artifact, "
-                                      "not a bug (see sand_reactions.c's own top comment)");
+        ASSERT_MATERIAL_AT(MAT_FIRE, x, 0,
+                           "a straight line of gas laid out AHEAD of the reactions "
+                           "pass's own fixed scan direction (row-major, left to right) "
+                           "must ignite all the way through in a single step - the "
+                           "confirmed explosion-like cascade, not creeping spread. A "
+                           "line laid out BEHIND the scan direction would need several "
+                           "steps instead - a documented, accepted scan-order artifact, "
+                           "not a bug (see sand_reactions.c's own top comment)");
     }
 }
 
@@ -1168,9 +1070,7 @@ snow_left_over_soil_at(uint8_t moisture) {
         sand_set(&s, x, H - 3, SNOW);
     }
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
     return count_cells_of(MAT_SNOW);
 }
 
@@ -1215,23 +1115,13 @@ test_cold_conducts_deep_into_a_slab(void) {
 
     sand_t g;
     sand_init(&g, cells, W2, H2, 7u);
-    for (int y = slab_top; y < H2; y++) {
-        for (int x = 0; x < W2; x++) {
-            sand_set(&g, x, y, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
-        }
-    }
-    for (int y = 6; y < slab_top; y++) {
-        for (int x = 0; x < W2; x++) {
-            sand_set(&g, x, y, SNOW);
-        }
-    }
+    sand_fill_box(&g, 0, slab_top, W2, H2, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
+    sand_fill_box(&g, 0, 6, W2, slab_top, SNOW);
 
     /* 2000 steps, a minute of play, because conduction is deliberately slow -
      * see COLD_CARRY_PERIOD. At 250 steps the slab is only 5% shocked, which
      * is the mechanic working, not failing. */
-    for (int i = 0; i < 2000; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 2000, 0, 1000);
 
     const slab_chill_t r = scan_slab_chill(&g, W2, H2, slab_top);
     const int depth = r.deepest - slab_top + 1;
@@ -1341,8 +1231,7 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
     enum { GW = 56, GH = 40, X0 = 4, X1 = 52, DEPTH = 32 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1351,17 +1240,9 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
     sand_init(&g, cells, GW, GH, 71u);
     sand_enable_sleeping(&g, blocks);
 
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
-    for (int y = GH - 1 - DEPTH; y < GH - 1; y++) {
-        for (int x = X0; x < X1; x++) {
-            sand_set(&g, x, y, SNOW);
-        }
-    }
-    for (int i = 0; i < 200; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    sand_fill_box(&g, 0, GH - 1, GW, GH, STONE);
+    sand_fill_box(&g, X0, GH - 1 - DEPTH, X1, GH - 1, SNOW);
+    run_steps(&g, 200, 0, 1000);
 
     /* SAMPLED, NOT COUNTED EVERY STEP. Rescanning the grid each step costs
      * more than stepping it, and the answer is a threshold crossing several
@@ -1451,8 +1332,7 @@ test_snow_does_not_crust_against_open_air(void) {
     enum { GW = 32, GH = 32, X0 = 10, X1 = 22, YTOP = 18, YBOT = GH - 2 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1462,18 +1342,14 @@ test_snow_does_not_crust_against_open_air(void) {
     sand_enable_sleeping(&g, blocks);
     sand_set_crust(&g, 4); /* 4 in CRUST_ROLL_MAX, as 256 in 65536 was */
 
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
+    sand_fill_box(&g, 0, GH - 1, GW, GH, STONE);
     for (int y = YTOP; y <= YBOT; y++) {
         for (int x = X0; x < X1; x++) {
             sand_set(&g, x, y, SNOW);
         }
     }
 
-    for (int i = 0; i < 2000; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 2000, 0, 1000);
 
     const crust_faces_t f = snow_bank_crust_faces(&g, X0, X1, YTOP, YBOT);
     free(cells);
@@ -1551,8 +1427,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
     enum { GW = 40, GH = 40, X0 = 8, X1 = 32, YTOP = 16, YBOT = GH - 2 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1565,9 +1440,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
     /* WALLED, and resting on the floor. Snow is a powder: a block of it left
      * in mid-air collapses into rubble, and the first version of this measured
      * the rubble. */
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
+    sand_fill_box(&g, 0, GH - 1, GW, GH, STONE);
     for (int y = 10; y < GH - 1; y++) {
         sand_set(&g, X0 - 1, y, STONE);
         sand_set(&g, X1, y, STONE);
@@ -1584,9 +1457,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
      * where the second layer is well under way and the fifth has barely
      * started - measured, and it moved when the crust rate stopped riding an
      * unrelated wake. */
-    for (int i = 0; i < 8000; i++) {
-        sand_step(&g, 0, 1000, 0);
-    }
+    run_steps(&g, 8000, 0, 1000);
 
     const crust_depth_t d = snow_bank_crust_by_depth(&g, X0, X1, YTOP, YBOT);
     free(cells);
@@ -1615,8 +1486,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
 static void
 test_a_settled_snowbank_crusts_to_ice(void) {
     uint8_t* cells = calloc(W * H, 1);
-    uint8_t* blocks =
-        calloc((size_t)((W + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((H + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(W, H), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1711,8 +1581,7 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
     enum { GW = 32, GH = 24, DEPTH = 14, WARMUP = 200, WATCH = 600 };
 
     uint8_t* cells = calloc(GW * GH, 1);
-    uint8_t* blocks =
-        calloc((size_t)((GW + SAND_BLOCK_W - 1) / SAND_BLOCK_W) * (size_t)((GH + SAND_BLOCK_H - 1) / SAND_BLOCK_H), 1);
+    uint8_t* blocks = calloc(sand_sleep_block_bytes(GW, GH), 1);
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
@@ -1721,14 +1590,8 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
     sand_init(&g, cells, GW, GH, 71u);
     sand_enable_sleeping(&g, blocks);
 
-    for (int x = 0; x < GW; x++) {
-        sand_set(&g, x, GH - 1, STONE);
-    }
-    for (int y = GH - 1 - DEPTH; y < GH - 1; y++) {
-        for (int x = 2; x < GW - 2; x++) {
-            sand_set(&g, x, y, SNOW);
-        }
-    }
+    sand_fill_box(&g, 0, GH - 1, GW, GH, STONE);
+    sand_fill_box(&g, 2, GH - 1 - DEPTH, GW - 2, GH - 1, SNOW);
     for (int i = 0; i < WARMUP; i++) {
         sand_step(&g, 0, 1000, 0); /* land, and be marked settled */
     }
@@ -1819,9 +1682,7 @@ test_a_material_created_during_the_pass_stays_in_the_mask(void) {
     fixture();
 
     const reaction_t* r = reaction_of(GUNPOWDER_BASE);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, STONE);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     /* Saturated on arrival, so the soaked_to roll is live immediately and no
      * water is needed - water would put a second material on the board and
      * blur what the mask is being asked about. Rolling every step is what
@@ -1928,11 +1789,11 @@ test_wood_does_not_catch_instantly(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_WOOD, CELL_MATERIAL(sand_at(&s, 4, 3)),
-                                  "at the real per-material flammability (6 in 256), wood touching "
-                                  "fire for a single step must almost always still be wood - a fire "
-                                  "that catches instantly defeats the whole point of a slow-burning "
-                                  "fuel");
+    ASSERT_MATERIAL_AT(MAT_WOOD, 4, 3,
+                       "at the real per-material flammability (6 in 256), wood touching "
+                       "fire for a single step must almost always still be wood - a fire "
+                       "that catches instantly defeats the whole point of a slow-burning "
+                       "fuel");
 }
 
 static void
@@ -1955,9 +1816,7 @@ test_an_ember_does_not_rise(void) {
     fixture();
     sand_set(&s, 3, H - 1, EMBER);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_TRUE_MESSAGE(cell_is_burning(sand_at(&s, 3, H - 1)),
                              "a burning log is KIND_STATIC, unlike fire - it must stay exactly "
@@ -1978,9 +1837,7 @@ test_an_ember_burns_out_over_time(void) {
      * gets its own full MATERIAL_VARIANTS-1 budget from whenever it was
      * born - worst case the ember's last step. Both budgets need room to
      * run out. */
-    for (int i = 0; i < 2 * (MATERIAL_VARIANTS - 1); i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 2 * (MATERIAL_VARIANTS - 1), 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_count(&s),
                                   "an ember, and anything it flared into fire along the way, must "
@@ -2147,9 +2004,9 @@ test_steam_rises_and_disperses(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, H - 2)),
-                                  "with ordinary gravity pointing down, steam rises - the same "
-                                  "KIND_GAS movement gas and fire already have");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, H - 2,
+                       "with ordinary gravity pointing down, steam rises - the same "
+                       "KIND_GAS movement gas and fire already have");
 }
 
 static void
@@ -2177,10 +2034,10 @@ test_creating_steam_arms_the_gas_pass(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "setup: quenching must have produced steam, with no other gas "
-                                  "anywhere on the grid that could accidentally arm may_have_gas "
-                                  "some OTHER way and mask the bug this test exists to catch");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "setup: quenching must have produced steam, with no other gas "
+                       "anywhere on the grid that could accidentally arm may_have_gas "
+                       "some OTHER way and mask the bug this test exists to catch");
 
     sand_set_mobility(&s, 255); /* steam's own turn to rise, forced
                                    * deterministic the same way every
@@ -2188,13 +2045,13 @@ test_creating_steam_arms_the_gas_pass(void) {
                                    * in this suite is */
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 2)),
-                                  "steam created by place_reacted() must actually be able to rise "
-                                  "on its very next chance - if may_have_gas was not latched for "
-                                  "it, sand_step_gas() early-returns and the cell sits frozen on "
-                                  "the grid forever, a bug this test's empty-grid setup is built "
-                                  "specifically to catch (see place_reacted()'s own comment in "
-                                  "sand_reactions.c)");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 2,
+                       "steam created by place_reacted() must actually be able to rise "
+                       "on its very next chance - if may_have_gas was not latched for "
+                       "it, sand_step_gas() early-returns and the cell sits frozen on "
+                       "the grid forever, a bug this test's empty-grid setup is built "
+                       "specifically to catch (see place_reacted()'s own comment in "
+                       "sand_reactions.c)");
 }
 
 static void
@@ -2211,11 +2068,7 @@ test_burnt_out_fire_can_leave_smoke(void) {
                                  * keeps this deterministic rather than
                                  * merely probable */
 
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            sand_set(&s, x, y, FIRE);
-        }
-    }
+    sand_fill_box(&s, 0, 0, W, H, FIRE);
 
     /* Checked after EVERY step, not once at the end: sand_set_decay() is a
      * single override applying to every material, so the smoke a burnt-out
@@ -2343,9 +2196,7 @@ test_gas_capped_by_solid_instead_of_a_liquid_stays_put(void) {
     }
     sand_set(&s, 3, 6, GAS);
 
-    for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 20, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(6, first_row_holding(MAT_GAS),
                                   "capped by SOLID instead of liquid, the same grain has no legal move "
@@ -2390,10 +2241,10 @@ test_only_the_exposed_surface_of_an_oil_pool_can_ignite(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_OIL, CELL_MATERIAL(sand_at(&s, 3, surface + 2)),
-                                  "an oil cell buried under more oil must NOT ignite, however "
-                                  "much of the surface is alight - a pool burns off its top, it "
-                                  "does not go up all at once");
+    ASSERT_MATERIAL_AT(MAT_OIL, 3, surface + 2,
+                       "an oil cell buried under more oil must NOT ignite, however "
+                       "much of the surface is alight - a pool burns off its top, it "
+                       "does not go up all at once");
 }
 
 /* Air has to include gases, not just EMPTY cells: a flame sitting on the
@@ -2458,9 +2309,9 @@ test_water_still_puts_fire_out(void) {
 
     sand_step(&s, 0, 1000, 0);
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_STEAM, CELL_MATERIAL(sand_at(&s, 3, 3)),
-                                  "water is neither fuel nor a heat source, so it must still "
-                                  "quench on one touch - and still turn the fire to steam");
+    ASSERT_MATERIAL_AT(MAT_STEAM, 3, 3,
+                       "water is neither fuel nor a heat source, so it must still "
+                       "quench on one touch - and still turn the fire to steam");
 }
 
 /* Liquids sink/float by density via float_lighter_liquids(): room_in()
@@ -2479,9 +2330,7 @@ test_acid_dissolves_sand(void) {
     acid_tank(2, 2);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, count_cells_of(MAT_SAND), "setup: there must be sand to eat");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_SAND), "acid must eat the sand it settles onto");
 }
@@ -2499,9 +2348,7 @@ test_acid_does_not_dissolve_its_container(void) {
     const int walls = count_cells_of(MAT_GLASS);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, walls, "setup: the tank must actually be made of glass");
 
-    for (int i = 0; i < 400; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 400, 0, 1000);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(walls, count_cells_of(MAT_GLASS),
                                   "acid must not touch glass - it is the one material that resists, "
@@ -2513,21 +2360,13 @@ static void
 test_acid_eats_through_stone(void) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    for (int x = 0; x < W; x++) {
-        sand_set(&s, x, H - 1, GLASS);
-    }
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 2, STONE);
-    }
+    sand_fill_box(&s, 0, H - 1, W, H, GLASS);
+    sand_fill_box(&s, 1, H - 2, W - 1, H - 1, STONE);
     const int before = count_cells_of(MAT_STONE);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, before, "setup: a stone floor");
-    for (int x = 1; x < W - 1; x++) {
-        sand_set(&s, x, H - 4, CELL_MAKE(MAT_ACID, MASS_MAX));
-    }
+    sand_fill_box(&s, 1, H - 4, W - 1, H - 3, CELL_MAKE(MAT_ACID, MASS_MAX));
 
-    for (int i = 0; i < 600; i++) {
-        sand_step(&s, 0, 1000, 0);
-    }
+    run_steps(&s, 600, 0, 1000);
 
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(before, count_cells_of(MAT_STONE),
                                       "acid must eat into stone - stone stopped being the acid-proof "
@@ -2544,12 +2383,7 @@ test_gas_escapes_a_pocket_through_a_lower_diagonal_in_landscape(void) {
     static char failure_message[64];
     int escaped_seeds = 0;
     for (uint32_t seed = 1; seed <= 16; seed++) {
-        sand_init(&s, cells, W, H, seed);
-        sand_clear(&s);
-        sand_set_mobility(&s, 255);
-        sand_set_scatter(&s, 0);
-
-        build_sealed_gas_pocket(&s, 4, 2);
+        build_sealed_gas_pocket(seed, 4, 2);
 
         escaped_seeds += step_until_gas_escapes(&s, 1000, 0, 10000, 4, W, 0, H) ? 1 : 0;
     }
@@ -2587,7 +2421,6 @@ run_sand_combustion_suite(void) {
     RUN_TEST(test_fire_burns_out_and_disappears_over_time);
     RUN_TEST(test_fire_rises_and_disperses_like_gas);
     RUN_TEST(test_sand_sinks_through_fire);
-    RUN_TEST(test_fire_is_smothered_when_fully_buried);
     RUN_TEST(test_fire_is_not_smothered_with_a_gap);
     RUN_TEST(test_fire_is_not_smothered_by_gas);
     RUN_TEST(test_liquid_wins_over_smothering);

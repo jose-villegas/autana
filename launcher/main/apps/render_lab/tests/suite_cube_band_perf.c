@@ -27,8 +27,11 @@
 #include "esp_log.h"
 
 #include "display/display.h"
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_band_run.h"
+#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 #include "util/runtime/timing.h"

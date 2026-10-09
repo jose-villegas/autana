@@ -44,12 +44,10 @@ Keys before `;` are required; after it, optional.
 
 `[source].path` names a local file relative to the import file. The supported
 extension is `.obj`, with its sibling `.mtl` and the textures the MTL names.
-`credit` records the source attribution. An import's source files live in a
-subdirectory beside its `.import.toml` under an app's `meshes/` directory.
-Binary source files use Git LFS;
-MTL and attribution files stay text. Firmware clones exclude source assets
-through `.lfsconfig`. Before a source bake or reference render, run this from
-the repository root:
+`credit` records the source attribution. Source files sit in
+`launcher/demo/*/source/`, which uses Git LFS (MTL and attribution files stay
+text) and which firmware clones exclude through `.lfsconfig`. Before a source
+bake or reference render, run this from the repository root:
 
 ```sh
 git lfs pull --exclude=""
@@ -84,7 +82,7 @@ Every Geometry table opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
-| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams` | Splits long edges and simplifies each variant to its budget; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
+| `geometry.simplify` | `dense_edge`, `props`, `props_share`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; reserves `props` and can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
 #### alpha_mask
 
@@ -107,7 +105,12 @@ share is random, so `process.seed` makes it repeatable.
 `geometry.simplify` splits long edges and simplifies each variant to its
 budget. `dense_edge` is the longest unsplit edge, `props` names materials that
 reserve the `props_share` part of the budget, and `seal_seams` is described
-under [seal_seams](#seal_seams).
+under [seal_seams](#seal_seams). The baked colour steers which edges collapse:
+`colour_deviation`, in source units, prices one panel colour step: losing it
+costs the simplifier as much as moving a surface that far, the same for the
+reserved `props` as for the rest, and at every budget. A smaller value keeps
+surfaces nearer their source planes and keeps less colour detail. It is a
+trade, not a limit.
 
 #### seal_seams
 

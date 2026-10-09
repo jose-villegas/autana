@@ -11,7 +11,10 @@ set(app_srcs
     "display/display.c"
     "display/display_device.c"
     "display/panel_clock.c"
-    "gfx/gfx.c"
+    "gfx/draw/gfx_draw.c"
+    "gfx/present/gfx_debug.c"
+    "gfx/present/gfx_mode.c"
+    "gfx/present/gfx_present.c"
     "input/touch.c"
     "input/touch_calib.c"
     "input/touch_point.c"
@@ -46,6 +49,8 @@ set(app_srcs
     "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
+    "render/resolution/resolution.c"
+    "render/context/render_context.c"
     "render/r3d_span.c"
     "render/r3d_scene.c"
     "scene/scene.c"
@@ -55,6 +60,7 @@ set(app_srcs
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
+    "shell/shell_frame.c"
     "shell/shell_system.c"
     "util/runtime/frame_cost.c"
     "util/runtime/frame_watch.c"
@@ -67,23 +73,23 @@ set(app_srcs
     "util/runtime/tune.c"
 )
 
-function(launcher_glob output pattern)
+function(launcher_glob output)
     if(CMAKE_SCRIPT_MODE_FILE)
-        file(GLOB_RECURSE files "${pattern}")
+        file(GLOB_RECURSE files ${ARGN})
     else()
-        file(GLOB_RECURSE files CONFIGURE_DEPENDS "${pattern}")
+        file(GLOB_RECURSE files CONFIGURE_DEPENDS ${ARGN})
     endif()
     set(${output} ${files} PARENT_SCOPE)
 endfunction()
 
 if(CONFIG_LAUNCHER_QEMU)
-    list(APPEND app_srcs "gfx/gfx_null_panel_device.c")
+    list(APPEND app_srcs "gfx/present/gfx_null_panel_device.c")
 endif()
 
 # The frame's view modes: a development tool, with nothing calling them in a
 # release build.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
-    list(APPEND app_srcs "render/raster_show.c")
+    list(APPEND app_srcs "render/raster_show.c" "render/raster_motion.c" "render/raster_meshlets.c")
 endif()
 
 # The console listener: a release image has nobody watching the serial
@@ -117,7 +123,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
-list(APPEND app_srcs "board/board_esp32s3.c")
+list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
 
 # Apps are discovered, not listed.
 #
@@ -175,7 +181,7 @@ list(APPEND app_srcs ${discovered_apps})
 # SPI2. "sdmmc" itself is still needed for sdmmc_card_t and the protocol
 # layer underneath the host driver.
 #
-# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see gfx.c. It is
+# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
 set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
@@ -201,9 +207,11 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
-    # perf scope replaces the shell suites outright with what apps declare.
+    # perf scope includes only what engine and app manifests declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
-        launcher_glob(perf_scope_files "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake")
+        launcher_glob(perf_scope_files
+            "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake"
+            "${CMAKE_CURRENT_LIST_DIR}/../test/scope_perf.cmake")
         set(perf_scope_srcs "")
         foreach(perf_scope_file IN LISTS perf_scope_files)
             include("${perf_scope_file}")
@@ -322,29 +330,20 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
-    # The asset packs are build products: one per root asset (a scene, a free
-    # import, a free .anim.toml), written to assets/ and, under a pack
-    # directory, into one image that flashes to the "assets" partition with the
-    # app. build_pack.py searches all of main/, so its inputs are globbed there
-    # too: a clip's .glb counts. `idf.py assets-flash` writes just that region.
+    # The packer owns input discovery, including demo manifests, and runs on
+    # every build so deleted manifests drop their demos. Unchanged packs and
+    # the image retain their timestamps. The image flashes to the "assets"
+    # partition; `idf.py assets-flash` writes just that region.
     idf_build_get_property(python PYTHON)
     set(asset_image "${CMAKE_BINARY_DIR}/assets.bin")
     set(asset_packs "${CMAKE_BINARY_DIR}/assets")
     set(asset_tools "${CMAKE_CURRENT_LIST_DIR}/../tools")
-    launcher_glob(asset_inputs "${CMAKE_CURRENT_LIST_DIR}/*.mesh")
-    launcher_glob(asset_settings "${CMAKE_CURRENT_LIST_DIR}/*.toml")
-    launcher_glob(asset_sources "${CMAKE_CURRENT_LIST_DIR}/*.glb")
-    add_custom_command(
-        OUTPUT "${asset_image}"
+    add_custom_target(asset_pack_image ALL
         COMMAND ${python} "${asset_tools}/r3d/build_pack.py" -o "${asset_packs}" --image "${asset_image}"
                 "${CMAKE_CURRENT_LIST_DIR}"
-        DEPENDS ${asset_inputs} ${asset_settings} ${asset_sources} "${asset_tools}/r3d/build_pack.py"
-                "${asset_tools}/r3d/import_settings.py" "${asset_tools}/r3d/mesh_asset.py"
-                "${asset_tools}/asset/asset_pack.py" "${asset_tools}/anim/tracks_asset.py"
-                "${asset_tools}/gltf/gltf_read.py"
+        BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)
-    add_custom_target(asset_pack_image ALL DEPENDS "${asset_image}")
     esptool_py_flash_to_partition(flash "assets" "${asset_image}")
     add_dependencies(flash asset_pack_image)
     partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")

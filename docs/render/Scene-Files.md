@@ -220,12 +220,15 @@ may be placed anywhere, by many scenes.
 
 #### visibility: camera_region
 
-`source` defaults to `"camera_region"`; `rounds` is how many random tries each
-triangle gets.
-The region source casts from points in the camera's `region`. Use it when the
-camera may occupy the box without a defined path. The image is the same import
-with the cull off above on, cropped where they differ most: without the cull
-the budget goes to hidden surfaces.
+`source` defaults to `"camera_region"`. The region source casts from points in
+the camera's `region`; use it when the camera may occupy the box without a
+defined path. `rounds` is how many random tries each triangle gets. A try tests
+one point of the triangle plus one for each whole multiple of the mean triangle area,
+so a large face is kept by how much of it shows, not by where a single point
+lands.
+
+The image is the same import with the cull off above and on below, cropped
+where they differ most: without the cull the budget goes to hidden surfaces.
 
 ![Visibility cull off against on](images/import-visibility.png)
 
@@ -325,8 +328,9 @@ used only for scoring.
 
 #### fit.optimise
 
-The appearance fit starts from a smooth bake at its budget and adjusts welded
-positions and vertex colours against reference renders from camera-path poses.
+The appearance fit starts from the renderer's bake at its budget, smooth or
+[flat](#a-flat-fit), and adjusts welded positions and colours against
+reference renders from camera-path poses.
 The triangles stay fixed, so the budget and frame cost hold. A `fit` table
 records the budget, training, held-out and coverage poses, optimiser settings,
 and output hashes. [`fitted_variant.py` remakes the mesh](../../launcher/tools/r3d/README.md#appearance-fit)
@@ -406,7 +410,7 @@ moves; segment fits see fewer training poses.
 
 ```mermaid
 flowchart LR
-    S[simplified smooth bake] --> F[fit positions and colours]
+    S[simplified bake, smooth or flat] --> F[fit positions and colours]
     P[camera path poses] --> R[reference renders]
     R --> F
     F --> W[write_lit_mesh]
@@ -426,6 +430,38 @@ view. The error reported beside $`\Delta E`$ is the mean normal angle:
 
 The generated normal-angle heatmaps and sweep findings live in the scene tools
 README.
+
+##### A flat fit
+
+A renderer with both `shading = { flat = ... }` and a `fit` table is fitted
+flat: its start is a flat bake of its variant, and $`C`$ holds one colour per triangle
+instead of one per vertex. The positions are fitted as before, so a face's
+edges move to where one colour reads best, along a shading change. Each pixel
+takes its triangle's colour:
+
+```math
+\mathcal{R}_v(P, C)_p = C_{\tau_v(p)}
+\qquad \tau_v(p) = \text{the triangle pixel } p \text{ shows in pose } v
+```
+
+A pixel inside a face does not depend on $`P`$, so the position gradient comes
+only from the edges. The fit draws every triangle with three vertices of its
+own, so every edge, not only a silhouette, is antialiased and passes a
+gradient to the positions on both sides; those vertices still read one welded
+position each, so faces cannot part. Pruning, the warm start and the writer
+keep each colour with its triangle, and the device draws the result as any flat
+mesh, at a flat mesh's cost.
+
+```mermaid
+flowchart LR
+    B[flat bake<br/>a colour per face] --> F[fit positions and<br/>face colours]
+    F --> E[edges antialiased<br/>gradient to positions]
+    E --> F
+    F --> W[write_lit_mesh<br/>face colours]
+```
+
+[Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
+with its flat fit.
 
 #### fit.hashes
 
@@ -459,6 +495,11 @@ keeps the brighter.
 | `camera` | `half_fov_short_tan`, `near_z`; `region`, `path`, `background` | Defines the scene view. | — | [camera](#camera) |
 
 #### camera
+
+A scene may hold many cameras; only one renders at a time, the active one
+selected by `scene_activate()`. Camera-region visibility, camera-path
+visibility and fitted variants read the scene's first camera. A region on
+any other camera is refused because no bake step reads it.
 
 `region = { min, max }` is the box the camera may occupy; region visibility
 casts from points inside it. `path = { animation, node }` names the clip the

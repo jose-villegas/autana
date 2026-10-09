@@ -10,7 +10,7 @@ mesh. Nothing here runs on the board.
 | [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle. |
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
-| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, weld across materials, one colour-aware pass with reserved budget shares for small props. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
+| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `seal_seams=True` joins touching pieces first, regularizes lightly and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
@@ -22,11 +22,13 @@ mesh. Nothing here runs on the board.
 | [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry beside the scene file (a bare import's beside the import file). |
 | [rebake.py](rebake.py) | Rewrites a baked `.mesh`'s clusters from its own triangles and colours, with no relighting. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
+| [../gltf/blend_skin_to_glb.py](../gltf/blend_skin_to_glb.py) | Run inside Blender: exports any `.blend` armature and the meshes it deforms to a skinned `.glb`, every action (or `--clips`) as an animation; see its header. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
+| [skin_light/](skin_light/report_skin_light.sh) | Skinned-mesh lighting measured on the host, direct N.L against a lookup table: from a skinned glTF, runs the benchmark, draws the sheet and rewrites the document's tables; see [Skinned-Mesh Lighting](../../../docs/render/Skinned-Lighting.md). |
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
-| [appearance_simplify.py](appearance_simplify.py) | Fits a smooth mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
+| [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
@@ -48,11 +50,10 @@ python -m venv tools/r3d/.cache/venv
 tools/r3d/.cache/venv/Scripts/python -m pip install -r tools/r3d/requirements.txt   # bin/python on Linux
 ```
 
-An import's OBJ, MTL and textures live in a subdirectory beside its
-`.import.toml` under an app's `meshes/` directory.
-Binary source files use Git LFS; MTL and attribution files stay text.
-Firmware clones exclude source assets through `.lfsconfig`. Before a source
-bake or reference render, run this from the repository root:
+An import's source files sit in `launcher/demo/*/source/`, which uses Git LFS (MTL and
+attribution files stay text) and which firmware clones exclude through
+`.lfsconfig`. Before a source bake or reference render, run this from the
+repository root:
 
 ```sh
 git lfs pull --exclude=""
@@ -74,8 +75,9 @@ the price of frame time; what it does and costs is in
 [Mesh-Import.md](../../../docs/render/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
-scene file that places it and the `.mesh` it bakes live in the app's `meshes/`
-folder.
+scene file that places it and the `.mesh` it bakes live together.
+Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/README.md#packs)
+what ships.
 
 ## Fidelity reference
 
@@ -158,7 +160,7 @@ below `--min-free-gib`.
 sweeps the flat bake's knobs:
 
 ```sh
-$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_MESH --script HOST     --render-args "--quarter 0 --no-hud --scene FLAT_SCENE --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
+$PY tools/r3d/bake_fidelity.py SCENE.scene.toml --mesh FLAT_OBJECT --host HOST     --render-args "--quarter 0 --scene SCENE_ID --object FLAT_OBJECT --frames 8 --dt 5000"     --reference reference --work scratch     --variant fixed4=samples=fixed:4 --variant sky64=sky=64,place=centroid
 ```
 
 It bakes the simplified geometry once, re-lights it for each variant into
@@ -181,9 +183,9 @@ triangles stay as the simplifier left them, so the budget holds.
 
 | | |
 |---|---|
-| Start | a smooth `NAME.mesh`, welded so the vertices of a colour seam share one position |
-| Fitted | every welded position, and every vertex's sRGB colour |
-| Forward model | nvdiffrast draws what the device draws: Gouraud colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
+| Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
+| Forward model | nvdiffrast draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates from the start's |
 | Schedule | Adam; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
@@ -248,8 +250,10 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
 ```
 
+`NAME` is the fitted scene object, or its variant when only one object fits that variant.
+
 `prepare` bakes the start (the import's geometry steps at the variant's
-`triangles`, lit by the scene's bake), samples the camera's path every
+`triangles`, lit by the scene's bake, flat when the renderer's shading is), samples the camera's path every
 `fit.poses.train_every_ms`, holds out the multiples of
 `fit.poses.held_out_every_ms`, samples it again every
 `fit.prune.coverage_every_ms` for pruning, and renders the training references
@@ -287,7 +291,10 @@ from the chord between the front's end points after both axes are normalized.
 The [documentation stages](../render/doc_stages.py)
 rebuild fitted comparisons and sweeps with this recipe API, write measured
 Markdown blocks with the shared doc writer, and consume board captures to
-refit the cost weights. The GPU smoke mode publishes no images or tables.
+refit the cost weights. Host scoring uses the engine's
+[scene viewer](../render/scene_viewer.sh) with the supplied scene and renderer.
+[doc_images_demo.sh](../render/doc_images_demo.sh) owns the demo's CPU images
+and measured tables. The GPU smoke mode publishes no images or tables.
 
 ## Cost-aware fit
 

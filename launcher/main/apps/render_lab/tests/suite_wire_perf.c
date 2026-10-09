@@ -22,7 +22,8 @@
 
 #include "display/display.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_band_run.h"
+#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 #include "util/runtime/memory.h"

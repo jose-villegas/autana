@@ -28,7 +28,7 @@ file counted twice:
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the
   host-only test-runner files (`host_main.c`, `heap_arena.c`) and
-  `gfx/gfx_palette_standard.c`. esp-clang's own default target has no
+  `gfx/draw/gfx_palette_standard.c`. esp-clang's own default target has no
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
   treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.
@@ -50,7 +50,7 @@ functions has nothing to say about code it did not write, and it is never
 a source of a coverage gap since it sits outside `launcher/main/`. A
 vendored function this project changed is measured; see the end of this
 page. A `static inline` helper defined only in a
-shared header (for example `gfx/gfx_band.h`'s `gfx_band_ring_advance()`) is
+shared header (for example `gfx/present/gfx_band.h`'s `gfx_band_ring_advance()`) is
 still invisible to this gate: clang-tidy's default scope is the file
 actually being compiled, not headers it pulls in.
 
@@ -110,7 +110,7 @@ yet the ratchet has no database to read and runs after that build instead;
 the database is also the previous build's, so a `.c` file added since then
 fails the ratchet as unmeasured until a build catches the database up.
 
-A file only a build variant compiles (`gfx/gfx_null_panel_device.c`, which
+A file only a build variant compiles (`gfx/present/gfx_null_panel_device.c`, which
 exists for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database
 at all. `VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
 it borrows, and the variant's own symbol, which is defined for it: what such
