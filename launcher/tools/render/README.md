@@ -52,7 +52,7 @@ python launcher/tools/render/meshlet_capture.py prepare \
 ```
 
 The scene's tools README supplies its scene path and fixed-pose suite name.
-Preparation copies tracked firmware sources into
+Preparation copies the tracked tree into
 `launcher/tools/results/meshlet-sizes/tree` and re-clusters committed triangles
 through `rebake.py`, without building firmware or accessing the board.
 
