@@ -4,17 +4,36 @@ name: Pages
 # the latest main before it builds. GitHub runs a branch's workflows only for
 # pushes to that branch, so a push to main calls it here, at that branch;
 # without this the site would keep showing an older main.
+#
+# A pull request calls that branch's web-check.yml instead: it builds sand for
+# the browser against the pull request, publishing nothing, when the pull
+# request changes a file that build reads. Not a required check.
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   pages:
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     uses: jose-villegas/autana/.github/workflows/pages.yml@feature/web-pages
     secrets: inherit
+
+  web-build:
+    name: Web build
+    if: github.event_name == 'pull_request'
+    concurrency:
+      group: web-build-${{ github.ref }}
+      cancel-in-progress: true
+    uses: jose-villegas/autana/.github/workflows/web-check.yml@feature/web-pages
+    with:
+      ref: ${{ github.sha }}
