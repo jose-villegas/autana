@@ -269,15 +269,28 @@ scene_find(const scene_t* scene, const char* name) {
     return SCENE_ENTITY_NONE;
 }
 
-const char*
-scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity) {
+/* The index of the entity's renderer, or -1 when it draws nothing. */
+static int
+renderer_of(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         if (scene->asset.renderers[i].entity == entity) {
-            return scene->asset.renderers[i].mesh;
+            return i;
         }
     }
-    return NULL;
+    return -1;
+}
+
+const char*
+scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity) {
+    const int i = renderer_of(scene, entity);
+    return i < 0 ? NULL : scene->asset.renderers[i].mesh;
+}
+
+const r3d_lit_mesh_t*
+scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
+    const int i = renderer_of(scene, entity);
+    return i < 0 ? NULL : &scene->renderers[i].mesh;
 }
 
 int

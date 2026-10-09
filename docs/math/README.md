@@ -34,9 +34,9 @@ Fixed-point angles are **turns**, `MATHX_ONE` to a turn, so an eighth of a turn 
 | | |
 |---|---|
 | Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z; `render/r3d_scene.c` turns that into this frame |
-| Rotation sense | Unity's left-handed frame: a positive angle about +y turns +z toward +x |
+| Rotation sense | left-handed, +y up: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
-| Euler | `from_euler` applies Z, then X, then Y about the fixed axes (Unity's order) |
+| Euler | `from_euler` applies Z, then X, then Y about the fixed axes |
 | Matrix | `m[row][col]`, acting on column vectors; the translation is column 3; `mul(a, b)` applies `b` first |
 | TRS | scale, then rotate, then translate |
 
@@ -65,7 +65,7 @@ model matrix with a `cached` flag.
 
 | Call | Effect |
 |---|---|
-| any setter, `translate`, `rotate`, `look_at` | stores the new value and clears `cached` |
+| any setter, `translate`, `rotate`, `look_at`, `rotate_around` | stores the new value and clears `cached` |
 | `P_matrix(t)` | rebuilds the matrix only when `cached` is false, then sets it; use for an object read every frame |
 | `P_compute_matrix(t)` | a fresh matrix from a const transform; never touches the cache; use in read-only code |
 | `P_view(t)` | the inverse of position and rotation (scale ignored), computed every call |
@@ -151,6 +151,7 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | `P_matrix(&t)` | the cached model matrix | $`M = T\,R\,S`$ |
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
+| `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle}),\ \mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point}),\ \mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
 | `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert},\ r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert},\ u = f \times r`$, then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 
 ### Conversions (`vec_convert.h`)

@@ -49,6 +49,7 @@ Keys before `;` are required; after it, optional.
 | `.obj` | its sibling `.mtl` and the textures the MTL names | the material's `Kd` and texture |
 | `.glb` | every mesh node's triangles, placed by the node; a skinned node's in its bind pose | per vertex: `COLOR_0` times the material's base colour |
 | `.fbx` | converted once to a `.glb` (`launcher/tools/fbx/fbx_to_glb.py`, cached by content), then read as one | as `.glb` |
+| `.blend` | exported to a `.glb` inside Blender by `launcher/tools/bake/bake.py` (`[source] clips` names the actions), a cached bake like a mesh, then read as one | as `.glb` |
 
 `credit` records the source attribution. Source files sit in
 `launcher/demo/*/source/`, which uses Git LFS (MTL and attribution files stay
@@ -222,8 +223,8 @@ beside its import file by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
 [`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). Two kinds of file
-drive it, in the manner of Unity's `.meta` beside an asset: an **import file**
-describes one mesh asset, and a **scene file** describes a scenario that
+drive it: an **import file** beside a source asset describes that one
+mesh asset, and a **scene file** describes a scenario that
 places meshes ([Scene-Files.md](Scene-Files.md)). Anything specific to one mesh is in its import file; anything
 about the scenario (lights, camera region, tone map) is in the scene file.
 [`launcher/tools/r3d/import_settings.py`](../../launcher/tools/r3d/import_settings.py)
