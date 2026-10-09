@@ -6,10 +6,12 @@ transport and nothing else. It returns linear radiance and per-pixel coverage; e
 conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are pinned in requirements.txt.
 """
 
+import importlib.util
 import math
 
 import numpy as np
 
+from . import isa
 from .poses import camera_basis
 
 DEFAULT_SPP = 256
@@ -17,11 +19,12 @@ DEFAULT_DEPTH = 12
 
 
 def import_mitsuba():
-    """The mitsuba module, or None when it is not installed."""
-    try:
-        import mitsuba
-    except ImportError:
+    """The mitsuba module, or None when it is not installed; its CPU backend pinned to one instruction set first."""
+    if importlib.util.find_spec("mitsuba") is None:
         return None
+    isa.pin()
+    import mitsuba
+
     return mitsuba
 
 
