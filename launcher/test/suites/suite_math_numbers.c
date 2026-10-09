@@ -18,6 +18,7 @@
 #include "util/math/transformf.h"
 #include "util/math/transformx.h"
 #include "util/math/vec_convert.h"
+#include "util/scalar/mathf.h"
 
 #define Q           65536.0F
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -494,6 +495,46 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
     }
 }
 
+/* Within an ulp of the quotient, measured on the side the result landed:
+ * both signs, a geometric sweep over 2^-20..2^20 and each octave's edges (a
+ * power of two, its neighbours, the largest mantissa below it). On the
+ * sweep it is the quotient nearly always; the edges round off it more. */
+#define RECIP_OCTAVES       20      /* magnitudes 2^-20..2^20 */
+#define RECIP_SWEEP_STEP    1.0137F /* about 50 samples an octave */
+#define RECIP_EXACT_PERCENT 99
+
+/* Asserts mathf_recip(x) within an ulp of 1 / x; true when it is exactly. */
+static bool
+reciprocal_is_exact(float x) {
+    const float want = 1.0F / x;
+    const float got = mathf_recip(x);
+    const float ulp = fabsf(nextafterf(want, got) - want);
+    TEST_ASSERT_FLOAT_WITHIN(ulp, want, got);
+    return got == want;
+}
+
+static void
+test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
+    int count = 0;
+    int exact = 0;
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (float a = ldexpf(1.0F, -RECIP_OCTAVES); a < ldexpf(1.0F, RECIP_OCTAVES); a *= RECIP_SWEEP_STEP) {
+            exact += reciprocal_is_exact((float)sign * a);
+            count++;
+        }
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(count * RECIP_EXACT_PERCENT / 100, exact);
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (int e = -RECIP_OCTAVES; e <= RECIP_OCTAVES; e++) {
+            const float power = (float)sign * ldexpf(1.0F, e);
+            (void)reciprocal_is_exact(power);
+            (void)reciprocal_is_exact(nextafterf(power, 0.0F));
+            (void)reciprocal_is_exact(nextafterf(power, 2.0F * power));
+            (void)reciprocal_is_exact(nextafterf(2.0F * power, 0.0F));
+        }
+    }
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
@@ -521,6 +562,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_every_swizzle_family_moves_the_named_components_for_every_number_type);
     RUN_TEST(test_a_cross_dimension_swizzle_returns_the_other_vector_type);
     RUN_TEST(test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type);
+    RUN_TEST(test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it);
 }
 
 SUITE_REGISTER(suite_math_numbers);
