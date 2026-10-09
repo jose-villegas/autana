@@ -54,11 +54,8 @@ against the reference along that camera's clip, at intervals taken from
 the script and over the clip's full period. Per-path results belong in
 `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
 
-Author and regenerate the tour animation with:
-
-```sh
-python launcher/tools/anim/camera_keys.py launcher/demo/sponza/tour.keys.toml launcher/demo/sponza/tour.glb
-```
+The tour is authored as camera keys in `launcher/demo/sponza/tour.keys.toml`;
+the pack build bakes it, so an edit there needs nothing else.
 
 A host pose can be drawn with:
 
