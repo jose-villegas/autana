@@ -4,13 +4,14 @@ share of chosen materials in direct sun. --save writes the one rotation given in
 
     python launcher/tools/r3d/light_preview.py SCENE.scene.toml --rotation PITCH YAW [--rotation PITCH YAW ...]
         [--camera NAME] [--at SECONDS ...] [--share MATERIAL ...] [--object NAME] [--light NAME]
-        [--size WxH] [--spp N] [--out PNG] [--show] [--save]
+        [--size WxH] [--spp N] [--out PNG] [--no-show] [--save]
 
 A rotation is the light object's [pitch, yaw] in degrees, as the scene file writes it (roll is kept): pitch is the
 angle from straight up, yaw turns it about the vertical. --camera names a camera object (default: the first) whose
 path is sampled at each --at time (default: 0). --share takes material names or fnmatch patterns ("fabric_*") of
 the --object renderer (default: the first) and prints, per rotation, the share of their area in direct sun and,
-per pose, of their visible pixels. The sheet has one row per rotation, the scene's rotation first; --show opens it.
+per pose, of their visible pixels. The sheet has one row per rotation, the scene's rotation first. Run from a
+terminal, it opens the sheet in the image viewer when written; --no-show (or output to a pipe) only prints its path.
 
 The stills are r3d.mitsuba_reference's, at the scene's exposure and tone map. Its path tracer has no ambient term,
 so a scene's [ambient] is left out of the stills.
@@ -131,7 +132,7 @@ def main(argv=None):
     parser.add_argument("--size", default="320x240")
     parser.add_argument("--spp", type=int, default=64)
     parser.add_argument("--out", help="the sheet's path (default: light_preview.png in the temporary directory)")
-    parser.add_argument("--show", action="store_true", help="open the sheet")
+    parser.add_argument("--no-show", action="store_true", help="do not open the sheet")
     parser.add_argument("--save", action="store_true", help="write the one --rotation into the scene file")
     args = parser.parse_args(argv)
     if args.save and len(args.rotation) != 1:
@@ -221,7 +222,7 @@ def main(argv=None):
     out = pathlib.Path(args.out) if args.out else pathlib.Path(tempfile.gettempdir()) / "light_preview.png"
     sheet.save(out)
     print(out)
-    if args.show:
+    if not args.no_show and sys.stdout.isatty():
         if hasattr(os, "startfile"):
             os.startfile(out)
         else:
