@@ -61,6 +61,40 @@ def transform_vector(m, v):
     )
 
 
+def node_parents(nodes):
+    """Each node's parent index, None for a root."""
+    parents = [None] * len(nodes)
+    for index, node in enumerate(nodes):
+        for child in node.get("children", []):
+            parents[child] = index
+    return parents
+
+
+def node_trs(node):
+    return {
+        "translation": tuple(node.get("translation", (0.0, 0.0, 0.0))),
+        "rotation": tuple(node.get("rotation", (0.0, 0.0, 0.0, 1.0))),
+        "scale": tuple(node.get("scale", (1.0, 1.0, 1.0))),
+    }
+
+
+def world_matrices(parents, pose):
+    """Each node's model-to-world matrix for a pose of node TRS dicts."""
+    world = [None] * len(pose)
+
+    def resolve(index):
+        if world[index] is None:
+            trs = pose[index]
+            local = mat_from_trs(trs["translation"], trs["rotation"], trs["scale"])
+            parent = parents[index]
+            world[index] = local if parent is None else mat_mul(resolve(parent), local)
+        return world[index]
+
+    for index in range(len(pose)):
+        resolve(index)
+    return world
+
+
 class SkinnedAsset:
     """The first skinned mesh primitive of a glTF document, poseable."""
 
@@ -69,11 +103,8 @@ class SkinnedAsset:
         self.binary = binary
         self._accessors = {}
         nodes = document["nodes"]
-        self.parents = [None] * len(nodes)
-        for index, node in enumerate(nodes):
-            for child in node.get("children", []):
-                self.parents[child] = index
-        self.rest = [self._node_trs(node) for node in nodes]
+        self.parents = node_parents(nodes)
+        self.rest = [node_trs(node) for node in nodes]
         mesh_node = next(n for n in nodes if "skin" in n and "mesh" in n)
         skin = document["skins"][mesh_node["skin"]]
         self.joints = skin["joints"]
@@ -104,14 +135,6 @@ class SkinnedAsset:
             )
         return self._accessors[accessor_index]
 
-    @staticmethod
-    def _node_trs(node):
-        return {
-            "translation": tuple(node.get("translation", (0.0, 0.0, 0.0))),
-            "rotation": tuple(node.get("rotation", (0.0, 0.0, 0.0, 1.0))),
-            "scale": tuple(node.get("scale", (1.0, 1.0, 1.0))),
-        }
-
     def duration(self, name):
         animation = self.animations[name]
         return max(
@@ -138,19 +161,7 @@ class SkinnedAsset:
         return pose
 
     def world_matrices(self, pose):
-        world = [None] * len(pose)
-
-        def resolve(index):
-            if world[index] is None:
-                trs = pose[index]
-                local = mat_from_trs(trs["translation"], trs["rotation"], trs["scale"])
-                parent = self.parents[index]
-                world[index] = local if parent is None else mat_mul(resolve(parent), local)
-            return world[index]
-
-        for index in range(len(pose)):
-            resolve(index)
-        return world
+        return world_matrices(self.parents, pose)
 
     def joint_matrices(self, pose):
         world = self.world_matrices(pose)

@@ -74,7 +74,9 @@ def source_meshes(mi, source, double_sided, keep_textures=False, boost=1.0):
     separately; the shading normals are the import's crease-limited corner normals. The texture V axis is flipped
     to the orientation `obj.Texture.sample` reads. Each texture is dropped from the source once exported, which a
     large scene needs to keep its host memory flat, so a source is exported once; `keep_textures` leaves them for
-    a caller that still samples them."""
+    a caller that still samples them. Vertex colours are not exported, so a source with them is refused."""
+    if source.colors is not None:
+        raise ValueError("the Mitsuba export has no vertex colours: bake this source without bounced light")
     meshes = {}
     for index, name in enumerate(source.names):
         chosen = source.tri_m == index
