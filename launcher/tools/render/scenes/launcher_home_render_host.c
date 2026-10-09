@@ -23,31 +23,15 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "app/app.h"
 #include "gfx/gfx.h"
+#include "launcher_home_render_setup.h"
 #include "render_host.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
-#include "ui/ui_transform.h"
 
-static app_t fixture_alpha = {.name = "Alpha", .summary = "The first fixture row"};
-static app_t fixture_beta = {.name = "Beta", .summary = "The second fixture row"};
-static app_t fixture_gamma = {.name = "Gamma", .summary = "The third fixture row"};
-
-#define ROWS_MAX 16
-
-static app_t stated[ROWS_MAX];
-static int stated_count;
 static bool tilt_sweep;
 static int scene_quarter;
-
-static void
-register_fixture(void) {
-    app_register(&fixture_alpha);
-    app_register(&fixture_beta);
-    app_register(&fixture_gamma);
-}
 
 /* A press at the centre of the panel, held on the last frame of the default
  * render so the row shows pressed; the release comes only in longer renders,
@@ -70,20 +54,11 @@ options(int argc, char** argv) {
         if (strcmp(argv[i], "--row") != 0 || i + 1 >= argc) {
             return false;
         }
-        if (stated_count >= ROWS_MAX) {
-            fprintf(stderr, "at most %d rows\n", ROWS_MAX);
+        if (!launcher_home_render_add_row(argv[++i])) {
             return false;
         }
-        stated[stated_count].name = argv[++i];
-        stated_count++;
     }
-    if (stated_count > 0) {
-        for (int i = 0; i < stated_count; i++) {
-            app_register(&stated[i]);
-        }
-    } else {
-        register_fixture();
-    }
+    launcher_home_render_register_rows();
     return true;
 }
 
@@ -96,12 +71,8 @@ static const int DOWN[4][2] = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
  * backdrop is level with it, and nothing about it depends on the clock. */
 static bool
 setup(int quarter) {
-    ui_launcher_init();
+    launcher_home_render_setup(quarter);
     scene_quarter = quarter;
-    ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
-    ui_ridge_set_gravity(DOWN[quarter & 3][0], DOWN[quarter & 3][1], 256, 0);
-    ui_ridge_set_ambient(false);
-    ui_ridge_settle();
     return true;
 }
 
