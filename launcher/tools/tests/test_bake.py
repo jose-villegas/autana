@@ -15,10 +15,12 @@ from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "tests"))
 
-from bake import bake  # noqa: E402
+from bake import bake, produce  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
+from test_r3d_import import write_import  # noqa: E402
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
 
@@ -241,6 +243,89 @@ class LockTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {"GITHUB_ACTIONS": "", "GITHUB_REF": "refs/heads/main"}), \
                 self.assertRaisesRegex(bake.BakeMissing, "only in the Bakes workflow on main"):
             bake.publish([], {}, self.cache)
+
+
+class RequirementTests(unittest.TestCase):
+    def pins(self, stage):
+        return {line.split("==")[0] for _, line in bake.requirement_pins(stage)}
+
+    def test_the_gpu_packages_key_the_fit_alone(self):
+        self.assertTrue({"torch", "nvdiffrast"} <= self.pins("fit"))
+        self.assertFalse({"torch", "nvdiffrast"} & (self.pins("mesh") | self.pins("reference")))
+
+    def test_the_requirements_beside_a_stage_file_key_it(self):
+        self.assertTrue({"numpy", "mitsuba", "pillow"} <= self.pins("mesh"))
+
+    def test_a_package_that_differs_from_its_pin_refuses_to_bake(self):
+        with mock.patch("importlib.metadata.version", return_value="0.0.1"), \
+                self.assertRaisesRegex(produce.EnvironmentMismatch, "numpy: .* pins 2.*has 0.0.1"):
+            produce.check_environment(("mesh",))
+
+    def test_a_submodule_the_index_lacks_fails(self):
+        bake.submodules.cache_clear()
+        try:
+            with mock.patch.object(bake, "git_lines", return_value=[]), \
+                    self.assertRaisesRegex(bake.SettingsError, "meshoptimizer"):
+                bake.submodules()
+        finally:
+            bake.submodules.cache_clear()
+
+
+class ProduceTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.directory.name)
+        self.cache = self.root / "cache"
+        (self.root / "tree").mkdir()
+        write_import(self.root / "tree")
+        self.found = bake.bakes([self.root / "tree"])
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def produce(self):
+        with mock.patch.object(produce, "check_environment"):
+            return produce.produce(self.found[0], self.cache)
+
+    def test_a_mesh_is_made_into_the_cache_and_indexed_by_its_key(self):
+        row = self.produce()
+        self.assertEqual(produce.made(self.found[0].key, self.cache), row)
+        self.assertEqual(bake.file_sha256(bake.cached(row, bake.MESH_SUFFIX, self.cache)), row["sha256"])
+        self.assertFalse(list((self.root / "tree").glob("*.mesh")), "the tree is never written")
+
+    def test_a_locally_made_bake_cannot_be_locked(self):
+        self.produce()
+        with self.assertRaisesRegex(bake.BakeMissing, "no CI run has made this key"):
+            bake.lock_rows(self.found, {})
+
+    def test_a_runs_uploads_lock_with_the_run_and_are_checked(self):
+        row = self.produce()
+        out = self.root / "upload"
+        produce.export([row], self.cache, out)
+        made = produce.import_run(out, 41, self.root / "other")
+        self.assertEqual(bake.lock_rows(self.found, {}, made)[0]["run"], 41)
+        (out / "files" / f"{row['sha256']}.mesh").write_bytes(b"other")
+        with self.assertRaisesRegex(bake.BakeMissing, "run 41"):
+            produce.import_run(out, 41, self.root / "third")
+
+    def test_publish_takes_a_rows_file_from_its_run(self):
+        row = self.produce()
+        out = self.root / "upload"
+        produce.export([row], self.cache, out)
+        lock = {row["key"]: {**row, "run": 41}}
+        uploads = []
+
+        def gh(args, **_):
+            if args[:3] == ["gh", "release", "upload"]:
+                uploads.append(pathlib.Path(args[-1]).read_bytes())
+            return mock.Mock(returncode=0)
+
+        with mock.patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "GITHUB_REF": "refs/heads/main"}), \
+                mock.patch.object(bake, "release_assets", return_value=set()), \
+                mock.patch.object(bake, "run_files", side_effect=lambda run, folder: out), \
+                mock.patch("subprocess.run", side_effect=gh):
+            bake.publish(self.found, lock, self.root / "empty")
+        self.assertEqual([hashlib.sha256(data).hexdigest() for data in uploads], [row["sha256"]])
 
 
 class TreeTests(unittest.TestCase):

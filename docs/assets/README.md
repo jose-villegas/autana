@@ -164,7 +164,8 @@ renderer.
 | `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
 | `build_pack.py --from-cache [DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` instead of the tree |
-| `bake/bake.py list\|lock --seed\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
+| `bake/bake.py list\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
+| `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
 `launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
@@ -187,6 +188,14 @@ records the bytes made for each key, and main publishes those files to the
 repository's `bakes` release. `build_pack.py --from-cache` builds the same
 packs from them, downloading into the user cache what is not there, and
 fails naming every mesh it cannot get.
+
+A pull request that changes what a mesh is made from gets its bake from the
+Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
+and the lock check fails until the author runs `bake.py lock --from-run N`
+with that run and commits the lock. A fit needs the CUDA GPU, so the GPU job
+runs only when the workflow is started by hand on the branch. Only a run's
+files can be locked, so every locked file can be published from main; a fit's
+reference frames stay on the machine that fitted.
 
 ### Flashing
 

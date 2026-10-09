@@ -1,30 +1,121 @@
 name: Bakes
 
-# Publishes the files launcher/bakes.lock names to the `bakes` release, so a
-# build fetches them instead of baking (launcher/tools/bake/bake.py). Only
-# main publishes; a branch never writes the release. The first run creates
-# the release. The jobs that bake on a pull request join this workflow later.
+# The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
+# job bakes every mesh launcher/bakes.lock has no row for and uploads the
+# files; the lock job then fails until the author runs
+# `bake.py lock --from-run N` with that run and commits the lock. A fit needs
+# the CUDA GPU on the self-hosted runner: run this workflow on the branch by
+# hand (workflow_dispatch), which also bakes the meshes, and lock from that
+# run. On main, publish uploads each locked file the `bakes` release lacks,
+# taking it from the run that made it. No branch writes the release.
 
 on:
+  pull_request:
   push:
     branches: [main]
-    paths:
-      - 'launcher/bakes.lock'
-      - 'launcher/tools/bake/**'
-      - '.github/workflows/bakes.yml'
   workflow_dispatch:
 
 concurrency:
-  group: bakes-publish
+  group: bakes-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
+  cpu:
+    name: Bake missing meshes
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: List the meshes the lock has no row for
+        id: missing
+        run: |
+          python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/missing.txt"
+          echo "count=$(wc -l < "$RUNNER_TEMP/missing.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch mesh source files
+        if: steps.missing.outputs.count != '0'
+        run: git lfs pull --exclude=""
+
+      - name: Initialize only meshoptimizer
+        if: steps.missing.outputs.count != '0'
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      # The bakes trace rays on Mitsuba's LLVM variant, which needs libLLVM.
+      - name: Install the r3d requirements and LLVM
+        if: steps.missing.outputs.count != '0'
+        run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends llvm
+
+      - name: Bake
+        if: steps.missing.outputs.count != '0'
+        run: python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.missing.outputs.count != '0'
+        with:
+          name: bakes-cpu
+          path: ${{ runner.temp }}/bakes
+
+  gpu:
+    name: Bake missing fits
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 600
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch mesh source files
+        run: git lfs pull --exclude=""
+
+      - name: Initialize only meshoptimizer
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      - name: Install the r3d requirements into the GPU environment
+        run: |
+          "$HOME/gpu/env/bin/python" -m pip install -r launcher/tools/r3d/requirements.txt
+
+      # The runner's own cache keeps the fit references between runs; they never leave it.
+      - name: Bake
+        run: sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake --kind fit --out "$RUNNER_TEMP/bakes"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bakes-gpu
+          path: ${{ runner.temp }}/bakes
+          if-no-files-found: ignore
+
+  lock:
+    name: Lock is current
+    if: github.event_name == 'pull_request'
+    needs: cpu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Every needed key has a row and every row is needed
+        run: python launcher/tools/bake/bake.py check
+
   publish:
     name: Publish locked bakes
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
