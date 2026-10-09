@@ -1,7 +1,9 @@
 # The hand-rigged capybara in its bind pose; model units are metres, y is up.
+# The .blend is the source of truth: bake/bake.py exports it to glTF with these clips.
 [source]
-path = "capybara.glb"
-credit = "The hand-rigged capybara of capybara.blend, exported to glTF."
+path = "capybara.blend"
+credit = "The hand-rigged capybara of capybara.blend."
+clips = ["idle", "walk", "walk_fast", "gallop", "half_bound"]
 
 [output]
 directory = "."

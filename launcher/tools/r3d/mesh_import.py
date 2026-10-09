@@ -28,7 +28,7 @@ from r3d import log  # noqa: E402
 from r3d.gltf_mesh import load_gltf_mesh  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    SettingsError, albedo_jobs, lfs_pointer_oid, load_import_settings, load_scene, source_files,
+    BLEND_SUFFIX, SettingsError, albedo_jobs, lfs_pointer_oid, load_import_settings, load_scene, source_files,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
@@ -62,6 +62,9 @@ def vertex_spacing(vpos, vtris):
 
 
 def load_source(settings, texture_dtype=np.float64):
+    if settings.source["path"].suffix.lower() == BLEND_SUFFIX:
+        raise SettingsError(f"{settings.source['path'].name}: a .blend is exported by launcher/tools/bake/bake.py "
+                            "bake, which hands this import the export")
     for path in source_files(settings):
         if lfs_pointer_oid(path) is not None:
             raise SettingsError(f'{path}: Git LFS source is not pulled; run git lfs pull --exclude=""')

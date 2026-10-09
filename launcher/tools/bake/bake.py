@@ -25,7 +25,8 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 (the lock keeps its row). `lock` drops the rows nothing needs;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written, so every locked file can be published; `--seed`
-locks the meshes in the tree as they are. `check` fails when LOCK lacks a
+locks the meshes in the tree as they are, marking each row `seeded`: its bytes
+were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
 never downloads. `publish`, on main in CI only, uploads each locked file the
@@ -55,7 +56,7 @@ import urllib.request
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-from r3d.import_settings import SettingsError, source_digest  # noqa: E402
+from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
 REPO = TOOLS.parents[1]
 LOCK = REPO / "launcher" / "bakes.lock"
@@ -64,13 +65,21 @@ RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEA
 MESH_SUFFIX = ".mesh"
 DOWNLOAD_TIMEOUT_S = 60
 RUN_ARTIFACTS = "bakes-*"
+# A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
+# bake is reproducible only on one kind of host; a seeded row has none.
+ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "seeded")
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them.
 STAGES = {
     "mesh": ("r3d/mesh_import.py",),
     "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
     "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
+    "blend": ("gltf/blend_skin_to_glb.py",),
 }
+BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
+GLB_SUFFIX = ".glb"
+# The order kinds are made in: a mesh reads the export of its .blend.
+KINDS = ("blend", "mesh", "fit")
 REQUIREMENTS_NAME = "requirements.txt"
 REQUIREMENTS_GLOB = "requirements*.txt"
 C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
@@ -91,7 +100,7 @@ class Bake:
     output: str            # the file it makes: "<id>.mesh"
     source: pathlib.Path   # the file that asks for it
     holder: str            # the scene object, or the import variant, it is made for
-    kind: str              # "mesh" | "fit"
+    kind: str              # "blend" | "mesh" | "fit"
     key: str               # SHA-256 hex of everything that determines it
     suffix: str
     tree: pathlib.Path     # where the tree keeps it today
@@ -359,13 +368,24 @@ def camera_inputs(scene):
     return {"lens": lens, "clip": clip}
 
 
-def mesh_recipe(job, scene):
+def is_blend(settings):
+    return settings.source["path"].suffix.lower() == BLEND_SUFFIX
+
+
+def blend_key(settings, tools):
+    """The key of a .blend source's export: the file, the actions it exports and the exporter."""
+    blend = settings.source["path"]
+    return digest(["blend", content_checksum(blend).decode(), settings.source.get("clips"), tools["blend"]])
+
+
+def mesh_recipe(job, scene, tools):
     """What a lit or albedo mesh is made from, without its fit and without paths; its sources count by
-    content, so a credit line or a moved file does not rebake."""
+    content, so a credit line or a moved file does not rebake, and a .blend by its export's key."""
     settings = {name: canonical(value) for name, value in vars(job.settings).items()
                 if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
-    recipe = {"settings": settings, "renderer": renderer, "sources": source_digest(job.settings)}
+    sources = {"blend": blend_key(job.settings, tools)} if is_blend(job.settings) else source_digest(job.settings)
+    recipe = {"settings": settings, "renderer": renderer, "sources": sources}
     if job.bake is not None:
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,
                            "bake": canonical(job.bake), "indirect": canonical(scene.indirect) if job.bake.indirect else None}
@@ -380,7 +400,7 @@ def fit_recipe(fit):
 
 def stage_keys(job, scene, tools):
     """{stage: key} of one job: a mesh alone, or a fit's start, references and fit, each keyed on the one before."""
-    start = digest(["mesh", mesh_recipe(job, scene), tools["mesh"]])
+    start = digest(["mesh", mesh_recipe(job, scene, tools), tools["mesh"]])
     if job.renderer.fit is None:
         return {"mesh": start}
     fit = fit_recipe(job.renderer.fit)
@@ -399,18 +419,24 @@ def bakes(paths):
 def bakes_in(packs, jobs):
     """The bakes of build_pack.pack_jobs()'s packs."""
     tools = {stage: tool_digest(stage) for stage in STAGES}
-    found = []
+    found, exports = [], {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
             if source.resolve() not in jobs:
                 continue
             job, scene, asker = jobs[source.resolve()]
+            if is_blend(job.settings):
+                blend = job.settings.source["path"]
+                key = blend_key(job.settings, tools)
+                exports.setdefault(key, Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=job.settings.path,
+                                             holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
+                                             tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key}))
             keys = stage_keys(job, scene, tools)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
             found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
                               suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys))
-    return found
+    return list(exports.values()) + found
 
 
 def relative(path):
@@ -428,6 +454,8 @@ def read_lock(path=LOCK):
 
 
 def toml_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
     return json.dumps(value) if isinstance(value, str) else str(value)
 
 
@@ -436,7 +464,7 @@ def write_lock(rows, path=LOCK):
     lines = ["# Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.", ""]
     for row in sorted(rows, key=lambda row: (row["output"], row["key"])):
         lines.append("[[bake]]")
-        lines += [f"{name} = {toml_value(row[name])}" for name in ("output", "source", "key", "sha256", "size", "run")
+        lines += [f"{name} = {toml_value(row[name])}" for name in ROW_FIELDS
                   if name in row]
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
@@ -468,6 +496,9 @@ def describe(bake, why, again):
 
 
 def bake_again(bake):
+    if bake.kind == "blend":
+        return ("an export needs Blender: push, the Bakes check exports it on the pull request; then "
+                "bake.py lock --from-run N with that run")
     if bake.kind == "fit":
         return ("a fit needs the CUDA GPU: run the Bakes GPU workflow on this branch, then "
                 "bake.py lock --from-run N with that run")
@@ -537,7 +568,9 @@ def check(found, lock):
 
 
 def seed(found, cache):
-    """Rows locking the tree's own files, each copied into the cache."""
+    """Rows locking the tree's own files, each copied into the cache and marked seeded: the bytes are
+    carried over from the tree, not made by the code their key names. A run that makes the key again
+    writes a row without the mark."""
     rows, missing = [], []
     for bake in found:
         if not bake.tree.is_file():
@@ -545,7 +578,7 @@ def seed(found, cache):
             continue
         data = bake.tree.read_bytes()
         row = {"output": bake.output, "source": relative(bake.source), "key": bake.key,
-               "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+               "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "seeded": True}
         store(bake.tree, row, bake.suffix, cache)
         rows.append(row)
     if missing:
@@ -563,11 +596,13 @@ def lock_rows(found, lock, made=None):
     """Rows for the bakes `found` need: the lock's own, else those in `made`; raises naming the rest."""
     rows, missing = [], []
     for bake in found:
-        row = lock.get(bake.key) or (made or {}).get(bake.key)
+        row = lock.get(bake.key)
+        if row is None or (row.get("seeded") and bake.key in (made or {})):
+            row = (made or {}).get(bake.key)  # a run's make replaces a seeded row, never a made one
         if row is None:
             missing.append(describe(bake, "no CI run has made this key", bake_again(bake)))
             continue
-        rows.append({name: row[name] for name in ("output", "source", "key", "sha256", "size", "run") if name in row})
+        rows.append({name: row[name] for name in ROW_FIELDS if name in row})
     if missing:
         raise BakeMissing("cannot lock:\n" + "\n".join(missing))
     return rows
@@ -622,7 +657,8 @@ def main(argv=None):
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, metavar="N", help="lock: add the rows CI run N made")
-    parser.add_argument("--kind", choices=("mesh", "fit"), help="list, bake: only this kind")
+    parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
+    parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
@@ -643,12 +679,13 @@ def main(argv=None):
         elif args.command == "bake":
             from bake import produce
 
-            wanted = [bake for bake in found if (args.again or bake.key not in lock) and args.kind in (None, bake.kind)
-                      and (not args.only or bake.output in args.only)]
+            wanted = sorted((bake for bake in found if (args.again or bake.key not in lock)
+                             and args.kind in (None, bake.kind) and (not args.only or bake.output in args.only)),
+                            key=lambda bake: KINDS.index(bake.kind))
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
-            rows = [(None if args.again else produce.made(bake.key, cache)) or produce.produce(bake, cache)
+            rows = [(None if args.again else produce.made(bake.key, cache)) or produce.produce(bake, cache, lock, args.blender)
                     for bake in wanted]
             for row in rows:
                 locked = lock.get(row["key"])
@@ -678,6 +715,10 @@ def main(argv=None):
                 after = (f"\nThis run made the mesh bakes: bake.py lock --from-run {run}, then commit {relative(LOCK)}."
                          if run else "")
                 raise BakeMissing(f"{relative(LOCK)} is out of date:\n" + "\n".join(problems) + after)
+            seeded = sorted(row["output"] for row in lock.values() if row.get("seeded"))
+            if seeded:
+                print(f"{len(seeded)} of {len(lock)} rows are seeded: bytes carried over from the tree, not made by "
+                      "the code their keys name; a CI run that makes a key again clears it: " + ", ".join(seeded))
         elif args.command == "fetch":
             for bake, path in fetch_all(found, lock, cache, args.offline).items():
                 print(f"{bake.output}\t{path}")
