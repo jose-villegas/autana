@@ -7,6 +7,7 @@ import copy
 import hashlib
 import io
 import pathlib
+import platform
 import sys
 import tempfile
 import unittest
@@ -323,6 +324,8 @@ class ProduceTests(unittest.TestCase):
         self.assertEqual(produce.made(self.found[0].key, self.cache), row)
         self.assertEqual(bake.file_sha256(bake.cached(row, bake.MESH_SUFFIX, self.cache)), row["sha256"])
         self.assertFalse(list((self.root / "tree").glob("*.mesh")), "the tree is never written")
+        self.assertEqual(row["host"], f"{platform.system()} {platform.machine()}")
+        self.assertEqual(bake.lock_rows(self.found, {}, {row["key"]: {**row, "run": 3}})[0]["host"], row["host"])
 
     def test_a_locally_made_bake_cannot_be_locked(self):
         self.produce()

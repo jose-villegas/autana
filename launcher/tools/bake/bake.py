@@ -13,8 +13,10 @@ bake's key is a SHA-256 of its kind, its recipe (the parsed import and
 renderer settings and the scene inputs its look reads), its sources (an LFS
 pointer's oid stands for the file, so no source is downloaded) and the code
 of the tool that makes it. LOCK, written only by this tool, records for
-each key the SHA-256 of the bytes made for it, because a bake is not
-byte-reproducible across machines and a fit not even on one.
+each key the SHA-256 of the bytes made for it, because a fit is not
+byte-reproducible even on one machine, and a mesh bake only on hosts of one
+CPU vendor: r3d/isa.py pins the ray tracer to AVX2, whose reciprocal estimates
+AMD and Intel each define their own way. The locked meshes are AMD's.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies what it made
@@ -63,6 +65,9 @@ RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEA
 MESH_SUFFIX = ".mesh"
 DOWNLOAD_TIMEOUT_S = 60
 RUN_ARTIFACTS = "bakes-*"
+# A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
+# bake is reproducible only on one kind of host; a seeded row has none.
+ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "seeded")
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them.
 STAGES = {
@@ -459,7 +464,7 @@ def write_lock(rows, path=LOCK):
     lines = ["# Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.", ""]
     for row in sorted(rows, key=lambda row: (row["output"], row["key"])):
         lines.append("[[bake]]")
-        lines += [f"{name} = {toml_value(row[name])}" for name in ("output", "source", "key", "sha256", "size", "run", "seeded")
+        lines += [f"{name} = {toml_value(row[name])}" for name in ROW_FIELDS
                   if name in row]
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
@@ -597,7 +602,7 @@ def lock_rows(found, lock, made=None):
         if row is None:
             missing.append(describe(bake, "no CI run has made this key", bake_again(bake)))
             continue
-        rows.append({name: row[name] for name in ("output", "source", "key", "sha256", "size", "run", "seeded") if name in row})
+        rows.append({name: row[name] for name in ROW_FIELDS if name in row})
     if missing:
         raise BakeMissing("cannot lock:\n" + "\n".join(missing))
     return rows

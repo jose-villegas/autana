@@ -12,6 +12,7 @@ import importlib.metadata
 import json
 import os
 import pathlib
+import platform
 import re
 import shutil
 import subprocess
@@ -47,7 +48,8 @@ def record(bake, path, cache, run=None):
     """Puts the file `path` made for `bake` in the cache and indexes it by key."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
-           "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix}
+           "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
+           "host": f"{platform.system()} {platform.machine()}"}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)

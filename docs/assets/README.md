@@ -199,7 +199,10 @@ files can be locked, so every locked file can be published from main; a fit's
 reference frames stay on the machine that fitted. The exception is a seeded
 row (`seeded = true`), written by `bake.py lock --seed` from the files the tree
 held: its bytes were carried over, not made by the code its key names, and
-`check` lists such rows until a run makes their keys again.
+`check` lists such rows until a run makes their keys again. A row a run wrote
+names its `host`, the system and machine that made the bytes, since a bake
+repeats byte for byte only on one kind of host (a Linux and a Windows Blender
+export of the same `.blend` differ in the last bit of some animation keys).
 
 ### Flashing
 
