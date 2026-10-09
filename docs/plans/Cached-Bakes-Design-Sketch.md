@@ -1,6 +1,6 @@
 # Expensive bakes as cached build products: design sketch
 
-**Status:** approved, not built; step 0 (measurements) first. `[A]` marks an assumption or a
+**Status:** approved, partly built: keys, lock, fetch and the producer. `[A]` marks an assumption or a
 proposal of this sketch that nobody asked for.
 
 Where a source file is the truth, no derived copy is committed. Two kinds of
@@ -36,7 +36,7 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 | Kind | Output | Inputs in its key |
 |---|---|---|
 | `mesh` | a lit mesh, or a fit's start | recipe, sources, `mesh_import.py` closure |
-| `reference` | a fit's reference frames and poses, one `.tar` [A] | the start's key, poses recipe, camera clip, `reference_render.py` closure |
+| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | the start's key, poses recipe, camera clip, `reference_render.py` closure |
 | `fit` | the fitted mesh | the reference key, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements |
 | `blend` | a `.glb` | the `.blend`, export arguments, `blend_skin_to_glb.py` + the pinned Blender version |
 
@@ -93,7 +93,7 @@ requirements file of their own, so they are in the fit's key [A].
 | Store | Holds | Why |
 |---|---|---|
 | Local: `%LOCALAPPDATA%\autana\bakes` / `$XDG_CACHE_HOME/autana/bakes`, `--bake-cache DIR` to override [A] | `<sha256><suffix>` | one cache for every clone and worktree on the machine, written by rename |
-| Shared: one GitHub release, tag `bakes`, assets `<sha256><suffix>` [A] | what main published | public repository: anonymous HTTPS, no expiry, no LFS quota. Actions caches and artifacts expire and need a token; LFS objects want a commit; an orphan branch grows every clone |
+| Shared: one GitHub release, tag `bakes`, assets `<sha256><suffix>` [A] | the meshes and the `.glb` main published; never reference sets | public repository: anonymous HTTPS, no expiry, no LFS quota. Actions caches and artifacts expire and need a token; LFS objects want a commit; an orphan branch grows every clone |
 | Between a PR and its merge: the PR run's artifact | what the PR baked | a branch never writes the release, so it cannot claim a key |
 
 ## 2. Who produces, who consumes
@@ -112,12 +112,12 @@ flowchart LR
 
 | Caller | Calls | When |
 |---|---|---|
-| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh`, `reference`, `blend` keys; uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
-| `bakes.yml` GPU job (self-hosted runner) | the same for `fit` | on a dispatch for the branch, when the maintainer's machine is up; skippable, and while skipped the lock check names the missing fit |
+| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh` and `blend` keys on an AMD runner (`vendor_id` checked, rerun on another vendor [A]: `r3d/isa.py` makes bytes per CPU vendor, and the hosted pool mixes AMD and Intel); uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
+| `bakes.yml` GPU job (self-hosted runner) | `produce` for a missing `fit`; its `reference` comes from the runner's own cache, made there first when absent | on a dispatch for the branch, when the maintainer's machine is up; skippable, and while skipped the lock check names the missing fit |
 | `bakes.yml` on main | `publish`: takes each locked file from its `run`'s artifact, checks its sha256, uploads it | every push to main |
 | host-tests, qemu-tests, build-release, doc-images, doc-images-gpu | `uses: ./.github/workflows/bakes.yml` first | so a PR's bakes exist before anything consumes them |
 | CMake pack command, `run_tests.sh`, render scripts | `build_pack.py`, which `fetch`es each mesh entry | every build; downloads only on a local miss |
-| `fitted_variant.py`, `render_compare.sh`, `doc_stages.py` | `bake.py key` / `fetch` for references and stamps | replaces their own digests |
+| `fitted_variant.py`, `render_compare.sh`, `doc_stages.py` | `bake.py key` for stamps; references through `produce` into the local cache, never `fetch` from the release | replaces their own digests |
 | A contributor with the tools | `bake.py bake [PATH]`: `produce` into the local cache, never published or locked [A] | before CI has run |
 | `report_skin_light.sh`, the render-lab README | `bake.py path launcher/demo/capybara/capybara.import.toml` prints the cached `.glb` | instead of a tracked path |
 
@@ -131,8 +131,10 @@ flowchart LR
   key, and only the stages after it rebake: a fitter edit refits but keeps
   the references. The PR's lock diff shows it.
 - **Locally with the tools:** `bake.py bake launcher/demo/sponza` makes the
-  missing keys into the local cache. Its bytes may differ from CI's; `fetch`
-  prefers the locked bytes and says when a local bake differs from the lock.
+  missing keys into the local cache. Its bytes match CI's when the runner's
+  CPU vendor is the host's (`r3d/isa.py` pins the ray tracer's instruction set;
+  AMD and Intel still differ by an ulp; step 0); `fetch` prefers the locked
+  bytes and says when a local bake differs from the lock.
 
 ## 4. Failing loudly
 
@@ -153,12 +155,15 @@ whose sha256 differs from the lock.
 
 ## 5. Migration
 
-0. **Measure first** (before `bake.py`): bake `sponza.import.toml` on
-   Windows and on the CI ubuntu image at one commit and `cmp` each with the
-   committed meshes; run one fit twice on the runner. This says whether a
-   plain bake is reproducible and whether main's meshes are still fresh
-   (`rebake.py` can rewrite a mesh without relighting it). A stale mesh is
-   reported to the maintainer before seeding.
+0. **Measured first** (before `bake.py`): the scene bakes on the
+   maintainer's machine and on the CI ubuntu image, each `cmp`ed with the
+   committed meshes, and one fit run twice on the runner. Main's meshes are
+   fresh. A plain bake reproduced on one machine but not across machines
+   (since `r3d/isa.py`, across CPU vendors only), and a fit does not reproduce
+   even on one. So the lock pins bytes for
+   every kind of bake, and the seed uses main's committed files, never a CI
+   rebake. Windows cannot bake today (Mitsuba finds no libLLVM there), so a
+   Windows clone only fetches.
 1. Add `bake.py`, the `.blend` converter, `bakes.yml` and the `uses` in the
    consumer workflows; `build_pack.py`, `fitted_variant.py`,
    `render_compare.sh` and `doc_stages.py` take keys and files from it.
@@ -180,9 +185,9 @@ whose sha256 differs from the lock.
 
 | | Estimate |
 |---|---|
-| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
+| Storage | about 2 MB of pack inputs per full set on the release; the reference sets, of the order of 100 MB per fit, stay in the GPU runner's cache; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
 | CI, warm | one `bakes.yml` call per consumer workflow: checkout and key computation, under a minute [A] |
-| CI, cold | plain bakes minutes each [A]; references 45 to 69 CPU minutes each; fits about 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references |
+| CI, cold | plain bakes minutes each [A]; references 45 to 69 CPU minutes each; fits about 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references; a lost runner cache costs the references again before the next fit change |
 | First build, fresh clone | about 2 MB download, keys in under a second [A] |
 | Saved | no rebake adds its blobs to every clone's history |
 
@@ -198,3 +203,7 @@ whose sha256 differs from the lock.
    other files expire after a stated age. An old commit whose files expired
    rebakes from source, warning loudly that the result is not byte-identical
    to its lock.
+4. **Reference sets are never published.** Only the fit stage reads them,
+   and it runs only on the GPU runner, so they live in that runner's local
+   cache: `fetch` never looks for them on the release, and `produce` writes
+   them there. The release holds meshes and the `.glb`.

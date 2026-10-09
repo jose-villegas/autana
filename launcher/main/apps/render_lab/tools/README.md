@@ -8,7 +8,7 @@ Before a source bake or reference render, pull the
 
 ## Generated files
 
-<!-- generated: generated-files-render-lab sha256=d4251689721ad9a1de4306e41c402135d1c1365636be9b6b88c038de6d290d90 -->
+<!-- generated: generated-files-render-lab check: python scripts/gates/check_generated_files.py --check-table -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
@@ -64,11 +64,8 @@ against the reference along that camera's clip, at intervals taken from
 the script and over the clip's full period. Per-path results belong in
 `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
 
-Author and regenerate the tour animation with:
-
-```sh
-python launcher/tools/anim/camera_keys.py launcher/demo/sponza/tour.keys.toml launcher/demo/sponza/tour.glb
-```
+The tour is authored as camera keys in `launcher/demo/sponza/tour.keys.toml`;
+the pack build bakes it, so an edit there needs nothing else.
 
 A host pose can be drawn with:
 
