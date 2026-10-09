@@ -2,11 +2,14 @@
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import unittest
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tracked import tracked_files
 from gate_tree import ShellGateTestCase
 
 
@@ -15,10 +18,8 @@ class LocalHookTests(ShellGateTestCase):
         super().setUp()
         # Tracked files only: CI installs thousands of untracked npm files under
         # scripts/, which the fixture would otherwise copy and stage.
-        tracked = subprocess.check_output(
-            ['git', 'ls-files', '-z', 'scripts', 'launcher/tools/build',
-             'launcher/tools/render/generated_blocks.py'], cwd=ROOT, text=True)
-        for path in filter(None, tracked.split('\0')):
+        for path in tracked_files(ROOT, ('scripts', 'launcher/tools/build',
+                                         'launcher/tools/render/generated_blocks.py')):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / path, self.root / path)
         (self.root / '.github/workflows').mkdir(parents=True)
