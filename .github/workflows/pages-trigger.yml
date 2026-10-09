@@ -5,9 +5,8 @@ name: Pages
 # pushes to that branch, so a push to main calls it here, at that branch;
 # without this the site would keep showing an older main.
 #
-# A pull request calls that branch's web-check.yml instead: it builds sand for
-# the browser against the pull request, publishing nothing, when the pull
-# request changes a file that build reads. Not a required check.
+# A pull request calls that branch's web-check.yml instead, which builds
+# without publishing. Not a required check.
 
 on:
   push:
