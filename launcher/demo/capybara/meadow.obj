@@ -1,0 +1,8 @@
+# The meadow the capybara stands on: a 16 m square at y = 0, facing up.
+mtllib meadow.mtl
+v -8 0 -8
+v 8 0 -8
+v 8 0 8
+v -8 0 8
+usemtl meadow
+f 1 4 3 2

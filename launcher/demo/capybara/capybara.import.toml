@@ -1,0 +1,9 @@
+# The hand-rigged capybara in its bind pose; model units are metres, y is up.
+[source]
+path = "capybara.glb"
+credit = "The hand-rigged capybara of capybara.blend, exported to glTF."
+
+[output]
+directory = "."
+name = "capybara"
+position_scale = 16384   # ticks per metre: the model spans under 2 m, inside int16
