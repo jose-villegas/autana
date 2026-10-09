@@ -153,9 +153,8 @@ capybara_status(void) {
     if (failure[0] != '\0') {
         return failure;
     }
-    /* The angles too, so a screenshot says where it was taken from. */
-    if (snprintf(buf, sizeof buf, "%5d tris yaw %4d pitch %3d",
-                 render_context_frame(render_context_main()).stats.triangles,
+    /* Yaw/pitch too, so a screenshot says where it was taken from. */
+    if (snprintf(buf, sizeof buf, "%d tris %d/%d deg", render_context_frame(render_context_main()).stats.triangles,
                  (int)lroundf(orbit.at.yaw * DEGREES_PER_RADIAN), (int)lroundf(orbit.at.pitch * DEGREES_PER_RADIAN))
         < 0) {
         buf[0] = '\0';
