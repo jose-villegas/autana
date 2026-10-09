@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   cpu:
-    name: Bake missing meshes
+    name: Bake missing exports and meshes
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     steps:
@@ -35,11 +35,24 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: List the meshes the lock has no row for
+      - name: List the exports and meshes the lock has no row for
         id: missing
         run: |
-          python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/missing.txt"
-          echo "count=$(wc -l < "$RUNNER_TEMP/missing.txt")" >> "$GITHUB_OUTPUT"
+          python launcher/tools/bake/bake.py list --missing --kind blend | tee "$RUNNER_TEMP/blend.txt"
+          python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/mesh.txt"
+          echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
+          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+
+      # The exporter names the Blender it needs; the job installs that one.
+      - name: Install Blender
+        if: steps.missing.outputs.blend != '0'
+        run: |
+          version=$(sed -n 's/^BLENDER_VERSION = (\(.*\))$/\1/p' launcher/tools/gltf/blend_skin_to_glb.py | tr -d ' ' | tr , .)
+          series=${version%.*}
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6
+          curl -fsSL "https://download.blender.org/release/Blender$series/blender-$version-linux-x64.tar.xz" | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/blender-$version-linux-x64" >> "$GITHUB_PATH"
 
       - name: Fetch mesh source files
         if: steps.missing.outputs.count != '0'
@@ -59,7 +72,9 @@ jobs:
 
       - name: Bake
         if: steps.missing.outputs.count != '0'
-        run: python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
+        run: |
+          python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes"
+          python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@v4
         if: steps.missing.outputs.count != '0'

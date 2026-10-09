@@ -14,6 +14,10 @@ import sys
 
 import bpy
 
+# The Blender that made the committed exports byte for byte; another may write other bytes, so the
+# export refuses it and the bake key counts this line.
+BLENDER_VERSION = (5, 2, 2)
+
 
 def arguments():
     parser = argparse.ArgumentParser(prog="blend_skin_to_glb.py", description=__doc__.split("\n\n")[0])
@@ -51,6 +55,9 @@ def clips(names):
 
 
 def main():
+    if tuple(bpy.app.version) != BLENDER_VERSION:
+        sys.exit(f"blend_skin_to_glb.py needs Blender {'.'.join(map(str, BLENDER_VERSION))}, "
+                 f"this is {bpy.app.version_string}")
     args = arguments()
     bpy.ops.wm.open_mainfile(filepath=args.blend)
     bpy.context.scene.render.fps = args.fps

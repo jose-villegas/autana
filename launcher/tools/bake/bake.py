@@ -51,7 +51,7 @@ import urllib.request
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-from r3d.import_settings import SettingsError, source_digest  # noqa: E402
+from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
 REPO = TOOLS.parents[1]
 LOCK = REPO / "launcher" / "bakes.lock"
@@ -66,7 +66,12 @@ STAGES = {
     "mesh": ("r3d/mesh_import.py",),
     "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
     "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
+    "blend": ("gltf/blend_skin_to_glb.py",),
 }
+BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
+GLB_SUFFIX = ".glb"
+# The order kinds are made in: a mesh reads the export of its .blend.
+KINDS = ("blend", "mesh", "fit")
 REQUIREMENTS_NAME = "requirements.txt"
 REQUIREMENTS_GLOB = "requirements*.txt"
 C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
@@ -87,7 +92,7 @@ class Bake:
     output: str            # the file it makes: "<id>.mesh"
     source: pathlib.Path   # the file that asks for it
     holder: str            # the scene object, or the import variant, it is made for
-    kind: str              # "mesh" | "fit"
+    kind: str              # "blend" | "mesh" | "fit"
     key: str               # SHA-256 hex of everything that determines it
     suffix: str
     tree: pathlib.Path     # where the tree keeps it today
@@ -355,13 +360,24 @@ def camera_inputs(scene):
     return {"lens": lens, "clip": clip}
 
 
-def mesh_recipe(job, scene):
+def is_blend(settings):
+    return settings.source["path"].suffix.lower() == BLEND_SUFFIX
+
+
+def blend_key(settings, tools):
+    """The key of a .blend source's export: the file, the actions it exports and the exporter."""
+    blend = settings.source["path"]
+    return digest(["blend", content_checksum(blend).decode(), settings.source.get("clips"), tools["blend"]])
+
+
+def mesh_recipe(job, scene, tools):
     """What a lit or albedo mesh is made from, without its fit and without paths; its sources count by
-    content, so a credit line or a moved file does not rebake."""
+    content, so a credit line or a moved file does not rebake, and a .blend by its export's key."""
     settings = {name: canonical(value) for name, value in vars(job.settings).items()
                 if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
-    recipe = {"settings": settings, "renderer": renderer, "sources": source_digest(job.settings)}
+    sources = {"blend": blend_key(job.settings, tools)} if is_blend(job.settings) else source_digest(job.settings)
+    recipe = {"settings": settings, "renderer": renderer, "sources": sources}
     if job.bake is not None:
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,
                            "bake": canonical(job.bake), "indirect": canonical(scene.indirect) if job.bake.indirect else None}
@@ -376,7 +392,7 @@ def fit_recipe(fit):
 
 def stage_keys(job, scene, tools):
     """{stage: key} of one job: a mesh alone, or a fit's start, references and fit, each keyed on the one before."""
-    start = digest(["mesh", mesh_recipe(job, scene), tools["mesh"]])
+    start = digest(["mesh", mesh_recipe(job, scene, tools), tools["mesh"]])
     if job.renderer.fit is None:
         return {"mesh": start}
     fit = fit_recipe(job.renderer.fit)
@@ -395,18 +411,24 @@ def bakes(paths):
 def bakes_in(packs, jobs):
     """The bakes of build_pack.pack_jobs()'s packs."""
     tools = {stage: tool_digest(stage) for stage in STAGES}
-    found = []
+    found, exports = [], {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
             if source.resolve() not in jobs:
                 continue
             job, scene, asker = jobs[source.resolve()]
+            if is_blend(job.settings):
+                blend = job.settings.source["path"]
+                key = blend_key(job.settings, tools)
+                exports.setdefault(key, Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=job.settings.path,
+                                             holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
+                                             tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key}))
             keys = stage_keys(job, scene, tools)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
             found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
                               suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys))
-    return found
+    return list(exports.values()) + found
 
 
 def relative(path):
@@ -464,6 +486,9 @@ def describe(bake, why, again):
 
 
 def bake_again(bake):
+    if bake.kind == "blend":
+        return ("an export needs Blender: push, the Bakes check exports it on the pull request; then "
+                "bake.py lock --from-run N with that run")
     if bake.kind == "fit":
         return ("a fit needs the CUDA GPU: run the Bakes workflow on this branch with the GPU job, then "
                 "bake.py lock --from-run N with that run")
@@ -618,7 +643,8 @@ def main(argv=None):
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, metavar="N", help="lock: add the rows CI run N made")
-    parser.add_argument("--kind", choices=("mesh", "fit"), help="list, bake: only this kind")
+    parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
+    parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
@@ -637,8 +663,9 @@ def main(argv=None):
         elif args.command == "bake":
             from bake import produce
 
-            wanted = [bake for bake in found if bake.key not in lock and args.kind in (None, bake.kind)]
-            rows = [produce.made(bake.key, cache) or produce.produce(bake, cache) for bake in wanted]
+            wanted = sorted((bake for bake in found if bake.key not in lock and args.kind in (None, bake.kind)),
+                            key=lambda bake: KINDS.index(bake.kind))
+            rows = [produce.made(bake.key, cache) or produce.produce(bake, cache, lock, args.blender) for bake in wanted]
             for row in rows:
                 print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}")
             if args.out:
