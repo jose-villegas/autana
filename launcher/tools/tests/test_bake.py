@@ -55,6 +55,30 @@ class TokenTests(unittest.TestCase):
         self.assertNotEqual(code, self.tokens('def f(x):\n    """Adds one."""\n    return x + 2\n'))
         self.assertNotEqual(code, self.tokens('def f(x):\n    """Adds two."""\n    return x + 1\n'))
 
+    def test_a_changed_constant_name_or_string_does(self):
+        code = self.tokens('SCALE = 8\nNAME = "a"\nf(SCALE)\n')
+        for edit in ('SCALE = 9\nNAME = "a"\nf(SCALE)\n', 'SCALE = 8\nNAME = "b"\nf(SCALE)\n',
+                     'SCALE = 8\nNAME = "a"\ng(SCALE)\n'):
+            self.assertNotEqual(code, self.tokens(edit), edit)
+
+
+class NativeTests(unittest.TestCase):
+    def test_c_includes_follows_quoted_headers_beside_the_file_and_in_the_include_dirs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "inc" / "sub").mkdir(parents=True)
+            (root / "a.c").write_text('#include "near.h"\n#include "sub/far.h"\n#include <stdio.h>\n')
+            (root / "near.h").write_text("")
+            (root / "inc" / "sub" / "far.h").write_text('  #  include "deep.h"\n')
+            (root / "inc" / "sub" / "deep.h").write_text("")
+            found = {path.relative_to(root.resolve()).as_posix() for path in bake.c_includes([root / "a.c"], (root / "inc",))}
+        self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
+
+    def test_the_pose_samplers_headers_are_in_the_mesh_stage(self):
+        names = bake.native_sources(bake.stage_files("mesh"))
+        self.assertIn("launcher/main/anim/anim_track.h", names)
+        self.assertIn("launcher/main/util/scalar/mathf.h", names)
+
 
 class StageTests(unittest.TestCase):
     def names(self, stage):

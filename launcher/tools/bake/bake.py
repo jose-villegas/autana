@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -157,13 +158,35 @@ def stage_files(stage):
     return closure(STAGES[stage], stop)
 
 
+QUOTED_INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
+
+
+def c_includes(sources, include_dirs):
+    """`sources` and every header they reach by #include "...", found beside the includer or in
+    `include_dirs`, as the compiler searches; <...> system headers are not followed."""
+    found, pending = set(), [pathlib.Path(path).resolve() for path in sources]
+    while pending:
+        path = pending.pop()
+        if path in found:
+            continue
+        found.add(path)
+        for name in QUOTED_INCLUDE.findall(path.read_bytes()):
+            for base in (path.parent, *include_dirs):
+                header = (base / name.decode()).resolve()
+                if header.is_file():
+                    pending.append(header)
+                    break
+    return sorted(found)
+
+
 def native_sources(files):
-    """The C a stage's files compile and run: the pose sampler track_host builds, by its own SOURCES."""
+    """The C a stage's files compile and run: the pose sampler track_host builds, its SOURCES and
+    every header they include."""
     if TOOLS / "anim" / "track_host.py" not in files:
         return {}
-    from anim.track_host import SOURCES
+    from anim.track_host import MAIN, SOURCES
 
-    return {relative(path): file_sha256(path) for path in SOURCES}
+    return {relative(path): file_sha256(path) for path in c_includes(SOURCES, (MAIN,))}
 
 
 def tool_digest(stage):
