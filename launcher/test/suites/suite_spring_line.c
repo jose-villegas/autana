@@ -213,6 +213,23 @@ test_apply_reports_what_changed_and_how_far_then_goes_silent(void) {
     fixture_end();
 }
 
+static void
+test_apply_rounds_half_steps_away_from_zero(void) {
+    fixture_begin();
+    const int32_t half_step = (MATHX_ONE / SPRING_LINE_OUT_ONE) / 2;
+    const int16_t rest[COLUMNS] = {0};
+    int16_t drawn[COLUMNS] = {0};
+    int lo, hi;
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (int delta = -1; delta <= 1; delta++) {
+            offset[CENTRE] = sign * (half_step + delta);
+            spring_line_apply(&line, rest, drawn, &lo, &hi);
+            TEST_ASSERT_EQUAL_INT16(delta < 0 ? 0 : sign, drawn[CENTRE]);
+        }
+    }
+    fixture_end();
+}
+
 void
 suite_spring_line(void) {
     RUN_TEST(test_a_new_line_is_at_rest_and_a_tick_does_nothing);
@@ -224,6 +241,7 @@ suite_spring_line(void) {
     RUN_TEST(test_a_runaway_offset_is_clamped);
     RUN_TEST(test_advance_runs_whole_ticks_carries_the_rest_and_caps_a_stall);
     RUN_TEST(test_apply_reports_what_changed_and_how_far_then_goes_silent);
+    RUN_TEST(test_apply_rounds_half_steps_away_from_zero);
 }
 
 SUITE_REGISTER(suite_spring_line);
