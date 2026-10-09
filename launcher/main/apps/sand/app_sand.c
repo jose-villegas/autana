@@ -1095,7 +1095,7 @@ read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* 
     *gy = tilt_y(&tilt);
     *flow = tilt_strength(&tilt);
 
-    const int shake = tilt_shake(&tilt);
+    const int shake = tilt_shake(&tilt, 0);
     *jostle = shake > SAND_SHAKE_DEADZONE ? shake : 0;
 }
 

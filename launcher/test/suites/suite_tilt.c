@@ -309,7 +309,7 @@ test_turning_the_board_does_not_read_as_shaking(void) {
                     14); /* gyro pinned at maximum throughout */
     }
 
-    TEST_ASSERT_LESS_THAN_MESSAGE(40, tilt_shake(&t),
+    TEST_ASSERT_LESS_THAN_MESSAGE(40, tilt_shake(&t, 0),
                                   "turning the board is not shaking it - reading shake off the gyro is "
                                   "what threw everything at the walls every time the device was rotated");
 }
@@ -325,7 +325,7 @@ test_shaking_registers_as_shaking(void) {
         tilt_update(&t, extra, ONE_G, 0, 0, 14);
     }
 
-    TEST_ASSERT_GREATER_THAN_MESSAGE(120, tilt_shake(&t),
+    TEST_ASSERT_GREATER_THAN_MESSAGE(120, tilt_shake(&t, 0),
                                      "real shaking must still fluidise the pile, or shaking it level stops "
                                      "working");
 }
@@ -335,7 +335,7 @@ test_a_still_board_is_not_shaking(void) {
     fixture();
     hold(0, ONE_G, 0, 14, 500);
 
-    TEST_ASSERT_LESS_THAN_MESSAGE(16, tilt_shake(&t),
+    TEST_ASSERT_LESS_THAN_MESSAGE(16, tilt_shake(&t, 0),
                                   "a board sitting still must read as completely unshaken, or friction "
                                   "is quietly disabled the whole time");
 }
@@ -346,19 +346,19 @@ test_shaking_fades_rather_than_switching_off(void) {
     for (int i = 0; i < 30; i++) {
         tilt_update(&t, (i & 1) ? ONE_G : -ONE_G, ONE_G, 0, 0, 14);
     }
-    const int during = tilt_shake(&t);
+    const int during = tilt_shake(&t, 0);
     TEST_ASSERT_GREATER_THAN(100, during);
 
     /* Put it down. It must not snap to zero on the first still sample: a
      * shake should carry for a moment rather than flicker between strokes. */
     tilt_update(&t, 0, ONE_G, 0, 0, 14);
-    const int just_after = tilt_shake(&t);
+    const int just_after = tilt_shake(&t, 0);
 
     TEST_ASSERT_LESS_THAN_MESSAGE(during, just_after, "it must decay");
     TEST_ASSERT_GREATER_THAN_MESSAGE(during / 2, just_after, "but not collapse in one frame");
 
     hold(0, ONE_G, 0, 14, 800);
-    TEST_ASSERT_LESS_THAN_MESSAGE(16, tilt_shake(&t), "and settle to nothing");
+    TEST_ASSERT_LESS_THAN_MESSAGE(16, tilt_shake(&t, 0), "and settle to nothing");
 }
 
 /* imu_gravity_screen: how the sensor sits under the panel. Each sensor axis

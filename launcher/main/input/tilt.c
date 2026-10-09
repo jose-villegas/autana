@@ -163,7 +163,8 @@ tilt_strength(const tilt_t* t) {
 }
 
 int
-tilt_shake(const tilt_t* t) {
+tilt_shake(const tilt_t* t, int unused) {
+    (void)unused;
     const int level = t->shake_q8 / Q;
 
     return level < 0 ? 0 : (level > 255 ? 255 : level);

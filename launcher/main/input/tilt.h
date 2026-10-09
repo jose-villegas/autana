@@ -90,7 +90,7 @@ int tilt_strength(const tilt_t* t);
 
 /* How hard the device is being shaken, 0-255, from linear acceleration rather
  * than rotation. Turning the board smoothly reads as nothing at all. */
-int tilt_shake(const tilt_t* t);
+int tilt_shake(const tilt_t* t, int scratch);
 
 /* True when nothing is supporting the device. A caller simulating gravity
  * should stop: in free fall nothing settles, it hangs. */
