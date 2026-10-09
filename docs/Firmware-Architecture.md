@@ -306,8 +306,11 @@ sequenceDiagram
     Shell->>Shell: run a RUNSUITE, then report it done
     Shell->>Mail: done, RUNSUITE accepted again
     Shell->>Shell: OPEN, HOME or APPS
-    Shell->>Shell: freeze gate, then the app's frame
-    Shell->>Shell: SCREENSHOT of what this pass drew
+    alt frozen, no STEP credit
+        Shell->>Shell: SCREENSHOT of the held frame
+    else running
+        Shell->>Shell: the app's frame, then a SCREENSHOT of it
+    end
 ```
 
 ### Engine systems
