@@ -54,18 +54,19 @@ class PoolTests(unittest.TestCase):
         ]
         self.assertEqual(code_layout.skip_pools(found), found)
 
-
-class BackwardBranchTests(unittest.TestCase):
-    def test_a_branch_back_inside_the_function_is_a_row(self):
-        self.assertTrue(code_layout.backward_within(0x1100, 0x1180, 0x1000))
-
-    def test_a_branch_back_out_of_the_function_is_not(self):
-        # As objdump read r3d_span_triangle_impl out of step past a pool:
-        # a "j" to pthread_create, 122440 bytes back.
-        self.assertFalse(code_layout.backward_within(0x42008778, 0x420265BD, 0x42025DF4))
-
-    def test_a_forward_branch_is_not(self):
-        self.assertFalse(code_layout.backward_within(0x1200, 0x1180, 0x1000))
+    def test_code_entered_past_a_pool_is_decoded_again_from_its_entry(self):
+        # As objdump read r3d_span_triangle_impl: a two-byte pool after a
+        # short j, then code a beqz enters at 0x1408, read out of step.
+        found = [
+            (0x1400, 3, "beqz", "a10, 1408 <h+0x8>"),
+            (0x1403, 3, "j", "140c <h+0xc>"),
+            (0x1406, 3, "src", "a0, a0, a0"),
+            (0x1409, 3, "bgez", "a13, 1300 <h-0x100>"),
+            (0x140C, 2, "retw.n", ""),
+        ]
+        again = [(0x1408, 2, "l32i.n", "a8, a1, 4"), (0x140A, 2, "addi.n", "a8, a8, 1"), (0x140C, 2, "retw.n", "")]
+        kept = code_layout.skip_pools(found, lambda start: [ins for ins in again if ins[0] >= start])
+        self.assertEqual([ins[2] for ins in kept], ["beqz", "j", "l32i.n", "addi.n", "retw.n"])
 
 
 class LayoutCheckTests(unittest.TestCase):

@@ -51,7 +51,6 @@ raster_upscale	function	24	398	14
 upscale_rows	function	8	973	31
 upscale_rows	j-back	22	89	4
 upscale_rows	j-back	4	110	4
-upscale_rows	bnone-back	21	47	3
 upscale_rows	bnez-back	9	60	3
 upscale_rows	j-back	18	221	8
 upscale_rows	j-back	8	98	4
