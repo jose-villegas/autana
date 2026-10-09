@@ -72,7 +72,7 @@ class LoadAssetTests(unittest.TestCase):
     def test_an_anim_toml_refuses_other_sources(self):
         clip = self.directory / "bend.anim.toml"
         clip.write_text('source = "probe.obj"\nanimation = "x"\n')
-        with self.assertRaisesRegex(tracks_asset.TracksError, r"\.glb or \.fbx"):
+        with self.assertRaisesRegex(tracks_asset.TracksError, r"\.glb, \.fbx or \.keys\.toml"):
             tracks_asset.load_source(clip)
 
 

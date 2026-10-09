@@ -25,6 +25,7 @@
 #include "unity.h"
 
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_brushes.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/tests/suite_sand_common.h"
@@ -318,33 +319,24 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
     free(grid);
 }
 
-/* Spelled out by cell rather than by importing brushes[]: this file cannot
- * see app_sand.c and should not start to - the same reason
- * test_material_can_emit_matches_every_brush_by_kind() below spells its own
- * list out. Plant is in the list too: what thins its pour is the share its
- * brush entry carries, never the material. */
+/* Every brush the palette offers. Plant is in it too: what thins its pour
+ * is the share its brush entry carries, never the material. */
 static void
 test_a_full_share_fills_the_whole_disc(void) {
-    static const cell_t specs[] = {
-        CELL_MAKE(MAT_SAND, 0), CELL_MAKE(MAT_WATER, 0), CELL_MAKE(MAT_STONE, 0), CELL_MAKE(MAT_GAS, 0),
-        CELL_MAKE(MAT_FIRE, 0), CELL_MAKE(MAT_WOOD, 0),  CELL_MAKE(MAT_OIL, 0),   CELL_MAKE(MAT_LAVA, 0),
-        CELL_MAKE(MAT_ACID, 0), CELL_MAKE(MAT_GLASS, 0), CELL_MAKE(MAT_SNOW, 0),  CELL_MAKE(MAT_DIRT, 0),
-        MATX(MATX_ICE),         MATX(MATX_PLANT),        GUNPOWDER_CELL(0),
-    };
     const int radius = REAL_W / 4;
     const int area = disc_cells(radius);
 
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (unsigned k = 0; k < sizeof specs / sizeof specs[0]; k++) {
-        const int filled = share_pour(grid, radius, 1u, specs[k], SAND_SPAWN_SHARE_FULL);
+    for (int k = 0; k < SAND_BRUSH_COUNT; k++) {
+        const int filled = share_pour(grid, radius, 1u, sand_brushes[k].cell, SAND_SPAWN_SHARE_FULL);
 
         char why[256];
         snprintf(why, sizeof why,
                  "%s poured %d of the disc's %d cells at a full share - every brush but the "
                  "one carrying a share of its own must still land solid",
-                 material_name(specs[k]), filled, area);
+                 material_name(sand_brushes[k].cell), filled, area);
         TEST_ASSERT_EQUAL_INT_MESSAGE(area, filled, why);
     }
 
@@ -555,8 +547,8 @@ test_emitted_water_produces_a_continuing_stream(void) {
                                      "for as long as the tap runs");
 }
 
-/* emit_from_emitters() must write the exact placeholder brushes[] hands
- * sand_add_emitter() (app_sand.c): CELL_MAKE(material, 0), whose variant 0
+/* emit_from_emitters() must write the exact placeholder the app passes
+ * sand_add_emitter() from sand_brushes[]: CELL_MAKE(material, 0), whose variant 0
  * means fill-level zero for KIND_LIQUID (material.h) - not a real cell.
  * Tests below use that literal placeholder, not this file's WATER/LAVA/...
  * macros (variant 8), and step with gravity (0, 0, 0) so sand_step()
@@ -930,9 +922,9 @@ test_sand_init_clears_emitters_from_a_previous_use(void) {
                                   "once");
 }
 
-/* Every entry the app's palette offers, spelled out by KIND rather than by
- * importing brushes[]: this file cannot see app_sand.c and should not start
- * to. Flowing kinds come out true and static ones false, which is the rule
+/* Every entry the app's palette offers, with the answer its KIND gives,
+ * spelled out so a palette edit cannot quietly change what this checks.
+ * Flowing kinds come out true and static ones false, which is the rule
  * material_can_emit() implements. */
 static void
 test_material_can_emit_matches_every_brush_by_kind(void) {

@@ -209,7 +209,7 @@ class SourceTests(unittest.TestCase):
         for source in ("../clips/probe.glb", "sub/probe.glb", "..\\clips\\probe.glb", "C:probe.glb",
                        str(self.root / "clips" / "probe.glb").replace("\\", "/"), "probe.bin", "probe.glb.bak"):
             path = self.write("clips/bad.anim.toml", 'source = %s\nanimation = "clip"\n' % json.dumps(source))
-            with self.assertRaisesRegex(TracksError, "is not a .glb or .fbx in the same folder", msg=source):
+            with self.assertRaisesRegex(TracksError, "is not a .glb, .fbx or .keys.toml in the same folder", msg=source):
                 tracks_asset.bake(path)
 
     def test_build_pack_makes_each_clip_file_a_pack_named_after_it(self):
