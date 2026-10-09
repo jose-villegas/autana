@@ -899,22 +899,20 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
                one_band, full / 2);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, (int)one_band, "but it must still actually send something");
 
-    /* One band, un-pipelined, the same reference every ratio test below
-     * this one measures, and the tightest of the lot: 3,400 / 3,398 / 3,398
-     * / 3,399 us across four captures, a 0.06% spread. 3,550 us leaves
-     * about 4.4% over the observed maximum, tight because the reference
-     * itself is this stable; a looser margin here would just be slack that
-     * a real regression could hide in. */
+    /* One band, un-pipelined: the reference every ratio test below
+     * measures, and among the most stable rows here, so its margin is the
+     * file's rule and no looser - slack beyond it is room a real
+     * regression could hide in. */
     perf_guard("one band alone cost more than its stable observed price - the bus "
                "clock or the QSPI setup may have regressed",
-               one_band, 3550);
+               one_band, 2331);
 }
 
 /* The ratio tests below take a band presented alone as their reference,
- * which is the UN-PIPELINED price: 3,405 us. Inside a real frame
- * send_full_row() (gfx_present.c) queues without waiting and gfx_present() drains
- * every band at the end, so seven bands come to 18,147 us, not 7 x 3,405.
- * Sanity-checking one figure against the other by multiplying is not
+ * which is the UN-PIPELINED price. Inside a real frame send_full_row()
+ * (gfx_present.c) queues without waiting and gfx_present() drains every
+ * band at the end, so seven bands cost less than seven times one band;
+ * sanity-checking one figure against the other by multiplying is not
  * valid. */
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
@@ -1097,15 +1095,12 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
                "still cost less than the whole band",
                two_corners, full_band);
 
-    /* 1,914 / 1,917 / 1,916 / 1,914 us across four captures, a 0.16%
-     * spread, nearly as tight as the full-band reference itself, because
-     * two independent gather-and-waits dominated by DMA time leave little
-     * room for the copy-side jitter the single-piece gathers above show.
-     * 2,000 us leaves about 4.3% over the observed maximum: tight, to
-     * match how tight the reference is. */
+    /* Nearly as stable as the full-band reference, because two
+     * independent gather-and-waits dominated by DMA time leave little room
+     * for the copy-side jitter the single-piece gathers above show. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
-               two_corners, 2000);
+               two_corners, 1301);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1197,7 +1192,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
 
     /* No ratio: whether gathering at this size helps is the open question a
      * sweep of GATHER_MAX_PIXELS is for. */
-    perf_guard("near-budget split", near_budget, 2064);
+    perf_guard("near-budget split", near_budget, 1700);
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
@@ -1241,7 +1236,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
                "less than sending the coarse box spanning both",
                two_marks, full_band);
 
-    perf_guard("two marks in one cell", two_marks, 2976);
+    perf_guard("two marks in one cell", two_marks, 1460);
 }
 
 /* The drawing calls narrow the dirty region themselves: no app-side
