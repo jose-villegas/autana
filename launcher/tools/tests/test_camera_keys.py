@@ -1,4 +1,4 @@
-"""Camera keys baked and sampled by the firmware's track sampler."""
+"""Camera keys baked from a .anim.toml and sampled by the firmware's track sampler."""
 import pathlib
 import math
 import sys
@@ -13,6 +13,39 @@ from anim import camera_keys, track_host, tracks_asset
 from anim_probe import has_compiler
 
 
+def keys_toml(keys):
+    """A keys file's text: node camera, animation path."""
+    tables = "".join("\n[[keys]]\nt = %r\neye = %r\nlook_at = %r\n" % (k["t"], k["eye"], k["look_at"]) for k in keys)
+    return 'node = "camera"\nanimation = "path"\n' + tables
+
+
+def clip_of(root, keys_text):
+    """A path.anim.toml naming path.keys.toml, both written into `root`."""
+    (root / "path.keys.toml").write_text(keys_text)
+    clip = root / "path.anim.toml"
+    clip.write_text('source = "path.keys.toml"\nanimation = "path"\n')
+    return clip
+
+
+class CameraKeysSourceTests(unittest.TestCase):
+    def test_a_keys_source_bakes_as_the_glb_it_builds(self):
+        keys = [dict(t=0, eye=[0, 0, 0], look_at=[0, 0, -1]), dict(t=2, eye=[1, 2, 3], look_at=[1, 2, 0])]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "path.glb").write_bytes(camera_keys.build(dict(node="camera", animation="path", keys=keys)))
+            glb_clip = root / "glb.anim.toml"
+            glb_clip.write_text('source = "path.glb"\nanimation = "path"\n')
+            self.assertEqual(tracks_asset.bake(clip_of(root, keys_toml(keys))), tracks_asset.bake(glb_clip))
+
+    def test_a_bad_keys_source_fails_the_bake_naming_the_file(self):
+        overflow = [dict(t=0, eye=[0, 0, 0], look_at=[0, 0, -1]), dict(t=1, eye=[1e300, 0, 0], look_at=[0, 0, -1])]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for text in ('node = "camera"\nanimation = "path"\nkeys = []\n', "node = ", keys_toml(overflow)):
+                with self.subTest(text=text), self.assertRaisesRegex(tracks_asset.TracksError, "path.keys.toml"):
+                    tracks_asset.bake(clip_of(root, text))
+
+
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
 class CameraKeysTests(unittest.TestCase):
     def test_keys_forward_and_loop_survive_the_bake(self):
@@ -20,10 +53,7 @@ class CameraKeysTests(unittest.TestCase):
                 dict(t=1, eye=[2, 1, 0], look_at=[3, 2, 2]),
                 dict(t=3, eye=[0, 0, 0], look_at=[0, 0, -1])]
         with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            (root / "path.glb").write_bytes(camera_keys.build(dict(node="camera", animation="path", keys=keys)))
-            clip = root / "path.anim.toml"
-            clip.write_text('source = "path.glb"\nanimation = "path"\n')
+            clip = clip_of(pathlib.Path(directory), keys_toml(keys))
             tracks, _ = tracks_asset.decode(tracks_asset.bake(clip))
             translation = next(t for t in tracks if t["name"] == "camera/translation")
             self.assertEqual(translation["values"][0], translation["values"][-1])
