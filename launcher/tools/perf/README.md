@@ -134,3 +134,43 @@ then each run's min/max/avg/median/p95 per phase.
 
 See [Layout-Noise.md](../../../docs/tools/Layout-Noise.md) for seeded builds
 and pilot variance definitions.
+
+## Sweep
+
+`perf_sweep.sh` flashes one perf-scoped diagnostic image per build and layout
+seed. Every round visits the Cartesian product of knob values in a fresh,
+recorded random order. The first build and first value of each knob form the
+baseline. Knobs reset after each flash; the wrapper restores `origin/main`'s
+release image afterwards unless `--no-restore` is passed.
+
+```sh
+launcher/tools/perf/perf_sweep.sh --knob r3d_span.small_max_side=2,3,4 \
+  --suite run_raster_scale_perf_suite counters - --runs 5
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--out DIR` | Captures, plan and generated `sweep.md` / `sweep.json`; defaults to a temporary directory in the wrapper |
+| `--build LABEL=REV` | Repeatable revision or directory; defaults to this project, labelled `here` |
+| `--knob NAME=V1,V2,...` | Repeatable console tunable and integer values |
+| `--suite NAME TESTS TABLE` | Repeatable suite, filters and report command with `@CAPTURE@`, `@TABLE@`, `@PROJECT@`; `-` reads raw metrics |
+| `--seeds S1 S2 ...` | Distinct layout seeds; default `1` |
+| `--runs R` | Rounds per flash; default `DEFAULT_RUNS` in `perf_sweep.py` |
+| `--rng-seed N` | Replay the recorded point order |
+| `--threshold PCT`, `--alpha P` | Equivalence margin and family error rate; defaults shared with `perf_compare.py` |
+| `--timeout SECONDS`, `--wait SECONDS` | Capture and board queue deadlines |
+| `--autana COMMAND` | Override acquisition, status checks and restore for host replay |
+| `--dry-run` | Print flashes, capture count and point order without board access |
+| `--no-restore` | Omit the wrapper's release restore |
+
+The table includes timing rows, frame-cost stage averages and worst times,
+one-core span fields and per-call counters. With multiple seeds, complete
+per-seed means are the observations, so layout noise contributes to variance.
+With one seed, runs are the observations and the layout floor is not measured;
+comparisons across builds are inconclusive. With one seed, a significant difference must exceed
+the threshold to count as improved or regressed. `seed_statistics.compare()`
+applies Welch, TOST, permutation agreement and Holm across the table's cells.
+
+`plan.json` and per-capture JSON retain failures; two consecutive capture
+failures stop acquisition. Rebuild the generated report with
+`python launcher/tools/perf/perf_sweep.py report DIR`.

@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
+from device_capture import PERF_SEGMENT  # noqa: E402
 
 EXIT_BUSY = autana_config.EXIT_BUSY
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
@@ -1093,7 +1094,6 @@ def tune(args):
 
 PERF_USAGE = "usage: autana perf [?] | autana perf off | autana perf <name> [event] [seconds]"
 PERF_DEFAULT_SECONDS = 10.0
-PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
 
 
 def perf_text(reply):

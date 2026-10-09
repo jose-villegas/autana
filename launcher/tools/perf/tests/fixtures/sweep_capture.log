@@ -1,0 +1,5 @@
+frame both cores: mean 10000us
+scale_split: 184x224 poses=4 tris=8 frame mean/p50/max us 10000/9900/11000 | r3d.draw 1.25/2.0  r3d.upscale 0.50/0.8 | total 1.75
+scale_spans: 184x224 one core us/pose setup 10 rows 20 span_setup 30 fill 40 clear 5
+perf: r3d.draw cyc avg/min/max 500/400/600 icache_miss_stall avg 20 n=4
+:1:test_raster_counters:PASS

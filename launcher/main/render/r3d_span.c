@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "render/code_layout.h"
+#include "util/runtime/tune.h"
 #include "util/scalar/mathf.h"
 #include "util/scalar/mathi.h"
 
@@ -22,6 +23,15 @@
 _Static_assert(((int64_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT) <= INT32_MAX, "16.8 depth fits int32");
 
 static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
+
+/* A triangle whose bounding box holds at most this many pixel centres a
+ * side has each centre tested against its edges instead of walked. */
+#define SMALL_MAX_SIDE 2
+
+TUNE_OWNER(r3d_span);
+TUNE(r3d_span, small_max_side, SMALL_MAX_SIDE, 0, 8);
+TUNE(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
+TUNE(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
 int r3d_span_stop_after;
 
@@ -173,11 +183,7 @@ fill_solid_span(const r3d_span_target_t* target, const gradients_t* g, const int
     }
 }
 
-/* A triangle whose bounding box holds at most this many pixel centres a
- * side has each centre tested against its edges instead of walked. */
-#define SMALL_MAX_SIDE 2
-
-#define HALF_PIXEL     (R3D_SUBPIXEL / 2)
+#define HALF_PIXEL (R3D_SUBPIXEL / 2)
 
 typedef struct {
     bool flat;
@@ -526,12 +532,12 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (area2 == 0) {
         return;
     }
-    if (x_end - x_first <= SMALL_MAX_SIDE && rows <= SMALL_MAX_SIDE) {
+    if (x_end - x_first <= small_max_side && rows <= small_max_side) {
         fill_small(target, a, b, c, area2 > 0, box, face);
         return;
     }
 
-    fill_t f = {rows <= R3D_SPAN_FLAT_MAX_ROWS && hi_x - lo_x <= R3D_SPAN_FLAT_MAX_WIDTH, face, 0, 0, NULL};
+    fill_t f = {rows <= flat_max_rows && hi_x - lo_x <= flat_max_width, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(r3d_span_first_centre(v0->y), -1, target->rows.row1 + 1);
@@ -560,7 +566,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
     const bool odd = sort_by_y(&v0, &v1, &v2);
-    const r3d_span_extent_t e = r3d_span_extent(a, b, c);
+    const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const int y_first = mathi_clamp(e.centres.y0, target->rows.row0, target->rows.row1);
     const int y_end = mathi_clamp(e.centres.y1, target->rows.row0, target->rows.row1);
     const r3d_span_box_t box = {e.centres.x0 < 0 ? 0 : e.centres.x0,
@@ -570,7 +576,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
         return;
     }
     fill_t f = {e.flat, NULL, 0, 0, NULL};
-    if (e.centres.x1 - e.centres.x0 <= SMALL_MAX_SIDE && e.centres.y1 - e.centres.y0 <= SMALL_MAX_SIDE) {
+    if (e.centres.x1 - e.centres.x0 <= small_max_side && e.centres.y1 - e.centres.y0 <= small_max_side) {
         set_flat(&f, a, b, c);
         for (int y = box.y0; y < box.y1; y++) {
             write_span(target, y, box.x0, box.x1 - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);

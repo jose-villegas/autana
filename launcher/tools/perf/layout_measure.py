@@ -252,6 +252,38 @@ def capture_metadata(capture, rows):
     return owners, instructions
 
 
+def status_snapshot(out, stem, phase, runner, override=None, identity=False, wait=None):
+    """Log board ownership and optionally its identity around a measurement."""
+    build_id = None
+    for operation in (("status", "buildid") if identity else ("status",)):
+        path = Path(out) / f"{stem}_{operation}_{phase}.log"
+        with open(path, "w", encoding="utf-8") as log:
+            code, lines, _ = runner(autana_command(*(["--wait", str(wait)] if wait is not None else []),
+                                                     operation, override=override), log, 30 + (wait or 0))
+            if not log.tell():
+                log.write("\n".join(line for _, line in lines) + "\n")
+            log.write(f"exit code: {code}\n")
+        if code and (phase == "before" or identity):
+            raise RuntimeError(f"autana {operation} {phase} exited {code}; see {path}")
+        if operation == "buildid":
+            ids = [match.group(1) for _, line in lines if (match := BUILD_LINE.search(line))]
+            if not ids:
+                raise RuntimeError(f"autana buildid {phase}: no build id; see {path}")
+            build_id = ids[-1]
+    return build_id
+
+
+def booted_build_id(project, lines):
+    """Require the booted identity to match the project's latest built image."""
+    ids = [match.group(1) for _, line in lines
+           if (match := BUILD_LINE.search(line)) and "booted" in line]
+    builds = list(Path(project).glob("launcher/build*/build_id.txt"))
+    expected = max(builds, key=lambda path: path.stat().st_mtime).read_text().strip() if builds else None
+    if not ids or not expected or ids[-1] != expected:
+        raise RuntimeError(f"booted build {ids} does not match seeded build {expected}")
+    return ids[-1]
+
+
 def run_flash(args, seed, runner=None):
     """Capture repeated suites on one seeded image with status and identity checks."""
     runner = runner or run_stamped
@@ -264,13 +296,7 @@ def run_flash(args, seed, runner=None):
                 if (match := re.match(r"flash_(\d+)(?:[_.])", path.name))]
     stem = f"flash_{max(attempts, default=0) + 1}"
     def status(phase):
-        with open(out / f"{stem}_status_{phase}.log", "w", encoding="utf-8") as status_log:
-            code, lines, _ = runner(autana_command("status", override=override), status_log, 30)
-            if not status_log.tell():
-                status_log.write("\n".join(line for _, line in lines) + "\n")
-            status_log.write(f"exit code: {code}\n")
-            if code and phase == "before":
-                raise RuntimeError(f"autana status before exited {code}")
+        return status_snapshot(out, stem, phase, runner, override)
 
     requests = split_filters(args.suite, filter_limits(project))
     try:
@@ -293,13 +319,7 @@ def run_flash(args, seed, runner=None):
                     raise RuntimeError(refusal or f"{name} exited {code}; see {log.name}")
                 captures, first_run, seconds = captured_runs(lines, name, args.runs)
                 if index == 0:
-                    ids = [m.group(1) for _, line in lines
-                           if (m := BUILD_LINE.search(line)) and "booted" in line]
-                    builds = list(project.glob("launcher/build*/build_id.txt"))
-                    expected = max(builds, key=lambda path: path.stat().st_mtime).read_text().strip() if builds else None
-                    if not ids or not expected or ids[-1] != expected:
-                        raise RuntimeError(f"booted build {ids} does not match seeded build {expected}")
-                    record.update(flash_seconds=first_run, build_id=ids[-1])
+                    record.update(flash_seconds=first_run, build_id=booted_build_id(project, lines))
                 runs = []
                 for number, capture in enumerate(captures):
                     completion = capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace")
