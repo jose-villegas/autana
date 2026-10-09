@@ -20,9 +20,11 @@ MESHLET_TRIANGLES = 32
 
 RESERVED_LIGHTS = ("point", "spot")
 
-# The mesh sources an import reads: an OBJ with its MTL and textures, a binary glTF, or an FBX.
+# The mesh sources an import reads: an OBJ with its MTL and textures, a binary glTF, or an FBX; or a
+# Blender file, which the bake tool exports to a binary glTF (bake/bake.py) and the import then reads.
 OBJ_SUFFIX = ".obj"
-SOURCE_SUFFIXES = (OBJ_SUFFIX, *ASSET_SUFFIXES)
+BLEND_SUFFIX = ".blend"
+SOURCE_SUFFIXES = (OBJ_SUFFIX, *ASSET_SUFFIXES, BLEND_SUFFIX)
 
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
@@ -277,12 +279,16 @@ def load_import_settings(path):
             raise SettingsError(f"[{name}] moved to {home}")
     check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants"))
     source = values["source"]
-    check_keys(source, ("path", "credit"), "source")
-    for name in source:
+    check_keys(source, ("path", "credit"), "source", optional=("clips",))
+    for name in ("path", "credit"):
         text(source[name], f"source.{name}")
     source["path"] = (path.parent / source["path"]).resolve()
     if source["path"].suffix.lower() not in SOURCE_SUFFIXES:
         raise SettingsError(f"source.path has an unsupported extension; supported: {', '.join(SOURCE_SUFFIXES)}")
+    if "clips" in source:
+        if source["path"].suffix.lower() != BLEND_SUFFIX:
+            raise SettingsError("source.clips names the actions a .blend exports; this source is not one")
+        source["clips"] = strings(source["clips"], "source.clips")
     output = values["output"]
     check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
     directory = text(output["directory"], "output.directory")
@@ -324,7 +330,7 @@ def source_files(settings):
     from r3d.obj import TEXTURE_KEYS, load_mtl
 
     path = settings.source["path"]
-    if path.suffix.lower() in ASSET_SUFFIXES:
+    if path.suffix.lower() in (*ASSET_SUFFIXES, BLEND_SUFFIX):
         return [path]
     material = path.with_suffix(".mtl")
     files = {path, material}

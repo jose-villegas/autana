@@ -7,12 +7,15 @@ A fit's references are made once per reference key into the cache's reference/ f
 leave the machine that made them: only the fit stage reads them, and it runs there.
 """
 
+import copy
 import importlib.metadata
 import json
 import os
 import pathlib
+import platform
 import re
 import shutil
+import subprocess
 import tempfile
 
 from bake import bake as keys
@@ -45,7 +48,8 @@ def record(bake, path, cache, run=None):
     """Puts the file `path` made for `bake` in the cache and indexes it by key."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
-           "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix}
+           "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
+           "host": f"{platform.system()} {platform.machine()}"}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
@@ -75,13 +79,64 @@ def check_environment(stages):
                                   + "\n".join(sorted(set(wrong))))
 
 
-def produce_mesh(bake, cache):
+def export_file(settings, lock, cache):
+    """The export a .blend source's import reads: made here, or locked and fetched."""
+    key = keys.blend_key(settings, {stage: keys.tool_digest(stage) for stage in keys.STAGES})
+    row = made(key, cache) or lock.get(key)
+    if row is None:
+        raise keys.BakeMissing(f"{keys.relative(settings.source['path'])}: its export {key} is neither made here "
+                               "nor locked; bake.py bake --kind blend first")
+    blend = keys.Bake(output=settings.source["path"].with_suffix(keys.GLB_SUFFIX).name, source=settings.path,
+                      holder=settings.source["path"].name, kind="blend", key=key, suffix=keys.GLB_SUFFIX,
+                      tree=settings.source["path"].with_suffix(keys.GLB_SUFFIX))
+    return keys.fetch_all([blend], {key: row}, cache)[blend]
+
+
+def with_source(job, path):
+    """`job` reading `path` in place of its source."""
+    settings = copy.copy(job.settings)
+    settings.source = {**job.settings.source, "path": path}
+    moved = copy.copy(job)
+    moved.settings = settings
+    moved.renderer = copy.copy(job.renderer)
+    moved.renderer.settings = settings
+    return moved
+
+
+def produce_mesh(bake, cache, lock):
     from r3d.mesh_import import write_baked
 
+    job = bake.job
+    if keys.is_blend(job.settings):
+        job = with_source(job, export_file(job.settings, lock, cache))
     with tempfile.TemporaryDirectory() as work:
         name = bake.output.removesuffix(bake.suffix)
-        write_baked(bake.job, bake.scene, pathlib.Path(work), name)
+        write_baked(job, bake.scene, pathlib.Path(work), name)
         return record(bake, pathlib.Path(work) / bake.output, cache)
+
+
+def blender_program(given=None):
+    program = given or shutil.which("blender")
+    if program is None:
+        raise keys.BakeMissing("exporting a .blend needs Blender: put `blender` on PATH or pass --blender")
+    return program
+
+
+def produce_blend(bake, cache, blender=None):
+    """Exports the .blend inside Blender with the import's clips; the exporter checks the version."""
+    settings = bake.job
+    clips = settings.source.get("clips")
+    with tempfile.TemporaryDirectory() as work:
+        out = pathlib.Path(work) / bake.output
+        command = [blender_program(blender), "--background", "--factory-startup", "--python",
+                   str(keys.TOOLS / keys.BLEND_EXPORT), "--", str(settings.source["path"]), str(out)]
+        if clips:
+            command += ["--clips", ",".join(clips)]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0 or not out.is_file():
+            raise keys.BakeMissing(f"exporting {keys.relative(settings.source['path'])} failed:\n"
+                                   + (result.stdout + result.stderr)[-2000:])
+        return record(bake, out, cache)
 
 
 def references(bake, cache):
@@ -111,10 +166,14 @@ def produce_fit(bake, cache):
         return record(bake, target, cache)
 
 
-def produce(bake, cache):
+def produce(bake, cache, lock=None, blender=None):
     """Makes `bake` into the cache and returns its row; the environment must match its pins."""
-    check_environment(keys.STAGES if bake.kind == "fit" else ("mesh",))
-    return produce_fit(bake, cache) if bake.kind == "fit" else produce_mesh(bake, cache)
+    if bake.kind == "blend":
+        return produce_blend(bake, cache, blender)
+    check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
+    if bake.kind == "fit":
+        return produce_fit(bake, cache)
+    return produce_mesh(bake, cache, lock or {})
 
 
 def export(rows, cache, out):

@@ -66,14 +66,16 @@ mathx_sqrt(int32_t v) {
     return (int32_t)mathi_isqrt64((uint64_t)v << MATHX_SHIFT);
 }
 
+_Static_assert(TRIG_TURN == MATHX_ONE, "Q16.16 turns match trig phases");
+
 static inline int32_t
 mathx_sin_turns(int32_t turns) {
-    return trig_sin((uint16_t)turns) * 2;
+    return trig_sin((uint16_t)turns) * (1 << (MATHX_SHIFT - TRIG_SIN_SHIFT));
 }
 
 static inline int32_t
 mathx_cos_turns(int32_t turns) {
-    return trig_cos((uint16_t)turns) * 2;
+    return trig_cos((uint16_t)turns) * (1 << (MATHX_SHIFT - TRIG_SIN_SHIFT));
 }
 
 /* The dot products a matrix transform sums, as a fast path: each product is

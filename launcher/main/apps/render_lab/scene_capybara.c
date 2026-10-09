@@ -8,7 +8,6 @@
  * shell draws the scene through the camera; light is baked per vertex.
  */
 
-#include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -32,19 +31,27 @@
 static const char* TAG = "capybara";
 
 /* The scene's id and pack, its camera, and the entity the camera circles. */
-#define CAPYBARA_SCENE      "capybara"
-#define CAPYBARA_CAMERA     "camera"
-#define CAPYBARA_SUBJECT    "capybara"
+#define CAPYBARA_SCENE          "capybara"
+#define CAPYBARA_CAMERA         "camera"
+#define CAPYBARA_SUBJECT        "capybara"
 
 /* Where the view starts: three-quarters from the front, a little above. */
-#define CAPYBARA_HOME_YAW   (MATH_PI * 45.0F / 180.0F)
-#define CAPYBARA_HOME_PITCH (MATH_PI * 15.0F / 180.0F)
+#define CAPYBARA_HOME_YAW       (MATH_PI * 45.0F / 180.0F)
+#define CAPYBARA_HOME_PITCH     (MATH_PI * 15.0F / 180.0F)
 
 /* The lowest the eye goes: a little above level, so the meadow stays below it. */
-#define CAPYBARA_PITCH_MIN  (MATH_PI * 5.0F / 180.0F)
+#define CAPYBARA_PITCH_MIN      (MATH_PI * 5.0F / 180.0F)
 
-#define MS_PER_SECOND       1000.0F
-#define DEGREES_PER_RADIAN  (180.0F / MATH_PI)
+/* How far a zoom reaches, as multiples of the distance that fits the
+ * sphere: in to half of it (the model about twice as large), out to three
+ * times. Never closer than this many near planes outside the sphere, so the
+ * near plane cannot cut into the model. */
+#define CAPYBARA_ZOOM_IN        0.5F
+#define CAPYBARA_ZOOM_OUT       3.0F
+#define CAPYBARA_NEAR_CLEARANCE 2.0F
+
+#define MS_PER_SECOND           1000.0F
+#define DEGREES_PER_RADIAN      (180.0F / MATH_PI)
 
 static scene_t* capybara;
 static scene_entity_t camera_entity;
@@ -83,17 +90,17 @@ frame_subject(void) {
     vec3f_t centre;
     float radius;
     r3d_lit_mesh_bounding_sphere(scene_entity_mesh(capybara, subject), &centre, &radius);
-    const float log_dist =
-        logf(orbit_motion_fit_distance(radius, lens->half_fov_short_tan, ORBIT_MOTION_FRAME_PADDING));
-    orbit_motion_init(&orbit, centre, (orbit_motion_state_t){CAPYBARA_HOME_YAW, CAPYBARA_HOME_PITCH, log_dist},
-                      (orbit_motion_limits_t){CAPYBARA_PITCH_MIN, ORBIT_MOTION_PITCH_LIMIT, log_dist, log_dist});
+    const float fit = orbit_motion_fit_distance(radius, lens->half_fov_short_tan, ORBIT_MOTION_FRAME_PADDING);
+    const float closest = fmaxf(fit * CAPYBARA_ZOOM_IN, radius + (CAPYBARA_NEAR_CLEARANCE * lens->near_z));
+    orbit_motion_init(&orbit, centre, (orbit_motion_state_t){CAPYBARA_HOME_YAW, CAPYBARA_HOME_PITCH, logf(fit)},
+                      (orbit_motion_limits_t){CAPYBARA_PITCH_MIN, ORBIT_MOTION_PITCH_LIMIT, logf(closest),
+                                              logf(fit * CAPYBARA_ZOOM_OUT)});
     orbit_motion_touch_init(&touch);
     return true;
 }
 
 static void
 scene_capybara_enter(void) {
-    gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
@@ -134,14 +141,11 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
 }
 
 /* Every frame already redraws the whole screen. */
-static void
-scene_capybara_invalidate(void) {}
 
 /* The shell has already drawn the scene into the framebuffer. */
 static void
-scene_capybara_frame(uint32_t dt_ms, bool band_mode_active) {
+scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
-    assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode */
 #if TUNE_ENABLED
     render_context_set_view(render_context_main(), render_lab_view());
 #endif
@@ -167,8 +171,5 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
                                            .exit = scene_capybara_exit,
-                                           .invalidate = scene_capybara_invalidate,
                                            .status = capybara_status,
-                                           .needs_full_framebuffer = true,
-                                           .shows_view_modes = true,
                                            .steer = scene_capybara_steer};

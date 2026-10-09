@@ -9,8 +9,8 @@
  * overlays (gfx_set_debug_overlay(), gfx_set_leaf_overlay()), whose
  * borders mark one frame's sends and are gone by the next.
  *
- * The verbs only latch; console_freeze_frame_allowed() is the frame
- * loop's side and the only thing that acts on them; see console.c's own
+ * The verbs only post a frame request (console_frame_request.h); the
+ * frame loop applies it and asks whether to run each pass. See console.c's
  * top comment for why nothing here may draw on the console task.
  * Development builds only; see console.h.
  *
@@ -22,11 +22,12 @@
 
 #include <stdbool.h>
 
-/* True when this pass should run the app and present as usual. False to
- * hold: the app does not step, nothing is sent, and the panel keeps what
- * it already shows.
- *
- * Call exactly once per pass, from the frame loop: a STEP's credit is
- * spent by the call that returns true for it, so a second caller would
- * eat a frame the first was given. */
+#include "console/console_frame_request.h"
+
+/* The frame loop, on every pass that takes requests, before any early
+ * return: applies a FREEZE, RESUME or STEP among them. */
+void console_freeze_apply(const console_frame_request_t* requests);
+
+/* True to run this pass as usual, false to hold: no app step, nothing
+ * sent. Once per pass: a true return spends one STEP's credit. */
 bool console_freeze_frame_allowed(void);

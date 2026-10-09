@@ -17,6 +17,7 @@
 set -eu
 
 . scripts/lib/run.sh
+. launcher/tools/render/gif_from_avi.sh
 
 [ "$#" = 4 ] || { [ "$#" = 5 ] && [ "$5" = --meshlets-only ]; } || {
     echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only]" >&2
@@ -50,11 +51,8 @@ demo_gif() {
     shift
     run "$HOST" --quarter 1 --frames 30 --dt 100 \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    run ffmpeg -hide_banner -loglevel error -y -i "$W/$name.avi" \
-        -vf "fps=8,scale=240:-1:flags=lanczos,palettegen=max_colors=64:stats_mode=diff" "$W/$name-palette.png"
-    run ffmpeg -hide_banner -loglevel error -y -i "$W/$name.avi" -i "$W/$name-palette.png" \
-        -filter_complex "[0:v]fps=8,scale=240:-1:flags=lanczos[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
-        -loop 0 "$RENDER/$name.gif"
+    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=8,scale=240:-1:flags=lanczos" \
+        "max_colors=64:stats_mode=diff"
 }
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
 demo_gif ${ID}-lite --scene "$ID" --object "${FULL}_lite"

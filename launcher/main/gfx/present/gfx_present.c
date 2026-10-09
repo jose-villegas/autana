@@ -296,22 +296,10 @@ present_alloc_send_buffers(void) {
 
 /* Dirty tracking */
 
-bool partial_clear_on;
 bool interlace_on;
 #ifdef ESP_PLATFORM
 static int frame_parity; /* read only inside run_present_normal(), below */
 #endif
-gfx_box_t prev_bbox = GFX_BOX_EMPTY;
-gfx_box_t drawn_bbox = GFX_BOX_EMPTY;
-
-void
-gfx_set_partial_clear(bool on) {
-    GFX_PRESENT_GUARD();
-    if (!on) {
-        prev_bbox = GFX_BOX_EMPTY;
-    }
-    partial_clear_on = on;
-}
 
 void
 gfx_set_interlace(bool on) {
@@ -327,7 +315,6 @@ gfx_interlace_enabled(void) {
 void
 gfx_invalidate(void) {
     GFX_PRESENT_GUARD();
-    prev_bbox = GFX_BOX_EMPTY;
     gfx_band_force_all();
 }
 
@@ -338,8 +325,6 @@ gfx_invalidate(void) {
 static void
 mark_all_dirty_now(void) {
     dirty_mark_all();
-    drawn_bbox = GFX_BOX_EMPTY;
-    prev_bbox = GFX_BOX_EMPTY;
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
@@ -387,19 +372,6 @@ void
 gfx_mark_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
     dirty_mark(x, y, w, h);
-
-    if (w <= 0 || h <= 0) {
-        return;
-    }
-    const int x0 = x < 0 ? 0 : x;
-    const int y0 = y < 0 ? 0 : y;
-    const int x1 = x + w > GFX_WIDTH ? GFX_WIDTH : x + w;
-    const int y1 = y + h > GFX_HEIGHT ? GFX_HEIGHT : y + h;
-    if (x0 >= x1 || y0 >= y1) {
-        return;
-    }
-
-    gfx_box_extend(&drawn_bbox, (gfx_box_t){x0, y0, x1, y1});
 }
 
 bool
@@ -675,8 +647,8 @@ send_heal_strips(bool (*send_rows)(int y0, int y1), int* queued) {
     }
 }
 
-/* Persistent compact pictures send whole dirty strips. Interlace and
- * partial clear require a full-resolution framebuffer. */
+/* Persistent compact pictures send whole dirty strips. Interlace requires
+ * a full-resolution framebuffer. */
 static void
 run_present_strips(bool (*send_rows)(int y0, int y1)) {
     int queued = 0;
@@ -774,13 +746,6 @@ run_present_normal(void) {
     if (interlace_on) {
         cell_dirty = remaining_cell_dirty;
     }
-
-    if (partial_clear_on && !gfx_box_is_empty(drawn_bbox)) {
-        prev_bbox = drawn_bbox;
-    } else if (!partial_clear_on) {
-        prev_bbox = GFX_BOX_EMPTY;
-    }
-    drawn_bbox = GFX_BOX_EMPTY;
 
     send_heal_strips(send_fb_rows, &queued);
 

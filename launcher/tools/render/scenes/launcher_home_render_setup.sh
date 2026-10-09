@@ -1,0 +1,20 @@
+#!/bin/sh
+# Firmware launcher sources and host setup shared by home and boot scenes.
+launcher_home_sources="
+main/app/app_registry.c
+main/ui/ui.c
+main/ui/ui_bridge.c
+main/ui/ui_build.c
+main/ui/ui_canvas_marks.c
+main/ui/ui_widgets.c
+main/ui/ui_launcher.c
+main/ui/ui_launcher_draw.c
+main/ui/ui_pointer.c
+main/ui/ui_snap.c
+main/ui/ui_ridge.c
+main/ui/ui_scroll.c
+main/util/runtime/tune.c
+components/microui/src/microui.c
+tools/render/scenes/launcher_home_render_setup.c
+"
+launcher_home_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
