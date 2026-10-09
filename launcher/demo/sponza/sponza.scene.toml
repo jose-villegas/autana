@@ -21,7 +21,7 @@ ao = { distance = 40.0, rays = 32, indirect = true }
 
 [[objects]]
 name = "sun"
-rotation = [22.450814295724417, -37.230418121890686, 0.0]   # toward (-0.25, 1.0, 0.329)
+rotation = [25.0, -47.5, 0.0]   # toward (-0.344, 1.0, 0.315)
 
 [objects.light]
 type = "directional"
