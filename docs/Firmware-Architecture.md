@@ -113,9 +113,10 @@ flowchart TB
   inline when core 1 is busy or on a host; `core/memory.h` places memory
   by kind; time, frame cost, the frame watch and the build variant sit
   beside them. `math/` is shared headers under every other layer, `board/`
-  included: it never touches the chip and includes nothing outside itself,
-  so the firmware and the host tools both use it. `scalar/` is per number
-  type, `linear/` vectors to transforms over it, `motion/` over both.
+  included: it never touches the chip and includes nothing outside itself
+  but the build config, so the firmware and the host tools both use it.
+  `scalar/` is per number type, `linear/` vectors to transforms over it,
+  `motion/` over both.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
