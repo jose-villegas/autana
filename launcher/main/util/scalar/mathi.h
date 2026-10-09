@@ -89,8 +89,7 @@ mathi_max(int a, int b) {
 /* |(x, y)| without a square root, to about 4%: the larger component plus two
  * fifths of the smaller. Nowhere here needs an exact length, only "how hard
  * is this being shaken" or "how far did this turn", and this is far cheaper
- * than a real hypot() on a chip with no hardware divider, let alone a square
- * root. */
+ * than hypot(), a libm call with a square root inside. */
 static inline int
 mathi_len(int x, int y) {
     const int ax = mathi_abs(x);
