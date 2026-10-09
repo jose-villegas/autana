@@ -9,9 +9,10 @@ orbit_motion_touch_init(orbit_motion_touch_t* touch) {
     *touch = (orbit_motion_touch_t){0};
 }
 
-/* The finger's move since last frame, turned into radians the way the
- * picture is held: right turns the near side of the model right (the eye
- * goes left), down tilts its top toward the eye (the eye goes up). */
+/* The finger's move since last frame, taken the way the picture is held.
+ * Turning: right turns the near side of the model right (the eye goes
+ * left), down tilts its top toward the eye (the eye goes up). Zooming: down
+ * brings the eye closer. */
 static void
 steer(orbit_motion_touch_t* touch, const input_t* input, viewport_t viewport, orbit_motion_input_t* out) {
     int ux0;
@@ -22,8 +23,12 @@ steer(orbit_motion_touch_t* touch, const input_t* input, viewport_t viewport, or
     viewport_physical_to_upright(viewport, input->x, input->y, &ux1, &uy1);
     const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
     const float per_px = ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE / (float)shorter;
-    out->yaw_turn = -(float)(ux1 - ux0) * per_px;
-    out->pitch_turn = (float)(uy1 - uy0) * per_px;
+    if (touch->zooming) {
+        out->zoom_turn = -(float)(uy1 - uy0) * ORBIT_MOTION_TOUCH_ZOOM_PER_SHORT_SIDE / (float)shorter;
+    } else {
+        out->yaw_turn = -(float)(ux1 - ux0) * per_px;
+        out->pitch_turn = (float)(uy1 - uy0) * per_px;
+    }
     out->held = true;
     touch->last_x = input->x;
     touch->last_y = input->y;
@@ -56,6 +61,7 @@ orbit_motion_touch_step(orbit_motion_touch_t* touch, const input_t* input, uint3
         touch->steering =
             !gesture_in_edge_zone(x, y, home_edge, viewport.width, viewport.height)
             && !gesture_in_edge_zone(x, y, gesture_opposite_edge(home_edge), viewport.width, viewport.height);
+        touch->zooming = touch->steering && touch->tapped;
         touch->last_x = input->press_x;
         touch->last_y = input->press_y;
         touch->down_ms = 0;
