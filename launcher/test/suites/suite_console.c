@@ -400,7 +400,8 @@ test_a_take_never_sees_a_post_half_written(void) {
     int takes = 0;
     int torn = 0;
     /* One take after the writer is seen done, so its last post counts even
-     * when it finished before the first take. */
+     * when it finished first, as it may on the board, where its priority
+     * outranks this task's: the host run is the one sure to race. */
     bool writing;
     do {
         writing = atomic_load(&f->writing);
