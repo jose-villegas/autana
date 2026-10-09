@@ -24,7 +24,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras and `render_view_make()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
-| `raster_draw()` | Draws every instance through a ready frame view |
+| `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
@@ -110,14 +110,13 @@ flowchart TB
     Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller builds a frame view, then calls `raster_draw()`, which culls and draws
-each instance in turn with one fitted lens shared by culling and drawing,
+A caller builds a frame view and passes its `const render_view_t*` to
+`raster_draw()`, which culls and draws each instance in turn with one fitted lens shared by culling and drawing,
 and `raster_upscale()` with the destination width and height to compose
-that picture. A
-caller that picks the render size from what culling kept, as the render
+that picture. A caller that picks the render size from what culling kept, as the render
 context does, calls `raster_census()`, sets the size, then
-`raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
-or tool that schedules them itself.
+`raster_draw_culled()` with the same `const render_view_t*`. The stages inside
+are `r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
 
 Culling and clipping use caller-owned workspace sized by
 `r3d_pipeline_work_bytes()`. The raster's arena, sized by
@@ -240,7 +239,7 @@ flowchart LR
 | Hook | When | What it may do |
 |---|---|---|
 | `clear` | the first instance of a picture, on its rows | start its pixels; the only hook colour and depth have |
-| `begin` | once per `raster_draw()`, before anything is drawn | read the camera and the instances, keep its own state |
+| `begin` | once per `raster_draw()`, before anything is drawn | read the `const render_view_t*` and the instances, keep its own state |
 | `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
 | `resolve` | once every instance is drawn | turn what was written into the final map |
 | `show` | `raster_show()` | paint the colour from it |

@@ -95,8 +95,9 @@ pack outlives the scene, which reads its entry, meshes and clip in place.
 
 ## Beneath it
 
-The raster API (`raster_draw()`, `raster_upscale()`) is what host tools and
-tests call. `r3d_scene_view_at()` samples a camera's path and builds its frame view,
+Host tools and tests pass a `const render_view_t*` to `raster_draw()`
+and compose its picture with `raster_upscale()`. `r3d_scene_view_at()` samples
+a camera's path and builds its frame view,
 for the active camera or any loaded scene's through `scene_camera_lens()`.
 
 The shell's half of the API (the two frame halves and the unload on exit) is

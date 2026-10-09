@@ -278,8 +278,8 @@ An app that sets `app_t.update` has the previous frame sent on core 1 while
 `update()` runs on core 0; the split present underneath is in
 [Gfx-and-Presentation.md](Gfx-and-Presentation.md#present-who-runs-it).
 
-A caller draws a mesh with `raster_draw()` from `update()` this way, on both
-cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores). An app that
+A caller passes a `const render_view_t*` to `raster_draw()` from `update()`
+to draw a mesh this way, on both cores: [Mesh-Rendering.md](render/Mesh-Rendering.md#on-both-cores). An app that
 loads a scene and activates its camera needs none of that: while a camera is
 active the shell draws it in the same overlap window and upscales it into the
 framebuffer before `frame()`, whether or not the app has an `update()`
