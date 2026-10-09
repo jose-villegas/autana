@@ -65,6 +65,7 @@ demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
 demo_gif ${ID}-depth --scene "$ID" --object "$FULL" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$FULL" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$FULL" --view motion
+demo_gif ${ID}-meshlets --scene "$ID" --object "$FULL" --view meshlets
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.

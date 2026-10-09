@@ -285,6 +285,10 @@ maps IDs to hues through a multiplicative hash; zero takes the clear colour.
 IDs are distinct per draw for up to 65535 clusters.
 It needs no resolve pass.
 
+The meshlets view along the same flythrough, one hue per cluster:
+
+![The meshlets view along a flythrough](../images/render/sponza-meshlets.gif)
+
 ## Coverage and small triangles
 
 A pixel belongs to a triangle when its centre is inside by the top-left
