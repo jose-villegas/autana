@@ -28,6 +28,7 @@ clone. Standard library only; Python 3.12 or later.
 import argparse
 import ast
 import dataclasses
+import functools
 import hashlib
 import json
 import os
@@ -53,19 +54,21 @@ RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
 MESH_SUFFIX = ".mesh"
 DOWNLOAD_TIMEOUT_S = 60
-# Each stage's entry scripts. Its code is their import closure under TOOLS, which stops at another
-# stage's entry script (that stage's key already chains in) and at this tool, plus the requirements
-# it installs and the native library it builds.
+# Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
+# submodules its files compile, and the requirements beside them.
 STAGES = {
     "mesh": ("r3d/mesh_import.py",),
     "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
     "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
 }
-REQUIREMENTS = ("r3d/requirements.txt",)
-SUBMODULES = ("third_party/upstream/meshoptimizer",)
+REQUIREMENTS_NAME = "requirements.txt"
+C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
 # Token kinds that carry no code: a comment or blank-line edit does not rebake.
 SKIPPED_TOKENS = {"COMMENT", "NL", "ENCODING"}
 SHAPE_TOKENS = {"NEWLINE", "INDENT", "DEDENT"}
+QUOTED_INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
+# What a module-level constant may be built from when it is read without running the module.
+CONSTANT_NAMES = {"pathlib": pathlib, "os": os, "str": str, "sorted": sorted, "tuple": tuple, "list": list}
 
 
 class BakeMissing(Exception):
@@ -94,43 +97,126 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def module_file(name, package=None, level=0):
-    """The file under TOOLS that `import name` (relative to `package` at `level`) loads, or None outside TOOLS."""
+def git_lines(*args):
+    return subprocess.run(["git", "-C", str(REPO), *args], check=True, capture_output=True,
+                          text=True).stdout.splitlines()
+
+
+@functools.cache
+def submodules():
+    """{path: pinned commit} of every submodule of this checkout, from the index: no checkout needed."""
+    found = {}
+    for line in git_lines("ls-files", "-s"):
+        meta, _, path = line.partition("\t")
+        mode, commit = meta.split()[:2]
+        if mode == "160000":
+            found[(REPO / path).resolve()] = commit
+    return found
+
+
+@functools.cache
+def tracked_modules():
+    """The names a tracked .py file or package can be imported as: an import of one of them that
+    no root holds is code this tool could not place, not a third-party package."""
+    names = set()
+    for line in git_lines("ls-files", "*.py"):
+        path = pathlib.PurePosixPath(line)
+        names.add(path.parent.name if path.name == "__init__.py" else path.stem)
+    return names
+
+
+@functools.cache
+def module_facts(path):
+    """A module's tree, the module-level constants that can be read without running it, and the
+    directories it puts on sys.path."""
+    tree = ast.parse(path.read_bytes(), str(path))
+    constants = {**CONSTANT_NAMES, "__file__": str(path)}
+    added = []
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if len(targets) == 1 and isinstance(targets[0], ast.Name):
+            try:
+                constants[targets[0].id] = eval(compile(ast.Expression(node.value), str(path), "eval"),
+                                                {"__builtins__": {}}, constants)
+            except Exception:  # a constant that needs the module to run names no file
+                pass
+        call = node.value if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) else None
+        if call is not None and ast.unparse(call.func) in ("sys.path.insert", "sys.path.append"):
+            try:
+                added.append(pathlib.Path(eval(compile(ast.Expression(call.args[-1]), str(path), "eval"),
+                                               {"__builtins__": {}}, constants)).resolve())
+            except Exception as error:
+                raise SettingsError(f"{path}: cannot read the directory {ast.unparse(call)} adds, so what "
+                                    f"it imports through it cannot be keyed ({error})") from None
+    return tree, constants, tuple(added)
+
+
+def module_file(name, package, level, roots):
+    """The file `import name` loads from `package` at relative `level`, searched in `roots` for an
+    absolute import, or None when no root holds it."""
     parts = name.split(".") if name else []
     if level:
-        parts = package.split(".")[:len(package.split(".")) - level + 1] + parts
-    base = TOOLS.joinpath(*parts)
-    for path in (base.with_suffix(".py"), base / "__init__.py"):
-        if parts and path.is_file():
-            return path
+        bases = [TOOLS.joinpath(*package.split(".")[:len(package.split(".")) - level + 1])]
+    else:
+        bases = roots
+    for base in bases:
+        for path in (base.joinpath(*parts).with_suffix(".py") if parts else None, base.joinpath(*parts) / "__init__.py"):
+            if path is not None and path.is_file():
+                return path.resolve()
     return None
 
 
+def imports_bake(tree):
+    return any(isinstance(node, ast.ImportFrom) and node.level == 0 and (node.module or "").split(".")[0] == "bake"
+               for node in ast.walk(tree))
+
+
+def imported_names(tree):
+    """(name, level) of every import in a module, the module itself and each name taken from it."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            yield from ((alias.name, 0) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            yield node.module or "", node.level
+            yield from (((node.module + "." if node.module else "") + alias.name, node.level) for alias in node.names)
+
+
 def closure(entries, stop=()):
-    """Every file under TOOLS the entry scripts import, at any depth, and the packages holding them;
-    a file in `stop` is neither counted nor followed."""
-    found, pending = set(), [TOOLS / entry for entry in entries]
-    while pending:
-        path = pending.pop()
-        if path in found or path in stop:
-            continue
-        found.add(path)
-        package = ".".join(path.relative_to(TOOLS).with_suffix("").parts[:-1])
-        for init in (TOOLS.joinpath(*package.split(".")[:depth + 1], "__init__.py")
-                     for depth in range(len(package.split("."))) if package):
-            if init.is_file():
-                pending.append(init)
-        for node in ast.walk(ast.parse(path.read_bytes(), str(path))):
-            names = []
-            if isinstance(node, ast.Import):
-                names = [(alias.name, 0) for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                names = [(node.module or "", node.level)]
-                names += [((node.module + "." if node.module else "") + alias.name, node.level) for alias in node.names]
-            for name, level in names:
-                target = module_file(name, package, level)
+    """Every file the entry scripts import, at any depth, found under TOOLS or in a directory a file
+    of the closure puts on sys.path, and the packages holding them. A file in `stop`, or one that
+    imports this tool (it consumes bakes, so it makes none), is neither counted nor followed. An
+    import of a tracked module that no root holds fails: its code would be left out of the key."""
+    roots = [TOOLS]
+    while True:
+        known = len(roots)
+        found, pending, unplaced = set(), [(TOOLS / entry).resolve() for entry in entries], []
+        while pending:
+            path = pending.pop()
+            if path in found or path in stop:
+                continue
+            tree, _, added = module_facts(path)
+            if imports_bake(tree):
+                continue
+            found.add(path)
+            roots += [directory for directory in added if directory not in roots]
+            package = ".".join(path.relative_to(TOOLS).parts[:-1]) if path.is_relative_to(TOOLS) else ""
+            for depth in range(len(package.split(".")) if package else 0):
+                init = TOOLS.joinpath(*package.split(".")[:depth + 1], "__init__.py")
+                if init.is_file():
+                    pending.append(init.resolve())
+            for name, level in imported_names(tree):
+                target = module_file(name, package, level, roots)
                 if target is not None:
                     pending.append(target)
+                elif level == 0 and name and name.split(".")[0] not in sys.stdlib_module_names:
+                    unplaced.append((path, name.split(".")[0]))
+        if len(roots) == known:
+            break
+    lost = sorted({(relative(path), name) for path, name in unplaced
+                   if name in tracked_modules() and module_file(name, "", 0, roots) is None})
+    if lost:
+        raise SettingsError("imports of tracked modules bake.py cannot place, so their code would be left "
+                            "out of the key: " + ", ".join(f"{name} in {path}" for path, name in lost))
     return sorted(found)
 
 
@@ -142,23 +228,12 @@ def code_tokens(path):
                 if tokenize.tok_name[token.type] not in SKIPPED_TOKENS]
 
 
-def submodule_commit(path):
-    out = subprocess.run(["git", "-C", str(REPO), "ls-files", "-s", "--", path], check=True,
-                         capture_output=True, text=True).stdout.split()
-    if not out:
-        raise SettingsError(f"{path} is not a submodule of this checkout")
-    return out[1]
-
-
 def stage_files(stage):
-    """The files whose code makes `stage`'s output."""
-    own = {TOOLS / entry for entry in STAGES[stage]}
-    stop = {TOOLS / entry for entries in STAGES.values() for entry in entries} - own
-    stop |= set((TOOLS / "bake").glob("*.py"))
+    """The files whose code makes `stage`'s output: its entries' closure, stopping at another stage's
+    entry script, whose key the stage already chains in."""
+    own = {(TOOLS / entry).resolve() for entry in STAGES[stage]}
+    stop = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries} - own
     return closure(STAGES[stage], stop)
-
-
-QUOTED_INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
 
 
 def c_includes(sources, include_dirs):
@@ -179,24 +254,46 @@ def c_includes(sources, include_dirs):
     return sorted(found)
 
 
-def native_sources(files):
-    """The C a stage's files compile and run: the pose sampler track_host builds, its SOURCES and
-    every header they include."""
-    if TOOLS / "anim" / "track_host.py" not in files:
-        return {}
-    from anim.track_host import MAIN, SOURCES
+def path_constants(value):
+    if isinstance(value, pathlib.Path):
+        return [value.resolve()]
+    if isinstance(value, (tuple, list)):
+        return [path for item in value for path in path_constants(item)]
+    return []
 
-    return {relative(path): file_sha256(path) for path in c_includes(SOURCES, (MAIN,))}
+
+def native_inputs(files):
+    """What a stage's files compile: each module-level path constant naming a C file counts with the
+    quoted headers it reaches, and one inside a submodule counts as that submodule's pinned commit, so
+    a clone that never checked the submodule out keys it the same."""
+    pinned, sources, keyed = submodules(), [], {}
+
+    def holder(item):
+        return next((root for root in pinned if item == root or item.is_relative_to(root)), None)
+
+    for path in files:
+        for value in module_facts(path)[1].values():
+            for item in path_constants(value):
+                if holder(item) is not None:
+                    keyed[relative(holder(item))] = pinned[holder(item)]
+                elif item.suffix in C_SUFFIXES and item.is_file():
+                    sources.append(item)
+    for item in c_includes(sources, (REPO / "launcher" / "main",)):
+        if holder(item) is not None:
+            keyed[relative(holder(item))] = pinned[holder(item)]
+        else:
+            keyed[relative(item)] = file_sha256(item)
+    return keyed
 
 
 def tool_digest(stage):
-    """The code of a stage: its files' tokens, the C they compile, its requirements and the submodule
-    it builds."""
+    """The code of a stage: its files' tokens, what they compile and the requirements beside them."""
     paths = stage_files(stage)
-    files = {path.relative_to(TOOLS).as_posix(): code_tokens(path) for path in paths}
-    files.update(native_sources(paths))
-    requirements = {name: (TOOLS / name).read_text(encoding="utf-8").split() for name in REQUIREMENTS}
-    return digest([files, requirements, {name: submodule_commit(name) for name in SUBMODULES}])
+    files = {relative(path): code_tokens(path) for path in paths}
+    files.update(native_inputs(paths))
+    requirements = {relative(near): near.read_text(encoding="utf-8").split()
+                    for near in sorted({path.parent / REQUIREMENTS_NAME for path in paths}) if near.is_file()}
+    return digest([files, requirements])
 
 
 def canonical(value):

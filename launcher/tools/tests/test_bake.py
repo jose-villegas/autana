@@ -74,10 +74,53 @@ class NativeTests(unittest.TestCase):
             found = {path.relative_to(root.resolve()).as_posix() for path in bake.c_includes([root / "a.c"], (root / "inc",))}
         self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
 
-    def test_the_pose_samplers_headers_are_in_the_mesh_stage(self):
-        names = bake.native_sources(bake.stage_files("mesh"))
-        self.assertIn("launcher/main/anim/anim_track.h", names)
-        self.assertIn("launcher/main/util/scalar/mathf.h", names)
+    def test_the_pose_samplers_c_and_headers_are_in_the_mesh_stage(self):
+        names = bake.native_inputs(bake.stage_files("mesh"))
+        self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
+                         "launcher/main/util/scalar/mathf.h"} <= set(names))
+
+    def test_a_compiled_submodule_counts_as_its_pinned_commit(self):
+        names = bake.native_inputs(bake.stage_files("mesh"))
+        pinned = {bake.relative(path): commit for path, commit in bake.submodules().items()}
+        for submodule in ("third_party/upstream/meshoptimizer", "third_party/upstream/ufbx"):
+            self.assertEqual(names[submodule], pinned[submodule])
+        self.assertIn("launcher/tools/fbx/ufbx_glue.c", names)
+
+
+class ClosureTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.directory.name).resolve()
+        (self.root / "helpers").mkdir()
+        (self.root / "helpers" / "packing.py").write_text("STEP = 8\n")
+        bake.module_facts.cache_clear()
+
+    def tearDown(self):
+        bake.module_facts.cache_clear()
+        self.directory.cleanup()
+
+    def entry(self, text):
+        path = self.root / "entry.py"
+        path.write_text(text)
+        return path
+
+    def test_a_module_reached_through_sys_path_is_counted(self):
+        entry = self.entry('import pathlib\nimport sys\nimport numpy\n'
+                           'sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "helpers"))\n'
+                           'import packing\n')
+        self.assertEqual(bake.closure([entry]), sorted([entry, self.root / "helpers" / "packing.py"]))
+
+    def test_a_tracked_module_no_root_holds_fails_naming_it(self):
+        entry = self.entry("import gfx_color\n")
+        with self.assertRaisesRegex(bake.SettingsError, "gfx_color in .*entry.py"):
+            bake.closure([entry])
+
+    def test_a_module_that_imports_this_tool_is_not_followed(self):
+        (self.root / "helpers" / "consumer.py").write_text("from bake import bake\n")
+        entry = self.entry('import pathlib\nimport sys\n'
+                           'sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "helpers"))\n'
+                           'import consumer\n')
+        self.assertEqual(bake.closure([entry]), [entry])
 
 
 class StageTests(unittest.TestCase):
@@ -88,13 +131,20 @@ class StageTests(unittest.TestCase):
         self.assertTrue({"r3d/mesh_import.py", "r3d/light.py", "r3d/__init__.py"} <= self.names("mesh"))
         self.assertTrue({"r3d/appearance_simplify.py", "r3d/fitted_variant.py"} <= self.names("fit"))
 
-    def test_a_stage_stops_at_another_stages_entry_and_at_the_bake_tool(self):
+    def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
+        for stage in bake.STAGES:
+            self.assertIn("device/gfx_color.py", self.names(stage), stage)
+        for stage in ("reference", "fit"):
+            self.assertIn("render/render_compare.py", self.names(stage), stage)
+
+    def test_a_stage_stops_at_another_stages_entry_and_at_what_consumes_bakes(self):
         self.assertFalse({"r3d/fitted_variant.py", "r3d/appearance_simplify.py", "r3d/reference_render.py"}
                          & self.names("mesh"))
         self.assertNotIn("r3d/appearance_simplify.py", self.names("reference"))
         self.assertNotIn("r3d/mesh_import.py", self.names("fit"))
         for stage in bake.STAGES:
             self.assertFalse(any(name.startswith("bake/") for name in self.names(stage)), stage)
+            self.assertNotIn("r3d/build_pack.py", self.names(stage), stage)
 
     def test_a_fit_edit_rekeys_the_fit_alone_and_a_mesh_edit_every_stage(self):
         job, scene = fitted_job()
