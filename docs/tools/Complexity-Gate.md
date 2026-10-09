@@ -32,11 +32,10 @@ file counted twice:
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
   treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.
-- **`apps/*/tools/*.c`** (sweep and report scripts, excluded from the
-  firmware and the host build alike by long-standing convention) get the
-  host route's flags plus one additional include path for their sibling
-  headers, since each already has its own working host compile line in a
-  `report_*.sh` beside it.
+- **`apps/*/tools/**/*.c`** (sweep and report programs, at any depth,
+  excluded from the firmware and the host build alike)
+  get the host route's flags plus one additional include path for their
+  sibling headers, since each compiles on a host.
 
 **Coverage is a checked rule, not a description.** Every `.c` file under
 `launcher/main/` is walked directly from the filesystem, independent of

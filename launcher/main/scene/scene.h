@@ -74,6 +74,9 @@ const char* scene_entity_name(const scene_t* scene, scene_entity_t entity);
 /* The pack id of the mesh the entity draws, or NULL when it draws none. */
 const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 
+/* The mesh the entity draws, or NULL when it draws none. */
+const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t entity);
+
 /* The lens and path of the scene's camera `camera` (NULL: its first), to
  * sample without drawing; NULL when the scene has no such camera. */
 const r3d_scene_camera_t* scene_camera_lens(const scene_t* scene, const char* camera);

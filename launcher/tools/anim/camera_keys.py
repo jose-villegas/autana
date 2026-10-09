@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
-"""Author a glTF camera path: camera_keys.py KEYS.toml OUT.glb."""
-import argparse
+"""A camera path authored as keys (NAME.keys.toml), built into a glTF binary
+in memory; gltf_read.load_asset reads one through load_glb_bytes()."""
 import math
 import pathlib
 import sys
@@ -68,16 +67,9 @@ def build(values):
                      [dict(type="perspective", perspective=dict(yfov=1.0, znear=0.1))])
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("keys", type=pathlib.Path)
-    parser.add_argument("out", type=pathlib.Path)
-    args = parser.parse_args()
+def load_glb_bytes(path):
+    """GLB bytes of a keys file; every fault is a ValueError."""
     try:
-        args.out.write_bytes(build(tomllib.loads(args.keys.read_text(encoding="utf-8"))))
-    except (OSError, ValueError, OverflowError) as error:
-        parser.error(str(error))
-
-
-if __name__ == "__main__":
-    main()
+        return build(tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8")))
+    except OverflowError as error:
+        raise ValueError(str(error)) from error

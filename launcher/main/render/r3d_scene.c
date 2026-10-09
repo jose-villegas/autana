@@ -34,3 +34,13 @@ r3d_scene_camera_at(const r3d_scene_camera_t* camera, uint32_t t_ms) {
     r3d_scene_camera_sample(camera, t_ms, &out.eye, &out.forward);
     return out;
 }
+
+r3d_placement_t
+r3d_scene_camera_placement(const transformf_t* pose) {
+    const vec3f_t right = quatf_rotate(pose->rotation, (vec3f_t){1.0F, 0.0F, 0.0F});
+    const vec3f_t up = quatf_rotate(pose->rotation, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const vec3f_t forward = quatf_rotate(pose->rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    /* Columns -right, up, -forward: a rotation still, since (-right) x up = -forward. */
+    return (r3d_placement_t){{{-right.x, up.x, -forward.x}, {-right.y, up.y, -forward.y}, {-right.z, up.z, -forward.z}},
+                             pose->position};
+}

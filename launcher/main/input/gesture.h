@@ -33,6 +33,14 @@ typedef enum {
  * accident. */
 #define GESTURE_HOME_SWIPE_DIST 90
 
+/* True when (x, y) lies within GESTURE_HOME_ZONE_DEPTH of `edge`: where an
+ * edge gesture may begin, so a touch landing there belongs to the shell. */
+bool gesture_in_edge_zone(int x, int y, gesture_edge_t edge, int screen_w, int screen_h);
+
+/* The edge across the screen from `edge`. The control centre opens from the
+ * one opposite the home gesture's. */
+gesture_edge_t gesture_opposite_edge(gesture_edge_t edge);
+
 /* True while a finger that started near the given edge has travelled far
  * enough toward the centre of the screen.
  *

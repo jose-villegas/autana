@@ -88,15 +88,10 @@ jobs:
           STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
-      - name: Generated document bodies match their recorded hashes
+      - name: Generated document blocks pass their check command or hash
         env:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
-
-      - name: Shared-owner catalogue matches source
-        env:
-          STAGED_TEXT_GATE: "snapshot"
-        run: python3 launcher/tools/gen/shared_helpers.py --check
 
       - name: Documentation constants match source
         env:

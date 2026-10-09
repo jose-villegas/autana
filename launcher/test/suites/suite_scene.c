@@ -507,6 +507,10 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     scene_t* pair = load("test_pair");
     TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(pair, scene_find(pair, "green")));
     TEST_ASSERT_NULL(scene_entity_mesh_id(pair, scene_find(pair, "camera")));
+    const r3d_lit_mesh_t* green = scene_entity_mesh(pair, scene_find(pair, "green"));
+    TEST_ASSERT_NOT_NULL(green);
+    TEST_ASSERT_TRUE(green->vertex_count > 0);
+    TEST_ASSERT_NULL(scene_entity_mesh(pair, scene_find(pair, "camera")));
     TEST_ASSERT_NOT_NULL(scene_camera_lens(pair, "camera"));
     TEST_ASSERT_NULL(scene_camera_lens(pair, "red"));
     TEST_ASSERT_EQUAL_UINT32(0, r3d_scene_camera_period_ms(scene_camera_lens(pair, NULL)));

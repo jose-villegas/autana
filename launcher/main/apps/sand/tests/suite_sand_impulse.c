@@ -25,8 +25,10 @@
 #include "unity.h"
 
 #include "apps/sand/sand.h"
+#include "apps/sand/sand_controls.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
+#include "util/scalar/fixed.h"
 #include "util/scalar/mathi.h"
 
 /*
@@ -2031,9 +2033,8 @@ test_without_a_buffer_explode_does_nothing(void) {
  */
 #define RICOCHET_W            44
 #define RICOCHET_H            40
-/* DETONATE_RADIUS_PX (50, app_sand.c) at NORMAL quality (4 px/cell):
- * (50 + 2) / 4 - the app's own DETONATE arithmetic, not a round number. */
-#define RICOCHET_RADIUS       13
+/* The DETONATE brush at the default quality's cell size. */
+#define RICOCHET_RADIUS       fx_div_round(SAND_DETONATE_RADIUS_PX, SAND_CELL_NORMAL, 0)
 /* Off-grid, behind the wall, on purpose: a queued grain's direction is
  * away from the blast centre, so centring in the gap throws the wall into
  * itself. Also keeps the unconditional fire core off-grid, so nothing here

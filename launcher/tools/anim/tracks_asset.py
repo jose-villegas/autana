@@ -1,10 +1,10 @@
 """The animation tracks pack entry (TRCK): one glTF animation, baked from the
-NAME.anim.toml beside its .glb, and read back. The one writer of the entry,
+NAME.anim.toml beside its source, and read back. The one writer of the entry,
 and its reader on the host; main/anim/anim_tracks.c is the firmware's.
 
-A NAME.anim.toml names its source .glb, a file in its own folder, and the
-animation in it; the pack id is NAME. The keys and the entry's layout are in
-docs/Animation-Tracks.md, "The pack entry".
+A NAME.anim.toml names its source, a .glb, .fbx or camera .keys.toml in its
+own folder, and the animation in it; the pack id is NAME. The keys and the
+entry's layout are in docs/Animation-Tracks.md, "The pack entry".
 
 A track is named by its glTF binding: `node/translation`, or a
 KHR_animation_pointer path with the object's index replaced by its name
@@ -34,7 +34,8 @@ WIDTH_MAX = 4
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
 PATHS = ("translation", "rotation", "scale")
 POINTER = re.compile(r"^/([A-Za-z]+)/(\d+)/(.+)$")
-SOURCE = re.compile(r"[^/\\:]+(?:%s)" % "|".join(re.escape(s) for s in gltf_read.ASSET_SUFFIXES), re.I)  # a file name: no folder, drive or path separator of either system
+SOURCE_SUFFIXES = (*gltf_read.ASSET_SUFFIXES, gltf_read.KEYS_SUFFIX)
+SOURCE = re.compile(r"[^/\\:]+(?:%s)" % "|".join(re.escape(s) for s in SOURCE_SUFFIXES), re.I)  # a file name: no folder, drive or path separator of either system
 
 
 class TracksError(ValueError):
@@ -199,19 +200,19 @@ def load_source(path):
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise TracksError("%s: %s" % (path, error)) from error
     if set(values) != {"source", "animation"} or not all(isinstance(v, str) and v for v in values.values()):
-        raise TracksError("%s: holds exactly source = \"x.glb\" (or .fbx) and animation = \"<name>\"" % path)
+        raise TracksError("%s: holds exactly source = \"x.glb\" (or .fbx, .keys.toml) and animation = \"<name>\"" % path)
     # Beside it, so whatever finds the .anim.toml finds its source too.
     if not SOURCE.fullmatch(values["source"]):
-        raise TracksError("%s: source %r is not a .glb or .fbx in the same folder" % (path, values["source"]))
+        raise TracksError("%s: source %r is not a .glb, .fbx or .keys.toml in the same folder" % (path, values["source"]))
     return path.parent / values["source"], values["animation"]
 
 
 def bake(path):
     """The entry's bytes for a .anim.toml."""
-    glb, animation = load_source(path)
+    source, animation = load_source(path)
     try:
-        document, binary = gltf_read.load_asset(glb)
+        document, binary = gltf_read.load_asset(source)
     except (OSError, ValueError) as error:
-        raise TracksError("%s: source %s: %s" % (path, glb, error)) from error
-    tracks, duration_ms = clip_tracks(document, binary, find_animation(document, animation, glb))
+        raise TracksError("%s: source %s: %s" % (path, source, error)) from error
+    tracks, duration_ms = clip_tracks(document, binary, find_animation(document, animation, source))
     return encode(tracks, duration_ms)

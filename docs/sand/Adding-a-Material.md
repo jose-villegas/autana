@@ -169,7 +169,7 @@ slide and the material never slides. `sand_gas.c` builds its own
 question that has cost the most rework, twice, in the same shape. A rule
 specified as reaching exactly one conductor cell is unbuildable through
 the real brush: a hand drag is never one cell thick
-(`POUR_RADIUS_PX`/`ERASE_RADIUS_PX` in `app_sand.c`, 10/16 px, ~5 cells
+(`SAND_POUR_RADIUS_PX`/`SAND_ERASE_RADIUS_PX` in `sand_controls.h`, 10/16 px, ~5 cells
 radius at the finest 2 px/cell zoom). The fix that generalises: an
 *attenuating* walk (crossing `d` cells succeeds at `(conducts/256)^d`)
 instead of a hard "exactly N", so thickness costs time rather than being
@@ -307,7 +307,7 @@ flowchart TD
     E --> F{"New KIND?"}
     F -->|"no: reuses an<br/>existing kind"| G["3. Done:<br/>write host tests"]
     F -->|yes| H["4-5. new sand_&lt;name&gt;.c<br/>+ sand_step_&lt;name&gt;()<br/>+ may_have_&lt;name&gt; flag<br/>+ step_one_grain() branch"]
-    H --> I["6. app_sand.c<br/>brush list, if paintable"]
+    H --> I["6. sand_brushes.h<br/>brush list, if paintable"]
     G --> I
 ```
 
@@ -409,11 +409,9 @@ flowchart TD
 5. **`step_one_grain()`** (`sand.c`): the new `KIND` needs a branch, even
    if it is just "skip - handled by its own pass", exactly like
    `KIND_GAS` is skipped there with a comment explaining why.
-6. **`app_sand.c`**: add the new material to the paintable-materials
-   brush list if it should be usable in the real app. Separate,
-   app-level concern from the core simulation, **easy to forget, and
-   nothing will tell you**: `run_tests.sh` skips every `app_*.c` by
-   design, so the brush list is covered by no test at all.
+6. **`sand_brushes.h`**: add the new material to `sand_brushes[]` if it
+   should be paintable in the real app. The palette and swatch suites run
+   over this list, but nothing fails if you forget to add the material.
 
 ---
 

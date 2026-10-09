@@ -118,7 +118,7 @@ typedef struct {
 
 typedef struct {
     /* Caller-owned, exactly as sand_t borrows `cells` - this module never
-     * sees app_sand.c's tables, only points at them. */
+     * sees the app's tables, only points at them. */
     const sand_brush_t* brushes; /* brush_count entries, indexed by `brush` */
     uint8_t* modes;              /* brush_count entries, BRUSH_POUR/BRUSH_SPAWN */
     int brush_count;
