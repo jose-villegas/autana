@@ -1,4 +1,4 @@
-# Build variants
+# Build variants 
 
 What a build is FOR is one Kconfig `choice` in `main/Kconfig.projbuild`, and
 exactly one of its two entries is ever true:
