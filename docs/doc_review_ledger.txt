@@ -28,3 +28,4 @@ launcher/tools/anim/README.md	2026-10-06	tracks final sweep: reviewed against tr
 docs/render/Dynamic-Resolution.md	2026-10-07	PR #684 round 2: hand-written prose reviewed against choose_path() and the capture, accurate
 docs/render/Scene-Manager.md	2026-10-07	PR #684 round 2: frame sequence reviewed against scene_render(), accurate
 docs/render/Mesh-Rendering.md	2026-10-07	PR #684 round 3: census/draw_culled prose reviewed against raster.c and raster.h, accurate
+docs/tools/Render-Harness.md	2026-10-09	generated-block marker forms reviewed against generated_blocks.py and check_doc_generated.py, accurate

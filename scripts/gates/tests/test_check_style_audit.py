@@ -397,7 +397,8 @@ class StyleAuditTest(unittest.TestCase):
     def test_a_named_generated_block_is_not_flagged(self):
         findings = self.audit("STRAY-HTML-COMMENT", {
             "docs/Guide.md": "<!-- generated: scores sha256=" + "0" * 64 + " -->\n| 2 |\n"
-                             "<!-- /generated: scores -->\n<!-- generated: notes -->\n",
+                             "<!-- /generated: scores -->\n<!-- generated: notes -->\n"
+                             "<!-- generated: table check: python gen.py --check -->\n",
         })
         self.assertEqual(findings, [])
 
