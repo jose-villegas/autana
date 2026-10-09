@@ -98,14 +98,6 @@ test_a_trs_matrix_is_scale_then_rotate_then_translate(void) {
     assert_mat4(&want, &got);
 }
 
-static void
-test_a_product_of_matrices_applies_the_right_one_first(void) {
-    const mat4f_t move = mat4f_from_trs((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_identity(), (vec3f_t){1.0F, 1.0F, 1.0F});
-    const mat4f_t grow = mat4f_from_trs((vec3f_t){0.0F, 0.0F, 0.0F}, quatf_identity(), (vec3f_t){2.0F, 2.0F, 2.0F});
-    const mat4f_t both = mat4f_mul(move, grow);
-    assert_vec3((vec3f_t){3.0F, 2.0F, 2.0F}, mat4f_apply(&both, (vec3f_t){1.0F, 1.0F, 1.0F}));
-}
-
 /* A build is observed by overwriting the kept matrix with a sentinel: a call
  * that does not rebuild hands the sentinel back, one that does replaces it. */
 #define SENTINEL 99.0F
@@ -253,8 +245,64 @@ test_the_octahedral_map_puts_the_poles_at_the_centre_and_a_corner(void) {
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, fabsf(down.y));
 }
 
+static void
+test_affine_product_and_inverse_match_full_matrices(void) {
+    const mat4f_t a = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
+                                     (vec3f_t){2.0F, 1.0F, 0.5F});
+    const mat4f_t b = mat4f_from_trs((vec3f_t){-3.0F, 1.0F, 2.0F}, quatf_from_euler((vec3f_t){-0.2F, 0.5F, 0.3F}),
+                                     (vec3f_t){0.5F, 3.0F, 2.0F});
+    {
+        const mat4f_t full = mat4f_mul(a, b), affine = mat4f_mul_affine(a, b);
+        assert_vec3(mat4f_apply(&a, mat4f_apply(&b, (vec3f_t){1.0F, 1.0F, 1.0F})),
+                    mat4f_apply(&full, (vec3f_t){1.0F, 1.0F, 1.0F}));
+        assert_mat4(&full, &affine);
+    }
+    {
+        const mat4f_t identity = mat4f_identity(), round_trip = mat4f_mul(mat4f_invert_affine(a), a);
+        assert_mat4(&identity, &round_trip);
+    }
+}
+
+static void
+test_affine_inverse_preserves_small_and_large_scales(void) {
+    const float scales[] = {1.0F / 64.0F, 64.0F, 256.0F};
+    const float inverse_scales[] = {64.0F, 1.0F / 64.0F, 1.0F / 256.0F};
+    const mat4f_t identity = mat4f_identity();
+    for (unsigned i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        for (int placed = 0; placed < 2; placed++) {
+            const float scale = scales[i], inverse_scale = inverse_scales[i];
+            mat4f_t m = identity, expected = identity;
+            for (int axis = 0; axis < 3; axis++) {
+                m.m[axis][axis] = scale;
+                expected.m[axis][axis] = inverse_scale;
+            }
+            if (placed) {
+                m.m[0][0] = m.m[1][1] = 0.0F;
+                m.m[0][1] = -scale;
+                m.m[1][0] = scale;
+                m.m[0][3] = 1.0F;
+                m.m[1][3] = -2.0F;
+                m.m[2][3] = 3.0F;
+                expected.m[0][0] = expected.m[1][1] = 0.0F;
+                expected.m[0][1] = inverse_scale;
+                expected.m[1][0] = -inverse_scale;
+                expected.m[0][3] = 2.0F * inverse_scale;
+                expected.m[1][3] = inverse_scale;
+                expected.m[2][3] = -3.0F * inverse_scale;
+            }
+            const mat4f_t inverse = mat4f_invert_affine(m);
+            const mat4f_t left = mat4f_mul_affine(inverse, m), right = mat4f_mul_affine(m, inverse);
+            assert_mat4(&expected, &inverse);
+            assert_mat4(&identity, &left);
+            assert_mat4(&identity, &right);
+        }
+    }
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);
+    RUN_TEST(test_affine_product_and_inverse_match_full_matrices);
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);
@@ -262,7 +310,6 @@ suite_math(void) {
     RUN_TEST(test_slerp_hits_both_ends_and_the_half_angle_between);
     RUN_TEST(test_slerp_takes_the_short_way_when_the_signs_differ);
     RUN_TEST(test_a_trs_matrix_is_scale_then_rotate_then_translate);
-    RUN_TEST(test_a_product_of_matrices_applies_the_right_one_first);
     RUN_TEST(test_a_transform_that_does_not_change_builds_its_matrix_once);
     RUN_TEST(test_a_zero_initialized_transform_builds_on_first_use);
     RUN_TEST(test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix);
