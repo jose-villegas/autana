@@ -99,6 +99,7 @@ C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
 SKIPPED_TOKENS = {"COMMENT", "NL", "ENCODING"}
 SHAPE_TOKENS = {"NEWLINE", "INDENT", "DEDENT"}
 QUOTED_INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
+INCLUDE_LINE = re.compile(rb'^[ \t]*#[ \t]*include\b[^\n]*\n?', re.MULTILINE)
 # What a module-level constant may be built from when it is read without running the module.
 CONSTANT_NAMES = {"pathlib": pathlib, "os": os, "str": str, "sorted": sorted, "tuple": tuple, "list": list}
 
@@ -265,12 +266,32 @@ def closure(entries, stop=()):
     return sorted(found)
 
 
+def plumbing_lines(tree):
+    """The lines of a module's import statements and sys.path edits: where its code lives, not what it
+    computes. The files they reach are in the stage by content, so a move that rewrites them keys the same."""
+    lines = set()
+    for node in ast.walk(tree):
+        plumbing = isinstance(node, (ast.Import, ast.ImportFrom))
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            plumbing = ast.unparse(node.value.func) in ("sys.path.insert", "sys.path.append")
+        if plumbing:
+            lines.update(range(node.lineno, node.end_lineno + 1))
+    return lines
+
+
 def code_tokens(path):
-    """A file's tokens without comments, blank lines or layout: the same on every Python from 3.12."""
+    """A file's tokens without comments, blank lines, layout or import plumbing: the same on every
+    Python from 3.12, and wherever the file lives."""
+    skipped = plumbing_lines(module_facts(path)[0])
     with path.open("rb") as source:
         return [[tokenize.tok_name[token.type], "" if tokenize.tok_name[token.type] in SHAPE_TOKENS else token.string]
                 for token in tokenize.tokenize(source.readline)
-                if tokenize.tok_name[token.type] not in SKIPPED_TOKENS]
+                if tokenize.tok_name[token.type] not in SKIPPED_TOKENS and token.start[0] not in skipped]
+
+
+def c_content(path):
+    """A C file's bytes without its #include lines: the headers they reach are in the stage by content."""
+    return hashlib.sha256(INCLUDE_LINE.sub(b"", pathlib.Path(path).read_bytes())).hexdigest()
 
 
 @functools.cache
@@ -328,7 +349,7 @@ def native_inputs(files):
         if holder(item) is not None:
             keyed[relative(holder(item))] = pinned[holder(item)]
         else:
-            keyed[relative(item)] = file_sha256(item)
+            keyed[relative(item)] = c_content(item)
     return keyed
 
 
@@ -360,11 +381,15 @@ def requirement_pins(stage):
 
 @functools.cache
 def tool_digest(stage):
-    """The code of a stage: its files' tokens, what they compile and the requirements it counts."""
+    """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
+    digests, no paths, so a move or rename keys the same; plus the submodules it builds and the
+    requirements it counts."""
     paths = stage_files(stage)
-    files = {relative(path): code_tokens(path) for path in paths}
-    files.update(native_inputs(paths))
-    return digest([files, [list(pin) for pin in requirement_pins(stage)]])
+    native = native_inputs(paths)
+    pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
+    contents = [digest(code_tokens(path)) for path in paths]
+    contents += [value for path, value in native.items() if path not in pinned]
+    return digest([sorted(contents), pinned, [list(pin) for pin in requirement_pins(stage)]])
 
 
 def canonical(value):
