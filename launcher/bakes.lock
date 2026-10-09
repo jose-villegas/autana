@@ -9,14 +9,6 @@ size = 15872
 seeded = true
 
 [[bake]]
-output = "capybara.glb"
-source = "launcher/demo/capybara/capybara.import.toml"
-key = "281d9c0f99e85e0424c4dc38179b5183b2f78311b47226dc5bba8d20dbbde892"
-sha256 = "ca47138e3dd8a1844fb477866372837aed58c7c0cbd0bf74439efcdb7e9ac366"
-size = 343012
-seeded = true
-
-[[bake]]
 output = "capybara.meadow.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
 key = "d85a0c5f50d1796a2f20fe18aa0c6ffff44b3571b3b909b26f4aee4a19b8d541"
