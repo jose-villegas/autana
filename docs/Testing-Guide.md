@@ -300,8 +300,9 @@ autana suite run_gfx_suite
 autana suite run_ui_suite
 ```
 
-Both commands only set a flag; the shell's frame loop does the actual work at
-a frame boundary, since there is no lock on the framebuffer and a second
+Both verbs only post a request (`console/console_frame_request.h`), and a
+RUNSUITE sent before the last one finished is refused; the shell's frame
+loop does the actual work at a frame boundary, since there is no lock on the framebuffer and a second
 task drawing to it while the render loop runs would corrupt the panel. When
 the suite returns the shell prints
 `RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>` on its
