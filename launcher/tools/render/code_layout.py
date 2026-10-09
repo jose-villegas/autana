@@ -126,6 +126,13 @@ def skip_pools(found):
     return [ins for ins in found if not any(inside(ins[0], pool) for pool in pools)]
 
 
+def backward_within(target, instruction_address, function_address):
+    """A backward branch that lands in its own function. Where objdump's
+    sweep is out of step past a pool that code branches into, its bytes can
+    decode as a branch anywhere in flash; a loop never leaves its function."""
+    return target is not None and function_address <= target < instruction_address
+
+
 def line_span(start, end, line_size):
     return ((end - 1) // line_size) - (start // line_size) + 1
 
@@ -144,7 +151,7 @@ def layout_entries(elf, nm, objdump, line_size, functions=FUNCTIONS):
             if mnemonic in ("loop", "loopnez", "loopgtz") and target is not None:
                 start = instruction_address + size
                 entries.append(LayoutEntry(function, mnemonic, start, target - start, line_span(start, target, line_size)))
-            elif target is not None and target < instruction_address and (mnemonic == "j" or mnemonic.startswith("b")):
+            elif backward_within(target, instruction_address, address) and (mnemonic == "j" or mnemonic.startswith("b")):
                 end = instruction_address + size
                 entries.append(
                     LayoutEntry(
