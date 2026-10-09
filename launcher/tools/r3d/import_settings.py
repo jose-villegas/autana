@@ -14,11 +14,13 @@ from types import SimpleNamespace
 
 from anim import tracks_asset
 from asset.asset_pack import NAME_BYTES
+from gltf.gltf_read import ASSET_SUFFIXES
 
 RESERVED_LIGHTS = ("point", "spot")
 
-# The mesh sources an import reads: an OBJ with its MTL and textures, or a binary glTF.
-SOURCE_SUFFIXES = (".obj", ".glb")
+# The mesh sources an import reads: an OBJ with its MTL and textures, a binary glTF, or an FBX.
+OBJ_SUFFIX = ".obj"
+SOURCE_SUFFIXES = (OBJ_SUFFIX, *ASSET_SUFFIXES)
 
 # The one declaration of each light type's fields; light.py pairs each with
 # the function that bakes it.
@@ -312,11 +314,11 @@ def load_import_settings(path):
 
 
 def source_files(settings):
-    """The source and every file it reads: an OBJ's sibling MTL and textures; a glTF binary holds its own."""
+    """The source and every file it reads: an OBJ's sibling MTL and textures; a glTF binary or an FBX holds its own."""
     from r3d.obj import TEXTURE_KEYS, load_mtl
 
     path = settings.source["path"]
-    if path.suffix.lower() == ".glb":
+    if path.suffix.lower() in ASSET_SUFFIXES:
         return [path]
     material = path.with_suffix(".mtl")
     files = {path, material}
