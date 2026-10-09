@@ -22,16 +22,20 @@ one.
 └───────────────┴───────────────┘
 ```
 
-`material_palette()` (`material.c`) is a flat, `const` 256-entry table
+`material_palette()` (`material_palette.c`) is a flat, `const` 256-entry table
 indexed by the *raw cell byte*. For a `MATERIAL_FLAT` material, painting a
 cell really is one array read, no branch, no arithmetic: the fast path,
 and it stays free. Everything below is about the cells that need more.
 
-`material_colours(cell_t c, unsigned hash, unsigned mask, unsigned depth,
-gfx_color_t out[3])` is the one function every non-trivial cell goes
-through, called from `sand_paint_row_n()` in `sand_paint_row.h`, the hottest loop
+`material_colours(const material_frame_t* f, cell_t c, unsigned hash,
+unsigned mask, unsigned depth, gfx_color_t out[3])` handles every non-trivial
+cell, called from `sand_paint_row_n()` in `sand_paint_row.h`, the hottest loop
 in the app, once per cell per dirty row. Its inputs:
 
+- **`f`**: `&pf->material`, the `material_frame_t` in `sand_paint_frame_t`.
+  `app_sand.c` fills `liquid_spec` through `material_frame_set_gravity()`,
+  writes `foam_phase` from elapsed time, and writes `cullet_phase` and
+  `glass_phase` through `advance_cullet()` and `advance_glass_phase()`.
 - **`hash`**: `material_grain_hash(cx, cy)`, a stable per-cell scramble so
   a speckled material shows the same grain in the same place frame to
   frame. Computed once per cell: a couple of multiplies and shift-xors.
@@ -40,20 +44,19 @@ in the app, once per cell per dirty row. Its inputs:
   cardinal bits (`MATERIAL_EDGE_LEFT/RIGHT/UP/DOWN`), computed for every
   cell, and 4 diagonal bits computed only when the cell is water AND
   already a cardinal edge; see "Rim, specular and foam" below.
-- **`depth`**: not liquid-exclusive. `sand_paint_row_n()` decides what this
-  slot carries *before* calling `material_colours()`, by material identity:
+- **`depth`**: not liquid-exclusive. `sp_cell_shading_depth()` decides what this
+  slot carries before `material_colours(&pf->material, ...)`, by material identity:
   a root cell (`MATX_ROOT`) gets its live neighbour-root count
   (`material_root_neighbours()`); a leaf or a wood cell next to one gets
   `material_wood_leaf_wave()`'s gust fraction **plus one** (the +1 reserves
   0 as "not near the wave at all"; the fraction's own trough is
   legitimately 0, and that must still select the tint branch); every other
   liquid cell gets the local-depth count described below. Three unrelated
-  meanings share one parameter slot, resolved by the caller, never by
-  `material_colours()` inspecting anything but the material id.
-- **`out[3]`**: `out[0]` is a cell's body colour; `out[1]` today always
-  equals `out[0]` (a leftover slot from a two-diagonal weave that no
-  longer exists; `test_metal_shine_does_not_vary_between_cells`,
-  `suite_sand_roots.c`, pins the mirror rather than a second colour);
+  meanings share one parameter slot; `material_colours()` selects its
+  meaning by material id.
+- **`out[3]`**: `out[0]` is a cell's body colour; `out[1]` always
+  equals `out[0]` (`test_metal_shine_does_not_vary_between_cells`,
+  `suite_sand_roots.c`, pins the mirror);
   `out[2]` is the one HATCHED cell reads for its shine band. A flat or
   speckled material sets all three the same.
 
@@ -210,8 +213,8 @@ Whenever this mechanism is touched again, keep the stored quantity
 angle-free and do the projection at the point of use.
 
 **Clamp each input to the scale it renders on *before* combining it with
-anything else, never after.** `material_colours()` clamps `depth` at 24 (
-past that the panel cannot tell one depth from another) and that clamp
+anything else, never after.** `material_colours()` clamps liquid `depth` at
+`MATERIAL_LIQUID_DEPTH_BAND` (past that the panel cannot tell one depth from another) and that clamp
 has to happen before any blending, averaging, or further arithmetic touches
 the value, not after: a value combined while still free to run past its
 render range gets dragged toward whatever the far-out input would show, a
@@ -219,7 +222,7 @@ result neither input alone would ever produce. This is a standing rule for
 any future signal built the same way, not only this one.
 
 **`MATERIAL_LIQUID_DEPTH_BAND` connects the shade clamp, depth carry and
-dirty-span width**: `material_colours()`'s clamp,
+dirty-span width**: `material_colours()`'s liquid-depth clamp,
 `sand_paint_depth_count()`'s ceiling, and
 `mark_depth_band()`'s (`sand_priv.h`) dirty-span width, which widens a
 pour's repaint radius by exactly this many cells along gravity's dominant
@@ -287,9 +290,9 @@ by `sand_paint_depth_count()` and the projection in `sand_paint_row.h`.
 ## Rim, specular and foam
 
 A liquid's **rim** (any cardinal neighbour empty) reads its own fill level
-(1-15) directly, shifted by `liquid_spec[mask]`, a 16-entry table,
-indexed by the 4-bit cardinal mask, filled once a frame by
-`material_set_gravity()` from the current tilt. A rim cell whose open side
+(1-15) directly, shifted by `f->liquid_spec[mask]`, indexed by the cardinal mask.
+`app_sand.c` fills `paint_frame.material.liquid_spec` once a frame through
+`material_frame_set_gravity()` from the current tilt. A rim cell whose open side
 faces away from "up" (minus gravity) darkens; one facing toward it
 brightens: a pool's lit top versus an overhang's shaded underside at the
 same fill level.
@@ -313,7 +316,8 @@ change the foam set at all) a foam phase to the per-cell hash.
 one consumer.** `sand_paint_row_n()` hands water a hash sampled at
 `(cx >> SAND_PAINT_FOAM_BLOB_SHIFT, cy >> SAND_PAINT_FOAM_BLOB_SHIFT)` (`SAND_PAINT_FOAM_BLOB_SHIFT` = 3) so
 foam gathers in blobs bigger than a single cell; `material_colours()`
-itself stays ignorant of coordinates. Stone's speckle, wood's grain, and
+reads the hash and `f->foam_phase`, without coordinates. Stone's speckle,
+wood's grain, and
 glass's shimmer all depend on the fine, per-cell hash; adjacent cells
 disagreeing is the entire point of a speckle. The day water needs a second,
 per-cell effect of its own, this coarsening has to move from "every water
@@ -331,9 +335,9 @@ material:
 
 | Material | Mechanism | Shape |
 |---|---|---|
-| Liquid rim | `liquid_spec[mask]` (`material_set_gravity()`) | a 16-entry table by cardinal mask, precomputed once a frame, read by index per rim cell |
+| Liquid rim | `f->liquid_spec[mask]` (`material_frame_set_gravity()`) | a 16-entry table by cardinal mask, precomputed once a frame, read by index per rim cell |
 | Metal (`MATERIAL_HATCHED`) | `material_shine_direction()` | a Q8 unit vector (minus gravity, turned 45 degrees) computed once a frame, walked per pixel (or sampled once per cell in indexed mode) to place the shine band |
-| Glass (`MATERIAL_SPECKLED`) | `glass_phase` (`advance_glass_phase()`, gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
+| Glass (`MATERIAL_SPECKLED`) | `paint_frame.material.glass_phase` (`advance_glass_phase()`, gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
 
 All three read the same frame's gravity; none of them share code, because
 each solves a differently-shaped problem (a per-mask table, a swept
@@ -362,8 +366,9 @@ speckle anything.
 Cullet (sand's reserved top band, `SAND_CULLET_BASE` through
 `MATERIAL_VARIANTS - 1`) keeps a fixed nibble per grain, the same as any
 other speckled shade, but each nibble names a **starting point** on a
-shared 16-entry cycle (`cullet_cycle[]`, `material.c`) that a per-frame
-phase (`material_set_cullet_phase()`) steps through over real time. A heap
+shared 16-entry cycle (`cullet_cycle[]`, `material_palette.c`) that
+`paint_frame.material.cullet_phase`, filled by `advance_cullet()` in
+`app_sand.c`, steps through over real time. A heap
 of broken glass shimmers through four pale tints instead of sitting on one.
 
 The cycle is built from four pastel anchors chosen to stay close in both
@@ -377,11 +382,9 @@ cell flashes pure white instead of its cycle colour, a facet catching the
 light, decided by the same hash-plus-phase mix foam's dither uses, at no
 extra per-cell cost.
 
-The simulation does not change for any of this: `material_colours()` is a
-pure function of the cell byte plus whatever per-frame state has been set
-(gravity, foam phase, cullet phase), so the fingerprint suite (which
-hashes cell bytes, never rendered pixels) stays green while the display
-shimmers. What *does* move is the repaint bookkeeping: a cullet
+`material_colours()` reads its frame, cell, hash, mask and depth inputs
+without changing simulation state. The fingerprint suite hashes cell bytes,
+never rendered pixels. For repaint bookkeeping, a cullet
 cell's row needs the same periodic-wake treatment shine already gets:
 `sand_paint_row_state_t`'s `row_flags[]` (`sand_paint_row.h`) carries a
 `SAND_PAINT_ROW_FLAG_CULLET` bit, and `app_sand.c`'s `mark_wake_hits()`
@@ -426,9 +429,8 @@ instead of per pixel: a cell the line crosses takes `col[2]`'s own index
 (already one of the study's swept colours) instead of `col[0]`'s. Local
 depth, root thickness and leaf wave all reach the index exactly as they
 reach a pixel, since `sand_paint_row_n()` computes `depth` once and every output
-reads the same value. None of this touches the FULL path or the simulation
-itself: `material_colours()` is unmodified and the fingerprint suite stays
-green in every mode.
+reads the same value. Every mode calls `material_colours()` with
+`&pf->material`; colour conversion leaves simulation state untouched.
 
 **Indexed mode must never be active when the title or options screen draws**: it has
 no indexed draw path and would touch a framebuffer that does not exist.
@@ -450,9 +452,9 @@ is future work.
 ## Reference: gravity's numbers, and who actually reads them
 
 - `gx, gy` are signed ints, produced exactly once a frame by
-  `read_gravity_input()` (`app_sand.c`); the same smoothed pair,
-  unmodified, feeds `sand_step()`, `material_set_gravity()`, and local
-  depth's own per-frame setup. There is exactly one gravity source
+  `read_gravity_input()` (`app_sand.c`); the same smoothed pair feeds
+  `sand_step()`, `material_frame_set_gravity(&paint_frame.material, gx, gy)`,
+  and local depth's per-frame setup. There is exactly one gravity source
   reaching shading, and it already goes through the tilt filter.
 - Magnitude: `IMU_COUNTS_PER_G` is 4096; host-side test fixtures use
   gravity pairs of magnitude ~1000 (e.g. `(500, 866)` for 30 degrees) as
@@ -480,19 +482,20 @@ is future work.
 
 ## How to test a shading change
 
-- **A host-side probe, no device needed.** Every shading investigation in
-  this codebase used the same shape: a small throwaway `.c` file linking
+- **A host-side probe, no device needed.** Use a small throwaway `.c` file linking
   `sand.c`, `sand_liquid.c`, `sand_gas.c`, `sand_reactions.c`, `material.c`,
-  `row_runs.c` directly:
+  `material_palette.c` and `row_runs.c` directly:
 
   ```
   gcc -std=c11 -O1 -I <main> -I <main>/apps/sand probe.c \
-      <main>/apps/sand/{sand,sand_liquid,sand_gas,sand_reactions,material,row_runs}.c \
+      <main>/apps/sand/{sand,sand_liquid,sand_gas,sand_reactions,material,material_palette,row_runs}.c \
       -o probe -lm
   ```
 
-  Call `material_palette()`/`material_colours()` directly to inspect exact
-  colours and luminance; build a real `sand_t`/`sand_step()` scene (a
+  Initialise a `material_frame_t`, fill its rim table with
+  `material_frame_set_gravity()` and set its phases. Pass its address first
+  to `material_colours()`; use `material_palette()` for flat colours.
+  Inspect colours and luminance; build a real `sand_t`/`sand_step()` scene (a
   settled pool, an irregular one with an obstacle, a tilt sweep) to measure
   the actual signal a fix depends on before writing any code against it.
 - **Match the metric to the complaint, and render a ground truth to measure
