@@ -42,6 +42,7 @@
 #include "gfx/present/gfx_present.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
+#include "panel_clock_pin.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 
@@ -57,6 +58,7 @@ static const char* TAG = "device_tests";
  * must reset the clip rect since they share it. */
 static void
 fixture(void) {
+    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     gfx_clear_clip();
     gfx_set_partial_clear(false);
     gfx_invalidate();
