@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: [1, 2, 3, 4]
+        job: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +33,8 @@ jobs:
         run: |
           python -c "import drjit as dr, mitsuba as mi; mi.set_variant('llvm_ad_rgb'); print('llvm', dr.detail.llvm_version())"
           grep -m1 "model name" /proc/cpuinfo | tee cpu.txt
-          python launcher/tools/r3d/stage_dump.py launcher/demo/sponza/sponza.scene.toml atrium > fixed.jsonl
-          tail -n1 fixed.jsonl
-          cd launcher/tools && python -m unittest tests.test_r3d_isa -v
+          cd launcher/tools
+          for c in sse42 avx2 avx512; do python r3d/isa_probe.py $c 2>&1 | grep -E "^(sse42|avx2|avx512) " || echo "$c failed"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

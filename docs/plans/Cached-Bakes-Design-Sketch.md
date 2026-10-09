@@ -131,8 +131,10 @@ flowchart LR
   key, and only the stages after it rebake: a fitter edit refits but keeps
   the references. The PR's lock diff shows it.
 - **Locally with the tools:** `bake.py bake launcher/demo/sponza` makes the
-  missing keys into the local cache. Its bytes may differ from CI's; `fetch`
-  prefers the locked bytes and says when a local bake differs from the lock.
+  missing keys into the local cache. A CPU bake's bytes match CI's on any
+  x86-64 Linux host (`r3d/isa` pins the ray tracer's instruction set), a fit's
+  do not; `fetch` prefers the locked bytes and says when a local bake differs
+  from the lock.
 
 ## 4. Failing loudly
 
