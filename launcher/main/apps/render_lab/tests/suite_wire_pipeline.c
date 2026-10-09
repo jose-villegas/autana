@@ -29,6 +29,15 @@ fixture(void) {
     return v;
 }
 
+static int
+project_one_edge(const wire_mesh_t* mesh, const r3d_line_view_t* view, wire_segment_t* segments) {
+    wire_cs_vertex_t cs[2];
+    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
+    wire_transform(mesh, view, &frame);
+    TEST_ASSERT_TRUE(wire_project_edges(mesh, view, SCREEN_W, SCREEN_H, &frame));
+    return frame.segment_count;
+}
+
 /* Known pose, exact expected segments */
 
 static const vec3f_t identity_pose_vertices[2] = {
@@ -41,14 +50,10 @@ static const wire_mesh_t identity_pose_mesh = {identity_pose_vertices, one_edge,
 static void
 test_identity_pose_matches_the_hand_derived_screen_points(void) {
     const r3d_line_view_t view = fixture();
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
+    const int segment_count = project_one_edge(&identity_pose_mesh, &view, segments);
 
-    wire_transform(&identity_pose_mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&identity_pose_mesh, &view, SCREEN_W, SCREEN_H, &frame));
-
-    TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
+    TEST_ASSERT_EQUAL_INT(1, segment_count);
     TEST_ASSERT_EQUAL_INT(184, segments[0].x0);
     TEST_ASSERT_EQUAL_INT(224, segments[0].y0);
     TEST_ASSERT_EQUAL_INT(276, segments[0].x1);
@@ -76,14 +81,10 @@ test_a_rotated_pose_matches_the_hand_derived_screen_points(void) {
     view.center_y = 80;
     view.scale = 40;
     view.focal = 2.0F;
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
+    const int segment_count = project_one_edge(&rotated_pose_mesh, &view, segments);
 
-    wire_transform(&rotated_pose_mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&rotated_pose_mesh, &view, SCREEN_W, SCREEN_H, &frame));
-
-    TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
+    TEST_ASSERT_EQUAL_INT(1, segment_count);
     TEST_ASSERT_EQUAL_INT(50, segments[0].x0);
     TEST_ASSERT_EQUAL_INT(80, segments[0].y0);
     TEST_ASSERT_EQUAL_INT(210, segments[0].x1);
@@ -181,13 +182,9 @@ test_both_ends_behind_near_plane_drop_the_edge(void) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{0, 0, 0}, {10, 10, view.near_z}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
-
-    wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
-    TEST_ASSERT_EQUAL_INT(0, frame.segment_count);
+    const int segment_count = project_one_edge(&mesh, &view, segments);
+    TEST_ASSERT_EQUAL_INT(0, segment_count);
 }
 
 static void
@@ -196,13 +193,9 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
     view.near_z = 100.0F;
     const vec3f_t vertices[2] = {{0, 0, 0}, {40, 20, 200}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
-
-    wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
-    TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
+    const int segment_count = project_one_edge(&mesh, &view, segments);
+    TEST_ASSERT_EQUAL_INT(1, segment_count);
 
     /* near_z sits exactly halfway between the two z's, so the crossing is
      * plain averaging, independent of the pipeline's own Q16 interpolation. */
@@ -223,13 +216,9 @@ test_an_endpoint_exactly_at_near_z_counts_as_behind(void) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{0.01F, 0.01F, view.near_z}, {0, 0, 300}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
-
-    wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
-    TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
+    const int segment_count = project_one_edge(&mesh, &view, segments);
+    TEST_ASSERT_EQUAL_INT(1, segment_count);
 
     const vec3f_t p0 = {0.01F, 0.01F, view.near_z};
     const vec3f_t p1 = {0, 0, 300};
@@ -250,13 +239,9 @@ check_edge_dropped(float x0, float y0, float x1, float y1) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{x0, y0, 1.0F}, {x1, y1, 1.0F}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
-
-    wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
-    TEST_ASSERT_EQUAL_INT(0, frame.segment_count);
+    const int segment_count = project_one_edge(&mesh, &view, segments);
+    TEST_ASSERT_EQUAL_INT(0, segment_count);
 }
 
 static void
@@ -284,14 +269,10 @@ test_an_edge_straddling_the_right_edge_is_kept_and_clipped(void) {
     const r3d_line_view_t view = fixture();
     const vec3f_t vertices[2] = {{0, 0, 1.0F}, {4.0F, 0, 1.0F}};
     const wire_mesh_t mesh = {vertices, one_edge, 2, 1};
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
+    const int segment_count = project_one_edge(&mesh, &view, segments);
 
-    wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
-
-    TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
+    TEST_ASSERT_EQUAL_INT(1, segment_count);
     TEST_ASSERT_EQUAL_INT(184, segments[0].x0);
     TEST_ASSERT_EQUAL_INT(224, segments[0].y0);
     TEST_ASSERT_EQUAL_INT(SCREEN_W - 1, segments[0].x1);
@@ -318,13 +299,9 @@ test_a_far_off_endpoint_is_narrowed_within_one_pixel(void) {
     r3d_camera_to_screen(model_far, &view, &fx_screen, &fy_screen);
     r3d_camera_to_screen(model_near, &view, &nx_screen, &ny_screen);
 
-    wire_cs_vertex_t cs[2];
     wire_segment_t segments[1];
-    wire_frame_t frame = {cs, 2, segments, 1, 0, {0, 0, 0, 0}};
-
-    wire_transform(&mesh, &view, &frame);
-    TEST_ASSERT_TRUE(wire_project_edges(&mesh, &view, SCREEN_W, SCREEN_H, &frame));
-    TEST_ASSERT_EQUAL_INT(1, frame.segment_count);
+    const int segment_count = project_one_edge(&mesh, &view, segments);
+    TEST_ASSERT_EQUAL_INT(1, segment_count);
     TEST_ASSERT_EQUAL_INT(nx_screen, segments[0].x0);
     TEST_ASSERT_EQUAL_INT(ny_screen, segments[0].y0);
     TEST_ASSERT_EQUAL_INT(SCREEN_W - 1, segments[0].x1);
