@@ -520,6 +520,18 @@ class TreeTests(unittest.TestCase):
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
         self.assertIn(dropped.output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
 
+    def test_a_mesh_outside_the_repository_is_its_own_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            imported = write_import(root)
+            for entries in build_pack.pack_files([imported]).values():
+                for mesh in entries.values():
+                    mesh.write_bytes((bake.REPO / "launcher/demo/capybara/capybara.meadow.mesh").read_bytes())
+            with mock.patch("urllib.request.urlopen") as network:
+                packs = build_pack.pack_bytes([imported], cache=root / "empty", offline=True)
+            network.assert_not_called()
+        self.assertEqual(list(packs), [imported.name.removesuffix(build_pack.IMPORT)])
+
     def test_a_replaced_mesh_is_never_fetched(self):
         found = bake.bakes([build_pack.DEFAULT_SEARCH])
         scratch = next(item for item in found if item.kind == "mesh")
