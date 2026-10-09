@@ -9,6 +9,7 @@
 
 #include "render/code_layout.h"
 #include "render/viewport.h"
+#include "util/scalar/mathf.h"
 #include "util/scalar/mathi.h"
 
 static void
@@ -286,7 +287,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
             unbounded = true;
             continue;
         }
-        const float inv = (float)R3D_SUBPIXEL / l.z;
+        const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
         const biased_t b = biased_screen(lens, l.x, l.y, inv);
         if (!(b.x > FAST_LO && b.x < FAST_HI && b.y > FAST_LO && b.y < FAST_HI)) {
             out->iz = -1.0F;
@@ -380,7 +381,7 @@ r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, co
 
 static r3d_span_vertex_t
 project(const r3d_lens_t* lens, const clip_vertex_t* v) {
-    const float inv = (float)R3D_SUBPIXEL / v->z;
+    const float inv = (float)R3D_SUBPIXEL * mathf_recip(v->z);
     const biased_t b = biased_screen(lens, v->x, v->y, inv);
     return (r3d_span_vertex_t){
         r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};

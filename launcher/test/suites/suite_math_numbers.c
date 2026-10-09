@@ -18,6 +18,7 @@
 #include "util/math/transformf.h"
 #include "util/math/transformx.h"
 #include "util/math/vec_convert.h"
+#include "util/scalar/mathf.h"
 
 #define Q           65536.0F
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -477,6 +478,27 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
     }
 }
 
+/* Both signs, magnitudes from 2^-20 to 2^20: never more than an ulp off the
+ * quotient, and on it nearly always, so a draw that projects through it
+ * matches one that divides. */
+static void
+test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
+    int count = 0;
+    int exact = 0;
+    for (float a = 1.0F / 1048576.0F; a < 1048576.0F; a *= 1.0137F) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const float x = (float)sign * a;
+            const float want = 1.0F / x;
+            const float got = mathf_recip(x);
+            const float ulp = fabsf(nextafterf(want, 2.0F * want) - want);
+            TEST_ASSERT_FLOAT_WITHIN(ulp, want, got);
+            exact += got == want;
+            count++;
+        }
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(count * 99 / 100, exact);
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
@@ -503,6 +525,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_every_swizzle_family_moves_the_named_components_for_every_number_type);
     RUN_TEST(test_a_cross_dimension_swizzle_returns_the_other_vector_type);
     RUN_TEST(test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type);
+    RUN_TEST(test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it);
 }
 
 SUITE_REGISTER(suite_math_numbers);

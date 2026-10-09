@@ -15,10 +15,10 @@
 
 #include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 
 #include "util/math/mat4f.h"
 #include "util/math/vec3f.h"
+#include "util/scalar/mathf.h"
 
 /* A small fraction of one model unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */
@@ -29,7 +29,7 @@
  * by a zero depth is an infinity or a NaN. */
 #define R3D_PIXEL_LIMIT 1000000.0F
 
-/* Above the reciprocal's error out to a 1000 pixel offset, far below a pixel. */
+/* Above mathf_recip()'s error out to a 1000 pixel offset, far below a pixel. */
 #define R3D_PIXEL_BIAS  0.02F
 
 typedef struct {
@@ -46,27 +46,8 @@ r3d_to_camera_space(vec3f_t model_point, const r3d_line_view_t* view) {
     return mat4f_apply(&view->matrix, model_point);
 }
 
-/* 1 / z for z > 0, to about 1e-5 relative: a seed from the exponent's own
- * bits and two Newton steps, all multiplies; far below a pixel at any screen
- * offset. The S3's FPU has no divide, so
- * `/` is a libgcc routine of a hundred cycles or more, and a projected point
- * needs one. Garbage for z <= 0, which no caller projects. */
-static inline float
-r3d_reciprocal(float z) {
-    /* A union, not memcpy: the firmware build can leave memcpy a call. */
-    union {
-        float f;
-        uint32_t bits;
-    } seed = {z};
-
-    seed.bits = 0x7EF311C7u - seed.bits;
-    float y = seed.f;
-    y = y * (2.0F - (z * y));
-    return y * (2.0F - (z * y));
-}
-
 /* A pixel offset truncated toward zero, so it is symmetric about the centre.
- * A small bias first, so a reciprocal a few ulp short of an exact quotient
+ * A small bias first, so a reciprocal an ulp short of an exact quotient
  * still lands on its pixel.
  * Plain comparisons, not fminf/fmaxf: those are libm calls on this FPU, and
  * this runs four times per edge. A NaN fails both and lands on the limit. */
@@ -85,7 +66,7 @@ static inline void
 r3d_camera_to_screen(vec3f_t p, const r3d_line_view_t* view, int* screen_x, int* screen_y) {
     float gain = view->scale;
     if (view->focal != 0.0F) {
-        gain *= view->focal * r3d_reciprocal(p.z);
+        gain *= view->focal * mathf_recip(p.z);
     }
     *screen_x = view->center_x + r3d_pixel_offset(p.x * gain);
     *screen_y = view->center_y - r3d_pixel_offset(p.y * gain);
