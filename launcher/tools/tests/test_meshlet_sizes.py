@@ -2,6 +2,8 @@
 import contextlib
 import io
 import pathlib
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -40,6 +42,58 @@ class MeshletSettingsTests(unittest.TestCase):
                 self.assertLessEqual(max(cluster[3] for cluster in mesh.clusters), size)
                 self.assertTrue(any(cluster[3] > size // 2 for cluster in mesh.clusters))
 
+    def test_cli_meshlet_limit_overrides_import(self):
+        from r3d import rebake
+        from r3d.lit_mesh import read_lit_mesh, write_lit_mesh
+        from test_r3d_bake import sheet
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            write_lit_mesh(root, "tiny", *sheet(20))
+            settings = write_import(root, body="[geometry]\nmeshlet_triangles = 64\n")
+            rebake.main([str(root / "tiny.mesh"), "--import", str(settings), "--meshlet-triangles", "16"])
+            counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.mesh").clusters]
+            self.assertLessEqual(max(counts), 16)
+            self.assertTrue(any(count > 8 for count in counts))
+
+    def test_import_writer_uses_the_jobs_meshlet_limit(self):
+        import numpy as np
+        from types import SimpleNamespace
+        from r3d import mesh_import
+        from r3d.lit_mesh import read_lit_mesh
+        from test_r3d_bake import sheet
+        positions, rgb, tris, double = sheet(20)
+        geometry = SimpleNamespace(positions=positions, rgb=rgb, tris=tris, tri_double=double, scale={})
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for size in (16, 64):
+                job = SimpleNamespace(renderer=SimpleNamespace(face_samples=None),
+                                      settings=SimpleNamespace(meshlet_triangles=size))
+                mesh_import.write_baked(job, None, root, "tiny", geometry)
+                counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.mesh").clusters]
+                self.assertLessEqual(max(counts), size)
+                self.assertTrue(any(count > size // 2 for count in counts))
+
+    def test_meshlet_bounds(self):
+        from r3d.import_settings import SettingsError
+        with tempfile.TemporaryDirectory() as directory:
+            for size in (4, 256):
+                path = write_import(directory, body=f"[geometry]\nmeshlet_triangles = {size}\n")
+                self.assertEqual(load_import_settings(path).meshlet_triangles, size)
+            for size in (3, 257):
+                path = write_import(directory, body=f"[geometry]\nmeshlet_triangles = {size}\n")
+                with self.assertRaisesRegex(SettingsError, "meshlet_triangles"):
+                    load_import_settings(path)
+
+    def test_nondefault_meshlet_limit_changes_fit_recipe(self):
+        import copy
+        from r3d.import_settings import load_scene
+        from r3d.fitted_variant import recipe_digest
+        scene = load_scene(TOOLS.parents[1] / "launcher/demo/sponza/sponza.scene.toml")
+        job = next(job for job in scene.renderers if job.renderer.fit)
+        changed = copy.deepcopy(job)
+        changed.settings.meshlet_triangles = 16
+        self.assertNotEqual(recipe_digest(job, scene), recipe_digest(changed, scene))
+
     def test_default_keeps_committed_fit_recipe_hashes(self):
         from r3d.import_settings import load_scene
         from r3d.fitted_variant import recipe_digest
@@ -51,32 +105,102 @@ class MeshletSettingsTests(unittest.TestCase):
                         self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256)
 
 class MeshletReportTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
+    def test_assertion_after_cull_switch_restores_the_prior_setting(self):
+        source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
+        body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake with motion")]
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            probe = work / "probe.c"
+            probe.write_text('''#include <assert.h>
+#include <setjmp.h>
+#include <stdint.h>
+#include "util/runtime/tune.h"
+TUNE_OWNER(render);
+TUNE(render, cull, 1, 0, 1);
+static jmp_buf aborted;
+static void (*cleanup)(void);
+static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
+#define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
+#define TEST_PASS() ((void)0)
+#define ESP_LOGI(...) ((void)0)
+enum { SPONZA_BAKE_COUNT = 1, SPONZA_BAKE_FULL = 0 };
+static const int meshes[1];
+static const char* const sponza_bakes[] = {"renderer"};
+typedef struct { const int* mesh; void* placement; } r3d_instance_t;
+static void open_the_meshes(void) {}
+static void report_frame_cost(const char* label, const r3d_instance_t* instance, void* a, void* b) {
+    /* An allocation assertion aborts the measured pass after culling is switched off. */
+    TEST_ASSERT_NOT_NULL(cull ? instance : 0);
+}
+''' + body + '''
+int main(void) {
+    for (int initial = 0; initial <= 1; initial++) {
+        tune_handle_line(initial ? "RESET render.cull" : "SET render.cull 0", cull_reply);
+        cleanup = 0;
+        if (setjmp(aborted) == 0) {
+            test_sponza_frame_cost_along_the_flythrough();
+            assert(0);
+        }
+        assert(cull == 0);
+        assert(cleanup != 0);
+        cleanup();
+        assert(cull == initial);
+    }
+    return 0;
+}
+''')
+            binary = work / "probe.exe"
+            main = TOOLS.parents[1] / "launcher/main"
+            built = subprocess.run(["gcc", "-std=gnu11", "-I", str(main), "-I", str(TOOLS.parents[1] / "launcher/test/stubs"),
+                                    str(probe), str(main / "util/runtime/tune.c"), "-o", str(binary)], capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            ran = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(ran.returncode, 0, ran.stderr)
+
+    def test_incomplete_capture_is_rejected(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
+                self.capture(root, row, pack=pack)
+            path = root / "meshlets-64-board.log"
+            path.write_text(path.read_text().split(":test_frame_cost:PASS")[0])
+            with self.assertRaisesRegex(ValueError, "complete"):
+                meshlet_sizes.capture_means(root, "atrium")
+
     def capture(self, root, row, build="abcdef123456", pack="a", suite=True):
         path = root / f"meshlets-{row}-board.log"
-        label = "cull_off" if row == "cull-off" else "atrium"
+        label = "atrium"
         stages = "ms/frame avg/worst: r3d.cull 1/2 r3d.transform 2/3 r3d.draw 3/4 | total 6\n"
         if suite:
             path.write_text(f"=== {label} FRAME COST (1 tris, 3 verts, 1 clusters, rendered 184x224) ===\n"
-                            f"MESHLET_CAPTURE build_id={build}-diag pack_crc32={pack * 8} size={32 if row == 'cull-off' else row} cull={int(row != 'cull-off')} period_ms=10000 pose_every_ms=5000\n"
+                            f"CAPTURE build_id={build}-diag pack_crc32={pack * 8} object=atrium size={row} cull=1 period_ms=10000 pose_every_ms=5000\n"
                             f"{label} t=    0s clusters=1 tris=1 | both cores: frame 7000us\n" + stages +
                             f"{label} t=    5s clusters=1 tris=1 | both cores: frame 9000us\n" + stages +
                             f"{label} both cores: mean 8000us (125 fps before present), worst 9000us\n"
-                            "=== other FRAME COST (1 tris, 3 verts, 1 clusters, rendered 184x224) ===\n"
+                            "=== other FRAME COST (2 tris, 6 verts, 1 clusters, rendered 184x224) ===\n"
                             "ms/frame avg/worst: r3d.cull 99/99 r3d.transform 99/99 r3d.draw 99/99 | total 297\n"
                             "other both cores: mean 297000us (3 fps before present), worst 297000us\n")
         else:
             path.write_text(f"MESHLET_CAPTURE build_id={build}-dev pack_sha256={pack * 64} size={row} cull=1\n" + stages)
+        if suite:
+            text = path.read_text()
+            if row == "32":
+                block = text.split("=== other")[0]
+                text += block.replace("atrium FRAME", "cull_off FRAME").replace("atrium t=", "cull_off t=").replace("atrium both", "cull_off both").replace("cull=1", "cull=0")
+            path.write_text(text + ":test_frame_cost:PASS\nRUNSUITE_COMPLETE name=run_perf found=1 selected=1 unmatched=0\n")
         return path
 
     def test_monitor_capture_is_rejected_and_suite_accepted(self):
         import meshlet_sizes
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+            for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
                 self.capture(root, row, pack=pack, suite=False)
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(ValueError, "complete"):
                 meshlet_sizes.capture_means(root, "atrium")
-            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+            for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
                 self.capture(root, row, pack=pack)
             self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
 
@@ -84,7 +208,7 @@ class MeshletReportTests(unittest.TestCase):
         import meshlet_sizes
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+            for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
                 self.capture(root, row, pack=pack)
             with self.assertRaisesRegex(ValueError, "pack"):
                 meshlet_sizes.capture_means(root, "atrium", {"16": "d" * 8, "32": "b" * 8, "64": "c" * 8})
@@ -100,23 +224,28 @@ class MeshletReportTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 meshlet_sizes.capture_means(root, "atrium")
 
-    def test_commands_hold_one_lock_per_row(self):
+    def test_row_installs_one_size_and_prints_one_locked_command(self):
         import meshlet_capture
-        output = io.StringIO()
-        with contextlib.redirect_stdout(output):
-            meshlet_capture.commands(pathlib.Path("scratch"), dict(sizes=[16,32,64], suite="run_sponza_perf_suite"))
-        lines = output.getvalue().splitlines()
-        self.assertEqual(len(lines), 4)
-        for row, line in zip(("cull-off", "16", "32", "64"), lines):
-            self.assertIn(f"--project scratch/tree/{row} suite run_sponza_perf_suite --flash --out", line)
-            self.assertTrue(line.endswith(f"meshlets-{row}-board.log"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "bakes/16").mkdir(parents=True)
+            (root / "tree/assets").mkdir(parents=True)
+            (root / "bakes/16/mesh.mesh").write_bytes(b"size16")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", meshes=["assets/mesh.mesh"]), 16)
+            self.assertEqual((root / "tree/assets/mesh.mesh").read_bytes(), b"size16")
+            lines = output.getvalue().splitlines()
+            self.assertEqual(len(lines), 1)
+            self.assertIn("suite run_perf --flash --out", lines[0])
+            self.assertTrue(lines[0].endswith("meshlets-16-board.log"))
 
     def test_suite_requires_shared_poses_and_render_size(self):
         import meshlet_sizes
         from doc_stages import capture_viewport
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+            for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
                 path = self.capture(root, row, pack=pack)
                 capture_viewport(path, (184, 224))
             self.assertEqual(meshlet_sizes.capture_means(root, "atrium", expected_poses=[0, 5000])["32"], [1, 2, 3, 8])
@@ -127,6 +256,46 @@ class MeshletReportTests(unittest.TestCase):
             path.write_text(path.read_text().replace("rendered 184x224", "rendered 368x448"))
             with self.assertRaisesRegex(ValueError, "render size"):
                 capture_viewport(path, (184, 224))
+
+    def test_invalid_capture_contracts(self):
+        import meshlet_sizes
+        cases = (("size=64", "size=16", "wrong size"),
+                 ("cull=1", "cull=0", "cull setting"),
+                 ("cccccccc", "aaaaaaaa", "distinct size pack"),
+                 (":test_frame_cost:PASS", ":test_frame_cost:FAIL", "failed suite"),
+                 ("object=atrium", "object=other", "another object"))
+        for old, new, reason in cases:
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
+                    path = self.capture(root, row, pack=pack)
+                path.write_text(path.read_text().replace(old, new))
+                with self.assertRaisesRegex(ValueError, reason):
+                    meshlet_sizes.capture_means(root, "atrium")
+
+    def test_expected_pose_and_geometry_mismatches(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
+                self.capture(root, row, pack=pack)
+            with self.assertRaisesRegex(ValueError, "host camera samples"):
+                meshlet_sizes.capture_means(root, "atrium", expected_poses=[0, 10000])
+            with self.assertRaisesRegex(ValueError, "header geometry"):
+                meshlet_sizes.capture_means(root, "atrium", expected_geometry={row:(2,3,1) for row in meshlet_sizes.ROWS})
+            path = root / "meshlets-32-board.log"
+            path.write_text(path.read_text().replace("object=atrium size=32 cull=0", "object=other size=32 cull=0"))
+            with self.assertRaisesRegex(ValueError, "another object"):
+                meshlet_sizes.capture_means(root, "atrium")
+
+    def test_committed_legacy_captures_bind_the_unculled_renderer(self):
+        import meshlet_sizes
+        root = TOOLS.parents[1] / "docs/render/data"
+        self.assertIn("cull-off", meshlet_sizes.capture_means(root, "atrium"))
+        with self.assertRaisesRegex(ValueError, "selected object"):
+            meshlet_sizes.capture_means(root, "atrium_flat")
+        source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
+        self.assertIn("CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u pose_every_ms=%u", source)
 
     def test_host_columns_from_fixture(self):
         import numpy as np

@@ -30,6 +30,14 @@ static gfx_color_t* color;
 static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
+static bool cull_changed;
+static int32_t saved_cull;
+
+static void
+cull_reply(const char* line) {
+    (void)line;
+}
+
 static void release_fixture(void);
 
 static r3d_pipeline_work_t*
@@ -1815,8 +1823,6 @@ census_raster(const r3d_instance_t* instances, int count) {
     return raster;
 }
 
-/* The raster at size `z` of `sizes`, drawn directly and then from a census
- * taken at the next size: the same picture, depth and survivors. */
 static void
 test_cull_off_keeps_every_cluster(void) {
     parts_t* const p = parts_buffer(&shared_parts);
@@ -1826,12 +1832,12 @@ test_cull_off_keeps_every_cluster(void) {
     const camera_t camera = camera_down_minus_z(10000.0f, 400, 1.0f);
     const tune_entry_t* entry = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(entry);
-    const int32_t saved = *entry->value;
-    *entry->value = 1;
+    saved_cull = *entry->value;
+    cull_changed = true;
+    (void)tune_handle_line("RESET render.cull", cull_reply);
     const raster_stats_t on = raster_draw(&raster, &camera, 0);
-    *entry->value = 0;
+    (void)tune_handle_line("SET render.cull 0", cull_reply);
     const raster_stats_t off = raster_draw(&raster, &camera, 0);
-    *entry->value = saved;
     TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
     TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
     int triangles = 0;
@@ -1841,6 +1847,8 @@ test_cull_off_keeps_every_cluster(void) {
     TEST_ASSERT_EQUAL_INT(triangles, off.triangles);
 }
 
+/* The raster at size `z` of `sizes`, drawn directly and then from a census
+ * taken at the next size: the same picture, depth and survivors. */
 static void
 expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int sizes[][2], int z) {
     uint16_t* want = frame_held.want;
@@ -2310,6 +2318,10 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
+    if (cull_changed) {
+        (void)tune_handle_line(saved_cull == 0 ? "SET render.cull 0" : "RESET render.cull", cull_reply);
+        cull_changed = false;
+    }
     free(work);
     work = NULL;
     free(shared_parts);

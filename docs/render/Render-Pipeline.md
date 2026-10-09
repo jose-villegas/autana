@@ -206,7 +206,7 @@ culls and draws.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| the final mesh | clusters, nodes, the `.mesh` entry | none |
+| the final mesh | clusters, nodes, the `.mesh` entry | `geometry.meshlet_triangles` |
 
 Cost: `meshlets` and `write` in the bake-steps table.
 
@@ -221,10 +221,10 @@ third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
 boxes let through more triangles than its fewer culls save. Each size on the
 board, against submitting every cluster:
 
-<!-- generated: meshlet-sizes sha256=d9b9c6fe78925f851cbeaf272f8acfb2750f294eca088ffe4c67d4cbce04c633 -->
+<!-- generated: meshlet-sizes sha256=402e50775e53f2778481e2a6cd2a752ef526769b526adc87d9581fb149390668 -->
 | Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
 |---|---|---|---|---|---|---|---|
-| cull off | 583 | 0.937 | 17371.0 | 0.33 | 6.76 | 63.62 | 76.64 |
+| cull off | 583 | 0.937 | 17371.0 | 0.34 | 6.74 | 63.55 | 76.52 |
 | meshlets of 16 | 1220 | 1.062 | 8717.1 | 1.01 | 4.70 | 42.12 | 53.78 |
 | meshlets of 32 (shipped) | 583 | 0.937 | 9527.1 | 0.66 | 4.33 | 42.77 | 53.68 |
 | meshlets of 64 | 286 | 0.848 | 10678.1 | 0.46 | 4.28 | 46.34 | 57.01 |
@@ -446,45 +446,9 @@ The first runs with the scene as shipped; the second with the scene's debug
 view set to the motion attachment (a development-build tunable; `autana tune`
 lists it). Check `autana status` and `autana buildid` before and after each
 capture. A missing capture leaves its row `not in capture`; a capture without
-report windows fails the run.
-
-The `meshlet-sizes` generator requires self-test suite captures whose build
-identities agree within each log and whose pack hashes match the row bakes. Host counts and board
-samples use the same fixed five-second camera poses at the default render size
-in `render_context.h`. Stage times average the shipped bake's per-pose FRAME COST
-reports; frame times average its draw and upscale wall times, without panel
-transfer. The suite measures culling enabled and disabled through `render.cull`
-and restores its prior value. Release builds keep culling enabled.
-
-Prepare the size bakes and row trees without editing committed assets:
-
-```sh
-python launcher/tools/render/meshlet_capture.py prepare \
-  --scene SCENE.scene.toml --sizes 16 32 64
-```
-
-The scene's tools README gives its concrete scene path. The tool prints one
-command per row:
-
-```sh
-autana --wait 3600 --project ROW_TREE suite run_sponza_perf_suite --flash \
-  --out docs/render/data/meshlets-ROW-board.log
-```
-
-Give each command a shell timeout of at least 30 minutes. It builds a self-test image
-and holds one board lock from flash through capture. Identity comes from the
-suite's own build ID, complete mounted pack CRC-32, cluster size and culling
-setting. Each size row selects the shipped bake; the cull-off row selects its
-unculled pass from the shipped pack. Monitor captures are rejected. Keep the
-resulting captures in `docs/render/data/` and refresh:
-
-```sh
-sh launcher/tools/render/render_doc_images.sh --stage meshlets
-```
-
-The stage regenerates the bakes from committed triangles and checks pack hashes,
-shared poses and rendered sizes before writing the named block. A missing
-capture fails.
+report The `meshlet-sizes` table is generated from each size's own suite capture and
+regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
+owns preparation, capture validation and refresh commands.
 
 The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
 rebakes and fits. Refresh them on the GPU runner with:

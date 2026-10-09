@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "test_cleanup.h"
 #include "unity.h"
 
 #include "esp_log.h"
@@ -231,9 +232,10 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
         }
     }
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
-    ESP_LOGI(TAG, "MESHLET_CAPTURE build_id=%s pack_crc32=%08x size=%d cull=%ld period_ms=%u pose_every_ms=%u",
-             build_id(), (unsigned)asset_crc32(pack->base, pack->size), size, (long)*culling->value, (unsigned)period,
-             (unsigned)SPONZA_POSE_EVERY_MS);
+    ESP_LOGI(TAG, "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u pose_every_ms=%u",
+             build_id(), (unsigned)asset_crc32(pack->base, pack->size),
+             instance->mesh == &meshes[SPONZA_BAKE_FULL] ? sponza_bakes[SPONZA_BAKE_FULL] : label, size,
+             (long)*culling->value, (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
@@ -264,6 +266,18 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
     memory_free(b);
 }
 
+static int32_t saved_cull;
+
+static void
+cull_reply(const char* line) {
+    ESP_LOGI(TAG, "%s", line);
+}
+
+static void
+restore_culling(void) {
+    (void)tune_handle_line(saved_cull == 0 ? "SET render.cull 0" : "RESET render.cull", cull_reply);
+}
+
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
     /* Cache configuration trades internal RAM for speed, so a frame-cost
@@ -273,16 +287,17 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     open_the_meshes();
     const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(culling);
-    const int32_t saved = *culling->value;
-    *culling->value = 1;
+    saved_cull = *culling->value;
+    suite_set_test_cleanup(restore_culling);
+    (void)tune_handle_line("RESET render.cull", cull_reply);
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(sponza_bakes[i], &instance, NULL, NULL);
     }
-    *culling->value = 0;
+    (void)tune_handle_line("SET render.cull 0", cull_reply);
     const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
     report_frame_cost("cull_off", &full, NULL, NULL);
-    *culling->value = saved;
+    restore_culling();
     TEST_PASS();
 }
 
