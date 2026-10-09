@@ -14,6 +14,7 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
+#include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
@@ -21,9 +22,8 @@
 
 static const char* TAG = "ridge_perf";
 
-#define ARM_MS             10000
-#define FRAME_DT_MS        RIDGE_ARM_FRAME_DT_MS
-#define LAUNCHER_HEAL_ROWS 32
+#define ARM_MS      10000
+#define FRAME_DT_MS RIDGE_ARM_FRAME_DT_MS
 
 typedef struct {
     int64_t elapsed_us;
@@ -37,8 +37,7 @@ typedef struct {
 static void
 prime(void) {
     ui_ridge_reset_for_test();
-    gfx_heal_set_budget(GFX_WIDTH * LAUNCHER_HEAL_ROWS);
-    gfx_heal_set_rolling(LAUNCHER_HEAL_ROWS);
+    ui_launcher_heal_opt_in();
     ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
     gfx_present();
 }
@@ -202,7 +201,6 @@ test_ridge_dissolve_matches_a_full_paint(void) {
     int dissolved = 0;
     const int unlike = pixels_unlike_a_full_paint_counting(ARM_TILT_SWEEP, 150, &dissolved);
     tune_handle_line("RESET ridge.axis_dissolve_ms", ignore_tune_reply);
-    gfx_heal_restore_defaults();
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, dissolved, "the sweep never dissolved a strip switch");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "after a dissolved strip switch");
 }
@@ -238,7 +236,6 @@ test_ridge_settles_after_tilting(void) {
     }
     const int64_t per_frame = gfx_get_bytes_sent() / 60;
     const int unlike = unlike_a_full_paint_now();
-    gfx_heal_restore_defaults();
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, unlike, "the held frame is not what a full paint draws");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui_ridge_gradient_lag_for_test(), "the gradient never caught up with the ridge");
     ESP_LOGI(TAG, "RIDGE SETTLE bytes_per_frame=%lld", (long long)per_frame);
@@ -251,7 +248,6 @@ test_ridge_repaint_matches_a_full_paint(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pixels_unlike_a_full_paint(ARM_PLUCK_STRUM, 90), "after a pluck and strum");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pixels_unlike_a_full_paint(ARM_TILT_SWEEP, 150), "through a tilt sweep");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pixels_unlike_a_full_paint(ARM_TILT_WOBBLE, 150), "tilting back and forth");
-    gfx_heal_restore_defaults();
 }
 
 void
@@ -261,7 +257,6 @@ test_ridge_performance(void) {
         log_arm(arm, &result);
         assert_arm(&result);
     }
-    gfx_heal_restore_defaults();
     TEST_PASS();
 }
 

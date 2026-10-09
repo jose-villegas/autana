@@ -14,14 +14,13 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
+#include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/tune.h"
 
-#define FB_PIXELS          ((size_t)GFX_WIDTH * GFX_HEIGHT)
-#define FB_BYTES           (FB_PIXELS * sizeof(gfx_color_t))
-
-#define LAUNCHER_HEAL_ROWS 32
+#define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
+#define FB_BYTES  (FB_PIXELS * sizeof(gfx_color_t))
 
 typedef struct {
     int frames, dissolved;
@@ -58,8 +57,7 @@ fixture(void) {
         TEST_ASSERT_TRUE(gfx_init());
     }
     suite_set_test_cleanup(release);
-    gfx_heal_set_budget(GFX_WIDTH * LAUNCHER_HEAL_ROWS);
-    gfx_heal_set_rolling(LAUNCHER_HEAL_ROWS);
+    ui_launcher_heal_opt_in();
     ui_ridge_reset_for_test();
 }
 
