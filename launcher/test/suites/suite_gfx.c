@@ -47,8 +47,8 @@
 
 static const char* TAG = "device_tests";
 
-/* Regression ceilings are worst + max(spread, 2% of worst) across three
- * fresh-boot S3 portrait SELFTEST captures. Shipping landscape costs 17-37%
+/* Regression ceilings are worst + max(spread, 2% of worst) across a 5-run
+ * S3 portrait board capture (autana suite run_gfx_suite --runs 5). Shipping landscape costs 17-37%
  * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this
@@ -950,12 +950,10 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                "for itself",
                narrow, full_band);
 
-    /* 757 / 750 / 766 / 743 us across four captures, a 3% spread, wider
-     * than the full-band reference because this path does a memcpy into
-     * gather_buf on top of the same DMA wait, and that copy is what varies.
-     * 850 us leaves about 11% over the observed maximum: room for that
-     * spread plus some, without being loose enough to miss the gather path
-     * regressing back towards full-band cost. */
+    /* Wider spread than the full-band reference because this path does a
+     * memcpy into gather_buf on top of the same DMA wait, and that copy is
+     * what varies. Pegged before gfx_present() moved to the core-1 present
+     * task; the row has not met it since. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed",
                narrow, 850);
@@ -997,13 +995,8 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
                "matter to whether gathering pays off",
                wide, full_band);
 
-    /* 562 / 605 / 576 / 591 us across four captures, the widest spread of
-     * any gathered-piece test here, about 7.6%, from the same memcpy-plus-
-     * DMA-wait shape as the narrow strip above but at a different aspect
-     * ratio. 700 us leaves about 16% over the observed maximum, wider than
-     * the narrow strip's margin because this test's own captures already
-     * moved twice as much; the margin tracks the spread it is guarding,
-     * not a fixed percentage. */
+    /* The same memcpy-plus-DMA-wait shape as the narrow strip above at a
+     * different aspect ratio, and the same pre-present-task peg. */
     perf_guard("the gathered wide-short box cost more than its observed price - "
                "the gather-copy path may have regressed",
                wide, 700);
@@ -1144,8 +1137,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
 
     /* No ratio against full_band on purpose: whether the fallback beats a
      * full band is the open question this test measures. The absolute is
-     * safe to peg: 869/882/875/877 us across four captures, a 1.5% spread;
-     * 980 leaves about 11% over, room for a different fallback shape. */
+     * safe to peg; this one also predates the core-1 present task. */
     perf_guard("three far-apart marks' fallback send cost more than its observed "
                "price",
                three_marks, 980);

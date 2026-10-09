@@ -129,10 +129,8 @@ on_strip_sent(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t* event
     /* esp_lcd's SPI io drops this callback's return value, so without the
      * yield here the present task waiting on strip_sent only resumes at the
      * next tick - up to 1 ms on every present that waits for its last strip. */
-    if (woken == pdTRUE) {
-        portYIELD_FROM_ISR();
-    }
-    return woken == pdTRUE;
+    portYIELD_FROM_ISR(woken);
+    return false;
 }
 
 #if CONFIG_LAUNCHER_QEMU
