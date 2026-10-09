@@ -12,6 +12,7 @@
 #include "render/camera.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
+#include "util/math/mat4f.h"
 
 /* A pixel's motion: the previous position minus this one, in half pixels
  * of this picture, so +-63.5 pixels. RASTER_MOTION_UNKNOWN on either axis:
@@ -39,7 +40,7 @@ typedef struct {
     bool known;      /* there was a previous picture */
     int first_moved; /* the first instance that moved, or -1 */
     bool moved[RASTER_MOTION_INSTANCES_MAX];
-    float map[RASTER_MOTION_INSTANCES_MAX + 1][3][4];
+    mat4f_t map[RASTER_MOTION_INSTANCES_MAX + 1];
     float center_x, center_y, near_z;
 } raster_motion_t;
 

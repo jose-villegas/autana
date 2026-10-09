@@ -226,7 +226,7 @@ def main():
     parser.add_argument("--fps", type=int, default=30)
     args = parser.parse_args()
     size = tuple(int(v) for v in args.size.lower().split("x"))
-    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_glb(args.asset))
+    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_asset(args.asset))
     if args.sheet:
         bind_sheet(asset, size).save(args.out)
         return
