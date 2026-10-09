@@ -77,6 +77,8 @@ number of quantisation ticks per model unit.
 ### Geometry
 
 Every Geometry table opts its step in; without it the step does not run.
+`geometry.meshlet_triangles` sets the maximum triangles per cluster (4 through
+256, default 32); import and `rebake.py --import PATH` read the same setting.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|

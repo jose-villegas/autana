@@ -101,10 +101,14 @@ def camera_clip(scene):
 
 def recipe_digest(job, scene):
     """SHA-256 over the parsed effective recipe and its camera clip."""
+    from r3d.import_settings import MESHLET_TRIANGLES
+
     renderer = job.renderer
     tracks = hashlib.sha256(camera_clip(scene)).hexdigest()
     settings = SimpleNamespace(**{name: value for name, value in vars(job.settings).items()
                                   if name not in ("path", "out_dir", "mesh_dir", "named", "variants")})
+    if settings.meshlet_triangles == MESHLET_TRIANGLES:
+        del settings.meshlet_triangles
     fit = SimpleNamespace(**vars(renderer.fit))
     del fit.sha256
     del fit.recipe_sha256
