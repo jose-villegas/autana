@@ -201,7 +201,7 @@ test_apply_reports_what_changed_and_how_far_then_goes_silent(void) {
     TEST_ASSERT_EQUAL_INT(6, spring_line_apply(&line, rest, drawn, &lo, &hi));
     TEST_ASSERT_TRUE(lo > CENTRE - 10 && lo <= CENTRE - 8);
     TEST_ASSERT_TRUE(hi < CENTRE + 11 && hi >= CENTRE + 9);
-    TEST_ASSERT_EQUAL_INT16(rest[CENTRE] - 88, drawn[CENTRE]);
+    TEST_ASSERT_EQUAL_INT16(rest[CENTRE] - (5 * SPRING_LINE_OUT_ONE + SPRING_LINE_OUT_ONE / 2), drawn[CENTRE]);
     TEST_ASSERT_EQUAL_INT16(rest[CENTRE - 20], drawn[CENTRE - 20]);
 
     TEST_ASSERT_EQUAL_INT(0, spring_line_apply(&line, rest, drawn, &lo, &hi));

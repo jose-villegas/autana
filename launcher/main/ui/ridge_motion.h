@@ -6,8 +6,8 @@
  * slope, and the wave is pushed down it and coasts on after.
  *
  * Pure: time, the slope and how much of each are passed in, heights come
- * out. Heights have RIDGE_HEIGHT_SHIFT fractional bits; phases are
- * trig.h's, TRIG_TURN to the turn; a slope is a ridge_pose.h unit.
+ * out. Heights are in the caller's unit and wave_height in the same; phases
+ * are trig.h's, TRIG_TURN to the turn; a slope of 1.0 is RIDGE_POSE_ONE.
  */
 #pragma once
 
@@ -16,15 +16,12 @@
 #include "ui/ridge_pose.h"
 #include "util/scalar/trig.h"
 
-#define RIDGE_HEIGHT_SHIFT 4
-#define RIDGE_HEIGHT_ONE   (1 << RIDGE_HEIGHT_SHIFT)
-
 /* How much of each. Passed in rather than compiled in because these are
  * judged by eye, on the device, and a caller may be changing them live. */
 typedef struct {
     int breath_ms;    /* one breath */
     int breath_depth; /* how far toward the smoothed shape, out of 256 */
-    int wave_height_q4;
+    int wave_height;
     int wave_length;       /* columns */
     int wave_passes_in_ms; /* how long one wave takes to pass a point, unpushed */
     int push;              /* Q8 phase per ms of momentum a slope of 1.0 adds per ms */
@@ -97,7 +94,7 @@ ridge_motion_wave(const ridge_motion_t* motion, const ridge_motion_params_t* par
     const uint32_t length = params->wave_length > 0 ? (uint32_t)params->wave_length : 1;
     const uint32_t along = (uint32_t)x * (TRIG_TURN / length);
     const uint16_t phase = (uint16_t)((motion->wave_phase_q8 >> 8) - along);
-    return (int)(trig_sin(phase) * params->wave_height_q4 / TRIG_SIN_MAX);
+    return (int)(trig_sin(phase) * params->wave_height / TRIG_SIN_MAX);
 }
 
 static inline int16_t

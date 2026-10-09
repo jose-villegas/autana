@@ -18,7 +18,7 @@
 static const ridge_motion_params_t params = {
     .breath_ms = 9000,
     .breath_depth = 200,
-    .wave_height_q4 = 40,
+    .wave_height = 40,
     .wave_length = 170,
     .wave_passes_in_ms = 2600,
     .push = 96,
@@ -94,7 +94,7 @@ test_the_wave_stays_within_its_height_and_is_one_length_long(void) {
     ridge_motion_advance(&motion, &params, 777, 0);
     for (int x = 0; x < COLUMNS; x++) {
         const int h = ridge_motion_wave(&motion, &params, x);
-        TEST_ASSERT_TRUE(h >= -params.wave_height_q4 && h <= params.wave_height_q4);
+        TEST_ASSERT_TRUE(h >= -params.wave_height && h <= params.wave_height);
     }
     TEST_ASSERT_INT_WITHIN(2, ridge_motion_wave(&motion, &params, 20),
                            ridge_motion_wave(&motion, &params, 20 + params.wave_length));
@@ -114,7 +114,7 @@ test_a_slope_pushes_the_wave_and_it_coasts_after(void) {
     ridge_motion_t left_alone = {0};
     const int start = crest_column(&pushed);
     for (int frame = 0; frame < 12; frame++) {
-        ridge_motion_advance(&pushed, &params, 16, 8192);
+        ridge_motion_advance(&pushed, &params, 16, RIDGE_POSE_ONE / 2);
         ridge_motion_advance(&left_alone, &params, 16, 0);
     }
     TEST_ASSERT_GREATER_THAN_INT(0, pushed.momentum_q8);
