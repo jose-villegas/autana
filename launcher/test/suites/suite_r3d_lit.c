@@ -6,6 +6,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -2319,7 +2320,11 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 static void
 release_fixture(void) {
     if (cull_changed) {
-        (void)tune_handle_line(saved_cull == 0 ? "SET render.cull 0" : "RESET render.cull", cull_reply);
+        char command[sizeof("SET render.cull -2147483648")];
+        const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
+        if (length > 0 && (size_t)length < sizeof command) {
+            (void)tune_handle_line(command, cull_reply);
+        }
         cull_changed = false;
     }
     free(work);
