@@ -33,6 +33,9 @@ LEAF_TRIANGLES = 320
 MAX_DEPTH = 10
 POSITION_SCALE = 8
 
+# A bake welds positions closer than half an output tick (position_scale ticks per unit) into one vertex.
+WELD_PER_TICK = 2
+
 
 def weld_quantised(q, rgb, tris, double, face=None):
     """(q, rgb, tris, double, face): one vertex per position and colour, in

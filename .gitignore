@@ -9,6 +9,8 @@ node_modules/
 # Object files
 *.o
 *.obj
+# ...but an OBJ under launcher/demo is a mesh source, not an object file.
+!launcher/demo/**/*.obj
 *.elf
 
 # Precompiled Headers
@@ -39,9 +41,6 @@ node_modules/
 *.pdb
 
 ### C++
-# Object files
-*.o
-*.obj
 
 # Precompiled Headers
 *.gch

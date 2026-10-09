@@ -22,7 +22,8 @@ try:
     from r3d.geometry import closest_point_on_triangles, triangle_areas, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
-    from r3d.lit_mesh import MESHLET_TRIANGLES, bake_lit_mesh, read_lit_mesh, validate, weld_quantised, write_lit_mesh
+    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, WELD_PER_TICK, bake_lit_mesh, read_lit_mesh, validate,
+                              weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
     from r3d.octree import build_octree, flatten_octree
     from r3d.repair import _weld_borders, repair
@@ -82,7 +83,7 @@ class MergeTests(unittest.TestCase):
         wp, wt = weld(doubled, split)
         self.assertTrue(np.all(z_normals(wp, wt) > 0))
         rgb = np.full((len(doubled), 3), 100)
-        mp, _, mt = merge_matching_colours(doubled, rgb, split)
+        mp, _, mt = merge_matching_colours(doubled, rgb, split, WELD_PER_TICK * POSITION_SCALE)
         self.assertEqual(len(mt), len(tris))
         self.assertTrue(np.all(z_normals(mp, mt) > 0))
 
