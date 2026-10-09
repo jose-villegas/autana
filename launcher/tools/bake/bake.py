@@ -594,15 +594,18 @@ def run_files(run, folder):
 
 
 def runs_made(runs, cache):
-    """{key: row} of what each CI run in `runs` uploaded, its files put in the cache; a key two runs made keeps the
-    first run's row."""
+    """{key: row} of what each CI run in `runs` uploaded, its files put in the cache. A key two runs made with the
+    same bytes keeps the first run's row; with different bytes it fails, naming both, so the author lists one run."""
     from bake import produce
 
     made = {}
     for run in runs:
         with tempfile.TemporaryDirectory() as folder:
             for key, row in produce.import_run(run_files(run, pathlib.Path(folder)), run, cache).items():
-                made.setdefault(key, row)
+                first = made.setdefault(key, row)
+                if first["sha256"] != row["sha256"]:
+                    raise BakeMissing(f"{row['output']} key {key}: run {first['run']} made sha256 {first['sha256']}, "
+                                      f"run {run} made {row['sha256']}; lock from only the run whose bytes you want")
     return made
 
 
