@@ -132,7 +132,7 @@ Glass is **not** hatched today, despite the ramp/gauge similarity to
 metal's shine; `material_palette.c`'s `MAT_GLASS` case returns
 `MATERIAL_SPECKLED`. Its apparent shimmer is a live `LERP8` blend toward a
 brighter target, keyed on `hash` plus a phase that drifts with gravity's
-own bearing (`glass_phase`, see "Gravity-aware shine" below), not a second
+own bearing (`f->glass_phase`, see "Gravity-aware shine" below), not a second
 diagonal colour. Metal is the only `MATERIAL_HATCHED` material in the tree.
 
 A `MATERIAL_HATCHED` cell paints a single band, not a crossed weave:
@@ -291,8 +291,7 @@ by `sand_paint_depth_count()` and the projection in `sand_paint_row.h`.
 
 A liquid's **rim** (any cardinal neighbour empty) reads its own fill level
 (1-15) directly, shifted by `f->liquid_spec[mask]`, indexed by the cardinal mask.
-`app_sand.c` fills `paint_frame.material.liquid_spec` once a frame through
-`material_frame_set_gravity()` from the current tilt. A rim cell whose open side
+A rim cell whose open side
 faces away from "up" (minus gravity) darkens; one facing toward it
 brightens: a pool's lit top versus an overhang's shaded underside at the
 same fill level.
@@ -337,7 +336,7 @@ material:
 |---|---|---|
 | Liquid rim | `f->liquid_spec[mask]` (`material_frame_set_gravity()`) | a 16-entry table by cardinal mask, precomputed once a frame, read by index per rim cell |
 | Metal (`MATERIAL_HATCHED`) | `material_shine_direction()` | a Q8 unit vector (minus gravity, turned 45 degrees) computed once a frame, walked per pixel (or sampled once per cell in indexed mode) to place the shine band |
-| Glass (`MATERIAL_SPECKLED`) | `paint_frame.material.glass_phase` (`advance_glass_phase()`, gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
+| Glass (`MATERIAL_SPECKLED`) | `f->glass_phase` (gravity's own bearing angle, quantised) | a single phase added to `hash` before the live `LERP8` blend, a shimmer, not a band |
 
 All three read the same frame's gravity; none of them share code, because
 each solves a differently-shaped problem (a per-mask table, a swept
@@ -367,8 +366,7 @@ Cullet (sand's reserved top band, `SAND_CULLET_BASE` through
 `MATERIAL_VARIANTS - 1`) keeps a fixed nibble per grain, the same as any
 other speckled shade, but each nibble names a **starting point** on a
 shared 16-entry cycle (`cullet_cycle[]`, `material_palette.c`) that
-`paint_frame.material.cullet_phase`, filled by `advance_cullet()` in
-`app_sand.c`, steps through over real time. A heap
+`f->cullet_phase` steps through over real time. A heap
 of broken glass shimmers through four pale tints instead of sitting on one.
 
 The cycle is built from four pastel anchors chosen to stay close in both

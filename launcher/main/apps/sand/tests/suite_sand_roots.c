@@ -1228,7 +1228,7 @@ test_wood_leaf_wind_axis_stays_perpendicular_to_gravity(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, uy_q8, "zero gravity defaults to sweeping along grid-x");
 }
 
-/* Distinct gfx_color_t body colours material_colours(c, hash, 0, depth, .)
+/* Distinct gfx_color_t body colours material_colours(&f, c, hash, 0, depth, .)
  * returns across hash 0..7, asserting along the way that every one of them
  * draws with `expect_pattern` (the message names which cell is on trial). */
 static int

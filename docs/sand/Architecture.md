@@ -90,9 +90,9 @@ struct comments.
 `palette[256]` (purely visual, see
 [`Shading-and-Colour.md`](Shading-and-Colour.md)) live in
 `material_palette.c` instead, so a change to how a material looks never
-touches the file the hot sweep reads. `app_sand.c` fills
-`sand_paint_frame_t.material` with the rim table and foam, cullet and glass
-phases; the painter passes it to `material_colours()`.
+touches the file the hot sweep reads. The
+[`f` input](Shading-and-Colour.md#the-pipeline) describes who fills the
+material frame passed to `material_colours()`.
 
 ### Getting more than sixteen materials out of one nibble
 

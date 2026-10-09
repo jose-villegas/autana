@@ -606,8 +606,7 @@ static const int8_t wood_leaf_ring[8][2] = {
 /* Recomputing fresh every frame flips right at a tie between neighbouring
  * ring directions, popping every wood cell whose top5 just changed in one
  * frame, see Shading-and-Colour.md, "hysteresis hides the seam, it does
- * not remove it". `*last_down` is the caller's own state, like
- * glass_last_phase. */
+ * not remove it". `*last_down` is the caller's own state. */
 void
 material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
     const int len = mathi_len(gx, gy);

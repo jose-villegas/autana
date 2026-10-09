@@ -949,8 +949,7 @@ not a rounding error.
 
 A root darkens from fresh tan toward a wood-like brown (`ROOT_OLD`,
 `material_palette.c`) as more root grows around it: the painter hands
-`material_colours(&pf->material, ...)` the count of root neighbours in the
-`depth` slot
+`material_colours()` the count of root neighbours in the `depth` slot
 only a liquid's interior otherwise reads (`material_root_neighbours()`,
 `material_palette.h`), and that count picks one of `ROOT_SHADES` steps.
 

@@ -479,7 +479,7 @@ test_each_material_is_painted_the_way_it_should_be(void) {
 
 /* Every tilt phase must leave visible variation between cell hashes. */
 static void
-test_glass_grain_is_quieter_than_stone(void) {
+test_glass_grain_varies_at_every_phase(void) {
     material_frame_t f = {0};
     for (int phase = 0; phase < 256; phase++) {
         f.glass_phase = phase;
@@ -551,8 +551,9 @@ test_stone_speckles_by_position_at_every_temperature(void) {
 /*
  * Each of the four reserved cullet shades (SAND_CULLET_BASE ..
  * MATERIAL_VARIANTS - 1) is a starting point on a shared 16-step colour
- * cycle, not a fixed colour of its own. The phase is file-static state in
- * material.c, so every test below resets it to 0 before returning.
+ * cycle, not a fixed colour of its own. The phase is
+ * material_frame_t.cullet_phase; each test below starts from its own
+ * zero-initialised frame.
  */
 
 /* At rest the four shades are four distinct tints, not one colour repeated
@@ -855,7 +856,7 @@ run_sand_tone_suite(void) {
     RUN_TEST(test_snow_cracks_glass_but_not_stone);
     RUN_TEST(test_an_edge_shows_less_temperature_than_the_body);
     RUN_TEST(test_each_material_is_painted_the_way_it_should_be);
-    RUN_TEST(test_glass_grain_is_quieter_than_stone);
+    RUN_TEST(test_glass_grain_varies_at_every_phase);
     RUN_TEST(test_stone_speckles_by_position_at_every_temperature);
     RUN_TEST(test_cullet_shades_are_four_distinct_tints);
     RUN_TEST(test_cullet_changes_colour_as_the_phase_advances);

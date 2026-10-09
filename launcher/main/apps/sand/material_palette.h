@@ -71,10 +71,10 @@ typedef enum {
 /* Frame inputs for painting. Zero-initialised means rest: no rim highlight
  * and every phase zero. */
 typedef struct {
-    int8_t liquid_spec[MATERIAL_EDGE_MASK_COUNT];
-    unsigned foam_phase;   /* Time phase for foam dither, independent of gravity. */
-    unsigned cullet_phase; /* Separate clock for the cullet colour cycle. */
-    int glass_phase;       /* Gravity direction snapshot; steady tilt keeps it fixed. */
+    int8_t liquid_spec[MATERIAL_EDGE_MASK_COUNT]; /* By cardinal mask; equals MATERIAL_VARIANTS only by coincidence. */
+    unsigned foam_phase;                          /* Time phase for foam dither, independent of gravity. */
+    unsigned cullet_phase;                        /* Cullet colour-cycle step, advanced over real time. */
+    int glass_phase;                              /* Gravity direction snapshot; steady tilt keeps it fixed. */
 } material_frame_t;
 
 /* Test `(mask & MATERIAL_EDGE_CARDINAL) != 0` for "is this cell an edge at
