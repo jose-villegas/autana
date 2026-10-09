@@ -36,7 +36,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_indexed.h"
 #include "input/tilt.h"
-#include "util/scalar/fixed.h"
+#include "math/scalar/fixed.h"
 
 /* The scale JS sends gravity in: one g, matching the IMU's own counts. */
 #define WEB_COUNTS_PER_G  4096
