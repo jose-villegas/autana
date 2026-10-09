@@ -129,14 +129,18 @@ orbit_motion_update(orbit_motion_t* orbit, const orbit_motion_input_t* input, fl
     hold_to_limits(orbit);
 }
 
+/* Stands at the target's +z side facing it, tilts by pitch about its own
+ * right, then turns by yaw about the world's up: rigid turns about the
+ * target, so it faces the target all the way and its right stays level. */
 transformf_t
 orbit_motion_pose(const orbit_motion_t* orbit) {
-    const float d = expf(orbit->at.log_dist);
-    const float level = cosf(orbit->at.pitch);
-    const vec3f_t out = {level * sinf(orbit->at.yaw), sinf(orbit->at.pitch), level * cosf(orbit->at.yaw)};
+    const vec3f_t up = {0.0F, 1.0F, 0.0F};
     transformf_t pose = TRANSFORMF_IDENTITY;
-    transformf_set_position(&pose, vec3f_add(orbit->target, vec3f_scale(out, d)));
-    transformf_look_at(&pose, orbit->target, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_set_position(&pose, vec3f_add(orbit->target, (vec3f_t){0.0F, 0.0F, expf(orbit->at.log_dist)}));
+    transformf_look_at(&pose, orbit->target, up);
+    transformf_rotate_around(&pose, orbit->target, quatf_rotate(pose.rotation, (vec3f_t){1.0F, 0.0F, 0.0F}),
+                             orbit->at.pitch);
+    transformf_rotate_around(&pose, orbit->target, up, orbit->at.yaw);
     return pose;
 }
 
