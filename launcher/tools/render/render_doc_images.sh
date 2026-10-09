@@ -8,6 +8,7 @@
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
+#   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
 # Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
 # or newer, and the initialized meshoptimizer submodule for scratch bakes.
@@ -47,12 +48,6 @@ DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
 
 if [ "${1:-}" = --stage ]; then
-    if [ "${2:-}" = meshlets ]; then
-        shift 2
-        . "$ROOT/scripts/lib/python.sh"
-        PYTHON=$(find_python numpy scipy) || exit 2
-        exec "$PYTHON" "$TOOLS_DIR/meshlet_sizes.py" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
-    fi
     if [ "${2:-}" = gpu ]; then
         shift 2
         exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"

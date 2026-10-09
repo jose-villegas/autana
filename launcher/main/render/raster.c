@@ -12,6 +12,7 @@
 #include "util/runtime/tune.h"
 
 TUNE_OWNER(render);
+/* The generated meshlet-size table measures both culling settings. */
 TUNE(render, cull, 1, 0, 1);
 
 #define JOB_WAIT_MS 1000

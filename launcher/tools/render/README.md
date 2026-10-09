@@ -44,24 +44,43 @@ with `RENDER_ENTRY_OFFSET` before the generated file is written.
 
 ## Meshlet size captures
 
-`meshlet_capture.py prepare --scene PATH --sizes 16 32 64` copies tracked firmware
-sources into one row tree per capture under `launcher/tools/results/meshlet-sizes/tree`
-and re-clusters the committed scene triangles through `rebake.py`. It prints one
-`autana --wait 3600 --project TREE suite run_sponza_perf_suite --flash --out LOG`
-command per row; `--suite NAME` selects the fixed-pose suite. Preparation never
-builds firmware or accesses the board. Each command builds a self-test image and holds
-one board lock from flash through capture.
+Prepare the committed scene's size bakes and one scratch firmware tree:
 
-The suite measures both culling settings through the tune API and restores the
-previous setting. It prints the image build ID, the CRC-32 of the complete mounted
-pack, maximum cluster triangle count, culling setting and camera sample interval
-inside each FRAME COST block. The cull-off row uses the shipped pack.
+```sh
+python launcher/tools/render/meshlet_capture.py prepare \
+  --scene SCENE.scene.toml --suite SUITE_NAME --sizes 16 32 64
+```
 
-`meshlet_sizes.py --scene PATH [--object NAME]` validates captures, regenerates
-bakes and their packs, and writes `Render-Pipeline.md#meshlet-sizes`. The selected
-renderer defaults to the scene's first renderer and must have an identity
-placement. Host counts sample the camera at the suite's fixed five-second poses
-and default render size. Stage times average the shipped bake's per-pose reports;
-frame time averages its measured draw and upscale wall times, without panel
-transfer. Missing suite blocks, mismatched poses, build IDs, pack hashes or render
-sizes fail. Monitor logs cannot supply this table.
+The scene's tools README supplies its scene path and fixed-pose suite name.
+Preparation copies tracked firmware sources into
+`launcher/tools/results/meshlet-sizes/tree` and re-clusters committed triangles
+through `rebake.py`, without building firmware or accessing the board.
+
+For each size, install its bakes into that tree, then run the single printed
+command before installing the next size:
+
+```sh
+python launcher/tools/render/meshlet_capture.py row 16
+```
+
+The printed `autana --wait 3600 --project TREE suite SUITE_NAME --flash --out LOG`
+command builds incrementally and holds one board lock from flash through capture.
+A capture can take half an hour. The suite measures both culling settings through
+the tune API and restores the previous setting even on assertion failure. Each
+FRAME COST identity carries the image build ID, mounted pack CRC-32, renderer,
+maximum cluster triangle count, culling setting and camera sample interval.
+The cull-off row selects the unculled pass from the size-32 capture.
+
+Refresh the [meshlets block](../../../docs/render/Render-Pipeline.md#meshlets):
+
+```sh
+sh launcher/tools/render/render_doc_images.sh --stage meshlets
+```
+
+`doc_stages.py --stage meshlets --scene PATH --object NAME` validates captures,
+regenerates bakes and their packs, and writes the named table. The renderer must
+have an identity placement. Host counts sample the same fixed camera poses and
+default render size as the suite. Each row averages its own capture's per-pose
+stage reports and draw plus upscale wall times, without panel transfer. Missing
+PASS or completion verdicts, mismatched poses, build IDs, pack hashes, renderer
+geometry or render sizes fail. Monitor logs cannot supply this table.

@@ -11,3 +11,4 @@ indirect switch_to_scene : scene_cube_enter scene_wire_plane_enter scene_wire_cu
 indirect update_fps_counter : scene_cube_invalidate scene_wire_invalidate scene_raytrace_invalidate scene_pathtrace_invalidate scene_sponza_invalidate
 indirect draw_fps : wire_status raytrace_status pathtrace_status sponza_status
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
+indirect tune.c:change tune_registry_handle_line : suite_sponza_perf.c:cull_reply

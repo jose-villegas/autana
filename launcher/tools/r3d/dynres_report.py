@@ -103,7 +103,7 @@ def frame_cost_windows(path, text=None):
     return windows
 
 
-def frame_cost_means(path, include_total=False, text=None):
+def frame_cost_means(path, text=None):
     """Every bracket in report order, averaged over its report windows."""
     windows = frame_cost_windows(path, text)
     if windows is None:
@@ -112,12 +112,6 @@ def frame_cost_means(path, include_total=False, text=None):
     for window in windows:
         for name, value in window:
             values.setdefault(name, []).append(float(value))
-    if include_total:
-        totals = re.findall(r"ms/frame avg/worst:.*?\| total ([\d.]+)",
-                            (text if text is not None else pathlib.Path(path).read_text(encoding="utf-8", errors="replace")))
-        if len(totals) != len(windows):
-            raise ValueError(f"{path}: missing frame-cost totals")
-        values["frame.total"] = list(map(float, totals))
     return [(name, statistics.mean(samples)) for name, samples in values.items()]
 
 
