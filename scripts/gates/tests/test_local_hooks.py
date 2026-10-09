@@ -13,8 +13,10 @@ from gate_tree import ShellGateTestCase
 class LocalHookTests(ShellGateTestCase):
     def setUp(self):
         super().setUp()
+        # What git ignores in the real tree stays out of the fixture: CI installs
+        # the gates' npm dependencies (thousands of files) beside the scripts.
         shutil.copytree(ROOT / 'scripts', self.root / 'scripts',
-                        ignore=shutil.ignore_patterns('__pycache__'))
+                        ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
         shutil.copytree(ROOT / 'launcher/tools/build', self.root / 'launcher/tools/build')
         (self.root / 'launcher/tools/render').mkdir(parents=True)
         shutil.copyfile(ROOT / 'launcher/tools/render/generated_blocks.py',
@@ -33,6 +35,10 @@ class LocalHookTests(ShellGateTestCase):
         self.git('init', '-q')
         self.git('config', 'user.name', 'Test')
         self.git('config', 'user.email', 'test@example.invalid')
+        # No background gc or maintenance may still be writing when the
+        # temporary tree is removed.
+        self.git('config', 'gc.auto', '0')
+        self.git('config', 'maintenance.auto', 'false')
         self.git('add', '.github/workflows/comment-rules.yml')
         self.write('launcher/main/apps/example/development_only.cmake', '')
         self.git('add', 'scripts', 'launcher/tools')
