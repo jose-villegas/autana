@@ -9,7 +9,7 @@
  *
  * Pure: steering arrives as turns already in radians, and the result is a
  * transformf_t the caller writes into its entity. Distance is held as its
- * logarithm so a zoom scales it evenly; zoom steering is not wired yet.
+ * logarithm, so a zoom scales it by the same ratio at any distance.
  */
 #pragma once
 
@@ -68,6 +68,7 @@ typedef struct {
     float yaw_turn, pitch_turn; /* radians to turn this frame */
     bool held;                  /* steering is held: the angles follow it and nothing flings */
     bool reset;                 /* start springing back to home */
+    float zoom_turn;            /* change in log distance this frame; below 0 is closer */
 } orbit_motion_input_t;
 
 /* At home, still, with the default half-lives; `home` is clamped to `limits`. */

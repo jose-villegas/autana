@@ -47,11 +47,12 @@ static void
 follow_steering(orbit_motion_t* orbit, const orbit_motion_input_t* input, float dt) {
     orbit->at.yaw += input->yaw_turn;
     orbit->at.pitch += input->pitch_turn;
-    orbit->velocity.log_dist = 0.0F;
+    orbit->at.log_dist += input->zoom_turn;
     if (dt > 0.0F) {
         const float k = 1.0F - halved_over(dt, orbit->drag_velocity_half_life_s);
         orbit->velocity.yaw += (input->yaw_turn / dt - orbit->velocity.yaw) * k;
         orbit->velocity.pitch += (input->pitch_turn / dt - orbit->velocity.pitch) * k;
+        orbit->velocity.log_dist += (input->zoom_turn / dt - orbit->velocity.log_dist) * k;
     }
 }
 
