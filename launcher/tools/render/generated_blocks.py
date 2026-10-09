@@ -1,10 +1,10 @@
 """Replace named Markdown blocks, retaining the document's line endings.
 
 A block's opening marker either records the SHA-256 of its body, which
-catches a hand edit to a block nothing regenerates, or names the command
-that regenerates and compares it (`check: COMMAND`). The
-second form changes only when the command does, so two branches that each
-regenerate the block merge without conflicting on its marker line.
+catches a hand edit to a block nothing regenerates, or names the command,
+given by its generator, that regenerates and compares it (`check: COMMAND`).
+The second form changes only when the command does, so two branches that
+each regenerate the block merge without conflicting on its marker line.
 """
 import argparse
 import sys
@@ -59,7 +59,10 @@ def check_commands(text):
     return {name: command for name, (*_, command) in blocks(text).items() if command}
 
 
-def replace_block(path, name, body, check=False):
+def replace_block(path, name, body, check=False, command=None):
+    """Write `body` into block `name`; True when that changes the file.
+    A generator CI reruns passes the `command` that checks it, which the
+    marker names in place of the body's digest."""
     path = pathlib.Path(path)
     raw = path.read_bytes()
     newline = "\r\n" if b"\r\n" in raw else "\n"
@@ -68,7 +71,7 @@ def replace_block(path, name, body, check=False):
     spans = blocks(text)
     if name not in spans:
         raise ValueError(f"{path}: missing generated block {name}")
-    start, end, _, _, command = spans[name]
+    start, end, *_ = spans[name]
     body = "\n" + body.replace("\r\n", "\n").strip("\n") + "\n"
     stamp = f"check: {command}" if command else f"sha256={digest(body)}"
     replacement = f"<!-- generated: {name} {stamp} -->{body}<!-- /generated: {name} -->"

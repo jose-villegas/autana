@@ -67,6 +67,17 @@ class GateTests(unittest.TestCase):
             errors = check(root)
             self.assertEqual(sorted(error.split(":")[0] for error in errors),
                              ["missing.md#missing", "program.md#program", "quote.md#quote"], errors)
+            self.assertIn("names no interpreter", next(error for error in errors if error.startswith("program")))
+            real = subprocess.run
+            def no_sh(argv, **kwargs):
+                if argv[0] == "sh":
+                    raise FileNotFoundError("sh: not found")
+                return real(argv, **kwargs)
+            (root / "program.md").write_text("<!-- generated: program check: sh gen.sh -->\n"
+                                             "| 2 |\n<!-- /generated: program -->\n", encoding="utf-8")
+            with mock.patch("subprocess.run", side_effect=no_sh):
+                errors = check(root)
+            self.assertIn("program.md#program: `sh gen.sh` failed: sh: not found", errors)
 
     def test_a_block_with_neither_digest_nor_command_fails(self):
         with tempfile.TemporaryDirectory() as directory:

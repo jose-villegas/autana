@@ -51,6 +51,7 @@ DIFF_LINES = 20
 # The engine's table is kept beside the generators' rules.
 TABLE_DOC = "launcher/tools/gen/README.md"
 TABLE_BLOCK = "generated-files"
+TABLE_CHECK = "python scripts/gates/check_generated_files.py --check-table"
 
 
 def is_generated(text):
@@ -206,7 +207,7 @@ def tables(root, names, check=False):
     failed = 0
     for doc, (block, outputs) in table_documents(names).items():
         try:
-            stale = replace_block(root / doc, block, table(root, outputs, doc), check)
+            stale = replace_block(root / doc, block, table(root, outputs, doc), check, TABLE_CHECK)
         except (ValueError, OSError) as error:
             print(f"FAIL {doc}: {error}")
             failed += 1

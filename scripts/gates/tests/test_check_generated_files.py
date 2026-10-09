@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from check_generated_files import MARKER, TABLE_BLOCK, TABLE_DOC, check, generated_files, table  # noqa: E402
+from check_generated_files import MARKER, TABLE_BLOCK, TABLE_CHECK, TABLE_DOC, check, generated_files, table  # noqa: E402
 
 GATE = pathlib.Path(__file__).resolve().parents[1] / "check_generated_files.py"
 
@@ -114,6 +114,9 @@ class GateTests(unittest.TestCase):
         self.assertEqual(stale.returncode, 1, stale.stdout + stale.stderr)
         for owner in (TABLE_DOC, doc):
             self.assertIn(f"FAIL {owner}", stale.stdout)
+        # The banners are current; the stale tables are the markers' to report.
+        full = gate()
+        self.assertEqual(full.returncode, 0, full.stdout + full.stderr)
         written = gate("--write-table")
         self.assertEqual(written.returncode, 0, written.stdout + written.stderr)
         fresh = gate("--check-table")
@@ -126,11 +129,11 @@ class GateTests(unittest.TestCase):
         self.assertIn(f"FAIL {doc}", missing.stdout)
         self.assertNotIn("Traceback", missing.stderr)
 
-    def test_check_table_runs_no_banner_writes_nothing_and_keeps_the_marker(self):
+    def test_check_table_runs_no_banner_writes_nothing_and_the_table_names_it(self):
         # The output differs from what its banner makes: only a full run sees it.
         self.add("main/a.h", header("python tools/gen.py 1 > main/a.h", 2))
-        marker = f"<!-- generated: {TABLE_BLOCK} check: python gen.py --check-table -->"
-        doc = self.add(TABLE_DOC, f"{marker}\n<!-- /generated: {TABLE_BLOCK} -->\n")
+        doc = self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
+        marker = f"<!-- generated: {TABLE_BLOCK} check: {TABLE_CHECK} -->"
         def gate(*args):
             return subprocess.run([sys.executable, str(GATE), "--root", str(self.root), *args],
                                   capture_output=True, text=True)

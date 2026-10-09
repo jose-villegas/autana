@@ -39,7 +39,7 @@ generator would put Python on the critical path of every clean build.
 exact command that regenerates it, where someone about to hand-edit it will
 see it first. Commit the raw output; never run the formatter over it.
 `scripts/gates/check_generated_files.py` reruns that command in CI and fails
-on any difference, and on a stale table above, so the command must name the
+on any difference (its `--check-table` judges the table above), so the command must name the
 file it writes and use only inputs in the repository - see
 [Generated-Files.md](../../../docs/tools/Generated-Files.md).
 

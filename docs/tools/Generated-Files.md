@@ -27,12 +27,12 @@ It prints `ok` or `FAIL` per file, and for a file that differs, the first
 lines of the difference. To fix one, run the command in its banner and
 commit the result.
 
-The [generators' README](../../launcher/tools/gen/README.md) holds a table
-of every generated file, its generator, the folder it runs in and its
-command, written from the banners. `--check-table` fails when that table
-is stale, running no banner; the table's marker names it, so the
-generated-document gate runs it. Add `--write-table` to rewrite it whenever
-a banner is added, changed or removed.
+The [generators' README](../../launcher/tools/gen/README.md) and each app's
+`tools/README.md` hold a table of their generated files, each one's
+generator, the folder it runs in and its command, written from the banners.
+`--check-table` fails when a table is stale, running no banner; each table's
+marker names it, so the generated-document gate runs it. Add `--write-table`
+to rewrite them whenever a banner is added, changed or removed.
 
 ## What the gate reads from a banner
 
