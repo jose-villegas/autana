@@ -216,6 +216,20 @@ every draw; empty pixels keep the clear colour.
 
 ![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
 
+Culling clusters about halves the triangles submitted and takes roughly a
+third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
+boxes let through more triangles than its fewer culls save. Each size on the
+board, against submitting every cluster:
+
+<!-- generated: meshlet-sizes sha256=d9b9c6fe78925f851cbeaf272f8acfb2750f294eca088ffe4c67d4cbce04c633 -->
+| Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
+|---|---|---|---|---|---|---|---|
+| cull off | 583 | 0.937 | 17371.0 | 0.33 | 6.76 | 63.62 | 76.64 |
+| meshlets of 16 | 1220 | 1.062 | 8717.1 | 1.01 | 4.70 | 42.12 | 53.78 |
+| meshlets of 32 (shipped) | 583 | 0.937 | 9527.1 | 0.66 | 4.33 | 42.77 | 53.68 |
+| meshlets of 64 | 286 | 0.848 | 10678.1 | 0.46 | 4.28 | 46.34 | 57.01 |
+<!-- /generated: meshlet-sizes -->
+
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
 
 #### Asset pack
