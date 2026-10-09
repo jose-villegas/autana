@@ -648,7 +648,10 @@ it.
 
 **Suites do not own the runner.** No suite defines `setUp`/`tearDown` or calls
 `UNITY_BEGIN`/`UNITY_END`, because several share one binary. The runners own
-the memory audit. Each suite keeps a
+the memory audit, and the device runner also resets the panel clock and heal
+to the shell's own state around every test (`display_restore_system_state()`
+in its `setUp`/`tearDown`); a test that times a present pins its clock with
+`panel_clock_pin()`. The host runner has no panel and does neither. Each suite keeps a
 `fixture()` helper and calls it at the top of every test, so a test never
 inherits state from the one before it.
 

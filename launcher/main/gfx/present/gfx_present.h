@@ -100,7 +100,7 @@ bool gfx_set_panel_clock_hz(int hz);
 int gfx_panel_clock_hz(void);
 
 /*
- * Heal, an opt-in for an app that sends only what changed: gfx sends a
+ * Heal, an opt-in for a screen that sends only what changed: gfx sends a
  * marked region again on a later present, as full-width strips cut
  * differently from any earlier send, to clear what the fast clock left
  * wrong. All of it does nothing while the clock is the slow one.
