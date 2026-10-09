@@ -7,6 +7,8 @@
     render_compare.py --out sheet.png --reference-bakes REFERENCE_DIR
         --bake LABEL A.avi [--bake LABEL B.avi ...] [--sheet-frames 2,4]
 
+    render_compare.py --out sheet.png --still-column LABEL FILE [--still-column ...]
+
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
 
 --angle-column writes one sheet of normal-angle heatmaps, a column per DIR of
@@ -908,6 +910,8 @@ def main():
     parser.add_argument("--bake", nargs=2, action="append", metavar=("LABEL", "VIDEO"))
     parser.add_argument("--bake-reference", nargs=2, action="append", metavar=("LABEL", "REFERENCE_DIR"),
                         help="the reference made with that --bake's own settings, scored and shown beside the common one")
+    parser.add_argument("--still-column", nargs=2, action="append", metavar=("LABEL", "FILE"),
+                        help="a labelled column of still pixels; at least two columns")
     parser.add_argument("--angle-column", nargs=2, action="append", metavar=("LABEL", "DIR"),
                         help="a column of the --out normal-angle sheet: appearance_simplify.py --score --angle-dir's output")
     parser.add_argument("--heatmap-dir")
@@ -925,6 +929,16 @@ def main():
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
+    if args.still_column:
+        if len(args.still_column) < 2:
+            parser.error("--still-column needs at least two columns")
+        panels = []
+        for label, path in args.still_column:
+            with Image.open(path) as picture:
+                panels.append((label, picture.convert("RGB")))
+        (label_a, a), (label_b, b), *after = panels
+        _compose([(("", a, b), after)], label_a, label_b).save(args.out, optimize=True)
+        return
     if args.angle_column:
         angle_sheet(args.angle_column).save(args.out, optimize=True)
         return

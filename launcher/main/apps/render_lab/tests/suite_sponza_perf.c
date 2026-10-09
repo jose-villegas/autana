@@ -266,7 +266,7 @@ test_sponza_frame_cost_with_motion(void) {
     raster_motion_t* motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(motion);
     *motion = (raster_motion_t){0};
-    const raster_attachment_t attachment = raster_motion_attachment(motion);
+    const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
     const r3d_instance_t still = {&meshes[0], NULL};
     report_frame_cost("motion", &still, attached, NULL);

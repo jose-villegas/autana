@@ -127,7 +127,9 @@ draw_slice(void* ctx) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
         for (int i = 0; i < target->rows.count; i++) {
             const raster_attachment_t* a = attachment_at(r, i);
-            a->clear(a, r, target->rows.attachment[i].pixels, pixels);
+            if (a->clear != NULL) {
+                a->clear(a, r, target->rows.attachment[i].pixels, pixels);
+            }
         }
     }
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
@@ -247,6 +249,7 @@ instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_AT
     int count = 0;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
+        out[count] = (r3d_span_writer_t){0};
         if (a->writer != NULL && a->writer(a, index, &out[count])) {
             out[count++].attachment = GFX_ATTACHMENT_FURTHER + i;
         }

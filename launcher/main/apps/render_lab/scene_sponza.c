@@ -99,7 +99,7 @@ enter_with(sponza_bake_t shown) {
     applied_budget_ms = -1;
     apply_budget();
 #if TUNE_ENABLED
-    render_context_set_debug_view(render_context_main(), render_lab_view());
+    render_context_set_view(render_context_main(), render_lab_view());
 #endif
 }
 
@@ -151,7 +151,7 @@ scene_sponza_frame(uint32_t dt_ms, bool band_mode_active) {
     assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode for this scene */
     apply_budget();
 #if TUNE_ENABLED
-    render_context_set_debug_view(render_context_main(), render_lab_view());
+    render_context_set_view(render_context_main(), render_lab_view());
 #endif
 }
 

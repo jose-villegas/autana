@@ -9,6 +9,7 @@ main/util/runtime/job.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c
+main/render/raster_meshlets.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
 main/render/resolution/resolution.c

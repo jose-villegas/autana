@@ -160,7 +160,7 @@ static raster_rig_t*
 rig_open(bool with_box, bool detached) {
     raster_rig_t* r = raster_rig_open(wall_and_box, with_box ? 2 : 1, 1U << 1, W, H, sizeof(motion_own_t));
     motion_own_t* own = own_of(r);
-    own->attachment = raster_motion_attachment(&own->motion);
+    own->attachment = raster_motion_view(&own->motion);
     own->attached[0] = &own->attachment;
     if (!detached) {
         raster_rig_attach(r, own->attached, 1);
