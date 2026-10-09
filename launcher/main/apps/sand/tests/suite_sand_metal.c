@@ -50,7 +50,7 @@
 static void
 lava_beside_dirt(uint8_t moisture) {
     fixture();
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 2, H - 2, STONE); /* boxes the lava on its left */
     sand_set(&s, 3, H - 3, STONE); /* and above */
     sand_set(&s, 3, H - 2, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -415,7 +415,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
 static void
 test_a_held_flame_smelts_dirt_as_lava_does(void) {
     fixture();
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 4, H - 2, CELL_SOIL(MAT_DIRT, 1, 0)); /* bone dry */
 
     const int budget = 3000;
@@ -541,8 +541,8 @@ test_a_non_conducting_extended_cell_passes_no_heat_beyond_itself(void) {
 static void
 test_sand_still_becomes_glass_beside_the_new_dirt_branch(void) {
     fixture();
-    fill_box(&s, 0, W, H - 1, H, STONE);
-    fill_box(&s, 1, W - 1, H - 2, H - 1, CELL_MAKE(MAT_SAND, 8));
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+    sand_fill_box(&s, 1, H - 2, W - 1, H - 1, CELL_MAKE(MAT_SAND, 8));
 
     int made = 0;
     for (int i = 0; i < 2000 && !made; i++) {
@@ -773,12 +773,12 @@ static void
 acid_over(cell_t floor_cell, int floor_rows, int acid_rows) {
     fixture();
     sand_set_mobility(&s, SAND_MOBILITY_PER_MATERIAL);
-    fill_box(&s, 1, W - 1, H - 1, H, GLASS);
+    sand_fill_box(&s, 1, H - 1, W - 1, H, GLASS);
     for (int y = 1; y < H; y++) {
         sand_set(&s, 1, y, GLASS);
         sand_set(&s, W - 2, y, GLASS);
     }
-    fill_box(&s, 2, W - 2, H - 1 - floor_rows, H - 1, floor_cell);
+    sand_fill_box(&s, 2, H - 1 - floor_rows, W - 2, H - 1, floor_cell);
     for (int y = 1; y <= acid_rows; y++) {
         for (int x = 2; x < W - 2; x++) {
             sand_set(&s, x, y, CELL_MAKE(MAT_ACID, MASS_MAX));

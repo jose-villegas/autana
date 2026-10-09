@@ -17,6 +17,7 @@
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h" /* sand_chunk_share_t - a scope below pins it */
+#include "apps/sand/tests/sand_fill.h"
 
 /* Big enough for every case here, small enough to write out by hand. */
 #define W 8
@@ -129,9 +130,6 @@ impulse_t* impulses_open(sand_t* g, int max);
  * its corners stops being gunpowder, and says whether one did. */
 void boxed_lit_square(sand_t* g);
 bool step_until_square_burns(sand_t* g, int max_steps);
-
-/* Sets every cell of [x0, x1) x [y0, y1) on g to c, row by row. */
-void fill_box(sand_t* g, int x0, int x1, int y0, int y1, cell_t c);
 
 /* The eight gravity directions, clockwise from straight down. */
 extern const int gravity_dirs[8][2];

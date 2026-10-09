@@ -47,7 +47,7 @@ static bool
 grow_plant_until_rooted(int cx, int reseed_x0, int reseed_x1, int x0, int x1, int y0, int y1, int cycles) {
     bool rooted = false;
     for (int cycle = 0; cycle < cycles && !rooted; cycle++) {
-        fill_box(&s, 0, W, 0, H - 2, SAND_EMPTY);
+        sand_fill_box(&s, 0, 0, W, H - 2, SAND_EMPTY);
         for (int x = reseed_x0; x < reseed_x1; x++) {
             if (CELL_MATERIAL(sand_at(&s, x, H - 2)) == MAT_DIRT) {
                 sand_set(&s, x, H - 2, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
@@ -116,8 +116,8 @@ wet_soil_bed(sand_t* t, uint8_t** grid, int w, int h, int wet_top) {
     TEST_ASSERT_NOT_NULL_MESSAGE(*grid, "the soil bed must fit in what the framebuffer leaves");
     sand_init(t, *grid, w, h, 12345u);
     sand_set_soak(t, SAND_SOAK_PER_MATERIAL);
-    fill_box(t, 0, w, h - 1, h, STONE);
-    fill_box(t, 0, w, wet_top, h - 1, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
+    sand_fill_box(t, 0, h - 1, w, h, STONE);
+    sand_fill_box(t, 0, wet_top, w, h - 1, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
 }
 
 /* test_a_root_column_reaches_below_the_collar */
@@ -139,9 +139,9 @@ lift_boundary_grows(int stem, int roots) {
     const int floor_y = LIFT_TEST_H - 1;
     const int bed_top = floor_y - 3;
     wet_soil_bed(&t, &grid, LIFT_TEST_W, LIFT_TEST_H, bed_top);
-    fill_box(&t, cx, cx + 1, bed_top - roots, bed_top, MATX(MATX_ROOT));
+    sand_fill_box(&t, cx, bed_top - roots, cx + 1, bed_top, MATX(MATX_ROOT));
     const int stem_top = bed_top - roots - stem;
-    fill_box(&t, cx, cx + 1, stem_top + 1, bed_top - roots, CELL_MAKE(MAT_WOOD, 0));
+    sand_fill_box(&t, cx, stem_top + 1, cx + 1, bed_top - roots, CELL_MAKE(MAT_WOOD, 0));
     sand_set(&t, cx, stem_top, MATX(MATX_PLANT)); /* the one grower */
 
     const int total_before = count_tree_body(&t, 0, LIFT_TEST_W, 0, floor_y);
@@ -196,7 +196,7 @@ test_a_buried_root_does_not_cut_off_the_water_below_it(void) {
     const int dry_y = root_y - 1;                       /* piled back on later */
     const int plant_y = dry_y - 1;
     wet_soil_bed(&t, &grid, BURIED_ROOT_TEST_W, BURIED_ROOT_TEST_H, wet_top);
-    fill_box(&t, 0, BURIED_ROOT_TEST_W, dry_y, dry_y + 1, CELL_SOIL(MAT_DIRT, 1, 0));
+    sand_fill_box(&t, 0, dry_y, BURIED_ROOT_TEST_W, dry_y + 1, CELL_SOIL(MAT_DIRT, 1, 0));
     sand_set(&t, cx, root_y, MATX(MATX_ROOT));
     sand_set(&t, cx, plant_y, MATX(MATX_PLANT));
 
@@ -304,7 +304,7 @@ test_lava_burns_a_root_out_of_the_ground(void) {
     sand_clear(&s);
 
     const int cx = W / 2;
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, cx, H - 2, MATX(MATX_ROOT));
     /* Diagonal to the lava, so the wood is out of its four-neighbour
      * reach - it plays no part in this test beyond matching the scene the
@@ -330,7 +330,7 @@ test_fire_leaves_a_root_alone(void) {
     sand_clear(&s);
 
     const int cx = W / 2;
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, cx, H - 2, MATX(MATX_ROOT));
     /* Diagonal to the flame, not cardinal, so the wood itself is never
      * the thing that catches - it plays no other part in this test. */
@@ -462,7 +462,7 @@ test_a_root_is_inert(void) {
     /* And on a board with water, wet soil, and no plant anywhere - the
      * only way a root can ever be created - none ever appears. */
     soaked_bed_fixture(CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
-    fill_box(&s, 0, W, 0, 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 0, 0, W, 1, CELL_MAKE(MAT_WATER, MASS_MAX));
     run_steps(&s, 500, 0, 1000);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_cells_of(MAT_EXTENDED),
                                   "a board with wet soil and standing water but no plant or wood "
@@ -731,7 +731,7 @@ test_a_root_carries_a_level_of_water_down_through_itself(void) {
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
     const int cx = W / 2, ry = H - 3;
-    fill_box(&s, 0, W, 0, H, STONE);
+    sand_fill_box(&s, 0, 0, W, H, STONE);
     sand_set(&s, cx, ry, MATX(MATX_ROOT));
     sand_set(&s, cx - 1, ry, CELL_MAKE(MAT_WOOD, 0));    /* shelter; blocks the source's slide */
     sand_set(&s, cx, ry - 1, CELL_SOIL(MAT_DIRT, 1, 5)); /* the source, ABOVE the root */
@@ -764,7 +764,7 @@ test_conduction_never_pushes_water_up_or_into_anything_but_soil(void) {
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
     const int cx = W / 2, ry = H - 3;
-    fill_box(&s, 0, W, 0, H, STONE);
+    sand_fill_box(&s, 0, 0, W, H, STONE);
     sand_set(&s, cx, ry, MATX(MATX_ROOT));
     sand_set(&s, cx, ry + 1, CELL_SOIL(MAT_DIRT, 1, 6)); /* wet, BENEATH - only ever a sink */
     sand_set(&s, cx, ry - 1, CELL_SOIL(MAT_DIRT, 1, 0)); /* dry, above */
@@ -1523,8 +1523,8 @@ test_a_moving_grain_keeps_the_shade_it_was_poured_with(void) {
 
     /* A floor, and a step for the grains to slide off - so they fall, land,
      * pile up and topple sideways rather than just dropping straight. */
-    fill_box(&s, 0, W, H - 1, H, STONE);
-    fill_box(&s, 0, W / 2, H - 2, H - 1, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
+    sand_fill_box(&s, 0, H - 2, W / 2, H - 1, STONE);
     sand_spawn(&s, W / 2, 1, 2, MAT_SAND);
 
     sand_shade_histogram(before);
@@ -1562,7 +1562,7 @@ test_wet_sand_becomes_soil_wet_with_no_tone_of_its_own(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     sand_set(&s, 1, H - 2, CELL_MAKE(MAT_SAND, dark_shade));
     sand_set(&s, 5, H - 2, CELL_MAKE(MAT_SAND, pale_shade));
 

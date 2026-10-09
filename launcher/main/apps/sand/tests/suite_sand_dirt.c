@@ -41,7 +41,7 @@
 static void
 test_wet_sand_becomes_dirt_and_spends_the_water(void) {
     soaked_bed_fixture(CELL_MAKE(MAT_SAND, 8));
-    fill_box(&s, 0, W, H - 3, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     const int water_before = liquid_mass_of(MAT_WATER);
 
     run_steps(&s, 600, 0, 1000);
@@ -102,7 +102,7 @@ clear_material(sand_t* g, int w, int h, material_id_t m) {
 static void
 test_dirt_takes_on_moisture_and_dries_out_again(void) {
     soaked_bed_fixture(CELL_MAKE(MAT_DIRT, 0));
-    fill_box(&s, 0, W, H - 3, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int wettest = 0;
     for (int i = 0; i < 400; i++) {
@@ -149,7 +149,7 @@ test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
     run_steps(&wide, 40, 0, 1000);
 
     const int water_y = dirt_y - 8;
-    fill_box(&wide, 0, WIDE_W, water_y, water_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&wide, 0, water_y, WIDE_W, water_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     int wetted_at = -1;
     for (int i = 0; i < 200 && wetted_at < 0; i++) {
@@ -571,8 +571,8 @@ test_soil_is_one_monotone_luminance_ramp(void) {
 static void
 test_only_water_wets_what_it_touches(void) {
     soaked_bed_fixture(CELL_MAKE(MAT_SAND, 6));
-    fill_box(&s, 0, W, H - 3, H - 2, CELL_SOIL(MAT_DIRT, 1, 0));
-    fill_box(&s, 0, W, H - 4, H - 3, CELL_MAKE(MAT_OIL, MASS_MAX));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_SOIL(MAT_DIRT, 1, 0));
+    sand_fill_box(&s, 0, H - 4, W, H - 3, CELL_MAKE(MAT_OIL, MASS_MAX));
 
     for (int i = 0; i < 800; i++) {
         sand_step(&s, 0, 1000, 0);
@@ -779,7 +779,7 @@ test_a_shattered_pane_comes_back_as_cullet(void) {
 static void
 test_cullet_neither_drinks_water_nor_turns_into_soil(void) {
     soaked_bed_fixture(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
-    fill_box(&s, 0, W, H - 3, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     const int water_before = liquid_mass_of(MAT_WATER);
 
     run_steps(&s, 600, 0, 1000);
@@ -800,8 +800,8 @@ test_cullet_neither_drinks_water_nor_turns_into_soil(void) {
 static void
 test_wet_soil_does_not_bind_cullet_from_above(void) {
     soaked_bed_fixture(CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
-    fill_box(&s, 0, W, H - 3, H - 2, CELL_MAKE(MAT_DIRT, 0));
-    fill_box(&s, 0, W, H - 4, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 0, H - 3, W, H - 2, CELL_MAKE(MAT_DIRT, 0));
+    sand_fill_box(&s, 0, H - 4, W, H - 3, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     run_steps(&s, 600, 0, 1000);
 
@@ -939,7 +939,7 @@ test_water_percolates_diagonally_as_well_as_straight_down(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    fill_box(&s, 0, W, H - 1, H, STONE);
+    sand_fill_box(&s, 0, H - 1, W, H, STONE);
     /* One row above the floor, so the grains the water has to reach
      * are resting on it - a grain with empty space under it falls
      * out of the scene before any of this gets a turn. */

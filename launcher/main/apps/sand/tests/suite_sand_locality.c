@@ -79,7 +79,7 @@ test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other(void
     loc_fixture();
 
     /* A small heap, settled on the floor in the leftmost block-column. */
-    fill_box(&fx.loc, 0, SAND_BLOCK_W, LOC_H - 1, LOC_H, SAND_FIRST_SHADE);
+    sand_fill_box(&fx.loc, 0, LOC_H - 1, SAND_BLOCK_W, LOC_H, SAND_FIRST_SHADE);
     run_steps(&fx.loc, 100, 0, 1000);
 
     /* Heap, not a stack array: at the shipped SAND_BLOCK_W (16) this is a
@@ -341,7 +341,7 @@ test_sand_pushing_water_up_wakes_the_dry_row_it_lands_in(void) {
      * under test. */
     /* A full pool, two rows deep. Full matters: nothing in it has anywhere
      * to flow, so it settles and every row above it is genuinely dry. */
-    fill_box(&s, 0, W, H - 2, H, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&s, 0, H - 2, W, H, CELL_MAKE(MAT_WATER, MASS_MAX));
     run_steps(&s, 60, 0, 1000);
 
     /* Spelled out rather than the SAND shorthand, which this file does not
@@ -384,7 +384,7 @@ test_water_falling_into_the_next_block_down_still_spreads(void) {
     /* A stone shelf one row below the block boundary, so the water comes to
      * rest inside the LOWER block with nowhere gravity-ward left to go -
      * only cross-flow can move it after that. */
-    fill_box(&g, 0, CROSS_BLOCK_W, SAND_BLOCK_H + 1, SAND_BLOCK_H + 2, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
+    sand_fill_box(&g, 0, SAND_BLOCK_H + 1, CROSS_BLOCK_W, SAND_BLOCK_H + 2, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     /* One full cell of water, in the last row of the UPPER block. */
     sand_set(&g, 5, SAND_BLOCK_H - 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
@@ -441,7 +441,7 @@ test_water_crosses_a_block_boundary_sideways(void) {
     /* Every cell full, filling the first block column exactly - so the block
      * holds no empty cell and no partly-filled liquid, and the skip's own test
      * passes on everything except the one cell beyond its edge. */
-    fill_box(&g, 0, SAND_BLOCK_W, channel_y, channel_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&g, 0, channel_y, SAND_BLOCK_W, channel_y + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     run_steps(&g, 120, 0, 1000);
 
@@ -532,7 +532,7 @@ test_block_indices_stay_in_range_after_flipping_a_settled_pile_at_the_real_size(
     sand_t real;
     sand_test_grid_init(&real, &cells, &blocks, STRESS_W, STRESS_H, 13u);
 
-    fill_box(&real, STRESS_W / 4, (STRESS_W * 3) / 4, STRESS_H / 2, STRESS_H, SAND_FIRST_SHADE);
+    sand_fill_box(&real, STRESS_W / 4, STRESS_H / 2, (STRESS_W * 3) / 4, STRESS_H, SAND_FIRST_SHADE);
     const int grains = sand_count(&real);
 
     run_steps(&real, 300, 0, 1000);
@@ -554,7 +554,7 @@ test_block_indices_stay_in_range_for_a_falling_screen_of_water_at_the_real_size(
     sand_t real;
     sand_test_grid_init(&real, &cells, &blocks, STRESS_W, STRESS_H, 11u);
 
-    fill_box(&real, STRESS_W / 4, (STRESS_W * 3) / 4, 0, STRESS_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(&real, STRESS_W / 4, 0, (STRESS_W * 3) / 4, STRESS_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 
     run_steps(&real, 60, 0, 1000);
 
@@ -623,7 +623,7 @@ static void
 test_scatter_conserves_grains(void) {
     fixture();
     sand_set_scatter(&s, 128);
-    fill_box(&s, 2, 6, 0, 3, SAND_FIRST_SHADE);
+    sand_fill_box(&s, 2, 0, 6, 3, SAND_FIRST_SHADE);
     const int expected = sand_count(&s);
 
     for (int i = 0; i < 60; i++) {
@@ -704,7 +704,7 @@ test_moisture_moving_through_a_resting_bed_does_not_wake_it(void) {
 static void
 loc_filled_fixture(cell_t cell) {
     loc_fixture();
-    fill_box(&fx.loc, 0, LOC_W, 0, LOC_H, cell);
+    sand_fill_box(&fx.loc, 0, 0, LOC_W, LOC_H, cell);
 }
 
 static void
