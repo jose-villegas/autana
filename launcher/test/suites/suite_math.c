@@ -150,6 +150,8 @@ test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix(void) {
                              rebuilds);
     transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, 9.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     TEST_ASSERT_TRUE(rebuilds(&t));
+    transformf_rotate_around(&t, (vec3f_t){1.0F, 0.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI);
+    TEST_ASSERT_TRUE(rebuilds(&t));
 }
 
 static void
@@ -159,6 +161,46 @@ test_compute_matrix_leaves_the_cache_alone(void) {
     const mat4f_t fresh = transformf_compute_matrix(&t);
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 7.0F, fresh.m[0][3]);
     TEST_ASSERT_FALSE(t.cached);
+}
+
+static void
+assert_vec3f(vec3f_t want, vec3f_t got) {
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, want.x, got.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, want.y, got.y);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, want.z, got.z);
+}
+
+static void
+test_rotate_around_swings_the_position_round_the_point_and_turns_the_rotation_with_it(void) {
+    /* A quarter turn about +y through (5, 0, 0) takes +x to -z and +z to +x. */
+    const vec3f_t point = {5.0F, 0.0F, 0.0F};
+    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_set_position(&t, (vec3f_t){6.0F, 0.0F, 0.0F});
+    transformf_rotate_around(&t, point, (vec3f_t){0.0F, 2.0F, 0.0F}, HALF_PI); /* any axis length */
+    assert_vec3f((vec3f_t){5.0F, 0.0F, -1.0F}, t.position);
+    assert_vec3f((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
+}
+
+static void
+test_rotate_around_its_own_position_only_turns(void) {
+    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_set_position(&t, (vec3f_t){1.0F, 2.0F, 3.0F});
+    transformf_rotate_around(&t, t.position, (vec3f_t){1.0F, 0.0F, 0.0F}, HALF_PI);
+    assert_vec3f((vec3f_t){1.0F, 2.0F, 3.0F}, t.position);
+    assert_vec3f((vec3f_t){0.0F, -1.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
+}
+
+static void
+test_rotate_around_what_it_faces_keeps_facing_it_at_the_same_distance(void) {
+    const vec3f_t point = {1.0F, -1.0F, 2.0F};
+    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_set_position(&t, (vec3f_t){4.0F, 3.0F, 2.0F});
+    transformf_look_at(&t, point, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_rotate_around(&t, point, (vec3f_t){0.3F, 1.0F, -0.5F}, 1.1F);
+    const vec3f_t to_point = vec3f_sub(point, t.position);
+    const float reach = sqrtf(vec3f_dot(to_point, to_point));
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 5.0F, reach);
+    assert_vec3f(vec3f_scale(to_point, 1.0F / reach), quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
 }
 
 static void
@@ -315,6 +357,9 @@ suite_math(void) {
     RUN_TEST(test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix);
     RUN_TEST(test_compute_matrix_leaves_the_cache_alone);
     RUN_TEST(test_translate_adds_and_rotate_turns_about_the_local_axes);
+    RUN_TEST(test_rotate_around_swings_the_position_round_the_point_and_turns_the_rotation_with_it);
+    RUN_TEST(test_rotate_around_its_own_position_only_turns);
+    RUN_TEST(test_rotate_around_what_it_faces_keeps_facing_it_at_the_same_distance);
     RUN_TEST(test_the_view_matrix_inverts_a_rigid_model_matrix);
     RUN_TEST(test_the_view_matrix_puts_the_camera_at_the_origin_looking_down_z);
     RUN_TEST(test_look_at_points_local_z_at_the_target_with_up_kept_up);

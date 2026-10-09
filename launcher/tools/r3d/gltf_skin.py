@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf.gltf_read import (  # noqa: E402,F401
-    load_glb, parse_glb, quat_slerp, read_accessor, sample_keys)
+    load_asset, parse_glb, quat_slerp, read_accessor, sample_keys)
 
 def mat_mul(a, b):
     """Row-major 4x4 product a*b."""

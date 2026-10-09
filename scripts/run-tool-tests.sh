@@ -64,7 +64,7 @@ if [ -n "$py_dirs" ]; then
     else
         for dir in $py_dirs; do
             suite_count=$((suite_count + 1))
-            quiet_run "$dir" "$PYTHON" -m unittest discover -s "$REPO_ROOT/$dir" -p 'test_*.py' || true
+            quiet_run "$dir" "$PYTHON" -u -m unittest discover -s "$REPO_ROOT/$dir" -p 'test_*.py' || true
         done
     fi
 fi

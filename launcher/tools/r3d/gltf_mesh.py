@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from gltf.gltf_read import load_glb, read_accessor  # noqa: E402
+from gltf.gltf_read import load_asset, read_accessor  # noqa: E402
 from r3d.gltf_skin import node_parents, node_trs, transform_point, world_matrices  # noqa: E402
 
 TRIANGLES = 4  # a primitive's mode for a triangle list
@@ -38,7 +38,7 @@ def base_colour(document, material):
 def load_gltf_mesh(path):
     """positions, linear vertex colours, triangles (counter-clockwise, as
     glTF winds them), each triangle's material index and the material names."""
-    document, binary = load_glb(path)
+    document, binary = load_asset(path)
     nodes = document.get("nodes", [])
     world = world_matrices(node_parents(nodes), [node_trs(node) for node in nodes])
     names = material_names(document)

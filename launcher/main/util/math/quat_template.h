@@ -1,9 +1,9 @@
 /*
  * quat_template: a rotation as x, y, z, w, unit length, Hamilton product,
  * acting on a vector as q * v * q^-1, for one number type; see
- * math_template.h for the macro arguments. The frame is Unity's, with x
- * right, y up and z forward: a positive angle about +y turns +z toward +x. Angles are radians for float and
- * turns for fixed point. normalize and from_basis need a square root and a
+ * math_template.h for the macro arguments. The frame is left-handed, with
+ * x right, y up and z forward: a positive angle about +y turns +z toward
+ * +x. Angles are radians for float and turns for fixed point. normalize and from_basis need a square root and a
  * divide, so they are a macro of their own.
  */
 #pragma once
@@ -43,7 +43,7 @@
     }                                                                                                                  \
                                                                                                                        \
     /* q = qy * qx * qz, each from_axis_angle about its axis: Z, then X, then Y */                                     \
-    /* about the fixed axes, as Unity does. */                                                                         \
+    /* about the fixed axes. */                                                                                        \
     static inline P##_t P##_from_euler(V##_t angles) {                                                                 \
         const P##_t about_x = P##_from_axis_angle((V##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}, angles.x);         \
         const P##_t about_y = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}, angles.y);         \

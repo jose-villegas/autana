@@ -11,6 +11,8 @@ properties and everything FBX-only are dropped.
 """
 
 import argparse
+import hashlib
+import os
 import pathlib
 import sys
 
@@ -21,6 +23,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from fbx import log  # noqa: E402
 from fbx.ufbx_scene import FbxScene, NO_MATERIAL, ROTATION, SCALE, TRANSLATION  # noqa: E402
 from gltf.gltf_write import build_glb  # noqa: E402
+
+HERE = pathlib.Path(__file__).resolve().parent
+CACHE = HERE / ".cache" / "glb"
+# What a converted file depends on besides the FBX: the converter itself.
+CONVERTER_SOURCES = (HERE / "ufbx_glue.c", HERE / "ufbx_scene.py", pathlib.Path(__file__),
+                     HERE.parent / "gltf" / "gltf_write.py")
 
 PATH_NAMES = {TRANSLATION: "translation", ROTATION: "rotation", SCALE: "scale"}
 
@@ -80,6 +88,23 @@ def convert(fbx_path):
                 {"node": node, "path": PATH_NAMES[path], "times": seconds.tolist(), "values": values.tolist()}
                 for node, path, seconds, values in animation.channels]})
     return build_glb(nodes, animations, meshes=meshes, skins=skins, materials=materials)
+
+
+def cached_glb(fbx_path):
+    """The path of the FBX converted to a .glb, converting only when this
+    file's bytes or the converter have not been seen: the name is a hash of
+    both."""
+    digest = hashlib.sha256()
+    for path in (pathlib.Path(fbx_path), *CONVERTER_SOURCES):
+        digest.update(path.read_bytes())
+    glb = CACHE / f"{digest.hexdigest()}.glb"
+    if not glb.exists():
+        data = convert(fbx_path)
+        CACHE.mkdir(parents=True, exist_ok=True)
+        partial = glb.with_name(f"{glb.name}.{os.getpid()}.part")
+        partial.write_bytes(data)
+        partial.replace(glb)
+    return glb
 
 
 def main():

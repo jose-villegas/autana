@@ -85,9 +85,11 @@ flowchart TB
     subgraph R10["chip services"]
         Runtime["util/runtime/<br/><i>time, memory, settings, jobs, frame cost, tunables, build id</i>"]:::hw
     end
+    subgraph R10b["motion"]
+        Motion["util/motion/<br/><i>tween, easing, springs, orbiting a target</i>"]
+    end
     subgraph R11["pure code"]
         UtilMath["util/math/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
-        Motion["util/motion/<br/><i>tween, easing, springs</i>"]
         Encode["util/encode/<br/><i>JSON splice, BMP and base64</i>"]
     end
     subgraph R12["scalars and the build"]
@@ -98,7 +100,7 @@ flowchart TB
         Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R10b --> R11 --> R12 --> R13
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
