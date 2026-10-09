@@ -347,7 +347,7 @@ run_development_pre_frame(const app_t** current, input_t* input, uint32_t dt_ms,
      * own full redraw, so the STEP after a rotation draws the frame that
      * rotation asked for. A held frame never reaches run_dev_frame_extras(),
      * so the line is offered here: freeze, inspect, step. */
-    if (!console_freeze_frame_allowed(requests)) {
+    if (!console_freeze_frame_allowed()) {
         if (requests->kinds & CONSOLE_FRAME_SCREENSHOT) {
             console_screenshot_dump(input, *current);
         }
@@ -394,8 +394,10 @@ shell_run(void) {
         FRAME_COST_BEGIN(rest_began);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        /* Before the freeze gate, so a held frame still answers. */
+        /* Before the freeze gate and every early return below: what those
+         * would skip is applied here, so a held frame still answers. */
         console_frame_take(console_frame_mailbox(), &requests);
+        console_freeze_apply(&requests);
         if (requests.kinds & CONSOLE_FRAME_FRAMEWATCH) {
             console_frame_watch_answer();
         }

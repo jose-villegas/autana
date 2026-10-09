@@ -385,13 +385,17 @@ test_a_take_never_sees_a_post_half_written(void) {
 
     int takes = 0;
     int torn = 0;
-    while (atomic_load(&f->writing)) {
+    /* One take after the writer is seen done, so its last post counts even
+     * when it finished before the first take. */
+    bool writing;
+    do {
+        writing = atomic_load(&f->writing);
         console_frame_take(&f->mailbox, &f->taken);
         if (f->taken.kinds & CONSOLE_FRAME_NAVIGATE) {
             takes++;
             torn += taken_whole(&f->taken) ? 0 : 1;
         }
-    }
+    } while (writing);
     (void)pthread_join(writer, NULL);
     TEST_ASSERT_GREATER_THAN_INT(0, takes);
     TEST_ASSERT_EQUAL_INT(0, torn);

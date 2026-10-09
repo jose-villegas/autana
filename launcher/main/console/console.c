@@ -5,9 +5,9 @@
  * registry. A line nothing there claims is queued for the frame loop
  * (console_take_unclaimed_line()) instead of being logged and dropped.
  *
- * Every verb this dispatches to only posts a frame request
- * (console_frame_request.h) or writes a small reply; none of them draw,
- * none call into gfx or an app. That split matters most
+ * Every verb this dispatches to only hands a request to the frame loop
+ * (most through console_frame_request.h) or writes a small reply; none of
+ * them draw, none call into gfx or an app. That split matters most
  * for SCREENSHOT and RUNSUITE (console_screenshot.c, console_runsuite.c):
  * there is no lock on the framebuffer, so a capture (or worse, a suite
  * that draws and presents on its own) running on this task while the

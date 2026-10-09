@@ -29,7 +29,7 @@
 /* Starts the background task that listens on the console for a verb line.
  * Call once, from app_main(), the same place and pattern as
  * touch_start()/buttons_start(): a small dedicated task the shell never
- * talks to directly; a verb's request reaches the frame loop through
+ * talks to directly; the frame-loop verbs' requests reach it through
  * console_frame_take(). */
 void console_start(void);
 

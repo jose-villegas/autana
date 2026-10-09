@@ -58,22 +58,26 @@ console_verb_step(const char* args, console_reply_fn reply) {
 
 CONSOLE_VERB(step, STEP_ARGS_MAX, console_verb_step)
 
-bool
-console_freeze_frame_allowed(const console_frame_request_t* request) {
-    /* Read and written only here, on the frame loop. */
-    static bool frozen;
-    static int credit;
+/* Read and written only on the frame loop. */
+static bool frozen;
+static int credit;
 
-    if (request->kinds & CONSOLE_FRAME_FREEZE) {
-        frozen = request->frozen;
-        credit = request->steps;
-        /* On its own line for a harness, the same reason
-         * RUNSUITE_COMPLETE prints one (shell/shell.c). */
-        printf("\nFREEZE_STATE frozen=%d steps=%d\n", frozen ? 1 : 0, credit);
-        fflush(stdout);
-        ESP_LOGI(TAG, "frozen=%d steps=%d", frozen ? 1 : 0, credit);
+void
+console_freeze_apply(const console_frame_request_t* requests) {
+    if (!(requests->kinds & CONSOLE_FRAME_FREEZE)) {
+        return;
     }
+    frozen = requests->frozen;
+    credit = requests->steps;
+    /* On its own line for a harness, the same reason RUNSUITE_COMPLETE
+     * prints one (shell/shell.c). */
+    printf("\nFREEZE_STATE frozen=%d steps=%d\n", frozen ? 1 : 0, credit);
+    fflush(stdout);
+    ESP_LOGI(TAG, "frozen=%d steps=%d", frozen ? 1 : 0, credit);
+}
 
+bool
+console_freeze_frame_allowed(void) {
     if (!frozen) {
         return true;
     }
