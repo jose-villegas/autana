@@ -30,6 +30,7 @@ from .. import log
 
 HERE = pathlib.Path(__file__).resolve().parent
 CACHE = HERE.parent / ".cache"
+SOURCE = HERE / "embree_cap.c"
 JIT_CPU = "x86-64-v3"
 JIT_FEATURES = "+avx2,+fma"
 JIT_LANES = 8
@@ -84,7 +85,7 @@ def pin():
         _state = False
         return False
     mitsuba_dir = pathlib.Path(importlib.util.find_spec("mitsuba").origin).parent
-    shim = build_shared("embree_cap", CACHE, (HERE / "embree_cap.c",), find_compiler("CC", ("cc", "gcc", "clang"), "C"),
+    shim = build_shared("embree_cap", CACHE, (SOURCE,), find_compiler("CC", ("cc", "gcc", "clang"), "C"),
                         log=log, mode=ctypes.RTLD_GLOBAL)
     shim.embree_cap_last_config.restype = ctypes.c_char_p
     embree = ctypes.CDLL(str(mitsuba_dir / "libembree3.so"))

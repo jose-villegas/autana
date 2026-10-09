@@ -12,8 +12,10 @@ bake's key is a SHA-256 of its kind, its recipe (the parsed import and
 renderer settings and the scene inputs its look reads), its sources (an LFS
 pointer's oid stands for the file, so no source is downloaded) and the code
 of the tool that makes it. LOCK, written only by this tool, records for
-each key the SHA-256 of the bytes made for it, because a bake is not
-byte-reproducible across machines and a fit not even on one.
+each key the SHA-256 of the bytes made for it, because a fit is not
+byte-reproducible even on one machine, and a mesh bake only on hosts of one
+CPU vendor: r3d/isa pins the ray tracer to AVX2, whose reciprocal estimates
+AMD and Intel each define their own way. The locked meshes are AMD's.
 
 `list` prints every bake with its key. `lock --seed` locks the meshes
 in the tree as they are and copies them into the cache. `check` fails when
