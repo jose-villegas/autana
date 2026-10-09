@@ -1,0 +1,39 @@
+name: scratch 5eu5
+on:
+  push:
+    branches: [feature/bake-determinism]
+jobs:
+  dump:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: LFS key
+        id: lfs
+        run: |
+          echo "key=$(git lfs ls-files -l | awk '{print $1, $3}' | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "path=$(git rev-parse --git-path lfs)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.lfs.outputs.path }}
+          key: mesh-source-lfs-${{ steps.lfs.outputs.key }}
+      - run: git lfs pull --exclude="" && git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: |
+          pip install -r launcher/tools/r3d/requirements.txt
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends llvm
+          grep -m1 "model name" /proc/cpuinfo; nproc; dpkg -l | grep libllvm; g++ --version | head -1
+          python -c "import numpy; numpy.show_runtime()"
+      - run: python launcher/tools/r3d/stage_dump.py launcher/demo/sponza/sponza.scene.toml atrium ${{ env.DUMP_ARGS }} | tee dump.jsonl
+        env:
+          DUMP_ARGS: ''
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dump-${{ matrix.python }}
+          path: dump.jsonl
