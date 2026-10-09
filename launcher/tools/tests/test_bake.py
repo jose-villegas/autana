@@ -7,6 +7,7 @@ import copy
 import hashlib
 import io
 import pathlib
+import platform
 import sys
 import tempfile
 import unittest
@@ -15,10 +16,12 @@ from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "tests"))
 
-from bake import bake  # noqa: E402
+from bake import bake, produce  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
+from test_r3d_import import write_import  # noqa: E402
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
 
@@ -132,7 +135,7 @@ class StageTests(unittest.TestCase):
         self.assertTrue({"r3d/appearance_simplify.py", "r3d/fitted_variant.py"} <= self.names("fit"))
 
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
-        for stage in bake.STAGES:
+        for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)
         for stage in ("reference", "fit"):
             self.assertIn("render/render_compare.py", self.names(stage), stage)
@@ -184,6 +187,36 @@ class LockTests(unittest.TestCase):
         path = self.root / "bakes.lock"
         bake.write_lock([self.row, {**self.row, "key": "j" * 64, "run": 7}], path)
         self.assertEqual(bake.read_lock(path), {"k" * 64: self.row, "j" * 64: {**self.row, "key": "j" * 64, "run": 7}})
+
+    def test_a_seeded_row_reads_back_seeded(self):
+        path = self.root / "bakes.lock"
+        bake.write_lock([{**self.row, "seeded": True}], path)
+        self.assertIn("seeded = true", path.read_text())
+        self.assertIs(bake.read_lock(path)["k" * 64]["seeded"], True)
+
+    def test_seeding_marks_every_row_and_a_runs_row_carries_no_mark(self):
+        found = [bake_of("k" * 64, self.tree)]
+        self.assertTrue(all(row["seeded"] for row in bake.seed(found, self.cache)))
+        made = {"k" * 64: {**self.row, "run": 9}}
+        self.assertNotIn("seeded", bake.lock_rows(found, {}, made)[0])
+
+    def test_a_runs_make_replaces_a_seeded_row_but_never_a_made_one(self):
+        found = [bake_of("k" * 64, self.tree)]
+        made = {"k" * 64: {**self.row, "sha256": "f" * 64, "run": 9}}
+        seeded = bake.lock_rows(found, {"k" * 64: {**self.row, "seeded": True}}, made)[0]
+        self.assertEqual((seeded["run"], seeded["sha256"]), (9, "f" * 64))
+        self.assertNotIn("seeded", seeded)
+        kept = bake.lock_rows(found, {"k" * 64: {**self.row, "run": 4}}, made)[0]
+        self.assertEqual((kept["run"], kept["sha256"]), (4, self.row["sha256"]))
+
+    def test_check_says_which_rows_are_seeded(self):
+        found = [bake_of("k" * 64, self.tree)]
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "seeded": True}}), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(bake.main(["check"]), 0)
+        self.assertIn("1 of 1 rows are seeded", out.getvalue())
+        self.assertIn("one.mesh", out.getvalue())
 
     def test_check_names_a_missing_key_and_an_unneeded_one(self):
         problems = bake.check([bake_of("n" * 64, self.tree)], {"k" * 64: self.row})
@@ -243,6 +276,159 @@ class LockTests(unittest.TestCase):
             bake.publish([], {}, self.cache)
 
 
+class RequirementTests(unittest.TestCase):
+    def pins(self, stage):
+        return {line.split("==")[0] for _, line in bake.requirement_pins(stage)}
+
+    def test_the_gpu_packages_key_the_fit_alone(self):
+        self.assertTrue({"torch", "nvdiffrast"} <= self.pins("fit"))
+        self.assertFalse({"torch", "nvdiffrast"} & (self.pins("mesh") | self.pins("reference")))
+
+    def test_the_requirements_beside_a_stage_file_key_it(self):
+        self.assertTrue({"numpy", "mitsuba", "pillow"} <= self.pins("mesh"))
+
+    def test_a_package_that_differs_from_its_pin_refuses_to_bake(self):
+        with mock.patch("importlib.metadata.version", return_value="0.0.1"), \
+                self.assertRaisesRegex(produce.EnvironmentMismatch, "numpy: .* pins 2.*has 0.0.1"):
+            produce.check_environment(("mesh",))
+
+    def test_a_submodule_the_index_lacks_fails(self):
+        bake.submodules.cache_clear()
+        try:
+            with mock.patch.object(bake, "git_lines", return_value=[]), \
+                    self.assertRaisesRegex(bake.SettingsError, "checkout is incomplete: .gitmodules names .*"
+                                                                "meshoptimizer.*the index has no gitlink"):
+                bake.submodules()
+        finally:
+            bake.submodules.cache_clear()
+
+
+class ProduceTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.directory.name)
+        self.cache = self.root / "cache"
+        (self.root / "tree").mkdir()
+        write_import(self.root / "tree")
+        self.found = bake.bakes([self.root / "tree"])
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def produce(self):
+        with mock.patch.object(produce, "check_environment"):
+            return produce.produce(self.found[0], self.cache)
+
+    def test_a_mesh_is_made_into_the_cache_and_indexed_by_its_key(self):
+        row = self.produce()
+        self.assertEqual(produce.made(self.found[0].key, self.cache), row)
+        self.assertEqual(bake.file_sha256(bake.cached(row, bake.MESH_SUFFIX, self.cache)), row["sha256"])
+        self.assertFalse(list((self.root / "tree").glob("*.mesh")), "the tree is never written")
+        self.assertEqual(row["host"], f"{platform.system()} {platform.machine()}")
+        self.assertEqual(bake.lock_rows(self.found, {}, {row["key"]: {**row, "run": 3}})[0]["host"], row["host"])
+
+    def test_a_locally_made_bake_cannot_be_locked(self):
+        self.produce()
+        with self.assertRaisesRegex(bake.BakeMissing, "no CI run has made this key"):
+            bake.lock_rows(self.found, {})
+
+    def test_a_runs_uploads_lock_with_the_run_and_are_checked(self):
+        row = self.produce()
+        out = self.root / "upload"
+        produce.export([row], self.cache, out)
+        made = produce.import_run(out, 41, self.root / "other")
+        self.assertEqual(bake.lock_rows(self.found, {}, made)[0]["run"], 41)
+        (out / "files" / f"{row['sha256']}.mesh").write_bytes(b"other")
+        with self.assertRaisesRegex(bake.BakeMissing, "run 41"):
+            produce.import_run(out, 41, self.root / "third")
+
+    def test_publish_takes_a_rows_file_from_its_run(self):
+        row = self.produce()
+        out = self.root / "upload"
+        produce.export([row], self.cache, out)
+        lock = {row["key"]: {**row, "run": 41}}
+        uploads = []
+
+        def gh(args, **_):
+            if args[:3] == ["gh", "release", "upload"]:
+                uploads.append(pathlib.Path(args[-1]).read_bytes())
+            return mock.Mock(returncode=0)
+
+        with mock.patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "GITHUB_REF": "refs/heads/main"}), \
+                mock.patch.object(bake, "release_assets", return_value=set()), \
+                mock.patch.object(bake, "run_files", side_effect=lambda run, folder: out), \
+                mock.patch("subprocess.run", side_effect=gh):
+            bake.publish(self.found, lock, self.root / "empty")
+        self.assertEqual([hashlib.sha256(data).hexdigest() for data in uploads], [row["sha256"]])
+
+
+class BlendTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.directory.name)
+        (self.root / "rig.blend").write_bytes(b"BLENDER-v502 one")
+        self.write('clips = ["walk", "run"]\n')
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def write(self, clips):
+        (self.root / "rig.import.toml").write_text(
+            f'[source]\npath = "rig.blend"\ncredit = "c"\n{clips}[output]\ndirectory = "."\nname = "rig"\n')
+
+    def found(self):
+        return {found.kind: found for found in bake.bakes([self.root / "rig.import.toml"])}
+
+    def test_the_export_comes_before_the_mesh_that_reads_it(self):
+        self.assertEqual([found.kind for found in bake.bakes([self.root / "rig.import.toml"])], ["blend", "mesh"])
+        self.assertEqual(self.found()["blend"].output, "rig.glb")
+
+    def test_the_blend_its_clips_and_the_exporter_key_the_export_and_the_mesh(self):
+        before = self.found()
+        self.write('clips = ["walk"]\n')
+        clips = self.found()
+        (self.root / "rig.blend").write_bytes(b"BLENDER-v502 two")
+        blend = self.found()
+        for kind in ("blend", "mesh"):
+            self.assertEqual(len({before[kind].key, clips[kind].key, blend[kind].key}), 3, kind)
+
+    def test_clips_belong_to_a_blend_source(self):
+        (self.root / "m.glb").write_bytes(b"glTF")
+        (self.root / "rig.import.toml").write_text(
+            '[source]\npath = "m.glb"\ncredit = "c"\nclips = ["walk"]\n[output]\ndirectory = "."\nname = "m"\n')
+        with self.assertRaisesRegex(bake.SettingsError, "source.clips"):
+            bake.bakes([self.root / "rig.import.toml"])
+
+    def test_the_importer_refuses_a_blend_it_was_not_handed_an_export_of(self):
+        from r3d.import_settings import load_import_settings
+        from r3d.mesh_import import load_source
+
+        with self.assertRaisesRegex(bake.SettingsError, "exported by .*bake.py"):
+            load_source(load_import_settings(self.root / "rig.import.toml"))
+
+    def test_the_export_runs_blender_with_the_clips_and_records_its_bytes(self):
+        export = self.found()["blend"]
+
+        def blender(command, **_):
+            pathlib.Path(command[command.index("--") + 2]).write_bytes(b"glTF export")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch("subprocess.run", side_effect=blender) as run:
+            row = produce.produce(export, self.root / "cache", blender="blender")
+        command = run.call_args.args[0]
+        self.assertEqual(command[:5], ["blender", "--background", "--factory-startup", "--python",
+                                       str(bake.TOOLS / bake.BLEND_EXPORT)])
+        self.assertEqual(command[-2:], ["--clips", "walk,run"])
+        self.assertEqual(row["sha256"], hashlib.sha256(b"glTF export").hexdigest())
+
+    def test_a_failed_export_fails_with_blenders_output(self):
+        export = self.found()["blend"]
+        failed = mock.Mock(returncode=1, stdout="", stderr="needs Blender 5.2.2, this is 4.2.0")
+        with mock.patch("subprocess.run", return_value=failed), \
+                self.assertRaisesRegex(bake.BakeMissing, "needs Blender 5.2.2"):
+            produce.produce(export, self.root / "cache", blender="blender")
+
+
 class TreeTests(unittest.TestCase):
     def test_packs_built_from_a_seeded_cache_are_the_trees_packs(self):
         found = bake.bakes([build_pack.DEFAULT_SEARCH])
@@ -258,14 +444,15 @@ class TreeTests(unittest.TestCase):
 
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_the_trees_copy(self):
         found = bake.bakes([build_pack.DEFAULT_SEARCH])
+        dropped = next(item for item in found if item.kind == "mesh")
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
             rows = bake.seed(found, cache)
             with mock.patch.object(bake, "read_lock", return_value={row["key"]: row for row in rows}), \
-                    mock.patch.object(bake, "bakes_in", return_value=found[1:]), \
+                    mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
-        self.assertIn(found[0].output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
+        self.assertIn(dropped.output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
 
     def test_every_key_is_unique(self):
         keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH])]

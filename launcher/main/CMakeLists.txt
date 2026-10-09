@@ -105,6 +105,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/console_buildid.c"
         "console/console_freeze.c"
+        "console/console_frame_request.c"
         "console/console_frame_watch.c"
         "console/console_navigation.c"
         "console/console_perf.c"

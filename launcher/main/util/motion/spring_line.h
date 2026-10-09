@@ -24,8 +24,7 @@
 #include <stdint.h>
 
 #include "util/scalar/mathi.h"
-
-#define SPRING_LINE_ONE           (1 << 16)
+#include "util/scalar/mathx.h"
 
 /* One tick of simulated time. A wave crosses at most one column per tick,
  * which is what bounds both how fast a ripple can look and how far the
@@ -37,10 +36,14 @@
 #define SPRING_LINE_MAX_TICKS     8
 
 /* Put to rest below an eighth of a pixel and 4 px/s. */
-#define SPRING_LINE_REST_OFFSET   (SPRING_LINE_ONE / 8)
-#define SPRING_LINE_REST_VELOCITY (SPRING_LINE_ONE / 64)
+#define SPRING_LINE_REST_OFFSET   (MATHX_ONE / 8)
+#define SPRING_LINE_REST_VELOCITY (MATHX_ONE / 64)
 
-#define SPRING_LINE_MAX_OFFSET    (120 * SPRING_LINE_ONE)
+#define SPRING_LINE_MAX_OFFSET    (120 * MATHX_ONE)
+
+/* spring_line_apply() writes pixels with this many fractional bits. */
+#define SPRING_LINE_OUT_SHIFT     4
+#define SPRING_LINE_OUT_ONE       (1 << SPRING_LINE_OUT_SHIFT)
 
 typedef struct {
     int32_t* offset;
@@ -213,25 +216,25 @@ spring_line_advance(spring_line_t* line, uint32_t dt_ms) {
     return ticks;
 }
 
-/* Writes rest + offset into `out`, both Q4, and reports the columns whose
- * value changed, half open and empty when none did, measured against what
- * `out` holds, so it has to be the array last drawn. Returns the furthest
- * any column moved, in whole pixels rounded up. */
+/* Writes rest + offset into `out`, both SPRING_LINE_OUT_ONE to the pixel, and
+ * reports the columns whose value changed, half open and empty when none
+ * did, measured against what `out` holds, so it has to be the array last
+ * drawn. Returns the furthest any column moved, in whole pixels rounded up. */
 static inline int
-spring_line_apply(const spring_line_t* line, const int16_t* rest_q4, int16_t* out_q4, int* changed_lo,
-                  int* changed_hi) {
-    int furthest_q4 = 0;
+spring_line_apply(const spring_line_t* line, const int16_t* rest, int16_t* out, int* changed_lo, int* changed_hi) {
+    int furthest = 0;
     *changed_lo = line->count;
     *changed_hi = 0;
+    const int32_t step = MATHX_ONE / SPRING_LINE_OUT_ONE;
     for (int x = 0; x < line->count; x++) {
-        const int32_t rounded = (line->offset[x] + (line->offset[x] < 0 ? -2048 : 2048)) / 4096;
-        const int16_t height = (int16_t)(rest_q4[x] + rounded);
-        if (height == out_q4[x]) {
+        const int32_t rounded = (line->offset[x] + (line->offset[x] < 0 ? -step / 2 : step / 2)) / step;
+        const int16_t height = (int16_t)(rest[x] + rounded);
+        if (height == out[x]) {
             continue;
         }
-        const int moved = height < out_q4[x] ? out_q4[x] - height : height - out_q4[x];
-        furthest_q4 = moved > furthest_q4 ? moved : furthest_q4;
-        out_q4[x] = height;
+        const int moved = height < out[x] ? out[x] - height : height - out[x];
+        furthest = moved > furthest ? moved : furthest;
+        out[x] = height;
         *changed_lo = x < *changed_lo ? x : *changed_lo;
         *changed_hi = x + 1;
     }
@@ -239,5 +242,5 @@ spring_line_apply(const spring_line_t* line, const int16_t* rest_q4, int16_t* ou
         *changed_lo = 0;
         *changed_hi = 0;
     }
-    return (furthest_q4 + 15) / 16;
+    return (furthest + SPRING_LINE_OUT_ONE - 1) / SPRING_LINE_OUT_ONE;
 }
