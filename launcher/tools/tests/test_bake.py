@@ -200,6 +200,13 @@ class LockTests(unittest.TestCase):
         made = {"k" * 64: {**self.row, "run": 9}}
         self.assertNotIn("seeded", bake.lock_rows(found, {}, made)[0])
 
+    def test_seeding_keeps_a_made_row_and_reseeds_a_seeded_one(self):
+        found = [bake_of("k" * 64, self.tree)]
+        made = {**self.row, "sha256": "f" * 64, "run": 4, "host": "Linux x86_64"}
+        self.assertEqual(bake.seed(found, self.cache, {"k" * 64: made}), [made])
+        stale = {**self.row, "sha256": "f" * 64, "seeded": True}
+        self.assertEqual(bake.seed(found, self.cache, {"k" * 64: stale})[0]["sha256"], self.row["sha256"])
+
     def test_a_runs_make_replaces_a_seeded_row_but_never_a_made_one(self):
         found = [bake_of("k" * 64, self.tree)]
         made = {"k" * 64: {**self.row, "sha256": "f" * 64, "run": 9}}
