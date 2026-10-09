@@ -139,7 +139,9 @@ and pilot variance definitions.
 
 `perf_sweep.sh` flashes one perf-scoped diagnostic image per build and layout
 seed with `--hot-tunables` whenever a `--knob` is given. The plan records
-this flag and the table header identifies live knobs. Default device images
+this flag and the table header identifies live knobs. Each flash is one
+capture of the first suite, which waits for the image to boot and is
+discarded, so no point takes the first capture after a boot. Default device images
 keep `TUNE_HOT` values constant. Every round visits the Cartesian product of knob values in a fresh,
 recorded random order. The first build and first value of each knob form the
 baseline. Knobs reset after each flash; the wrapper restores `origin/main`'s

@@ -253,7 +253,9 @@ def capture_metadata(capture, rows):
 
 
 def status_snapshot(out, stem, phase, runner, override=None, identity=False, wait=None):
-    """Log board ownership and optionally its identity around a measurement."""
+    """Log board ownership and optionally its identity around a measurement.
+    Before a flash the board may run a release image, which has no console
+    to answer buildid, so that identity is logged and not required."""
     build_id = None
     for operation in (("status", "buildid") if identity else ("status",)):
         path = Path(out) / f"{stem}_{operation}_{phase}.log"
@@ -263,6 +265,8 @@ def status_snapshot(out, stem, phase, runner, override=None, identity=False, wai
             if not log.tell():
                 log.write("\n".join(line for _, line in lines) + "\n")
             log.write(f"exit code: {code}\n")
+        if operation == "buildid" and phase == "before":
+            continue
         if code and (phase == "before" or identity):
             raise RuntimeError(f"autana {operation} {phase} exited {code}; see {path}")
         if operation == "buildid":

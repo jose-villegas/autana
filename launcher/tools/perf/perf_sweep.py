@@ -22,6 +22,13 @@ from dynres_report import SPANS, SPAN_FIELDS, STAGE
 DEFAULT_RUNS = 5
 US_PER_MS = 1000
 MAX_CONSECUTIVE_FAILURES = 2
+
+# What device.py prints for a --set the board refused (its TuneRefused).
+SET_REFUSED = "device: SET "
+
+
+class SweepStop(RuntimeError):
+    """The board refused a knob: every later capture would meet the same."""
 LAYOUT_SEED_MAX = 2**32 - 1
 TUNE_VALUE_MIN = -(2**31)
 TUNE_VALUE_MAX = 2**31 - 1
@@ -95,8 +102,14 @@ def plan(args):
                 order = list(range(len(points)))
                 rng.shuffle(order)
                 rounds.append(order)
-            command = ["--project", entry["project"], "flash", "diag",
-                       "--perf-scope", "--layout-seed", str(seed)]
+            # Flashed through one capture of the first suite, discarded: only
+            # suite --flash waits for the image to boot to its console, and
+            # no point takes the first capture after a boot.
+            name, tests, _ = suites[0]
+            command = ["--project", entry["project"], "suite", name, str(args.timeout), "--runs", "1",
+                       "--flash", "--perf-scope", "--layout-seed", str(seed)]
+            if tests != "-":
+                command += ["--test", tests]
             if args.knob:
                 command.append("--hot-tunables")
             flashes.append(dict(build=build, seed=seed, rounds=rounds, suites=suites, command=command))
@@ -178,7 +191,7 @@ def run(args, runner=None):
             try:
                 status_snapshot(args.out, stem, "before", runner, args.autana, identity=True, wait=args.wait)
                 code, lines, wall = command(flash["command"], stem)
-                if code:
+                if code not in (0, 1):
                     raise RuntimeError(f"flash exited {code}; see {stem}.log")
                 flash["build_id"] = booted_build_id(build["project"], lines)
                 flashed = True
@@ -188,11 +201,10 @@ def run(args, runner=None):
                 for round_index, order in enumerate(flash["rounds"]):
                     for point in order:
                         prefix = f"{stem}_round_{round_index + 1}_point_{point}"
-                        for knob, value in saved["points"][point].items():
-                            code, lines, _ = command(["tune", knob, str(value)], prefix + "_" + knob)
-                            reply = "\n".join(line for _, line in lines)
-                            if code or f"{knob}={value}" not in reply.splitlines():
-                                raise RuntimeError(f"tune {knob}={value} refused or mismatched: {reply!r}")
+                        # Set under the capture's own lock, so whoever held the
+                        # board in between cannot change what is measured.
+                        settings = [word for knob, value in saved["points"][point].items()
+                                    for word in ("--set", f"{knob}={value}")]
                         for suite_index, (suite, tests, template) in enumerate(flash["suites"]):
                             capture_stem = prefix + f"_suite_{suite_index}"
                             item = dict(build=flash["build"], seed=flash["seed"], point=point,
@@ -202,10 +214,13 @@ def run(args, runner=None):
                             save()
                             try:
                                 words = ["--project", build["project"], "suite", suite, str(args.timeout),
-                                         "--runs", "1", "--expect-build-id", flash["build_id"]]
+                                         "--runs", "1", "--expect-build-id", flash["build_id"], *settings]
                                 if tests != "-":
                                     words += ["--test", tests]
                                 code, lines, wall = command(words, capture_stem)
+                                refused = [line for _, line in lines if SET_REFUSED in line]
+                                if refused:
+                                    raise SweepStop(refused[-1])
                                 captures, _, seconds = captured_runs(lines, suite, 1)
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
@@ -222,6 +237,9 @@ def run(args, runner=None):
                                             units={suite + "/" + key: value for key, value in units.items()},
                                             owners=owners, instructions=instructions)
                                 failures = 0
+                            except SweepStop as error:
+                                item["error"] = str(error)
+                                raise
                             except (RuntimeError, OSError, ValueError) as error:
                                 item["error"] = str(error)
                                 failures += 1
@@ -233,14 +251,6 @@ def run(args, runner=None):
             finally:
                 active_error = sys.exc_info()[1]
                 cleanup_errors = []
-                if flashed:
-                    for knob in saved["points"][0]:
-                        try:
-                            code, lines, _ = command(["tune", "reset", knob], stem + "_reset_" + knob)
-                            if code:
-                                raise RuntimeError(repr("\n".join(line for _, line in lines)))
-                        except (RuntimeError, OSError) as error:
-                            cleanup_errors.append(f"reset {knob}: {error}")
                 identity_valid = False
                 try:
                     after = status_snapshot(args.out, stem, "after", runner, args.autana, identity=True, wait=args.wait)

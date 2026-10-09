@@ -624,7 +624,8 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--verbose] [--out PATH] [--expect-build-id ID] | "
+              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--verbose] [--out PATH] "
+              "[--expect-build-id ID] | "
               "autana suite list [text]")
 
 
@@ -635,7 +636,9 @@ def suite(args):
     spells it. `seconds` caps each capture (1800 when omitted, and a
     silent board ends one sooner). `--test` (repeatable, or a comma
     list) narrows the run, on the device, to the tests whose name contains
-    a pattern."""
+    a pattern. `--set NAME=VALUE` (repeatable) sets a tunable under each
+    capture's own lock, just before it runs, and stops the batch unless the
+    board echoes the value."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
@@ -676,6 +679,17 @@ def suite(args):
     while "--test" in rest:
         value, rest = pop_value(rest, "--test")
         tests.append(value)
+    settings = []
+    while "--set" in rest:
+        value, rest = pop_value(rest, "--set")
+        name, equals, number = value.partition("=")
+        try:
+            int(number, 0)
+        except ValueError:
+            equals = ""
+        if not name or not equals:
+            sys.exit(f"usage: --set NAME=VALUE with a whole number, decimal or 0x hex, not {value}")
+        settings.append(value)
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
@@ -695,6 +709,8 @@ def suite(args):
         command += ["--max-seconds", str(seconds)]
     for value in tests:
         command += ["--test", value]
+    for value in settings:
+        command += ["--set", value]
     if not flash:
         command.append("--no-flash")
     for name in names:
@@ -1405,6 +1421,8 @@ COMMAND_GROUPS = (
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern; --test repeats"),
+            ("suite <name> --set NAME=VALUE",
+             "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
         Command("selftest", selftest, (
             ("selftest [seconds] [--verbose]",

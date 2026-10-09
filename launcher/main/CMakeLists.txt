@@ -192,18 +192,19 @@ set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
-             # perfmon and unity are both listed unconditionally, NOT inside
-             # the block below: ESP-IDF expands REQUIRES in an early pass
+             # perfmon, unity and esp_mm (the perf suites' cache control) are
+             # listed unconditionally, NOT inside the block below: ESP-IDF
+             # expands REQUIRES in an early pass
              # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
              # silently does nothing; SRCS and compile definitions are
              # evaluated later and do work, which makes the failure look
              # baffling: the code compiles but cannot find the header.
              #
-             # This costs release nothing. IDF puts both in the component
+             # This costs release nothing. IDF puts them in the component
              # graph either way; REQUIRES only decides whether main can see
              # their headers. With nothing built that references them,
              # --gc-sections drops them from the image.
-             perfmon unity)
+             perfmon unity esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")

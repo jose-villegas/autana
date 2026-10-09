@@ -22,7 +22,9 @@
 
 #include "unity.h"
 
+#include "esp_cache.h"
 #include "esp_log.h"
+#include "sdkconfig.h"
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
@@ -225,6 +227,38 @@ test_raster_stage_split_by_size(void) {
 
 static const char* const counter_events[] = {"icache_miss_stall", "d_stall_all"};
 
+/* The control proving the icache event live: the code around raster_draw
+ * dropped from the instruction cache before every draw. */
+#define COLD_EVENT       "icache_miss_stall"
+#define COLD_WINDOW_SIZE (128 * 1024)
+
+/* `event` armed on r3d.draw along the path; the counts line into `report`,
+ * its length returned. `cold` empties the icache window first each draw. */
+static int
+count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const char* event, bool cold, char* report) {
+    const int index = frame_cost_event_index(event);
+    TEST_ASSERT_TRUE(index >= 0);
+    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
+    void* window = (void*)(((uintptr_t)raster_draw - COLD_WINDOW_SIZE / 2) & ~(line - 1));
+    frame_cost_shared_post_arm(bracket, index);
+    const uint32_t period = r3d_scene_camera_period_ms(path);
+    for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
+        const camera_t camera = r3d_scene_camera_at(path, t_ms);
+        if (cold) {
+            TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync(window, COLD_WINDOW_SIZE,
+                                                      ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_INST));
+        }
+        (void)raster_draw(raster, &camera, 0);
+        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
+    }
+    const int length = frame_cost_take_counts(report, FRAME_COST_REPORT_MAX);
+    frame_cost_shared_post_arm(-1, 0);
+    const int mark = frame_cost_begin();
+    (void)frame_cost_end(mark, "counters.disarm");
+    TEST_ASSERT_TRUE_MESSAGE(length > 0, "the draw counter did not arm");
+    return length;
+}
+
 static void
 test_raster_counters(void) {
 #if !FRAME_COST_ENABLED
@@ -253,24 +287,14 @@ test_raster_counters(void) {
     ESP_LOGI(TAG, "raster both cores: mean %lldus", (long long)mean_us);
     const int bracket = frame_cost_shared_name_index("r3d.draw");
     TEST_ASSERT_TRUE(bracket >= 0);
-    const uint32_t period = r3d_scene_camera_period_ms(path);
     /* Counters cover core 0's half of the draw. */
     for (size_t event = 0; event < sizeof counter_events / sizeof counter_events[0]; event++) {
-        const int index = frame_cost_event_index(counter_events[event]);
-        TEST_ASSERT_TRUE(index >= 0);
-        frame_cost_shared_post_arm(bracket, index);
-        for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
-            const camera_t camera = r3d_scene_camera_at(path, t_ms);
-            (void)raster_draw(&raster, &camera, 0);
-            raster_upscale(&raster, destination, GFX_WIDTH, GFX_HEIGHT);
-        }
-        const int length = frame_cost_take_counts(report, FRAME_COST_REPORT_MAX);
-        frame_cost_shared_post_arm(-1, 0);
-        const int mark = frame_cost_begin();
-        (void)frame_cost_end(mark, "counters.disarm");
-        TEST_ASSERT_TRUE_MESSAGE(length > 0, "the draw counter did not arm");
+        (void)count_along_path(&raster, destination, bracket, counter_events[event], false, report);
         ESP_LOGI(TAG, "%s", report);
     }
+    /* Not a perf: line, so a sweep never scores the control. */
+    (void)count_along_path(&raster, destination, bracket, COLD_EVENT, true, report);
+    ESP_LOGI(TAG, "cold icache control: %s", report + strlen("perf: "));
     free(report);
     free(frame_us);
     memory_free(destination);

@@ -106,6 +106,11 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
   cannot size an array or label a `case`, and a development build does not
   fold it the way release does; a timing taken on one is a little
   pessimistic.
+- `TUNE_HOT` is the same declaration for code whose layout is pinned or
+  measured, such as the raster's inner loops: a constant on every device
+  build, live only on an image built with `--hot-tunables`
+  ([Build-Variants.md](../Build-Variants.md)), which is what
+  `launcher/tools/perf/perf_sweep.sh` flashes.
 - A value read every frame takes effect at once. One baked into a table needs
   its owner to notice:
   `TUNE_GENERATION(ridge)` goes up on every `SET` or `RESET` of one of that

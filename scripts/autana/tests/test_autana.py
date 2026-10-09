@@ -1043,6 +1043,21 @@ class SuiteCommandTests(unittest.TestCase):
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
 
+    def test_each_set_is_forwarded(self):
+        with project_call() as called:
+            autana.suite(["run_gfx_suite", "--set", "r3d_span.small_max_side=3", "--set", "a.b=0x10"])
+        command = called.call_args[0][0]
+        self.assertEqual([command[i + 1] for i, word in enumerate(command) if word == "--set"],
+                         ["r3d_span.small_max_side=3", "a.b=0x10"])
+
+    def test_a_set_without_a_whole_number_is_refused(self):
+        for value in ("r3d_span.small_max_side", "=3", "a.b=three"):
+            with self.subTest(value=value), \
+                 mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+                 self.assertRaises(SystemExit):
+                autana.suite(["run_gfx_suite", "--set", value])
+            called.assert_not_called()
+
 
 class LockCommandTests(unittest.TestCase):
     """status/release/hand/take-back: thin pass-throughs to device.py's own

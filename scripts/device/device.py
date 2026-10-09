@@ -1291,6 +1291,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     try:
         with holding(store, board, args, held_lock, "run-suite") as held:
             with open_when_free(FLASH_PORT_WAIT_SECONDS if held_lock else PORT_WAIT_SECONDS) as connection:
+                apply_tunables(connection, getattr(args, "tune_set", None) or [])
                 connection.write(suite_request(args.suite, patterns))
                 connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
@@ -1467,6 +1468,50 @@ def replies_to(data, reply, until):
     return found, False
 
 
+def exchange(connection, line, reply, until, seconds):
+    """Write one console line on a port the caller holds; (replies, whether
+    the answer completed) within `seconds`."""
+    data = bytearray()
+    found = []
+    connection.reset_input_buffer()
+    connection.write(("\n" + line + "\n").encode("ascii"))
+    connection.flush()
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        require_unlost()
+        data.extend(connection.read(4096))
+        found, complete = replies_to(bytes(data), reply, until)
+        if complete:
+            return found, True
+        if ("ignoring line: '" + line).encode("ascii") in data:
+            raise RuntimeError("this build does not answer '" + line.split(" ")[0] +
+                               "' - it needs a development build that has it")
+    return found, False
+
+
+TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
+TUNE_SET_SECONDS = 3.0
+
+
+class TuneRefused(RuntimeError):
+    """A --set the board refused or did not echo. It ends a batch: the next
+    run would meet the same board."""
+
+
+def apply_tunables(connection, settings):
+    """SET each NAME=VALUE on the port the caller holds, so a capture runs at
+    those values whoever held the board before it; refused unless the board
+    echoes each value back."""
+    for setting in settings:
+        name, _, value = setting.partition("=")
+        found, _ = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS, TUNE_SET_SECONDS)
+        if not found or not found[-1].startswith("TUNE_OK " + name + "="):
+            raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
+        if found[-1].split("=", 1)[1] != str(int(value, 0)):
+            raise TuneRefused(f"SET {name} {value}: board holds {found[-1]}")
+        print(found[-1], flush=True)
+
+
 def send(args, store, board):
     """Write one console line and print what the device answers.
 
@@ -1483,27 +1528,15 @@ def send(args, store, board):
     completes as soon as `<PREFIX>_END`/`<PREFIX>_ERR` arrives rather than
     waiting out the window.
     """
-    data = bytearray()
-    found = []
     with HeldLock(store, board, args.owner, "send", args.wait) as held:
         with open_when_free() as connection:
-            connection.reset_input_buffer()
-            connection.write(("\n" + args.line + "\n").encode("ascii"))
-            connection.flush()
-            deadline = time.monotonic() + args.seconds
-            while time.monotonic() < deadline:
-                require_unlost()
-                data.extend(connection.read(4096))
-                found, complete = replies_to(bytes(data), args.reply, args.until)
-                if complete:
-                    print("\n".join(found))
-                    if found[-1].startswith(args.reply + "_ERR"):
-                        held.error = found[-1]
-                        return 1
-                    return 0
-                if ("ignoring line: '" + args.line).encode("ascii") in data:
-                    raise RuntimeError("this build does not answer '" + args.line.split(" ")[0] +
-                                       "' - it needs a development build that has it")
+            found, complete = exchange(connection, args.line, args.reply, args.until, args.seconds)
+            if complete:
+                print("\n".join(found))
+                if found[-1].startswith(args.reply + "_ERR"):
+                    held.error = found[-1]
+                    return 1
+                return 0
     if args.optional:
         print("\n".join(found))
         return 0
@@ -1625,7 +1658,7 @@ def batch(args, store, board):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False),
-                    test_filter=patterns)
+                    test_filter=patterns, tune_set=getattr(args, "tune_set", None))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 # A suite FAIL is a result, not a broken run: a perf capture always
                 # carries its budget targets' FAILs, and its duration still counts.
@@ -1634,7 +1667,7 @@ def batch(args, store, board):
                 try:
                     failed = bool(run_suite(suite_args, store, board, held_lock=held,
                                             worktree=worktree, commit=commit))
-                except TestFilterError:
+                except (TestFilterError, TuneRefused):
                     # The same board would answer the same in every remaining run.
                     raise
                 except RuntimeError as caught:
@@ -1768,6 +1801,8 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
+    suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
+                       help="SET a tunable under the capture's lock first; repeatable")
     listen_parser = subparsers.add_parser("listen")
     listen_duration = listen_parser.add_mutually_exclusive_group(required=True)
     listen_duration.add_argument("--seconds", type=float)
@@ -1835,6 +1870,8 @@ def main(argv=None):
     batch_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
+    batch_parser.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
+                              help="SET a tunable under each capture's lock first; repeatable")
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
                               help="run only the tests whose name contains PATTERN; repeat or "
                                    "comma-separate for several")

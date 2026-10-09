@@ -27,15 +27,16 @@ class FakeAutana:
             lines = ["free"]
         elif "buildid" in command:
             lines = ["BUILD_ID=" + self.build]
-        elif "flash" in command:
+        elif "--flash" in command:
             project = Path(command[command.index("--project") + 1])
             build = project / "launcher/build.diag/build_id.txt"
             build.parent.mkdir(parents=True, exist_ok=True)
             build.write_text(self.build)
             lines = ["booted BUILD_ID=" + self.build]
-        elif "tune" in command:
-            words = command[command.index("tune") + 1:]
-            lines = [words[0] + "=" + ("999" if self.mismatch else words[-1])]
+        elif self.mismatch and "--set" in command:
+            name, value = command[command.index("--set") + 1].split("=")
+            lines = [f"device: SET {name} {value}: board holds TUNE_OK {name}=999"]
+            code = 1
         elif "suite" in command:
             name = command[command.index("suite") + 1]
             capture = self.root / f"capture_{len(self.calls)}.log"
@@ -61,21 +62,6 @@ def arguments(root, seeds=(1,)):
 
 
 class SweepTests(unittest.TestCase):
-    def test_reset_failure_preserves_tune_mismatch_reply(self):
-        with tempfile.TemporaryDirectory() as root:
-            args = arguments(root)
-            fake = FakeAutana(root, mismatch=True)
-
-            def runner(command, log, timeout):
-                if "reset" in command:
-                    return 1, [(0, "reset refused")], 1
-                return fake(command, log, timeout)
-
-            self.assertEqual(tool.run(args, runner), 1)
-            saved = json.loads((args.out / "plan.json").read_text())
-            self.assertIn("=999", saved["error"])
-            self.assertIn("reset refused", saved["error"])
-
     def test_unknown_after_identity_discards_captures(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)
@@ -143,7 +129,7 @@ class SweepTests(unittest.TestCase):
             self.assertEqual(tool.run(args, fake), 1)
             saved = json.loads((args.out / "plan.json").read_text())
             self.assertIn("=999", saved["error"])
-            self.assertFalse(any("suite" in call for call in fake.calls))
+            self.assertEqual(sum("suite" in call and "--flash" not in call for call in fake.calls), 1)
             self.assertTrue((args.out / "sweep.md").exists())
 
     def test_captures_and_two_failure_stop(self):
@@ -152,12 +138,12 @@ class SweepTests(unittest.TestCase):
                 args = arguments(root)
                 fake = FakeAutana(root, failed=failed)
                 self.assertEqual(tool.run(args, fake), int(failed))
-                captures = [call for call in fake.calls if "suite" in call]
+                captures = [call for call in fake.calls if "suite" in call and "--flash" not in call]
                 self.assertEqual(len(captures), 2 if failed else 12)
                 self.assertTrue(all("--expect-build-id" in call for call in captures))
-                self.assertEqual(sum("flash" in call for call in fake.calls), 1)
-                self.assertTrue(all("--hot-tunables" in call for call in fake.calls if "flash" in call))
-                self.assertTrue(any("reset" in call for call in fake.calls))
+                self.assertEqual(sum("--flash" in call for call in fake.calls), 1)
+                self.assertTrue(all("--hot-tunables" in call for call in fake.calls if "--flash" in call))
+                self.assertTrue(all("--set" in call for call in captures))
 
     def test_report_units_verdicts_and_table(self):
         for seeds in ((1,), tuple(range(1, 17))):
