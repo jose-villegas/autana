@@ -899,7 +899,7 @@ advance_cullet(uint32_t dt_ms) {
     const uint32_t steps = cullet_elapsed_ms / CULLET_PHASE_MS;
     cullet_elapsed_ms -= steps * CULLET_PHASE_MS;
     cullet_phase_index += steps;
-    material_set_cullet_phase(cullet_phase_index);
+    paint_frame.material.cullet_phase = cullet_phase_index;
     return true;
 }
 
@@ -957,7 +957,7 @@ advance_glass_phase(int gx, int gy) {
     const int phase = gravity_bearing_q16(gx, gy) >> GLASS_PHASE_SHIFT;
     const bool changed = phase != glass_last_phase;
     glass_last_phase = phase;
-    material_set_glass_phase(phase);
+    paint_frame.material.glass_phase = phase;
     return changed;
 }
 
@@ -1603,7 +1603,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     run_sim_steps(gx, gy, jostle, flow, dt_ms);
     FRAME_COST_END(step_mark, "sand.steps");
 
-    material_set_gravity(gx, gy);
+    material_frame_set_gravity(&paint_frame.material, gx, gy);
 
     material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
 
@@ -1616,7 +1616,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     sand_paint_update_local_depth_gravity(&paint_row_state, gx, gy, grid_w, grid_h);
 
     foam_elapsed_ms += dt_ms;
-    material_set_foam_phase(foam_elapsed_ms / FOAM_PHASE_MS);
+    paint_frame.material.foam_phase = foam_elapsed_ms / FOAM_PHASE_MS;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     pending_step_us = timing_now_us() - t0;
