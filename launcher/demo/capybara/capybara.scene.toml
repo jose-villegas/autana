@@ -1,0 +1,44 @@
+# The capybara on a meadow under one sun: direct light only, baked per vertex.
+tonemap_white = 0.3
+
+[ambient]
+color = [0.85, 0.9, 1.0]
+intensity = 0.35
+
+[bake]
+ray_offset = 0.002
+colour_merge_step = 6
+
+[[objects]]
+name = "sun"
+rotation = [40.0, 30.0, 0.0]   # toward (0.32, 0.77, 0.56): above, in front and to the right
+
+[objects.light]
+type = "directional"
+color = [1.0, 0.95, 0.85]
+intensity = 1.6
+
+# Where the view starts: three-quarters from the front, a little above.
+[[objects]]
+name = "camera"
+position = [1.6, 0.9, 1.9]
+rotation = [-12.2, 43.8, 0.0]
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.05
+background = 0x9CC0E6
+
+[[objects]]
+name = "capybara"
+
+[objects.mesh_renderer]
+mesh = "capybara.import.toml"
+bake = true
+
+[[objects]]
+name = "meadow"
+
+[objects.mesh_renderer]
+mesh = "meadow.import.toml"
+bake = true

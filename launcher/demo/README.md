@@ -13,6 +13,9 @@ is Git LFS and absent from firmware clones.
   the flythrough animation live beside the scene. MTL and attribution stay
   text. Fetch sources with `git lfs pull --exclude=""` before importing or
   rendering a reference.
-- [Capybara](capybara/) contains the Blender source and glTF export used by
-  the [skinned lighting measurements](../../docs/render/Skinned-Lighting.md).
-  Nothing in the firmware build reads these files.
+- [Capybara](capybara/capybara.scene.toml) stands on a meadow, a plain square, under
+  one sun, lit directly and baked per vertex. Its
+  [import](capybara/capybara.import.toml) reads the bind pose from the glTF
+  export of the Blender source; the
+  [skinned lighting measurements](../../docs/render/Skinned-Lighting.md) read
+  that export too.
