@@ -35,27 +35,14 @@ typedef struct {
     uint32_t shine_ms;
     uint32_t foam_ms;
     uint32_t cullet_ms;
-    unsigned cullet_phase;
     uint32_t wood_leaf_wake_ms;
     uint32_t local_depth_wake_ms;
     uint32_t wind_flip_ms;
     uint32_t wind_flip_due_ms;
     unsigned wind_flip_count;
-    int glass_phase;
 } sand_paint_clock_t;
 
 #define SAND_PAINT_CLOCK_INIT {.wind_flip_due_ms = SAND_PAINT_WIND_FLIP_BASE_MS}
-
-/* The frame the clocks start from: shine on the (1,1) diagonal and wind
- * along +x, so a frame drawn before the first gravity sample looks right.
- * A macro so a static can start from it. */
-#define SAND_PAINT_FRAME_INIT                                                                                          \
-    {.shine_ux_q8 = 181,                                                                                               \
-     .shine_uy_q8 = 181,                                                                                               \
-     .wood_leaf_wind_ux_q8 = 256,                                                                                      \
-     .wood_leaf_wind_sign = 1,                                                                                         \
-     .wood_leaf_top5 = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}},                                                  \
-     .repaint_kind = GFX_INDEXED_REPAINT_RAW}
 
 /* Whole periods of `period_ms` in `*elapsed_ms` after adding `dt_ms`; the remainder carries. */
 static inline uint32_t
@@ -79,20 +66,16 @@ sand_paint_clock_shine(sand_paint_clock_t* c, sand_paint_frame_t* pf, uint32_t d
 
 /* Foam reads a phase that only ever grows, so it never reports a move: water rows repaint on their own. */
 static inline void
-sand_paint_clock_foam(sand_paint_clock_t* c, uint32_t dt_ms) {
+sand_paint_clock_foam(sand_paint_clock_t* c, sand_paint_frame_t* pf, uint32_t dt_ms) {
     c->foam_ms += dt_ms;
-    material_set_foam_phase(c->foam_ms / SAND_PAINT_FOAM_PHASE_MS);
+    pf->material.foam_phase = c->foam_ms / SAND_PAINT_FOAM_PHASE_MS;
 }
 
 static inline bool
-sand_paint_clock_cullet(sand_paint_clock_t* c, uint32_t dt_ms) {
+sand_paint_clock_cullet(sand_paint_clock_t* c, sand_paint_frame_t* pf, uint32_t dt_ms) {
     const uint32_t steps = sand_paint_clock_periods(&c->cullet_ms, dt_ms, SAND_PAINT_CULLET_PHASE_MS);
-    if (steps == 0) {
-        return false;
-    }
-    c->cullet_phase += steps;
-    material_set_cullet_phase(c->cullet_phase);
-    return true;
+    pf->material.cullet_phase += steps;
+    return steps != 0;
 }
 
 static inline bool
@@ -134,11 +117,11 @@ sand_paint_gravity_bearing_q16(int gx, int gy) {
     return (int)(gy < 0 ? (p_q16 - 65536) : (65536 - p_q16));
 }
 
+/* Not a clock: glass reads gravity's bearing, so a steady tilt leaves it fixed. */
 static inline bool
-sand_paint_clock_glass(sand_paint_clock_t* c, int gx, int gy) {
+sand_paint_clock_glass(sand_paint_frame_t* pf, int gx, int gy) {
     const int phase = sand_paint_gravity_bearing_q16(gx, gy) >> SAND_PAINT_GLASS_PHASE_SHIFT;
-    const bool changed = phase != c->glass_phase;
-    c->glass_phase = phase;
-    material_set_glass_phase(phase);
+    const bool changed = phase != pf->material.glass_phase;
+    pf->material.glass_phase = phase;
     return changed;
 }

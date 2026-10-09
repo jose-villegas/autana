@@ -51,12 +51,13 @@ jobs:
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
+      # test_fbx_to_glb.py builds ufbx the same way;
       # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
       - name: r3d bake environment
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get install -y --no-install-recommends llvm
-          git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+          git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
 
       # test_check_math.mjs renders through GitHub's MathJax.
       - name: Node gate dependencies
@@ -88,15 +89,23 @@ jobs:
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
       - name: Generated document bodies match their recorded hashes
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
 
       - name: Shared-owner catalogue matches source
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 launcher/tools/gen/shared_helpers.py --check
 
       - name: Documentation constants match source
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_constants.py
 
       - name: The math reference names every function the headers define
+        env:
+          STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_math_docs.py
 
       - name: Documentation names the supported board

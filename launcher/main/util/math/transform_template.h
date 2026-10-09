@@ -1,6 +1,6 @@
 /*
- * transform_template: where a thing is, as Unity's Transform holds it, for
- * one number type; see math_template.h for the macro arguments. Position,
+ * transform_template: where a thing is, as a position, a rotation and a
+ * scale, for one number type; see math_template.h for the macro arguments. Position,
  * rotation and scale are the truth; the model matrix is derived and cached.
  *
  * Which matrix call to use:
@@ -48,7 +48,7 @@
     /* position = position + delta, in the parent's frame. */                                                          \
     static inline void P##_translate(P##_t* t, V##_t delta) { P##_set_position(t, V##_add(t->position, delta)); }      \
                                                                                                                        \
-    /* rotation = normalize(rotation * delta): about the transform's own axes, as Unity's Rotate does. */              \
+    /* rotation = normalize(rotation * delta): about the transform's own axes. */                                      \
     static inline void P##_rotate(P##_t* t, Q##_t delta) {                                                             \
         P##_set_rotation(t, Q##_normalize(Q##_mul(t->rotation, delta)));                                               \
     }                                                                                                                  \

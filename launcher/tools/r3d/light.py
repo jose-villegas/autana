@@ -145,11 +145,9 @@ def albedo_from_uv(texture, kd, uv, lod):
     return texture.sample(uv, lod)[:, :3] * np.array(kd)
 
 
-def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
-    sel = np.nonzero(tri_m == m)[0]
-    tex = textures[m]
-    if tex is None:
-        return albedo_from_uv(None, kd, points, None)
+def nearest_on_triangles(points, sel, p, tri_v):
+    """For each point, the triangle of `sel` nearest to it and the barycentric
+    coordinates of the nearest point on that triangle."""
     a, b, c = p[tri_v[sel, 0]], p[tri_v[sel, 1]], p[tri_v[sel, 2]]
     tree = cKDTree((a + b + c) / 3)
     k = min(16, len(sel))
@@ -165,16 +163,32 @@ def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd):
         best_d[better] = d[better]
         best_bary[better] = bary[better]
         best_tri[better] = t[better]
-    tris = sel[best_tri]
-    tuv = (uv[tri_t[tris]] * best_bary[:, :, None]).sum(axis=1)
-    world_area = triangle_areas(p, tri_v[tris])
-    e1 = uv[tri_t[tris, 1]] - uv[tri_t[tris, 0]]
-    e2 = uv[tri_t[tris, 2]] - uv[tri_t[tris, 0]]
-    w, h = tex.size
-    texel_area = 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) * w * h
-    texels_per_unit = np.sqrt(texel_area / np.maximum(world_area, 1e-9))
-    lod = np.log2(np.maximum(spacing * texels_per_unit, 1.0))
-    return albedo_from_uv(tex, kd, tuv, lod)
+    return sel[best_tri], best_bary
+
+
+def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd, colors=None):
+    """Linear albedo of material m at points on its surface: its texture or colour, times the source's linear vertex
+    colours (indexed like p) where it has them."""
+    sel = np.nonzero(tri_m == m)[0]
+    tex = textures[m]
+    if tex is None and colors is None:
+        return albedo_from_uv(None, kd, points, None)
+    tris, bary = nearest_on_triangles(points, sel, p, tri_v)
+    if tex is None:
+        albedo = albedo_from_uv(None, kd, points, None)
+    else:
+        tuv = (uv[tri_t[tris]] * bary[:, :, None]).sum(axis=1)
+        world_area = triangle_areas(p, tri_v[tris])
+        e1 = uv[tri_t[tris, 1]] - uv[tri_t[tris, 0]]
+        e2 = uv[tri_t[tris, 2]] - uv[tri_t[tris, 0]]
+        w, h = tex.size
+        texel_area = 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) * w * h
+        texels_per_unit = np.sqrt(texel_area / np.maximum(world_area, 1e-9))
+        lod = np.log2(np.maximum(spacing * texels_per_unit, 1.0))
+        albedo = albedo_from_uv(tex, kd, tuv, lod)
+    if colors is not None:
+        albedo = albedo * (colors[tri_v[tris]] * bary[:, :, None]).sum(axis=1)
+    return albedo
 
 
 def tangent_frame(n):
@@ -379,10 +393,11 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
     return out
 
 
-def merge_matching_colours(pos, rgb, tris, step=6):
+def merge_matching_colours(pos, rgb, tris, weld_grid, step=6):
     """A crease splits a vertex so each side can be lit on its own normal;
-    where both sides came out the same colour, one vertex is enough."""
-    key = np.concatenate([np.round(pos * 16), rgb // step], axis=1).astype(np.int64)
+    where both sides came out the same colour, one vertex is enough. Positions
+    are one where they round alike on a grid of `weld_grid` per unit."""
+    key = np.concatenate([np.round(pos * weld_grid), rgb // step], axis=1).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     tris = inverse.reshape(-1)[tris]
     tris = tris[(tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])]

@@ -76,7 +76,7 @@ def main():
     parser.add_argument("out")
     sheet_argument(parser)
     args = parser.parse_args()
-    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_glb(args.asset))
+    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_asset(args.asset))
     if asset.normals is None:
         sys.exit(f"{args.asset}: the skinned mesh has no normals")
     write(asset, args.out, args.sheet)

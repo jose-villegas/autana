@@ -10,3 +10,4 @@
 #include "util/scalar/mathf.h"
 
 MATH_DEFINE_MAT4(mat4f, vec3f, quatf, float, mathf)
+MATH_DEFINE_MAT4_INVERT_AFFINE(mat4f, float, mathf)

@@ -132,12 +132,12 @@ test_sand_paint_indexed_repaint_tracks_only_changed_in_span(void) {
     TEST_ASSERT_EQUAL(241, indices[0]);
     TEST_ASSERT_EQUAL(244, indices[3]);
     gfx_color_t col[3];
-    material_colours(cells[1], material_grain_hash(1, 0), 0, 0, col);
+    material_colours(&pf.material, cells[1], material_grain_hash(1, 0), 0, 0, col);
     TEST_ASSERT_EQUAL(material_palette256_index(col[0]), off_band);
     pf.shine_offset = 0;
     paint_one(st, &pf, NULL, indices, 0, cells, 4, PAINT_W, 1, 0, 1, true);
     TEST_ASSERT_EQUAL(244, indices[3]);
-    material_colours(cells[0], material_grain_hash(0, 0), 0, 0, col);
+    material_colours(&pf.material, cells[0], material_grain_hash(0, 0), 0, 0, col);
     TEST_ASSERT_EQUAL(material_palette256_index(col[2]), indices[0]);
     TEST_ASSERT_NOT_EQUAL(off_band, indices[0]);
     free(st);
@@ -281,6 +281,7 @@ assert_rgb_block_span(const gfx_color_t* fb, int n) {
 
 static void
 assert_rgb_metal_shine(const gfx_color_t* fb, const uint8_t* cells, int n) {
+    material_frame_t f = {0};
     gfx_color_t metal_base = 0;
     gfx_color_t metal_shine = 0;
     for (int dy = 0; dy < n; dy++) {
@@ -296,7 +297,7 @@ assert_rgb_metal_shine(const gfx_color_t* fb, const uint8_t* cells, int n) {
     }
     TEST_ASSERT_NOT_EQUAL(metal_base, metal_shine);
     gfx_color_t col[3];
-    material_colours(cells[1], material_grain_hash(1, 0), 0, 0, col);
+    material_colours(&f, cells[1], material_grain_hash(1, 0), 0, 0, col);
     TEST_ASSERT_EQUAL_HEX16(col[0], metal_base);
     TEST_ASSERT_EQUAL_HEX16(col[2], metal_shine);
 }
@@ -333,7 +334,7 @@ paint_settled(const uint8_t* cells, gfx_color_t* fb, int grid_w, int grid_h, int
     pf.wood_leaf_wind_sign = 1;
     pf.wood_leaf_wind_ux_q8 = 256;
 
-    material_set_gravity(0, 1000); /* straight down */
+    material_frame_set_gravity(&pf.material, 0, 1000); /* straight down */
 
     for (int pass = 0; pass < passes; pass++) {
         sand_paint_update_local_depth_gravity(st, 0, 1000, grid_w, grid_h);
@@ -342,7 +343,6 @@ paint_settled(const uint8_t* cells, gfx_color_t* fb, int grid_w, int grid_h, int
             sand_paint_row_n(st, &pf, fb, NULL, cy, row, 1, grid_w, grid_h, 0, grid_w, false);
         }
     }
-    material_set_gravity(0, 0);
     free(st);
 }
 

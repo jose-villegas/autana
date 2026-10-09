@@ -470,14 +470,11 @@ def build_idf_entries(toolchain_root, vendored=False):
     return entries
 
 
-# apps/*/tools/**/*.c, excluded from the firmware and the host build alike
-# by long-standing convention (main/CMakeLists.txt, run_tests.sh), but
-# check_main_coverage()'s own rglob("*.c") below reaches them anyway, so
-# parity means giving them real flags where that is possible at all: each
-# compiles on a host with the runner's flags (find_cc()'s compiler, this
-# project's own headers), at any depth below tools/; -I main/apps/<app> is the one addition beyond
-# the host runner's own flags every one of them needs, for its sibling
-# headers (material.h, sand.h, ...).
+# apps/*/tools/**/*.c, at any depth, are excluded from the firmware and the
+# host build (main/CMakeLists.txt, run_tests.sh), but check_main_coverage()'s
+# rglob("*.c") reaches them, so they get real flags: each compiles on a host
+# with the runner's flags plus -I main/apps/<app> for its sibling headers
+# (material.h, sand.h, ...).
 TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
 
 

@@ -34,9 +34,9 @@ Fixed-point angles are **turns**, 65536 to a turn, so an eighth of a turn is
 | | |
 |---|---|
 | Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z; `render/r3d_scene.c` turns that into this frame |
-| Rotation sense | Unity's left-handed frame: a positive angle about +y turns +z toward +x |
+| Rotation sense | left-handed, +y up: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
-| Euler | `from_euler` applies Z, then X, then Y about the fixed axes (Unity's order) |
+| Euler | `from_euler` applies Z, then X, then Y about the fixed axes |
 | Matrix | `m[row][col]`, acting on column vectors; the translation is column 3; `mul(a, b)` applies `b` first |
 | TRS | scale, then rotate, then translate |
 
@@ -65,7 +65,7 @@ model matrix with a `cached` flag.
 
 | Call | Effect |
 |---|---|
-| any setter, `translate`, `rotate`, `look_at` | stores the new value and clears `cached` |
+| any setter, `translate`, `rotate`, `look_at`, `rotate_around` | stores the new value and clears `cached` |
 | `P_matrix(t)` | rebuilds the matrix only when `cached` is false, then sets it; use for an object read every frame |
 | `P_compute_matrix(t)` | a fresh matrix from a const transform; never touches the cache; use in read-only code |
 | `P_view(t)` | the inverse of position and rotation (scale ignored), computed every call |
@@ -132,7 +132,10 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_identity()` | the identity matrix | $`I`$ |
+| `P_row_dot_column3(row, &b, c)` | dot of three row entries with column `c` of `b`; used by the matrix products | $`\sum_{k=0}^{2} \mathit{row}_k\,b_{kc}`$ |
 | `P_mul(a, b)` | matrix product `a * b` | $`(a\,b)_{rc} = \sum_{k=0}^{3} a_{rk}\,b_{kc}`$ |
+| `P_mul_affine(a, b)` | `a * b`, with `b` applied first; both bottom rows must be (0, 0, 0, 1) | $`\begin{pmatrix} A & a \\ 0 & 1 \end{pmatrix}\begin{pmatrix} B & b \\ 0 & 1 \end{pmatrix} = \begin{pmatrix} A B & A b + a \\ 0 & 1 \end{pmatrix}`$ |
+| `P_invert_affine(m)` | float only (opt-in); inverse; bottom row (0, 0, 0, 1), invertible 3x3 part; one divide | $`\begin{pmatrix} M & t \\ 0 & 1 \end{pmatrix}^{-1} = \begin{pmatrix} M^{-1} & -M^{-1} t \\ 0 & 1 \end{pmatrix},\quad M^{-1} = \frac{\mathrm{adj} M}{\det M}`$ |
 | `P_apply(&m, p)` | transforms the point `p`, translation included | $`p'_r = m_{r0}\,p_x + m_{r1}\,p_y + m_{r2}\,p_z + m_{r3}`$, for $`r = 0, 1, 2`$ |
 | `P_from_trs(position, rotation, scale)` | scale, rotate, translate; `rotation` must be unit | $`T\,R\,S = \begin{pmatrix} R\,\mathrm{diag}(\mathit{scale}) & \mathit{position} \\ 0 & 1 \end{pmatrix}`$ |
 
@@ -148,6 +151,7 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | `P_matrix(&t)` | the cached model matrix | $`M = T\,R\,S`$ |
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
+| `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle}),\ \mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point}),\ \mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
 | `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert},\ r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert},\ u = f \times r`$, then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 
 ### Conversions (`vec_convert.h`)
@@ -209,6 +213,3 @@ and the rules are in [Build-Variants.md](../Build-Variants.md):
 | `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
-
-The raster's lens and per-cluster transform (`render/r3d_pipeline.c`) stay a
-3x4 of their own.

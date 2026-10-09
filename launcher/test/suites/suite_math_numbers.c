@@ -18,6 +18,7 @@
 #include "util/math/transformf.h"
 #include "util/math/transformx.h"
 #include "util/math/vec_convert.h"
+#include "util/scalar/mathf.h"
 
 #define Q           65536.0F
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -388,6 +389,23 @@ test_fixed_matrix_apply_matches_float(void) {
     assert_x_near_f(mat4f_apply(&mf, p), mat4x_apply(&mx, vec3x_from_vec3f(p)), 1e-3F);
 }
 
+static void
+test_fixed_affine_product_applies_the_right_matrix_first(void) {
+    const mat4x_t mx = mat4x_from_trs((vec3x_t){MATHX_ONE, -2 * MATHX_ONE, 3 * MATHX_ONE}, quatx_identity(),
+                                      (vec3x_t){2 * MATHX_ONE, MATHX_ONE, MATHX_ONE / 2});
+    const vec3f_t p = {0.5F, 1.5F, -1.0F};
+    const mat4x_t other = mat4x_from_trs((vec3x_t){2 * MATHX_ONE, MATHX_ONE, -MATHX_ONE}, quatx_identity(),
+                                         (vec3x_t){MATHX_ONE, 2 * MATHX_ONE, MATHX_ONE});
+    const mat4x_t full = mat4x_mul(mx, other), affine = mat4x_mul_affine(mx, other);
+    assert_x_near_f(vec3f_from_vec3x(mat4x_apply(&mx, mat4x_apply(&other, vec3x_from_vec3f(p)))),
+                    mat4x_apply(&affine, vec3x_from_vec3f(p)), 1e-3F);
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_EQUAL_INT32(full.m[r][c], affine.m[r][c]);
+        }
+    }
+}
+
 /* A swizzle family as rows of name and function, built by the template's own
  * iterator. The source holds 10, 20 and 30, so the letters in a name alone say
  * what the result holds; the row count catches an iterator that skips one. */
@@ -477,6 +495,46 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
     }
 }
 
+/* Within an ulp of the quotient, measured on the side the result landed:
+ * both signs, a geometric sweep over 2^-20..2^20 and each octave's edges (a
+ * power of two, its neighbours, the largest mantissa below it). On the
+ * sweep it is the quotient nearly always; the edges round off it more. */
+#define RECIP_OCTAVES       20      /* magnitudes 2^-20..2^20 */
+#define RECIP_SWEEP_STEP    1.0137F /* about 50 samples an octave */
+#define RECIP_EXACT_PERCENT 99
+
+/* Asserts mathf_recip(x) within an ulp of 1 / x; true when it is exactly. */
+static bool
+reciprocal_is_exact(float x) {
+    const float want = 1.0F / x;
+    const float got = mathf_recip(x);
+    const float ulp = fabsf(nextafterf(want, got) - want);
+    TEST_ASSERT_FLOAT_WITHIN(ulp, want, got);
+    return got == want;
+}
+
+static void
+test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
+    int count = 0;
+    int exact = 0;
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (float a = ldexpf(1.0F, -RECIP_OCTAVES); a < ldexpf(1.0F, RECIP_OCTAVES); a *= RECIP_SWEEP_STEP) {
+            exact += reciprocal_is_exact((float)sign * a);
+            count++;
+        }
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(count * RECIP_EXACT_PERCENT / 100, exact);
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (int e = -RECIP_OCTAVES; e <= RECIP_OCTAVES; e++) {
+            const float power = (float)sign * ldexpf(1.0F, e);
+            (void)reciprocal_is_exact(power);
+            (void)reciprocal_is_exact(nextafterf(power, 0.0F));
+            (void)reciprocal_is_exact(nextafterf(power, 2.0F * power));
+            (void)reciprocal_is_exact(nextafterf(2.0F * power, 0.0F));
+        }
+    }
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
@@ -491,6 +549,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_int32_dot_widens_to_int64);
     RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
     RUN_TEST(test_fixed_matrix_apply_matches_float);
+    RUN_TEST(test_fixed_affine_product_applies_the_right_matrix_first);
     RUN_TEST(test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);
@@ -503,6 +562,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_every_swizzle_family_moves_the_named_components_for_every_number_type);
     RUN_TEST(test_a_cross_dimension_swizzle_returns_the_other_vector_type);
     RUN_TEST(test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type);
+    RUN_TEST(test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it);
 }
 
 SUITE_REGISTER(suite_math_numbers);

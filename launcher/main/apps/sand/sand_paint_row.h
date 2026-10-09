@@ -50,6 +50,7 @@ typedef struct {
 
 /* Values refreshed by the frame update before painting. */
 typedef struct {
+    material_frame_t material;
     int shine_ux_q8;
     int shine_uy_q8;
     int shine_offset;
@@ -64,6 +65,17 @@ typedef struct {
     const uint8_t* repaint_class_table;
     const gfx_color_t* repaint_cell_table;
 } sand_paint_frame_t;
+
+/* The frame painting starts from: shine on the (1,1) diagonal and wind
+ * along +x, so a frame drawn before the first gravity sample looks right.
+ * A macro so a static can start from it. */
+#define SAND_PAINT_FRAME_INIT                                                                                          \
+    {.shine_ux_q8 = MATERIAL_Q8_DIAGONAL,                                                                              \
+     .shine_uy_q8 = MATERIAL_Q8_DIAGONAL,                                                                              \
+     .wood_leaf_wind_ux_q8 = MATERIAL_Q8_ONE,                                                                          \
+     .wood_leaf_wind_sign = 1,                                                                                         \
+     .wood_leaf_top5 = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}},                                                  \
+     .repaint_kind = GFX_INDEXED_REPAINT_RAW}
 
 static inline void
 sand_paint_row_state_init(sand_paint_row_state_t* s) {
@@ -385,7 +397,7 @@ sand_paint_row_n(sand_paint_row_state_t* s, const sand_paint_frame_t* pf, gfx_co
         sp_note_cell_row_flags(s, cy, cx, row[cx], here_liquid, leaf_shading);
 
         gfx_color_t col[3];
-        const material_pattern_t pat = material_colours(row[cx], hash, mask, depth, col);
+        const material_pattern_t pat = material_colours(&pf->material, row[cx], hash, mask, depth, col);
 
         if (pat == MATERIAL_HATCHED) {
             sp_note_row_flag(s, cy, cx, SAND_PAINT_ROW_FLAG_SHINE);

@@ -83,6 +83,7 @@
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
+#include "util/scalar/fixed.h"
 
 static const char* TAG = "sand";
 
@@ -94,7 +95,7 @@ typedef struct {
 } quality_t;
 
 static const quality_t qualities[] = {
-    {"ULTRA", 2}, {"HIGH", 3}, {"NORMAL", 4}, {"LOW", 6}, {"VERY LOW", 8},
+    {"ULTRA", CELL_MIN}, {"HIGH", 3}, {"NORMAL", SAND_CELL_NORMAL}, {"LOW", 6}, {"VERY LOW", 8},
 };
 #define QUALITY_COUNT   ((int)(sizeof(qualities) / sizeof(qualities[0])))
 #define QUALITY_DEFAULT 2 /* NORMAL */
@@ -1106,7 +1107,7 @@ handle_detonate_input(const input_t* input) {
     }
     const int cx = input->x / cell;
     const int cy = input->y / cell;
-    sand_explode(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
+    sand_explode(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
 }
 
 static void
@@ -1124,14 +1125,14 @@ handle_spawn_emitter_input(const input_t* input) {
 static void
 apply_pour_step(int cx, int cy) {
     if (ui.mode == SAND_MODE_ERASE) {
-        sand_erase(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell);
+        sand_erase(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
         /* Wider than the sweep above on purpose - see
          * SAND_ERASE_EMITTER_RADIUS_PX's own comment for why a point target
          * needs more aiming tolerance than an area sweep does. */
-        sand_remove_emitters(&sim, cx, cy, (SAND_ERASE_EMITTER_RADIUS_PX + cell / 2) / cell);
+        sand_remove_emitters(&sim, cx, cy, fx_div_round(SAND_ERASE_EMITTER_RADIUS_PX, cell, 0));
         return;
     }
-    sand_spawn_cell_share(&sim, cx, cy, (sand_ui_radius(&ui) + cell / 2) / cell, sand_brushes[ui.brush].cell,
+    sand_spawn_cell_share(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0), sand_brushes[ui.brush].cell,
                           sand_brushes[ui.brush].share_pct);
 }
 
@@ -1410,7 +1411,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     run_sim_steps(gx, gy, jostle, flow, dt_ms);
     FRAME_COST_END(step_mark, "sand.steps");
 
-    material_set_gravity(gx, gy);
+    material_frame_set_gravity(&paint_frame.material, gx, gy);
 
     material_shine_direction(gx, gy, &paint_frame.shine_ux_q8, &paint_frame.shine_uy_q8);
 
@@ -1422,21 +1423,19 @@ sand_update(uint32_t dt_ms, const input_t* input) {
 
     sand_paint_update_local_depth_gravity(&paint_row_state, gx, gy, grid_w, grid_h);
 
-    sand_paint_clock_foam(&paint_clock, dt_ms);
+    sand_paint_clock_foam(&paint_clock, &paint_frame, dt_ms);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     pending_step_us = timing_now_us() - t0;
     count_awake(&pending_awake_blocks, &pending_awake_cells);
 #endif
 
-    /* Local-depth wake, cullet cycle, shine, and the wood-leaf swing each
-     * have their own clock tick and row array. Driven by dt_ms, not frame
-     * count. Glass's wake uses sand_paint_gravity_bearing_q16(). State only - each
-     * result feeds draw_sim_frame()'s draw_dirty_rows() call. */
+    /* Glass follows gravity's bearing, not time; the rest advance on dt_ms.
+     * Each result feeds draw_sim_frame()'s draw_dirty_rows() call. */
     pending_shine_moved = sand_paint_clock_shine(&paint_clock, &paint_frame, dt_ms);
     pending_local_depth_woke = sand_paint_clock_local_depth(&paint_clock, dt_ms);
-    pending_cullet_moved = sand_paint_clock_cullet(&paint_clock, dt_ms);
-    pending_glass_moved = sand_paint_clock_glass(&paint_clock, gx, gy);
+    pending_cullet_moved = sand_paint_clock_cullet(&paint_clock, &paint_frame, dt_ms);
+    pending_glass_moved = sand_paint_clock_glass(&paint_frame, gx, gy);
     pending_wood_leaf_moved = sand_paint_clock_wood_leaf(&paint_clock, &paint_frame, dt_ms);
 
     pending_gx = gx;

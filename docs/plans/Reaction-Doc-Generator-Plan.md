@@ -27,10 +27,10 @@ reads. That is the same argument `reactions[]` already won.
 A third cold table, indexed like `reactions[]`, same extended-range split.
 ~14 strings x ~90 chars is on the order of 1.3 KB of `.rodata`.
 
-All materials get a record, not just brushes. `sand_brushes[]` in
-`sand_brushes.h` holds 15 cells; `MAT_STEAM`, `MAT_SMOKE` and `MATX_LEAF`
-are things a player *creates* and will want to understand, so the table
-covers them and `sand_brushes[]` stays the UI's subset.
+All materials get a record, not just brushes: `sand_brushes[]`
+(`sand_brushes.h`) is the UI's paintable subset, and `MAT_STEAM`,
+`MAT_SMOKE` and `MATX_LEAF` are things a player *creates* and will want to
+understand, so the table covers them too.
 
 **Audit mode** is what keeps the blurbs honest: flag any reaction a
 material participates in that its blurb never mentions, and any blurb
@@ -39,7 +39,7 @@ reverted mid-session, this would have said "sand's blurb describes a crust;
 no field supports it."
 
 Showing a blurb is UI work (where it fits on the panel, whether it wraps
-or times out like the mode label at `app_sand.c:812`) and is deliberately
+or times out like the mode label, `draw_mode_label()` in `app_sand.c`) and is deliberately
 out of scope here.
 
 ---

@@ -3,13 +3,11 @@ pinned submodule third_party/upstream/meshoptimizer, compiled once into
 .cache/ with the host C++ compiler (CXX, else c++ or g++)."""
 
 import ctypes
-import os
 import pathlib
-import shutil
-import subprocess
-import sys
 
 import numpy as np
+
+from native.shared_library import build_shared, find_compiler
 
 from . import log
 
@@ -24,30 +22,15 @@ REGULARIZE_LIGHT = 1 << 6
 _lib = None
 
 
-def _compiler():
-    for name in (os.environ.get("CXX"), "c++", "g++", "clang++"):
-        if name and shutil.which(name):
-            return shutil.which(name)
-    raise SystemExit("no C++ compiler found to build meshoptimizer: set CXX")
-
-
 def _library():
     global _lib
     if _lib is not None:
         return _lib
     if not (SOURCE / "meshoptimizer.h").exists():
         raise SystemExit(f"{SOURCE} is missing: run `git submodule update --init third_party/upstream/meshoptimizer`")
-    CACHE.mkdir(exist_ok=True)
-    suffix = {"win32": ".dll"}.get(sys.platform, ".so")
-    path = CACHE / f"meshopt{suffix}"
-    sources = sorted(SOURCE.glob("*.cpp"))
-    if not path.exists() or path.stat().st_mtime < max(s.stat().st_mtime for s in sources):
-        cxx = _compiler()
-        log(f"building {path.name} with {cxx}")
-        export = "-DMESHOPTIMIZER_API=__declspec(dllexport)" if sys.platform == "win32" else "-fPIC"
-        extra = ["-static"] if sys.platform == "win32" else []
-        subprocess.run([cxx, "-O2", "-shared", export, *extra, "-o", str(path), *map(str, sources)], check=True)
-    _lib = ctypes.CDLL(str(path))
+    _lib = build_shared("meshopt", CACHE, sorted(SOURCE.glob("*.cpp")),
+                        find_compiler("CXX", ("c++", "g++", "clang++"), "C++"),
+                        windows_flags=("-DMESHOPTIMIZER_API=__declspec(dllexport)",), log=log)
     return _lib
 
 

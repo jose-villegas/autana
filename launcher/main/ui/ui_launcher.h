@@ -3,12 +3,25 @@
 
 #include <stdint.h>
 
+#include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "input/input.h"
 #include "microui.h"
 
 struct app;
 
 void ui_launcher_init(void);
+
+/* The home screen's heal: a budget and a rolling sweep of LAUNCHER_HEAL_ROWS
+ * rows, set again every frame because the shell resets heal on each app
+ * switch. */
+#define LAUNCHER_HEAL_ROWS 32
+
+static inline void
+ui_launcher_heal_opt_in(void) {
+    gfx_heal_set_budget(GFX_WIDTH * LAUNCHER_HEAL_ROWS);
+    gfx_heal_set_rolling(LAUNCHER_HEAL_ROWS);
+}
 
 /* The home screen's own rows, with no ui_begin()/ui_end() around them; see
  * this module's own top comment for why, and docs/Building-a-Screen.md for
