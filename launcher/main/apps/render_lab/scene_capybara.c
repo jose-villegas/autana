@@ -92,7 +92,7 @@ frame_subject(void) {
     float radius;
     r3d_lit_mesh_bounding_sphere(scene_entity_mesh(capybara, subject), &centre, &radius);
     const float fit = orbit_motion_fit_distance(radius, lens->half_fov_short_tan, ORBIT_MOTION_FRAME_PADDING);
-    const float closest = fmaxf(fit * CAPYBARA_ZOOM_IN, radius + CAPYBARA_NEAR_CLEARANCE * lens->near_z);
+    const float closest = fmaxf(fit * CAPYBARA_ZOOM_IN, radius + (CAPYBARA_NEAR_CLEARANCE * lens->near_z));
     orbit_motion_init(&orbit, centre, (orbit_motion_state_t){CAPYBARA_HOME_YAW, CAPYBARA_HOME_PITCH, logf(fit)},
                       (orbit_motion_limits_t){CAPYBARA_PITCH_MIN, ORBIT_MOTION_PITCH_LIMIT, logf(closest),
                                               logf(fit * CAPYBARA_ZOOM_OUT)});
