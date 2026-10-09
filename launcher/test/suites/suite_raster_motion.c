@@ -14,7 +14,6 @@
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster_motion.h"
-#include "render/ray.h"
 
 #define W     96
 #define H     64
@@ -119,10 +118,11 @@ typedef struct {
 static int
 truth(const pose_t* now, const pose_t* before, int w, int h, int px, int py, float* mx, float* my) {
     const basis_t b = basis(&now->camera);
-    ray_camera_t ray;
-    ray_camera_init(&ray, now->camera.eye, b.forward, b.right, vec3f_scale(b.down, -1.0F),
-                    now->camera.half_fov_short_tan, (viewport_t){w, h, 0});
-    const vec3f_t dir = ray_direction(&ray, px, py);
+    const float k = (float)(w < h ? w : h) / (2.0F * now->camera.half_fov_short_tan);
+    const float ray_x = ((float)px + 0.5F - ((float)w * 0.5F)) / k;
+    const float ray_y = ((float)py + 0.5F - ((float)h * 0.5F)) / k;
+    const vec3f_t dir =
+        vec3f_normalize(vec3f_add(b.forward, vec3f_add(vec3f_scale(b.right, ray_x), vec3f_scale(b.down, ray_y))));
     const r3d_placement_t still = turned(0.0F, (vec3f_t){0.0F, 0.0F, 0.0F});
     const float t_wall = hit_quad(&still, 400.0F, now->camera.eye, dir);
     const float t_box = now->box == NULL ? -1.0F : hit_quad(now->box, 40.0F, now->camera.eye, dir);

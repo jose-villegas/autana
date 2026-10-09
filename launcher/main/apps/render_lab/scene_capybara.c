@@ -8,7 +8,6 @@
  * shell draws the scene through the camera; light is baked per vertex.
  */
 
-#include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -102,7 +101,6 @@ frame_subject(void) {
 
 static void
 scene_capybara_enter(void) {
-    gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
@@ -143,14 +141,11 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
 }
 
 /* Every frame already redraws the whole screen. */
-static void
-scene_capybara_invalidate(void) {}
 
 /* The shell has already drawn the scene into the framebuffer. */
 static void
-scene_capybara_frame(uint32_t dt_ms, bool band_mode_active) {
+scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
-    assert(!band_mode_active); /* needs_full_framebuffer keeps the app out of band mode */
 #if TUNE_ENABLED
     render_context_set_view(render_context_main(), render_lab_view());
 #endif
@@ -176,8 +171,5 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
                                            .exit = scene_capybara_exit,
-                                           .invalidate = scene_capybara_invalidate,
                                            .status = capybara_status,
-                                           .needs_full_framebuffer = true,
-                                           .shows_view_modes = true,
                                            .steer = scene_capybara_steer};
