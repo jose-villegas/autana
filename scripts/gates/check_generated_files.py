@@ -26,9 +26,9 @@ A banner whose command names a <placeholder> input, finds no script, or
 does not name its own file as output fails: a file nobody can regenerate is
 a committed fixture, and carries no banner.
 
-A run over every file also checks the engine and app tables of generated
-outputs against what --write-table would write; --check-table checks only
-the tables, without running any banner.
+--check-table checks the engine and app tables of generated outputs against
+what --write-table would write, without running any banner; each table's
+marker names it, so the generated-document gate runs it.
 """
 import argparse
 import concurrent.futures
@@ -219,7 +219,7 @@ def tables(root, names, check=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("paths", nargs="*", help="generated files to check (default: every one, and the table)")
+    parser.add_argument("paths", nargs="*", help="generated files to check (default: every one)")
     parser.add_argument("--root", type=pathlib.Path, default=REPO)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--write-table", action="store_true", help=f"rewrite the table in {TABLE_DOC} and exit")
@@ -234,8 +234,6 @@ def main():
     for name, problem in zip(names, results):
         print(f"ok   {name}" if problem is None else f"FAIL {name}: {problem}")
     failed = sum(problem is not None for problem in results)
-    if not args.paths:
-        failed += tables(root, names, check=True)
     print(f"generated files: {len(names)} checked, {failed} failed")
     return int(failed > 0)
 

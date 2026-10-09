@@ -29,9 +29,10 @@ commit the result.
 
 The [generators' README](../../launcher/tools/gen/README.md) holds a table
 of every generated file, its generator, the folder it runs in and its
-command, written from the banners. A full run also fails when that table is
-stale; add `--write-table` to rewrite it whenever a banner is added,
-changed or removed.
+command, written from the banners. `--check-table` fails when that table
+is stale, running no banner; the table's marker names it, so the
+generated-document gate runs it. Add `--write-table` to rewrite it whenever
+a banner is added, changed or removed.
 
 ## What the gate reads from a banner
 

@@ -1,9 +1,11 @@
 """The generated-body gate discovers documents, checks hashes without rendering,
 and runs each named check command once."""
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from check_doc_generated import check
@@ -38,6 +40,33 @@ class GateTests(unittest.TestCase):
             self.assertEqual((root / "runs.txt").read_text(), "run\n")
             (root / "ok.txt").unlink()
             self.assertEqual(len(check(root)), 2)
+
+    def test_every_distinct_command_is_judged_with_the_gate_s_own_python(self):
+        # Each distinct command runs once, under the gate's own interpreter.
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "pass.py").write_text("")
+            (root / "fail.py").write_text("raise SystemExit('stale')\n")
+            for name, script in (("first", "pass.py"), ("second", "fail.py"), ("third", "pass.py")):
+                (root / f"{name}.md").write_text(f"<!-- generated: {name} check: python3 {script} -->\n"
+                                                 f"| 2 |\n<!-- /generated: {name} -->\n", encoding="utf-8")
+            with mock.patch("subprocess.run", wraps=subprocess.run) as run:
+                errors = check(root)
+            scripts = [call.args[0] for call in run.call_args_list if call.args[0][-1].endswith(".py")]
+            self.assertEqual(scripts, [[sys.executable, "pass.py"], [sys.executable, "fail.py"]])
+            self.assertEqual(len(errors), 1, errors)
+            self.assertTrue(errors[0].startswith("second.md#second:"), errors)
+            self.assertIn("stale", errors[0])
+
+    def test_a_command_that_cannot_run_is_reported_against_its_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for name, command in (("quote", 'python "gen.py'), ("program", "true"), ("missing", "python absent.py")):
+                (root / f"{name}.md").write_text(f"<!-- generated: {name} check: {command} -->\n"
+                                                 f"| 2 |\n<!-- /generated: {name} -->\n", encoding="utf-8")
+            errors = check(root)
+            self.assertEqual(sorted(error.split(":")[0] for error in errors),
+                             ["missing.md#missing", "program.md#program", "quote.md#quote"], errors)
 
     def test_a_block_with_neither_digest_nor_command_fails(self):
         with tempfile.TemporaryDirectory() as directory:

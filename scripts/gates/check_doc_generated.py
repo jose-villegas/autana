@@ -15,12 +15,13 @@ from generated_blocks import blocks, check_commands, verify
 
 def run_check(root, command):
     """None when `command` exits 0 in `root`, else its last output lines."""
-    words = shlex.split(command)
-    if words:
-        words[0] = INTERPRETERS.get(words[0], words[0])
     try:
+        words = shlex.split(command)
+        if not words or words[0] not in INTERPRETERS:
+            return f"names no interpreter of {sorted(INTERPRETERS)}"
+        words[0] = INTERPRETERS[words[0]]
         result = subprocess.run(words, cwd=root, capture_output=True, text=True, check=False)
-    except OSError as error:
+    except (ValueError, OSError) as error:
         return str(error)
     if result.returncode == 0:
         return None

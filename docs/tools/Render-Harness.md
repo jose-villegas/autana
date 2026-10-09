@@ -101,14 +101,15 @@ requests".
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into
 the output tree's tables folder. The shared writer replaces the body between
-an HTML comment containing `generated: NAME sha256=HASH` and one containing
-`/generated: NAME`, preserving the document's other text and line endings.
-Names use lowercase letters, digits and hyphens and are unique across
-documents. The SHA-256 covers the body, including its boundary newlines, with
-CRLF normalized to LF.
-A block that CI regenerates and compares instead names that command in place
-of the hash, as `generated: NAME check: COMMAND`; the writer keeps the marker
-as it is, so two branches that each regenerate the block do not conflict on it.
+an HTML comment containing `generated: NAME sha256=HASH` or
+`generated: NAME check: COMMAND` and one containing `/generated: NAME`,
+keeping whichever form the marker has and preserving the document's other
+text and line endings. Names use lowercase letters, digits and hyphens and
+are unique across documents. The SHA-256 covers the body, including its
+boundary newlines, with CRLF normalized to LF. A block that CI regenerates
+and compares names that command instead, which must fail when the block is
+stale; its marker never changes on regeneration, so two branches that each regenerate the block do not conflict
+on it.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
 fails on a body hash mismatch, a check command that exits non-zero from the
 repository root, or malformed boundaries, without rendering.

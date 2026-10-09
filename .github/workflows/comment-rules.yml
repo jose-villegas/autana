@@ -88,7 +88,6 @@ jobs:
           STAGED_TEXT_GATE: "true"
         run: python3 scripts/gates/find_narrative_comments.py --tombstones
 
-      # A block names its check command or records its body's hash.
       - name: Generated document blocks pass their check command or hash
         env:
           STAGED_TEXT_GATE: "snapshot"

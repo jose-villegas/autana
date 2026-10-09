@@ -2,7 +2,7 @@
 
 A block's opening marker either records the SHA-256 of its body, which
 catches a hand edit to a block nothing regenerates, or names the command
-that regenerates and compares it (`check: python <script> --check`). The
+that regenerates and compares it (`check: COMMAND`). The
 second form changes only when the command does, so two branches that each
 regenerate the block merge without conflicting on its marker line.
 """
