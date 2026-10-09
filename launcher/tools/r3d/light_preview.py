@@ -21,8 +21,9 @@ is the direct light plus K times what the bounces add (a direct-only trace subtr
 per rotation and K, K the scene's intensity when not given (0 when the renderer bakes no bounced light). Its path
 tracer has no ambient term, so a scene's [ambient] is left out of the stills.
 
---live starts at the scene's rotation and shows the --at poses side by side, refining by LIVE_PASS_SPP paths per
-pixel at a time up to --spp, and starting over at every change: Left and Right turn the yaw, Up raises the sun and
+--live starts at the scene's rotation and shows the --at poses side by side, refining for as long as nothing
+changes (up to --spp paths per pixel when given), each pass twice the last from LIVE_PASS_SPP up to
+LIVE_MAX_PASS_SPP, and starting over at every change: Left and Right turn the yaw, Up raises the sun and
 Down lowers it, by LIVE_STEP degrees, or LIVE_FINE_STEP with Shift held. Ctrl+S writes the rotation into the scene
 file; Escape closes the window. The first --indirect K is used.
 """
@@ -54,10 +55,14 @@ AREA_SAMPLES = 40000
 # Height of a caption line under a tile, and width of the label column, in pixels.
 CAPTION = 16
 LABEL_WIDTH = 260
+# Paths per pixel of a sheet's stills when --spp is not given.
+SHEET_SPP = 64
 # Mitsuba's path depth of direct light alone: the camera ray and the light's.
 DIRECT_DEPTH = 2
-# --live: paths per pixel added per refinement pass, and the degrees an arrow key turns the sun (Shift: fine).
+# --live: paths per pixel of the first refinement pass and the most a pass adds, and the degrees an arrow key
+# turns the sun (Shift: fine).
 LIVE_PASS_SPP = 2
+LIVE_MAX_PASS_SPP = 64
 LIVE_STEP = 2.5
 LIVE_FINE_STEP = 0.5
 
@@ -131,7 +136,8 @@ def aim_sun(tracer, index, direction):
 
 def live(scene_path, light_name, rotation, scale, measure, trace_pass, show, spp):
     """The --live window: `measure(rotation)` aims the sun and returns its line and pose captions,
-    `trace_pass(spp, seed)` traces every pose once, `show(sums, passes, scale)` makes the pictures."""
+    `trace_pass(spp, seed)` traces every pose once, `show(sums, total, scale)` makes the pictures from
+    spp-weighted sums. `spp` caps the paths per pixel; None refines until the window closes."""
     import tkinter
     from PIL import ImageTk
 
@@ -141,24 +147,31 @@ def live(scene_path, light_name, rotation, scale, measure, trace_pass, show, spp
     picture.pack()
     status = tkinter.Label(window, justify="left", anchor="w", font=("Consolas", 10))
     status.pack(fill="x")
-    state = {"rotation": list(rotation), "sums": None, "passes": 0, "line": "", "saved": ""}
+    state = {"rotation": list(rotation), "sums": None, "total": 0, "passes": 0, "line": "", "saved": ""}
+
+    def report():
+        status.configure(text="%s\nindirect %g  %d spp   arrows turn (Shift: fine), Ctrl+S saves, Esc quits%s" % (
+            state["line"], scale, state["total"], state["saved"]))
 
     def restart():
         line, captions = measure(state["rotation"])
-        state.update(sums=None, passes=0, line="  ".join(line) + "\n" + "   |   ".join(captions))
+        state.update(sums=None, total=0, passes=0, line="  ".join(line) + "\n" + "   |   ".join(captions))
 
     def refine():
-        if state["passes"] * LIVE_PASS_SPP < spp:
-            traced = trace_pass(LIVE_PASS_SPP, state["passes"])
+        if spp is None or state["total"] < spp:
+            take = min(LIVE_MAX_PASS_SPP, max(LIVE_PASS_SPP, state["total"]))
+            if spp is not None:
+                take = min(take, spp - state["total"])
+            traced = [tuple(take * image for image in pose) for pose in trace_pass(take, state["passes"])]
             state["sums"] = traced if state["sums"] is None else [
                 tuple(a + b for a, b in zip(old, new)) for old, new in zip(state["sums"], traced)]
+            state["total"] += take
             state["passes"] += 1
-            strip = np.concatenate(show(state["sums"], state["passes"], scale), axis=1)
+            strip = np.concatenate(show(state["sums"], state["total"], scale), axis=1)
             image = ImageTk.PhotoImage(Image.fromarray(strip))
             picture.configure(image=image)
             picture.image = image
-            status.configure(text="%s\nindirect %g  %d spp   arrows turn (Shift: fine), Ctrl+S saves, Esc quits%s" % (
-                state["line"], scale, state["passes"] * LIVE_PASS_SPP, state["saved"]))
+            report()
         window.after(1, refine)
 
     def turn(pitch, yaw):
@@ -176,7 +189,7 @@ def live(scene_path, light_name, rotation, scale, measure, trace_pass, show, spp
         scene_path.write_bytes(save_rotation(text, light_name, state["rotation"]).encode("utf-8"))
         state["saved"] = "   saved to " + scene_path.name
         print(f"{scene_path}: {light_name} {describe(state['rotation'])}", flush=True)
-        state["passes"] = min(state["passes"], spp // LIVE_PASS_SPP - 1)
+        report()
 
     for key, pitch, yaw in (("Up", -1, 0), ("Down", 1, 0), ("Left", 0, -1), ("Right", 0, 1)):
         window.bind(f"<{key}>", turn(pitch, yaw))
@@ -218,7 +231,7 @@ def main(argv=None):
     parser.add_argument("--share", nargs="+", default=[], metavar="MATERIAL")
     parser.add_argument("--indirect", nargs="+", type=float, metavar="K", help="bounced-light scales to compare")
     parser.add_argument("--size", default="320x240")
-    parser.add_argument("--spp", type=int, default=64)
+    parser.add_argument("--spp", type=int, help="paths per pixel (default: 64; --live refines without end)")
     parser.add_argument("--out", help="the sheet's path (default: light_preview.png in the temporary directory)")
     parser.add_argument("--no-show", action="store_true", help="do not open the sheet")
     parser.add_argument("--save", action="store_true", help="write the one --rotation into the scene file")
@@ -308,18 +321,20 @@ def main(argv=None):
             traced.append((direct, full, covered))
         return traced
 
-    def show(sums, passes, k):
-        """Each pose as the device shows it, from (direct, full, coverage) traces summed over `passes`."""
-        return [device_picture((direct + k * (full - direct)) / passes, covered / passes, scene.tonemap_white,
+    def show(sums, total, k):
+        """Each pose as the device shows it, from (direct, full, coverage) traces summed with weights totalling
+        `total`."""
+        return [device_picture((direct + k * (full - direct)) / total, covered / total, scene.tonemap_white,
                                camera.background) for direct, full, covered in sums]
 
     if args.live:
         return live(scene_path, sun_object.name, rotations[0], scales[0], measure, trace_pass, show, args.spp)
+    spp = SHEET_SPP if args.spp is None else args.spp
 
     rows = []
     for number, rotation in enumerate(rotations):
         line, captions = measure(rotation)
-        traced = trace_pass(args.spp, 0)
+        traced = trace_pass(spp, 0)
         tiles = {k: [] for k in scales}
         for picture_set, caption in zip(traced, captions):
             for k in scales:
