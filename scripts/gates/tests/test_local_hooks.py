@@ -156,5 +156,33 @@ class LocalHookTests(ShellGateTestCase):
         self.assertNotIn('SANITIZED', result.stdout)
 
 
+    def test_a_new_branch_with_no_history_in_common_with_main_is_judged_by_its_own_files(self):
+        self.write('note.txt', 'base\n')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'base')
+        self.git('update-ref', 'refs/remotes/origin/main', self.git('rev-parse', 'HEAD'))
+        runner = self.root / 'launcher/test/run_tests.sh'
+        runner.parent.mkdir(parents=True)
+        runner.write_bytes(b'#!/bin/sh\necho SANITIZED\n')
+        zero = '0' * 40
+
+        self.git('checkout', '-q', '--orphan', 'images')
+        self.git('rm', '-rq', '--cached', '.')
+        self.write('image.png', 'png\n')
+        self.git('add', 'image.png')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'images')
+        images = self.git('rev-parse', 'HEAD')
+        result = self.gate('check-host-tests-push.sh', f'refs/heads/images {images} refs/heads/images {zero}\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('SANITIZED', result.stdout)
+
+        self.write('sample.c', 'int sample;\n')
+        self.git('add', 'sample.c')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'source')
+        source = self.git('rev-parse', 'HEAD')
+        result = self.gate('check-host-tests-push.sh', f'refs/heads/images {source} refs/heads/images {zero}\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('SANITIZED', result.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()
