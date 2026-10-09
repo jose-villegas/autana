@@ -1,0 +1,235 @@
+I (7285) console: RUNSUITE run_sponza_perf_suite
+I (7395) asset: pack sponza: 9 entries, 1479456 bytes
+I (7436) sponza_perf: heap after setup: internal free 104375 largest 63488, psram free 3150804 largest 3145728
+I (7451) sponza_perf: stage, one core: transform                12184us
+I (7535) sponza_perf: stage, one core: whole draw               84095us
+I (7578) sponza_perf: stage, one core: stop after setup         41766us
+I (7645) sponza_perf: stage, one core: stop after rows          66059us
+I (7730) sponza_perf: stage, one core: stop after span setup    84474us
+I (7816) sponza_perf: contention: alone  top  55177us  bottom  30828us
+I (7877) sponza_perf: contention: at once top  59851us  bottom  35626us  wall  59918us
+I (7884) sponza_perf: stage, both cores: empty frame             6482us (0 clusters)
+I (7906) sponza_perf: heap after setup: internal free 101211 largest 59392, psram free 3150804 largest 3145728
+I (7920) sponza_perf: stage, one core: transform                12248us
+I (8004) sponza_perf: stage, one core: whole draw               83921us
+I (8047) sponza_perf: stage, one core: stop after setup         41757us
+I (8114) sponza_perf: stage, one core: stop after rows          66128us
+I (8199) sponza_perf: stage, one core: stop after span setup    84471us
+I (8285) sponza_perf: contention: alone  top  55178us  bottom  30765us
+I (8346) sponza_perf: contention: at once top  59828us  bottom  35611us  wall  59864us
+I (8353) sponza_perf: stage, both cores: empty frame             6447us (0 clusters)
+:322:test_sponza_draw_stage_breakdown:PASS
+TEST_TIME name=test_sponza_draw_stage_breakdown elapsed_ms=938 stack_free_bytes=924
+I (8356) sponza_perf: internal heap: free 101211 largest 59392
+I (8377) sponza_perf: TUNE_OK render.cull=1
+I (8377) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3150804 largest 3145728
+I (8378) sponza_perf: === atrium FRAME COST (17371 tris, 18452 verts, 1220 clusters, rendered 184x224) ===
+I (8380) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (8539) sponza_perf: atrium t=    0s clusters= 945 tris=13416 | both cores: frame   67494us
+I (8540) sponza_perf: ms/frame avg/worst: r3d.cull 1.16/1.1  r3d.transform 7.23/7.2  r3d.draw 53.05/53.0  r3d.upscale 5.87/5.8 | total 67.32
+I (8599) sponza_perf: atrium t=    5s clusters= 682 tris= 9616 | both cores: frame   58046us
+I (8600) sponza_perf: ms/frame avg/worst: r3d.cull 1.10/1.1  r3d.transform 5.17/5.1  r3d.draw 45.85/45.8  r3d.upscale 5.83/5.8 | total 57.97
+I (8647) sponza_perf: atrium t=   10s clusters= 452 tris= 6502 | both cores: frame   45711us
+I (8648) sponza_perf: ms/frame avg/worst: r3d.cull 0.84/0.8  r3d.transform 3.46/3.4  r3d.draw 35.49/35.4  r3d.upscale 5.84/5.8 | total 45.64
+I (8690) sponza_perf: atrium t=   15s clusters= 344 tris= 4834 | both cores: frame   40543us
+I (8691) sponza_perf: ms/frame avg/worst: r3d.cull 0.95/0.9  r3d.transform 2.77/2.7  r3d.draw 30.91/30.9  r3d.upscale 5.83/5.8 | total 40.47
+I (8749) sponza_perf: atrium t=   20s clusters= 612 tris= 8804 | both cores: frame   56075us
+I (8750) sponza_perf: ms/frame avg/worst: r3d.cull 0.95/0.9  r3d.transform 4.69/4.6  r3d.draw 44.52/44.5  r3d.upscale 5.84/5.8 | total 56.00
+I (8793) sponza_perf: atrium t=   25s clusters= 361 tris= 5238 | both cores: frame   42180us
+I (8794) sponza_perf: ms/frame avg/worst: r3d.cull 0.88/0.8  r3d.transform 2.78/2.7  r3d.draw 32.53/32.5  r3d.upscale 5.91/5.9 | total 42.11
+I (8850) sponza_perf: atrium t=   30s clusters= 602 tris= 8522 | both cores: frame   53911us
+I (8851) sponza_perf: ms/frame avg/worst: r3d.cull 1.02/1.0  r3d.transform 4.59/4.5  r3d.draw 42.35/42.3  r3d.upscale 5.86/5.8 | total 53.84
+I (8918) sponza_perf: atrium t=   35s clusters= 901 tris=12805 | both cores: frame   66257us
+I (8919) sponza_perf: ms/frame avg/worst: r3d.cull 1.20/1.2  r3d.transform 6.88/6.8  r3d.draw 52.29/52.2  r3d.upscale 5.79/5.7 | total 66.18
+I (8921) sponza_perf: atrium both cores: mean 53777us (18.6 fps before present), worst 67494us
+I (8922) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3158996 largest 3145728
+I (8923) sponza_perf: === atrium_flat FRAME COST (17371 tris, 17123 verts, 1164 clusters, rendered 184x224) ===
+I (8925) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (9067) sponza_perf: atrium_flat t=    0s clusters= 900 tris=13363 | both cores: frame   50906us
+I (9068) sponza_perf: ms/frame avg/worst: r3d.cull 1.12/1.1  r3d.transform 6.66/6.6  r3d.draw 37.13/37.1  r3d.upscale 5.88/5.8 | total 50.80
+I (9113) sponza_perf: atrium_flat t=    5s clusters= 654 tris= 9651 | both cores: frame   43638us
+I (9114) sponza_perf: ms/frame avg/worst: r3d.cull 1.06/1.0  r3d.transform 5.02/5.0  r3d.draw 31.64/31.6  r3d.upscale 5.83/5.8 | total 43.57
+I (9149) sponza_perf: atrium_flat t=   10s clusters= 424 tris= 6359 | both cores: frame   33818us
+I (9150) sponza_perf: ms/frame avg/worst: r3d.cull 0.84/0.8  r3d.transform 3.16/3.1  r3d.draw 23.90/23.9  r3d.upscale 5.84/5.8 | total 33.75
+I (9181) sponza_perf: atrium_flat t=   15s clusters= 322 tris= 4895 | both cores: frame   29224us
+I (9182) sponza_perf: ms/frame avg/worst: r3d.cull 0.90/0.9  r3d.transform 2.46/2.4  r3d.draw 19.97/19.9  r3d.upscale 5.82/5.8 | total 29.16
+I (9225) sponza_perf: atrium_flat t=   20s clusters= 580 tris= 8720 | both cores: frame   41395us
+I (9226) sponza_perf: ms/frame avg/worst: r3d.cull 0.97/0.9  r3d.transform 4.29/4.2  r3d.draw 30.18/30.1  r3d.upscale 5.88/5.8 | total 41.33
+I (9258) sponza_perf: atrium_flat t=   25s clusters= 343 tris= 5180 | both cores: frame   30973us
+I (9259) sponza_perf: ms/frame avg/worst: r3d.cull 0.78/0.7  r3d.transform 2.63/2.6  r3d.draw 21.57/21.5  r3d.upscale 5.91/5.9 | total 30.90
+I (9300) sponza_perf: atrium_flat t=   30s clusters= 575 tris= 8456 | both cores: frame   39448us
+I (9301) sponza_perf: ms/frame avg/worst: r3d.cull 1.04/1.0  r3d.transform 4.24/4.2  r3d.draw 28.23/28.2  r3d.upscale 5.86/5.8 | total 39.38
+I (9353) sponza_perf: atrium_flat t=   35s clusters= 859 tris=12756 | both cores: frame   50365us
+I (9354) sponza_perf: ms/frame avg/worst: r3d.cull 1.19/1.1  r3d.transform 6.37/6.3  r3d.draw 36.91/36.9  r3d.upscale 5.82/5.8 | total 50.30
+I (9355) sponza_perf: atrium_flat both cores: mean 39970us (25.0 fps before present), worst 50906us
+I (9356) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3236820 largest 3211264
+I (9357) sponza_perf: === atrium_lite FRAME COST (8667 tris, 8940 verts, 596 clusters, rendered 184x224) ===
+I (9358) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (9500) sponza_perf: atrium_lite t=    0s clusters= 479 tris= 7010 | both cores: frame   50190us
+I (9501) sponza_perf: ms/frame avg/worst: r3d.cull 0.50/0.5  r3d.transform 3.56/3.5  r3d.draw 40.09/40.0  r3d.upscale 5.91/5.9 | total 50.07
+I (9547) sponza_perf: atrium_lite t=    5s clusters= 360 tris= 5244 | both cores: frame   44131us
+I (9548) sponza_perf: ms/frame avg/worst: r3d.cull 0.70/0.7  r3d.transform 2.71/2.7  r3d.draw 34.76/34.7  r3d.upscale 5.87/5.8 | total 44.05
+I (9588) sponza_perf: atrium_lite t=   10s clusters= 250 tris= 3650 | both cores: frame   38501us
+I (9589) sponza_perf: ms/frame avg/worst: r3d.cull 0.58/0.5  r3d.transform 1.98/1.9  r3d.draw 29.95/29.9  r3d.upscale 5.91/5.9 | total 38.43
+I (9625) sponza_perf: atrium_lite t=   15s clusters= 207 tris= 2934 | both cores: frame   34735us
+I (9626) sponza_perf: ms/frame avg/worst: r3d.cull 0.62/0.6  r3d.transform 1.68/1.6  r3d.draw 26.58/26.5  r3d.upscale 5.78/5.7 | total 34.67
+I (9671) sponza_perf: atrium_lite t=   20s clusters= 331 tris= 4823 | both cores: frame   44001us
+I (9672) sponza_perf: ms/frame avg/worst: r3d.cull 0.66/0.6  r3d.transform 2.45/2.4  r3d.draw 34.97/34.9  r3d.upscale 5.83/5.8 | total 43.93
+I (9709) sponza_perf: atrium_lite t=   25s clusters= 200 tris= 2940 | both cores: frame   35309us
+I (9710) sponza_perf: ms/frame avg/worst: r3d.cull 0.55/0.5  r3d.transform 1.50/1.5  r3d.draw 27.24/27.2  r3d.upscale 5.94/5.9 | total 35.24
+I (9753) sponza_perf: atrium_lite t=   30s clusters= 317 tris= 4669 | both cores: frame   41398us
+I (9754) sponza_perf: ms/frame avg/worst: r3d.cull 0.77/0.7  r3d.transform 2.41/2.4  r3d.draw 32.24/32.2  r3d.upscale 5.89/5.8 | total 41.33
+I (9805) sponza_perf: atrium_lite t=   35s clusters= 461 tris= 6747 | both cores: frame   49587us
+I (9806) sponza_perf: ms/frame avg/worst: r3d.cull 0.70/0.7  r3d.transform 3.45/3.4  r3d.draw 39.52/39.5  r3d.upscale 5.84/5.8 | total 49.52
+I (9807) sponza_perf: atrium_lite both cores: mean 42231us (23.7 fps before present), worst 50190us
+I (9808) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3224532 largest 3211264
+I (9809) sponza_perf: === atrium_fitted FRAME COST (8672 tris, 10341 verts, 679 clusters, rendered 184x224) ===
+I (9811) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (9950) sponza_perf: atrium_fitted t=    0s clusters= 560 tris= 7145 | both cores: frame   47625us
+I (9951) sponza_perf: ms/frame avg/worst: r3d.cull 0.69/0.6  r3d.transform 4.20/4.2  r3d.draw 36.67/36.6  r3d.upscale 5.95/5.9 | total 47.52
+I (9995) sponza_perf: atrium_fitted t=    5s clusters= 396 tris= 5087 | both cores: frame   42485us
+I (9996) sponza_perf: ms/frame avg/worst: r3d.cull 0.67/0.6  r3d.transform 3.00/3.0  r3d.draw 32.80/32.8  r3d.upscale 5.93/5.9 | total 42.41
+I (10033) sponza_perf: atrium_fitted t=   10s clusters= 250 tris= 3268 | both cores: frame   35265us
+I (10034) sponza_perf: ms/frame avg/worst: r3d.cull 0.56/0.5  r3d.transform 1.94/1.9  r3d.draw 26.73/26.7  r3d.upscale 5.95/5.9 | total 35.19
+I (10064) sponza_perf: atrium_fitted t=   15s clusters= 176 tris= 2190 | both cores: frame   29178us
+I (10065) sponza_perf: ms/frame avg/worst: r3d.cull 0.61/0.6  r3d.transform 1.39/1.3  r3d.draw 21.20/21.2  r3d.upscale 5.91/5.9 | total 29.12
+I (10108) sponza_perf: atrium_fitted t=   20s clusters= 368 tris= 4725 | both cores: frame   41225us
+I (10109) sponza_perf: ms/frame avg/worst: r3d.cull 0.65/0.6  r3d.transform 2.80/2.8  r3d.draw 31.70/31.7  r3d.upscale 5.99/5.9 | total 41.16
+I (10147) sponza_perf: atrium_fitted t=   25s clusters= 226 tris= 2934 | both cores: frame   36458us
+I (10148) sponza_perf: ms/frame avg/worst: r3d.cull 0.53/0.5  r3d.transform 1.83/1.8  r3d.draw 28.02/28.0  r3d.upscale 5.99/5.9 | total 36.39
+I (10193) sponza_perf: atrium_fitted t=   30s clusters= 376 tris= 4818 | both cores: frame   43834us
+I (10194) sponza_perf: ms/frame avg/worst: r3d.cull 0.68/0.6  r3d.transform 3.02/3.0  r3d.draw 34.12/34.1  r3d.upscale 5.94/5.9 | total 43.77
+I (10242) sponza_perf: atrium_fitted t=   35s clusters= 531 tris= 6805 | both cores: frame   47205us
+I (10244) sponza_perf: ms/frame avg/worst: r3d.cull 0.68/0.6  r3d.transform 4.07/4.0  r3d.draw 36.50/36.5  r3d.upscale 5.88/5.8 | total 47.14
+I (10245) sponza_perf: atrium_fitted both cores: mean 40409us (24.7 fps before present), worst 47625us
+I (10246) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3142612 largest 3080192
+I (10247) sponza_perf: === atrium_fitted_full FRAME COST (17133 tris, 19824 verts, 1306 clusters, rendered 184x224) ===
+I (10249) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (10407) sponza_perf: atrium_fitted_full t=    0s clusters=1031 tris=13511 | both cores: frame   66803us
+I (10408) sponza_perf: ms/frame avg/worst: r3d.cull 1.10/1.1  r3d.transform 7.83/7.8  r3d.draw 51.84/51.8  r3d.upscale 5.92/5.9 | total 66.70
+I (10467) sponza_perf: atrium_fitted_full t=    5s clusters= 720 tris= 9510 | both cores: frame   57732us
+I (10469) sponza_perf: ms/frame avg/worst: r3d.cull 1.04/1.0  r3d.transform 5.67/5.6  r3d.draw 45.05/45.0  r3d.upscale 5.87/5.8 | total 57.65
+I (10516) sponza_perf: atrium_fitted_full t=   10s clusters= 441 tris= 5920 | both cores: frame   46368us
+I (10517) sponza_perf: ms/frame avg/worst: r3d.cull 0.76/0.7  r3d.transform 3.48/3.4  r3d.draw 36.09/36.0  r3d.upscale 5.95/5.9 | total 46.30
+I (10557) sponza_perf: atrium_fitted_full t=   15s clusters= 287 tris= 3772 | both cores: frame   38191us
+I (10558) sponza_perf: ms/frame avg/worst: r3d.cull 0.77/0.7  r3d.transform 2.26/2.2  r3d.draw 29.15/29.1  r3d.upscale 5.93/5.9 | total 38.12
+I (10617) sponza_perf: atrium_fitted_full t=   20s clusters= 668 tris= 8781 | both cores: frame   57431us
+I (10618) sponza_perf: ms/frame avg/worst: r3d.cull 1.00/1.0  r3d.transform 5.16/5.1  r3d.draw 45.23/45.2  r3d.upscale 5.96/5.9 | total 57.37
+I (10663) sponza_perf: atrium_fitted_full t=   25s clusters= 403 tris= 5323 | both cores: frame   43717us
+I (10664) sponza_perf: ms/frame avg/worst: r3d.cull 0.69/0.6  r3d.transform 3.13/3.1  r3d.draw 33.85/33.8  r3d.upscale 5.97/5.9 | total 43.65
+I (10723) sponza_perf: atrium_fitted_full t=   30s clusters= 677 tris= 8873 | both cores: frame   57345us
+I (10724) sponza_perf: ms/frame avg/worst: r3d.cull 0.98/0.9  r3d.transform 5.40/5.4  r3d.draw 45.00/45.0  r3d.upscale 5.89/5.8 | total 57.28
+I (10791) sponza_perf: atrium_fitted_full t=   35s clusters= 974 tris=12818 | both cores: frame   65820us
+I (10792) sponza_perf: ms/frame avg/worst: r3d.cull 1.06/1.0  r3d.transform 7.63/7.6  r3d.draw 51.19/51.1  r3d.upscale 5.85/5.8 | total 65.75
+I (10793) sponza_perf: atrium_fitted_full both cores: mean 54175us (18.5 fps before present), worst 66803us
+I (10795) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3150804 largest 3145728
+I (10796) sponza_perf: === atrium_flat_fitted FRAME COST (17133 tris, 18333 verts, 1221 clusters, rendered 184x224) ===
+I (10797) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (10939) sponza_perf: atrium_flat_fitted t=    0s clusters= 962 tris=13485 | both cores: frame   50075us
+I (10940) sponza_perf: ms/frame avg/worst: r3d.cull 1.02/1.0  r3d.transform 7.36/7.3  r3d.draw 35.67/35.6  r3d.upscale 5.91/5.9 | total 49.96
+I (10985) sponza_perf: atrium_flat_fitted t=    5s clusters= 684 tris= 9582 | both cores: frame   43860us
+I (10987) sponza_perf: ms/frame avg/worst: r3d.cull 0.96/0.9  r3d.transform 5.23/5.2  r3d.draw 31.73/31.7  r3d.upscale 5.84/5.8 | total 43.79
+I (11021) sponza_perf: atrium_flat_fitted t=   10s clusters= 420 tris= 5983 | both cores: frame   33543us
+I (11023) sponza_perf: ms/frame avg/worst: r3d.cull 0.76/0.7  r3d.transform 3.35/3.3  r3d.draw 23.50/23.5  r3d.upscale 5.85/5.8 | total 33.48
+I (11051) sponza_perf: atrium_flat_fitted t=   15s clusters= 264 tris= 3849 | both cores: frame   26793us
+I (11052) sponza_perf: ms/frame avg/worst: r3d.cull 0.72/0.7  r3d.transform 2.04/2.0  r3d.draw 18.05/18.0  r3d.upscale 5.90/5.9 | total 26.73
+I (11094) sponza_perf: atrium_flat_fitted t=   20s clusters= 619 tris= 8746 | both cores: frame   41239us
+I (11096) sponza_perf: ms/frame avg/worst: r3d.cull 0.94/0.9  r3d.transform 4.71/4.7  r3d.draw 29.62/29.6  r3d.upscale 5.89/5.8 | total 41.17
+I (11129) sponza_perf: atrium_flat_fitted t=   25s clusters= 375 tris= 5292 | both cores: frame   32078us
+I (11130) sponza_perf: ms/frame avg/worst: r3d.cull 0.66/0.6  r3d.transform 2.89/2.8  r3d.draw 22.52/22.5  r3d.upscale 5.93/5.9 | total 32.01
+I (11173) sponza_perf: atrium_flat_fitted t=   30s clusters= 636 tris= 8793 | both cores: frame   41226us
+I (11174) sponza_perf: ms/frame avg/worst: r3d.cull 0.94/0.9  r3d.transform 4.80/4.8  r3d.draw 29.48/29.4  r3d.upscale 5.92/5.9 | total 41.15
+I (11226) sponza_perf: atrium_flat_fitted t=   35s clusters= 918 tris=12871 | both cores: frame   50370us
+I (11227) sponza_perf: ms/frame avg/worst: r3d.cull 1.09/1.0  r3d.transform 7.00/7.0  r3d.draw 36.39/36.3  r3d.upscale 5.81/5.8 | total 50.31
+I (11228) sponza_perf: atrium_flat_fitted both cores: mean 39898us (25.1 fps before present), worst 50370us
+I (11229) sponza_perf: TUNE_OK render.cull=0
+I (11230) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3150804 largest 3145728
+I (11231) sponza_perf: === cull_off FRAME COST (17371 tris, 18452 verts, 1220 clusters, rendered 184x224) ===
+I (11233) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=0 period_ms=36303 pose_every_ms=5000
+I (11410) sponza_perf: cull_off t=    0s clusters=1220 tris=17371 | both cores: frame   85950us
+I (11411) sponza_perf: ms/frame avg/worst: r3d.cull 0.61/0.6  r3d.transform 8.78/8.7  r3d.draw 70.50/70.5  r3d.upscale 5.94/5.9 | total 85.84
+I (11493) sponza_perf: cull_off t=    5s clusters=1220 tris=17371 | both cores: frame   80216us
+I (11494) sponza_perf: ms/frame avg/worst: r3d.cull 0.71/0.7  r3d.transform 8.04/8.0  r3d.draw 65.56/65.5  r3d.upscale 5.83/5.8 | total 80.14
+I (11566) sponza_perf: cull_off t=   10s clusters=1220 tris=17371 | both cores: frame   70410us
+I (11567) sponza_perf: ms/frame avg/worst: r3d.cull 0.71/0.7  r3d.transform 7.36/7.3  r3d.draw 56.49/56.4  r3d.upscale 5.77/5.7 | total 70.34
+I (11649) sponza_perf: cull_off t=   15s clusters=1220 tris=17371 | both cores: frame   80538us
+I (11650) sponza_perf: ms/frame avg/worst: r3d.cull 0.71/0.7  r3d.transform 8.30/8.3  r3d.draw 65.65/65.6  r3d.upscale 5.80/5.8 | total 80.47
+I (11727) sponza_perf: cull_off t=   20s clusters=1220 tris=17371 | both cores: frame   75536us
+I (11728) sponza_perf: ms/frame avg/worst: r3d.cull 0.80/0.8  r3d.transform 7.63/7.6  r3d.draw 61.18/61.1  r3d.upscale 5.85/5.8 | total 75.47
+I (11798) sponza_perf: cull_off t=   25s clusters=1220 tris=17371 | both cores: frame   68579us
+I (11799) sponza_perf: ms/frame avg/worst: r3d.cull 0.72/0.7  r3d.transform 7.11/7.1  r3d.draw 54.86/54.8  r3d.upscale 5.81/5.8 | total 68.51
+I (11881) sponza_perf: cull_off t=   30s clusters=1220 tris=17371 | both cores: frame   81009us
+I (11882) sponza_perf: ms/frame avg/worst: r3d.cull 0.74/0.7  r3d.transform 7.99/7.9  r3d.draw 66.39/66.3  r3d.upscale 5.80/5.8 | total 80.94
+I (11971) sponza_perf: cull_off t=   35s clusters=1220 tris=17371 | both cores: frame   87913us
+I (11972) sponza_perf: ms/frame avg/worst: r3d.cull 0.71/0.7  r3d.transform 8.82/8.8  r3d.draw 72.46/72.4  r3d.upscale 5.83/5.8 | total 87.85
+I (11974) sponza_perf: cull_off both cores: mean 78768us (12.7 fps before present), worst 87913us
+I (11975) sponza_perf: TUNE_OK render.cull=1
+:323:test_sponza_frame_cost_along_the_flythrough:PASS
+TEST_TIME name=test_sponza_frame_cost_along_the_flythrough elapsed_ms=3620 stack_free_bytes=892
+I (11998) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3067152 largest 3014656
+I (11999) sponza_perf: === motion FRAME COST (17371 tris, 18452 verts, 1220 clusters, rendered 184x224) ===
+I (12000) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (12162) sponza_perf: motion t=    0s clusters= 945 tris=13416 | both cores: frame   70274us
+I (12163) sponza_perf: ms/frame avg/worst: r3d.cull 1.18/1.1  r3d.transform 7.19/7.1  r3d.draw 54.48/54.4  r3d.resolve 1.01/1.0  r3d.upscale 6.25/6.2 | total 70.12
+I (12239) sponza_perf: motion t=    5s clusters= 682 tris= 9616 | both cores: frame   73997us
+I (12240) sponza_perf: ms/frame avg/worst: r3d.cull 1.10/1.1  r3d.transform 5.18/5.1  r3d.draw 47.10/47.1  r3d.resolve 14.51/14.5  r3d.upscale 5.96/5.9 | total 73.87
+I (12303) sponza_perf: motion t=   10s clusters= 452 tris= 6502 | both cores: frame   61723us
+I (12304) sponza_perf: ms/frame avg/worst: r3d.cull 0.84/0.8  r3d.transform 3.46/3.4  r3d.draw 36.84/36.8  r3d.resolve 14.48/14.4  r3d.upscale 5.98/5.9 | total 61.61
+I (12357) sponza_perf: motion t=   15s clusters= 344 tris= 4834 | both cores: frame   51571us
+I (12358) sponza_perf: ms/frame avg/worst: r3d.cull 0.93/0.9  r3d.transform 2.64/2.6  r3d.draw 32.12/32.1  r3d.resolve 9.83/9.8  r3d.upscale 5.92/5.9 | total 51.46
+I (12429) sponza_perf: motion t=   20s clusters= 612 tris= 8804 | both cores: frame   69566us
+I (12430) sponza_perf: ms/frame avg/worst: r3d.cull 0.97/0.9  r3d.transform 4.68/4.6  r3d.draw 45.65/45.6  r3d.resolve 12.17/12.1  r3d.upscale 5.97/5.9 | total 69.45
+I (12490) sponza_perf: motion t=   25s clusters= 361 tris= 5238 | both cores: frame   57989us
+I (12491) sponza_perf: ms/frame avg/worst: r3d.cull 0.78/0.7  r3d.transform 2.76/2.7  r3d.draw 33.71/33.7  r3d.resolve 14.64/14.6  r3d.upscale 5.97/5.9 | total 57.87
+I (12560) sponza_perf: motion t=   30s clusters= 602 tris= 8522 | both cores: frame   66862us
+I (12561) sponza_perf: ms/frame avg/worst: r3d.cull 1.03/1.0  r3d.transform 4.58/4.5  r3d.draw 43.69/43.6  r3d.resolve 11.48/11.4  r3d.upscale 5.95/5.9 | total 66.74
+I (12641) sponza_perf: motion t=   35s clusters= 901 tris=12805 | both cores: frame   78535us
+I (12642) sponza_perf: ms/frame avg/worst: r3d.cull 1.19/1.1  r3d.transform 6.88/6.8  r3d.draw 53.63/53.6  r3d.resolve 10.74/10.7  r3d.upscale 5.97/5.9 | total 78.42
+I (12643) sponza_perf: motion both cores: mean 66314us (15.1 fps before present), worst 78535us
+I (12644) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3067152 largest 3014656
+I (12645) sponza_perf: === motion_moving FRAME COST (17371 tris, 18452 verts, 1220 clusters, rendered 184x224) ===
+I (12647) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (12809) sponza_perf: motion_moving t=    0s clusters= 945 tris=13416 | both cores: frame   70294us
+I (12810) sponza_perf: ms/frame avg/worst: r3d.cull 1.17/1.1  r3d.transform 7.21/7.2  r3d.draw 54.51/54.5  r3d.resolve 1.01/1.0  r3d.upscale 6.24/6.2 | total 70.15
+I (12913) sponza_perf: motion_moving t=    5s clusters= 682 tris= 9616 | both cores: frame  100804us
+I (12914) sponza_perf: ms/frame avg/worst: r3d.cull 1.10/1.1  r3d.transform 5.16/5.1  r3d.draw 73.59/73.5  r3d.resolve 14.77/14.7  r3d.upscale 6.02/6.0 | total 100.65
+I (12997) sponza_perf: motion_moving t=   10s clusters= 452 tris= 6502 | both cores: frame   81311us
+I (12998) sponza_perf: ms/frame avg/worst: r3d.cull 0.85/0.8  r3d.transform 3.45/3.4  r3d.draw 56.13/56.1  r3d.resolve 14.70/14.7  r3d.upscale 6.01/6.0 | total 81.16
+I (13067) sponza_perf: motion_moving t=   15s clusters= 344 tris= 4834 | both cores: frame   68259us
+I (13069) sponza_perf: ms/frame avg/worst: r3d.cull 0.93/0.9  r3d.transform 2.68/2.6  r3d.draw 48.55/48.5  r3d.resolve 10.05/10.0  r3d.upscale 5.89/5.8 | total 68.12
+I (13165) sponza_perf: motion_moving t=   20s clusters= 612 tris= 8804 | both cores: frame   95243us
+I (13166) sponza_perf: ms/frame avg/worst: r3d.cull 0.97/0.9  r3d.transform 4.82/4.8  r3d.draw 70.89/70.8  r3d.resolve 12.43/12.4  r3d.upscale 5.98/5.9 | total 95.10
+I (13245) sponza_perf: motion_moving t=   25s clusters= 361 tris= 5238 | both cores: frame   76619us
+I (13246) sponza_perf: ms/frame avg/worst: r3d.cull 0.78/0.7  r3d.transform 2.91/2.9  r3d.draw 51.81/51.8  r3d.resolve 14.97/14.9  r3d.upscale 5.98/5.9 | total 76.47
+I (13337) sponza_perf: motion_moving t=   30s clusters= 602 tris= 8522 | both cores: frame   89925us
+I (13338) sponza_perf: ms/frame avg/worst: r3d.cull 1.02/1.0  r3d.transform 4.71/4.7  r3d.draw 66.29/66.2  r3d.resolve 11.74/11.7  r3d.upscale 5.99/5.9 | total 89.78
+I (13450) sponza_perf: motion_moving t=   35s clusters= 901 tris=12805 | both cores: frame  110037us
+I (13451) sponza_perf: ms/frame avg/worst: r3d.cull 1.21/1.2  r3d.transform 6.84/6.8  r3d.draw 84.83/84.8  r3d.resolve 11.02/11.0  r3d.upscale 5.97/5.9 | total 109.89
+I (13453) sponza_perf: motion_moving both cores: mean 86561us (11.6 fps before present), worst 110037us
+I (13454) sponza_perf: heap after setup: internal free 101127 largest 59392, psram free 3149072 largest 3145728
+I (13455) sponza_perf: === placed FRAME COST (17371 tris, 18452 verts, 1220 clusters, rendered 184x224) ===
+I (13457) sponza_perf: MESHLET_CAPTURE build_id=35ff99cecb62-diag pack_crc32=653b61d5 size=16 cull=1 period_ms=36303 pose_every_ms=5000
+I (13615) sponza_perf: placed t=    0s clusters= 945 tris=13416 | both cores: frame   67314us
+I (13616) sponza_perf: ms/frame avg/worst: r3d.cull 1.16/1.1  r3d.transform 7.25/7.2  r3d.draw 52.87/52.8  r3d.upscale 5.90/5.9 | total 67.19
+I (13676) sponza_perf: placed t=    5s clusters= 682 tris= 9616 | both cores: frame   57905us
+I (13677) sponza_perf: ms/frame avg/worst: r3d.cull 1.10/1.1  r3d.transform 5.16/5.1  r3d.draw 45.70/45.7  r3d.upscale 5.86/5.8 | total 57.83
+I (13724) sponza_perf: placed t=   10s clusters= 452 tris= 6502 | both cores: frame   45549us
+I (13725) sponza_perf: ms/frame avg/worst: r3d.cull 0.84/0.8  r3d.transform 3.45/3.4  r3d.draw 35.32/35.3  r3d.upscale 5.85/5.8 | total 45.47
+I (13766) sponza_perf: placed t=   15s clusters= 344 tris= 4834 | both cores: frame   40389us
+I (13767) sponza_perf: ms/frame avg/worst: r3d.cull 0.93/0.9  r3d.transform 2.65/2.6  r3d.draw 30.89/30.8  r3d.upscale 5.83/5.8 | total 40.32
+I (13825) sponza_perf: placed t=   20s clusters= 612 tris= 8804 | both cores: frame   55999us
+I (13826) sponza_perf: ms/frame avg/worst: r3d.cull 0.94/0.9  r3d.transform 4.79/4.7  r3d.draw 44.35/44.3  r3d.upscale 5.83/5.8 | total 55.93
+I (13869) sponza_perf: placed t=   25s clusters= 361 tris= 5238 | both cores: frame   41945us
+I (13870) sponza_perf: ms/frame avg/worst: r3d.cull 0.78/0.7  r3d.transform 2.78/2.7  r3d.draw 32.40/32.4  r3d.upscale 5.87/5.8 | total 41.84
+I (13925) sponza_perf: placed t=   30s clusters= 602 tris= 8522 | both cores: frame   53867us
+I (13926) sponza_perf: ms/frame avg/worst: r3d.cull 1.11/1.1  r3d.transform 4.57/4.5  r3d.draw 42.23/42.2  r3d.upscale 5.87/5.8 | total 53.79
+I (13994) sponza_perf: placed t=   35s clusters= 901 tris=12805 | both cores: frame   66115us
+I (13995) sponza_perf: ms/frame avg/worst: r3d.cull 1.19/1.1  r3d.transform 6.95/6.9  r3d.draw 52.08/52.0  r3d.upscale 5.82/5.8 | total 66.04
+I (13996) sponza_perf: placed both cores: mean 53635us (18.6 fps before present), worst 67314us
+:324:test_sponza_frame_cost_with_motion:PASS
+TEST_TIME name=test_sponza_frame_cost_with_motion elapsed_ms=2020 stack_free_bytes=892
+FRAME_WATCH judged 0 of 3 tests
+
+RUNSUITE_COMPLETE name=run_sponza_perf_suite found=1 selected=3 unmatched=0
+I (14087) shell: 4.6 fps, 4.6 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (14088) shell: ms/frame avg/worst: ui.build 0.01/0.3  ridge.layers 0.13/2.3  ridge.paint 1.44/35.0  ui.paint 0.19/3.3  present 0.63/10.7 | total 2.41
