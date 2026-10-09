@@ -28,11 +28,13 @@ r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t
     *forward = (vec3f_t){ahead[0], ahead[1], ahead[2]};
 }
 
-camera_t
-r3d_scene_camera_at(const r3d_scene_camera_t* camera, uint32_t t_ms) {
-    camera_t out = {.half_fov_short_tan = camera->half_fov_short_tan, .near_z = camera->near_z};
-    r3d_scene_camera_sample(camera, t_ms, &out.eye, &out.forward);
-    return out;
+render_view_t
+r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t viewport) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    vec3f_t forward;
+    r3d_scene_camera_sample(camera, t_ms, &pose.position, &forward);
+    transformf_look_at(&pose, vec3f_add(pose.position, forward), (vec3f_t){0.0F, 1.0F, 0.0F});
+    return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
 }
 
 r3d_placement_t

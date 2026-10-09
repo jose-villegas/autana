@@ -1077,9 +1077,9 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
     render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
-    const camera_t view = r3d_scene_camera_at(&scene->cameras[0].lens, 0);
+    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, 0, (viewport_t){SIZE, SIZE, 0});
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
-    TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0, 0, SIZE, SIZE));
+    TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
     const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
 
     raster_t finest = c->raster;

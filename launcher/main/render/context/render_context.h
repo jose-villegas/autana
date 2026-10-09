@@ -1,6 +1,6 @@
 /*
  * render_context: what a frame is drawn at and how well, apart from what is
- * drawn and from where. A caller hands it instances, a camera and a clear
+ * drawn and from where. A caller hands it instances, a view and a clear
  * colour; the context owns the raster and its scratch block, the render size
  * and the debug view, and upscales into the picture it is given.
  *
@@ -9,7 +9,7 @@
  * to hold a budget, and what the draw and upscale cost is fed back.
  *
  * The engine draws its frames through one context, render_context_main(),
- * released when an app exits. The camera stays perspective only.
+ * released when an app exits. The view stays perspective only.
  */
 #pragma once
 
@@ -18,9 +18,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "render/camera.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
+#include "render/render_view.h"
 #include "render/resolution/resolution.h"
 
 /* The share of the destination a frame draws at until set. */
@@ -41,7 +41,7 @@ typedef struct {
     const char* name;
     size_t state_bytes;
     raster_attachment_t (*attachment)(void* state);
-} render_view_t;
+} render_debug_view_t;
 
 #define RENDER_VIEW_UNKNOWN -2
 #define RENDER_VIEW_SHADED  0
@@ -84,7 +84,7 @@ void render_context_set_dynamic_resolution(render_context_t* context, const reso
 /* Development views, or RENDER_VIEW_SHADED to detach the view. */
 void render_context_set_view(render_context_t* context, int view);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
-const render_view_t* render_context_view(int view);
+const render_debug_view_t* render_context_view(int view);
 
 /* A view number, RENDER_VIEW_SHADED, or RENDER_VIEW_UNKNOWN for an unknown name. */
 int render_context_view_named(const char* name);
@@ -92,13 +92,12 @@ int render_context_view_named(const char* name);
 /* Comma-separated names, shaded first, followed by the table order. */
 void render_context_print_views(FILE* out);
 
-/* Draws `count` instances through `camera` for a destination of `width` by
- * `height`, turned for `quarter`; false when there is no scratch for it. */
-bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count, const camera_t* camera,
-                         uint16_t clear, int quarter, int width, int height);
+/* Draws `count` instances through `view`; false when there is no scratch for it. */
+bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
+                         const render_view_t* view, uint16_t clear);
 
 /* With `half`, copies an exact-half draw there at its drawn size and
- * returns true; otherwise upscales into `destination` at the camera's
+ * returns true; otherwise upscales into `destination` at the view's
  * destination size. Either path feeds its cost to dynamic resolution. */
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);
 

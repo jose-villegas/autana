@@ -106,9 +106,9 @@ typedef struct {
  * not inlined, so its frame is gone before the raster draws. */
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
-    const camera_t camera = r3d_scene_camera_at(path, t_ms);
+    const render_view_t camera = r3d_scene_view_at(path, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
     r3d_lens_t lens;
-    r3d_lens_init(&lens, &camera, mesh.position_scale, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    r3d_lens_init(&lens, &camera, mesh.position_scale);
     r3d_lens_fit(&lens, raster->width, raster->height);
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     const int visible = r3d_pipeline_cull(&mesh, &lens, b.culled + 1, b.work[0]);
@@ -136,9 +136,9 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int poses = 0;
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
-        const camera_t camera = r3d_scene_camera_at(path, t_ms);
+        const render_view_t camera = r3d_scene_view_at(path, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         const int64_t start = timing_now_us();
-        const raster_stats_t stats = raster_draw(raster, &camera, 0);
+        const raster_stats_t stats = raster_draw(raster, &camera);
         raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
         triangles += stats.triangles;
@@ -257,9 +257,9 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
             raster->width = config->steps[step].width;
             raster->height = config->steps[step].height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
-                const camera_t camera = r3d_scene_camera_at(path, t_ms);
+                const render_view_t camera = r3d_scene_view_at(path, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
                 const int64_t start = timing_now_us();
-                const raster_stats_t stats = raster_draw(raster, &camera, 0);
+                const raster_stats_t stats = raster_draw(raster, &camera);
                 const int64_t drawn = timing_now_us();
                 (void)render_context_compose(&context, destination, half);
                 samples[count++] = (resolution_sample_t){step, stats.triangles, (int32_t)(drawn - start),

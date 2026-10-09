@@ -110,9 +110,9 @@ draw_active(int quarter, int width, int height) {
     if (count == 0) {
         return;
     }
-    const camera_t view = r3d_scene_camera_at(&camera->lens, scene->elapsed_ms);
-    rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear, quarter, width,
-                                   height);
+    const render_view_t view =
+        r3d_scene_view_at(&camera->lens, scene->elapsed_ms, (viewport_t){width, height, quarter});
+    rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
 }
 
 void

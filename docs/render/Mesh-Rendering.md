@@ -20,11 +20,11 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | Noun | What it is |
 |---|---|
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Mesh-Import.md](Mesh-Import.md#the-baked-mesh)) |
-| `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
-| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
+| `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
+| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras and `render_view_make()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
-| `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
+| `raster_draw()` | Draws every instance through a ready frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
@@ -37,8 +37,12 @@ Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
 carries a colour per face and the raster draws what the mesh carries.
 
 A camera that moves is an [animation track](../Animation-Tracks.md), sampled
-into the camera's eye and look direction; `r3d_scene_camera_at()` does it for
-a baked camera object.
+into a look-at pose; `r3d_scene_view_at()` builds its frame view with
+`render_view_make()`. Poses use +x right, +y up, +z forward in a left-handed
+frame. Baked scenes use a right-handed frame: picture right is pose -x,
+picture down is pose -y, and depth is pose +z. The view folds in the panel
+quarter turn and fits its lens to the shorter picture side; pose scale is
+ignored and pose rotation carries roll.
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
@@ -55,7 +59,8 @@ exactly.
 | File | What it is |
 |---|---|
 | `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
-| `camera.h` | The camera |
+| `render_view.h` | The frame view and its pose-and-lens builder |
+| `camera.h` | Eye-and-forward camera fixtures |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
@@ -71,8 +76,8 @@ exactly.
 | `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
 
-The line camera stays apart from `camera_t`: its pose is a `transformf_t`
-that composes with a model transform and carries a roll. Only
+The line camera's `transformf_t` pose composes with a model transform and
+carries roll. Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
 
@@ -87,23 +92,25 @@ take their types from `util/math/`, documented in
 ## One frame
 
 ```mermaid
-flowchart LR
-    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Picture
+flowchart TB
+    View["render_view_t<br/><i>basis, fit, picture</i>"] --> Census
     subgraph Census["raster_census()"]
+        direction LR
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Cull --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
-    Size["the render size"] --> Fit
-    List --> Fit
+    Census --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
+    Size["the render size"] --> Draw
+    List --> Draw
     subgraph Draw["raster_draw_culled()"]
+        direction LR
         Fit["r3d_lens_init(), r3d_lens_fit(), r3d_lens_place()<br/><i>per instance, fitted to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
-    DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `raster_draw()`, which culls and draws
+A caller builds a frame view, then calls `raster_draw()`, which culls and draws
 each instance in turn with one fitted lens shared by culling and drawing,
 and `raster_upscale()` with the destination width and height to compose
 that picture. A
@@ -131,10 +138,10 @@ width and still show the same view.
 
 ### The render context
 
-A camera is perspective only. What a frame is drawn at belongs to the render
+A frame view is perspective only. What a frame is drawn at belongs to the render
 context (`context/render_context.h`): it owns the raster and its scratch
 block, the render size and the debug view. A caller hands it instances, a
-camera and a clear colour, then a destination to upscale into. The scene
+frame view and a clear colour, then a destination to upscale into. The scene
 manager draws the active camera through the engine's one context,
 `render_context_main()`, released when an app exits.
 
@@ -176,7 +183,7 @@ sequenceDiagram
 
 ### View modes
 
-Development builds select one row from the `render_view_t` table in
+Development builds select one row from the `render_debug_view_t` table in
 `render/context/render_context.c`: depth, tiles, motion or meshlets.
 `render_context_set_view()` attaches that row and owns its zeroed PSRAM state.
 Switching frees the previous state; `RENDER_VIEW_SHADED` detaches it, and

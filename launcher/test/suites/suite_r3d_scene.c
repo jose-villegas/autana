@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -65,7 +66,10 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
     *scratch = malloc(raster_scratch_bytes(&raster));
     TEST_ASSERT_NOT_NULL(*scratch);
     raster.scratch = *scratch;
-    raster_draw(&raster, &CAMERA, 0);
+    const render_view_t frame_view =
+        render_view_fixture(&CAMERA, (viewport_t){raster.upscaled ? raster.destination_width : raster.width,
+                                                  raster.upscaled ? raster.destination_height : raster.height, 0});
+    raster_draw(&raster, &frame_view);
     return raster_color(&raster);
 }
 
@@ -158,7 +162,8 @@ test_every_lens_operation_keeps_the_affine_bottom_row(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
         r3d_lens_t lens;
         memset(&lens, 0x5a, sizeof lens);
-        r3d_lens_init(&lens, &CAMERA, 8, (viewport_t){SIZE, SIZE, quarter});
+        const render_view_t frame_view = render_view_fixture(&CAMERA, (viewport_t){SIZE, SIZE, quarter});
+        r3d_lens_init(&lens, &frame_view, 8);
         for (int operation = 0; operation < 3; operation++) {
             if (operation == 1) {
                 r3d_lens_fit(&lens, SIZE / 2, SIZE);

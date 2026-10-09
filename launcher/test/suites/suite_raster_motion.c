@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "raster_rig.h"
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -175,7 +176,10 @@ draw(raster_rig_t* r, const pose_t* pose, int w, int h) {
     }
     r->raster.width = w;
     r->raster.height = h;
-    raster_draw(&r->raster, &pose->camera, 0);
+    const render_view_t frame_view = render_view_fixture(
+        &pose->camera, (viewport_t){r->raster.upscaled ? r->raster.destination_width : r->raster.width,
+                                    r->raster.upscaled ? r->raster.destination_height : r->raster.height, 0});
+    raster_draw(&r->raster, &frame_view);
 }
 
 static const raster_motion_px_t*

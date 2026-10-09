@@ -253,11 +253,15 @@ Source: the scene as shipped, mean of 20 windows; the resolve row is from the sc
 ### Scene and camera
 
 The scene manager moves the active camera along its path and hands the render
-context the scene's instances, the camera and a clear colour.
+context the scene's instances, a `render_view_t` and a clear colour.
+`render_view_make()` derives picture axes from the pose rotation, ignores
+scale, folds in the panel quarter turn and fits the shorter picture side.
+Poses use +x right, +y up, +z forward; picture y points down. Baked scenes
+use a right-handed frame, so picture right is pose -x.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| the scene's pack: meshes, placements, the camera clip | the frame's instances and camera | the active camera, which renderers are enabled |
+| the scene's pack: meshes, placements, the camera clip | the frame's instances and view | the active camera, which renderers are enabled |
 
 Cost: part of `frame.rest` in the frame-stages table.
 

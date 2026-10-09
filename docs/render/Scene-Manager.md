@@ -96,8 +96,8 @@ pack outlives the scene, which reads its entry, meshes and clip in place.
 ## Beneath it
 
 The raster API (`raster_draw()`, `raster_upscale()`) is what host tools and
-tests call. `r3d_scene_camera_at()` samples a camera's path, the active one's
-or any loaded scene's through `scene_camera_lens()`.
+tests call. `r3d_scene_view_at()` samples a camera's path and builds its frame view,
+for the active camera or any loaded scene's through `scene_camera_lens()`.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.
