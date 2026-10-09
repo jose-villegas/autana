@@ -144,6 +144,11 @@ def pack_bytes(paths, replace=(), cache=None, offline=False):
 
         fetched = {found.tree.resolve(): path for found, path in
                    bake.fetch_all(bake.bakes_in(packs, jobs), bake.read_lock(), cache, offline).items()}
+        unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
+                   if not source.name.endswith((SCENE, CLIP)) and source.resolve() not in fetched]
+        if unkeyed:
+            raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
+                                   "copy is never taken: " + ", ".join(unkeyed))
         packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
                  for name, entries in packs.items()}
     for item in replace:

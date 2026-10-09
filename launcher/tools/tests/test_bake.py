@@ -206,6 +206,17 @@ class TreeTests(unittest.TestCase):
             network.assert_not_called()
         self.assertEqual(cached, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
 
+    def test_a_mesh_no_bake_keys_fails_instead_of_taking_the_trees_copy(self):
+        found = bake.bakes([build_pack.DEFAULT_SEARCH])
+        with tempfile.TemporaryDirectory() as directory:
+            cache = pathlib.Path(directory)
+            rows = bake.seed(found, cache)
+            with mock.patch.object(bake, "read_lock", return_value={row["key"]: row for row in rows}), \
+                    mock.patch.object(bake, "bakes_in", return_value=found[1:]), \
+                    self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
+                build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
+        self.assertIn(found[0].output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
+
     def test_every_key_is_unique(self):
         keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH])]
         self.assertEqual(len(keys), len(set(keys)))
