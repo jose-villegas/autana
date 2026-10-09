@@ -119,7 +119,7 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(metrics["r3d.draw.worst"], 2000)
         self.assertEqual(metrics["spans.184x224.fill"], 40)
         self.assertEqual(metrics["r3d.draw.cycles"], 500)
-        self.assertEqual(metrics["r3d.draw.icache_miss_stall"], 20)
+        self.assertEqual(metrics["r3d.draw.d_stall_all"], 20)
         self.assertEqual(units["r3d.draw.cycles"], "cycles/call")
 
     def test_tune_mismatch_stops_and_reports(self):

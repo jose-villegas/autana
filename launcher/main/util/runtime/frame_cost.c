@@ -16,7 +16,6 @@
     X("window", XTPERF_CNT_EXR, XTPERF_MASK_EXR_WINDOW)                                                                \
     X("level1_int", XTPERF_CNT_EXR, XTPERF_MASK_EXR_LEVEL1_INT)                                                        \
     X("replays", XTPERF_CNT_EXR, XTPERF_MASK_EXR_REPLAYS)                                                              \
-    X("icache_miss_stall", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_CACHE_MISS)                                         \
     X("iterative_mul", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_MUL)                                          \
     X("iterative_div", XTPERF_CNT_I_STALL, XTPERF_MASK_I_STALL_ITERATIVE_DIV)                                          \
     X("d_stall_all", XTPERF_CNT_D_STALL, XTPERF_MASK_D_STALL_ALL)                                                      \
@@ -25,7 +24,6 @@
     X("branch_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_TAKEN)                                                  \
     X("branch_not_taken", XTPERF_CNT_INSN, XTPERF_MASK_INSN_BRANCH_NOT_TAKEN)                                          \
     X("call", XTPERF_CNT_INSN, (uint16_t)(XTPERF_MASK_INSN_CALL | XTPERF_MASK_INSN_CALLX))                             \
-    X("icache_miss_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_CACHE_MISSES)                                           \
     X("iram_fetch", XTPERF_CNT_I_MEM, XTPERF_MASK_I_MEM_IRAM)
 
 #define FRAME_COST_EVENT_CHECK(name, select, mask)                                                                     \
