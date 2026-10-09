@@ -30,7 +30,7 @@ searching, so no list is kept:
 |---|---|---|
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh its renderers name, the clip its camera flies |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
-| `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its `.glb` |
+| `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 
 The default search is `launcher/main/`. An app's `demo_assets.toml` adds
 each folder it names in `demo = ["name", ...]` from `launcher/demo/`.
@@ -172,7 +172,7 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
 each.
 
 The mesh entries are committed, like the generated C they stand beside; a clip
-entry is baked from its `.glb` when the packs are built. Packs are never
+entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
