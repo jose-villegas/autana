@@ -1016,7 +1016,7 @@ typedef struct {
 static r3d_lens_t
 subpixel_view(void) {
     const float s = 1.0f / (float)R3D_SUBPIXEL;
-    return (r3d_lens_t){{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}},
+    return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
                         0.0f,
                         0.0f,
                         0.5f,
@@ -1362,12 +1362,10 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
         const viewport_t viewport = {W, H, quarter};
         r3d_lens_t lens;
         r3d_lens_init(&lens, &(camera_t){{0, 0, 0}, {0, 0, -1}, 0.5f, 1.0f}, 1, viewport);
-        const float px = lens.m[0][0] * 30 + lens.m[0][1] * 20 + lens.m[0][2] * -100 + lens.m[0][3];
-        const float py = lens.m[1][0] * 30 + lens.m[1][1] * 20 + lens.m[1][2] * -100 + lens.m[1][3];
-        const float pz = lens.m[2][0] * 30 + lens.m[2][1] * 20 + lens.m[2][2] * -100 + lens.m[2][3];
+        const vec3f_t p = mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, -100.0F});
         int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(lens.center_x + px / pz),
-                                     (int)floorf(lens.center_y + py / pz), &ux, &uy);
+        viewport_physical_to_upright(viewport, (int)floorf(lens.center_x + p.x / p.z),
+                                     (int)floorf(lens.center_y + p.y / p.z), &ux, &uy);
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
