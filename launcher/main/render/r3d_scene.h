@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "anim/anim_track.h"
+#include "math/linear/transformf.h"
 #include "render/camera.h"
 #include "render/r3d_instance.h"
 
@@ -32,3 +33,8 @@ void r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, ve
 
 /* The camera t_ms into its path. */
 camera_t r3d_scene_camera_at(const r3d_scene_camera_t* camera, uint32_t t_ms);
+
+/* The placement that stands a camera without a path at `pose`, looking down
+ * the pose's +z as math/linear's transforms do. Its third column is that
+ * direction negated, since such a camera looks down its placement's -Z. */
+r3d_placement_t r3d_scene_camera_placement(const transformf_t* pose);

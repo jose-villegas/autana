@@ -20,14 +20,14 @@
 
 #include "esp_log.h"
 
+#include "core/memory.h"
+#include "core/timing.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_band_run.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 /* app_render_lab.c's own lifecycle and toggles. */
 extern bool render_lab_band_mode;

@@ -10,8 +10,8 @@
 #include <stdint.h>
 
 #include "gfx/draw/gfx_box.h"
+#include "math/linear/vec2i.h"
 #include "render/r3d_project.h"
-#include "util/math/vec2i.h"
 #include "wire_mesh.h"
 
 /* One vertex a frame: its camera-space point, and, while it is in front of

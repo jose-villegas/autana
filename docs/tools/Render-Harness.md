@@ -101,13 +101,18 @@ requests".
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
 the dynamic-resolution report write one Markdown table per block name into
 the output tree's tables folder. The shared writer replaces the body between
-an HTML comment containing `generated: NAME sha256=HASH` and one containing
-`/generated: NAME`, preserving the document's other text and line endings.
-Names use lowercase letters, digits and hyphens and are unique across
-documents. The SHA-256 covers the body, including its boundary newlines, with
-CRLF normalized to LF.
+an HTML comment containing `generated: NAME sha256=HASH` or
+`generated: NAME check: COMMAND` and one containing `/generated: NAME`,
+preserving the document's other text and line endings. Names use lowercase
+letters, digits and hyphens and are unique across documents. The SHA-256
+covers the body, including its boundary newlines, with CRLF normalized to LF.
+A generator that CI reruns hands the writer its check command instead, which
+starts with `python`, `python3` or `sh` and fails when the block is stale;
+that marker never changes on regeneration, so two branches that each
+regenerate the block do not conflict on it.
 `scripts/gates/check_doc_generated.py` discovers tracked Markdown blocks and
-fails on a body hash mismatch or malformed boundaries, without rendering.
+fails on a body hash mismatch, a check command that exits non-zero from the
+repository root, or malformed boundaries, without rendering.
 Change a measurement's source or generator and regenerate its block; a hash
 verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
@@ -291,7 +296,7 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called. The
-wire and cube scenes project in float (`util/math/`) and are pinned too:
+wire and cube scenes project in float (`math/linear/`) and are pinned too:
 their pixels are whole-pixel truncations of single-precision sums, built
 without fast-math or FMA, and their rotations call `sinf` and `cosf`, whose
 last bit differs between libms and moves a pixel only at a truncation

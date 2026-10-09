@@ -3,9 +3,9 @@
 #include <assert.h>
 #include <string.h>
 
-#include "util/build/build_variant.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
+#include "core/build_variant.h"
+#include "core/memory.h"
+#include "core/timing.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/raster_meshlets.h"

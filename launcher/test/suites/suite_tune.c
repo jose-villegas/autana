@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 #define REPLIES_MAX 8
 

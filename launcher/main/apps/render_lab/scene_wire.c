@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "core/memory.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
@@ -17,7 +18,6 @@
 #include "render/r3d_line_camera.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
-#include "util/runtime/memory.h"
 #include "wire_pipeline.h"
 #include "wire_primitives_generated.h"
 

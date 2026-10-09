@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "gfx/present/gfx_band_run.h"
+#include "input/gesture.h"
 #include "input/input.h"
 
 /* An app's own console command: docs/tools/Autana-CLI.md's "Adding a
@@ -109,6 +110,11 @@ typedef struct app {
 /* Leaves the running app for the launcher before its next frame, as the
  * home gesture does, for an app with an on-screen way out. */
 void shell_request_exit(void);
+
+/* The panel edge the home gesture leaves from as the panel is held now; the
+ * control centre opens from the edge opposite. A touch landing within
+ * GESTURE_HOME_ZONE_DEPTH of either belongs to the shell. */
+gesture_edge_t shell_home_edge(void);
 
 /*
  * APP_REGISTER() places a constructor in .init_array, which ESP-IDF runs

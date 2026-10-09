@@ -9,9 +9,9 @@
  */
 #pragma once
 
+#include "math/linear/transformf.h"
 #include "render/r3d_project.h"
 #include "render/viewport.h"
-#include "util/math/transformf.h"
 
 typedef struct {
     transformf_t pose;

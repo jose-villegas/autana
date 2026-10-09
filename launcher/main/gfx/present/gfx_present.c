@@ -1,13 +1,13 @@
 #include "gfx/present/gfx_present.h"
+#include "core/build_variant.h"
+#include "core/frame_watch.h"
+#include "core/memory.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_full_redraw.h"
 #include "gfx/present/gfx_present_guard.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/frame_watch.h"
-#include "util/runtime/memory.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 #include <assert.h>
 #include <stdlib.h>

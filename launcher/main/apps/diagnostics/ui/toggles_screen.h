@@ -12,8 +12,8 @@
 
 #include <stdbool.h>
 
+#include "core/build_variant.h"
 #include "microui.h"
-#include "util/build/build_variant.h"
 
 typedef struct {
     bool overlay_on;

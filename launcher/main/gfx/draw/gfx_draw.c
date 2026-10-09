@@ -3,8 +3,8 @@
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
-#include "util/runtime/tune.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
+#include "services/tune.h"
 
 #include <string.h>
 
@@ -22,7 +22,7 @@ TUNE_OWNER(gfx);
 TUNE(gfx, tight_fill_marks, 1, 0, 1);
 
 /* What every rect and blit primitive marks with. A release build folds
- * tight_fill_marks to the constant 1 (util/runtime/tune.h), so the branch and
+ * tight_fill_marks to the constant 1 (services/tune.h), so the branch and
  * mark_band() call below cost nothing there. */
 static inline void
 mark_fill(int x0, int y0, int x1, int y1) {

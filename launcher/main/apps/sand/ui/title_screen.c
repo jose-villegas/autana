@@ -5,8 +5,8 @@
 #include "ui/ui_widgets.h"
 
 #include "apps/sand/icons_sand.h"
+#include "math/scalar/mathi.h"
 #include "sand_theme.h"
-#include "util/scalar/mathi.h"
 
 #define HEADER_H        48
 #define SUBTITLE_GAP    12

@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "gfx/draw/gfx_color.h"
+#include "input/input.h"
 
 typedef struct {
     const char* name;    /* shown on the HUD and the menu's scene picker */
@@ -46,4 +47,8 @@ typedef struct {
      * framebuffer (app.h's update() contract). Not called while the menu is
      * open. */
     void (*update)(uint32_t dt_ms);
+
+    /* Optional. The frame's touch, just before update() and under the same
+     * rules: for a scene the finger steers. Not called while the menu is open. */
+    void (*steer)(uint32_t dt_ms, const input_t* input);
 } render_lab_scene_t;

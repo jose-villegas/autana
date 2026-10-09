@@ -23,9 +23,9 @@
 
 #include "apps/render_lab/rt_cornell.h"
 #include "apps/render_lab/rt_refine.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "rt_perf";
 

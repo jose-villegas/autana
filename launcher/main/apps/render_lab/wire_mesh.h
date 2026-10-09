@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#include "util/math/vec3f.h"
+#include "math/linear/vec3f.h"
 
 typedef struct {
     uint16_t a, b;

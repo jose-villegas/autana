@@ -1,5 +1,5 @@
 /*
- * Portable suite: util/math/'s float types. The quaternion's axes, slerp,
+ * Portable suite: math/linear/'s float types. The quaternion's axes, slerp,
  * the matrix built from a TRS, the transform's matrix cache, the camera's
  * view matrix and look_at, each judged against a value worked out by hand.
  */
@@ -11,7 +11,7 @@
 #include "transform_cache.h"
 #include "unity.h"
 
-#include "util/math/transformf.h"
+#include "math/linear/transformf.h"
 
 #define HALF_PI 1.57079632679F
 #define SLACK   1e-5F

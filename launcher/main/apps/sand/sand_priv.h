@@ -13,10 +13,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "core/frame_cost.h"
+#include "core/job.h"
 #include "sand.h"
 #include "sand_chunk_sched.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/job.h"
 
 /* One bracket per sand_step() pass: its frame_cost name is "sand.<pass>" and
  * its wall time lands in `pass_us.<pass>_us`, read off the bracket's own

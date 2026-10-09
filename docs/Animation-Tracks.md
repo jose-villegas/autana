@@ -4,15 +4,15 @@
 keys, each a time and a value, and one call gives the value at any moment.
 It does not know what it drives: a caller maps the numbers onto a camera, a
 light, a material value, anything a scene exposes. Its layer is in
-[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`
-and `util/` and allocates nothing.
+[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
+`core/` and `math/`, and allocates nothing.
 
 The format is glTF 2.0's own animation model, so a track authored in Blender
 or any other exporter plays back as it was made.
 
 ```mermaid
 flowchart LR
-    Author["Blender, or any glTF exporter<br/><i>.glb with an animation</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
+    Author["Blender, any glTF exporter, or camera keys<br/><i>.glb, .fbx or .keys.toml</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
     Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its pack</i>"]
     Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the pack</i>"]
     Open --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
@@ -52,14 +52,16 @@ times stay in step, and the clip's duration is the last key of any of them.
 
 ## The pack entry
 
-A `NAME.anim.toml` beside its `.glb` (or `.fbx`, converted to glTF once) names one animation in it, and
-`build_pack.py` finds every such file by searching, so no list is kept. A
+A `NAME.anim.toml` beside its source names one animation in it: a `.glb`, an
+`.fbx` (converted to glTF once) or a camera `.keys.toml` (built into glTF in
+memory at every bake). `build_pack.py` finds every such file by searching,
+so no list is kept. A
 clip no scene names is a [pack](assets/README.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
 
 ```toml
-source = "NAME.glb"     # a .glb or .fbx beside this one
+source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
@@ -116,12 +118,13 @@ camera track gives a `camera_t` its look direction.
 
 ## Authoring
 
-For a camera path without Blender, run
-`python launcher/tools/anim/camera_keys.py KEYS.toml OUT.glb`. The keys file
-sets `node`, `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at`
-vectors. Translation is a smooth Catmull-Rom curve and rotation interpolates
+For a camera path without Blender, write a `NAME.keys.toml` and name it as
+the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
+glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
+`animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
+Translation is a smooth Catmull-Rom curve and rotation interpolates
 short-way quaternions with +Y up; repeat the first key at the end to close
-the loop. Name the resulting GLB in a `NAME.anim.toml` as below.
+the loop.
 
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
@@ -153,7 +156,7 @@ if (anim_tracks_find(&clip, "lens/perspective/yfov", &yfov) == ASSET_OK) {
 
 Mapping the value onto the object, including any unit conversion, belongs to
 the caller. Tracks are float, and `anim/anim_transform.h` samples a node's
-translation, rotation and scale tracks into a `util/math/transformf.h`
+translation, rotation and scale tracks into a `math/linear/transformf.h`
 `transformf_t`.
 
 ## Looking at a baked animation
