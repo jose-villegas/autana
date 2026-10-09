@@ -57,6 +57,7 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
+    "scene/camera/orbit_cam.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
