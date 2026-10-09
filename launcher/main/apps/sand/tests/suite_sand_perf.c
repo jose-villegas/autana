@@ -3607,7 +3607,6 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
     static const char* const brush_names[] = {"sand", "water"};
     static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80", "80+heal"};
     const two_core_scope_t core = two_core_scope_begin(true);
-    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     bool unhealed_row_sent_heal = false;
 
     for (int brush = 0; brush < 2; brush++) {
