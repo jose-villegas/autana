@@ -393,10 +393,11 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
     return out
 
 
-def merge_matching_colours(pos, rgb, tris, step=6):
+def merge_matching_colours(pos, rgb, tris, weld_grid, step=6):
     """A crease splits a vertex so each side can be lit on its own normal;
-    where both sides came out the same colour, one vertex is enough."""
-    key = np.concatenate([np.round(pos * 16), rgb // step], axis=1).astype(np.int64)
+    where both sides came out the same colour, one vertex is enough. Positions
+    are one where they round alike on a grid of `weld_grid` per unit."""
+    key = np.concatenate([np.round(pos * weld_grid), rgb // step], axis=1).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     tris = inverse.reshape(-1)[tris]
     tris = tris[(tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])]
