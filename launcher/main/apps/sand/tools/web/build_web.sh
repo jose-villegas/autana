@@ -42,21 +42,21 @@ if [ "${1:-}" = --inputs ]; then
     ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
     # -MG: emcc's own headers are missing here, and are not the repository's.
     # shellcheck disable=SC2086
-    DEPS=$(${CC:-cc} -MM -MG -D__EMSCRIPTEN__ $FLAGS $SOURCES)
-    {
-        echo "$DEPS" | sed 's/ *\\$//' | tr -s ' ' '\n'
-        git -C "$ROOT" ls-files --full-name "$SCRIPT_DIR" | sed "s|^|$ROOT/|"
-    } | sed -n "s|^$ROOT/||p" | sort -u >"$SCRIPT_DIR/inputs.tmp"
+    DEPS=$(${CC:-cc} -MM -MG -D__EMSCRIPTEN__ $FLAGS $SOURCES |
+        sed 's/ *\\$//' | tr -s ' ' '\n' | sed -n "s|^$ROOT/||p")
     # Every source must come out as a repository path, or the list is wrong.
-    LISTED=$(grep -c '\.c$' "$SCRIPT_DIR/inputs.tmp" || true)
+    # The compiler may spell a path another way than $SOURCES (C:/ for /c/),
+    # so this counts them.
+    LISTED=$(printf '%s\n' "$DEPS" | grep -c '\.c$' || true)
     # shellcheck disable=SC2086
     if [ "$LISTED" -ne "$(printf '%s\n' $SOURCES | wc -l)" ]; then
         echo "--inputs: $LISTED of the sources came out under $ROOT" >&2
-        rm -f "$SCRIPT_DIR/inputs.tmp"
         exit 1
     fi
-    cat "$SCRIPT_DIR/inputs.tmp"
-    rm -f "$SCRIPT_DIR/inputs.tmp"
+    {
+        printf '%s\n' "$DEPS"
+        git -C "$ROOT" ls-files --full-name "$SCRIPT_DIR"
+    } | sort -u
     exit 0
 fi
 

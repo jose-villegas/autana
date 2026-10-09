@@ -43,10 +43,11 @@ jobs:
           REF: ${{ inputs.ref }}
         run: |
           INPUTS=launcher/main/apps/sand/tools/web/build_web.sh
+          AFTER=$(git rev-parse HEAD)
           git checkout -q HEAD^1
           git merge -q --no-edit "$REF^1"
           sh "$INPUTS" --inputs >inputs.txt
-          git checkout -q -
+          git checkout -q "$AFTER"
           sh "$INPUTS" --inputs >>inputs.txt
           git diff --name-only --no-renames "$REF^1" "$REF" >changed.txt
           if grep -Fxf inputs.txt changed.txt; then
