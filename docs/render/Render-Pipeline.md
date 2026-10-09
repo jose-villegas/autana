@@ -221,13 +221,13 @@ third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
 boxes let through more triangles than its fewer culls save. Each size on the
 board, against submitting every cluster:
 
-<!-- generated: meshlet-sizes sha256=f9111efb63d71bfbdfe2c6539badc5e6967b97b292c52b03c258b1a9afaf7a1d -->
+<!-- generated: meshlet-sizes sha256=a2394a367bfaeaea5674c00debb910455e0d05d3ab6a5d512b84eae7023763b0 -->
 | Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
 |---|---|---|---|---|---|---|---|
-| cull off | 583 | 0.937 | 17371.0 | 0.34 | 5.23 | 62.83 | 74.33 |
-| meshlets of 16 | 1220 | 1.062 | 8717.1 | 1.01 | 3.57 | 41.73 | 52.22 |
-| meshlets of 32 (shipped) | 583 | 0.937 | 9527.1 | 0.66 | 3.21 | 42.38 | 52.21 |
-| meshlets of 64 | 286 | 0.848 | 10678.1 | 0.46 | 3.12 | 45.87 | 55.43 |
+| cull off | 583 | 0.934 | 17376.0 | 0.35 | 5.21 | 63.37 | 74.85 |
+| meshlets of 16 | 1225 | 1.061 | 8661.6 | 0.99 | 3.57 | 42.01 | 52.50 |
+| meshlets of 32 (shipped) | 583 | 0.934 | 9564.1 | 0.66 | 3.21 | 42.98 | 52.80 |
+| meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
 <!-- /generated: meshlet-sizes -->
 
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
