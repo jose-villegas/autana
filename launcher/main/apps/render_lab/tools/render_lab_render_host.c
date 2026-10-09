@@ -90,7 +90,7 @@ view_from_name(const char* name) {
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
     render_context_print_views(stderr);
-    fprintf(stderr, ", not %s\n", name);
+    (void)fprintf(stderr, ", not %s\n", name);
     return false;
 }
 
