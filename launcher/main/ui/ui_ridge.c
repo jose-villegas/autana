@@ -24,13 +24,13 @@
 #include "util/scalar/mathx.h"
 
 /* One panel pixel of depth2: doubled coordinates times a RIDGE_POSE_ONE pose. */
-#define RIDGE_DEPTH2_SHIFT (RIDGE_POSE_SHIFT + 1)
-#define RIDGE_DEPTH2_ONE   (1 << RIDGE_DEPTH2_SHIFT)
+#define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)
+#define RIDGE_DEPTH2_ONE     (1 << RIDGE_DEPTH2_SHIFT)
 
-/* Ridge heights are the generated curve's, and the spring line writes them. */
-#define RIDGE_HEIGHT_SHIFT RIDGE_CURVE_Q_SHIFT
-#define RIDGE_HEIGHT_ONE   (1 << RIDGE_HEIGHT_SHIFT)
-_Static_assert(SPRING_LINE_OUT_SHIFT == RIDGE_HEIGHT_SHIFT, "the spring line writes ridge heights");
+/* Ridge positions in sub-pixels: the generated curve's, which the spring line writes. */
+#define RIDGE_SUBPIXEL_SHIFT RIDGE_CURVE_Q_SHIFT
+#define RIDGE_SUBPIXEL_ONE   (1 << RIDGE_SUBPIXEL_SHIFT)
+_Static_assert(SPRING_LINE_OUT_SHIFT == RIDGE_SUBPIXEL_SHIFT, "the spring line writes ridge sub-pixels");
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
@@ -150,9 +150,9 @@ static ridge_t* ridge;
 static bool allocation_tried;
 
 static int
-round_height(int value) {
-    return value >= 0 ? (value + RIDGE_HEIGHT_ONE / 2) / RIDGE_HEIGHT_ONE
-                      : (value - RIDGE_HEIGHT_ONE / 2) / RIDGE_HEIGHT_ONE;
+round_subpixel(int value) {
+    return value >= 0 ? (value + RIDGE_SUBPIXEL_ONE / 2) / RIDGE_SUBPIXEL_ONE
+                      : (value - RIDGE_SUBPIXEL_ONE / 2) / RIDGE_SUBPIXEL_ONE;
 }
 
 static uint32_t
@@ -280,12 +280,12 @@ build_layers(void) {
         for (int layer = 0; layer < 2; layer++) {
             const uint32_t phase = ((uint32_t)x * TRIG_TURN / (uint32_t)wavelength[layer]) - travelled[layer];
             const int echo =
-                spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / RIDGE_HEIGHT_ONE);
-            const int wave = amplitude[layer] * trig_sin((uint16_t)phase) / (1 << (TRIG_SIN_SHIFT - RIDGE_HEIGHT_SHIFT))
-                             * gain / 256;
-            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * RIDGE_HEIGHT_ONE) + wave + echo);
+                spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / RIDGE_SUBPIXEL_ONE);
+            const int wave = amplitude[layer] * trig_sin((uint16_t)phase)
+                             / (1 << (TRIG_SIN_SHIFT - RIDGE_SUBPIXEL_SHIFT)) * gain / 256;
+            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * RIDGE_SUBPIXEL_ONE) + wave + echo);
         }
-        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * RIDGE_HEIGHT_ONE));
+        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * RIDGE_SUBPIXEL_ONE));
     }
 }
 
@@ -364,22 +364,24 @@ raster_boundaries(void) {
         const int32_t ry = -pose.down_x;
         const int32_t dx = pose.down_x;
         const int32_t dy = pose.down_y;
-        const int32_t u0 = -(RIDGE_COLUMNS - 1) * (RIDGE_HEIGHT_ONE / 2);
+        const int32_t u0 = -(RIDGE_COLUMNS - 1) * (RIDGE_SUBPIXEL_ONE / 2);
         int32_t along_x = u0 * rx;
         int32_t along_y = u0 * ry;
         int x0 = 0;
         int y0 = 0;
         for (int point = 0; point < RIDGE_COLUMNS; point++) {
-            const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * (RIDGE_HEIGHT_ONE / 2));
-            const int x1 = round_height(((GFX_WIDTH - 1) * (RIDGE_HEIGHT_ONE / 2)) + pose_scale(along_x + (h * dx)));
-            const int y1 = round_height(((GFX_HEIGHT - 1) * (RIDGE_HEIGHT_ONE / 2)) + pose_scale(along_y + (h * dy)));
+            const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * (RIDGE_SUBPIXEL_ONE / 2));
+            const int x1 =
+                round_subpixel(((GFX_WIDTH - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_x + (h * dx)));
+            const int y1 =
+                round_subpixel(((GFX_HEIGHT - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_y + (h * dy)));
             if (point > 0) {
                 raster_segment(layer, x0, y0, x1, y1);
             }
             x0 = x1;
             y0 = y1;
-            along_x += RIDGE_HEIGHT_ONE * rx;
-            along_y += RIDGE_HEIGHT_ONE * ry;
+            along_x += RIDGE_SUBPIXEL_ONE * rx;
+            along_y += RIDGE_SUBPIXEL_ONE * ry;
         }
     }
     build_sky_gradient();
@@ -1289,7 +1291,7 @@ shape_this_frame(uint32_t dt_ms) {
     }
     const ridge_motion_params_t params = {.breath_ms = breath_ms,
                                           .breath_depth = breath_depth,
-                                          .wave_height = front_amplitude * RIDGE_HEIGHT_ONE,
+                                          .wave_height = front_amplitude * RIDGE_SUBPIXEL_ONE,
                                           .wave_length = front_wavelength,
                                           .wave_passes_in_ms = front_period_ms,
                                           .push = tilt_push,

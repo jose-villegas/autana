@@ -5,9 +5,9 @@
  * device turns the line lags true level, the ridge is for that moment a
  * slope, and the wave is pushed down it and coasts on after.
  *
- * Pure: time, the slope and how much of each are passed in, heights come
- * out. Heights are in the caller's unit and wave_height in the same; phases
- * are trig.h's, TRIG_TURN to the turn; a slope of 1.0 is RIDGE_POSE_ONE.
+ * Pure: time, the slope and how much of each go in; heights come out in
+ * the caller's unit, as wave_height is. Phases are trig.h's; a slope of 1.0
+ * is RIDGE_POSE_ONE.
  */
 #pragma once
 

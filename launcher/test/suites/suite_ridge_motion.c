@@ -26,7 +26,7 @@ static const ridge_motion_params_t params = {
 };
 
 /* Where the wave crosses zero going down, in the first wavelength. Its
- * crest is a plateau a dozen columns wide once rounded to whole Q4, and the
+ * crest is a plateau a dozen columns wide once rounded to whole units, and the
  * first of those jumps about; a crossing does not. */
 static int
 crest_column(const ridge_motion_t* motion) {

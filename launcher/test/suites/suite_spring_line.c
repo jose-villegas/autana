@@ -190,7 +190,7 @@ test_apply_reports_what_changed_and_how_far_then_goes_silent(void) {
     int16_t rest[COLUMNS];
     int16_t drawn[COLUMNS];
     for (int x = 0; x < COLUMNS; x++) {
-        rest[x] = (int16_t)(1600 + x);
+        rest[x] = (int16_t)((100 * SPRING_LINE_OUT_ONE) + x);
         drawn[x] = rest[x];
     }
     int lo, hi;

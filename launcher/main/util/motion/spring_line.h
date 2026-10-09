@@ -41,7 +41,7 @@
 
 #define SPRING_LINE_MAX_OFFSET    (120 * MATHX_ONE)
 
-/* spring_line_apply() writes heights with this many fractional bits. */
+/* spring_line_apply() writes pixels with this many fractional bits. */
 #define SPRING_LINE_OUT_SHIFT     4
 #define SPRING_LINE_OUT_ONE       (1 << SPRING_LINE_OUT_SHIFT)
 
@@ -216,7 +216,7 @@ spring_line_advance(spring_line_t* line, uint32_t dt_ms) {
     return ticks;
 }
 
-/* Writes rest + offset into `out`, both in SPRING_LINE_OUT_ONE units, and
+/* Writes rest + offset into `out`, both SPRING_LINE_OUT_ONE to the pixel, and
  * reports the columns whose value changed, half open and empty when none
  * did, measured against what `out` holds, so it has to be the array last
  * drawn. Returns the furthest any column moved, in whole pixels rounded up. */
