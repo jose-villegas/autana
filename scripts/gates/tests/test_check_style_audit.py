@@ -283,6 +283,31 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual([f.path for f in findings], ["launcher/main/math/scalar/fixed.h"])
 
+    BASE_ORDER = ("services", "core", "board", "math/motion", "math/linear", "math/scalar")
+
+    def test_each_base_layer_includes_only_the_ones_below_it(self):
+        # One header per layer, and from each layer one file including every other; only
+        # the includes that reach upward or sideways in BASE_ORDER are flagged.
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.base_tree(root)
+            for layer in self.BASE_ORDER:
+                name = layer.split("/")[-1]
+                gate_tree.write(root, f"launcher/main/{layer}/{name}.h", "#pragma once\n")
+            for layer in self.BASE_ORDER:
+                others = "".join(f'#include "{other}/{other.split("/")[-1]}.h"\n'
+                                 for other in self.BASE_ORDER if other != layer)
+                gate_tree.write(root, f"launcher/main/{layer}/probe.c", others)
+            gate_tree.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        flagged = sorted((f.path, f.line) for f in findings)
+        expected = []
+        for i, layer in enumerate(self.BASE_ORDER):
+            others = [other for other in self.BASE_ORDER if other != layer]
+            expected += [(f"launcher/main/{layer}/probe.c", line)
+                         for line, other in enumerate(others, 1) if self.BASE_ORDER.index(other) < i]
+        self.assertEqual(flagged, sorted(expected))
+
     def test_a_file_loose_in_a_split_folder_fails_loudly_but_its_description_header_does_not(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
