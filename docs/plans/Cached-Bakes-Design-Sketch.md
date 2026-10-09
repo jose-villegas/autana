@@ -131,7 +131,7 @@ flowchart LR
   key, and only the stages after it rebake: a fitter edit refits but keeps
   the references. The PR's lock diff shows it.
 - **Locally with the tools:** `bake.py bake launcher/demo/sponza` makes the
-  missing keys into the local cache. Its bytes may differ from CI's; `fetch`
+  missing keys into the local cache. Its bytes differ from CI's (step 0); `fetch`
   prefers the locked bytes and says when a local bake differs from the lock.
 
 ## 4. Failing loudly
@@ -153,12 +153,14 @@ whose sha256 differs from the lock.
 
 ## 5. Migration
 
-0. **Measure first** (before `bake.py`): bake `sponza.import.toml` on
-   Windows and on the CI ubuntu image at one commit and `cmp` each with the
-   committed meshes; run one fit twice on the runner. This says whether a
-   plain bake is reproducible and whether main's meshes are still fresh
-   (`rebake.py` can rewrite a mesh without relighting it). A stale mesh is
-   reported to the maintainer before seeding.
+0. **Measured first** (before `bake.py`): the scene bakes on the
+   maintainer's machine and on the CI ubuntu image, each `cmp`ed with the
+   committed meshes, and one fit run twice on the runner. Main's meshes are
+   fresh. A plain bake reproduces on one machine but not across machines,
+   and a fit does not reproduce even on one. So the lock pins bytes for
+   every kind of bake, and the seed uses main's committed files, never a CI
+   rebake. Windows cannot bake today (Mitsuba finds no libLLVM there), so a
+   Windows clone only fetches.
 1. Add `bake.py`, the `.blend` converter, `bakes.yml` and the `uses` in the
    consumer workflows; `build_pack.py`, `fitted_variant.py`,
    `render_compare.sh` and `doc_stages.py` take keys and files from it.
@@ -180,7 +182,7 @@ whose sha256 differs from the lock.
 
 | | Estimate |
 |---|---|
-| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
+| Storage | about 2 MB of pack inputs plus the reference sets, of the order of 100 MB per fit, per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
 | CI, warm | one `bakes.yml` call per consumer workflow: checkout and key computation, under a minute [A] |
 | CI, cold | plain bakes minutes each [A]; references 45 to 69 CPU minutes each; fits about 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references |
 | First build, fresh clone | about 2 MB download, keys in under a second [A] |
