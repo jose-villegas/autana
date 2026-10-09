@@ -289,6 +289,32 @@ owns one raster scratch block, including the census list before the picture
 attachments. Dynamic resolution reserves the finest step's block, so choosing
 a render size preserves the census without a separate allocation.
 
+### Console requests
+
+In development builds a console verb that needs the frame loop (OPEN, HOME,
+APPS, RUNSUITE, FRAMEWATCH, SCREENSHOT, FREEZE, RESUME, STEP) only posts a
+request to one mailbox (`console/console_frame_request.h`); the console task
+never draws. Each pass takes everything posted, once, and applies what an
+early return would skip before anything can return:
+
+```mermaid
+sequenceDiagram
+    participant Console as console task
+    participant Mail as mailbox
+    participant Shell as shell pass
+    Console->>Mail: post, latest per kind, a second RUNSUITE refused
+    Shell->>Mail: take everything posted
+    Shell->>Shell: apply FREEZE, RESUME or STEP, answer FRAMEWATCH
+    Shell->>Shell: run a RUNSUITE, then report it done
+    Shell->>Mail: done, RUNSUITE accepted again
+    Shell->>Shell: OPEN, HOME or APPS
+    alt frozen, no STEP credit
+        Shell->>Shell: SCREENSHOT of the held frame
+    else running
+        Shell->>Shell: the app's frame, then a SCREENSHOT of it
+    end
+```
+
 ### Engine systems
 
 Engine machinery the loop drives every pass is a **system**: a

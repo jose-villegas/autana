@@ -23,7 +23,6 @@ r3d_span_triangle_impl	function	20	2790	88
 r3d_span_triangle_impl	bnez-back	8	39	2
 r3d_span_triangle_impl	j-back	0	154	5
 r3d_span_triangle_impl	loop	9	4	1
-r3d_span_triangle_impl	bbci-back	12	31	2
 r3d_span_triangle_impl	bnez-back	28	48	3
 r3d_span_triangle_impl	j-back	10	165	6
 r3d_span_triangle_impl	j-back	28	377	13
@@ -50,10 +49,8 @@ raster_draw_culled	loop	12	5	1
 raster_draw_culled	beqz-back	25	333	12
 raster_upscale	function	24	398	14
 upscale_rows	function	8	973	31
-upscale_rows	j-back	31	123900	3873
 upscale_rows	j-back	22	89	4
 upscale_rows	j-back	4	110	4
-upscale_rows	bnone-back	21	47	3
 upscale_rows	bnez-back	9	60	3
 upscale_rows	j-back	18	221	8
 upscale_rows	j-back	8	98	4
