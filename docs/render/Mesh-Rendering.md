@@ -33,7 +33,6 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
 | `raster_show()` | Development builds: the attached [view](#view-modes) paints the colour before the upscale |
-| `ray_camera_t` | A ray tracer's camera: the direction through each physical pixel |
 
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
 carries a colour per face and the raster draws what the mesh carries.
@@ -52,11 +51,6 @@ sits. The importer bakes the placement from a position, a rotation and a scale
 instance with no placement skips the composition and is the unplaced lens
 exactly.
 
-The ray tracer keeps its own camera, which holds an explicit right and up.
-`camera_t` has only a look direction, and the rasterizer derives right from
-it with the opposite handedness, so a ray camera built from a `camera_t`
-would see the scene mirrored.
-
 ## The files
 
 | File | What it is |
@@ -72,7 +66,6 @@ would see the scene mirrored.
 | `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
 | `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
-| `ray.h` | The ray camera: the direction through each physical pixel |
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |

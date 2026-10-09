@@ -20,7 +20,6 @@
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_show.h"
-#include "render/ray.h"
 
 #define W 64
 #define H 48

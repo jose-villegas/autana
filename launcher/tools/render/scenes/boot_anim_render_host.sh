@@ -15,15 +15,17 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+. "$SCRIPT_DIR/launcher_home_render_setup.sh"
+
 scene_name=boot_anim
-scene_sources="
+scene_sources="$launcher_home_sources
 main/anim/anim_track.c
 main/anim/anim_tracks.c
-main/services/tune.c
 main/boot/boot_anim.c
 main/boot/boot_anim_motion.c
 tools/render/scenes/boot_anim_render_host.c
 "
+scene_defines="$launcher_home_defines"
 scene_renders="
 early|300|368x448|nopin
 middle|1500|368x448|nopin

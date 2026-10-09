@@ -25,7 +25,7 @@ turned to its default landscape view.
 --do drives that same image as a user would, one ordered step at a time, and
 runs after the --suite and --touch options and before --screenshot:
 
-    --do "tap 95 187" --do "wait 2500" --do "screenshot cube.png"
+    --do "tap 95 187" --do "wait 2500" --do "screenshot sponza.png"
     --do "tilt 0 -4096 0" --do "swipe 222 1 222 200"
 
 A tap or swipe takes pixels of that screenshot, as `autana tap` does, and

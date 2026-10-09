@@ -167,12 +167,11 @@ flowchart TB
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`MEMORY_PSRAM` in `core/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
-is room in PSRAM for a second one and no time for it: a per-frame catch-up
-copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
-and a full frame over QSPI is bus-bound, not CPU-bound
-([Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
-bus-bound"). The decision and its measurements are decision B in
-[plans/Autana-Rendering-Roadmap.md](plans/Autana-Rendering-Roadmap.md).
+is room in PSRAM for a second one; the
+[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
+explains the copy cost that keeps presentation on one retained framebuffer.
+See [transfer payload](notes/Display-and-Rendering.md#transfer-payload) for
+the QSPI bus budget.
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an

@@ -5,16 +5,16 @@
 [![Build (Release)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-release.yml)
 [![Build (Diagnostics)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml/badge.svg?branch=main)](https://github.com/jose-villegas/autana/actions/workflows/build-diagnostics.yml)
 
-Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendering experiments. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
+Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendered mesh flythroughs. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
 <table>
-<tr><th width="33%">Falling Sand, board turning</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand title screen</th></tr>
-<tr><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-menu.png" width="100%" alt="The Falling Sand title screen with start, load, options, guide and exit"></td></tr>
-<tr><th width="33%">Rotating Render Lab cube</th><th width="33%">Sponza flythrough</th><th width="33%">Ray-traced Cornell box</th></tr>
-<tr><td width="33%"><img src="docs/images/overview/render-lab-cube.gif" width="100%" alt="A shaded cube rotating on a black screen"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving down the sunlit Crytek Sponza atrium between coloured curtains, drawn with the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-cornell.png" width="100%" alt="A Cornell box with a red and a green wall around two blocks"></td></tr>
+<tr><th width="33%">Boot animation</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand, board turning</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/boot-anim.gif" width="100%" alt="The boot animation growing a grid and moving the camera through it before fading to black"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td></tr>
+<tr><th width="33%">Falling Sand title screen</th><th width="33%">Sponza, baked light</th><th width="33%">Sponza, flat shading</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/sand-menu.png" width="100%" alt="The static Falling Sand title screen with start, load, options, guide and exit"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza-flat.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with flat shading on the fitted mesh"></td></tr>
 </table>
 
-Every image is a host render of the real firmware drawing code at the panel's 448x368, shown here at a smaller size, not a board capture. The sand clip runs the real simulation with scripted tilt, and the launcher lists the apps a release build carries.
+These images are host renders of the real firmware drawing code, sized to fit this grid. The boot clip follows the startup animation's timeline, the launcher backdrop responds to scripted rocking and lists the apps a release build carries, the sand clip runs the real simulation with scripted tilt, and the Sponza clips follow a camera flythrough with baked light or flat shading.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
@@ -26,7 +26,7 @@ Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Li
 ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh
 ```
 
-Open `launcher/main/apps/render_lab/tools/results/render/render_lab/gouraud-landscape.bmp` to see the shaded cube. For a result in the terminal, run the portable tests:
+Open `launcher/main/apps/render_lab/tools/results/render/render_lab/sponza-landscape.bmp` to see the atrium. For a result in the terminal, run the portable tests:
 
 ```sh
 ./launcher/test/run_tests.sh
@@ -42,7 +42,7 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 ## What is here
 
 - **Falling Sand:** pour powders and liquids with touch; the board's motion sensor steers gravity. Gas, fire, heat, and material reactions make the sandbox interactive. Start with the [sand overview](docs/sand/README.md), then the [simulation details](docs/sand/Sand-Simulation.md).
-- **Render Lab:** a shaded cube, wireframe shapes, a ray-traced Cornell box and a flythrough of Crytek Sponza with baked light, rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
+- **Render Lab:** flythroughs of Crytek Sponza with baked light, rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [input notes](docs/notes/Input-and-Sensors.md).
 - **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/Build-Variants.md) explains which tools ship in each image.
 
