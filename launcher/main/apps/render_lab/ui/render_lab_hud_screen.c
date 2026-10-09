@@ -53,17 +53,14 @@ draw_scene_title(mu_Context* ctx, const char* title, uint8_t alpha, const int ro
 
 void
 render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t* state) {
-    /* UI_TEXT_OUTLINED is app_sand.c's palette-label fix: a label with no
-     * halo would wash out against whichever shifting colour sits behind
-     * it. Kept even with the box's opaque backing - a UI_NO_BACKGROUND window
-     * is one BOOT tap away - since the halo costs nothing extra there. */
+    /* An outline keeps text readable over a changing scene. */
     ui_set_text_style(UI_TEXT_OUTLINED);
 
     if (ui_begin_screen(ctx, "Render Lab HUD", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         char fps_line[16];
         snprintf(fps_line, sizeof fps_line, "%5.1f fps", (double)state->fps_value);
 
-        const int x = state->fps_box_x_override >= 0 ? state->fps_box_x_override : HUD_INSET_PX;
+        const int x = HUD_INSET_PX;
         const mu_Rect fps_box = draw_text_box(ctx, fps_line, x, HUD_INSET_PX);
         /* The fps row is reserved at its widest reading, so the title does
          * not change rows as the number gains a digit. */

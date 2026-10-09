@@ -36,4 +36,4 @@ icon baker generator rejects bad input	docs/tools/Icon-Baker.md	What the generat
 proposal for a compile-time log level per build variant	docs/plans/Log-Level-Plan.md	Plan: a compile-time log-level ceiling per build variant, not a logging class
 plan for splitting diagnostics into a settings app	docs/plans/Settings-App-Plan.md	Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
 UI editor plan, native app rendering in-process with Dear ImGui	docs/plans/UI-Editor-Plan.md	The shell: SDL2 + Dear ImGui
-band-mode framebuffer and span rasterizer roadmap for future games	docs/plans/Autana-Rendering-Roadmap.md	3.3 Read PSRAM, never write it in bulk: core-1 present and an internal-SRAM band ring
+band-mode framebuffer and span rasterizer roadmap for future games	docs/plans/Autana-Rendering-Roadmap.md	Runtime foundations

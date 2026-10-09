@@ -6,14 +6,6 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
-## Generated files
-
-<!-- generated: generated-files-render-lab sha256=d4251689721ad9a1de4306e41c402135d1c1365636be9b6b88c038de6d290d90 -->
-| Output | Generator | Run in | Command |
-|---|---|---|---|
-| [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
-<!-- /generated: generated-files-render-lab -->
-
 ## Host renders
 
 ```sh
@@ -21,12 +13,11 @@ Before a source bake or reference render, pull the
 ```
 
 Writes every declared scene under `tools/results/render/render_lab/`:
-`gouraud-landscape.bmp` is the shaded cube, `cornell-landscape.bmp` the
-software ray-traced room. The integer scenes are pinned with the HUD hidden;
-the HUD renders are `|nopin`, since its fps readout is a `double` printed
-with `"%.1f"`, and so are the Cornell scenes, which are float throughout.
+`sponza-landscape.bmp` is the atrium flythrough. These renders are
+`|nopin`: their floating-point camera paths can reach different pixels
+across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
-capture. The Gouraud scene rotates when stepped over several frames.
+capture.
 
 ### Debug views
 
@@ -101,8 +92,6 @@ be checked to have measured the same thing.
 
 | Image | Shows |
 |---|---|
-| `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
-| `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:

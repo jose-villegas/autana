@@ -20,27 +20,6 @@ run mkdir -p "$W" "$OUT"
 
 run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "$W/scenes.log"
 
-bmp_to_png() {
-    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$1" "$2"
-}
-
-bmp_to_png "$W/gouraud-landscape.bmp" "$OUT/render-lab-cube.png"
-
-# Fully resolved and without the HUD, which would print the fps readout over it.
-run "$W/render_lab_render" --quarter 1 --no-hud --scene cornell --frames 40 \
-    -o "$W/cornell-clean.bmp" 2> "$W/cornell.log"
-bmp_to_png "$W/cornell-clean.bmp" "$OUT/render-lab-cornell.png"
-
-# The rotation, reversed back onto itself as a loop.
-run "$W/render_lab_render" --quarter 1 --no-hud --scene gouraud --frames 100 --dt 33 \
-    -o "$W/cube-motion.bmp" --video "$W/cube-motion.avi" 2> "$W/cube.log"
-run ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" \
-    -vf "fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0,palettegen" \
-    "$W/cube-palette.png"
-run ffmpeg -hide_banner -loglevel error -y -i "$W/cube-motion.avi" -i "$W/cube-palette.png" \
-    -filter_complex "[0:v]fps=12,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v];[v][1:v]paletteuse=dither=bayer" \
-    -loop 0 "$OUT/render-lab-cube.gif"
-
 # The start of the flythrough, on the fitted full mesh.
 run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
     -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"

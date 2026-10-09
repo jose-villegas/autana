@@ -31,8 +31,8 @@
 # generated_blocks.py rewrites the matching named blocks; --check compares
 # them without writing.
 #
-# The Cornell box is traced in float, and GIF palettes depend on the ffmpeg
-# version, so a --check on another OS or with another ffmpeg may report them
+# GIF palettes depend on the ffmpeg version, so a --check on another OS
+# or with another ffmpeg may report them
 # changed; CI renders on Linux and is the authority.
 
 set -eu

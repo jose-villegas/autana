@@ -9,6 +9,5 @@
 #include "render/camera.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
-#include "render/ray.h"
 #include "render/viewport.h"
 #include "util/math/vec3f.h"

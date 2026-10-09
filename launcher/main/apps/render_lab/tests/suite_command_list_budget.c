@@ -29,15 +29,12 @@ static void
 test_hud_screen_command_list_fits_budget(void) {
     fixture();
 
-    /* Worst case: all three boxes at once, with the longest scene name and
-     * the widest status a wire scene reports (wire_primitives_generated.h's
-     * own 1024/2048 mesh-wide caps). */
+    /* Exercise all HUD boxes with the fitted scene name and a mesh status. */
     const render_lab_hud_screen_state_t state = {
         .fps_value = 999.9F,
-        .fps_box_x_override = -1,
-        .scene_title = "Wire Capsule",
+        .scene_title = "Sponza Fitted Full",
         .scene_title_alpha = 255,
-        .status = "1024v 2048e",
+        .status = "448x368 20000 tris",
     };
 
     const input_t input = {0};
@@ -53,7 +50,7 @@ test_menu_screen_command_list_fits_budget(void) {
     const render_lab_menu_screen_state_t state = {
         .partial_updates_on = true,
         .band_mode_on = true,
-        .scene_name = "Gouraud Cube",
+        .scene_name = "Sponza Fitted Full",
     };
 
     const input_t input = {0};
