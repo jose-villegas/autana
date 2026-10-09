@@ -23,6 +23,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from gltf.gltf_read import ASSET_SUFFIXES  # noqa: E402
 from r3d import log  # noqa: E402
 from r3d.gltf_mesh import load_gltf_mesh  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
@@ -64,7 +65,7 @@ def load_source(settings, texture_dtype=np.float64):
     for path in source_files(settings):
         if lfs_pointer_oid(path) is not None:
             raise SettingsError(f'{path}: Git LFS source is not pulled; run git lfs pull --exclude=""')
-    if settings.source["path"].suffix.lower() == ".glb":
+    if settings.source["path"].suffix.lower() in ASSET_SUFFIXES:
         return load_glb_source(settings)
     obj_path = settings.source["path"]
     materials = load_mtl(obj_path.with_suffix(".mtl"))
@@ -76,7 +77,7 @@ def load_source(settings, texture_dtype=np.float64):
 
 
 def load_glb_source(settings):
-    """A glTF binary as the OBJ path's source: untextured, its colour per vertex."""
+    """A glTF binary, or an FBX, as the OBJ path's source: untextured, its colour per vertex."""
     mesh = load_gltf_mesh(settings.source["path"])
     tri_v = np.array(mesh.tri_v, dtype=np.int64)
     log(f"loaded {len(mesh.positions)} vertices, {len(tri_v)} triangles, {len(mesh.names)} materials")

@@ -9,6 +9,10 @@
 
 #include <math.h>
 
+#ifdef __XTENSA__
+#include "sdkconfig.h"
+#endif
+
 static inline float
 mathf_zero(void) {
     return 0.0F;
@@ -57,6 +61,23 @@ mathf_mul(float a, float b) {
 static inline float
 mathf_div(float a, float b) {
     return a / b;
+}
+
+/* 1 / a for a nonzero a away from float's range limits. The S3's `/` is a
+ * libgcc routine of about 56 cycles; its FPU's reciprocal seed and two Newton
+ * steps take about 18 and land within one ulp of the quotient, on it 99.9% of
+ * the time. Espressif's QEMU has no recip0.s, so its image divides exactly,
+ * as other targets do. */
+static inline float
+mathf_recip(float a) {
+#if defined(__XTENSA__) && !CONFIG_LAUNCHER_QEMU
+    float y;
+    __asm__("recip0.s %0, %1" : "=f"(y) : "f"(a));
+    y += y * (1.0F - (a * y));
+    return y + (y * (1.0F - (a * y)));
+#else
+    return 1.0F / a;
+#endif
 }
 
 static inline float
