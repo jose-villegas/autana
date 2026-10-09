@@ -61,6 +61,21 @@ def arguments(root, seeds=(1,)):
 
 
 class SweepTests(unittest.TestCase):
+    def test_reset_failure_preserves_tune_mismatch_reply(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            fake = FakeAutana(root, mismatch=True)
+
+            def runner(command, log, timeout):
+                if "reset" in command:
+                    return 1, [(0, "reset refused")], 1
+                return fake(command, log, timeout)
+
+            self.assertEqual(tool.run(args, runner), 1)
+            saved = json.loads((args.out / "plan.json").read_text())
+            self.assertIn("=999", saved["error"])
+            self.assertIn("reset refused", saved["error"])
+
     def test_unknown_after_identity_discards_captures(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)

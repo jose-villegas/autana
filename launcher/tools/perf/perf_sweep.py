@@ -177,8 +177,8 @@ def run(args, runner=None):
                                              "--perf-scope", "--layout-seed", str(flash["seed"])], stem)
                 if code:
                     raise RuntimeError(f"flash exited {code}; see {stem}.log")
-                flashed = True
                 flash["build_id"] = booted_build_id(build["project"], lines)
+                flashed = True
                 flash["flash_seconds"] = wall
                 build["build_ids"][str(flash["seed"])] = flash["build_id"]
                 save()
@@ -206,7 +206,7 @@ def run(args, runner=None):
                                 captures, _, seconds = captured_runs(lines, suite, 1)
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
-                                if code or "- Ended: complete" not in capture.with_suffix(".md").read_text():
+                                if code or "- Ended: complete" not in capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace"):
                                     raise RuntimeError(f"{suite}: failed or incomplete capture; exit {code}")
                                 table = make_table(template, capture, args.out / (capture_stem + ".md"),
                                                    build["project"], args.timeout)
@@ -228,6 +228,7 @@ def run(args, runner=None):
                                 write_json(args.out / (capture_stem + ".json"), item)
                                 save()
             finally:
+                active_error = sys.exc_info()[1]
                 cleanup_errors = []
                 if flashed:
                     for knob in saved["points"][0]:
@@ -252,7 +253,8 @@ def run(args, runner=None):
                             item["error"] = "build identity after measurement could not be verified"
                             write_json(Path(item["record"]), item)
                 if cleanup_errors:
-                    raise RuntimeError("; ".join(cleanup_errors))
+                    detail = "; ".join(cleanup_errors)
+                    raise RuntimeError(f"{active_error}; cleanup: {detail}" if active_error else detail)
     except (RuntimeError, OSError, ValueError) as error:
         saved["error"] = str(error)
         print(f"ERROR: {error}", file=sys.stderr)
