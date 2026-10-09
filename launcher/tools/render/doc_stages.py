@@ -70,7 +70,7 @@ def source_stamp(root, paths):
 def current_stamp():
     names = tracked_files(ROOT, ("launcher", "scripts"))
     paths = {ROOT / name for name in names if name and
-             Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt")}
+             Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt", ".lock")}
     for name in names:
         if name.endswith(".import.toml"):
             paths.update(source_files(load_import_settings(ROOT / name)))

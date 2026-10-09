@@ -206,7 +206,7 @@ class BuilderTests(unittest.TestCase):
             for folder, mesh, data in (("a", "one", b"1"), ("a2", "two", b"22"), ("b", "three", b"333")):
                 import_file(root / folder, f"{mesh}.import.toml", mesh)
                 (root / folder / f"{mesh}.mesh").write_bytes(data)
-            packs = build_pack.pack_bytes([root])
+            packs = build_pack.pack_bytes([root], tree=True)
         self.assertEqual(contents(packs), {"one": {"one": b"1"}, "two": {"two": b"22"}, "three": {"three": b"333"}})
 
     def test_a_scene_is_a_pack_of_its_entry_and_every_mesh_it_places_and_its_imports_make_none(self):
@@ -218,7 +218,7 @@ class BuilderTests(unittest.TestCase):
             scene_file(root, "room.scene.toml", ("chair.import.toml", "chair"), ("table.import.toml", "table"))
             for mesh in ("chair", "table", "lamp"):
                 (root / f"{mesh}.mesh").write_bytes(mesh.encode())
-            packs = build_pack.pack_bytes([root])
+            packs = build_pack.pack_bytes([root], tree=True)
             room = scene_asset.bake(root / "room.scene.toml")
         self.assertEqual(contents(packs), {"room": {"room": room, "chair": b"chair", "table": b"table"},
                                            "free": {"lamp": b"lamp"}})
@@ -231,7 +231,7 @@ class BuilderTests(unittest.TestCase):
             scene_file(root, "hall.scene.toml", ("kit.import.toml", "chair"))
             (root / "chair.mesh").write_bytes(b"c")
             with self.assertRaisesRegex(SettingsError, "'chair' is named by packs"):
-                build_pack.pack_bytes([root])
+                build_pack.pack_bytes([root], tree=True)
 
     def test_two_roots_with_one_name_are_refused(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -239,7 +239,7 @@ class BuilderTests(unittest.TestCase):
             import_file(root / "a", "same.import.toml", "one")
             import_file(root / "b", "same.import.toml", "two")
             with self.assertRaisesRegex(SettingsError, "pack named 'same'"):
-                build_pack.pack_bytes([root])
+                build_pack.pack_bytes([root], tree=True)
 
     def test_a_replaced_mesh_comes_from_its_own_file_and_must_exist(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -247,16 +247,16 @@ class BuilderTests(unittest.TestCase):
             import_file(root / "a", "a.import.toml", "one")
             (root / "a" / "one.mesh").write_bytes(b"1")
             (root / "scratch.mesh").write_bytes(b"9")
-            packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"])
+            packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"], tree=True)
             self.assertEqual(contents(packs), {"a": {"one": b"9"}})
             with self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.pack_bytes([root / "a"], ["other=x.mesh"])
+                build_pack.pack_bytes([root / "a"], ["other=x.mesh"], tree=True)
 
     def test_a_mesh_never_baked_names_the_command_to_run(self):
         with tempfile.TemporaryDirectory() as directory:
             import_file(directory, "a.import.toml", "one")
             with self.assertRaisesRegex(SettingsError, "mesh_import.py"):
-                build_pack.pack_bytes([directory])
+                build_pack.pack_bytes([directory], tree=True)
 
     def test_the_command_writes_each_pack_and_the_image_and_drops_stale_packs(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -268,7 +268,7 @@ class BuilderTests(unittest.TestCase):
             out.mkdir()
             (out / "gone.apak").write_bytes(b"old")
             with contextlib.redirect_stdout(io.StringIO()):
-                build_pack.main(["-o", str(out), "--image", str(root / "assets.bin"), str(root / "src")])
+                build_pack.main(["--from-tree", "-o", str(out), "--image", str(root / "assets.bin"), str(root / "src")])
             self.assertEqual(sorted(p.name for p in out.iterdir()), ["one.apak", "two.apak"])
             image = parse_directory((root / "assets.bin").read_bytes())
             self.assertEqual({name: (out / f"{name}.apak").read_bytes() for name in image}, image)
@@ -315,22 +315,22 @@ class DemoAssetTests(unittest.TestCase):
 
     def test_manifest_pulls_in_named_demo_packs(self):
         write(self.main / "apps/example/demo_assets.toml", 'demo = ["sample"]')
-        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": b"demo"}})
+        self.assertEqual(contents(build_pack.pack_bytes([self.main], tree=True)), {"sample": {"one": b"demo"}})
 
     def test_unknown_demo_names_its_manifest_and_name(self):
         manifest = write(self.main / "apps/example/demo_assets.toml", 'demo = ["missing"]')
         with self.assertRaises(SettingsError) as caught:
-            build_pack.pack_bytes([self.main])
+            build_pack.pack_bytes([self.main], tree=True)
         self.assertIn(str(manifest), str(caught.exception))
         self.assertIn("missing", str(caught.exception))
 
     def test_demo_is_not_packed_without_a_manifest(self):
-        self.assertEqual(build_pack.pack_bytes([self.main]), {})
+        self.assertEqual(build_pack.pack_bytes([self.main], tree=True), {})
 
     def test_repeated_demo_and_overlapping_search_folders_are_searched_once(self):
         for app in ("a", "b"):
             write(self.main / app / "demo_assets.toml", 'demo = ["sample", "sample"]')
-        self.assertEqual(contents(build_pack.pack_bytes([self.main, self.main / "a", self.demo])),
+        self.assertEqual(contents(build_pack.pack_bytes([self.main, self.main / "a", self.demo], tree=True)),
                          {"sample": {"one": b"demo"}})
 
     def test_only_the_named_demo_is_packed_and_removing_the_manifest_drops_it(self):
@@ -338,9 +338,9 @@ class DemoAssetTests(unittest.TestCase):
         import_file(other, "other.import.toml", "two")
         (other / "two.mesh").write_bytes(b"other")
         manifest = write(self.main / "demo_assets.toml", 'demo = ["sample"]')
-        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": b"demo"}})
+        self.assertEqual(contents(build_pack.pack_bytes([self.main], tree=True)), {"sample": {"one": b"demo"}})
         manifest.unlink()
-        self.assertEqual(build_pack.pack_bytes([self.main]), {})
+        self.assertEqual(build_pack.pack_bytes([self.main], tree=True), {})
 
     def test_malformed_manifests_name_the_file(self):
         for text, pattern in (('demo = [', 'Invalid value'), ('', 'is required'),
@@ -350,7 +350,7 @@ class DemoAssetTests(unittest.TestCase):
             with self.subTest(text=text):
                 manifest = write(self.main / "demo_assets.toml", text)
                 with self.assertRaisesRegex(SettingsError, pattern) as caught:
-                    build_pack.pack_bytes([self.main])
+                    build_pack.pack_bytes([self.main], tree=True)
                 self.assertIn(str(manifest), str(caught.exception))
 
     def test_non_plain_names_are_rejected_before_folder_lookup(self):
@@ -359,27 +359,27 @@ class DemoAssetTests(unittest.TestCase):
                 (self.demo.parent / name).mkdir(parents=True, exist_ok=True)
                 manifest = write(self.main / "demo_assets.toml", f"demo = ['{name}']")
                 with self.assertRaises(SettingsError) as caught:
-                    build_pack.pack_bytes([self.main])
+                    build_pack.pack_bytes([self.main], tree=True)
                 self.assertIn(str(manifest), str(caught.exception))
                 self.assertIn("must be letters", str(caught.exception))
 
     def test_relative_and_absolute_searches_produce_one_pack(self):
         relative = pathlib.Path(os.path.relpath(self.demo))
-        self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
+        self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()], tree=True)),
                          {"sample": {"one": b"demo"}})
 
     def test_a_demo_manifest_is_refused_naming_its_file(self):
         write(self.main / "demo_assets.toml", 'demo = ["sample"]')
         manifest = write(self.demo / "demo_assets.toml", 'demo = ["sample"]')
         with self.assertRaisesRegex(SettingsError, "only an app names demo assets") as caught:
-            build_pack.pack_bytes([self.main])
+            build_pack.pack_bytes([self.main], tree=True)
         self.assertIn(str(manifest), str(caught.exception))
 
     def test_a_manifest_nested_in_a_demo_is_refused_naming_its_file(self):
         write(self.main / "demo_assets.toml", 'demo = ["sample"]')
         manifest = write(self.demo / "nested" / "demo_assets.toml", 'demo = ["sample"]')
         with self.assertRaisesRegex(SettingsError, "only an app names demo assets") as caught:
-            build_pack.pack_bytes([self.main])
+            build_pack.pack_bytes([self.main], tree=True)
         self.assertIn(str(manifest), str(caught.exception))
 
     def test_a_manifest_can_select_two_different_demos(self):
@@ -387,33 +387,33 @@ class DemoAssetTests(unittest.TestCase):
         import_file(other, "other.import.toml", "two")
         (other / "two.mesh").write_bytes(b"other")
         write(self.main / "demo_assets.toml", 'demo = ["sample", "other"]')
-        self.assertEqual(contents(build_pack.pack_bytes([self.main])),
+        self.assertEqual(contents(build_pack.pack_bytes([self.main], tree=True)),
                          {"sample": {"one": b"demo"}, "other": {"two": b"other"}})
 
 
 class TreeTests(unittest.TestCase):
     def test_each_tree_manifest_selects_its_demo_root_packs(self):
-        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True)
         manifests = list(build_pack.DEFAULT_SEARCH.rglob("demo_assets.toml"))
         self.assertTrue(manifests)
         for manifest in manifests:
             for name in tomllib.loads(manifest.read_text())["demo"]:
                 demo = build_pack.DEMO / name
-                roots = build_pack.pack_bytes([demo])
+                roots = build_pack.pack_bytes([demo], tree=True)
                 self.assertTrue(roots, str(demo))
                 for root, data in roots.items():
                     with self.subTest(manifest=manifest, root=root):
                         self.assertEqual(packs[root], data)
 
     def test_the_packs_in_the_tree_pack_and_parse(self):
-        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True)
         self.assertTrue(packs)
         parse_directory(build_directory(sorted(packs.items())))
         kinds = {kind for pack in packs.values() for kind, _ in parse_pack(pack).values()}
         self.assertIn(LIT_MESH, kinds)
 
     def test_each_scene_s_pack_holds_its_entry_every_mesh_it_names_and_its_camera_s_tracks(self):
-        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH])
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True)
         scenes = [path for path in build_pack.input_files([build_pack.DEFAULT_SEARCH]) if path.name.endswith(build_pack.SCENE)]
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:

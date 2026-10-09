@@ -21,6 +21,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# A build fetches the bakes launcher/bakes.lock names (bake/bake.py): from the
+# release, or before main publishes them from the run that made them, which
+# needs this token.
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   qemu-tests:
     name: Every suite under QEMU

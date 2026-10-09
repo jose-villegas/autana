@@ -6,12 +6,14 @@ import contextlib
 import copy
 import hashlib
 import io
+import json
 import pathlib
 import platform
 import sys
 import tempfile
 import unittest
 import urllib.error
+import zipfile
 from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
@@ -208,6 +210,52 @@ class LockTests(unittest.TestCase):
         self.assertNotIn("seeded", seeded)
         kept = bake.lock_rows(found, {"k" * 64: {**self.row, "run": 4}}, made)[0]
         self.assertEqual((kept["run"], kept["sha256"]), (4, self.row["sha256"]))
+
+    def test_seeding_fills_only_the_keys_the_lock_lacks(self):
+        other = self.root / "two.mesh"
+        other.write_bytes(b"LMSH other")
+        found = [bake_of("k" * 64, self.tree), bake_of("n" * 64, other)]
+        written = []
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "run": 5}}), \
+                mock.patch.object(bake, "write_lock", side_effect=written.append), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
+        rows = {row["key"]: row for row in written[0]}
+        self.assertEqual(rows["k" * 64]["run"], 5)
+        self.assertNotIn("seeded", rows["k" * 64])
+        self.assertIs(rows["n" * 64]["seeded"], True)
+
+    def test_a_file_not_yet_published_comes_from_the_run_that_made_it(self):
+        upload = self.root / "upload"
+        (upload / "bakes-cpu" / "files").mkdir(parents=True)
+        (upload / "bakes-cpu" / "keys").mkdir()
+        (upload / "bakes-cpu" / "files" / f"{self.row['sha256']}.mesh").write_bytes(b"LMSH baked")
+        (upload / "bakes-cpu" / "keys" / f"{self.row['key']}.json").write_text(
+            json.dumps({**self.row, "suffix": bake.MESH_SUFFIX}))
+        gone = urllib.error.HTTPError("url", 404, "Not Found", {}, None)
+        with mock.patch("urllib.request.urlopen", side_effect=gone), \
+                mock.patch.object(bake, "run_files", return_value=upload) as run:
+            paths = bake.fetch_all([bake_of("k" * 64, self.tree)], {"k" * 64: {**self.row, "run": 12}}, self.cache)
+        self.assertEqual(run.call_args.args[0], 12)
+        self.assertEqual(next(iter(paths.values())).read_bytes(), b"LMSH baked")
+
+    def test_a_runs_uploads_are_read_through_the_api_without_gh(self):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as zipped:
+            zipped.writestr("files/a.mesh", b"mesh")
+        listing = {"artifacts": [{"name": "bakes-cpu", "expired": False, "archive_download_url": "zip"},
+                                 {"name": "other", "expired": False, "archive_download_url": "never"}]}
+        replies = {"zip": archive.getvalue()}
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch.object(bake, "github_get", side_effect=lambda url, token: replies.get(url, json.dumps(listing).encode())) as get:
+            bake.run_files(7, self.root / "run")
+        self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.mesh").read_bytes(), b"mesh")
+        self.assertNotIn("never", [call.args[0] for call in get.call_args_list])
+
+    def test_a_process_can_have_a_cache_of_its_own(self):
+        with mock.patch.dict("os.environ", {bake.CACHE_VARIABLE: str(self.cache)}):
+            self.assertEqual(bake.default_cache(), self.cache)
 
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
@@ -440,7 +488,7 @@ class TreeTests(unittest.TestCase):
                     mock.patch("urllib.request.urlopen") as network:
                 cached = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
             network.assert_not_called()
-        self.assertEqual(cached, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
+        self.assertEqual(cached, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True))
 
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_the_trees_copy(self):
         found = bake.bakes([build_pack.DEFAULT_SEARCH])
@@ -454,17 +502,32 @@ class TreeTests(unittest.TestCase):
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=cache, offline=True)
         self.assertIn(dropped.output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
 
+    def test_a_replaced_mesh_is_never_fetched(self):
+        found = bake.bakes([build_pack.DEFAULT_SEARCH])
+        scratch = next(item for item in found if item.kind == "mesh")
+        with tempfile.TemporaryDirectory() as directory:
+            cache = pathlib.Path(directory)
+            rows = {row["key"]: row for row in bake.seed(found, cache) if row["key"] != scratch.key}
+            mesh = cache / "scratch.mesh"
+            mesh.write_bytes(scratch.tree.read_bytes())
+            name = scratch.output.removesuffix(bake.MESH_SUFFIX)
+            with mock.patch.object(bake, "read_lock", return_value=rows),                     mock.patch("urllib.request.urlopen") as network:
+                packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], [f"{name}={mesh}"], cache=cache, offline=True)
+            network.assert_not_called()
+        self.assertEqual(packs, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True))
+
     def test_every_key_is_unique(self):
         keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH])]
         self.assertEqual(len(keys), len(set(keys)))
 
     def test_a_cold_build_fails_naming_each_bake(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()) as err:
-            code = build_pack.main(["-o", directory, "--from-cache", str(pathlib.Path(directory) / "cache"),
+            code = build_pack.main(["-o", directory, "--bake-cache", str(pathlib.Path(directory) / "cache"),
                                     "--offline"])
         self.assertEqual(code, 2)
         for found in bake.bakes([build_pack.DEFAULT_SEARCH]):
-            self.assertIn(found.output, err.getvalue())
+            if found.kind != "blend":  # a pack holds no export
+                self.assertIn(found.output, err.getvalue())
 
 
 if __name__ == "__main__":

@@ -141,21 +141,18 @@ def prepare(scene_path, scene, job, work, recorder=None):
     log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
 
 
-def reference_digest(scene_path, job, scene):
-    """The source and lighting inputs that determine a sweep's references."""
-    digest = hashlib.sha256()
-    for path in (scene_path, job.settings.path):
-        digest.update(pathlib.Path(path).read_bytes())
-    digest.update(camera_clip(scene))
-    digest.update(job.object.name.encode())
-    digest.update(source_digest(job.settings).encode())
-    return digest.hexdigest()
+def reference_digest(job, scene):
+    """A sweep's references are the fit's reference stage: its key, from bake/bake.py, the one owner of
+    bake keys."""
+    from bake import bake
+
+    return bake.stage_keys(job, scene, {stage: bake.tool_digest(stage) for stage in bake.STAGES})["reference"]
 
 
 def sweep_references(scene_path, scene, job, work):
     """Prepare one reusable reference set for a sweep's unchanged inputs."""
     marker = pathlib.Path(work) / "references.json"
-    digest = reference_digest(scene_path, job, scene)
+    digest = reference_digest(job, scene)
     if marker.is_file() and json.loads(marker.read_text()).get("digest") == digest:
         return
     prepare(scene_path, scene, job, work)
