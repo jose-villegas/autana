@@ -22,6 +22,7 @@ from idf_vocabulary import c_declarations
 from tracked import tracked_files
 
 PAGE = pathlib.Path("docs/Shared-Helpers.md")
+CHECK = "python launcher/tools/gen/shared_helpers.py --check"
 INCLUDE = re.compile(r'^\s*#\s*include\s+([<"])([^>"\n]+)[>"]', re.M)
 
 
@@ -105,7 +106,7 @@ def update(root, check=False):
     for path, prose, names in rows:
         prose = prose.replace("|", "&#124;").replace("<", "&lt;").replace(">", "&gt;")
         lines.append(f"| [{path}](../{path}) | {prose} | `{names}` |")
-    changed = replace_block(root / PAGE, "shared-helpers", "\n".join(lines), check)
+    changed = replace_block(root / PAGE, "shared-helpers", "\n".join(lines), check, CHECK)
     state = "stale: run python3 launcher/tools/gen/shared_helpers.py and git add docs/Shared-Helpers.md"         if changed and check else "current"
     print(f"shared helpers: {len(rows)} owner files; {state}")
     return int(check and changed)
