@@ -1,4 +1,4 @@
-#include "core/frame_watch.h"
+#include "profile/frame_watch.h"
 
 #if FRAME_WATCH_ENABLED
 

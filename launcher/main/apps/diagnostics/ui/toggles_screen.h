@@ -12,7 +12,7 @@
 
 #include <stdbool.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "microui.h"
 
 typedef struct {

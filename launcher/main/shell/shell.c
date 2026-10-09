@@ -11,8 +11,7 @@
 #include <stdlib.h>
 
 #include "app/app.h"
-#include "core/frame_cost.h"
-#include "core/frame_watch.h"
+#include "core/job.h"
 #include "core/timing.h"
 #include "display/display.h"
 #include "display/display_shell.h"
@@ -26,6 +25,8 @@
 #include "input/input.h"
 #include "input/input_shell.h"
 #include "input/touch.h"
+#include "profile/frame_cost.h"
+#include "profile/frame_watch.h"
 #include "services/build_id.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
@@ -383,6 +384,7 @@ shell_run(void) {
     printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
     frame_watch_start();
+    job_on_worker_started(frame_watch_add_task);
 
     while (1) {
         const int64_t now_us = timing_now_us();

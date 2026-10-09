@@ -1,4 +1,4 @@
-#include "core/frame_cost.h"
+#include "profile/frame_cost.h"
 
 #if FRAME_COST_ENABLED
 

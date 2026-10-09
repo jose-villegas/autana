@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
 

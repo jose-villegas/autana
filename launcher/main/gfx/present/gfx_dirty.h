@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "gfx/gfx.h"
 #include "math/scalar/mathi.h"
 

@@ -18,7 +18,7 @@
 #include "unity.h"
 
 #include "app/app.h"
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"

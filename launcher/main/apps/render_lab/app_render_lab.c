@@ -16,7 +16,7 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"

@@ -5,8 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "core/build_variant.h"
-#include "core/frame_watch.h"
+#include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
 
@@ -24,6 +23,7 @@ static const char* TAG = "job";
 #define JOB_CORE1             1
 
 static TaskHandle_t job_task_handle;
+static void (*job_started_fn)(void* task);
 static StaticTask_t job_task_tcb;
 static SemaphoreHandle_t job_done_sem;
 static StackType_t* job_stack;
@@ -87,8 +87,8 @@ job_bring_up(void) {
                                       JOB_CORE1_PRIORITY, job_stack, &job_task_tcb, JOB_CORE1);
     job_ready = (job_task_handle != NULL);
     job_unavailable = !job_ready;
-    if (job_ready) {
-        frame_watch_add_task(job_task_handle);
+    if (job_ready && job_started_fn != NULL) {
+        job_started_fn(job_task_handle);
     }
     return job_ready;
 #endif
@@ -127,6 +127,14 @@ job_dispatch(job_fn_t fn, const void* ctx, size_t ctx_size) {
     job_waits_for_core = true;
     xTaskNotifyGive(job_task_handle);
     return true;
+}
+
+void
+job_on_worker_started(void (*fn)(void* task)) {
+    job_started_fn = fn;
+    if (job_ready && fn != NULL) {
+        fn(job_task_handle);
+    }
 }
 
 bool
@@ -176,6 +184,11 @@ job_wait(unsigned timeout_ms) {
 }
 
 #else
+
+void
+job_on_worker_started(void (*fn)(void* task)) {
+    (void)fn;
+}
 
 bool
 job_run_core1(job_fn_t fn, const void* ctx, size_t ctx_size) {

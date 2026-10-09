@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "core/frame_cost.h"
 #include "core/memory.h"
 #include "gfx/draw/gfx_dither.h"
 #include "gfx/draw/gfx_draw.h"
@@ -17,6 +16,7 @@
 #include "math/motion/spring_line.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
+#include "profile/frame_cost.h"
 #include "services/tune.h"
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"

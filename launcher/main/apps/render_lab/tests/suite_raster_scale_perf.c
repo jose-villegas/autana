@@ -26,10 +26,10 @@
 
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
-#include "core/frame_cost.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"

@@ -1,7 +1,7 @@
 /* shell_frame: the shell chrome drawn into a framebuffer or replayed over expanded strips. */
 #include <stdio.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"

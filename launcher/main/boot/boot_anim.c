@@ -32,7 +32,7 @@
 #include <string.h>
 
 #include "boot/boot_anim_image.h"
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "core/timing.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"

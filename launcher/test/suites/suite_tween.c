@@ -1,5 +1,5 @@
 /*
- * Portable suite: math/motion/tween.h, timeline ramps, easing and lerps.
+ * Portable suite: anim/tween.h, timeline ramps, easing and lerps.
  *
  * These moved here from boot_anim.h, which had its own private copies and
  * its own tests for them under boot_anim-specific names. The tests moved
@@ -14,7 +14,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "math/motion/tween.h"
+#include "anim/tween.h"
 
 /* tween_ramp() */
 

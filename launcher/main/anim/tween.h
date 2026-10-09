@@ -1,7 +1,7 @@
 /*
  * tween: timeline ramps, easing and lerps, in one place.
  *
- * `static inline`, like fixed.h next to it: nothing here is expensive enough
+ * `static inline`, like math/scalar/fixed.h: nothing here is expensive enough
  * on its own to need a cross-file call, and some of these run once per point
  * drawn in an animation.
  *

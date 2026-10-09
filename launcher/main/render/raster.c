@@ -4,8 +4,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "core/frame_cost.h"
 #include "core/job.h"
+#include "profile/frame_cost.h"
 #include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"

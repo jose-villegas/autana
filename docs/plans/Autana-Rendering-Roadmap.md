@@ -90,7 +90,7 @@ flowchart LR
 ```
 
 The green-bordered nodes above are already in the tree, not proposed:
-`frameTime` ([`core/frame_cost.{h,c}`](../tools/Frame-Cost.md)), `cubePerf`
+`frameTime` ([`profile/frame_cost.{h,c}`](../tools/Frame-Cost.md)), `cubePerf`
 (`apps/render_lab/tools/report_cube_perf.sh`), `busRoot` (`GFX_QSPI_HZ`,
 `gfx_heal.h`), `corePresent` (the present task pinned to core 1,
 `gfx_present_begin()`/`gfx_present_wait()`), `bandRing` (`gfx/present/gfx_band.h`,
@@ -116,7 +116,7 @@ into an internal-SRAM band ring and never writes PSRAM at all. Present
 copies full-width strips out of the PSRAM framebuffer into two internal
 DMA buffers and sends them at 80 MHz QSPI: ~10.2-10.9 ms per full frame
 (device measurement). Render/rasterize durations below are shape only;
-[`core/frame_cost`](../tools/Frame-Cost.md) reports an app's own.
+[`profile/frame_cost`](../tools/Frame-Cost.md) reports an app's own.
 
 ```
 time (ms) 0         10        20        30        40

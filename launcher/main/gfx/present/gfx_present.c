@@ -1,6 +1,5 @@
 #include "gfx/present/gfx_present.h"
-#include "core/build_variant.h"
-#include "core/frame_watch.h"
+#include "build/build_variant.h"
 #include "core/memory.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx_internal.h"
@@ -8,6 +7,7 @@
 #include "gfx/present/gfx_full_redraw.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "math/scalar/mathi.h"
+#include "profile/frame_watch.h"
 
 #include <assert.h>
 #include <stdlib.h>

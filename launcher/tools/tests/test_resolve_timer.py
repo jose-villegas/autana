@@ -13,7 +13,7 @@ class ResolveTimerTests(unittest.TestCase):
     def test_resolve_is_charged_only_with_a_hook(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            header = work / "core/frame_cost.h"
+            header = work / "profile/frame_cost.h"
             header.parent.mkdir(parents=True)
             header.write_text('#include <string.h>\nextern int charges;\n'
                               '#define FRAME_COST_BEGIN(mark) ((void)0)\n'

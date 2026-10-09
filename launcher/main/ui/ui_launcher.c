@@ -11,9 +11,9 @@
 #include "ui/ui_launcher.h"
 
 #include "app/app.h"
-#include "core/frame_cost.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "profile/frame_cost.h"
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
 
