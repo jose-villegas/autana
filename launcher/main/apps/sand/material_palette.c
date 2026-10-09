@@ -559,9 +559,9 @@ material_frame_set_gravity(material_frame_t* f, int gx, int gy) {
         return;
     }
 
-    /* Unit vector of MINUS gravity, scaled by 256 for highlight catching. */
-    const int ux_q8 = (-gx * 256) / len;
-    const int uy_q8 = (-gy * 256) / len;
+    /* Unit vector of MINUS gravity, scaled to MATERIAL_Q8_ONE for highlight catching. */
+    const int ux_q8 = (-gx * MATERIAL_Q8_ONE) / len;
+    const int uy_q8 = (-gy * MATERIAL_Q8_ONE) / len;
 
     for (unsigned mask = 0; mask < MATERIAL_EDGE_MASK_COUNT; mask++) {
         f->liquid_spec[mask] = liquid_spec_for_mask(mask, ux_q8, uy_q8);
@@ -588,12 +588,12 @@ void
 material_wood_leaf_wind_axis(int gx, int gy, int* ux_q8, int* uy_q8) {
     const int len = mathi_len(gx, gy);
     if (len == 0) {
-        *ux_q8 = 256;
+        *ux_q8 = MATERIAL_Q8_ONE;
         *uy_q8 = 0;
         return;
     }
-    *ux_q8 = (-gy * 256) / len;
-    *uy_q8 = (gx * 256) / len;
+    *ux_q8 = (-gy * MATERIAL_Q8_ONE) / len;
+    *uy_q8 = (gx * MATERIAL_Q8_ONE) / len;
 }
 
 /* Ring order matches sand_priv.h's own ring_dir() (0 = down, clockwise) -

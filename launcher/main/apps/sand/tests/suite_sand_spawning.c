@@ -26,8 +26,6 @@
 
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_brushes.h"
-#include "apps/sand/sand_controls.h"
-#include "apps/sand/sand_limits.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/tests/suite_sand_common.h"
@@ -345,17 +343,6 @@ test_a_full_share_fills_the_whole_disc(void) {
     free(grid);
 }
 
-/* A brush radius rounds to the nearest cell: half a cell up, less down. */
-static void
-test_a_px_radius_rounds_to_the_nearest_cell(void) {
-    for (int cell = CELL_MIN; cell <= 2 * SAND_CELL_NORMAL; cell++) {
-        const int half_up = (cell + 1) / 2;
-        TEST_ASSERT_EQUAL_INT(1, SAND_RADIUS_CELLS(half_up, cell));
-        TEST_ASSERT_EQUAL_INT(0, SAND_RADIUS_CELLS(half_up - 1, cell));
-        TEST_ASSERT_EQUAL_INT(3, SAND_RADIUS_CELLS(3 * cell, cell));
-    }
-}
-
 static void
 test_erase_removes_a_disc(void) {
     fixture();
@@ -560,8 +547,8 @@ test_emitted_water_produces_a_continuing_stream(void) {
                                      "for as long as the tap runs");
 }
 
-/* emit_from_emitters() must write the exact placeholder sand_brushes[] hands
- * sand_add_emitter() (app_sand.c): CELL_MAKE(material, 0), whose variant 0
+/* emit_from_emitters() must write the exact placeholder the app passes
+ * sand_add_emitter() from sand_brushes[]: CELL_MAKE(material, 0), whose variant 0
  * means fill-level zero for KIND_LIQUID (material.h) - not a real cell.
  * Tests below use that literal placeholder, not this file's WATER/LAVA/...
  * macros (variant 8), and step with gravity (0, 0, 0) so sand_step()
@@ -978,7 +965,6 @@ run_sand_spawning_suite(void) {
     RUN_TEST(test_grains_fall_sideways_when_the_board_is_on_its_edge);
     RUN_TEST(test_a_heap_settles_against_whichever_wall_is_down);
     RUN_TEST(test_spawn_fills_a_disc);
-    RUN_TEST(test_a_px_radius_rounds_to_the_nearest_cell);
     RUN_TEST(test_spawn_is_clipped_to_the_grid);
     RUN_TEST(test_spawning_onto_existing_grains_does_not_double_count);
     RUN_TEST(test_the_plant_brush_pours_its_share_of_the_disc);

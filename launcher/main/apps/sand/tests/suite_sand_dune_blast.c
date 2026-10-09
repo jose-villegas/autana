@@ -31,6 +31,7 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "bbox_extend.h"
+#include "util/scalar/fixed.h"
 #include "util/scalar/mathi.h"
 
 /* BLAST SCENES - a settled dune and a detonation at its centre.
@@ -201,7 +202,7 @@ test_the_nearest_footprint_distance_finds_a_cell_on_every_edge_of_the_ring(void)
  * represent, so a sweep reads on the real device's own scale. The impulse
  * buffer is sized apart from this radius; sand_explode() thins its seeding
  * evenly when the disc exceeds it rather than truncating the shape. */
-#define DUNE_BLAST_RADIUS     SAND_RADIUS_CELLS(SAND_DETONATE_RADIUS_PX, CELL_MIN)
+#define DUNE_BLAST_RADIUS     fx_div_round(SAND_DETONATE_RADIUS_PX, CELL_MIN, 0)
 
 /* A FIXED ENTRY COUNT MIRRORING APP_IMPULSE_MAX, not a formula in
  * DUNE_BLAST_RADIUS, see APP_IMPULSE_MAX's own comment in app_sand.c for

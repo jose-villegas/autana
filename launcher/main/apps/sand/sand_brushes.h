@@ -1,6 +1,8 @@
 /* sand_brushes: the palette's paintable entries, shared by the app and its suites. */
 #pragma once
 
+#include <string.h>
+
 #include "material.h"
 #include "palette.h"
 #include "sand_ui.h"
@@ -31,6 +33,18 @@ static const sand_brush_t sand_brushes[] = {
                          * comment (material_palette.h) for why the panel tile itself paints a different code */
 };
 #define SAND_BRUSH_COUNT ((int)(sizeof(sand_brushes) / sizeof(sand_brushes[0])))
+
+/* The brush whose name is longest: the worst case a screen showing it has to fit. */
+static inline int
+sand_brush_longest_name(void) {
+    int longest = 0;
+    for (int i = 1; i < SAND_BRUSH_COUNT; i++) {
+        if (strlen(material_name(sand_brushes[i].cell)) > strlen(material_name(sand_brushes[longest].cell))) {
+            longest = i;
+        }
+    }
+    return longest;
+}
 
 _Static_assert(PALETTE_FITS(SAND_BRUSH_COUNT), "the palette panel for SAND_BRUSH_COUNT brushes is taller than the "
                                                "screen at some orientation - see palette_cols()/PALETTE_TILE "

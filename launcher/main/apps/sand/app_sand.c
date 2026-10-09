@@ -83,6 +83,7 @@
 #include "util/runtime/frame_cost.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
+#include "util/scalar/fixed.h"
 
 static const char* TAG = "sand";
 
@@ -94,7 +95,7 @@ typedef struct {
 } quality_t;
 
 static const quality_t qualities[] = {
-    {"ULTRA", 2}, {"HIGH", 3}, {"NORMAL", SAND_CELL_NORMAL}, {"LOW", 6}, {"VERY LOW", 8},
+    {"ULTRA", CELL_MIN}, {"HIGH", 3}, {"NORMAL", SAND_CELL_NORMAL}, {"LOW", 6}, {"VERY LOW", 8},
 };
 #define QUALITY_COUNT   ((int)(sizeof(qualities) / sizeof(qualities[0])))
 #define QUALITY_DEFAULT 2 /* NORMAL */
@@ -1106,7 +1107,7 @@ handle_detonate_input(const input_t* input) {
     }
     const int cx = input->x / cell;
     const int cy = input->y / cell;
-    sand_explode(&sim, cx, cy, SAND_RADIUS_CELLS(sand_ui_radius(&ui), cell));
+    sand_explode(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
 }
 
 static void
@@ -1124,14 +1125,14 @@ handle_spawn_emitter_input(const input_t* input) {
 static void
 apply_pour_step(int cx, int cy) {
     if (ui.mode == SAND_MODE_ERASE) {
-        sand_erase(&sim, cx, cy, SAND_RADIUS_CELLS(sand_ui_radius(&ui), cell));
+        sand_erase(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0));
         /* Wider than the sweep above on purpose - see
          * SAND_ERASE_EMITTER_RADIUS_PX's own comment for why a point target
          * needs more aiming tolerance than an area sweep does. */
-        sand_remove_emitters(&sim, cx, cy, SAND_RADIUS_CELLS(SAND_ERASE_EMITTER_RADIUS_PX, cell));
+        sand_remove_emitters(&sim, cx, cy, fx_div_round(SAND_ERASE_EMITTER_RADIUS_PX, cell, 0));
         return;
     }
-    sand_spawn_cell_share(&sim, cx, cy, SAND_RADIUS_CELLS(sand_ui_radius(&ui), cell), sand_brushes[ui.brush].cell,
+    sand_spawn_cell_share(&sim, cx, cy, fx_div_round(sand_ui_radius(&ui), cell, 0), sand_brushes[ui.brush].cell,
                           sand_brushes[ui.brush].share_pct);
 }
 
