@@ -18,42 +18,6 @@ _Static_assert(sizeof(tag_t) == sizeof(raster_motion_px_t), "a tag resolves in p
 
 #define DEPTH_SCALE (1.0F / 65535.0F)
 
-/* a * b, both affine maps as 3x4 matrices. */
-static void
-compose(const float a[3][4], const float b[3][4], float out[3][4]) {
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 4; c++) {
-            out[r][c] = (a[r][0] * b[0][c]) + (a[r][1] * b[1][c]) + (a[r][2] * b[2][c]) + (c == 3 ? a[r][3] : 0.0F);
-        }
-    }
-}
-
-/* The cofactor of m's 3x3 part at row r, column c. */
-static float
-cofactor(const float m[3][4], int r, int c) {
-    const int r1 = (r + 1) % 3;
-    const int r2 = (r + 2) % 3;
-    const int c1 = (c + 1) % 3;
-    const int c2 = (c + 2) % 3;
-    return (m[r1][c1] * m[r2][c2]) - (m[r1][c2] * m[r2][c1]);
-}
-
-/* The inverse of an affine map whose 3x3 part is invertible: the adjugate
- * over the determinant, and the translation carried back through it. */
-static void
-invert(const float m[3][4], float out[3][4]) {
-    const float inv =
-        1.0F / ((m[0][0] * cofactor(m, 0, 0)) + (m[0][1] * cofactor(m, 0, 1)) + (m[0][2] * cofactor(m, 0, 2)));
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 3; c++) {
-            out[r][c] = cofactor(m, c, r) * inv;
-        }
-    }
-    for (int r = 0; r < 3; r++) {
-        out[r][3] = -((out[r][0] * m[0][3]) + (out[r][1] * m[1][3]) + (out[r][2] * m[2][3]));
-    }
-}
-
 /* World to lens space for `camera`, the raster's own lens at one tick to the
  * unit, then carried by `placement` when it is not NULL, as r3d_lens_place()
  * does for a placed mesh. */
@@ -64,15 +28,6 @@ lens_map(const camera_t* camera, const raster_t* raster, int quarter, const r3d_
     if (placement != NULL) {
         r3d_lens_place(lens, placement, 1);
     }
-}
-
-/* This picture's lens space back to the mesh through `now`, then forward
- * through `before`: one formula whether the mesh moved or not. */
-static void
-reproject(const r3d_lens_t* before, const r3d_lens_t* now, float out[3][4]) {
-    float back[3][4];
-    invert(now->m, back);
-    compose(before->m, back, out);
 }
 
 static int
@@ -96,7 +51,7 @@ map_instances(raster_motion_t* m, const raster_t* raster, const camera_t* camera
             r3d_lens_t now;
             lens_map(&m->camera, raster, quarter, &m->seen[seen], &before);
             lens_map(camera, raster, quarter, p, &now);
-            reproject(&before, &now, m->map[i + 1]);
+            m->map[i + 1] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
             m->moved[i] = true;
             m->first_moved = m->first_moved < 0 ? i : m->first_moved;
         }
@@ -135,7 +90,7 @@ begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* c
     if (m->known) {
         r3d_lens_t before;
         lens_map(&m->camera, raster, quarter, NULL, &before);
-        reproject(&before, &now, m->map[0]);
+        m->map[0] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
         map_instances(m, raster, camera, quarter);
     }
     remember(m, raster, camera);
@@ -180,11 +135,11 @@ typedef struct {
 } row_map_t;
 
 static void
-row_map(const float a[3][4], float v, row_map_t* r) {
+row_map(const mat4f_t* a, float v, row_map_t* r) {
     for (int i = 0; i < 3; i++) {
-        r->u[i] = a[i][0];
-        r->at[i] = (a[i][1] * v) + a[i][2];
-        r->w[i] = a[i][3];
+        r->u[i] = a->m[i][0];
+        r->at[i] = (a->m[i][1] * v) + a->m[i][2];
+        r->w[i] = a->m[i][3];
     }
 }
 
@@ -211,7 +166,7 @@ resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t*
     row_map_t still;
     row_map_t own;
     tag_t own_tag = 0;
-    row_map(m->map[0], v, &still);
+    row_map(&m->map[0], v, &still);
     float u = 0.5F - m->center_x;
     for (int x = 0; x < width; x++, u += 1.0F) {
         const tag_t t = tag[x];
@@ -220,7 +175,7 @@ resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t*
             continue;
         }
         if (t != 0 && t != own_tag) {
-            row_map(m->map[t], v, &own);
+            row_map(&m->map[t], v, &own);
             own_tag = t;
         }
         out[x] = moved(t == 0 ? &still : &own, u, v, (float)depth[x] * to_w);

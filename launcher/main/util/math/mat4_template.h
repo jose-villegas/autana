@@ -35,6 +35,43 @@
         return out;                                                                                                    \
     }                                                                                                                  \
                                                                                                                        \
+    /* Both inputs have bottom row (0, 0, 0, 1); b is applied first. */                                                \
+    static inline P##_t P##_mul_affine(P##_t a, P##_t b) {                                                             \
+        P##_t out = P##_identity();                                                                                    \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            for (int c = 0; c < 4; c++) {                                                                              \
+                const T dot = OPS##_add(OPS##_add(OPS##_mul(a.m[r][0], b.m[0][c]), OPS##_mul(a.m[r][1], b.m[1][c])),   \
+                                        OPS##_mul(a.m[r][2], b.m[2][c]));                                              \
+                out.m[r][c] = c == 3 ? OPS##_add(dot, a.m[r][3]) : dot;                                                \
+            }                                                                                                          \
+        }                                                                                                              \
+        return out;                                                                                                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* The affine input's 3x3 part must be invertible in this number type. */                                          \
+    static inline P##_t P##_invert_affine(P##_t m) {                                                                   \
+        P##_t out = P##_identity();                                                                                    \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            for (int c = 0; c < 3; c++) {                                                                              \
+                const int r1 = (c + 1) % 3, r2 = (c + 2) % 3;                                                          \
+                const int c1 = (r + 1) % 3, c2 = (r + 2) % 3;                                                          \
+                out.m[r][c] = OPS##_sub(OPS##_mul(m.m[r1][c1], m.m[r2][c2]), OPS##_mul(m.m[r1][c2], m.m[r2][c1]));     \
+            }                                                                                                          \
+        }                                                                                                              \
+        const T det = OPS##_add(OPS##_add(OPS##_mul(m.m[0][0], out.m[0][0]), OPS##_mul(m.m[0][1], out.m[1][0])),       \
+                                OPS##_mul(m.m[0][2], out.m[2][0]));                                                    \
+        const T inv = OPS##_div(OPS##_one(), det);                                                                     \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            for (int c = 0; c < 3; c++) {                                                                              \
+                out.m[r][c] = OPS##_mul(out.m[r][c], inv);                                                             \
+            }                                                                                                          \
+            out.m[r][3] =                                                                                              \
+                OPS##_neg(OPS##_add(OPS##_add(OPS##_mul(out.m[r][0], m.m[0][3]), OPS##_mul(out.m[r][1], m.m[1][3])),   \
+                                    OPS##_mul(out.m[r][2], m.m[2][3])));                                               \
+        }                                                                                                              \
+        return out;                                                                                                    \
+    }                                                                                                                  \
+                                                                                                                       \
     /* M * p with w = 1, no perspective divide: for r in 0..2, */                                                      \
     /*   p'[r] = m[r][0]*px + m[r][1]*py + m[r][2]*pz + m[r][3]. `m` is read only. */                                  \
     static inline V##_t P##_apply(const P##_t* m, V##_t p) {                                                           \

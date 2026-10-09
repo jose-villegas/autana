@@ -87,7 +87,8 @@ suite or host tool include them.
 
 The types the line camera, the boot animation and the animation tracks share
 are `util/math/`'s, documented in [../math/README.md](../math/README.md); the
-raster's lens and cluster transform stay a 3x4 of their own.
+raster's lens and motion maps use `mat4f_t` affine operations with bottom row
+`(0, 0, 0, 1)`; per-vertex transforms use `mat4f_apply()`.
 
 ## One frame
 

@@ -375,7 +375,7 @@ test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift(void) {
 }
 
 static void
-test_fixed_matrix_apply_matches_float(void) {
+test_fixed_matrix_apply_and_affine_operations_match_float(void) {
     const mat4f_t mf = mat4f_from_trs((vec3f_t){1.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.4F, -0.3F, 0.2F}),
                                       (vec3f_t){2.0F, 1.0F, 0.5F});
     mat4x_t mx;
@@ -386,6 +386,14 @@ test_fixed_matrix_apply_matches_float(void) {
     }
     const vec3f_t p = {0.5F, 1.5F, -1.0F};
     assert_x_near_f(mat4f_apply(&mf, p), mat4x_apply(&mx, vec3x_from_vec3f(p)), 1e-3F);
+    const mat4x_t full = mat4x_mul(mx, mx), affine = mat4x_mul_affine(mx, mx);
+    const mat4x_t identity = mat4x_identity(), round_trip = mat4x_mul(mat4x_invert_affine(mx), mx);
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_EQUAL_INT32(full.m[r][c], affine.m[r][c]);
+            TEST_ASSERT_INT32_WITHIN(32, identity.m[r][c], round_trip.m[r][c]);
+        }
+    }
 }
 
 /* A swizzle family as rows of name and function, built by the template's own
@@ -490,7 +498,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_int16_arithmetic_and_conversion_saturate_at_the_int16_range);
     RUN_TEST(test_int32_dot_widens_to_int64);
     RUN_TEST(test_fixed_dot_fast_paths_floor_each_term_and_add_the_constant);
-    RUN_TEST(test_fixed_matrix_apply_matches_float);
+    RUN_TEST(test_fixed_matrix_apply_and_affine_operations_match_float);
     RUN_TEST(test_the_narrow_dot_is_a_plain_32_bit_sum_then_a_floor_shift);
     RUN_TEST(test_fixed_multiply_and_divide_round_ties_away_from_zero_in_both_signs);
     RUN_TEST(test_fixed_divide_handles_signs_saturation_and_the_most_negative_divisor);
