@@ -1,15 +1,19 @@
 """The catalogue selects shared owner files and keeps source-owned descriptions."""
 import pathlib
+import shlex
 import sys
 import tempfile
 import unittest
 from unittest import mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "launcher/tools/gen"))
-from shared_helpers import catalogue, update
+REPO = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO / "launcher/tools/gen"))
+from shared_helpers import CHECK, catalogue, update
 from c_comments import EXCLUDED
+from check_doc_generated import run_check
 from check_generated_files import generated_files
 from gate_tree import commit, write
+from generated_blocks import check_commands
 
 
 class SharedHelpers(unittest.TestCase):
@@ -115,6 +119,21 @@ class SharedHelpers(unittest.TestCase):
         self.assertEqual(1, update(self.root, check=True))
         self.assertEqual(before, page.read_bytes())
         self.assertNotIn(b"\n", before.replace(b"\r\n", b""))
+
+    def test_the_named_check_command_fails_a_stale_catalogue_and_writes_nothing(self):
+        # The command the marker names, run as the generated-document gate runs it.
+        owner = "engine/value.h"
+        write(self.root, owner, "/* Values. */\nint value(void);\n")
+        self.include(owner)
+        update(self.root)
+        page = self.root / "docs/Shared-Helpers.md"
+        self.assertEqual({"shared-helpers": CHECK}, check_commands(page.read_text(encoding="utf-8")))
+        command = f"{CHECK} --root {shlex.quote(self.root.as_posix())}"
+        self.assertIsNone(run_check(REPO, command))
+        page.write_text(page.read_text(encoding="utf-8").replace("Values.", "Hand edit."), encoding="utf-8")
+        before = page.read_bytes()
+        self.assertIsNotNone(run_check(REPO, command))
+        self.assertEqual(before, page.read_bytes())
 
 
 if __name__ == "__main__":

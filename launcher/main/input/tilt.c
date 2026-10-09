@@ -1,6 +1,6 @@
 #include "input/tilt.h"
 
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 #define Q 256 /* fixed-point scale for the stored vector */
 

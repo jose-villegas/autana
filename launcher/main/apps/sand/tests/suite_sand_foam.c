@@ -29,7 +29,7 @@
 #include "apps/sand/sand_paint_row.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 /* Water's foam gathers at crevices: curvature alone decides
  * (water_foams(), material_palette.c). Measured on sloshing water, a flat

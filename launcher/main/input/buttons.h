@@ -34,7 +34,7 @@
 
 #include <stdbool.h>
 
-#include "util/build/build_variant.h"
+#include "core/build_variant.h"
 
 /* One button's state for the current frame. `pressed`/`released` are
  * edges, true only on the frame the transition happened; `down` is the

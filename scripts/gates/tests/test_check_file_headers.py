@@ -60,7 +60,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_every_folder_under_the_firmware_is_in_scope_without_being_listed(self):
         for path in ("launcher/main/new_layer/x.c", "launcher/main/apps/sand/tools/host.c",
-                     "launcher/main/util/runtime/x.h", "launcher/main/main.c"):
+                     "launcher/main/core/x.h", "launcher/main/main.c"):
             with self.subTest(path=path):
                 self.assertEqual([line.split(":")[0] for line in self.problems({path: "int x;\n"})], [path])
 

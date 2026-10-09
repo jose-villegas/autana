@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "math/linear/vec3f.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -52,3 +53,7 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
+
+/* A sphere holding every vertex, in model units: centred on the box of them
+ * (the root node's bounds), its radius the furthest vertex from that centre. */
+void r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float* radius);

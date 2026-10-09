@@ -7,7 +7,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=ui_dropdown
 scene_sources="
-main/util/runtime/tune.c
+main/services/tune.c
 main/ui/ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c

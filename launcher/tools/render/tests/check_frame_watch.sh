@@ -17,7 +17,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=frame_watch_fixture
 scene_sources="
-main/util/runtime/tune.c
+main/services/tune.c
 tools/render/tests/frame_watch_fixture.c
 "
 scene_renders=""

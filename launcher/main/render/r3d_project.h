@@ -16,9 +16,9 @@
 #include <math.h>
 #include <stdbool.h>
 
-#include "util/math/mat4f.h"
-#include "util/math/vec3f.h"
-#include "util/scalar/mathf.h"
+#include "math/linear/mat4f.h"
+#include "math/linear/vec3f.h"
+#include "math/scalar/mathf.h"
 
 /* A small fraction of one model unit: a caller with its own physical unit
  * (a meter, a grid cell) is free to pick a near_z of its own instead. */

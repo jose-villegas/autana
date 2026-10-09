@@ -30,6 +30,8 @@
 #include "esp_log.h"
 
 #include "board/board.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gfx/draw/gfx_draw.h"
@@ -43,8 +45,6 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 #include "panel_clock_pin.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "device_tests";
 

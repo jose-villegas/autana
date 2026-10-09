@@ -6,7 +6,7 @@ import unittest
 import subprocess
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
-from generated_blocks import apply_tables, blocks, digest, replace_block, verify
+from generated_blocks import apply_tables, blocks, check_commands, digest, replace_block, verify
 
 
 class GeneratedBlocksTests(unittest.TestCase):
@@ -29,6 +29,21 @@ class GeneratedBlocksTests(unittest.TestCase):
         self.assertTrue(verify(text.replace("| 1 |", "| 2 |")))
         self.assertTrue(verify(text.replace(f" sha256={digest(body)}", "")))
 
+    def test_the_writer_s_check_command_replaces_the_digest_and_regenerates_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "doc.md"
+            path.write_text("<!-- generated: score -->\nold\n<!-- /generated: score -->\n", encoding="utf-8")
+            self.assertTrue(replace_block(path, "score", "| 2 |\n", command="python gen.py --check"))
+            text = path.read_text(encoding="utf-8")
+            marker = "<!-- generated: score check: python gen.py --check -->"
+            self.assertEqual(text, f"{marker}\n| 2 |\n<!-- /generated: score -->\n")
+            self.assertFalse(replace_block(path, "score", "| 2 |\n", check=True, command="python gen.py --check"))
+            self.assertEqual(check_commands(text), {"score": "python gen.py --check"})
+            self.assertEqual(verify(text.replace("| 2 |", "| 3 |")), [])
+            # A writer without a command records the digest again.
+            self.assertTrue(replace_block(path, "score", "| 2 |\n"))
+            self.assertEqual(check_commands(path.read_text(encoding="utf-8")), {})
+
     def test_invalid_markers_fail(self):
         for text in (
             "<!-- generated: a -->\n",
@@ -36,6 +51,8 @@ class GeneratedBlocksTests(unittest.TestCase):
             "<!-- generated: a -->\n<!-- /generated: b -->\n",
             "<!-- generated: a -->\n<!-- generated: b -->\n<!-- /generated: b -->\n<!-- /generated: a -->\n",
             "<!-- generated: a bad-hash -->\n<!-- /generated: a -->\n",
+            "<!-- generated: a check: -->\n<!-- /generated: a -->\n",
+            "<!-- generated: a -->\n<!-- /generated: a check: python gen.py -->\n",
             "<!-- generated: a -->\n<!-- /generated: a -->\n" * 2,
         ):
             with self.subTest(text=text), self.assertRaises(ValueError):

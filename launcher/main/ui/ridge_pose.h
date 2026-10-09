@@ -4,8 +4,8 @@
  * point lies along it.
  *
  * Pure: time, gravity and every threshold are passed in rather than read
- * from a tunable, so the maths runs the same off the device. Poses are Q14
- * unit vectors in Q14.
+ * from a tunable, so the maths runs the same off the device. Poses are unit
+ * vectors with RIDGE_POSE_SHIFT fractional bits.
  */
 #pragma once
 
@@ -13,9 +13,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
-#define RIDGE_POSE_ONE (1 << 14)
+#define RIDGE_POSE_SHIFT 14
+#define RIDGE_POSE_ONE   (1 << RIDGE_POSE_SHIFT)
 
 typedef struct {
     int32_t down_x;

@@ -5,22 +5,23 @@
  * device turns the line lags true level, the ridge is for that moment a
  * slope, and the wave is pushed down it and coasts on after.
  *
- * Pure: time, the slope and how much of each are passed in, heights come
- * out. Heights are Q4; phases are trig.h's, 65536 to
- * the turn.
+ * Pure: time, the slope and how much of each go in; heights come out in
+ * the caller's unit, as wave_height is. Phases are trig.h's; a slope of 1.0
+ * is RIDGE_POSE_ONE.
  */
 #pragma once
 
 #include <stdint.h>
 
-#include "util/scalar/trig.h"
+#include "math/scalar/trig.h"
+#include "ui/ridge_pose.h"
 
 /* How much of each. Passed in rather than compiled in because these are
  * judged by eye, on the device, and a caller may be changing them live. */
 typedef struct {
     int breath_ms;    /* one breath */
     int breath_depth; /* how far toward the smoothed shape, out of 256 */
-    int wave_height_q4;
+    int wave_height;
     int wave_length;       /* columns */
     int wave_passes_in_ms; /* how long one wave takes to pass a point, unpushed */
     int push;              /* Q8 phase per ms of momentum a slope of 1.0 adds per ms */
@@ -49,7 +50,7 @@ ridge_motion_advance(ridge_motion_t* motion, const ridge_motion_params_t* params
     motion->breath_ms = (motion->breath_ms + dt_ms) % breath_ms;
 
     int64_t momentum = motion->momentum_q8;
-    momentum += (int64_t)slope_q14 * params->push * (int64_t)dt_ms / 16384;
+    momentum += (int64_t)slope_q14 * params->push * (int64_t)dt_ms / RIDGE_POSE_ONE;
     /* A share of a small momentum rounds to nothing, and the wave would run
      * a little fast for ever after one tilt: it always loses at least 1. */
     int64_t lost = momentum * (int64_t)dt_ms / (params->coast_ms > 0 ? params->coast_ms : 1);
@@ -62,7 +63,7 @@ ridge_motion_advance(ridge_motion_t* motion, const ridge_motion_params_t* params
     motion->momentum_q8 = (int32_t)momentum;
 
     const int64_t passes_in_ms = params->wave_passes_in_ms > 0 ? params->wave_passes_in_ms : 1;
-    const int64_t own_speed_q8 = ((int64_t)65536 << 8) / passes_in_ms;
+    const int64_t own_speed_q8 = ((int64_t)TRIG_TURN << 8) / passes_in_ms;
     motion->wave_phase_q8 += (uint32_t)((own_speed_q8 + momentum) * (int64_t)dt_ms);
 }
 
@@ -83,17 +84,17 @@ ridge_motion_ease_in(uint32_t elapsed_ms, uint32_t over_ms) {
 static inline int
 ridge_motion_breath(const ridge_motion_t* motion, const ridge_motion_params_t* params) {
     const uint64_t breath_ms = params->breath_ms > 0 ? (uint64_t)params->breath_ms : 1;
-    const uint16_t phase = (uint16_t)((uint64_t)motion->breath_ms * 65536 / breath_ms);
-    const int32_t out = 32767 - trig_cos(phase); /* 0 .. 65534 */
-    return (int)((int64_t)out * params->breath_depth / 65534);
+    const uint16_t phase = (uint16_t)((uint64_t)motion->breath_ms * TRIG_TURN / breath_ms);
+    const int32_t out = TRIG_SIN_MAX - trig_cos(phase); /* 0 .. 2 * TRIG_SIN_MAX */
+    return (int)((int64_t)out * params->breath_depth / (2 * TRIG_SIN_MAX));
 }
 
 static inline int
 ridge_motion_wave(const ridge_motion_t* motion, const ridge_motion_params_t* params, int x) {
     const uint32_t length = params->wave_length > 0 ? (uint32_t)params->wave_length : 1;
-    const uint32_t along = (uint32_t)x * (65536U / length);
+    const uint32_t along = (uint32_t)x * (TRIG_TURN / length);
     const uint16_t phase = (uint16_t)((motion->wave_phase_q8 >> 8) - along);
-    return (int)(trig_sin(phase) * params->wave_height_q4 / 32767);
+    return (int)(trig_sin(phase) * params->wave_height / TRIG_SIN_MAX);
 }
 
 static inline int16_t

@@ -9,7 +9,7 @@
 #include <stdbool.h>
 
 #include "input/input.h"
-#include "util/math/vec2i.h"
+#include "math/linear/vec2i.h"
 
 /* Starts the touch and button polling tasks and the motion sensor. A missing
  * sensor is logged and leaves imu_read() reporting nothing. */

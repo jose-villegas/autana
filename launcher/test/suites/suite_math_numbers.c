@@ -1,5 +1,5 @@
 /*
- * Portable suite: util/math/'s number types. The same operations run on
+ * Portable suite: math/linear/'s number types. The same operations run on
  * float, int32, int16 and Q16.16 vectors, and the fixed-point rotation maths
  * on Q16.16, and each is judged against the float result within its own
  * precision. Conversions round-trip, and overflow saturates where the
@@ -15,12 +15,12 @@
 #include "transform_cache.h"
 #include "unity.h"
 
-#include "util/math/transformf.h"
-#include "util/math/transformx.h"
-#include "util/math/vec_convert.h"
-#include "util/scalar/mathf.h"
+#include "math/linear/transformf.h"
+#include "math/linear/transformx.h"
+#include "math/linear/vec_convert.h"
+#include "math/scalar/mathf.h"
 
-#define Q           65536.0F
+#define Q           ((float)MATHX_ONE)
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
  * less, so rotation results are compared at this. */
 #define FIXED_SLACK 2e-3F
@@ -178,7 +178,7 @@ test_fixed_point_overflow_saturates_and_divide_by_zero_follows_the_sign(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_div(-MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(0, mathx_div(0, 0));
-    TEST_ASSERT_EQUAL_INT32(-65536, fx_div_round(INT32_MAX, 1, MATHX_SHIFT));
+    TEST_ASSERT_EQUAL_INT32(-MATHX_ONE, fx_div_round(INT32_MAX, 1, MATHX_SHIFT));
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_div(INT32_MAX, 1));
     TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE / 2, mathx_div(3 * MATHX_ONE, 2 * MATHX_ONE));
     TEST_ASSERT_EQUAL_INT32(3 * MATHX_ONE, mathx_sqrt(9 * MATHX_ONE));

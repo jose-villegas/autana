@@ -1,5 +1,5 @@
 /*
- * render_watch, the frame watch (util/runtime/frame_watch.h) over a host render:
+ * render_watch, the frame watch (core/frame_watch.h) over a host render:
  * every scene frame's allocations, frees and stdout writes, judged by the
  * same rule the board uses, so a scene whose steady state allocates or
  * prints fails its render.
@@ -15,7 +15,7 @@
 
 #include <stdbool.h>
 
-#include "util/runtime/frame_watch.h"
+#include "core/frame_watch.h"
 
 /* `binary` is named in each warning's addr2line hint. A `console_path`
  * sends stdout into that file until render_watch_finish(); NULL leaves

@@ -1,2 +1,2 @@
-source = "tour.glb"
+source = "tour.keys.toml"
 animation = "tour"

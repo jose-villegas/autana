@@ -1,7 +1,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/runtime/build_id.h"
+#include "services/build_id.h"
 
 static void
 test_line_has_fixed_prefix(void) {

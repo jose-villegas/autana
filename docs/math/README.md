@@ -1,8 +1,8 @@
 # Math: vectors, rotations, matrices, transforms
 
-`launcher/main/util/math/` is the firmware's vector, quaternion, matrix and
+`launcher/main/math/linear/` is the firmware's vector, quaternion, matrix and
 transform library, built on the per-type scalar operations in
-`launcher/main/util/scalar/`: header-only,
+`launcher/main/math/scalar/`: header-only,
 static inline, ESP-IDF-free, so a host suite checks every line. Four families
 (vector, quaternion, matrix, transform), each written once as a template
 (`math_template.h` says how) and instantiated per number type. A type's name is
@@ -26,7 +26,7 @@ and wraps the sum (`mathx_dot3c`), which is a multiply and a shift a term
 instead of a 64-bit sum, for coordinates kept inside +-32768. `mathx_dot3_narrow`
 is three plain 32-bit products and a shift for a caller that proves the sum fits
 an int32. `x` divide by zero saturates by the numerator's sign (0 / 0 is 0).
-Fixed-point angles are **turns**, 65536 to a turn, so an eighth of a turn is
+Fixed-point angles are **turns**, `MATHX_ONE` to a turn, so an eighth of a turn is
 `MATHX_ONE / 8`; float angles are radians (`MATH_PI`, `MATH_TAU`).
 
 ## Conventions
@@ -178,14 +178,14 @@ The scalar steps behind them, in `vec_convert.h`:
 | `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
 | `mathx_to_f(v)` | Q16.16 to float |
 
-Scalar operations live in `util/scalar/` (`mathf.h`, `mathi.h`, `maths.h`, `mathx.h`)
+Scalar operations live in `math/scalar/` (`mathf.h`, `mathi.h`, `maths.h`, `mathx.h`)
 (`mathx_add`, `mathx_mul`, `mathx_div`, `mathx_sqrt`, `mathx_sin_turns`, ...);
 a family names only the ones it uses.
 
 ## Examples
 
 ```c
-#include "util/math/transformf.h"
+#include "math/linear/transformf.h"
 
 transformf_t body = TRANSFORMF_IDENTITY;
 transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});

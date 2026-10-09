@@ -2,9 +2,10 @@
 
 #include <math.h>
 
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
+#include "math/scalar/mathx.h"
 
-#define ONE 65536.0f
+#define ONE ((float)MATHX_ONE)
 
 static int32_t
 fixed(float v) {
@@ -30,7 +31,7 @@ touch_calib_from_fit(touch_calib_fit_t fit) {
 
 static int
 round_fixed(int64_t v) {
-    return (int)((v + 32768) >> 16);
+    return (int)((v + MATHX_ONE / 2) >> MATHX_SHIFT);
 }
 
 void

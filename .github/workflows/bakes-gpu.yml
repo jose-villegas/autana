@@ -1,0 +1,64 @@
+name: Bakes GPU
+
+# The fits a branch's launcher/bakes.lock lacks (launcher/tools/bake/bake.py),
+# made on the self-hosted CUDA runner, the maintainer's machine. Started only
+# by hand on the branch, so no pull request's code reaches that machine on its
+# own; then `bake.py lock --from-run N` with this run. The fit references stay
+# in the runner's cache. `again` re-makes fits the lock already has, to measure
+# a fit against its locked bytes; those are never locked from this run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Space-separated outputs to fit (all missing fits when empty)'
+        required: false
+        default: ''
+      again:
+        description: 'Fit them even when the lock has them'
+        type: boolean
+        default: false
+
+concurrency:
+  group: bakes-gpu
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gpu:
+    name: Bake missing fits
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 600
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch mesh source files
+        run: git lfs pull --exclude=""
+
+      - name: Initialize only meshoptimizer
+        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+
+      - name: Install the r3d requirements into the GPU environment
+        run: |
+          "$HOME/gpu/env/bin/python" -m pip install -r launcher/tools/r3d/requirements.txt
+
+      - name: Bake
+        env:
+          ONLY: ${{ inputs.only }}
+          AGAIN: ${{ inputs.again }}
+        run: |
+          args=(--kind fit --out "$RUNNER_TEMP/bakes")
+          for name in $ONLY; do args+=(--only "$name"); done
+          if [ "$AGAIN" = true ]; then args+=(--again); fi
+          sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake "${args[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bakes-gpu
+          path: ${{ runner.temp }}/bakes
+          if-no-files-found: ignore

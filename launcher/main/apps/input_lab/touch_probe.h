@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #include "input/input.h"
-#include "util/scalar/rng.h"
+#include "math/scalar/rng.h"
 
 typedef struct {
     int x, y; /* top-left */

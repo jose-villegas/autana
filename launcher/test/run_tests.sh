@@ -131,9 +131,9 @@ $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
 $MAIN_DIR/selftest/post_layout.c
-$MAIN_DIR/util/runtime/job.c
-$MAIN_DIR/util/runtime/memory.c
-$MAIN_DIR/util/runtime/settings_policy.c
+$MAIN_DIR/core/job.c
+$MAIN_DIR/core/memory.c
+$MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/asset/asset_pack.c
@@ -156,9 +156,11 @@ $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
-$MAIN_DIR/util/motion/orbit_motion.c
-$MAIN_DIR/util/runtime/tune.c
+$MAIN_DIR/math/motion/orbit_motion.c
+$MAIN_DIR/input/orbit_motion_touch.c
+$MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
+$MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/ui_bridge.c
@@ -353,7 +355,7 @@ LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
 BUILD_N=$(native "$BUILD_DIR")
 COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -pthread -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the

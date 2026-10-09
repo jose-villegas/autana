@@ -8,7 +8,7 @@ The rule holds launcher/main/main.c, which starts the platform, and every
 file under launcher/main/shell/, which runs the frame loop, to one standard.
 The chip's vendor code (ESP-IDF, FreeRTOS, NVS, the board support package)
 sits behind a module of this firmware's own (input/, display/,
-util/runtime/timing.h, util/runtime/settings.h, util/runtime/memory.h). A
+core/timing.h, services/settings.h, core/memory.h). A
 vendor call left in the shell is a second place that knows the chip, so this fails on
 
   - an include of an esp_*, nvs*, freertos/, bsp/, driver/, hal/, soc/ or
@@ -23,9 +23,9 @@ code. There is no exemption list: a reason for the shell to touch the vendor
 code is a missing module, so add one.
 
 The vendor timer and heap have owners: esp_timer_* belongs to
-util/runtime/timing, and heap_caps_* and MALLOC_CAP_* to util/runtime/memory.
+core/timing, and heap_caps_* and MALLOC_CAP_* to core/memory.
 In the firmware, its suites and its tools, a name of either is code only in
-its owner's own files (util/runtime/timing.* and util/runtime/timing_*.*, the
+its owner's own files (core/timing.* and core/timing_*.*, the
 same for memory) or in a driver: anything under board/, or a *_device.c in
 launcher/main/ outside a tests/ folder, where the name means a suite that runs
 on the board. launcher/test/ outside suites/ (the host heap model, the stubs,
@@ -97,7 +97,7 @@ def problems(root="."):
 OWNED_NAME_RE = re.compile(r"\b(esp_timer_|heap_caps_|MALLOC_CAP_)\w*")
 OWNER_OF = {"esp_timer_": "timing", "heap_caps_": "memory", "MALLOC_CAP_": "memory"}
 CHECKED = ("launcher/main/", "launcher/test/suites/", "launcher/tools/")
-UTIL = "launcher/main/util/runtime/"
+CORE = "launcher/main/core/"
 
 
 def may_use(rel, prefix):
@@ -107,7 +107,7 @@ def may_use(rel, prefix):
         return True
     if rel.startswith("launcher/main/") and rel.endswith("_device.c") and "/tests/" not in rel:
         return True
-    if not rel.startswith(UTIL) or "/" in rel[len(UTIL):]:
+    if not rel.startswith(CORE) or "/" in rel[len(CORE):]:
         return False
     module = OWNER_OF[prefix]
     stem = pathlib.PurePosixPath(rel).stem
@@ -127,7 +127,7 @@ def owner_problems(root="."):
             for name in dict.fromkeys(m.group(0) for m in OWNED_NAME_RE.finditer(line)):
                 prefix = OWNED_NAME_RE.match(name).group(1)
                 if not may_use(rel, prefix):
-                    found.append(f"{rel}:{number}: uses {name}; only util/runtime/{OWNER_OF[prefix]} and a driver may")
+                    found.append(f"{rel}:{number}: uses {name}; only core/{OWNER_OF[prefix]} and a driver may")
     return found
 
 
@@ -142,7 +142,7 @@ def main(argv):
     owned = owner_problems(".")
     for line in owned:
         print(line)
-    print(f"{len(owned)} clock or heap use(s) outside util/runtime/timing, util/runtime/memory and the drivers")
+    print(f"{len(owned)} clock or heap use(s) outside core/timing, core/memory and the drivers")
     return 1 if found or owned else 0
 
 

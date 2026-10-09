@@ -4,11 +4,11 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "math/scalar/mathf.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster.h"
 #include "render/raster_show.h"
-#include "util/scalar/mathf.h"
 
 /* While drawing, the attachment holds each pixel's tag: 0 for anything
  * that did not move, i + 1 for instance i that did. Resolving turns the tag

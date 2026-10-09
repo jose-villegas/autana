@@ -205,7 +205,35 @@ test_a_swipe_starting_mid_screen_does_not_trigger_the_right_edge(void) {
 /* suite */
 
 void
+test_each_edge_is_opposite_the_one_across_and_back(void) {
+    const gesture_edge_t edges[] = {GESTURE_EDGE_TOP, GESTURE_EDGE_BOTTOM, GESTURE_EDGE_LEFT, GESTURE_EDGE_RIGHT};
+    TEST_ASSERT_EQUAL_INT(GESTURE_EDGE_TOP, gesture_opposite_edge(GESTURE_EDGE_BOTTOM));
+    TEST_ASSERT_EQUAL_INT(GESTURE_EDGE_RIGHT, gesture_opposite_edge(GESTURE_EDGE_LEFT));
+    for (unsigned i = 0; i < sizeof(edges) / sizeof(edges[0]); i++) {
+        TEST_ASSERT_NOT_EQUAL_INT(edges[i], gesture_opposite_edge(edges[i]));
+        TEST_ASSERT_EQUAL_INT(edges[i], gesture_opposite_edge(gesture_opposite_edge(edges[i])));
+    }
+}
+
+void
+test_the_edge_zone_reaches_its_depth_from_each_edge_and_no_further(void) {
+    const int mid_x = SCREEN_W / 2;
+    const int mid_y = SCREEN_H / 2;
+    const int d = GESTURE_HOME_ZONE_DEPTH;
+    TEST_ASSERT_TRUE(gesture_in_edge_zone(mid_x, SCREEN_H - d, GESTURE_EDGE_BOTTOM, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_FALSE(gesture_in_edge_zone(mid_x, SCREEN_H - d - 1, GESTURE_EDGE_BOTTOM, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_TRUE(gesture_in_edge_zone(mid_x, d, GESTURE_EDGE_TOP, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_FALSE(gesture_in_edge_zone(mid_x, d + 1, GESTURE_EDGE_TOP, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_TRUE(gesture_in_edge_zone(d, mid_y, GESTURE_EDGE_LEFT, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_FALSE(gesture_in_edge_zone(d + 1, mid_y, GESTURE_EDGE_LEFT, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_TRUE(gesture_in_edge_zone(SCREEN_W - d, mid_y, GESTURE_EDGE_RIGHT, SCREEN_W, SCREEN_H));
+    TEST_ASSERT_FALSE(gesture_in_edge_zone(SCREEN_W - d - 1, mid_y, GESTURE_EDGE_RIGHT, SCREEN_W, SCREEN_H));
+}
+
+void
 run_gesture_suite(void) {
+    RUN_TEST(test_each_edge_is_opposite_the_one_across_and_back);
+    RUN_TEST(test_the_edge_zone_reaches_its_depth_from_each_edge_and_no_further);
 
     RUN_TEST(test_swipe_up_from_the_bottom_edge_triggers);
     RUN_TEST(test_it_triggers_anywhere_along_the_bottom_edge);

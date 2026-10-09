@@ -8,7 +8,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=brush_screen
 scene_includes="main/apps/sand"
 scene_sources="
-main/util/runtime/tune.c
+main/services/tune.c
 main/apps/sand/ui/brush_screen.c
 main/apps/sand/material.c
 main/apps/sand/material_palette.c

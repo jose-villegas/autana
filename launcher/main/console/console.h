@@ -29,8 +29,8 @@
 /* Starts the background task that listens on the console for a verb line.
  * Call once, from app_main(), the same place and pattern as
  * touch_start()/buttons_start(): a small dedicated task the shell never
- * talks to directly, a verb's own result read back out through its own
- * accessor (console_screenshot_take_request(), console_runsuite_take_request()). */
+ * talks to directly; the frame-loop verbs' requests reach it through
+ * console_frame_take(). */
 void console_start(void);
 
 /* Sends `prefix` then `payload` then a newline, each through the console

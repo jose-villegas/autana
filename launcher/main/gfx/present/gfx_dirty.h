@@ -17,9 +17,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "core/build_variant.h"
 #include "gfx/gfx.h"
-#include "util/build/build_variant.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 /* The frame is sent in full-width bands. Full width matters: it makes each
  * band a contiguous run inside the framebuffer, so one memcpy moves it into

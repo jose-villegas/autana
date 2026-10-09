@@ -10,6 +10,9 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
+#include "core/frame_cost.h"
+#include "core/frame_watch.h"
+#include "core/memory.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
@@ -30,9 +33,6 @@
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/frame_watch.h"
-#include "util/runtime/memory.h"
 
 #include "esp_log.h"
 
@@ -65,17 +65,9 @@ shell_exit_edge_for_quarter(int quarter) {
     return edge_for_quarter[quarter];
 }
 
-/* Control Center opens from the content's logical top, the edge opposite
- * the one that exits. */
-static gesture_edge_t
-opposite_edge(gesture_edge_t edge) {
-    switch (edge) {
-        case GESTURE_EDGE_TOP: return GESTURE_EDGE_BOTTOM;
-        case GESTURE_EDGE_BOTTOM: return GESTURE_EDGE_TOP;
-        case GESTURE_EDGE_LEFT: return GESTURE_EDGE_RIGHT;
-        case GESTURE_EDGE_RIGHT: return GESTURE_EDGE_LEFT;
-    }
-    return edge;
+gesture_edge_t
+shell_home_edge(void) {
+    return shell_exit_edge_for_quarter(display_quarter_now());
 }
 
 /* chrome */
@@ -294,7 +286,8 @@ feed_launcher_gravity(uint32_t dt_ms) {
 
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
-    if (system_navigation_step(&system_navigation, input, opposite_edge(exit_edge), exit_edge, GFX_WIDTH, GFX_HEIGHT)) {
+    if (system_navigation_step(&system_navigation, input, gesture_opposite_edge(exit_edge), exit_edge, GFX_WIDTH,
+                               GFX_HEIGHT)) {
         gfx_request_full_redraw();
     }
     if (system_navigation.screen == SYSTEM_SCREEN_CONTROL_CENTER) {

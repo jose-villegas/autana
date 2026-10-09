@@ -18,7 +18,7 @@
 static const ridge_motion_params_t params = {
     .breath_ms = 9000,
     .breath_depth = 200,
-    .wave_height_q4 = 40,
+    .wave_height = 40,
     .wave_length = 170,
     .wave_passes_in_ms = 2600,
     .push = 96,
@@ -26,7 +26,7 @@ static const ridge_motion_params_t params = {
 };
 
 /* Where the wave crosses zero going down, in the first wavelength. Its
- * crest is a plateau a dozen columns wide once rounded to whole Q4, and the
+ * crest is a plateau a dozen columns wide once rounded to whole units, and the
  * first of those jumps about; a crossing does not. */
 static int
 crest_column(const ridge_motion_t* motion) {
@@ -94,7 +94,7 @@ test_the_wave_stays_within_its_height_and_is_one_length_long(void) {
     ridge_motion_advance(&motion, &params, 777, 0);
     for (int x = 0; x < COLUMNS; x++) {
         const int h = ridge_motion_wave(&motion, &params, x);
-        TEST_ASSERT_TRUE(h >= -params.wave_height_q4 && h <= params.wave_height_q4);
+        TEST_ASSERT_TRUE(h >= -params.wave_height && h <= params.wave_height);
     }
     TEST_ASSERT_INT_WITHIN(2, ridge_motion_wave(&motion, &params, 20),
                            ridge_motion_wave(&motion, &params, 20 + params.wave_length));
@@ -114,7 +114,7 @@ test_a_slope_pushes_the_wave_and_it_coasts_after(void) {
     ridge_motion_t left_alone = {0};
     const int start = crest_column(&pushed);
     for (int frame = 0; frame < 12; frame++) {
-        ridge_motion_advance(&pushed, &params, 16, 8192);
+        ridge_motion_advance(&pushed, &params, 16, RIDGE_POSE_ONE / 2);
         ridge_motion_advance(&left_alone, &params, 16, 0);
     }
     TEST_ASSERT_GREATER_THAN_INT(0, pushed.momentum_q8);
@@ -134,10 +134,10 @@ static void
 test_a_slope_the_other_way_can_turn_the_wave_back(void) {
     ridge_motion_t motion = {0};
     for (int frame = 0; frame < 60; frame++) {
-        ridge_motion_advance(&motion, &params, 16, -16384);
+        ridge_motion_advance(&motion, &params, 16, -RIDGE_POSE_ONE);
     }
     const int before = crest_column(&motion);
-    ridge_motion_advance(&motion, &params, 100, -16384);
+    ridge_motion_advance(&motion, &params, 100, -RIDGE_POSE_ONE);
     TEST_ASSERT_LESS_THAN_INT(0, crest_travel(before, crest_column(&motion)));
 }
 
@@ -145,7 +145,7 @@ static void
 test_momentum_is_bounded_however_long_the_slope_lasts(void) {
     ridge_motion_t motion = {0};
     for (int frame = 0; frame < 5000; frame++) {
-        ridge_motion_advance(&motion, &params, 16, 16384);
+        ridge_motion_advance(&motion, &params, 16, RIDGE_POSE_ONE);
         TEST_ASSERT_TRUE(motion.momentum_q8 <= RIDGE_SPEED_MAX);
     }
 }

@@ -26,6 +26,9 @@
 
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
+#include "core/frame_cost.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
 #include "render/context/render_context.h"
 #include "render/r3d.h"
@@ -35,9 +38,6 @@
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 #include "sponza_suite.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "scale_perf";
 

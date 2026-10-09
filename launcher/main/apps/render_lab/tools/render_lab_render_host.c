@@ -7,7 +7,8 @@
  * app_*.c is excluded from the host test runner as hardware-facing, but it
  * asks nothing of the board, so this links the real app_registry.c - its
  * own APP_REGISTER() constructor lands the one app that runs here - and
- * only display_quarter_now() below stands in for the shell itself.
+ * only display_quarter_now() and shell_home_edge() below stand in for the
+ * shell itself.
  */
 
 #include <stdbool.h>
@@ -26,9 +27,9 @@
 #include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
+#include "services/tune.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/runtime/tune.h"
 
 /* The band ring keeps no retained frame for render_host.c to read back, so
  * setup() asks for the full-framebuffer layout. */
@@ -135,6 +136,12 @@ options(int argc, char** argv) {
 int
 display_quarter_now(void) {
     return shell_quarter;
+}
+
+/* No finger touches a host render, so no touch ever lands near this edge. */
+gesture_edge_t
+shell_home_edge(void) {
+    return GESTURE_EDGE_BOTTOM;
 }
 
 static bool
