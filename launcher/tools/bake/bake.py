@@ -2,7 +2,7 @@
 """Cached bakes: the meshes a pack needs, named by a digest of what makes them.
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit]
-    python launcher/tools/bake/bake.py bake [PATH ...] [--kind mesh|fit] [--out DIR] [--cache DIR]
+    python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -18,7 +18,9 @@ byte-reproducible across machines and a fit not even on one.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies what it made
-there, the folder a CI run uploads. `lock` drops the rows nothing needs;
+there, the folder a CI run uploads; `--only` limits it to the named outputs and
+`--again` re-makes them even when locked, to compare a new make with the lock
+(the lock keeps its row). `lock` drops the rows nothing needs;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written, so every locked file can be published; `--seed`
 locks the meshes in the tree as they are. `check` fails when LOCK lacks a
@@ -490,7 +492,7 @@ def bake_again(bake):
         return ("an export needs Blender: push, the Bakes check exports it on the pull request; then "
                 "bake.py lock --from-run N with that run")
     if bake.kind == "fit":
-        return ("a fit needs the CUDA GPU: run the Bakes workflow on this branch with the GPU job, then "
+        return ("a fit needs the CUDA GPU: run the Bakes GPU workflow on this branch, then "
                 "bake.py lock --from-run N with that run")
     return "push: the Bakes check bakes it on the pull request; then bake.py lock --from-run N with that run"
 
@@ -647,6 +649,8 @@ def main(argv=None):
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
+    parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
+    parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_args(argv)
     from r3d.build_pack import DEFAULT_SEARCH
@@ -663,11 +667,20 @@ def main(argv=None):
         elif args.command == "bake":
             from bake import produce
 
-            wanted = sorted((bake for bake in found if bake.key not in lock and args.kind in (None, bake.kind)),
+            wanted = sorted((bake for bake in found if (args.again or bake.key not in lock)
+                             and args.kind in (None, bake.kind) and (not args.only or bake.output in args.only)),
                             key=lambda bake: KINDS.index(bake.kind))
-            rows = [produce.made(bake.key, cache) or produce.produce(bake, cache, lock, args.blender) for bake in wanted]
+            unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
+            if unknown:
+                parser.error(f"--only: no bake makes {', '.join(unknown)}")
+            rows = [(None if args.again else produce.made(bake.key, cache)) or produce.produce(bake, cache, lock, args.blender)
+                    for bake in wanted]
             for row in rows:
-                print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}")
+                locked = lock.get(row["key"])
+                versus = "" if locked is None else (
+                    "; the same bytes as the lock" if locked["sha256"] == row["sha256"]
+                    else f"; differs from the lock's {locked['sha256']}, which keeps its row")
+                print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}{versus}")
             if args.out:
                 produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":

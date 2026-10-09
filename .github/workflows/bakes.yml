@@ -4,9 +4,8 @@ name: Bakes
 # job bakes every mesh launcher/bakes.lock has no row for and uploads the
 # files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A fit needs
-# the CUDA GPU on the self-hosted runner: run this workflow on the branch by
-# hand (workflow_dispatch), which also bakes the meshes, and lock from that
-# run. On main, publish uploads each locked file the `bakes` release lacks,
+# the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it, started by
+# hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
 # taking it from the run that made it. No branch writes the release.
 
 on:
@@ -19,9 +18,9 @@ concurrency:
   group: bakes-${{ github.ref }}
   cancel-in-progress: false
 
+# Read-only by default: the bake and lock jobs run the pull request's own code.
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 jobs:
   cpu:
@@ -82,37 +81,6 @@ jobs:
           name: bakes-cpu
           path: ${{ runner.temp }}/bakes
 
-  gpu:
-    name: Bake missing fits
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, linux, gpu]
-    timeout-minutes: 600
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Fetch mesh source files
-        run: git lfs pull --exclude=""
-
-      - name: Initialize only meshoptimizer
-        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
-
-      - name: Install the r3d requirements into the GPU environment
-        run: |
-          "$HOME/gpu/env/bin/python" -m pip install -r launcher/tools/r3d/requirements.txt
-
-      # The runner's own cache keeps the fit references between runs; they never leave it.
-      - name: Bake
-        run: sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake --kind fit --out "$RUNNER_TEMP/bakes"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bakes-gpu
-          path: ${{ runner.temp }}/bakes
-          if-no-files-found: ignore
-
   lock:
     name: Lock is current
     if: github.event_name == 'pull_request'
@@ -132,6 +100,9 @@ jobs:
     name: Publish locked bakes
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
