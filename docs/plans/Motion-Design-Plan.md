@@ -15,7 +15,7 @@ change as little of the screen as possible per frame.
 
 | Fact | Value | Source |
 |---|---|---|
-| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | device present tests in `launcher/test/suites/suite_gfx.c` |
+| Full-frame present | under the `full-frame present` ceiling in `launcher/test/suites/suite_gfx.c` (80 MHz) | device present tests |
 | Fixed cost per panel transaction | about 118 us | device tests in `launcher/test/suites/suite_gfx.c` |
 | Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | `docs/notes/Display-and-Rendering.md` |
 | PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | [Board and Memory](../notes/Board-and-Memory.md#psram-throughput) |

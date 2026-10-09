@@ -35,7 +35,7 @@ They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to
 the panel's orientation and the size the script declares. The picture is the
 renderer's resolution, half the panel's each way, upscaled like the shaded
-one. Their pin policy is the same as the shaded renders above.
+one. They are `|nopin` too.
 `--view` sets the tunable `render_lab.view`, so on a development build
 `autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
 values follow the render_view_t table order in render/context/render_context.c. `--view` on a

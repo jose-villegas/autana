@@ -1,7 +1,6 @@
 /* gfx_box: half-open pixel rectangle. */
 #pragma once
 
-#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -10,24 +9,6 @@
 typedef struct {
     int x0, y0, x1, y1;
 } gfx_box_t;
-
-#define GFX_BOX_EMPTY ((gfx_box_t){INT_MAX, INT_MAX, INT_MIN, INT_MIN})
-
-static inline bool
-gfx_box_is_empty(gfx_box_t box) {
-    return box.x0 >= box.x1 || box.y0 >= box.y1;
-}
-
-static inline void
-gfx_box_extend(gfx_box_t* box, gfx_box_t addition) {
-    if (gfx_box_is_empty(addition)) {
-        return;
-    }
-    box->x0 = mathi_min(box->x0, addition.x0);
-    box->y0 = mathi_min(box->y0, addition.y0);
-    box->x1 = mathi_max(box->x1, addition.x1);
-    box->y1 = mathi_max(box->y1, addition.y1);
-}
 
 static inline gfx_box_t
 gfx_box_intersect(gfx_box_t a, gfx_box_t b) {

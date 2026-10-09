@@ -1,5 +1,6 @@
 #!/bin/sh
-# Two-pass GIF encoding for host-rendered AVI clips; filters retain caller order.
+# Two-pass GIF encoding for host-rendered AVI clips: a palette from FILTERS,
+# then the clip through the same FILTERS onto that palette.
 # Source from the repository root after scripts/lib/run.sh.
 # gif_from_avi AVI GIF FILTERS [PALETTE_OPTIONS [SECONDS]]
 

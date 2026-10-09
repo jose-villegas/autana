@@ -1,4 +1,4 @@
-/* render_lab: shared scene background and entry camera selection. */
+/* render_lab: shared scene settings and status length. */
 #pragma once
 
 #include <stdbool.h>

@@ -124,7 +124,7 @@ so marking inlines into the fill and pixel hot paths. One tracker serves all thr
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
 takes rows only and has to claim every column at full width: what
-`gfx_pixel()` and `gfx_clear()`'s full path are left with.
+`gfx_pixel()` is left with it; `gfx_clear()` marks the whole grid.
 
 ```
          92 px (COL_WIDTH)
