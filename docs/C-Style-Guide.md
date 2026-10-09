@@ -120,8 +120,6 @@ Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper 
 
 ### Token clones
 
-`python scripts/gates/check_magic_numbers.py --base origin/main` rejects growing per-file counts of visible constant restatements and firmware/Python protocol tokens; `--report` lists hits and module totals.
-
 `python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
 compared with the merge-base with `--base` (`origin/main` unless a pull
 request targets another branch), or `HEAD~1` when HEAD is on that branch. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
@@ -145,6 +143,10 @@ for detection. Literal-only fragments and same-file, same-range self-matches
 are excluded. Short helpers below the threshold are missed; longer helpers
 and repeated test setup are detected, so a reported pair needs review before
 extraction. The Linux comment-rules workflow runs the gate.
+
+### Restated constants
+
+`python scripts/gates/check_magic_numbers.py` rejects a change that raises a file's count of integer literals equal to a constant the file already sees through its `#include "..."` chain, or of firmware string tokens that a Python tool repeats. It compares with the same merge-base as the clone gate. Use the named constant. Where the literal is deliberate, mark its line `/* magic: reason */` (`# magic: reason` in Python); an empty reason fails. The script's docstring gives the exact rules, and `--report` lists every hit with totals by module.
 
 ## Judgment rules
 

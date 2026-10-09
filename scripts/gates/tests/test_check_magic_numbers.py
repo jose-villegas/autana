@@ -4,23 +4,41 @@ import io
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_magic_numbers as gate
 from c_constants import constants
 from gate_tree import commit, temporary_tree, write
 
-RARE = gate.POWER_MINIMUM
 FOLDED_SHIFT = 16
+RARE = 1 << (FOLDED_SHIFT - 4)
 C_PATH = "launcher/main/render/a.c"
 PY_PATH = "scripts/tool.py"
 
 
 class MagicTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.temp.name)
+        cls.addClassCleanup(cls.temp.cleanup)
+        gate.git(cls.root, "init", "-q")
+
     def scan(self, files):
-        with temporary_tree(files.items()) as root:
-            commit(root, ".")
-            return gate.scan(root, "HEAD")
+        with mock.patch.object(gate, "revision_tree", return_value=files):
+            return gate.scan(self.root, "HEAD")
+
+    def tree(self, files):
+        if (self.root / ".git").exists():
+            gate.git(self.root, "rm", "-rf", "--ignore-unmatch", ".")
+        for path, text in files.items():
+            write(self.root, path, text)
+        gate.git(self.root, "add", ".")
+        gate.git(self.root, "-c", "user.name=t", "-c", "user.email=t@t",
+                 "commit", "--allow-empty", "-qm", "fixture")
+        return gate.git(self.root, "rev-parse", "HEAD").decode().strip()
 
     def restates(self, code, header=""):
         files = {C_PATH: code}
@@ -40,7 +58,7 @@ class MagicTests(unittest.TestCase):
 
     def test_thresholds(self):
         values = (gate.RARE_MINIMUM - 1, gate.RARE_MINIMUM,
-                  gate.RARE_MINIMUM + gate.ROUND_MULTIPLE, gate.POWER_MINIMUM, gate.POWER_MINIMUM - 1)
+                  gate.RARE_MINIMUM + gate.ROUND_MULTIPLE, RARE, RARE - 1)
         for value, expected in zip(values, (0, 0, 0, 1, 1)):
             with self.subTest(value=value):
                 self.assertEqual(len(self.restates(f"#define VALUE {value}\nint x = {value};")), expected)
@@ -48,14 +66,14 @@ class MagicTests(unittest.TestCase):
         self.assertEqual(len(self.restates(f"#define VALUE {value}\nint x = {value};")), 1)
 
     def test_shift_operands_and_shift_expression(self):
-        shift = gate.POWER_MINIMUM.bit_length() - 1
+        shift = RARE.bit_length() - 1
         code = f"#define VALUE_SHIFT {shift}\nint x = value >> {shift};\nx <<= {shift};"
         self.assertEqual(len(self.restates(code)), 2)
         self.assertFalse(self.restates(f"#define VALUE {shift}\nint x = value >> {shift};"))
         self.assertFalse(self.restates(f"#define VALUE_SHIFT {shift}\nint x = 1 << {shift};"))
 
     def test_exempt_contexts_and_folding(self):
-        shift = gate.POWER_MINIMUM.bit_length() - 1
+        shift = RARE.bit_length() - 1
         code = f"""#define VALUE (1u << {shift})
 enum {{ OTHER = {RARE} }};
 static const unsigned scalar = {RARE};
@@ -90,21 +108,23 @@ int x = 1 << {shift};
         self.assertFalse(self.scan({C_PATH: 'char *x = "FRAME_READY";'})[0])
         hits, _, _ = self.scan({"launcher/main/apps/demo/fixtures/a.h": 'char *x = "FRAME_READY";',
                                PY_PATH: 'x = "FRAME_READY"'})
-        self.assertEqual(len(hits[PY_PATH, gate.PROTOCOL]), 1)
+        self.assertFalse(hits)
 
     def check_change(self, before, after, expected, rename=False):
-        with temporary_tree(before.items()) as root:
-            base = commit(root, ".")
-            if rename:
-                gate.git(root, "mv", C_PATH, "launcher/main/render/renamed.c")
-            for path, text in after.items():
-                write(root, path, text)
-            commit(root, ".")
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                result = gate.main(["--base", base], root=root)
-            self.assertEqual(result, expected, output.getvalue())
-            return output.getvalue()
+        final = before | after
+        renames = {}
+        if rename:
+            renamed = "launcher/main/render/renamed.c"
+            final[renamed] = final.pop(C_PATH)
+            renames[renamed] = C_PATH
+        output = io.StringIO()
+        with (mock.patch.object(gate, "comparison_base", return_value="base"),
+              mock.patch.object(gate, "changed_paths", return_value=(set(final), renames, set())),
+              mock.patch.object(gate, "revision_tree", side_effect=lambda root, rev: final if rev == "HEAD" else before),
+              contextlib.redirect_stdout(output)):
+            result = gate.main(["--base", "base"], root=self.root)
+        self.assertEqual(result, expected, output.getvalue())
+        return output.getvalue()
 
     def test_ratchet_growth_fall_new_and_rename(self):
         definition = f"#define VALUE {RARE}\n"
@@ -134,6 +154,108 @@ int x = 1 << {shift};
         self.assertFalse(hits)
         self.assertTrue(escapes)
         self.assertTrue(self.scan({PY_PATH: 'x = 0 # magic: '})[2])
+
+    def test_visibility_and_transitive_includes(self):
+        header = f"#define VALUE {RARE}"
+        code = f"int x = {RARE};"
+        self.assertFalse(self.restates(code, header))
+        self.assertEqual(len(self.restates('#include "value.h"\n' + code, header)), 1)
+        files = {C_PATH: '#include "b.h"\n' + code,
+                 "launcher/main/render/b.h": '#include "../c.h"',
+                 "launcher/main/c.h": header}
+        self.assertEqual(len(self.scan(files)[0][C_PATH, gate.RESTATE]), 1)
+
+    def test_local_scalars_and_subscripts(self):
+        self.assertFalse(self.restates(f"void f(void) {{ const int local = {RARE}; }}\nint x = {RARE};"))
+        code = f"#define VALUE {RARE}\nint table[{RARE}];\nint x = table[{RARE}];"
+        hits = self.restates(code)
+        self.assertEqual([hit.line for hit in hits], [3])
+        self.assertEqual(len(self.restates(code + f"\nvoid f(void) {{ return table[{RARE}]; }}")), 2)
+        self.assertEqual(len(self.restates(f"const int VALUE = {RARE};\nint x = {RARE};")), 1)
+
+    def test_continued_define(self):
+        code = f"#define VALUE \\\n    ({RARE} + 1)\nint x = {RARE + 1};"
+        hits = self.restates(code)
+        self.assertEqual([hit.line for hit in hits], [3])
+        self.assertIn("VALUE", hits[0].message)
+        self.assertFalse(self.restates(f"#define BASE {RARE}\n#define OTHER \\\n    {RARE}"))
+
+    def test_small_plain_shift_and_left_operand(self):
+        code = f"#define VALUE_SHIFT {FOLDED_SHIFT}\nint x = {FOLDED_SHIFT};"
+        self.assertFalse(self.restates(code))
+        self.assertEqual(len(self.restates(code.replace("= ", "= value >> "))), 1)
+        self.assertFalse(self.restates(f"#define VALUE {RARE}\nint x = {RARE} << n;"))
+
+    def test_protocol_shapes_and_owner_scope(self):
+        short = "A" * (gate.TOKEN_MINIMUM - 1)
+        strings = (short, "lowercase", "frame.ready", "FRAME_READY")
+        c = "\n".join(f'char *s{i} = "{value}";' for i, value in enumerate(strings))
+        py = "\n".join(f'x{i} = "{value}"' for i, value in enumerate(strings))
+        hits = self.scan({C_PATH: c, PY_PATH: py})[0][PY_PATH, gate.PROTOCOL]
+        self.assertEqual([hit.line for hit in hits], [3, 4])
+        self.assertFalse(self.scan({"editor/src/a.cpp": c, "launcher/test/a.c": c,
+                                   PY_PATH: py})[0])
+        self.assertFalse(self.scan({C_PATH: c, "elsewhere/tool.py": py})[0])
+        self.assertFalse(self.scan({C_PATH: '/* "FRAME_READY" */', PY_PATH: py})[0])
+        self.assertFalse(self.scan({C_PATH: '#include "frame.ready"', PY_PATH: py})[0])
+        for path in ("launcher/main/fixtures/a.c", "launcher/components/a.c"):
+            self.assertFalse(self.scan({path: c, PY_PATH: py})[0])
+        generated = "// GENERATED FILE - do not edit.\n" + c
+        self.assertFalse(self.scan({C_PATH: generated, PY_PATH: py})[0])
+        hits = self.scan({C_PATH: c + '\nchar *extra = "FRAME_READY";', PY_PATH: py})[0]
+        self.assertIn(f"{C_PATH}:4; 2 C sites", hits[PY_PATH, gate.PROTOCOL][-1].message)
+
+    def test_editor_and_excluded_files(self):
+        code = f"#define VALUE {RARE}\nint x = {RARE};"
+        hits = self.scan({"editor/src/a.cpp": code})[0]
+        self.assertEqual(len(hits["editor/src/a.cpp", gate.RESTATE]), 1)
+        self.assertFalse(self.scan({"editor/fixtures/a.cpp": code})[0])
+        self.assertFalse(self.scan({"editor/src/a.cpp": "// GENERATED FILE - do not edit.\n" + code})[0])
+
+    def test_short_data_row(self):
+        row = ", ".join([str(RARE)] * (gate.DATA_ROW_MINIMUM - 1))
+        self.assertEqual(len(self.restates(f"#define VALUE {RARE}\nint row[] = {{ {row} }};")),
+                         gate.DATA_ROW_MINIMUM - 1)
+
+    def test_escape_line_and_prose(self):
+        code = f"#define VALUE {RARE}\nint x = {RARE}; /* magic: wire */\nint y = {RARE};"
+        self.assertEqual([hit.line for hit in self.restates(code)], [3])
+        self.assertEqual(len(self.restates(code.replace("magic: wire", "prose magic: wire"))), 2)
+
+    def test_main_escape_exit_codes(self):
+        for reason, expected in (("", 1), ("wire", 0)):
+            with self.subTest(reason=reason):
+                code = f"#define VALUE {RARE}\nint x = {RARE}; /* magic: {reason} */"
+                self.check_change({C_PATH: ""}, {C_PATH: code}, expected)
+                with (mock.patch.object(gate, "revision_tree", return_value={C_PATH: code}),
+                      contextlib.redirect_stdout(io.StringIO())):
+                    self.assertEqual(gate.main(["--report"], root=self.root), expected)
+
+    def test_growth_identity_ignores_owner_line(self):
+        before = f"#define VALUE {RARE}\nint x = {RARE};"
+        after = "\n" + before + f"\nint y = {RARE + 1};"
+        after = f"#define OTHER {RARE + 1}\n" + after
+        output = self.check_change({C_PATH: before}, {C_PATH: after}, 1)
+        self.assertNotIn(f"{RARE} restates", output)
+        self.assertIn(f"{RARE + 1} restates OTHER", output)
+        self.assertIn("compared files: RESTATE=1 -> 2", output)
+
+    def test_conflicting_names_do_not_fold(self):
+        code = f"#define VALUE {RARE}\n#define VALUE {RARE + 1}\n#define NEXT (VALUE + 2)\nint x = {RARE + 2};"
+        self.assertFalse(self.restates(code))
+
+    def test_two_app_modules_and_tools(self):
+        files = {f"launcher/main/apps/{name}/a.c": f"#define VALUE {RARE}\nint x = {RARE};"
+                 for name in ("first", "second")}
+        files[C_PATH] = 'char *s = "FRAME_READY";'
+        files["launcher/tools/a.py"] = 'x = "FRAME_READY"'
+        self.tree(files)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(gate.main(["--report"], root=self.root), 0)
+        for expected in ("apps/first: RESTATE=1", "apps/second: RESTATE=1",
+                         "launcher/tools: RESTATE=0 PROTOCOL=1"):
+            self.assertIn(expected, output.getvalue())
 
     def test_report_modules(self):
         with temporary_tree({C_PATH: f"#define VALUE {RARE}\nint x = {RARE};",

@@ -10,8 +10,8 @@ import pathlib
 import re
 import sys
 
-from c_constants import constants, source_files, uncomment, DEFINE, ENUM, MEMBER, LITERAL
-from c_comments import balanced_end
+from c_constants import constants
+from c_comments import balanced_end, blank_comments
 
 from check_doc_citations import documentation
 
@@ -95,7 +95,7 @@ def table_values(root):
     path = pathlib.Path(root) / "launcher/main/apps/sand/material.c"
     if not path.exists():
         return {}
-    text = uncomment(path.read_text(encoding="utf-8", errors="replace"))
+    text = blank_comments(path.read_text(encoding="utf-8", errors="replace"))
     material_entries = {}
     for match in MATERIAL_ENTRY.finditer(text):
         body = braced_body(text, match.end())

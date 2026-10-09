@@ -1,4 +1,4 @@
-"""Shared integer constant index for source and documentation gates."""
+"""Integer constants defined in tracked C sources, and which of them each file can see."""
 import ast
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -6,10 +6,10 @@ import operator
 import pathlib
 import re
 
-from c_comments import blank_comments
+from c_comments import balanced_end, blank_comments
 from tracked import tracked_files
 
-DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\b([^\n]*)", re.M)
+DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\b((?:[^\n]*\\\r?\n)*[^\n]*)", re.M)
 ENUM = re.compile(r"\benum\s*(?:[A-Za-z_]\w*\s*)?\{([^{}]*)\}", re.S)
 MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
 LITERAL = re.compile(r"(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*$")
@@ -20,11 +20,10 @@ OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mu
              ast.BitOr: operator.or_, ast.BitAnd: operator.and_, ast.BitXor: operator.xor}
 
 
-def uncomment(text):
-    return blank_comments(text)
-
-
 def source_files(root):
+    """Tracked C under launcher/. Build and component-manager output is not
+    this project's definition of a constant; reading it made the verdict
+    depend on whether the checkout had been built."""
     root = pathlib.Path(root)
     for name in sorted(tracked_files(root, ("launcher",))):
         path = root / name
@@ -64,11 +63,22 @@ def definitions(path, text):
             name_offset = offset + field.find(name)
             yield Definition(name, expression, path, code.count("\n", 0, name_offset) + 1, "enum")
             offset += len(field) + 1
-    for match in SCALAR.finditer(code):
+    for match in SCALAR.finditer(file_scope(code)):
         yield Definition(match[1], match[2], path, code.count("\n", 0, match.start(1)) + 1, "scalar")
 
 
+def file_scope(code):
+    masked = list(code)
+    start = code.find("{")
+    while start >= 0:
+        end = balanced_end(code, start)
+        masked[start:end] = ["\n" if char == "\n" else " " for char in code[start:end]]
+        start = code.find("{", end)
+    return "".join(masked)
+
+
 def fold(expression, values):
+    expression = re.sub(r"\\\r?\n", "", expression)
     expression = INTEGER.sub(lambda match: re.sub(r"[uUlL]+$", "", match[0]), expression)
 
     def evaluate(node):
@@ -95,8 +105,10 @@ def fold(expression, values):
 
 
 class ConstantIndex:
-    def __init__(self, texts):
-        self.by_file = {path: tuple(definitions(path, text)) for path, text in texts.items()}
+    def __init__(self, texts, kinds=None):
+        self.by_file = {path: tuple(record for record in definitions(path, text)
+                                    if kinds is None or record.kind in kinds)
+                        for path, text in texts.items()}
 
     def visible(self, paths):
         records = [record for path in sorted(paths) for record in self.by_file.get(path, ())]
@@ -128,11 +140,8 @@ class ConstantIndex:
 def constants(root, *, literal_only=False):
     texts = {path.relative_to(root).as_posix(): path.read_text(encoding="utf-8", errors="replace")
              for path in source_files(root)}
-    index = ConstantIndex(texts)
-    if literal_only:
-        # Prose claims use the documentation gate's decimal define/enum vocabulary.
-        index.by_file = {path: tuple(record for record in records if record.kind != "scalar")
-                         for path, records in index.by_file.items()}
+    # Documentation claims match decimal #define and enum values; hex and const scalars are left out.
+    index = ConstantIndex(texts, kinds={"define", "enum"} if literal_only else None)
     counts = {}
     for records in index.by_file.values():
         for record in records:
