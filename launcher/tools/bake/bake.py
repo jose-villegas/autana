@@ -32,7 +32,7 @@ and each new row is marked `seeded`: its bytes
 were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
-never downloads; `path` fetches one bake by its output's name (`capybara.glb`)
+never downloads; `path` fetches one bake by its output's name (`NAME.glb`)
 and prints where it is, for a tool that reads it. `publish`, on main in CI only, uploads each locked file the
 release lacks, taking a row's file from the run that made it. The cache is %LOCALAPPDATA%/autana/bakes, else
 $XDG_CACHE_HOME/autana/bakes, else ~/.cache/autana/bakes, shared by every

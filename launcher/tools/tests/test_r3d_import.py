@@ -487,7 +487,7 @@ class SceneTests(unittest.TestCase):
         self.assertNotEqual(digest(head=HEAD + INDIRECT + "[indirect]\nintensity = 2.0\n"), digest(head=HEAD + INDIRECT))
         self.assertNotEqual(digest(head=HEAD + "ao = { distance = 4.0, rays = 8 }\n"), first, "occlusion is part of the recipe")
 
-    def test_the_recipe_digest_drops_indirect_for_an_opted_out_renderer(self):
+    def test_the_fit_key_drops_indirect_for_an_opted_out_renderer(self):
         def digest(bounces, opted_out=True):
             out = "indirect = false\n" if opted_out else ""
             with tempfile.TemporaryDirectory() as directory:
@@ -734,7 +734,7 @@ class LightListTests(unittest.TestCase):
 
 
 class DigestTests(unittest.TestCase):
-    def test_the_recipe_digest_ignores_equivalent_toml_layouts(self):
+    def test_the_fit_key_ignores_equivalent_toml_layouts(self):
         fit = FIT
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
