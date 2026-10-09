@@ -223,7 +223,7 @@ test_raster_stage_split_by_size(void) {
     TEST_PASS();
 }
 
-static const char* const counter_events[] = {"d_stall_all"};
+static const char* const counter_events[] = {"d_stall_all", "i_stall_busy"};
 
 /* `event` armed on r3d.draw along the path; the counts line into `report`. */
 static void
