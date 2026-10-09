@@ -32,8 +32,8 @@
 # them without writing.
 #
 # GIF palettes depend on the ffmpeg version, so a --check on another OS
-# or with another ffmpeg may report them
-# changed; CI renders on Linux and is the authority.
+# or with another ffmpeg may report them changed; CI renders on Linux and
+# is the authority.
 
 set -eu
 
@@ -42,6 +42,7 @@ ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
 . scripts/lib/run.sh
+. launcher/tools/render/gif_from_avi.sh
 
 DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
@@ -161,11 +162,7 @@ run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).sav
 # The board rocking either way.
 run "$L/launcher_home_render" --quarter 1 --tilt-sweep "$@" --frames 250 --dt 16 \
     -o "$L/sweep.bmp" --video "$L/sweep.avi" 2> "$WORK/launcher_home_sweep.log"
-run ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" \
-    -vf "fps=15,palettegen=stats_mode=diff" "$L/sweep-palette.png"
-run ffmpeg -hide_banner -loglevel error -y -i "$L/sweep.avi" -i "$L/sweep-palette.png" \
-    -filter_complex "[0:v]fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
-    -loop 0 "$OUT/overview/launcher-home.gif"
+gif_from_avi "$L/sweep.avi" "$OUT/overview/launcher-home.gif" "fps=15"
 
 # The boot animation draws in panel orientation; turn it to the landscape the
 # other overview clips use.
@@ -174,11 +171,7 @@ run sh launcher/tools/render/scenes/boot_anim_render_host.sh --build-only -o "$B
 boot_ms=$(sed -n 's/^#define BOOT_ANIM_MS \([0-9]*\).*/\1/p' launcher/main/boot/boot_anim_timeline.h)
 run "$B/boot_anim_render" 0 --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16 \
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
-run ffmpeg -hide_banner -loglevel error -y -i "$B/boot.avi" \
-    -vf "transpose=2,fps=15,palettegen=stats_mode=diff" "$B/boot-palette.png"
-run ffmpeg -hide_banner -loglevel error -y -i "$B/boot.avi" -i "$B/boot-palette.png" \
-    -filter_complex "[0:v]transpose=2,fps=15[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
-    -loop 0 "$OUT/overview/boot-anim.gif"
+gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15"
 
 # The UI toolkit's gallery views.
 U=$WORK/ui_widgets

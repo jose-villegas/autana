@@ -96,6 +96,7 @@ requests".
 |---|---|
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
+| `overview/boot-anim.gif` | the boot animation in landscape orientation |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
@@ -291,7 +292,7 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called.
-The boot animation's tracks also call `acosf` for the slerp and
+The boot animation's tracks call `acosf` for the slerp and
 are `|nopin`. A render that is not integer-exact ends its line
 with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display

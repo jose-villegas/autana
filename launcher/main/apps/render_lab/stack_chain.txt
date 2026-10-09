@@ -8,6 +8,5 @@ root render_lab_frame frame
 
 indirect render_lab_frame : scene_sponza_frame
 indirect switch_to_scene : scene_sponza_enter scene_sponza_lite_enter scene_sponza_flat_enter scene_sponza_fitted_enter scene_sponza_fitted_full_enter scene_sponza_exit
-indirect render_lab_frame : scene_sponza_invalidate
 indirect render_lab_frame : sponza_status
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building

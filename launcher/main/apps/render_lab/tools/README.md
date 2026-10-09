@@ -35,8 +35,7 @@ They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to
 the panel's orientation and the size the script declares. The picture is the
 renderer's resolution, half the panel's each way, upscaled like the shaded
-one. They are `|nopin`, like the shaded Sponza renders: the camera path is
-float, so which pixels a triangle reaches can differ by compiler.
+one. Their pin policy is the same as the shaded renders above.
 `--view` sets the tunable `render_lab.view`, so on a development build
 `autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
 values follow the render_view_t table order in render/context/render_context.c. `--view` on a
@@ -92,6 +91,7 @@ be checked to have measured the same thing.
 | Image | Shows |
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
+| `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 

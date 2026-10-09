@@ -206,7 +206,6 @@ update_scene_title(uint32_t dt_ms) {
     scene_title_remaining_ms = scene_title_remaining_ms > dt_ms ? scene_title_remaining_ms - dt_ms : 0;
     if (scene_title_remaining_ms == 0) {
         gfx_invalidate();
-        current_scene()->invalidate();
     }
 }
 
@@ -269,14 +268,8 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 void
 render_lab_exit(void) {
     current_scene()->exit();
-    gfx_set_partial_clear(false);
     gfx_invalidate();
     gfx_mode_exit();
-}
-
-static void
-render_lab_invalidate(void) {
-    current_scene()->invalidate();
 }
 
 /* "render scenes" lists every scene's key and name and which one shows;
@@ -330,7 +323,6 @@ app_t app_render_lab = {
     .enter = render_lab_enter,
     .frame = render_lab_frame,
     .exit = render_lab_exit,
-    .invalidate = render_lab_invalidate,
     .home_gesture = true,
 #if CONFIG_LAUNCHER_DEVELOPMENT
     .diagnostic_json = render_lab_diagnostic_json,

@@ -215,5 +215,5 @@ building on it.
 
 ## Related
 
-- [Board and Memory](../notes/Board-and-Memory.md#psram-throughput): per-core cycle budgets.
+- [Board and Memory](../notes/Board-and-Memory.md#cycle-budgets): per-core cycle budgets.
 - [Gfx and Presentation](../Gfx-and-Presentation.md#presentation-memory-policy): framebuffer and band-ring memory policy.

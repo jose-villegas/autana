@@ -21,20 +21,14 @@
 #define GFX_QSPI_HZ (40 * 1000 * 1000)
 #endif
 
-/* Enable or disable partial clear mode. When enabled, gfx_clear() erases only
- * the bounding box of what was marked dirty on the previous frame instead of
- * wiping the entire 322 KiB framebuffer, and automatically marks that erased
- * region dirty for presentation. Off by default. */
-void gfx_set_partial_clear(bool enabled);
-
 /* Enable or disable interlace mode. When enabled, gfx_present() updates
  * only even-numbered strips on even frames and odd-numbered strips on odd
  * frames. Off by default. */
 void gfx_set_interlace(bool enabled);
 bool gfx_interlace_enabled(void);
 
-/* Forces the next gfx_clear() to wipe the entire screen in full, resetting
- * partial clear tracking. Needed when an app opens, closes, or rotates. */
+/* Forces every band on the next band frame. Needed when an app opens,
+ * closes, or rotates. */
 void gfx_invalidate(void);
 
 /* One call for a transition instead of composing gfx_mark_all_dirty() and

@@ -13,6 +13,7 @@
 set -eu
 
 . scripts/lib/run.sh
+. launcher/tools/render/gif_from_avi.sh
 
 OUT=$1/overview
 W=$2
@@ -26,9 +27,6 @@ for clip in sponza:sponza-fitted-full sponza-flat:sponza-flat-fitted; do
     scene=${clip#*:}
     run "$W/render_lab_render" --quarter 1 --no-hud --scene "$scene" --frames 90 --dt 100 \
         -o "$W/$name-motion.bmp" --video "$W/$name-motion.avi" 2> "$W/$name.log"
-    run ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/$name-motion.avi" \
-        -vf "fps=8,palettegen=stats_mode=diff" "$W/$name-palette.png"
-    run ffmpeg -hide_banner -loglevel error -y -t 6 -i "$W/$name-motion.avi" -i "$W/$name-palette.png" \
-        -filter_complex "[0:v]fps=8[v];[v][1:v]paletteuse=dither=none:diff_mode=rectangle" \
-        -loop 0 "$OUT/render-lab-$name.gif"
 done
+gif_from_avi "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" "fps=8" "stats_mode=diff" 6
+gif_from_avi "$W/sponza-flat-motion.avi" "$OUT/render-lab-sponza-flat.gif" "fps=8" "stats_mode=diff" 6

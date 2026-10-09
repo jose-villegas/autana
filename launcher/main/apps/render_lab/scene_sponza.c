@@ -49,7 +49,7 @@ static scene_t* sponza;
 
 /* What the panel says in place of the triangle count when the scene could not
  * load; empty when it could. */
-static char failure[48];
+static char failure[RENDER_LAB_STATUS_LEN];
 
 static void
 record_failure(const scene_failure_t* why) {
@@ -73,7 +73,6 @@ record_failure(const scene_failure_t* why) {
 /* Loads the scene and shows sponza_bakes[shown]. */
 static void
 enter_with(sponza_bake_t shown) {
-    gfx_set_partial_clear(false);
     gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
@@ -139,10 +138,6 @@ scene_sponza_exit(void) {
     sponza = NULL;
 }
 
-/* Every frame already redraws the whole screen. */
-static void
-scene_sponza_invalidate(void) {}
-
 /* The shell has already drawn the scene into the framebuffer. */
 static void
 scene_sponza_frame(uint32_t dt_ms) {
@@ -155,7 +150,7 @@ scene_sponza_frame(uint32_t dt_ms) {
 
 static const char*
 sponza_status(void) {
-    static char buf[48];
+    static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
     }
@@ -172,9 +167,7 @@ sponza_status(void) {
 }
 
 /* What every bake's scene shares; each names itself, its key and its bake's enter. */
-#define SPONZA_SCENE_FIELDS                                                                                            \
-    .frame = scene_sponza_frame, .exit = scene_sponza_exit, .invalidate = scene_sponza_invalidate,                     \
-    .status = sponza_status, .shows_view_modes = true
+#define SPONZA_SCENE_FIELDS .frame = scene_sponza_frame, .exit = scene_sponza_exit, .status = sponza_status
 
 const render_lab_scene_t scene_sponza = {
     .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};

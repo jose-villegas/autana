@@ -222,10 +222,8 @@ The wait is mandatory: DMA is still reading the buffer until it returns.
 Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
 by core 1 into internal DMA buffers while core 0 updates app state; drawing
 waits for that read to finish. A catch-up copy between PSRAM framebuffers
-costs 6–15 ms per frame at about 22 MB/s, so presentation uses one retained
-framebuffer. Full-frame strip presentation measures about 10.2–10.9 ms at
-80 MHz QSPI on the device. The mesh raster is a measured exception: its
-colour and depth targets and upscaled framebuffer are written in PSRAM.
+costs 6–15 ms per frame, so presentation uses one retained framebuffer.
+The mesh raster is a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM.
 See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
 memory throughput and placement.
 
@@ -335,9 +333,8 @@ sent, so gfx holds nothing to resend.
 | Call | Effect |
 |---|---|
 | `gfx_mark_all_dirty()` | send everything next present |
-| `gfx_invalidate()` | next `gfx_clear()` wipes in full; next band frame forces every band |
+| `gfx_invalidate()` | next band frame forces every band |
 | `gfx_request_full_redraw()` | both of the above, plus a pending flag the shell answers with the app's `invalidate()` |
-| `gfx_set_partial_clear()` | `gfx_clear()` erases only last frame's dirty bounding box. Off by default. |
 | `gfx_set_interlace()` | alternate strips on alternate presents; skipped strips stay dirty. Off by default, RGB565 full framebuffer only. |
 
 ## Guards

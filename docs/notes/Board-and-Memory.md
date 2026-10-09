@@ -90,7 +90,9 @@ beside the arithmetic they support. These are measured access-pattern
 ranges, not a guarantee for a particular buffer or clock configuration.
 Prefer internal SRAM for hot working data where it fits, and read PSRAM
 for bulk or cold content. The [presentation memory policy](../Gfx-and-Presentation.md#presentation-memory-policy)
-explains how retained framebuffers and the band ring use these tiers.
+explains why presentation keeps one retained framebuffer.
+
+### Cycle budgets
 
 At 240 MHz, one core has about 24 cycles per physical pixel at 60 fps,
 48 at 30 fps, or 97 per half-resolution pixel at 60 fps. These are clock

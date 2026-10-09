@@ -10,11 +10,14 @@
 #include "ui_budget.h"
 #include "unity.h"
 
+#include <string.h>
+
 #include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 
@@ -29,12 +32,14 @@ static void
 test_hud_screen_command_list_fits_budget(void) {
     fixture();
 
-    /* Scene status buffers hold at most 47 visible characters. */
+    char status[RENDER_LAB_STATUS_LEN];
+    memset(status, 'x', sizeof status - 1);
+    status[sizeof status - 1] = '\0';
     const render_lab_hud_screen_state_t state = {
         .fps_value = 999.9F,
         .scene_title = "Sponza Fitted Full",
         .scene_title_alpha = 255,
-        .status = "no asset 'abcdefghijklmnopqrstuvwxyz': flash it",
+        .status = status,
     };
 
     const input_t input = {0};

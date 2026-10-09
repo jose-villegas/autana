@@ -30,9 +30,6 @@
 #include "ui/ui_transform.h"
 #include "util/runtime/tune.h"
 
-extern bool render_lab_show_hud;
-extern const char* render_lab_start_scene_key;
-
 static int shell_quarter;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
