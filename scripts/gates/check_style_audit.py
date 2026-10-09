@@ -25,7 +25,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from c_includes import resolve_include as resolve_quoted_include
+from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
 from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
@@ -235,7 +235,7 @@ def resolve_include(root, path, inc):
     resolved = resolve_quoted_include(path.resolve().as_posix(), inc,
                                       ((pathlib.Path(root) / "launcher/main").resolve().as_posix(),),
                                       lambda candidate: pathlib.Path(candidate).is_file())
-    return pathlib.Path(resolved).resolve() if resolved else None
+    return pathlib.Path(resolved) if resolved else None
 
 
 def _layer_root_files(root):

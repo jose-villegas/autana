@@ -1,5 +1,6 @@
 """The files git tracks under a root; what CI sees, not whatever a build or a
-checkout nested inside this one has left beside them."""
+checkout nested inside this one has left beside them; and the contents of named
+files at a git revision."""
 import io
 import fnmatch
 import pathlib

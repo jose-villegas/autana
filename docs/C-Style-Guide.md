@@ -146,7 +146,7 @@ extraction. The Linux comment-rules workflow runs the gate.
 
 ### Restated constants
 
-`python scripts/gates/check_magic_numbers.py` rejects a change that raises a file's count of integer literals equal to a constant the file already sees through its `#include "..."` chain, or of firmware string tokens that a Python tool repeats. It compares with the same merge-base as the clone gate. Use the named constant. Where the literal is deliberate, mark its line `/* magic: reason */` (`# magic: reason` in Python); an empty reason fails. The script's docstring gives the exact rules, and `--report` lists every hit with totals by module.
+`python scripts/gates/check_magic_numbers.py` rejects a change that raises a file's count of integer literals equal to a constant the file already sees through its `#include "..."` chain, or of firmware string tokens that a Python tool repeats. It compares with the same merge-base as the clone gate. Use the named constant. Where the literal is deliberate, mark its line `/* magic: reason */` (`# magic: reason` in Python); an empty reason fails. The script's docstring gives the exact rules, and `--report` lists every hit with totals by module. The Linux comment-rules workflow runs the gate.
 
 ## Judgment rules
 

@@ -110,7 +110,7 @@ int x = 1 << {shift};
                                PY_PATH: 'x = "FRAME_READY"'})
         self.assertFalse(hits)
 
-    def check_change(self, before, after, expected, rename=False):
+    def check_change(self, before, after, expected, rename=False, changed=None):
         final = before | after
         renames = {}
         if rename:
@@ -119,7 +119,7 @@ int x = 1 << {shift};
             renames[renamed] = C_PATH
         output = io.StringIO()
         with (mock.patch.object(gate, "comparison_base", return_value="base"),
-              mock.patch.object(gate, "changed_paths", return_value=(set(final), renames, set())),
+              mock.patch.object(gate, "changed_paths", return_value=(set(final) if changed is None else changed, renames, set())),
               mock.patch.object(gate, "revision_tree", side_effect=lambda root, rev: final if rev == "HEAD" else before),
               contextlib.redirect_stdout(output)):
             result = gate.main(["--base", "base"], root=self.root)
@@ -138,7 +138,14 @@ int x = 1 << {shift};
     def test_header_and_c_only_changes(self):
         header = "launcher/main/value.h"
         code = f'#include "value.h"\nint x = {RARE};'
-        self.check_change({C_PATH: code, header: ""}, {header: f"#define VALUE {RARE}"}, 1)
+        other = "launcher/main/other.c"
+        before = {C_PATH: code, header: "", other: f"#define OTHER {RARE}\nint x = {RARE};"}
+        output = self.check_change(before, {header: f"#define VALUE {RARE}"}, 1, changed={header})
+        self.assertNotIn(other, output)
+        with mock.patch.object(gate, "revision_tree", return_value=before):
+            hits = gate.scan(self.root, "HEAD", {header})[0]
+        self.assertIn((C_PATH, gate.RESTATE), hits)
+        self.assertNotIn((other, gate.RESTATE), hits)
         self.check_change({C_PATH: "", PY_PATH: 'x = "FRAME_READY"'},
                           {C_PATH: 'char *x = "FRAME_READY";'}, 1)
 
@@ -172,6 +179,69 @@ int x = 1 << {shift};
         self.assertEqual([hit.line for hit in hits], [3])
         self.assertEqual(len(self.restates(code + f"\nvoid f(void) {{ return table[{RARE}]; }}")), 2)
         self.assertEqual(len(self.restates(f"const int VALUE = {RARE};\nint x = {RARE};")), 1)
+
+    def test_local_owners_after_other_bodies(self):
+        prefix = "struct S { int member; };\nenum { SMALL = 2 };\nvoid first(void) {}\n"
+        for declaration in (f"const int LOCAL = {RARE};", f"enum {{ LOCAL = {RARE} }};"):
+            with self.subTest(declaration=declaration):
+                code = prefix + f"void f(void) {{ {declaration} }}\nint x = {RARE};"
+                self.assertFalse(self.restates(code))
+        self.assertFalse(self.restates(f"void f(void) {{ enum {{ LOCAL = {RARE} }}; }}\nint x = {RARE};"))
+
+    def test_local_const_restates_visible_define(self):
+        code = f"#define VALUE {RARE}\nvoid f(void) {{ const int x = {RARE}; }}"
+        self.assertEqual([hit.line for hit in self.restates(code)], [2])
+
+    def test_assignment_and_multidimensional_bounds(self):
+        code = f"#define VALUE {RARE}\ntable[{RARE}] = v;\nint g[2][{RARE}];"
+        self.assertEqual([hit.line for hit in self.restates(code)], [2])
+
+    def test_include_search_order_and_commented_include(self):
+        files = {C_PATH: f'#include "value.h"\nint x = {RARE};',
+                 "launcher/main/render/value.h": f"#define SIBLING {RARE}",
+                 "launcher/main/value.h": f"#define ROOT {RARE + 1}"}
+        hits = self.scan(files)[0]
+        self.assertIn((C_PATH, gate.RESTATE), hits)
+        hit = hits[C_PATH, gate.RESTATE][0]
+        self.assertIn("SIBLING", hit.message)
+        self.assertNotIn("ROOT", hit.message)
+        files[C_PATH] = f'/*\n#include "value.h"\n*/\nint x = {RARE};'
+        self.assertFalse(self.scan(files)[0])
+
+    def test_exact_token_minimum(self):
+        token = "A" * gate.TOKEN_MINIMUM
+        hits = self.scan({C_PATH: f'char *x = "{token}";', PY_PATH: f'x = "{token}"'})[0]
+        self.assertIn((PY_PATH, gate.PROTOCOL), hits)
+        self.assertEqual(len(hits[PY_PATH, gate.PROTOCOL]), 1)
+
+    def test_excluded_restatement(self):
+        path = "launcher/components/a.c"
+        self.assertFalse(self.scan({path: f"#define VALUE {RARE}\nint x = {RARE};"})[0])
+
+    def test_python_escape_prose(self):
+        hits, logged, errors = self.scan({C_PATH: 'char *x = "FRAME_READY";',
+                                         PY_PATH: 'x = "FRAME_READY" # see # magic: x'})
+        self.assertIn((PY_PATH, gate.PROTOCOL), hits)
+        self.assertEqual(len(hits[PY_PATH, gate.PROTOCOL]), 1)
+        self.assertFalse(logged)
+        self.assertFalse(errors)
+
+    def test_report_editor_revision_and_same_line_counts(self):
+        with temporary_tree([("editor/src/a.cpp", f"#define VALUE {RARE}\nint x = {RARE}, y = {RARE};")]) as root:
+            commit(root, ".")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(gate.main(["--report"], root=root), 0)
+            self.assertIn("editor: RESTATE=2", output.getvalue())
+            self.assertIn("(2 hits)", output.getvalue())
+
+    def test_report_line_order(self):
+        hits = {(PY_PATH, gate.PROTOCOL): [gate.Hit(PY_PATH, line, str(line)) for line in (3, 1, 2)]}
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            gate.report(hits)
+        lines = output.getvalue().splitlines()
+        self.assertEqual(lines[1:4], [str(hit) for hit in sorted(hits[PY_PATH, gate.PROTOCOL], key=lambda hit: hit.line)])
 
     def test_continued_define(self):
         code = f"#define VALUE \\\n    ({RARE} + 1)\nint x = {RARE + 1};"

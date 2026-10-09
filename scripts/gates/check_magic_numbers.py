@@ -8,9 +8,12 @@ shift count equal to a visible *_SHIFT. Shift expressions such as 1 << 16,
 #define/enum/file-scope const initializers, declaration array bounds,
 static asserts and data rows of DATA_ROW_MINIMUM numbers or more are not
 counted. Fixtures, generated files and c_comments.EXCLUDED paths are skipped.
-PROTOCOL: an identifier-shaped string literal from launcher/main C that a
-Python file under scripts/ or launcher/tools/ repeats; counted on the
-Python file. Include paths and Python docstrings are excluded.
+
+PROTOCOL: a string literal in launcher/main C that is identifier-shaped
+(dots allowed), at least TOKEN_MINIMUM characters, and contains `_` or `.`
+or is all upper case, which a Python file under scripts/ or launcher/tools/
+repeats; counted on the Python file. Include paths and Python docstrings
+are excluded.
 
 HEAD is compared per file and rule with the merge-base of --base, as in
 check_clones.py. Use the named constant, or mark a deliberate literal on
@@ -44,7 +47,7 @@ RESTATE = "RESTATE"
 PROTOCOL = "PROTOCOL"
 C_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
 
-# Component INCLUDE_DIRS in launcher/main/CMakeLists.txt and editor target_include_directories.
+# INCLUDE_DIRS and selftest PRIV_INCLUDE_DIRS in launcher/main/CMakeLists.txt; editor target_include_directories.
 INCLUDE_ROOTS = ("launcher/main", "launcher/test", "editor/include", "editor/src")
 INCLUDE = re.compile(r'^[ \t]*#[ \t]*include\s*"([^"\n]+)"', re.M)
 ASSERT = re.compile(r"\b(?:_Static_assert|static_assert)\s*\(")
@@ -238,15 +241,20 @@ def report(hits):
     totals = defaultdict(Counter)
     for (path, rule), group in sorted(hits.items()):
         print(f"{path}: {rule}={len(group)}")
-        for hit in group:
-            print(hit)
+        repeated = Counter((hit.line, hit.message) for hit in group)
+        for (line, message), count in sorted(repeated.items()):
+            suffix = f" ({count} hits)" if count > 1 else ""
+            print(f"{path}:{line}: {message}{suffix}")
         totals[module(path)][rule] += len(group)
     for name, counts in sorted(totals.items()):
         print(f"{name}: RESTATE={counts[RESTATE]} PROTOCOL={counts[PROTOCOL]}")
 
 
 def main(argv=None, root=ROOT):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"Thresholds: RARE_MINIMUM={RARE_MINIMUM}, ROUND_MULTIPLE={ROUND_MULTIPLE}, "
+               f"DATA_ROW_MINIMUM={DATA_ROW_MINIMUM}, TOKEN_MINIMUM={TOKEN_MINIMUM}.")
     parser.add_argument("--base", default="origin/main", help="Compare with this branch's merge-base.")
     parser.add_argument("--report", action="store_true", help="List every HEAD hit and per-module totals.")
     args = parser.parse_args(argv)
@@ -261,10 +269,13 @@ def main(argv=None, root=ROOT):
             base = comparison_base(root, against=args.base)
             changed, renames, _ = changed_paths(root, base, "HEAD")
             hits, logged, errors = scan(root, "HEAD", changed)
-            old, _, _ = scan(root, base)
+            old, _, _ = scan(root, base, {renames.get(path, path) for path in changed})
+            reverse_renames = {previous: path for path, previous in renames.items()}
+            compared = set(hits) | {(reverse_renames.get(path, path), rule) for path, rule in old}
+            old = {(path, rule): old.get((renames.get(path, path), rule), []) for path, rule in compared}
             grown = []
             for (path, rule), group in sorted(hits.items()):
-                previous = old.get((renames.get(path, path), rule), [])
+                previous = old.get((path, rule), [])
                 if len(group) <= len(previous):
                     continue
                 grown.append((path, rule))
@@ -278,11 +289,6 @@ def main(argv=None, root=ROOT):
         for hit in logged + errors:
             print(hit)
         failed = bool(grown or errors)
-        if not args.report:
-            compared = set(hits) | {key for key in old if key[1] == PROTOCOL}
-            compared.update((path, rule) for path in changed for candidate, rule in old
-                            if candidate == renames.get(path, path))
-            old = {(path, rule): old.get((renames.get(path, path), rule), []) for path, rule in compared}
         counts = Counter({rule: sum(len(group) for (path, candidate), group in hits.items() if candidate == rule)
                           for rule in (RESTATE, PROTOCOL)})
         summary = (f"RESTATE={counts[RESTATE]} PROTOCOL={counts[PROTOCOL]}" if args.report else

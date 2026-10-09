@@ -22,7 +22,7 @@ OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mu
 
 def source_files(root):
     """Tracked C under launcher/. Build and component-manager output is not
-    this project's definition of a constant; reading it made the verdict
+    this project's definition of a constant; reading it would make the verdict
     depend on whether the checkout had been built."""
     root = pathlib.Path(root)
     for name in sorted(tracked_files(root, ("launcher",))):
@@ -49,7 +49,8 @@ def definitions(path, text):
         if match[2].startswith("("):
             expression = ""
         yield Definition(match[1], expression, path, code.count("\n", 0, match.start(1)) + 1, "define")
-    for enum in ENUM.finditer(code):
+    scope = file_scope(code)
+    for enum in ENUM.finditer(scope):
         offset = enum.start(1)
         for field in enum[1].split(","):
             member = MEMBER.match(field)
@@ -63,7 +64,7 @@ def definitions(path, text):
             name_offset = offset + field.find(name)
             yield Definition(name, expression, path, code.count("\n", 0, name_offset) + 1, "enum")
             offset += len(field) + 1
-    for match in SCALAR.finditer(file_scope(code)):
+    for match in SCALAR.finditer(scope):
         yield Definition(match[1], match[2], path, code.count("\n", 0, match.start(1)) + 1, "scalar")
 
 
@@ -71,8 +72,14 @@ def file_scope(code):
     masked = list(code)
     start = code.find("{")
     while start >= 0:
-        end = balanced_end(code, start)
-        masked[start:end] = ["\n" if char == "\n" else " " for char in code[start:end]]
+        previous = start - 1
+        while previous >= 0 and code[previous].isspace():
+            previous -= 1
+        if previous >= 0 and code[previous] == ")":
+            end = balanced_end(code, start)
+            masked[start:end] = ["\n" if char == "\n" else " " for char in code[start:end]]
+        else:
+            end = start + 1
         start = code.find("{", end)
     return "".join(masked)
 
