@@ -446,7 +446,9 @@ The first runs with the scene as shipped; the second with the scene's debug
 view set to the motion attachment (a development-build tunable; `autana tune`
 lists it). Check `autana status` and `autana buildid` before and after each
 capture. A missing capture leaves its row `not in capture`; a capture without
-report The `meshlet-sizes` table is generated from each size's own suite capture and
+report windows fails the run.
+
+The `meshlet-sizes` table is generated from each size's own suite capture and
 regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
 owns preparation, capture validation and refresh commands.
 
