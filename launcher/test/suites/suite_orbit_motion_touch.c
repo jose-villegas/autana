@@ -188,8 +188,59 @@ test_orbit_motion_touch_taps_in_the_home_strip_never_ask_for_home(void) {
     }
 }
 
+static float
+zoom_per_px(void) {
+    return ORBIT_MOTION_TOUCH_ZOOM_PER_SHORT_SIDE / (float)(GFX_WIDTH < GFX_HEIGHT ? GFX_WIDTH : GFX_HEIGHT);
+}
+
+void
+test_orbit_motion_touch_a_tap_then_a_drag_down_zooms_in_without_turning(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    (void)tap(&t);
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y + DRAG_PX);
+    TEST_ASSERT_TRUE(out.held);
+    TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, -DRAG_PX * zoom_per_px(), out.zoom_turn);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.yaw_turn);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.pitch_turn);
+}
+
+void
+test_orbit_motion_touch_a_tap_then_a_drag_up_zooms_out_and_never_resets(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    (void)tap(&t);
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y - DRAG_PX);
+    TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * zoom_per_px(), out.zoom_turn);
+    TEST_ASSERT_FALSE(lift_at(&t, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y - DRAG_PX).reset);
+}
+
+void
+test_orbit_motion_touch_a_lone_drag_turns_and_never_zooms(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y + DRAG_PX);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.zoom_turn);
+    TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * per_px(), out.pitch_turn);
+}
+
+void
+test_orbit_motion_touch_a_second_press_in_the_home_strip_neither_zooms_nor_turns(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    (void)tap(&t);
+    const int y = GFX_HEIGHT - INSIDE_STRIP;
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, y, CENTRE_X, y - DRAG_PX);
+    TEST_ASSERT_FALSE(out.held);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.zoom_turn);
+}
+
 void
 run_orbit_motion_touch_suite(void) {
+    RUN_TEST(test_orbit_motion_touch_a_tap_then_a_drag_down_zooms_in_without_turning);
+    RUN_TEST(test_orbit_motion_touch_a_tap_then_a_drag_up_zooms_out_and_never_resets);
+    RUN_TEST(test_orbit_motion_touch_a_lone_drag_turns_and_never_zooms);
+    RUN_TEST(test_orbit_motion_touch_a_second_press_in_the_home_strip_neither_zooms_nor_turns);
     RUN_TEST(test_orbit_motion_touch_a_drag_turns_by_its_travel_right_turning_the_eye_left_and_down_raising_it);
     RUN_TEST(test_orbit_motion_touch_a_drag_across_the_shorter_side_turns_the_named_amount);
     RUN_TEST(test_orbit_motion_touch_a_turned_panel_steers_by_the_upright_picture);
