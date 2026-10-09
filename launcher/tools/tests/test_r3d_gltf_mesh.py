@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+import shutil
 import struct
 import sys
 import tempfile
@@ -24,6 +25,7 @@ except ImportError:
 
 FLOAT, USHORT = 5126, 5123
 USHORT_MAX = 65535
+FBX_PROBE = pathlib.Path(__file__).resolve().parent / "data" / "skinned_probe.fbx"
 QUAD = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)]
 QUAD_INDICES = [0, 1, 2, 0, 2, 3]
 
@@ -135,10 +137,14 @@ class GltfImportSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(self.settings(directory, "m.glb").source["path"].suffix, ".glb")
 
+    def test_an_fbx_source_is_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.settings(directory, "m.fbx").source["path"].suffix, ".fbx")
+
     def test_another_extension_names_every_supported_one(self):
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(SettingsError, r"supported: \.obj, \.glb"):
-                self.settings(directory, "m.fbx")
+            with self.assertRaisesRegex(SettingsError, r"supported: \.obj, \.glb, \.fbx"):
+                self.settings(directory, "m.stl")
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -158,6 +164,15 @@ class GltfImportTests(unittest.TestCase):
         near = mesh.pos[:, 2] < mesh.pos[:, 2].max() / 2
         self.assertTrue((mesh.rgb[near] == (255, 0, 0)).all(), mesh.rgb)
         self.assertTrue((mesh.rgb[~near] == (0, 0, 255)).all(), mesh.rgb)
+
+    def test_an_fbx_source_imports_like_a_glb(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shutil.copy(FBX_PROBE, pathlib.Path(directory) / "m.fbx")
+            path = pathlib.Path(directory) / "m.import.toml"
+            path.write_text('[source]\npath = "m.fbx"\ncredit = "c"\n[output]\ndirectory = "."\nname = "m"\n')
+            self.assertEqual(mesh_import.main([str(path)]), 0)
+            mesh = read_lit_mesh(pathlib.Path(directory) / "m.mesh")
+        self.assertGreater(len(mesh.tris), 0)
 
     def test_the_mitsuba_export_refuses_vertex_colours_it_would_drop(self):
         source = SimpleNamespace(colors=np.ones((4, 3)), names=["m"])
