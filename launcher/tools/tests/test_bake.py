@@ -265,7 +265,8 @@ class RequirementTests(unittest.TestCase):
         bake.submodules.cache_clear()
         try:
             with mock.patch.object(bake, "git_lines", return_value=[]), \
-                    self.assertRaisesRegex(bake.SettingsError, "meshoptimizer"):
+                    self.assertRaisesRegex(bake.SettingsError, "checkout is incomplete: .gitmodules names .*"
+                                                                "meshoptimizer.*the index has no gitlink"):
                 bake.submodules()
         finally:
             bake.submodules.cache_clear()

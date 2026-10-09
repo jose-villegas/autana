@@ -126,8 +126,8 @@ def submodules():
              if line.strip().startswith("path")]
     lost = [path for path in named if (REPO / path).resolve() not in found]
     if lost:
-        raise SettingsError(f"the index has no commit for submodules {', '.join(lost)}: a checkout that "
-                            "failed or is incomplete; keys made from it would leave their code out")
+        raise SettingsError(f"the checkout is incomplete: .gitmodules names {', '.join(lost)}, the index has "
+                            "no gitlink; keys made from it would leave that code out, so none are made")
     return found
 
 
