@@ -1,6 +1,6 @@
 # Expensive bakes as cached build products: design sketch
 
-**Status:** approved, not built; step 0 (measurements) first. `[A]` marks an assumption or a
+**Status:** approved, partly built: keys, lock, fetch and the producer. `[A]` marks an assumption or a
 proposal of this sketch that nobody asked for.
 
 Where a source file is the truth, no derived copy is committed. Two kinds of
@@ -112,7 +112,7 @@ flowchart LR
 
 | Caller | Calls | When |
 |---|---|---|
-| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh` and `blend` keys; uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
+| `bakes.yml` CPU job on a PR (ubuntu, LFS cache, pinned Blender cached) | `produce` for missing `mesh` and `blend` keys on an AMD runner (`vendor_id` checked, rerun on another vendor [A]: `r3d/isa.py` makes bytes per CPU vendor, and the hosted pool mixes AMD and Intel); uploads them and the lock they make as the run's artifact; fails when the committed `bakes.lock` differs, and the author runs `bake.py lock --from-run N` and commits | every PR; seconds when the lock already holds every key |
 | `bakes.yml` GPU job (self-hosted runner) | `produce` for a missing `fit`; its `reference` comes from the runner's own cache, made there first when absent | on a dispatch for the branch, when the maintainer's machine is up; skippable, and while skipped the lock check names the missing fit |
 | `bakes.yml` on main | `publish`: takes each locked file from its `run`'s artifact, checks its sha256, uploads it | every push to main |
 | host-tests, qemu-tests, build-release, doc-images, doc-images-gpu | `uses: ./.github/workflows/bakes.yml` first | so a PR's bakes exist before anything consumes them |
@@ -131,8 +131,10 @@ flowchart LR
   key, and only the stages after it rebake: a fitter edit refits but keeps
   the references. The PR's lock diff shows it.
 - **Locally with the tools:** `bake.py bake launcher/demo/sponza` makes the
-  missing keys into the local cache. Its bytes differ from CI's (step 0); `fetch`
-  prefers the locked bytes and says when a local bake differs from the lock.
+  missing keys into the local cache. Its bytes match CI's when the runner's
+  CPU vendor is the host's (`r3d/isa.py` pins the ray tracer's instruction set;
+  AMD and Intel still differ by an ulp; step 0); `fetch` prefers the locked
+  bytes and says when a local bake differs from the lock.
 
 ## 4. Failing loudly
 
@@ -156,8 +158,9 @@ whose sha256 differs from the lock.
 0. **Measured first** (before `bake.py`): the scene bakes on the
    maintainer's machine and on the CI ubuntu image, each `cmp`ed with the
    committed meshes, and one fit run twice on the runner. Main's meshes are
-   fresh. A plain bake reproduces on one machine but not across machines,
-   and a fit does not reproduce even on one. So the lock pins bytes for
+   fresh. A plain bake reproduced on one machine but not across machines
+   (since `r3d/isa.py`, across CPU vendors only), and a fit does not reproduce
+   even on one. So the lock pins bytes for
    every kind of bake, and the seed uses main's committed files, never a CI
    rebake. Windows cannot bake today (Mitsuba finds no libLLVM there), so a
    Windows clone only fetches.

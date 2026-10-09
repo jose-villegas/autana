@@ -40,6 +40,9 @@ main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
+main/util/motion/orbit_motion.c
+main/input/gesture.c
+main/input/orbit_motion_touch.c
 main/ui/ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c
