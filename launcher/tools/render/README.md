@@ -45,17 +45,23 @@ with `RENDER_ENTRY_OFFSET` before the generated file is written.
 ## Meshlet size captures
 
 `meshlet_capture.py prepare --scene PATH --sizes 16 32 64` copies tracked firmware
-sources into `launcher/tools/results/meshlet-sizes/tree`, re-clusters the committed
-scene triangles through `rebake.py`, and builds the size packs in one development
-build directory. `--open-app NAME --scene-command VERB ARGS...` includes
-opening the viewer and selecting the scene in the printed commands. It prints board commands for the capturing session; it never
-accesses the board. `select --row ROW` restores a prepared bake and builds its
-pack. `stamp` requires matching before/after build IDs and records the pack hash.
+sources into one row tree per capture under `launcher/tools/results/meshlet-sizes/tree`
+and re-clusters the committed scene triangles through `rebake.py`. It prints one
+`autana --wait 3600 --project TREE suite run_sponza_perf_suite --flash --out LOG`
+command per row; `--suite NAME` selects the fixed-pose suite. Preparation never
+builds firmware or accesses the board. Each command builds a self-test image and holds
+one board lock from flash through capture.
+
+The suite measures both culling settings through the tune API and restores the
+previous setting. It prints the image build ID, the CRC-32 of the complete mounted
+pack, maximum cluster triangle count, culling setting and camera sample interval
+inside each FRAME COST block. The cull-off row uses the shipped pack.
 
 `meshlet_sizes.py --scene PATH [--object NAME]` validates captures, regenerates
 bakes and their packs, and writes `Render-Pipeline.md#meshlet-sizes`. The selected
 renderer defaults to the scene's first renderer and must have an identity
-placement. Its camera's whole loop is sampled every 0.5 seconds at the default
-render size from the firmware headers. The table averages board frame-cost
-windows and uses the cost model's submitted-triangle feature for host counts.
-Missing captures, stamps, mismatched build IDs, pack hashes or render sizes fail.
+placement. Host counts sample the camera at the suite's fixed five-second poses
+and default render size. Stage times average the shipped bake's per-pose reports;
+frame time averages its measured draw and upscale wall times, without panel
+transfer. Missing suite blocks, mismatched poses, build IDs, pack hashes or render
+sizes fail. Monitor logs cannot supply this table.

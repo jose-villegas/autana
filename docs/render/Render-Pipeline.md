@@ -216,9 +216,6 @@ every draw; empty pixels keep the clear colour.
 
 ![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
 
-Transform gets cheaper because meshlets share vertices, the whole frame gains
-little, and smaller meshlets trade tighter cull boxes for more clusters.
-
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
 
 #### Asset pack
@@ -437,35 +434,43 @@ lists it). Check `autana status` and `autana buildid` before and after each
 capture. A missing capture leaves its row `not in capture`; a capture without
 report windows fails the run.
 
-The `meshlet-sizes` generator requires every board capture, matching firmware
-build IDs and pack hashes matching its row bakes. Host counts sample the
-shipped camera path every 0.5 seconds at the default render size defined in
-`render_context.h`; frame times average all captured frame-cost windows.
-The development tunable `render.cull` defaults to 1; setting it to 0 submits
-every cluster. Release builds keep culling enabled.
+The `meshlet-sizes` generator requires self-test suite captures whose build
+identities agree within each log and whose pack hashes match the row bakes. Host counts and board
+samples use the same fixed five-second camera poses at the default render size
+in `render_context.h`. Stage times average the shipped bake's per-pose FRAME COST
+reports; frame times average its draw and upscale wall times, without panel
+transfer. The suite measures culling enabled and disabled through `render.cull`
+and restores its prior value. Release builds keep culling enabled.
 
-Prepare the size bakes and development images without editing committed assets:
+Prepare the size bakes and row trees without editing committed assets:
 
 ```sh
 python launcher/tools/render/meshlet_capture.py prepare \
-  --scene SCENE.scene.toml --sizes 16 32 64 \
-  --open-app VIEWER --scene-command VERB ARGS
+  --scene SCENE.scene.toml --sizes 16 32 64
 ```
 
-The scene's tools README gives its concrete scene, viewer and console selection
-command. The tool prints the exact commands for each capture: select the scratch pack,
-flash the scratch development build, check status and build identity, set
-`render.cull`, monitor for 30 seconds into `docs/render/data/meshlets-<row>-board.log`,
-then check status and identity again and stamp the capture with the selected
-pack hash. Run the shipped scene with its default camera, scale and debug view
-for every row. Keep the resulting captures in `docs/render/data/` and refresh:
+The scene's tools README gives its concrete scene path. The tool prints one
+command per row:
+
+```sh
+autana --wait 3600 --project ROW_TREE suite run_sponza_perf_suite --flash \
+  --out docs/render/data/meshlets-ROW-board.log
+```
+
+Give each command a shell timeout of at least 30 minutes. It builds a self-test image
+and holds one board lock from flash through capture. Identity comes from the
+suite's own build ID, complete mounted pack CRC-32, cluster size and culling
+setting. Each size row selects the shipped bake; the cull-off row selects its
+unculled pass from the shipped pack. Monitor captures are rejected. Keep the
+resulting captures in `docs/render/data/` and refresh:
 
 ```sh
 sh launcher/tools/render/render_doc_images.sh --stage meshlets
 ```
 
-The stage regenerates the size bakes from committed triangles and checks the
-pack hashes before writing the named block; a missing capture fails.
+The stage regenerates the bakes from committed triangles and checks pack hashes,
+shared poses and rendered sizes before writing the named block. A missing
+capture fails.
 
 The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
 rebakes and fits. Refresh them on the GPU runner with:

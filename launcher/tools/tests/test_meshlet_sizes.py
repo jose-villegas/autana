@@ -51,11 +51,34 @@ class MeshletSettingsTests(unittest.TestCase):
                         self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256)
 
 class MeshletReportTests(unittest.TestCase):
-    def capture(self, root, row, build="abcdef123456", pack="a"):
+    def capture(self, root, row, build="abcdef123456", pack="a", suite=True):
         path = root / f"meshlets-{row}-board.log"
-        path.write_text(f"MESHLET_CAPTURE build_id={build}-dev pack_sha256={pack * 64} size={32 if row == 'cull-off' else row} cull={int(row != 'cull-off')}\n"
-                        "ms/frame avg/worst: r3d.cull 1/2 r3d.transform 2/3 r3d.draw 3/4 | total 8\n")
+        label = "cull_off" if row == "cull-off" else "atrium"
+        stages = "ms/frame avg/worst: r3d.cull 1/2 r3d.transform 2/3 r3d.draw 3/4 | total 6\n"
+        if suite:
+            path.write_text(f"=== {label} FRAME COST (1 tris, 3 verts, 1 clusters, rendered 184x224) ===\n"
+                            f"MESHLET_CAPTURE build_id={build}-diag pack_crc32={pack * 8} size={32 if row == 'cull-off' else row} cull={int(row != 'cull-off')} period_ms=10000 pose_every_ms=5000\n"
+                            f"{label} t=    0s clusters=1 tris=1 | both cores: frame 7000us\n" + stages +
+                            f"{label} t=    5s clusters=1 tris=1 | both cores: frame 9000us\n" + stages +
+                            f"{label} both cores: mean 8000us (125 fps before present), worst 9000us\n"
+                            "=== other FRAME COST (1 tris, 3 verts, 1 clusters, rendered 184x224) ===\n"
+                            "ms/frame avg/worst: r3d.cull 99/99 r3d.transform 99/99 r3d.draw 99/99 | total 297\n"
+                            "other both cores: mean 297000us (3 fps before present), worst 297000us\n")
+        else:
+            path.write_text(f"MESHLET_CAPTURE build_id={build}-dev pack_sha256={pack * 64} size={row} cull=1\n" + stages)
         return path
+
+    def test_monitor_capture_is_rejected_and_suite_accepted(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+                self.capture(root, row, pack=pack, suite=False)
+            with self.assertRaises(ValueError):
+                meshlet_sizes.capture_means(root, "atrium")
+            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+                self.capture(root, row, pack=pack)
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
 
     def test_order_missing_capture_and_identity(self):
         import meshlet_sizes
@@ -64,33 +87,46 @@ class MeshletReportTests(unittest.TestCase):
             for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
                 self.capture(root, row, pack=pack)
             with self.assertRaisesRegex(ValueError, "pack"):
-                meshlet_sizes.capture_means(root, {"16": "d" * 64, "32": "b" * 64, "64": "c" * 64})
-            values = meshlet_sizes.capture_means(root)
+                meshlet_sizes.capture_means(root, "atrium", {"16": "d" * 8, "32": "b" * 8, "64": "c" * 8})
+            values = meshlet_sizes.capture_means(root, "atrium")
             self.assertEqual(list(values), ["cull-off", "16", "32", "64"])
             self.assertEqual(values["16"], [1, 2, 3, 8])
-            self.capture(root, "64", build="fedcba123456", pack="c")
+            path = self.capture(root, "64", build="fedcba123456", pack="c")
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["64"], [1, 2, 3, 8])
+            path.write_text(path.read_text() + "BUILD_ID=abcdef123456-diag\n")
             with self.assertRaisesRegex(ValueError, "build"):
-                meshlet_sizes.capture_means(root)
+                meshlet_sizes.capture_means(root, "atrium")
             (root / "meshlets-64-board.log").unlink()
             with self.assertRaises(FileNotFoundError):
-                meshlet_sizes.capture_means(root)
+                meshlet_sizes.capture_means(root, "atrium")
 
-    def test_commands_open_the_requested_scene(self):
+    def test_commands_hold_one_lock_per_row(self):
         import meshlet_capture
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            meshlet_capture.commands(pathlib.Path("scratch"), dict(sizes=[16,32,64], open_app="Viewer",
-                                     scene_command=["render", "scene", "reference"]))
+            meshlet_capture.commands(pathlib.Path("scratch"), dict(sizes=[16,32,64], suite="run_sponza_perf_suite"))
         lines = output.getvalue().splitlines()
-        self.assertEqual(lines.count("autana open Viewer"), 4)
-        self.assertEqual(lines.count("autana render scene reference"), 4)
+        self.assertEqual(len(lines), 4)
+        for row, line in zip(("cull-off", "16", "32", "64"), lines):
+            self.assertIn(f"--project scratch/tree/{row} suite run_sponza_perf_suite --flash --out", line)
+            self.assertTrue(line.endswith(f"meshlets-{row}-board.log"))
 
-    def test_total_from_frame_cost_owner(self):
-        from r3d.dynres_report import frame_cost_means
+    def test_suite_requires_shared_poses_and_render_size(self):
+        import meshlet_sizes
+        from doc_stages import capture_viewport
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            path = self.capture(root, "16")
-            self.assertEqual(dict(frame_cost_means(path, include_total=True))["frame.total"], 8.0)
+            for row, pack in (("cull-off", "b"), ("16", "a"), ("32", "b"), ("64", "c")):
+                path = self.capture(root, row, pack=pack)
+                capture_viewport(path, (184, 224))
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium", expected_poses=[0, 5000])["32"], [1, 2, 3, 8])
+            path.write_text(path.read_text().replace("t=    5s", "t=    6s"))
+            with self.assertRaisesRegex(ValueError, "poses"):
+                meshlet_sizes.capture_means(root, "atrium")
+            path = self.capture(root, "64", pack="c")
+            path.write_text(path.read_text().replace("rendered 184x224", "rendered 368x448"))
+            with self.assertRaisesRegex(ValueError, "render size"):
+                capture_viewport(path, (184, 224))
 
     def test_host_columns_from_fixture(self):
         import numpy as np
