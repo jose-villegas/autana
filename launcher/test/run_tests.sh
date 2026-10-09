@@ -156,8 +156,8 @@ $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
-$MAIN_DIR/scene/camera/orbit_cam.c
-$MAIN_DIR/scene/camera/orbit_touch.c
+$MAIN_DIR/util/motion/orbit_motion.c
+$MAIN_DIR/input/orbit_motion_touch.c
 $MAIN_DIR/util/runtime/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/display/panel_clock.c

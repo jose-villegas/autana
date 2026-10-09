@@ -3,8 +3,8 @@
  *
  * The camera circles the capybara's bounding sphere, measured from its mesh
  * when the scene loads, at the distance that fits the sphere from every
- * angle (orbit_cam.h). A drag turns it, a double tap brings it home, and
- * touches in the shell's edge strips are left alone (orbit_touch.h). The
+ * angle (orbit_motion.h). A drag turns it, a double tap brings it home, and
+ * touches in the shell's edge strips are left alone (orbit_motion_touch.h). The
  * shell draws the scene through the camera; light is baked per vertex.
  */
 
@@ -20,13 +20,13 @@
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "input/orbit_motion_touch.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
-#include "scene/camera/orbit_cam.h"
-#include "scene/camera/orbit_touch.h"
 #include "scene/scene.h"
+#include "util/motion/orbit_motion.h"
 #include "util/runtime/tune.h"
 
 static const char* TAG = "capybara";
@@ -48,8 +48,8 @@ static const char* TAG = "capybara";
 
 static scene_t* capybara;
 static scene_entity_t camera_entity;
-static orbit_cam_t orbit;
-static orbit_touch_t touch;
+static orbit_motion_t orbit;
+static orbit_motion_touch_t touch;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
 static char failure[48];
@@ -64,7 +64,7 @@ fail(const char* what) {
 
 static void
 place_camera(void) {
-    const transformf_t pose = orbit_pose(&orbit);
+    const transformf_t pose = orbit_motion_pose(&orbit);
     const scene_transform_t placement = r3d_scene_camera_placement(&pose);
     scene_entity_set_transform(capybara, camera_entity, &placement);
 }
@@ -83,10 +83,11 @@ frame_subject(void) {
     vec3f_t centre;
     float radius;
     r3d_lit_mesh_bounding_sphere(scene_entity_mesh(capybara, subject), &centre, &radius);
-    const float log_dist = logf(orbit_fit_distance(radius, lens->half_fov_short_tan, ORBIT_FRAME_PADDING));
-    orbit_init(&orbit, centre, (orbit_state_t){CAPYBARA_HOME_YAW, CAPYBARA_HOME_PITCH, log_dist},
-               (orbit_limits_t){CAPYBARA_PITCH_MIN, ORBIT_PITCH_LIMIT, log_dist, log_dist});
-    orbit_touch_init(&touch);
+    const float log_dist =
+        logf(orbit_motion_fit_distance(radius, lens->half_fov_short_tan, ORBIT_MOTION_FRAME_PADDING));
+    orbit_motion_init(&orbit, centre, (orbit_motion_state_t){CAPYBARA_HOME_YAW, CAPYBARA_HOME_PITCH, log_dist},
+                      (orbit_motion_limits_t){CAPYBARA_PITCH_MIN, ORBIT_MOTION_PITCH_LIMIT, log_dist, log_dist});
+    orbit_motion_touch_init(&touch);
     return true;
 }
 
@@ -127,8 +128,8 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
         return;
     }
     const viewport_t panel = {GFX_WIDTH, GFX_HEIGHT, display_quarter_now()};
-    const orbit_input_t steering = orbit_touch_step(&touch, input, dt_ms, panel, shell_home_edge());
-    orbit_update(&orbit, &steering, (float)dt_ms / MS_PER_SECOND);
+    const orbit_motion_input_t steering = orbit_motion_touch_step(&touch, input, dt_ms, panel, shell_home_edge());
+    orbit_motion_update(&orbit, &steering, (float)dt_ms / MS_PER_SECOND);
     place_camera();
 }
 
