@@ -299,16 +299,15 @@ def _fix_include_layer(root, path, text):
 
 
 # RULE: a folder may include only a strictly lower tier of
-# docs/Firmware-Architecture.md's "Layers" (LAYER_TIER below;
-# two folders can share a tier). A "<folder>/<sub>" key tiers that subfolder
+# docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
+# row, top first; the folders in a row share a tier). A "<folder>/<sub>" key tiers that subfolder
 # on its own; once one subfolder of a folder is keyed, every subfolder must
 # be, and the folder itself holds only its <folder>.h. A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer.
 
-LAYER_TIER = {"apps": 0, "shell": 1, "boot": 2, "selftest": 2, "ui": 3, "console": 3, "scene": 3, "app": 4,
-             "display": 5, "input": 5, "render": 6, "gfx": 7, "anim": 8, "asset": 9,
-             "services": 10, "profile": 11, "core": 12, "board": 13,
-             "math": 14, "math/motion": 14, "math/linear": 15, "math/scalar": 16, "build": 16}
+LAYER_ROWS = ("apps", "shell", "boot selftest", "ui console scene", "app", "display input", "render", "gfx", "anim",
+              "asset", "services", "profile", "core", "board", "math math/motion", "math/linear", "math/scalar build")
+LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps" and "/" not in layer)
 
 
