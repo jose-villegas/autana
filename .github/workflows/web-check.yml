@@ -1,0 +1,68 @@
+name: Web build
+
+# Builds sand for the browser against a pull request to main, without
+# publishing: nothing on main compiles web_sand.c, so a change to what it
+# calls would otherwise break Pages only after merging. main's
+# pages-trigger.yml calls it with the pull request's merge commit, which is
+# merged into this branch in the runner. The build runs only when the pull
+# request changes a file that build_web.sh --inputs lists.
+#
+# A workflow of its own, not an input to pages.yml: a called workflow whose
+# deploy job asks for pages: write fails to start under a caller that does
+# not grant it, even with that job skipped, and a pull request gets no such
+# grant.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to build, a pull request's merge commit.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: Reads a changed file
+    runs-on: ubuntu-24.04
+    outputs:
+      touched: ${{ steps.scope.outputs.touched }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/web-pages
+          fetch-depth: 0
+      - uses: ./.github/actions/merge-ref
+        with:
+          ref: ${{ inputs.ref }}
+      - id: scope
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          sh launcher/main/apps/sand/tools/web/build_web.sh --inputs >inputs.txt
+          git diff --name-only "$REF^1" "$REF" >changed.txt
+          if grep -Fxf inputs.txt changed.txt; then
+            echo touched=true >>"$GITHUB_OUTPUT"
+          else
+            echo "No changed file is one the web build reads."
+          fi
+
+  build:
+    name: Build sand for the web
+    needs: scope
+    if: needs.scope.outputs.touched == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/web-pages
+          fetch-depth: 0
+      - uses: ./.github/actions/merge-ref
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+      - run: sh launcher/main/apps/sand/tools/web/build_web.sh "$RUNNER_TEMP/sand"

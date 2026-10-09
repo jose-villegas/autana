@@ -6,6 +6,11 @@
 #
 #   launcher/main/apps/sand/tools/web/setup_emsdk.sh    (once, unless emcc is on PATH)
 #   launcher/main/apps/sand/tools/web/build_web.sh [<out dir>]
+#   launcher/main/apps/sand/tools/web/build_web.sh --inputs
+#
+# --inputs lists, one repository path per line, every file the build reads:
+# the sources below, the headers they include (as a host cc sees them, $CC or
+# cc), and this directory. It needs no emcc.
 #
 # POSIX sh, like the host test runner, so it runs under Git Bash on Windows.
 
@@ -14,17 +19,6 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SAND_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$SAND_DIR/../.." && pwd)
-DIST_DIR=${1:-$SCRIPT_DIR/dist}
-
-if ! command -v emcc >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/emsdk/emsdk_env.sh" ]; then
-    # shellcheck source=/dev/null
-    . "$SCRIPT_DIR/emsdk/emsdk_env.sh" >/dev/null
-fi
-if ! command -v emcc >/dev/null 2>&1; then
-    echo "emcc not found: run $SCRIPT_DIR/setup_emsdk.sh first" >&2
-    exit 1
-fi
-
 # The simulation and what it links against. The painter, brush list and
 # paint clocks are headers, so they need no entry here.
 SOURCES="
@@ -41,6 +35,31 @@ $MAIN_DIR/input/tilt.c
 $MAIN_DIR/util/runtime/job.c
 $SCRIPT_DIR/web_sand.c
 "
+
+FLAGS="-std=c11 -DNDEBUG -I $MAIN_DIR -I $SAND_DIR"
+
+if [ "${1:-}" = --inputs ]; then
+    ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
+    # -MG: emcc's own headers are missing here, and are not the repository's.
+    # shellcheck disable=SC2086
+    DEPS=$(${CC:-cc} -MM -MG -D__EMSCRIPTEN__ $FLAGS $SOURCES)
+    {
+        echo "$DEPS" | sed 's/ *\\$//' | tr -s ' ' '\n'
+        git -C "$ROOT" ls-files --full-name "$SCRIPT_DIR" | sed "s|^|$ROOT/|"
+    } | sed -n "s|^$ROOT/||p" | sort -u
+    exit 0
+fi
+
+DIST_DIR=${1:-$SCRIPT_DIR/dist}
+
+if ! command -v emcc >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/emsdk/emsdk_env.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$SCRIPT_DIR/emsdk/emsdk_env.sh" >/dev/null
+fi
+if ! command -v emcc >/dev/null 2>&1; then
+    echo "emcc not found: run $SCRIPT_DIR/setup_emsdk.sh first" >&2
+    exit 1
+fi
 
 mkdir -p "$DIST_DIR"
 

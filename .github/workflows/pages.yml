@@ -9,7 +9,8 @@ name: Pages
 # main's source: the build merges the latest main into the branch first, in
 # the runner only, and fails rather than publish if that merge conflicts.
 # A push to the branch runs it, and main's pages-trigger.yml calls it on
-# every push to main.
+# every push to main. Pull requests to main get web-check.yml instead, which
+# builds without publishing.
 #
 # The explorer's generator lives in the private development repository,
 # checked out as .dev the way a local checkout holds it. Needs the
@@ -35,10 +36,9 @@ jobs:
           ref: feature/web-pages
           fetch-depth: 0
       - name: Bring in main
-        run: |
-          git config user.name "Pages build"
-          git config user.email "pages-build@users.noreply.github.com"
-          git merge --no-edit origin/main
+        uses: ./.github/actions/merge-ref
+        with:
+          ref: main
       - uses: actions/checkout@v4
         with:
           repository: jose-villegas/autana-dev
