@@ -51,12 +51,13 @@ jobs:
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
+      # test_fbx_to_glb.py builds ufbx the same way;
       # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
       - name: r3d bake environment
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
           sudo apt-get install -y --no-install-recommends llvm
-          git submodule update --init --depth 1 third_party/upstream/meshoptimizer
+          git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
 
       # test_check_math.mjs renders through GitHub's MathJax.
       - name: Node gate dependencies
