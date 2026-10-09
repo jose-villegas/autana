@@ -729,13 +729,18 @@ class FitLayoutTests(unittest.TestCase):
                                      job.asset_path.name)
 
 
+def triangle_source(p):
+    """A loaded source of one untextured, uncoloured triangle at the corners p."""
+    return SimpleNamespace(colors=None, p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
+                           names=["m"], textures=[None], materials={})
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
         settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set())
-        source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
-                                 names=["m"], textures=[None], materials={})
+        source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
                 mock.patch.object(mesh_import, "RayQuery"), \
@@ -751,8 +756,7 @@ class BakeStepTests(unittest.TestCase):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
         settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set())
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
-        source = SimpleNamespace(p=p, uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]), names=["m"],
-                                 textures=[None], materials={})
+        source = triangle_source(p)
         given = {}
 
         def simplify(pos, rgb, tris, labels, *rest, **options):
@@ -794,8 +798,7 @@ class ReferenceObjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
             scene = load_scene(write_scene(directory, objects, bounced))
-            source = SimpleNamespace(p=np.zeros((3, 3)), uv=None, tri_v=np.array([[0, 1, 2]]), tri_t=None, tri_m=np.array([0]),
-                                     names=["m"], textures=[None], materials={})
+            source = triangle_source(np.zeros((3, 3)))
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
                     mock.patch.object(reference_render, "RayQuery"), \
