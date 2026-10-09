@@ -26,10 +26,10 @@ MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, mathf)
          {{{1.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}}},   \
      .cached = true}
 
-/* Unity's Transform.RotateAround: turns `t` by `angle` radians about the
- * line through `point` along `axis` (any length but zero), in the parent's
- * frame. Its position swings round `point` and its rotation turns with it,
- * so whatever it faced it still faces, turned. */
+/* Turns `t` by `angle` radians about the line through `point` along `axis`
+ * (any length but zero), in the parent's frame. Its position swings round
+ * `point` and its rotation turns with it, so whatever it faced it still
+ * faces, turned. */
 static inline void
 transformf_rotate_around(transformf_t* t, vec3f_t point, vec3f_t axis, float angle) {
     const quatf_t turn = quatf_from_axis_angle(vec3f_normalize(axis), angle);
