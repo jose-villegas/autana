@@ -25,8 +25,9 @@
 #define R3D_LINE_NEAR_Z 0.1F
 
 /* Past this a projected offset is off any panel; clamping first keeps the
- * float to int conversion defined for a point at the camera, whose divide
- * by a zero depth is an infinity or a NaN. */
+ * float to int conversion defined for a point at the camera, whose
+ * reciprocal of a zero depth is an infinity or a NaN: a defined pixel, on
+ * no particular side. */
 #define R3D_PIXEL_LIMIT 1000000.0F
 
 /* Above mathf_recip()'s error out to a 1000 pixel offset, far below a pixel. */

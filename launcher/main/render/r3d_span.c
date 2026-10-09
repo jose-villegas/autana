@@ -59,7 +59,7 @@ plane_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_
     if (area2 > -1e-6F && area2 < 1e-6F) {
         return false;
     }
-    p->inv = 1.0F / area2;
+    p->inv = mathf_recip(area2);
     p->ox = (float)x_origin + 0.5F - ax;
     p->oy = (float)y_anchor + 0.5F - ay;
     return true;
