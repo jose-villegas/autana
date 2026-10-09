@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "core/job.h"
 #include "core/timing.h"
 
 #if !CONFIG_HEAP_USE_HOOKS
@@ -166,6 +167,7 @@ void
 frame_watch_start(void) {
     frame_task = xTaskGetCurrentTaskHandle();
     add_task(frame_task);
+    job_on_worker_started(frame_watch_add_task);
     if (forward_vprintf == NULL) {
         frame_watch_reset(&watch);
         forward_vprintf = esp_log_set_vprintf(watched_vprintf);

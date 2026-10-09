@@ -11,7 +11,6 @@
 #include <stdlib.h>
 
 #include "app/app.h"
-#include "core/job.h"
 #include "core/timing.h"
 #include "display/display.h"
 #include "display/display_shell.h"
@@ -384,7 +383,6 @@ shell_run(void) {
     printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
     frame_watch_start();
-    job_on_worker_started(frame_watch_add_task);
 
     while (1) {
         const int64_t now_us = timing_now_us();

@@ -585,8 +585,8 @@ def suite_list(args):
 
     found = {}
     for source in project.glob("launcher/**/*.c"):
-        # A build directory holds generated copies of the same sources.
-        if "build" in source.parts:
+        # A build directory (launcher/build*) holds generated copies of the same sources.
+        if source.relative_to(project).parts[1].startswith("build"):
             continue
         text = source.read_text(encoding="utf-8", errors="replace")
         for on_request, name in SUITE_REGISTRATION.findall(text):
