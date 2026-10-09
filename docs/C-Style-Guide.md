@@ -120,6 +120,8 @@ Consult the [shared-owner catalogue](Shared-Helpers.md) before writing a helper 
 
 ### Token clones
 
+`python scripts/gates/check_magic_numbers.py --base origin/main` rejects growing per-file counts of visible constant restatements and firmware/Python protocol tokens; `--report` lists hits and module totals.
+
 `python scripts/gates/check_clones.py` rejects growing clone file-pair budgets in HEAD
 compared with the merge-base with `--base` (`origin/main` unless a pull
 request targets another branch), or `HEAD~1` when HEAD is on that branch. Install its pinned jscpd engine with `npm ci --prefix scripts/gates`.
