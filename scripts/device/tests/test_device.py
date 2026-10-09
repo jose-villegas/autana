@@ -1094,6 +1094,16 @@ class TuneSetTests(unittest.TestCase):
     def test_hex_is_compared_as_the_board_prints_it(self):
         self.apply("a.rgb=0x10", b"log line\nI (5) console: TUNE_OK a.rgb=16\n")
 
+    def test_a_dropped_line_is_asked_again(self):
+        class AnswersSecondAsk(FakeConnection):
+            def read(self, unused_size):
+                return b"TUNE_OK r3d.side=3\n" if len(self.writes) == 2 else b""
+
+        connection = AnswersSecondAsk()
+        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.05), mock.patch("builtins.print"):
+            device.apply_tunables(connection, ["r3d.side=3"])
+        self.assertEqual(len(connection.writes), 2)
+
     def test_a_refusal_a_wrong_echo_or_silence_stops(self):
         for chunks in ([b"TUNE_ERR range r3d.side 99\n"], [b"TUNE_OK r3d.side=2\n"], []):
             with self.subTest(chunks=chunks), self.assertRaises(device.TuneRefused):

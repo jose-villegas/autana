@@ -1491,6 +1491,7 @@ def exchange(connection, line, reply, until, seconds):
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
 TUNE_SET_SECONDS = 3.0
+TUNE_SET_ATTEMPTS = 3
 
 
 class TuneRefused(RuntimeError):
@@ -1504,7 +1505,13 @@ def apply_tunables(connection, settings):
     echoes each value back."""
     for setting in settings:
         name, _, value = setting.partition("=")
-        found, _ = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS, TUNE_SET_SECONDS)
+        # A board still winding down the last suite can drop a line; SET is
+        # idempotent, so silence is asked again before it counts as refusal.
+        for _ in range(TUNE_SET_ATTEMPTS):
+            found, complete = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS,
+                                       TUNE_SET_SECONDS)
+            if complete:
+                break
         if not found or not found[-1].startswith("TUNE_OK " + name + "="):
             raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
         if found[-1].split("=", 1)[1] != str(int(value, 0)):

@@ -225,10 +225,11 @@ test_raster_stage_split_by_size(void) {
     TEST_PASS();
 }
 
-static const char* const counter_events[] = {"icache_miss_stall", "d_stall_all"};
+static const char* const counter_events[] = {"d_stall_all"};
 
-/* The control proving the icache event live: the code around raster_draw
- * dropped from the instruction cache before every draw. */
+/* The S3's cache sits outside the core, so the core's icache_miss_stall
+ * reads 0 even here, with the code around raster_draw dropped from the
+ * instruction cache before every draw; its cycles still show the refill. */
 #define COLD_EVENT       "icache_miss_stall"
 #define COLD_WINDOW_SIZE (128 * 1024)
 
