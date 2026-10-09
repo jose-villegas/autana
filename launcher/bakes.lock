@@ -1,0 +1,57 @@
+# Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.
+
+[[bake]]
+output = "capybara.capybara.mesh"
+source = "launcher/demo/capybara/capybara.scene.toml"
+key = "28d34584715d05aafcb90eb4ea65ba1cfe079f5840a8a78e687eaf719f506c55"
+sha256 = "9024a2f573fdc2a0435c095cdf0ccd4b695b97d266abe512467e33157ae848b8"
+size = 15872
+
+[[bake]]
+output = "capybara.meadow.mesh"
+source = "launcher/demo/capybara/capybara.scene.toml"
+key = "9e4d53183cc2d0bf9fae787ebaa1b83a14652e18a74413dbc2fceee42b13d8ff"
+sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
+size = 132
+
+[[bake]]
+output = "sponza.atrium.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "35baf295bbcd7dbe275c581da9053f3388dd1e619ebfa9c7c1f27eb1e56505fa"
+sha256 = "efb40a04ad4e018d665d694836bdeddd16013074964fb633077d99aa80c68b4e"
+size = 266484
+
+[[bake]]
+output = "sponza.atrium_fitted.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "d7294560d3d4e2a22c7ad89450a6090cb443e8fbbb6036947cf871a095d45948"
+sha256 = "9cd15eaa37d4e14a4f0080f3c5d6a0857024e575c9b2a8046f4ddb798dd7cc32"
+size = 144164
+
+[[bake]]
+output = "sponza.atrium_fitted_full.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "0dd0bb2e1df128e466e7a2097f448fb0249517cac7afb147b70f939f1c04d12e"
+sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
+size = 277960
+
+[[bake]]
+output = "sponza.atrium_flat.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "faffdf4202e5aa69759b7a6ca1d42a53f26ec7b4baaf0058cc92c48d810c05fd"
+sha256 = "b5faa76d8f9c5e914ec1a8235bbb7223b32afebae6db42bd12bb268c6e49a78a"
+size = 244164
+
+[[bake]]
+output = "sponza.atrium_flat_fitted.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "f1ea60f8532b5c897436425ad5f7c00d335d90934c4a3e072e9d0391cfa26891"
+sha256 = "429c686bb58052cf62b46f42213f7caf2fec3fb33b9079880aa502d64b6c0d04"
+size = 250680
+
+[[bake]]
+output = "sponza.atrium_lite.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "98ca8d4125ada756743f4f4192dde388860d987927df26742013e9be60370e53"
+sha256 = "106e3bab114028822eedd2b6dcd9d427fa95795612ba6f4f45c3a584843d92d4"
+size = 130124

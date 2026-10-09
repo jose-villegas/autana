@@ -17,6 +17,9 @@ a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
 from their files, each with its stem for id. Ids are unique within a pack,
 whatever their type. Each pack is written to DIR/<name>.apak; --image also
 writes the partition image, the pack directory and every pack.
+--from-cache takes every mesh from the bake cache by launcher/bakes.lock
+(bake/bake.py) instead of the tree, downloading what the cache lacks unless
+--offline; a bake that is not available fails, naming each.
 --pack-of prints the pack that holds entry ID. Run from the repository
 root; standard library only, and no mesh is baked. Packs are build
 products, never committed.
@@ -31,7 +34,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset  # noqa: E402
-from r3d.import_settings import SettingsError, load_demo_assets, load_import_settings, load_scene  # noqa: E402
+from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -92,18 +95,26 @@ def pack_files(paths):
     """{pack name: {entry id: its source}}, one pack per root under `paths`;
     a mesh's source is its .mesh file, a scene's its .scene.toml, a clip's
     its .anim.toml."""
+    return pack_jobs(paths)[0]
+
+
+def pack_jobs(paths):
+    """pack_files() and, for each mesh source, the job that bakes it:
+    {resolved .mesh path: (job, its scene or None, the file that asks for it)}."""
     files = input_files(paths)
-    roots, placed = {}, set()
+    roots, placed, jobs = {}, set(), {}
     for path in files:
         if path.name.endswith(SCENE):
             scene = load_scene(path)
             placed.update(item.settings.path for item in scene.renderers)
             roots[path] = scene_entries(path, scene)
+            jobs.update((item.asset_path.resolve(), (item, scene, path)) for item in scene.renderers)
             placed.update(source.resolve() for source in roots[path].values() if source.name.endswith(CLIP))
     for path in files:
         if path.name.endswith(IMPORT) and path.resolve() not in placed:
             settings = load_import_settings(path)
             roots[path] = {v.name: settings.mesh_dir / f"{v.name}.mesh" for v in settings.variants}
+            jobs.update((item.asset_path.resolve(), (item, None, path)) for item in albedo_jobs(settings))
     for path in files:
         if path.name.endswith(CLIP) and path.resolve() not in placed:
             roots[path] = {tracks_asset.clip_id(path): path}
@@ -121,12 +132,20 @@ def pack_files(paths):
                 raise SettingsError(f"{entry!r} is named by packs {holder[entry]!r} and {name!r}: "
                                     "a shared asset needs a pack of its own, which is not built yet")
             holder[entry] = name
-    return packs
+    return packs, jobs
 
 
-def pack_bytes(paths, replace=()):
-    """{pack name: its bytes}; each --replace NAME=FILE takes mesh NAME from FILE."""
-    packs = pack_files(paths)
+def pack_bytes(paths, replace=(), cache=None, offline=False):
+    """{pack name: its bytes}; each --replace NAME=FILE takes mesh NAME from FILE. With `cache`, every
+    mesh comes from the bake cache by its locked key (bake/bake.py), never from the tree."""
+    packs, jobs = pack_jobs(paths)
+    if cache is not None:
+        from bake import bake
+
+        fetched = {found.tree.resolve(): path for found, path in
+                   bake.fetch_all(bake.bakes_in(packs, jobs), bake.read_lock(), cache, offline).items()}
+        packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
+                 for name, entries in packs.items()}
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
@@ -184,6 +203,9 @@ def main(argv=None):
     parser.add_argument("--replace", action="append", default=[], metavar="NAME=FILE",
                         help="take mesh NAME from FILE: a scratch bake beside the committed ones")
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
+    parser.add_argument("--from-cache", nargs="?", const="", metavar="DIR",
+                        help="take every mesh from the bake cache (DIR, or the user cache) by launcher/bakes.lock")
+    parser.add_argument("--offline", action="store_true", help="with --from-cache: never download")
     args = parser.parse_args(argv)
     paths = args.paths or [DEFAULT_SEARCH]
     try:
@@ -195,11 +217,21 @@ def main(argv=None):
             return 0
         if not args.out:
             parser.error("-o DIR is required")
-        packs = pack_bytes(paths, args.replace)
+        cache = None
+        if args.from_cache is not None:
+            from bake import bake
+
+            cache = pathlib.Path(args.from_cache) if args.from_cache else bake.default_cache()
+        packs = pack_bytes(paths, args.replace, cache, args.offline)
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
         parser.error(str(error))
+    except Exception as error:
+        if type(error).__name__ != "BakeMissing":
+            raise
+        print(f"build_pack.py: {error}", file=sys.stderr)
+        return 2
     return 0
 
 
