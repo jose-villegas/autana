@@ -187,6 +187,27 @@ class LockTests(unittest.TestCase):
         bake.write_lock([self.row, {**self.row, "key": "j" * 64, "run": 7}], path)
         self.assertEqual(bake.read_lock(path), {"k" * 64: self.row, "j" * 64: {**self.row, "key": "j" * 64, "run": 7}})
 
+    def test_a_seeded_row_reads_back_seeded(self):
+        path = self.root / "bakes.lock"
+        bake.write_lock([{**self.row, "seeded": True}], path)
+        self.assertIn("seeded = true", path.read_text())
+        self.assertIs(bake.read_lock(path)["k" * 64]["seeded"], True)
+
+    def test_seeding_marks_every_row_and_a_runs_row_carries_no_mark(self):
+        found = [bake_of("k" * 64, self.tree)]
+        self.assertTrue(all(row["seeded"] for row in bake.seed(found, self.cache)))
+        made = {"k" * 64: {**self.row, "run": 9}}
+        self.assertNotIn("seeded", bake.lock_rows(found, {}, made)[0])
+
+    def test_check_says_which_rows_are_seeded(self):
+        found = [bake_of("k" * 64, self.tree)]
+        with mock.patch.object(bake, "bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "seeded": True}}), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(bake.main(["check"]), 0)
+        self.assertIn("1 of 1 rows are seeded", out.getvalue())
+        self.assertIn("one.mesh", out.getvalue())
+
     def test_check_names_a_missing_key_and_an_unneeded_one(self):
         problems = bake.check([bake_of("n" * 64, self.tree)], {"k" * 64: self.row})
         self.assertEqual(len(problems), 2)

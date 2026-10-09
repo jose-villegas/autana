@@ -23,7 +23,8 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 (the lock keeps its row). `lock` drops the rows nothing needs;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written, so every locked file can be published; `--seed`
-locks the meshes in the tree as they are. `check` fails when LOCK lacks a
+locks the meshes in the tree as they are, marking each row `seeded`: its bytes
+were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
 never downloads. `publish`, on main in CI only, uploads each locked file the
@@ -448,6 +449,8 @@ def read_lock(path=LOCK):
 
 
 def toml_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
     return json.dumps(value) if isinstance(value, str) else str(value)
 
 
@@ -456,7 +459,7 @@ def write_lock(rows, path=LOCK):
     lines = ["# Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.", ""]
     for row in sorted(rows, key=lambda row: (row["output"], row["key"])):
         lines.append("[[bake]]")
-        lines += [f"{name} = {toml_value(row[name])}" for name in ("output", "source", "key", "sha256", "size", "run")
+        lines += [f"{name} = {toml_value(row[name])}" for name in ("output", "source", "key", "sha256", "size", "run", "seeded")
                   if name in row]
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
@@ -560,7 +563,9 @@ def check(found, lock):
 
 
 def seed(found, cache):
-    """Rows locking the tree's own files, each copied into the cache."""
+    """Rows locking the tree's own files, each copied into the cache and marked seeded: the bytes are
+    carried over from the tree, not made by the code their key names. A run that makes the key again
+    writes a row without the mark."""
     rows, missing = [], []
     for bake in found:
         if not bake.tree.is_file():
@@ -568,7 +573,7 @@ def seed(found, cache):
             continue
         data = bake.tree.read_bytes()
         row = {"output": bake.output, "source": relative(bake.source), "key": bake.key,
-               "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+               "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "seeded": True}
         store(bake.tree, row, bake.suffix, cache)
         rows.append(row)
     if missing:
@@ -590,7 +595,7 @@ def lock_rows(found, lock, made=None):
         if row is None:
             missing.append(describe(bake, "no CI run has made this key", bake_again(bake)))
             continue
-        rows.append({name: row[name] for name in ("output", "source", "key", "sha256", "size", "run") if name in row})
+        rows.append({name: row[name] for name in ("output", "source", "key", "sha256", "size", "run", "seeded") if name in row})
     if missing:
         raise BakeMissing("cannot lock:\n" + "\n".join(missing))
     return rows
@@ -703,6 +708,10 @@ def main(argv=None):
                 after = (f"\nThis run made the mesh bakes: bake.py lock --from-run {run}, then commit {relative(LOCK)}."
                          if run else "")
                 raise BakeMissing(f"{relative(LOCK)} is out of date:\n" + "\n".join(problems) + after)
+            seeded = sorted(row["output"] for row in lock.values() if row.get("seeded"))
+            if seeded:
+                print(f"{len(seeded)} of {len(lock)} rows are seeded: bytes carried over from the tree, not made by "
+                      "the code their keys name; a CI run that makes a key again clears it: " + ", ".join(seeded))
         elif args.command == "fetch":
             for bake, path in fetch_all(found, lock, cache, args.offline).items():
                 print(f"{bake.output}\t{path}")
