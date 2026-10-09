@@ -1,11 +1,7 @@
 /*
  * Portable suite: sand_swatch - the deterministic (col, row) -> cell mapping
  * behind the brush screen's material swatch.
- *
- * SWATCH_TEST_SPECS mirrors app_sand.c's brushes[] deliberately, not by
- * accident: that array lives in app_sand.c (an app_*.c, hardware-facing and
- * not host-linkable, see docs/Building-an-App.md's naming convention), so a portable
- * suite cannot include it and keeps its own copy instead.
+ * Every case runs over the app's own sand_brushes[].
  */
 
 #include <stdbool.h>
@@ -16,17 +12,10 @@
 #include "unity.h"
 
 #include "apps/sand/material.h"
+#include "apps/sand/sand_brushes.h"
 #include "apps/sand/sand_swatch.h"
 
 #define SWATCH_CELLS 8
-
-static const cell_t SWATCH_TEST_SPECS[] = {
-    CELL_MAKE(MAT_SAND, 0), CELL_MAKE(MAT_WATER, 0), CELL_MAKE(MAT_STONE, 0), CELL_MAKE(MAT_GAS, 0),
-    CELL_MAKE(MAT_FIRE, 0), CELL_MAKE(MAT_WOOD, 0),  CELL_MAKE(MAT_OIL, 0),   CELL_MAKE(MAT_LAVA, 0),
-    CELL_MAKE(MAT_ACID, 0), CELL_MAKE(MAT_GLASS, 0), CELL_MAKE(MAT_SNOW, 0),  CELL_MAKE(MAT_DIRT, 0),
-    MATX(MATX_ICE),         MATX(MATX_PLANT),        GUNPOWDER_CELL(0),
-};
-#define SWATCH_SPEC_COUNT (sizeof(SWATCH_TEST_SPECS) / sizeof(SWATCH_TEST_SPECS[0]))
 
 static cell_t
 fixture(cell_t spec, int col, int row) {
@@ -37,12 +26,12 @@ fixture(cell_t spec, int col, int row) {
 
 static void
 test_the_same_spec_col_row_return_the_same_cell_every_call(void) {
-    for (size_t i = 0; i < SWATCH_SPEC_COUNT; i++) {
+    for (int i = 0; i < SAND_BRUSH_COUNT; i++) {
         for (int row = 0; row < SWATCH_CELLS; row++) {
             for (int col = 0; col < SWATCH_CELLS; col++) {
-                const cell_t first = fixture(SWATCH_TEST_SPECS[i], col, row);
+                const cell_t first = fixture(sand_brushes[i].cell, col, row);
                 for (int rep = 0; rep < 5; rep++) {
-                    TEST_ASSERT_EQUAL_UINT8_MESSAGE(first, fixture(SWATCH_TEST_SPECS[i], col, row),
+                    TEST_ASSERT_EQUAL_UINT8_MESSAGE(first, fixture(sand_brushes[i].cell, col, row),
                                                     "a repeated call with the same inputs must return the same "
                                                     "byte, or the command-list hash a repaint skip depends on "
                                                     "would never repeat frame to frame");
@@ -56,8 +45,8 @@ test_the_same_spec_col_row_return_the_same_cell_every_call(void) {
 
 static void
 test_every_variant_stays_within_the_material_shade_span(void) {
-    for (size_t i = 0; i < SWATCH_SPEC_COUNT; i++) {
-        const cell_t spec = SWATCH_TEST_SPECS[i];
+    for (int i = 0; i < SAND_BRUSH_COUNT; i++) {
+        const cell_t spec = sand_brushes[i].cell;
         if (cell_is_gunpowder(spec) || cell_is_extended(spec)) {
             continue; /* no shade axis - covered below instead */
         }
@@ -120,10 +109,10 @@ test_a_multi_shade_material_uses_more_than_one_variant(void) {
 
 static void
 test_every_brush_spec_stays_in_range_across_the_whole_grid(void) {
-    for (size_t i = 0; i < SWATCH_SPEC_COUNT; i++) {
+    for (int i = 0; i < SAND_BRUSH_COUNT; i++) {
         for (int row = 0; row < SWATCH_CELLS; row++) {
             for (int col = 0; col < SWATCH_CELLS; col++) {
-                const cell_t c = fixture(SWATCH_TEST_SPECS[i], col, row);
+                const cell_t c = fixture(sand_brushes[i].cell, col, row);
                 TEST_ASSERT_TRUE_MESSAGE(CELL_VARIANT(c) <= 0x0F,
                                          "the variant nibble must never spill outside its own 4 bits");
             }

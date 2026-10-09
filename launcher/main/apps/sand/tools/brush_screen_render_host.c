@@ -31,6 +31,7 @@
 #include "material.h"
 #include "material_palette.h"
 #include "render_host.h"
+#include "sand_brushes.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
 #include "ui/brush_screen.h"
@@ -39,10 +40,9 @@
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
 
-/* A real brush cell, mode and radius to draw - GUNPOWDER_CELL(0) is
- * "Gunpowder", the longest name in app_sand.c's brushes[] (see
- * brush_screen.c's own comment on the name-shrink loop it forced). */
-#define PREVIEW_MATERIAL    GUNPOWDER_CELL(0)
+/* A real brush cell, mode and radius to draw: the longest name, the worst
+ * case brush_screen.c's name-shrink loop handles. */
+#define PREVIEW_MATERIAL    (sand_brushes[sand_brush_longest_name()].cell)
 #define PREVIEW_MODE        SAND_MODE_PAINT
 #define PREVIEW_RADIUS_PX   ((SAND_UI_RADIUS_MIN + SAND_UI_RADIUS_MAX) / 2)
 
