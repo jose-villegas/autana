@@ -5,15 +5,17 @@ Two parts of Mitsuba's CPU backend choose their code by the host: Dr.Jit compile
 instruction set. Either one moves a hit distance or a bounced radiance by an ulp between an AVX-512 host and an
 AVX2 one, an ulp moves a rounded colour, and the simplifier then keeps different triangles. `pin()` compiles every
 kernel for x86-64-v3 (AVX2 and FMA) at 8 lanes and caps Embree at AVX2, the same code on every x86-64 CPU from
-2015 on. It must run before `import mitsuba`; `mitsuba_reference.import_mitsuba` calls it.
+2015 on. It must run before `import mitsuba`; `mitsuba_reference.import_mitsuba` calls it, so every LLVM trace is
+pinned, a reference render's too: it costs about a tenth more time on an AVX-512 host.
 
 The same code gives the same bits on CPUs of one vendor, not across vendors: Embree's AVX2 and SSE kernels start
 reciprocals from rcpps, whose estimate AMD and Intel each define their own way, so an AMD host and an Intel one still
 differ by an ulp (2 of the Sponza atrium's 17 376 triangles). AVX-512's rcp14 is exact on both, but leaves out the
 AVX2-only CPUs, many hosted runners among them.
 
-The pin needs Linux on x86-64 with AVX2 and FMA, a C compiler (CC, else cc, gcc or clang) and Dr.Jit as
-requirements.txt pins it; elsewhere it logs that bakes there may differ from other hosts' and leaves the defaults.
+The pin needs Linux on x86-64 with AVX2 and FMA, where it stops the process when it cannot build or bind (no C
+compiler: set CC, else cc, gcc or clang; a Dr.Jit or Mitsuba other than requirements.txt pins). Elsewhere it logs that
+bakes there may differ from other hosts' and leaves the defaults.
 """
 import ctypes
 import importlib.util
@@ -69,9 +71,9 @@ def pin():
     global _state
     if _state is not None:
         return bool(_state)
-    _state = False
     if sys.platform != "linux" or platform.machine() != "x86_64":
         log(f"ray tracing on {sys.platform} {platform.machine()} is not pinned: bakes here may differ from other hosts'")
+        _state = False
         return False
     if "mitsuba" in sys.modules:
         raise RuntimeError("r3d.isa.pin() must run before mitsuba is imported")
@@ -79,6 +81,7 @@ def pin():
     features = (getattr(core, TARGET_FEATURES)() or b"").decode().split(",")
     if not {"+avx2", "+fma"} <= set(features):
         log("this CPU has no AVX2 and FMA: ray tracing is not pinned, and bakes here may differ from other hosts'")
+        _state = False
         return False
     mitsuba_dir = pathlib.Path(importlib.util.find_spec("mitsuba").origin).parent
     shim = build_shared("embree_cap", CACHE, (HERE / "embree_cap.c",), find_compiler("CC", ("cc", "gcc", "clang"), "C"),
@@ -86,6 +89,6 @@ def pin():
     shim.embree_cap_last_config.restype = ctypes.c_char_p
     embree = ctypes.CDLL(str(mitsuba_dir / "libembree3.so"))
     shim.embree_cap_bind(ctypes.cast(getattr(embree, NEW_DEVICE), ctypes.c_void_p), EMBREE_CAP)
-    _state = shim
     getattr(core, SET_TARGET)(JIT_CPU.encode(), JIT_FEATURES.encode(), ctypes.c_uint32(JIT_LANES))
+    _state = shim
     return True

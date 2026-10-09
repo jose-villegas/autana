@@ -26,8 +26,9 @@ from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
 PINNED = HAVE_MITSUBA and sys.platform == "linux" and platform.machine() == "x86_64" and isa.pin()
 needs_pin = unittest.skipIf(not (PINNED and have_llvm()), "the pin needs Linux on x86-64 with AVX2, FMA and libLLVM")
 
-# (hits, bounce) digests a pinned host of each vendor makes; a change to Mitsuba, Dr.Jit or these scenes changes them:
-# rerun on an x86-64 Linux host of each vendor and record the digests its failure prints.
+# (hits, bounce) digests a pinned host of each vendor makes. An unpinned AVX-512 host misses them; an AVX2-only one
+# makes them unpinned too, so there they guard only against a Mitsuba or Dr.Jit change: after one, rerun on an x86-64
+# Linux host of each vendor and record the digests its failure prints.
 PINNED_SHA256 = {
     "AuthenticAMD": ("9964d47fe885de30264b20514999d430405205570e324d60534c2b403e75245f",
                      "81e5826f8e3441459cad0d3e1589a3e8081b8474dee550271f22359f1239ae14"),
