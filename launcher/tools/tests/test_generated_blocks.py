@@ -6,7 +6,7 @@ import unittest
 import subprocess
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
-from generated_blocks import apply_tables, blocks, digest, replace_block, verify
+from generated_blocks import apply_tables, blocks, check_commands, digest, replace_block, verify
 
 
 class GeneratedBlocksTests(unittest.TestCase):
@@ -29,6 +29,17 @@ class GeneratedBlocksTests(unittest.TestCase):
         self.assertTrue(verify(text.replace("| 1 |", "| 2 |")))
         self.assertTrue(verify(text.replace(f" sha256={digest(body)}", "")))
 
+    def test_a_check_command_marker_survives_regeneration_without_a_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "doc.md"
+            marker = "<!-- generated: score check: python gen.py --check -->"
+            path.write_text(f"{marker}\nold\n<!-- /generated: score -->\n", encoding="utf-8")
+            self.assertTrue(replace_block(path, "score", "| 2 |\n"))
+            text = path.read_text(encoding="utf-8")
+            self.assertEqual(text, f"{marker}\n| 2 |\n<!-- /generated: score -->\n")
+            self.assertEqual(check_commands(text), {"score": "python gen.py --check"})
+            self.assertEqual(verify(text.replace("| 2 |", "| 3 |")), [])
+
     def test_invalid_markers_fail(self):
         for text in (
             "<!-- generated: a -->\n",
@@ -36,6 +47,8 @@ class GeneratedBlocksTests(unittest.TestCase):
             "<!-- generated: a -->\n<!-- /generated: b -->\n",
             "<!-- generated: a -->\n<!-- generated: b -->\n<!-- /generated: b -->\n<!-- /generated: a -->\n",
             "<!-- generated: a bad-hash -->\n<!-- /generated: a -->\n",
+            "<!-- generated: a check: -->\n<!-- /generated: a -->\n",
+            "<!-- generated: a -->\n<!-- /generated: a check: python gen.py -->\n",
             "<!-- generated: a -->\n<!-- /generated: a -->\n" * 2,
         ):
             with self.subTest(text=text), self.assertRaises(ValueError):

@@ -1,4 +1,11 @@
-"""Replace named Markdown blocks, retaining the document's line endings."""
+"""Replace named Markdown blocks, retaining the document's line endings.
+
+A block's opening marker either records the SHA-256 of its body, which
+catches a hand edit to a block nothing regenerates, or names the command
+that regenerates and compares it (`check: python <script> --check`). The
+second form changes only when the command does, so two branches that each
+regenerate the block merge without conflicting on its marker line.
+"""
 import argparse
 import sys
 import hashlib
@@ -8,7 +15,8 @@ import re
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
 from tracked import tracked_files
 
-MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)(?: sha256=([0-9a-f]{64}))? -->$", re.M)
+MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)"
+                    r"(?: sha256=([0-9a-f]{64})| check: (\S.*?))? -->$", re.M)
 TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
 
 
@@ -24,15 +32,15 @@ def blocks(text):
     found = {}
     start = None
     for marker in markers:
-        kind, name, checksum = marker.groups()
+        kind, name, checksum, command = marker.groups()
         if kind == "generated":
             if start is not None or name in found:
                 raise ValueError(f"nested or duplicate generated block: {name}")
             start = marker
         else:
-            if start is None or name != start.group(2) or checksum:
+            if start is None or name != start.group(2) or checksum or command:
                 raise ValueError(f"unmatched generated end: {name}")
-            found[name] = (start.start(), marker.end(), text[start.end():marker.start()], start.group(3))
+            found[name] = (start.start(), marker.end(), text[start.end():marker.start()], *start.group(3, 4))
             start = None
     if start is not None:
         raise ValueError(f"missing generated end: {start.group(2)}")
@@ -40,7 +48,15 @@ def blocks(text):
 
 
 def verify(text):
-    return [name for name, (_, _, body, checksum) in blocks(text).items() if checksum != digest(body)]
+    """Names of the blocks whose recorded digest does not match their body;
+    a block that names its check command is the command's to verify."""
+    return [name for name, (_, _, body, checksum, command) in blocks(text).items()
+            if command is None and checksum != digest(body)]
+
+
+def check_commands(text):
+    """The check command each block names, by block name."""
+    return {name: command for name, (*_, command) in blocks(text).items() if command}
 
 
 def replace_block(path, name, body, check=False):
@@ -52,9 +68,10 @@ def replace_block(path, name, body, check=False):
     spans = blocks(text)
     if name not in spans:
         raise ValueError(f"{path}: missing generated block {name}")
-    start, end, _, _ = spans[name]
+    start, end, _, _, command = spans[name]
     body = "\n" + body.replace("\r\n", "\n").strip("\n") + "\n"
-    replacement = f"<!-- generated: {name} sha256={digest(body)} -->{body}<!-- /generated: {name} -->"
+    stamp = f"check: {command}" if command else f"sha256={digest(body)}"
+    replacement = f"<!-- generated: {name} {stamp} -->{body}<!-- /generated: {name} -->"
     offsets = [0, *(match.end() for match in re.finditer(r"\r\n|.", original, re.S))]
     updated = (original[:offsets[start]] + replacement.replace("\n", newline) + original[offsets[end]:]).encode("utf-8")
     changed = updated != raw

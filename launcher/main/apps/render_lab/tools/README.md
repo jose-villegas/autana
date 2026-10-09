@@ -8,7 +8,7 @@ Before a source bake or reference render, pull the
 
 ## Generated files
 
-<!-- generated: generated-files-render-lab sha256=d4251689721ad9a1de4306e41c402135d1c1365636be9b6b88c038de6d290d90 -->
+<!-- generated: generated-files-render-lab check: python scripts/gates/check_generated_files.py --check-table -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |

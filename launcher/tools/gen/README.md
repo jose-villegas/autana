@@ -19,7 +19,7 @@
 Apps keep their own generators in `apps/<name>/tools/`; the rules are the
 same. Every checked-in output, from the banner each one carries:
 
-<!-- generated: generated-files sha256=e65448642cfc35e527d28ea71ae57f1bdd80486508e717e2c862b6d7b7f13907 -->
+<!-- generated: generated-files check: python scripts/gates/check_generated_files.py --check-table -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
