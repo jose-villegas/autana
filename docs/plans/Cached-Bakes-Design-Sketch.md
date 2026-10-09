@@ -1,6 +1,6 @@
 # Expensive bakes as cached build products: design sketch
 
-**Status:** planned, awaiting approval. `[A]` marks an assumption or a
+**Status:** approved, not built; step 0 (measurements) first. `[A]` marks an assumption or a
 proposal of this sketch that nobody asked for.
 
 Where a source file is the truth, no derived copy is committed. Two kinds of
@@ -180,23 +180,21 @@ whose sha256 differs from the lock.
 
 | | Estimate |
 |---|---|
-| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (open question 3) |
+| Storage | about 2 MB of pack inputs plus the reference archives [A] per full set; a change adds only its keys. Releases have no storage quota [A]; a weekly `bake.py prune` never drops a file a lock reachable from main names (decision 3) |
 | CI, warm | one `bakes.yml` call per consumer workflow: checkout and key computation, under a minute [A] |
 | CI, cold | plain bakes minutes each [A]; references 45 to 69 CPU minutes each; fits about 5 GPU minutes each; a full cold set about 75 minutes wall, dominated by references |
 | First build, fresh clone | about 2 MB download, keys in under a second [A] |
 | Saved | no rebake adds its blobs to every clone's history |
 
-## Open questions (the maintainer's; Rendering's recommendation first)
+## Decisions
 
-1. **A fit PR and the GPU runner.** (a) The PR stays open and work goes on,
-   but it cannot merge with a lock miss: the check names the fit and the
-   maintainer dispatches the GPU job when the machine is up. (b) The fit PR
-   merges and main's GPU run adds the lock row in a follow-up.
-2. **Who writes the lock on a PR.** (a) CI writes it into the run's
-   artifact and fails when the committed lock differs; the author runs
-   `bake.py lock --from-run N` and commits. No bot commits. (b) CI commits it
-   to the PR branch.
-3. **Pruning.** (a) Never drop a file a lock reachable from main names;
-   older files go after a stated age, and an old commit then rebakes from
-   source with a loud "not byte-identical to the lock" warning, since fits
-   are not deterministic. (b) Keep everything.
+1. **A fit PR cannot merge with a lock miss.** The check names the fit; the
+   maintainer dispatches the GPU job when the machine is up, and the PR stays
+   open meanwhile.
+2. **The author writes the lock.** CI puts the lock it would write in the
+   run's artifact and fails when the committed one differs; the author runs
+   `bake.py lock --from-run N` and commits. CI never commits to a PR branch.
+3. **Pruning.** A file a lock in main's history names is never deleted;
+   other files expire after a stated age. An old commit whose files expired
+   rebakes from source, warning loudly that the result is not byte-identical
+   to its lock.
