@@ -2,6 +2,7 @@
 command away from the tracked file, fails a file it cannot reproduce, and
 keeps the generators' table current."""
 import pathlib
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -146,6 +147,19 @@ class GateTests(unittest.TestCase):
         self.assertEqual(fresh.returncode, 0, fresh.stdout + fresh.stderr)
         self.assertTrue(doc.read_text().startswith(marker + "\n"))
         self.assertEqual(gate().returncode, 1)
+
+    def test_the_named_check_command_fails_a_stale_table_and_writes_nothing(self):
+        # TABLE_CHECK run as the generated-document gate runs it, over current banners.
+        from check_doc_generated import run_check
+        self.add("main/a.h", header("python tools/gen.py 1 > main/a.h", 1))
+        doc = self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
+        command = f"{TABLE_CHECK} --root {shlex.quote(self.root.as_posix())}"
+        before = doc.read_bytes()
+        self.assertIsNotNone(run_check(GATE.parents[2], command))
+        self.assertEqual(before, doc.read_bytes())
+        subprocess.run([sys.executable, str(GATE), "--root", str(self.root), "--write-table"], check=True,
+                       capture_output=True)
+        self.assertIsNone(run_check(GATE.parents[2], command))
 
     def test_finds_only_tracked_files_with_the_marker_in_their_first_five_lines(self):
         self.add("main/a.h", header("python tools/gen.py 1 > main/a.h", 1))
