@@ -5,6 +5,7 @@
  * a pixel is the quad's colour, or the clear colour.
  */
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "r3d_quad_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_scene.h"
 #include "render/raster.h"
@@ -237,6 +239,37 @@ test_the_camera_of_a_baked_placement_looks_down_its_third_column(void) {
     TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.z);
 }
 
+static void
+test_a_placement_from_a_pose_stands_the_camera_there_looking_down_its_plus_z(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
+    transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const r3d_placement_t placement = r3d_scene_camera_placement(&pose);
+    const r3d_scene_camera_t camera = {1.0F, 1.0F, &placement, NULL};
+    vec3f_t eye;
+    vec3f_t forward;
+    r3d_scene_camera_sample(&camera, 0, &eye, &forward);
+    const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    TEST_ASSERT_TRUE(vec3f_equal(pose.position, eye));
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.x, forward.x);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.y, forward.y);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.z, forward.z);
+}
+
+static void
+test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex(void) {
+    static const int16_t corners[4][3] = {{0, 0, 0}, {8, 0, 0}, {8, 4, 0}, {0, 2, 0}};
+    static const r3d_lit_cluster_t cluster = {0, 4, 0, 2, {0, 0, 0}, {8, 4, 0}, false};
+    static const r3d_lit_node_t node = {{0, 0, 0}, {8, 4, 0}, 0, 1, true};
+    r3d_lit_mesh_t mesh = r3d_quad_mesh(corners, NULL, NULL, &cluster, &node);
+    mesh.position_scale = 2; /* ticks per unit: the box is 4 by 2 units */
+    vec3f_t centre;
+    float radius;
+    r3d_lit_mesh_bounding_sphere(&mesh, &centre, &radius);
+    TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){2.0F, 1.0F, 0.0F}, centre));
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, sqrtf(5.0F), radius); /* corner (4, 2) or (0, 0): 2 by 1 from the centre */
+}
+
 void
 suite_r3d_scene(void) {
     RUN_TEST(test_a_mesh_with_no_placement_draws_where_it_is);
@@ -247,6 +280,8 @@ suite_r3d_scene(void) {
     RUN_TEST(test_a_rotation_turns_an_instance_about_its_position);
     RUN_TEST(test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first);
     RUN_TEST(test_the_camera_of_a_baked_placement_looks_down_its_third_column);
+    RUN_TEST(test_a_placement_from_a_pose_stands_the_camera_there_looking_down_its_plus_z);
+    RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
 }
 
 SUITE_REGISTER(suite_r3d_scene);
