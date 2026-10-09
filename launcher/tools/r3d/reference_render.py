@@ -65,6 +65,8 @@ def hit_albedo(source, hits, bary):
         kd = source.materials.get(source.names[index], {}).get("Kd", (1.0, 1.0, 1.0))
         uv = (source.uv[source.tri_t[hits[chosen]]] * bary[chosen, :, None]).sum(axis=1)
         out[chosen] = albedo_from_uv(source.textures[index], kd, uv, np.zeros(len(uv)))
+    if source.colors is not None:
+        out *= (source.colors[source.tri_v[hits]] * bary[:, :, None]).sum(axis=1)
     return out
 
 
