@@ -11,6 +11,7 @@
 
 #include "material_palette.h"
 #include "sand_paint_row.h"
+#include "util/scalar/mathx.h"
 
 #define SAND_PAINT_SHINE_STEP_MS       40
 #define SAND_PAINT_SHINE_STEP_PX       2
@@ -113,8 +114,8 @@ sand_paint_gravity_bearing_q16(int gx, int gy) {
     if (denom == 0) {
         return 0;
     }
-    const int64_t p_q16 = (int64_t)gx * 65536 / denom; /* a multiply: gx may be negative */
-    return (int)(gy < 0 ? (p_q16 - 65536) : (65536 - p_q16));
+    const int64_t p_q16 = (int64_t)gx * MATHX_ONE / denom; /* a multiply: gx may be negative */
+    return (int)(gy < 0 ? (p_q16 - MATHX_ONE) : (MATHX_ONE - p_q16));
 }
 
 /* Not a clock: glass reads gravity's bearing, so a steady tilt leaves it fixed. */
