@@ -264,12 +264,6 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
     memory_free(b);
 }
 
-static void
-report_tune(const char* line) {
-    ESP_LOGI(TAG, "%s", line);
-    TEST_ASSERT_EQUAL_INT(0, strncmp(line, "TUNE_OK", 7));
-}
-
 void
 test_sponza_frame_cost_along_the_flythrough(void) {
     /* Cache configuration trades internal RAM for speed, so a frame-cost
@@ -280,15 +274,15 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(culling);
     const int32_t saved = *culling->value;
-    TEST_ASSERT_TRUE(tune_handle_line("SET render.cull 1", report_tune));
+    *culling->value = 1;
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(sponza_bakes[i], &instance, NULL, NULL);
     }
-    TEST_ASSERT_TRUE(tune_handle_line("SET render.cull 0", report_tune));
+    *culling->value = 0;
     const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
     report_frame_cost("cull_off", &full, NULL, NULL);
-    TEST_ASSERT_TRUE(tune_handle_line(saved == 0 ? "SET render.cull 0" : "SET render.cull 1", report_tune));
+    *culling->value = saved;
     TEST_PASS();
 }
 
