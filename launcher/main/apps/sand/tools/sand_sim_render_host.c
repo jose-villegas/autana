@@ -177,8 +177,8 @@ static void
 paint_grid(const render_frame_t* frame, int gx, int gy) {
     sand_paint_frame_t pf = {
         .shine_offset = frame->index / 2, .wood_leaf_wind_sign = 1, .wood_leaf_time_ms = frame->elapsed_ms};
-    material_set_gravity(gx, gy);
-    material_set_foam_phase(frame->elapsed_ms / 90);
+    material_frame_set_gravity(&pf.material, gx, gy);
+    pf.material.foam_phase = frame->elapsed_ms / 90;
     material_shine_direction(gx, gy, &pf.shine_ux_q8, &pf.shine_uy_q8);
     material_wood_leaf_wind_axis(gx, gy, &pf.wood_leaf_wind_ux_q8, &pf.wood_leaf_wind_uy_q8);
     material_wood_leaf_top5(gx, gy, &wood_top_down, pf.wood_leaf_top5);
