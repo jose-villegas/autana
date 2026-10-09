@@ -58,6 +58,7 @@ set(app_srcs
     "scene/scene_draw.c"
     "scene/scene_shell.c"
     "util/motion/orbit_motion.c"
+    "input/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
