@@ -4,4 +4,4 @@
 #   sh launcher/tools/r3d/gpu_python.sh SCRIPT [ARGS...]
 set -eu
 . "$(dirname -- "$0")/gpu_env.sh"
-exec "$E/bin/python3" "$@"
+exec "$GPU_ENV/bin/python3" "$@"

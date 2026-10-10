@@ -1,6 +1,7 @@
 name: GPU Doc Images
 
-# The GPU job renders only when the stage's input fingerprint differs from the latest record on main.
+# The GPU job renders only when the stage's input fingerprint differs from the latest record on main,
+# or when a dispatch sets force.
 # docs/tools/Render-Harness.md describes the fingerprint and the record.
 on:
   workflow_dispatch:
@@ -47,7 +48,7 @@ jobs:
         id: inputs
         run: |
           fingerprint=$(sh launcher/tools/render/render_doc_images.sh --stage gpu --inputs)
-          current=$(python scripts/ci/inputs_recorded.py "$fingerprint")
+          current=$(python scripts/ci/inputs_recorded.py "$fingerprint" --workflow doc-images-gpu.yml)
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
           if [ "$current" = true ]; then
@@ -81,7 +82,7 @@ jobs:
             echo "GPU inputs $fingerprint differ from hosted inputs $FINGERPRINT" >&2
             exit 1
           fi
-          current=$("$HOME/gpu/env/bin/python" scripts/ci/inputs_recorded.py "$fingerprint")
+          current=$("$GPU_ENV/bin/python3" scripts/ci/inputs_recorded.py "$fingerprint")
           if [ "$current" = true ]; then
             echo "render=false" >> "$GITHUB_OUTPUT"
             echo "doc images current: latest run recorded inputs $fingerprint"
@@ -100,7 +101,8 @@ jobs:
       - name: Install the stage requirements into the GPU environment
         if: steps.gate.outputs.render == 'true'
         run: |
-          "$HOME/gpu/env/bin/python" -m pip install \
+          . launcher/tools/r3d/gpu_env.sh
+          "$GPU_ENV/bin/python3" -m pip install \
             -r launcher/tools/r3d/requirements.txt
 
       - name: GPU memory before the full stage
@@ -119,11 +121,12 @@ jobs:
         if: steps.gate.outputs.render == 'true'
         id: render
         run: |
+          . launcher/tools/r3d/gpu_env.sh
           while IFS= read -r -d '' image; do
             if git cat-file -e "HEAD:$image" 2>/dev/null; then
               git show "HEAD:$image" > "$RUNNER_TEMP/before.png"
               set +e
-              "$HOME/gpu/env/bin/python" launcher/tools/render/compare_images.py \
+              "$GPU_ENV/bin/python3" launcher/tools/render/compare_images.py \
                 "$RUNNER_TEMP/before.png" "$image"
               code=$?
               set -e
@@ -141,7 +144,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          "$HOME/gpu/env/bin/python" scripts/ci/refresh_pr.py close \
+          . launcher/tools/r3d/gpu_env.sh
+          "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py close \
             "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Commit changes and open or update the GPU refresh PR
@@ -149,17 +153,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          . launcher/tools/r3d/gpu_env.sh
           # The run rendered its trigger commit; the branch is built on the current main from
           # the changed images and the tables (scripts/ci/refresh_branch.py says why).
           mapfile -t images < <(git diff --cached --name-only HEAD -- docs/images/render/gpu)
           set +e
-          "$HOME/gpu/env/bin/python" scripts/ci/refresh_branch.py "$REFRESH_BRANCH" \
+          "$GPU_ENV/bin/python3" scripts/ci/refresh_branch.py "$REFRESH_BRANCH" \
             'docs: refresh GPU-rendered images' \
             --tables launcher/tools/results/doc_images/out/gpu/tables "${images[@]}"
           code=$?
           set -e
           if [ "$code" -eq 3 ]; then
-            "$HOME/gpu/env/bin/python" scripts/ci/refresh_pr.py close \
+            "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py close \
               "Every GPU-rendered image and generated table already matches main; nothing left to refresh."
             exit 0
           fi
@@ -172,7 +177,7 @@ jobs:
             echo "Changed files:"
             sed 's/^/- /' "$RUNNER_TEMP/changed.txt"
           } > "$RUNNER_TEMP/body.md"
-          "$HOME/gpu/env/bin/python" scripts/ci/refresh_pr.py sync 'docs: refresh GPU-rendered images' "$RUNNER_TEMP/body.md"
+          "$GPU_ENV/bin/python3" scripts/ci/refresh_pr.py sync 'docs: refresh GPU-rendered images' "$RUNNER_TEMP/body.md"
 
       - name: Record the inputs these images were made from
         if: steps.gate.outputs.render == 'true'

@@ -56,7 +56,8 @@ if [ "${1:-}" = --stage ]; then
         exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
     fi
     . "$ROOT/scripts/lib/python.sh"
-    # The fingerprint needs a Python 3.12 or later with no third-party packages, no GPU toolchain.
+    # --inputs reads only the tree: no numpy, scipy or GPU toolchain
+    # (doc_stages.py checks the Python version).
     if [ "${3:-}" = --inputs ]; then
         PYTHON=$(find_python) || exit 2
     else

@@ -4,19 +4,9 @@
 The doc-image workflows call this instead of the GitHub CLI, so no runner needs it. Reads GH_TOKEN,
 GITHUB_REPOSITORY and REFRESH_BRANCH from the environment.
 """
-import json
 import os
 import sys
-import urllib.request
-
-
-def call(method, path, body=None):
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}{path}", method=method,
-        data=None if body is None else json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(request) as response:
-        return json.load(response)
+from github_api import call
 
 
 def open_number(branch, request=call):

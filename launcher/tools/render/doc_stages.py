@@ -13,10 +13,6 @@ import sys
 from typing import NamedTuple
 
 INPUTS_PYTHON_MINIMUM = (3, 12)
-INPUTS_PYTHON_ERROR = "--inputs requires Python 3.12 or later for stable code tokens"
-
-if "--inputs" in sys.argv and sys.version_info < INPUTS_PYTHON_MINIMUM:
-    sys.exit(INPUTS_PYTHON_ERROR)
 
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "launcher/tools"
@@ -90,8 +86,7 @@ def named_files(path, tracked):
     tools folder or its own folder."""
     from bake import bake
     for node in ast.walk(bake.module_facts(path)[0]):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.strip() \
-                and "\n" not in node.value:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.strip():
             for base in (ROOT, TOOLS, path.parent):
                 try:
                     candidate = (base / node.value).resolve()
@@ -125,9 +120,9 @@ def host_inputs(scene_path):
 
 def gpu_inputs(scene_path, object_name):
     """{input: digest} of everything the GPU stage's output is made from: the Python it runs (the import
-    closure of this file and of each script it names, with the C and requirements bake.py counts for
-    them), the other tracked files that code names, the host renderer's compile, the scene file and the
-    locked bytes of every bake the scene holds. Its digest (fingerprint) names the stage's run."""
+    closure of this file and of each script its closure names, until none is new, with the C and
+    requirements bake.py counts for them), the other tracked files that code names, the host renderer's compile, the scene file and the
+    key and locked bytes of every bake the scene holds. Its digest (fingerprint) names the stage's run."""
     from bake import bake
     tracked = {(ROOT / name).resolve() for name in tracked_files(ROOT, ("launcher", "scripts"))}
     entries = {Path(__file__).resolve()}
@@ -153,14 +148,14 @@ def gpu_inputs(scene_path, object_name):
                   for node in ast.walk(bake.module_facts(path)[0])
                   if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names]) for path in code},
               **{f"pack {entry}": content_checksum(source).decode()
-                 for entries in packs.values() for entry, source in entries.items() if source.resolve() not in jobs},
+                 for pack in packs.values() for entry, source in pack.items() if source.resolve() not in jobs},
               **{f"native {path}": value for path, value in bake.native_inputs(code).items()},
               **{f"requirement {file} {line}": line for file, line in bake.pinned_requirements(code)},
               **{f"file {name(path)}": content_checksum(path).decode() for path in sorted(named - set(code))},
               **host_inputs(scene_path)}
     for found in bake.bakes([scene_path]):
         row = lock.get(found.key)
-        inputs[f"bake {found.output}"] = row["sha256"] if row else f"unlocked {found.key}"
+        inputs[f"bake {found.output}"] = f"{found.key} {row['sha256']}" if row else f"unlocked {found.key}"
     return inputs
 
 
@@ -693,7 +688,8 @@ def main(argv=None):
         out = RESULTS / "out" / (args.stage + "-smoke" if args.smoke else args.stage)
         if args.stage == "gpu" and args.inputs:
             if sys.version_info < INPUTS_PYTHON_MINIMUM:
-                raise ValueError(INPUTS_PYTHON_ERROR)
+                minimum = ".".join(map(str, INPUTS_PYTHON_MINIMUM))
+                raise ValueError(f"--inputs requires Python {minimum} or later for stable code tokens")
             from bake import bake
             print(bake.digest(gpu_inputs(args.scene, args.object)))
             return 0

@@ -3,7 +3,7 @@ import contextlib
 import importlib.util
 import io
 import json
-import runpy
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -35,9 +35,10 @@ stages.__file__ = str(tools / 'entry.py')
 stages.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
 stages.host_inputs = lambda scene: {'host flags': (root / 'flags').read_text(),
     'host host.c': stages.content_checksum(root / 'host.c').decode()}
-bake.read_lock = lambda: {'key': {'sha256': (root / 'lock').read_text()}}
-bake.bakes = lambda paths: [NS(key='key', output='mesh')]
+bake.read_lock = lambda: {(root / 'key').read_text(): {'sha256': (root / 'lock').read_text()}}
+bake.bakes = lambda paths: [NS(key=(root / 'key').read_text(), output='mesh')]
 bake.submodules = lambda: {}
+bake.tracked_modules = lambda: set()
 bake.packages.include_roots = lambda: []
 build_pack.pack_jobs = lambda paths: ({'scene': {'clip': root / 'clip.anim.toml',
     'mesh': root / 'mesh.mesh'}}, {root / 'mesh.mesh': None})
@@ -60,7 +61,7 @@ class GpuFingerprintTests(unittest.TestCase):
                  'launcher/tools/requirements.txt': 'package==1\n',
                  'data.txt': 'weights', 'host.c': 'int host = 1;\n',
                  'scene.toml': 'scene', 'clip.anim.toml': 'clip',
-                 'mesh.mesh': 'not downloaded', 'lock': 'locked bytes',
+                 'mesh.mesh': 'not downloaded', 'lock': 'locked bytes', 'key': 'key',
                  'flags': '-O1', 'launcher/main/apps/example/app.c': 'app', 'README.md': 'docs'}
         for name, content in files.items():
             path = self.root / name
@@ -70,7 +71,8 @@ class GpuFingerprintTests(unittest.TestCase):
 
     def fingerprint(self, root=None):
         result = subprocess.run([sys.executable, '-c', BOOTSTRAP, str(Path(__file__).parent),
-                                 str(root or self.root)], capture_output=True, text=True, check=True)
+                                 str(root or self.root)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout.strip()
 
     def test_comment_blank_token_and_import_binding_decisions(self):
@@ -95,6 +97,35 @@ class GpuFingerprintTests(unittest.TestCase):
                 path.write_text(original.replace('1', '2') if '1' in original else original + ' changed')
                 self.assertNotEqual(self.fingerprint(), baseline)
                 path.write_text(original)
+
+    def test_rekeyed_bake_with_identical_bytes_moves_fingerprint(self):
+        baseline = self.fingerprint()
+        (self.root / 'key').write_text('new key')
+        self.assertNotEqual(self.fingerprint(), baseline)
+
+    def test_native_quoted_header_moves_fingerprint(self):
+        (self.root / 'launcher/tools/native.c').write_text('#include "only_native.h"\nint value = 1;\n')
+        header = self.root / 'launcher/tools/only_native.h'
+        header.write_text('#define VALUE 1\n')
+        baseline = self.fingerprint()
+        header.write_text('#define VALUE 2\n')
+        self.assertNotEqual(self.fingerprint(), baseline)
+
+    def test_import_module_level_and_alias_fields_move_fingerprint(self):
+        entry = self.root / 'launcher/tools/worker.py'
+        package = self.root / 'launcher/tools/p'
+        package.mkdir()
+        for name in ('__init__', 'one', 'two'):
+            (package / (name + '.py')).write_text('')
+        for before, after in [('import p.one\nimport p.two\nfrom p.one import f\n',
+                               'import p.one\nimport p.two\nfrom p.two import f\n'),
+                              ('from . import x\n', 'from .. import x\n'),
+                              ('import a as x, b as y\n', 'import a as y, b as x\n')]:
+            with self.subTest(before=before):
+                entry.write_text(before)
+                baseline = self.fingerprint()
+                entry.write_text(after)
+                self.assertNotEqual(self.fingerprint(), baseline)
 
     def test_app_and_readme_do_not_change_the_decision(self):
         baseline = self.fingerprint()
@@ -136,7 +167,7 @@ class InputContractTests(unittest.TestCase):
     @unittest.skipUnless(sys.platform == 'linux', 'POSIX compiler listing required')
     def test_host_flags_and_deps_relative_and_invalid_listing_refused(self):
         outputs = []
-        for directory in ('one', 'two'):
+        for directory in ('__init__', 'one', 'two'):
             root = self.root / directory
             root.mkdir()
             (root / 'host.c').write_text('source')
@@ -152,6 +183,54 @@ class InputContractTests(unittest.TestCase):
                     stages.subprocess, 'run', return_value=NS(stdout=listing)):
                 with self.assertRaisesRegex(ValueError, message):
                     stages.host_inputs(root / 'scene')
+
+    def test_host_header_bytes_move_fingerprint_with_same_listing(self):
+        header = self.root / 'host.h'
+        header.write_text('#define VALUE 1\n')
+        listing = 'flags -O1\nhost.o: host.h\n'
+        with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
+                stages.subprocess, 'run', return_value=NS(stdout=listing)):
+            baseline = bake.digest(stages.host_inputs(self.root / 'scene'))
+            header.write_text('#define VALUE 2\n')
+            self.assertNotEqual(bake.digest(stages.host_inputs(self.root / 'scene')), baseline)
+
+    @unittest.skipUnless(sys.platform == 'linux' and shutil.which('cc'), 'Linux shell required')
+    def test_scene_deps_flags_include_declared_defines_and_includes(self):
+        script = self.root / 'scene.sh'
+        script.write_text('scene_name=fixture\nscene_sources=tools/render/scene_viewer.c\n'
+                          'scene_renders=fixture\nscene_defines=-DFIXTURE_SCENE=1\n'
+                          'scene_includes=tools/render\n'
+                          f'. "{ROOT}/launcher/tools/render/render_scene.sh"\n'
+                          'render_scene_run --deps\n')
+        result = subprocess.run(['sh', '-c', script.read_text(),
+                                 str(ROOT / 'launcher/tools/render/scenes/fixture.sh')], cwd=ROOT, capture_output=True, text=True, check=True)
+        flags = result.stdout.splitlines()[0]
+        self.assertIn('-DFIXTURE_SCENE=1', flags)
+        self.assertIn(f'-I {ROOT}/launcher/tools/render', flags)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux shell required')
+    def test_gpu_environment_and_python_from_other_directory(self):
+        env = self.root / 'environment'
+        (env / 'bin').mkdir(parents=True)
+        python = env / 'bin/python3'
+        python.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+        python.chmod(0o755)
+        script = ROOT / 'launcher/tools/r3d/gpu_env.sh'
+        variables = ('CC', 'CXX', 'CPATH', 'LIBRARY_PATH', 'CUDA_HOME', 'PATH', 'GPU_ENV')
+        command = f'GPU_ENV="{env}"; . "{script}"; env'
+        environment = {**os.environ, 'GPU_ENV': str(env)}
+        result = subprocess.run(['sh', '-c', command], cwd=self.root, env={key: value for key, value in os.environ.items() if key != 'GPU_ENV'},
+                                capture_output=True, text=True, check=True)
+        exports = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        expected = (str(env / 'bin/x86_64-conda-linux-gnu-gcc'),
+                    str(env / 'bin/x86_64-conda-linux-gnu-g++'), str(env / 'targets/x86_64-linux/include'),
+                    f'{env}/targets/x86_64-linux/lib:{env}/lib', str(env),
+                    f'{env}/bin:{os.environ["PATH"]}', str(env))
+        for variable, value in zip(variables, expected):
+            self.assertEqual(exports.get(variable), value)
+        result = subprocess.run(['sh', str(ROOT / 'launcher/tools/r3d/gpu_python.sh'), 'a b', 'c'],
+                                cwd=self.root, env=environment, capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, 'a b\nc\n')
 
     def test_check_gpu_matches_current_source(self):
         args = NS(scene=Path('scene'), object='object')
@@ -182,12 +261,6 @@ class InputContractTests(unittest.TestCase):
             self.assertEqual(stages.main(['--stage', 'gpu', '--inputs', '--scene', 'scene', '--object', 'object']), 2)
         self.assertIn('Python 3.12', error.getvalue())
 
-    def test_old_python_exits_before_importing_tools(self):
-        with mock.patch.object(sys, 'version_info', (3, 10)), mock.patch.object(
-                sys, 'argv', [str(PATH), '--inputs']), mock.patch.dict(sys.modules, tomllib=None):
-            with self.assertRaisesRegex(SystemExit, 'Python 3.12'):
-                runpy.run_path(str(PATH), run_name='__main__')
-
     @unittest.skipUnless(sys.platform == 'linux' and shutil.which('cc'), 'Linux host compiler required')
     def test_render_scene_deps_flags_first_no_binary_or_packs(self):
         result = subprocess.run(['sh', str(ROOT / 'launcher/tools/render/scenes/scene_viewer_render_host.sh'),
@@ -200,6 +273,7 @@ class InputContractTests(unittest.TestCase):
 
 class RecordedInputsTests(unittest.TestCase):
     def test_latest_main_record_decides_including_failures_and_force(self):
+        sys.path.insert(0, str(ROOT / 'scripts/ci'))
         spec = importlib.util.spec_from_file_location('inputs_recorded', ROOT / 'scripts/ci/inputs_recorded.py')
         records = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(records)
@@ -219,12 +293,64 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertFalse(records.current([failure], 'A', force=True))
         self.assertFalse(records.current([], 'A'))
 
-        pages = json.dumps([{'artifacts': [old]}, {'artifacts': [newest, *ignored]}])
-        with mock.patch.object(records.subprocess, 'run', return_value=NS(stdout=pages)) as run, \
-                mock.patch.dict(records.os.environ, GITHUB_REPOSITORY='owner/repo', FORCE=''), \
-                mock.patch.object(sys, 'argv', ['inputs_recorded.py', 'A']), \
-                contextlib.redirect_stdout(io.StringIO()) as output:
-            records.main()
-        self.assertEqual(output.getvalue(), 'false\n')
-        self.assertEqual(run.call_args.args[0], ['gh', 'api', '--paginate', '--slurp',
-                                               f'repos/owner/repo/actions/artifacts?per_page={records.ARTIFACTS_PER_PAGE}'])
+
+    def test_exact_name_and_empty_fingerprint(self):
+        sys.path.insert(0, str(ROOT / 'scripts/ci'))
+        import inputs_recorded as records
+        record = dict(name=records.RECORD_PREFIXES[0] + 'longABC', created_at='2026',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        self.assertFalse(records.current([record], 'ABC'))
+        self.assertFalse(records.current([record], ''))
+
+    def test_main_force_and_paged_api(self):
+        sys.path.insert(0, str(ROOT / 'scripts/ci'))
+        import inputs_recorded as records
+        record = dict(name=records.RECORD_PREFIXES[0] + 'ABC', created_at='2026',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        for force, expected in [('true', 'false'), ('', 'true'), ('false', 'true')]:
+            with self.subTest(force=force), mock.patch.dict(os.environ, FORCE=force), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                calls = []
+                def request(method, path, body=None):
+                    calls.append((method, path))
+                    return {'artifacts': [record] if path.endswith('&page=1') else []}
+                records.main(['ABC'], request=request)
+            self.assertEqual(output.getvalue(), expected + '\n')
+            self.assertEqual(calls, [('GET', '/actions/artifacts?per_page=100&page=1'),
+                                     ('GET', '/actions/artifacts?per_page=100&page=2')])
+
+    def test_hosted_lookup_defers_to_gate_when_other_run_in_flight(self):
+        sys.path.insert(0, str(ROOT / 'scripts/ci'))
+        import inputs_recorded as records
+        record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        for status in ('queued', 'in_progress', 'completed'):
+            for run_id in (10, 11):
+                with self.subTest(status=status, run_id=run_id), mock.patch.dict(
+                        os.environ, FORCE='', GITHUB_RUN_ID='10'), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    def request(method, path, body=None):
+                        key = 'artifacts' if '/artifacts?' in path else 'workflow_runs'
+                        items = [record] if key == 'artifacts' else [{'id': run_id, 'status': status}]
+                        return {key: items if path.endswith('&page=1') else []}
+                    records.main(['X', '--workflow', 'doc-images-gpu.yml'], request=request)
+                expected = run_id == 10 or status == 'completed'
+                self.assertEqual(output.getvalue(), str(expected).lower() + '\n')
+
+    def test_workflow_records_and_every_post_gate_step_are_guarded(self):
+        import yaml
+        sys.path.insert(0, str(ROOT / 'scripts/ci'))
+        import inputs_recorded as records
+        workflow = yaml.load((ROOT / '.github/workflows/doc-images-gpu.yml').read_text(), Loader=yaml.BaseLoader)
+        steps = workflow['jobs']['refresh']['steps']
+        gate = next(index for index, step in enumerate(steps) if step.get('id') == 'gate')
+        names = []
+        for step in steps[gate + 1:]:
+            self.assertIn("steps.gate.outputs.render == 'true'", step.get('if', ''))
+            if step.get('uses') == 'actions/upload-artifact@v4':
+                names.append(step['with']['name'])
+        self.assertCountEqual(names, [prefix + '${{ needs.fingerprint.outputs.fingerprint }}'
+                                      for prefix in records.RECORD_PREFIXES])
+        hosted = workflow['jobs']['fingerprint']['steps'][-1]['run']
+        self.assertIn('--workflow doc-images-gpu.yml', hosted)
+        self.assertNotIn('--workflow', steps[gate]['run'])

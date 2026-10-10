@@ -136,7 +136,7 @@ GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its input
 fingerprint without fitting again. `--smoke` writes only scratch data.
 `--stage gpu --inputs` prints that fingerprint and runs nothing; it needs
-a Python 3.12 or later with no third-party packages, a C compiler and the
+a Python 3.12 or later (standard library only), a C compiler and the
 tree, with no GPU, LFS objects or bakes.
 It is a SHA-256 over what the stage's output is made from, each found from the
 code rather than listed:
@@ -147,20 +147,24 @@ code rather than listed:
 | Native code and requirement pins | `bake.py`'s rules for that closure |
 | Other files that code names | string paths resolving to tracked files, such as `board_cost_weights.txt` |
 | The host renderer | `scene_viewer.sh SCENE --deps`: its compile flags and the compiler's `-MM` list (sources and project headers, excluding system headers and compiler identity/version) |
-| The scene | the scene file, non-bake pack entries, and the locked bytes of each bake in `launcher/bakes.lock` |
+| The scene | the scene file, non-bake pack entries, and the key and locked bytes of each bake in `launcher/bakes.lock` |
 
-A comment or blank-line edit in the Python changes nothing; the stage's work
-folder is named by the fingerprint. Its saved `source.json` holds the
-fingerprint and lists every input.
+A comment or blank-line edit in the Python leaves the fingerprint unchanged.
+The stage's work folder is named by it, and its saved `source.json` holds it
+and lists every input.
 
 The `doc-images-gpu` workflow runs on every main push, nightly and on manual
 dispatch. The latest unexpired rendered or failed record on main decides
 whether these inputs are current. A dispatch with `force` bypasses both
-record checks.
+record checks. The hosted lookup defers to the GPU gate while another run
+of this workflow is queued or in progress, excluding its own run id. The
+gate holds the concurrency group and checks only the latest record.
 
 ```mermaid
 flowchart TD
-    Fingerprint["Hosted input fingerprint"] --> Latest{"Latest main record matches?"}
+    Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
+    Flight -->|yes| Refresh
+    Flight -->|no| Latest{"Latest main record matches?"}
     Latest -->|yes| Skip["Doc images current"]
     Latest -->|no or force| Refresh["Refresh holds GPU concurrency group"]
     Refresh --> Check{"GPU fingerprint matches hosted?"}
@@ -180,9 +184,11 @@ records also skip until inputs change or force retries. Retention is set in
 `doc-images-gpu.yml`. Runs open or update "docs: refresh GPU-rendered images"
 on `feature/refresh-doc-images-gpu`, and log GPU memory use.
 
-Compiler identity/version and system headers, the GPU environment (its
-Python, CUDA, drivers and ffmpeg), the workflow file and `run_doc_gpu.sh`
-are outside the fingerprint. Changes to them need a dispatch with `force`.
+Inputs outside the fingerprint include compiler identity/version and system
+headers, the GPU environment (its Python, CUDA, drivers and ffmpeg), the
+workflow file and `run_doc_gpu.sh`. `scene_viewer_render_host.sh` and
+`render_scene.sh` count only through their `--deps` output. Changes outside
+the fingerprint need a dispatch with `force`.
 
 The stage-start guard checks WSL and Windows host available memory.
 [`process_budget.py`](../../launcher/tools/r3d/process_budget.py) owns the
