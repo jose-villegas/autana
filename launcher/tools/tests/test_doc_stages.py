@@ -103,7 +103,7 @@ class DocStagesTests(unittest.TestCase):
         launcher = self.tmp / "launcher"
         launcher.mkdir()
         (launcher / "m.import.toml").write_text('[source]\npath = "m.obj"\ncredit = "c"\n'
-                                               '[output]\ndirectory = "."\nname = "mesh"\n')
+                                               '[output]\nname = "mesh"\n')
         (launcher / "m.obj").write_text("geometry")
         (launcher / "m.mtl").write_text("newmtl m\nmap_Kd texture.png\nmap_d alpha.png\n")
         (launcher / "texture.png").write_bytes(b"texture")

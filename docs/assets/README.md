@@ -160,10 +160,10 @@ renderer.
 
 | Tool | Does |
 |---|---|
-| `mesh_import.py` | bakes a mesh and writes `<name>.mesh`, one entry, beside its import file |
+| `mesh_import.py --out DIR` | bakes a mesh and writes `<name>.mesh`, one entry, into DIR (a scratch bake) |
 | `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
-| `build_pack.py [--bake-cache DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock`; `--from-tree` takes the files beside the imports instead |
+| `build_pack.py [--bake-cache DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` |
 | `bake/bake.py list\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
@@ -174,15 +174,14 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c` and `anim_tracks.c` are the one reader of
 each.
 
-The mesh entries are committed, like the generated C they stand beside; a clip
+No mesh is committed: each is a bake product, fetched by its lock row; a clip
 entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
 
-The meshes are on their way out of the tree
-([Cached-Bakes-Design-Sketch.md](../plans/Cached-Bakes-Design-Sketch.md));
-every build already ignores the committed copies.
+How the meshes are cached
+([Cached-Bakes-Design-Sketch.md](../plans/Cached-Bakes-Design-Sketch.md)):
 `launcher/tools/bake/bake.py` keys each one on its recipe, its sources and
 the code that bakes it; `launcher/bakes.lock`, written only by that tool,
 records the bytes made for each key, and main publishes those files to the
