@@ -116,13 +116,8 @@
 #define BOOT_ANIM_GRID_WHITEN_MAX 32
 #define BOOT_ANIM_GRID_CEILING_MAX 96
 #define BOOT_ANIM_GRID_MAX 64
-/* The camera's focal length - 0 is an orthographic projection
- * (r3d_line_view_x_t's `focal`, render/r3d_project_x.h), not a second
- * code path; any other value a perspective one; 1.0 is the "normal" lens
- * default.
- * Authored directly as a float - it is a lens property, not a
- * position or angle, so meters/degrees do not apply. */
-#define BOOT_ANIM_CAMERA_FOCAL 1.0F
+/* Positive tangent of the camera's shorter-axis half field of view. */
+#define BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN 1.0F
 
 /* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment
  * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like
