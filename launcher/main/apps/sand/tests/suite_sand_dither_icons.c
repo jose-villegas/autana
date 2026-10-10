@@ -71,3 +71,4 @@ run_sand_dither_icons_suite(void) {
 }
 
 SUITE_REGISTER(run_sand_dither_icons_suite);
+SUITE_READS(run_sand_dither_icons_suite, SAND_PACK);

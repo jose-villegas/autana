@@ -16,6 +16,7 @@
 #include "heap_arena.h"
 #include "pack_reads.h"
 #include "suites.h"
+#include "ui/ui_icons.h"
 #include "unity.h"
 
 /* Unity requires these once per binary. The runner owns the memory audit. */
@@ -79,6 +80,9 @@ main(int argc, char** argv) {
 #ifdef SIGBUS
     (void)signal(SIGBUS, name_the_test_that_died);
 #endif
+    /* The engine pack, as the shell loads it before any app: kept for the
+     * run, so no suite reads it first and none names it. */
+    ui_icons_init();
     pack_reads_begin();
     UNITY_BEGIN();
 
