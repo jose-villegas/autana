@@ -60,11 +60,11 @@ clip: each path is the joint names from the skeleton's root down.
 
 Each component with animatable fields lists them where it is defined. The list
 is the component's own declaration of its state, kept beside its struct, and
-nothing outside it can be bound:
-
-The declaration types are in `launcher/main/anim/anim_binding.h`; the camera's
-field list is `R3D_SCENE_CAMERA_FIELDS` in `launcher/main/render/r3d_scene.h`.
-See [Playing a new property](../Animation-Tracks.md#playing-a-new-property).
+nothing outside it can be bound. The declaration types are in
+`launcher/main/anim/anim_binding.h`, and any component declares its list the
+same way (the camera's is `R3D_SCENE_CAMERA_FIELDS` in
+`launcher/main/render/r3d_scene.h`). See
+[Binding any field](../Animation-Tracks.md#binding-any-field).
 
 Lights are baked offline and materials are baked into vertex colours, so the
 device has neither yet. A clip that binds a light's intensity today fails at
