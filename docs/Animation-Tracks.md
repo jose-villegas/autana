@@ -138,7 +138,9 @@ resolved set.
 `anim_apply(bound, count, seconds)` samples a contiguous range into its target
 fields and sets each target's dirty bit when supplied. Pass `bound + first`
 to apply a range starting later in the array. The sampler normalizes quaternion
-keys. The camera field declaration is `R3D_SCENE_CAMERA_FIELDS` in `render/r3d_scene.h`.
+keys. A component's declaration sits beside its struct, for example
+`R3D_SCENE_CAMERA_FIELDS` in `render/r3d_scene.h`; [Binding any field](#binding-any-field)
+says how resolution works.
 
 ## Sampling
 
@@ -153,8 +155,8 @@ remainder, so a long run keeps its millisecond resolution, and converts to
 seconds once. `ANIM_CLAMP` holds it at the duration instead; a loop authors
 its first key again as its last. `anim_track_sample()` holds a track's first
 value before its first key and its last after its last, as glTF defines.
-`anim_quat_rotate()` turns a vector by a sampled rotation, which is how a
-camera track supplies the look direction in `r3d_scene_camera_sample()`.
+`anim_quat_rotate()` turns a vector by a sampled rotation, such as a
+camera's look direction in `r3d_scene_camera_sample()`.
 
 ## Authoring
 
@@ -182,17 +184,37 @@ The bake refuses keys out of order, a channel with no node and no pointer,
 and a value that is not finite. Joint TRS curves are tracks; skin data is a
 separate asset.
 
-## Playing a new property
+## Binding any field
 
-A new component needs only its code at its owner, the baker mapping in
-`tracks_asset.channel_binding()` and its field list. Declare each field's name,
-`anim_value_t` and byte offset beside the component's struct. When units differ,
-convert the curve in the bake. The readers accept any nonzero component code;
-an unknown component fails at bind time with `ANIM_BIND_ERR_COMPONENT`, which
-fails the load. Supply the declaration and target base as an
-`anim_component_ref_t` to `anim_bind()`, then apply with clip seconds.
+A track can drive any field that a component declares bindable. Three
+pieces make that work:
 
-For direct sampling, select the camera field in its baked units:
+1. **Declaration.** A component lists its bindable fields once, beside its
+   struct, as an `anim_component_fields_t`: the component's four-character
+   code, defined by the component's owner, and for each field its name, its
+   `anim_value_t` and its byte offset in the struct. A field that is not
+   declared cannot be bound.
+2. **Resolution, once at load.** `anim_bind()` takes each binding in turn.
+   Its path finds the object among the `anim_target_t`s the caller passes, by
+   name. Its component code finds that object's `anim_component_ref_t` (the
+   declaration and the struct's address). Its field name finds the declared
+   field, and the value types must match. `anim_bind_field()` does those last
+   two steps for a caller that finds the object some other way. Resolution is
+   the only place names are compared; the result is a pointer to the field.
+3. **Failure.** An unknown path, component or field, or a type mismatch,
+   returns its own `anim_bind_status_t` with the binding's index, and the
+   caller fails the load, naming the binding with `anim_binding_describe()`.
+   Nothing is skipped.
+
+Each frame, `anim_apply()` then samples every resolved curve straight into
+its field.
+
+To make a new component animatable, define its code and declare its fields.
+If glTF can animate the property, map the channel in
+`tracks_asset.channel_binding()`, converting the curve to the field's units in
+the bake. The readers accept any nonzero code, so neither reader changes.
+
+For example, sampling a camera's field of view directly, without binding it:
 
 ```c
 anim_track_t lens;
