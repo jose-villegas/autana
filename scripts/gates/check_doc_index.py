@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Fail when a tracked document under docs/ cannot be reached by following
 Markdown links from the repository's README.md, or when a link's `#anchor`
-does not match a heading GitHub will actually generate that id for.
+matches neither a heading GitHub will generate that id for nor an explicit
+`<a id="...">` in the target.
 
     python scripts/gates/check_doc_index.py [--root ROOT]
 
@@ -22,6 +23,8 @@ from tracked import tracked_files
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
+# An explicit anchor, as a table row that cannot be a heading carries one.
+ANCHOR = re.compile(r'<a\s+id="([^"]+)"\s*>')
 TABLE_CELL = re.compile(r"^\s*\|(.+)\|\s*$")
 START = "README.md"
 
@@ -114,6 +117,8 @@ def slugify(text):
 
 
 def heading_slugs(path):
+    """Every fragment a link into `path` may name: its headings' ids and
+    its explicit `<a id>` anchors. None if `path` is not a file."""
     heads = doc_headings(path)
     if heads is None:
         return None
@@ -123,6 +128,8 @@ def heading_slugs(path):
         n = counts.get(slug, 0)
         counts[slug] = n + 1
         slugs.add(slug if n == 0 else f"{slug}-{n}")
+    for line in blank_fences(path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        slugs.update(ANCHOR.findall(line))
     return slugs
 
 
@@ -169,7 +176,7 @@ def check_anchors(root):
         if slugs is None:
             bad.append((doc, number, target, fragment, "target file does not exist"))
         elif fragment not in slugs:
-            bad.append((doc, number, target, fragment, "no matching heading"))
+            bad.append((doc, number, target, fragment, "no matching heading or anchor"))
     return bad
 
 

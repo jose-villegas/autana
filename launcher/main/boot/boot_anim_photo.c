@@ -12,8 +12,6 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 
-#define BOOT_PHOTO "boot"
-
 static const char* TAG = "boot_anim";
 
 void

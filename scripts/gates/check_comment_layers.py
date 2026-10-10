@@ -12,7 +12,9 @@ anything below them; that direction cannot dangle.
 The engine's documents sit at the same layer as its code, so every line of
 them is held to the same rule: every Markdown file under docs/ except an app's
 own folder (docs/<app>/) and docs/plans/, whose designs span layers and name
-the apps they plan for, plus any Markdown file inside a lower layer.
+the apps they plan for, plus any Markdown file inside a lower layer. The
+"Cited by" cell of a docs/Citations.md row lists the files citing a source,
+wherever they live, so its paths are not read.
 
 App names come from the folders themselves, so adding an app extends the check.
 
@@ -34,6 +36,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
+from check_doc_citations import CITATIONS, CITATION_ROW  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.packages import FIRST_PARTY  # noqa: E402
 
@@ -82,6 +85,14 @@ def documents(root, names):
             yield rp
 
 
+def blank_cited_by(line):
+    """`line` with a citation row's last cell, its citing files, blanked."""
+    if not CITATION_ROW.match(line):
+        return line
+    cut = line.rstrip().rstrip("|").rfind("|") + 1
+    return line[:cut] + " " * (len(line) - cut)
+
+
 def problems(root=".", context=False, files=None):
     names = app_names(root)
     word = name_pattern(names)
@@ -107,6 +118,8 @@ def problems(root=".", context=False, files=None):
             continue
         text = read(rp)
         lines = text.splitlines()
+        if rp == CITATIONS:
+            text = "\n".join(blank_cited_by(line) for line in lines)
         for m in hits(text):
             line = text.count("\n", 0, m.start()) + 1
             found.append(f"{rp}:{line}: document names {canonical(m.group(), names)}")

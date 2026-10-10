@@ -385,6 +385,7 @@ plane_distance(const clip_plane_t* p, const clip_vertex_t* v) {
     return (p->x * v->x) + (p->y * v->y) + (p->z * v->z) + p->w;
 }
 
+/* One Sutherland-Hodgman pass (docs/Citations.md#33): the polygon's part on the plane's inside. */
 static int
 clip_to_plane(const clip_plane_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
     int m = 0;

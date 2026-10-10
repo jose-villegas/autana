@@ -86,7 +86,7 @@ class ValidateCaptureTest(CaptureFixture):
 
     def test_a_crash_loop_is_rejected(self):
         failures, _ = validate_capture.validate(self.capture(BOOT + BOOT + RESULT + COMPLETE))
-        self.assertTrue(any("boot banners" in f for f in failures), failures)
+        self.assertTrue(any(f.startswith("rebooted:") for f in failures), failures)
 
 
 class ReporterExitCodeTest(CaptureFixture):

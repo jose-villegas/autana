@@ -32,7 +32,7 @@ table, so a board flashed without them cannot gain them over the air.
 
 | | Today |
 |---|---|
-| Partitions (`launcher/partitions.csv`) | `nvs`, `phy_init`, one 8 MB `factory` app slot |
+| Partitions (`launcher/partitions.csv`) | `nvs`, `phy_init`, one `factory` app slot (8 MB less 64 KB), `coredump` |
 | Flash (`launcher/sdkconfig.defaults`) | 16 MB |
 | Image size | about 1.0 MB release, 1.7 MB diagnostics |
 

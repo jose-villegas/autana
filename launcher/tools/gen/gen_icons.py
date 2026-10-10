@@ -130,7 +130,7 @@ def die(msg):
 # --- PNG decoding (stdlib only) ---------------------------------------------
 
 def _paeth(a, b, c):
-    """PaethPredictor(left, above, upper-left), PNG spec section 9.4,
+    """PaethPredictor(left, above, upper-left), PNG spec (docs/Citations.md#28) section 9.4,
     verbatim: picks whichever of a/b/c is closest to a linear predictor of
     the other two, the filter type most edges in real artwork end up using."""
     p = a + b - c
