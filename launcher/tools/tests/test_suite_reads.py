@@ -46,7 +46,7 @@ class SuiteReadsTests(unittest.TestCase):
         return out
 
     def run_probe(self, program, waiting=""):
-        env = {**os.environ, "AUTANA_ASSET_DIR": self.folder.name, "AUTANA_PACKS_WAITING": waiting}
+        env = {**os.environ, "AUTANA_PACKS_WAITING": waiting}
         return subprocess.run([str(program)], capture_output=True, text=True, env=env, timeout=30)
 
     def ran(self, run):

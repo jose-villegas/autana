@@ -20,6 +20,7 @@
 #define BUILT_PACK   "probe_built"
 #define OWN_PACK     "probe_own"
 #define OWN_DIR      "probe_own_folder"
+#define RUNNER_DIR   "probe_runner_folder"
 
 static void
 read_and_say(const char* suite, const char* pack) {
@@ -53,16 +54,16 @@ SUITE_REGISTER(run_reads_nothing);
 static void
 set_dir(const char* dir) {
 #ifdef _WIN32
-    (void)_putenv_s("AUTANA_ASSET_DIR", dir);
+    (void)_putenv_s(ASSET_STORE_DIR_ENV, dir);
 #else
-    (void)setenv("AUTANA_ASSET_DIR", dir, 1);
+    (void)setenv(ASSET_STORE_DIR_ENV, dir, 1);
 #endif
 }
 
 /* A suite that points the folder at its own packs is not checked. */
 static void
 run_reads_its_own_folder(void) {
-    const char* runner = getenv("AUTANA_ASSET_DIR");
+    const char* runner = getenv(ASSET_STORE_DIR_ENV);
     char* saved = runner == NULL ? NULL : strdup(runner);
     set_dir(OWN_DIR);
     read_and_say("run_reads_its_own_folder", OWN_PACK);
@@ -85,6 +86,7 @@ SUITE_REGISTER(run_reads_undeclared);
 
 int
 main(void) {
+    set_dir(RUNNER_DIR); /* the folder run_tests.sh would name */
     pack_reads_begin();
     suites_run_all();
     suites_print_waiting();
