@@ -43,6 +43,7 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 #include "panel_clock_pin.h"
+#include "util/runtime/frame_cost.h"
 #include "util/runtime/memory.h"
 #include "util/runtime/timing.h"
 
@@ -847,6 +848,10 @@ present_reference_band(gfx_color_t colour) {
  * sanity-checking one figure against the other by multiplying is not
  * valid. */
 
+/* The narrow strip: a fraction of a band's width, a band's rows. */
+#define NARROW_STRIP_WIDTH 20
+#define NARROW_STRIP_ROWS  64
+
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
  * through gfx_fill_rect(), which always claims the whole band via
@@ -857,8 +862,8 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
 
     /* A narrow strip within a band, written directly and marked with its
      * real bounds: a caller repainting a narrow changed strip. */
-    const int w = 20;
-    write_dirty_rectangle(0, 0, w, 64, gfx_rgb(0x204060));
+    const int w = NARROW_STRIP_WIDTH;
+    write_dirty_rectangle(0, 0, w, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
     const int64_t narrow = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
@@ -875,6 +880,38 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed",
                narrow, 256);
+}
+
+/* An instrument, not a gate: the narrow strip presented many times per
+ * counter, for a mean steady enough to show a few microseconds, and where
+ * this core's cycles go meanwhile (writing the strip included). */
+#define NARROW_PRESENTS 64
+static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti", "d_stall_all"};
+
+static void
+test_narrow_present_counters(void) {
+#if !FRAME_COST_ENABLED
+    TEST_IGNORE_MESSAGE("frame_cost is a development build's");
+#else
+    (void)present_reference_band(gfx_rgb(0x204060));
+    const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
+    int64_t total_us = 0;
+    for (int e = 0; e < events; e++) {
+        TEST_ASSERT_TRUE(frame_cost_count_begin(frame_cost_event_index(narrow_present_events[e])));
+        for (int i = 0; i < NARROW_PRESENTS; i++) {
+            write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
+            total_us += time_present();
+        }
+        uint32_t cycles = 0;
+        uint32_t value = 0;
+        const bool counted = frame_cost_count_end(&cycles, &value);
+        ESP_LOGI("xtperf", "scene=narrow_present event=%s cycles_per_step=%u value_per_step=%u steps=%d%s",
+                 narrow_present_events[e], (unsigned)(cycles / NARROW_PRESENTS), (unsigned)(value / NARROW_PRESENTS),
+                 NARROW_PRESENTS, counted ? "" : " overflow=counters");
+    }
+    ESP_LOGI(TAG, "narrow present both cores: mean %lldus", (long long)(total_us / (NARROW_PRESENTS * events)));
+    TEST_PASS();
+#endif
 }
 
 /* The box is bounded by area, not width alone, specifically so a
@@ -1450,6 +1487,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_full_present_cost_splits_into_bus_time_and_overhead);
     RUN_TEST(test_a_partial_change_costs_less_than_a_full_frame);
     RUN_TEST(test_a_narrow_change_costs_less_than_a_full_band);
+    RUN_TEST(test_narrow_present_counters);
     RUN_TEST(test_a_short_wide_change_costs_less_than_a_full_band);
     RUN_TEST(test_a_full_width_partial_height_change_costs_less_than_a_band);
     RUN_TEST(test_two_far_corners_cost_less_than_a_full_band);
