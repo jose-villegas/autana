@@ -5,9 +5,9 @@
 #
 #   ./launcher/tools/render/scenes/boot_anim_render_host.sh [-o <dir>]
 #
-# The milliseconds below are three points the animation is recognisably
-# different at, not measurements. This script is the standing check that the
-# renderer still works at all; --video renders the whole animation.
+# The milliseconds below are points the animation is recognisably different
+# at, not measurements; each one's pixels are pinned in
+# boot_anim_render_baseline.txt. --video renders the whole animation.
 #
 # Everything this does beyond the declarations below is
 # tools/render/render_scene.sh.
@@ -28,11 +28,11 @@ tools/render/scenes/boot_anim_render_host.c
 "
 scene_defines="$launcher_home_defines"
 scene_renders="
-early|300|368x448|nopin
-middle|1500|368x448|nopin
-late|3000|368x448|nopin
-crossfade|3900|368x448|nopin
-photograph|4500|368x448|nopin
+early|300|368x448
+middle|1500|368x448
+late|3000|368x448
+crossfade|3900|368x448
+photograph|4500|368x448
 "
 
 # The camera and space come from the boot clip's pack and the photograph from
