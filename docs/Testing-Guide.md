@@ -196,7 +196,7 @@ each one cost a build-flash-capture cycle to find, twice over, for both:
 Those numbers come from `launcher/tools/device/device_profiles/<chip>.sh`, selected
 by `$DEVICE_PROFILE` (default `esp32s3`), each carrying its own provenance.
 
-The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `util/runtime/memory.h`), not
+The framebuffer lives in PSRAM (`MEMORY_PSRAM`, `core/memory.h`), not
 internal DRAM, so it does not compete with an app's large internal
 allocations for internal-heap contiguity the way it would on a board
 without PSRAM.
@@ -300,8 +300,9 @@ autana suite run_gfx_suite
 autana suite run_ui_suite
 ```
 
-Both commands only set a flag; the shell's frame loop does the actual work at
-a frame boundary, since there is no lock on the framebuffer and a second
+Both verbs only post a request (`console/console_frame_request.h`), and a
+RUNSUITE sent before the last one finished is refused; the shell's frame
+loop does the actual work at a frame boundary, since there is no lock on the framebuffer and a second
 task drawing to it while the render loop runs would corrupt the panel. When
 the suite returns the shell prints
 `RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>` on its
@@ -529,7 +530,7 @@ a scene, frames and synthetic touch, the pins, the QEMU backend, and
 
 The frame watch ([Firmware-Architecture.md](Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
 warns on the board; two places turn it into a failure, both by the rule in
-`util/runtime/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
+`profile/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
 `FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
 when the watch ran out of room for an event, since a finding could hide
 there.
@@ -752,15 +753,9 @@ and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly.
 `suite_gfx_band_run.c` drives `gfx_band_run()` over host malloc'd band
-buffers. Only the DMA send and strip-bounce aliasing need the device, so an
-app's device-only perf suite times a full-redraw renderer's band-mode path
-against its full-framebuffer path on the same scene.
+buffers. Only the DMA send and strip-bounce aliasing need the device.
 
-Still untested by an assertion: the cube's per-pixel Gouraud shading:
-verified by running the firmware and looking at the screen, since an
-animated 3D scene never settles into the fixed picture a render-harness
-pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
-integration is driven by `suite_ui_launcher.c`.
+`ui_launcher.c`'s microui integration is driven by `suite_ui_launcher.c`.
 
 The framework is Unity, the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF
@@ -771,7 +766,7 @@ against.
 
 ## Which suites cover which area
 
-Shell suites (gfx, ui, input, boot, render, util) live in
+Shell suites (gfx, ui, input, boot, render, core, math, services) live in
 `launcher/test/suites/`; an app's own are its
 `launcher/main/apps/<name>/tests/suite_*.c`. `autana suite list [text]` filters
 by a substring of the name, so treat it as a lookup, not an area map.

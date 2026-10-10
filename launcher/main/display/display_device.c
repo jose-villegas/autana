@@ -7,13 +7,13 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 
+#include "build/build_variant.h"
+#include "core/memory.h"
 #include "display/panel_clock.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/settings.h"
+#include "services/settings.h"
 
 static const char TAG[] = "display";
 

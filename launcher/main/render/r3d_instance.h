@@ -5,8 +5,8 @@
  */
 #pragma once
 
+#include "math/linear/vec3f.h"
 #include "render/r3d_lit_mesh.h"
-#include "util/math/vec3f.h"
 
 /* A point in the mesh's own units goes to the world as m * point + position.
  * The scale baked into m is positive on every axis, so no triangle turns

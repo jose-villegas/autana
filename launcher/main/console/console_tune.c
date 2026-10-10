@@ -1,13 +1,13 @@
 /*
  * console_tune (SET, GET, RESET, TUNE): verbs that do nothing themselves.
- * Each reassembles its line and hands it to util/runtime/tune, which stays the one
+ * Each reassembles its line and hands it to services/tune, which stays the one
  * place owning that protocol's registry and replies. Development builds
  * only; see console.h.
  */
 #include "console/console.h"
 #include "console/console_verbs.h"
 
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 #include <stdio.h>
 

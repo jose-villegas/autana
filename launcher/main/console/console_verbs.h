@@ -11,7 +11,7 @@
  * never sees its name or the space after it; `args` is only what follows.
  *
  * CONSOLE_VERB() is how a device-only file joins the shared registry before
- * app_main() runs, the same self-registering shape as TUNE() (util/runtime/tune.h)
+ * app_main() runs, the same self-registering shape as TUNE() (services/tune.h)
  * and APP_REGISTER() (app.h). Its _Static_assert is the point: a verb whose
  * name plus its longest possible args cannot fit CONSOLE_LINE_MAX would
  * silently truncate on the device and nowhere else, so that mistake is
@@ -21,8 +21,9 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 /* The longest line any registered verb needs today: "SET " (4) + a
  * TUNE_NAME_MAX-long tunable name + " " (1) + an int32_t's longest text
@@ -70,6 +71,21 @@ console_append_char(char* line, int* len, bool* overflowed, int c) {
     return console_append_char_max(line, CONSOLE_LINE_MAX, len, overflowed, c);
 }
 
+/* As much of `from` as `into` holds, always terminated: a verb's args into
+ * a request field its CONSOLE_VERB() bound already fits. */
+static inline void
+console_copy_text(char* into, size_t into_size, const char* from) {
+    if (into_size == 0) {
+        return;
+    }
+    size_t length = strlen(from);
+    if (length > into_size - 1) {
+        length = into_size - 1;
+    }
+    memcpy(into, from, length);
+    into[length] = '\0';
+}
+
 typedef void (*console_reply_fn)(const char* line);
 
 /* `args` is what follows the verb and one space, or "" for a bare verb with
@@ -87,7 +103,7 @@ typedef struct {
 } console_registry_t;
 
 /* Kept in name order, so dispatch and any future listing never depend on
- * link order, the same discipline tune_register() (util/runtime/tune.c) already
+ * link order, the same discipline tune_register() (services/tune.c) already
  * uses. A name already taken by a different verb is refused (false); the
  * same verb object registered twice is a no-op (true, since it is already
  * there). */
