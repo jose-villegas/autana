@@ -13,7 +13,7 @@ Two systems share one sampler and one binding resolver:
   with transitions, blend trees, layers and masks, events, root motion, IK.
 
 Milestone 1 builds only what a skinned model playing its clips needs: bake
-skeleton, skin and clips; sample; cross-fade; skin on the CPU; light; a clip
+skeleton, skin and clips; sample; a transition blend between clips; skin on the CPU; light; a clip
 picker. Every later piece below names where it plugs in, so M1 is not redone.
 
 ## 1. The frame
@@ -79,10 +79,12 @@ anim_bind_status_t anim_bind_skeleton(const anim_tracks_t* clip, const anim_skel
                                       anim_joint_bound_t* out, int out_count, int* failed);
 void anim_sample_pose(const anim_joint_bound_t* bound, int count, float seconds, anim_pose_t* out);
 
-/* anim/anim_layer.h: one layer, a current clip and the one it fades from */
+/* anim/anim_layer.h: one layer: the clip playing and, during a transition
+ * blend, the clip it blends from; pose weights slide from one to the other
+ * over the blend time */
 typedef struct { uint8_t clip; uint32_t t_ms; } anim_slot_t;
-typedef struct { anim_slot_t current, previous; uint32_t fade_ms, faded_ms; } anim_layer_t;
-void anim_layer_play(anim_layer_t* layer, uint8_t clip, uint32_t fade_ms); /* fades from what plays */
+typedef struct { anim_slot_t current, previous; uint32_t blend_ms, blended_ms; } anim_layer_t;
+void anim_layer_play(anim_layer_t* layer, uint8_t clip, uint32_t blend_ms); /* blends from what plays */
 void anim_layer_advance(anim_layer_t* layer, uint32_t dt_ms);              /* both slots keep time */
 
 /* render/r3d_skin.h: a view of a SKIN entry, and the per-frame kernels */
@@ -112,7 +114,7 @@ an `animator` component (clip ids, one layer). The animator is the one
 (the camera path) is the same row with a property clip. App API:
 
 ```c
-bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t fade_ms);
+bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 ```
@@ -125,7 +127,7 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 | Later piece | Plugs into | M1 already has |
 |---|---|---|
 | Property timelines on any field | `anim_bind` against scene fields (bindings sketch) | the same TRCK v2 rows and sampler |
-| State machine and transitions | replaces `anim_layer_play` with parameter-driven transitions; a transition is the slot fade | the fade, slots keeping time |
+| State machine and transitions | replaces `anim_layer_play` with parameter-driven transitions; a transition is the layer's transition blend | the transition blend, slots keeping time |
 | Blend trees (1D, 2D) | a state's output becomes N weighted samples; `anim_pose_blend` becomes an accumulate over N | weighted sample into a pose |
 | Sync groups | slot time as normalized phase | `t_ms` per slot |
 | Layers and masks | several `anim_layer_t`, each with a per-joint weight mask, override or additive | the pose as the one currency |
@@ -140,7 +142,7 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 |---|---|---|
 | M1a | TRCK v2, `anim_bind` (bindings sketch step 1) | host tests per the bindings sketch |
 | M1b | `SKEL` and `SKIN` bake from any rigged glb; readers | host: skinned positions match `gltf_skin.py` for every frame of a probe rig |
-| M1c | pose sample, blend, model, palette, skin, bounds | host render of a frame beside the reference; host test of a cross-fade's endpoints |
+| M1c | pose sample, blend, model, palette, skin, bounds | host render of a frame beside the reference; host test of a transition blend's endpoints and midpoint |
 | M1d | lighting kernel moved in; scene carries the bake's lights | ymur board check; host render |
 | M1e | scene components, Render Lab picker | board: Âµs per vertex (budget 1), frame time, `autana status` and `buildid` around each |
 
