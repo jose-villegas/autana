@@ -1,6 +1,7 @@
 name: GPU Doc Images
 
-# The GPU runner renders only changed inputs. Records include failed runs, retried by force.
+# The GPU job renders only when the stage's input fingerprint differs from the latest record on main.
+# docs/tools/Render-Harness.md describes the fingerprint and the record.
 on:
   workflow_dispatch:
     inputs:
@@ -74,6 +75,7 @@ jobs:
         env:
           FINGERPRINT: ${{ needs.fingerprint.outputs.fingerprint }}
         run: |
+          . launcher/tools/r3d/gpu_env.sh
           fingerprint=$(sh launcher/tools/render/render_doc_images.sh --stage gpu --inputs)
           if [ "$fingerprint" != "$FINGERPRINT" ]; then
             echo "GPU inputs $fingerprint differ from hosted inputs $FINGERPRINT" >&2

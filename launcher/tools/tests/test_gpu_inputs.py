@@ -227,4 +227,4 @@ class RecordedInputsTests(unittest.TestCase):
             records.main()
         self.assertEqual(output.getvalue(), 'false\n')
         self.assertEqual(run.call_args.args[0], ['gh', 'api', '--paginate', '--slurp',
-                                               'repos/owner/repo/actions/artifacts'])
+                                               f'repos/owner/repo/actions/artifacts?per_page={records.ARTIFACTS_PER_PAGE}'])

@@ -218,15 +218,14 @@ $E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/require
 $E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
 TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 export TORCH_CUDA_ARCH_LIST
-CUDA_HOME=$E PATH=$E/bin:$PATH \
-    CPATH=$E/targets/x86_64-linux/include LIBRARY_PATH=$E/targets/x86_64-linux/lib:$E/lib \
-    CC=$E/bin/x86_64-conda-linux-gnu-gcc CXX=$E/bin/x86_64-conda-linux-gnu-g++ \
-    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
+. launcher/tools/r3d/gpu_env.sh
+$E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
 ```
 
 That gives the PyTorch and nvdiffrast that [requirements-gpu.txt](requirements-gpu.txt) pins; a fit's
 cache key counts those pins, and `bake/bake.py` refuses to fit in an environment that differs.
-[gpu_python.sh](gpu_python.sh) runs a script in this environment. `TORCH_CUDA_ARCH_LIST`
+[gpu_env.sh](gpu_env.sh) exports the compiler, CUDA paths and libraries for `GPU_ENV`
+(`~/gpu/env` by default). [gpu_python.sh](gpu_python.sh) sources it and runs a Python script. `TORCH_CUDA_ARCH_LIST`
 names the target GPU's compute capability, queried above with `nvidia-smi`.
 Alternatively, `$E/bin/python -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
 prints the capability of the default CUDA device. Select the device that will

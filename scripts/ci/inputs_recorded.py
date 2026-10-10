@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 
+ARTIFACTS_PER_PAGE = 100
 RECORD_PREFIXES = ("doc-images-inputs-", "doc-images-failed-")
 
 
@@ -20,7 +21,7 @@ def main():
     parser.add_argument("fingerprint")
     args = parser.parse_args()
     result = subprocess.run(["gh", "api", "--paginate", "--slurp",
-                             f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts"],
+                             f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts?per_page={ARTIFACTS_PER_PAGE}"],
                             capture_output=True, text=True, check=True)
     artifacts = [item for page in json.loads(result.stdout) for item in page["artifacts"]]
     print(str(current(artifacts, args.fingerprint, os.environ.get("FORCE") == "true")).lower())
