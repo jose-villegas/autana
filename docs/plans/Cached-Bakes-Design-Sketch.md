@@ -36,7 +36,7 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 | Kind | Output | Inputs in its key |
 |---|---|---|
 | `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, `mesh_import.py` closure |
-| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs` (the import, the bake light, tone map, camera lens and clip, pose size and spacing), `reference_render.py` closure; not the start, so fits that differ only there share one set |
+| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
 | `fit` | the fitted mesh | the reference key, the start's locked bytes, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements; unknown until the start is locked |
 | `blend` | a `.glb` | the `.blend`, export arguments, `blend_skin_to_glb.py` + the pinned Blender version |
 

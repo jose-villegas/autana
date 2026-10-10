@@ -29,7 +29,7 @@ row for into the cache (produce.py), and with `--out` also copies what it made
 there, the folder a CI run uploads; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
-without one (a fit whose start this lock adds is keyed once it is written);
+without one;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written; it repeats, so the meshes of a Bakes run and the
 fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
@@ -79,7 +79,7 @@ RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
 API_URL = "https://api.github.com/repos/jose-villegas/autana"
 MESH_SUFFIX = ".mesh"
-# A fit's start, the mesh its fit begins from: "<entry>.start.mesh".
+# A fit's start, the mesh its fit begins from.
 START_SUFFIX = ".start" + MESH_SUFFIX
 DOWNLOAD_TIMEOUT_S = 60
 # A rename into the cache another process holds open is retried this often, waiting a growing step.
@@ -132,6 +132,7 @@ class Bake:
     scene: object = dataclasses.field(default=None, compare=False, repr=False)
     stages: dict = dataclasses.field(default=None, compare=False, repr=False)
     packed: bool = dataclasses.field(default=True, compare=False)  # a pack holds it: not an export or a fit's start
+    start: object = dataclasses.field(default=None, compare=False, repr=False)  # a fit's start Bake
 
 
 def default_cache():
@@ -431,7 +432,7 @@ def blend_key(settings, tools):
 
 
 def import_recipe(settings, tools):
-    """(an import's settings without paths, its sources by content): a credit line or a moved file does not
+    """An import's settings without paths and its sources by content: a credit line or a moved file does not
     rebake, and a .blend counts by its export's key."""
     recipe = {name: canonical(value) for name, value in vars(settings).items()
               if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
@@ -470,19 +471,21 @@ def reference_recipe(inputs, tools):
     return recipe
 
 
-def stage_keys(job, scene, tools, start_sha256=None):
+def stage_keys(job, scene, tools, starts=None):
     """{stage: key} of one job: a mesh alone, or a fit's start, references and fit. The references are keyed
     on what they read, not on the start, so fits that differ only in their start share them; the fit is
-    keyed on its references and on its start's bytes, `start_sha256`, and is None while those are unknown."""
+    keyed on its references and on its start's bytes, which `starts` ({start key: sha256}) gives, and is
+    None while they are unknown."""
     start = digest(["mesh", mesh_recipe(job, scene, tools), tools["mesh"]])
     if job.renderer.fit is None:
         return {"mesh": start}
     from r3d.fitted_variant import reference_inputs
 
     reference = digest(["reference", reference_recipe(reference_inputs(job, scene), tools), tools["reference"]])
+    start_sha256 = None if starts is None else starts.get(start)
     fit = None if start_sha256 is None else digest(["fit", reference, start_sha256, fit_recipe(job.renderer.fit),
                                                     tools["fit"]])
-    return {"start": start, "reference": reference, "fit": fit}
+    return {"start": start, "start_sha256": start_sha256, "reference": reference, "fit": fit}
 
 
 def bakes(paths, starts=None):
@@ -493,8 +496,8 @@ def bakes(paths, starts=None):
 
 
 def locked_starts(lock, *made):
-    """{key: sha256} of the bytes each of `made` ({key: row}), then `lock`, gives each key: what a fit's key
-    reads for its start."""
+    """{key: sha256} of every row in `made` ({key: row}) and `lock`, the lock's winning: the start bytes a
+    fit's key names."""
     starts = {}
     for rows in (*made, lock):
         starts.update((key, row["sha256"]) for key, row in rows.items())
@@ -519,17 +522,17 @@ def bakes_in(packs, jobs, starts=None):
                                              holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
                                              tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key},
                                              packed=False))
-            keys = stage_keys(job, scene, tools)
+            keys = stage_keys(job, scene, tools, starts)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
+            start = None
             if kind == "fit":
-                keys["fit"] = stage_keys(job, scene, tools, starts.get(keys["start"]))["fit"]
-                fit_starts.setdefault(keys["start"], Bake(
+                start = fit_starts.setdefault(keys["start"], Bake(
                     output=f"{entry}{START_SUFFIX}", source=asker, holder=holder, kind="mesh", key=keys["start"],
                     suffix=MESH_SUFFIX, tree=source.with_name(f"{entry}{START_SUFFIX}"), job=job, scene=scene,
                     stages={"mesh": keys["start"]}, packed=False))
             found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
-                              suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys))
+                              suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys, start=start))
     return list(exports.values()) + list(fit_starts.values()) + found
 
 
@@ -685,7 +688,7 @@ def check(found, lock):
     return problems
 
 
-def seed(found, cache, lock=None):
+def seed(found, cache, lock=None, made=None):
     """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
     that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
     it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
@@ -699,7 +702,7 @@ def seed(found, cache, lock=None):
         if bake.key is None:
             missing.append(describe(bake, unlocked(bake), bake_again(bake)))
             continue
-        held = lock.get(bake.key)
+        held = lock.get(bake.key) or (made or {}).get(bake.key)
         if held is not None and not held.get("seeded"):
             rows.append({name: held[name] for name in ROW_FIELDS if name in held})
             continue
@@ -903,29 +906,24 @@ def main(argv=None):
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
-            rows = []
+            rows, made_starts = [], {}
             for kind in KINDS:
                 if args.kind not in (None, kind):
                     continue
-                if kind == "fit":
-                    # A fit's key names its start's bytes: those the lock gives, else those made here.
-                    for start in (bake for bake in found if bake.kind == "mesh" and not bake.packed):
-                        row = start.key not in starts and produce.made(start.key, cache)
-                        if row:
-                            starts[start.key] = row["sha256"]
-                    found = bakes(paths, starts)
+                if kind == "fit" and made_starts:
+                    # A fit's key names its start's bytes: the lock's, else those this run just made.
+                    found = bakes(paths, {**made_starts, **starts})
                 for bake in found:
                     if (bake.kind != kind or not (args.again or bake.key not in lock)
                             or (args.only and bake.output not in args.only)):
                         continue
                     if bake.key is None:
-                        raise BakeMissing(f"{bake.output}: its start {bake.stages['start']} is neither locked nor "
-                                          "made here; bake.py bake --kind mesh first")
+                        raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
                     row = (None if args.again else produce.made(bake.key, cache)) or produce.produce(
                         bake, cache, lock, args.blender)
                     rows.append(row)
-                    if not bake.packed:
-                        starts.setdefault(bake.key, row["sha256"])
+                    if bake.kind == "mesh" and not bake.packed:
+                        made_starts[bake.key] = row["sha256"]
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (
@@ -936,7 +934,7 @@ def main(argv=None):
                 produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
             if args.seed:
-                rows = seed(found, cache, lock)
+                rows = seed(found, cache, lock, made)
             else:
                 # A fit waits for its start's row: what is made locks now, and the rest is named.
                 missing = []

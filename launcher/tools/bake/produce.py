@@ -3,8 +3,8 @@ key got. Needs the tool's environment: the r3d requirements for a mesh, and for 
 GPU with requirements-gpu.txt (r3d/gpu_python.sh). Before it runs, every requirement pin the key
 counts must match what is installed, so a key never names bytes made with other packages.
 
-A fit's start is a mesh bake of its own, made by the mesh pass and locked; the fit fetches the bytes its
-key names. A fit's references are made once per reference key into the cache's reference/ folder, so fits
+A fit's start is a mesh bake of its own; the fit reads the bytes its key names, from the lock or this
+cache. A fit's references are made once per reference key into the cache's reference/ folder, so fits
 that share their inputs share them, and never leave the machine that made them: only the fit stage reads
 them, and it runs there.
 """
@@ -162,16 +162,13 @@ def references(bake, cache):
 
 
 def start_file(bake, cache, lock):
-    """The start a fit's key names: locked, else made here, fetched by its bytes."""
-    key = bake.stages["start"]
-    row = lock.get(key) or made(key, cache)
+    """The start whose bytes the fit's key names, from the lock or, when this run made it, this cache."""
+    start, sha256 = bake.start, bake.stages["start_sha256"]
+    row = next((row for row in (lock.get(start.key), made(start.key, cache)) if row and row["sha256"] == sha256), None)
     if row is None:
-        raise keys.BakeMissing(f"{bake.output}: its start {key} is neither locked nor made here; "
-                               "bake.py bake --kind mesh first")
-    output = bake.output.removesuffix(keys.MESH_SUFFIX) + keys.START_SUFFIX
-    start = keys.Bake(output=output, source=bake.source, holder=bake.holder, kind="mesh", key=key,
-                      suffix=keys.MESH_SUFFIX, tree=bake.tree.with_name(output), packed=False)
-    return keys.fetch_all([start], {key: row}, cache)[start]
+        raise keys.BakeMissing(f"{bake.output}: its start {start.key} with sha256 {sha256} is neither locked nor "
+                               "made here; bake.py bake --kind mesh first")
+    return keys.fetch_all([start], {start.key: row}, cache)[start]
 
 
 def produce_fit(bake, cache, lock):
