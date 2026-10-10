@@ -26,12 +26,15 @@ FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
 MS_PER_SECOND = 1000
 BLOCK = "pipeline-frame-stages"
 LABEL_SHARE = 0.07  # a segment this share of the axis or wider carries its value inside
+PERCENT_SCALE = 100
+LABEL_SEPARATOR = " · "
 INK, MUTED = "#0b0b0b", "#52514e"
 FIGURE_SIZE = (10, 2.4)
 BAR_HEIGHT = 0.6
 AXIS_HEADROOM = 0.2
 AXIS_TICKS = 5
-CONTINUATION_SIZE = 8
+ADDED_ARROW_LENGTH = 0.025
+ADDED_ARROW_Y = -BAR_HEIGHT / 4
 # One colour per bracket, in report order.
 SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
 
@@ -77,8 +80,18 @@ def chart_path(path, view):
     return path.with_name(f"{path.stem}.{view}{path.suffix}")
 
 
+def stage_shares(costs, shipped):
+    return {stage: value * PERCENT_SCALE / shipped for stage, value in costs.items()}
+
+
+def share_text(value, signed=False):
+    return format(value, "+.0f" if signed else ".0f") + "%"
+
+
 def table(order, base, added, names, windows, chart_name):
-    headers = ["Stage", "As shipped", *(f"{name} view adds" for name in added)]
+    shipped = sum(base.values())
+    shares = stage_shares(base, shipped)
+    headers = ["Stage", "As shipped", "Share", *(f"{name} view adds" for name in added)]
     lines = [f"![Frame stages as shipped](../images/render/{chart_name})", ""]
     for name in names:
         if name in added:
@@ -87,9 +100,10 @@ def table(order, base, added, names, windows, chart_name):
     for stage in order:
         lines.append(f"| {stage} | " + " | ".join(
             [f"{base[stage]:.2f}" if stage in base else "not run",
+             share_text(shares[stage]) if stage in base else "not run",
              *(f"{delta.get(stage, 0.0):+.2f}" for delta in added.values())]) + " |")
     lines.append("| total | " + " | ".join(
-        [f"{sum(base.values()):.2f}", *(f"{sum(delta.values()):+.2f}" for delta in added.values())]) + " |")
+        [f"{shipped:.2f}", share_text(sum(shares.values())), *(f"{sum(delta.values()):+.2f}" for delta in added.values())]) + " |")
     missing = [name for name in names if name not in added]
     counts = f"{min(windows)}" if min(windows) == max(windows) else f"{min(windows)} to {max(windows)}"
     note = f"\nBoard ms per frame, mean of {counts} report windows per capture; a view adds the difference " \
@@ -119,10 +133,12 @@ def chart(order, base, added, path):
         drawn.append(stage)
         axis.barh(0, value, left=left, color=colour[stage], height=BAR_HEIGHT, **style)
         if value >= LABEL_SHARE * extent:
-            axis.text(left + value / 2, 0, f"{value:.1f}", ha="center", va="center", fontsize=8, color=INK)
+            label = f"{value:.1f}{LABEL_SEPARATOR}{share_text(shares[stage], signed=delta is not None)}"
+            axis.text(left + value / 2, 0, label, ha="center", va="center", fontsize=8, color=INK)
         return left + value
 
     for name, delta in [(None, None), *added.items()]:
+        shares = stage_shares(base if delta is None else delta, shipped)
         drawn = []
         figure, axis = plt.subplots(figsize=FIGURE_SIZE, layout="constrained")
         if delta is None:
@@ -144,7 +160,7 @@ def chart(order, base, added, path):
                 if delta.get(stage, 0.0) > 0:
                     left = segment(stage, delta[stage], left, alpha=0.45, hatch="///", edgecolor=colour[stage],
                                    linewidth=1)
-            label = f"{shipped:.1f} {'+' if net >= 0 else '-'} {abs(net):.1f} = {shipped + net:.1f} ms"
+            label = f"{net:+.1f} ms ({share_text(sum(shares.values()), signed=True)})"
             title = f"With the {name} view"
             output = chart_path(path, name)
         axis.annotate(label, (left, 0), xytext=(6, 0), textcoords="offset points", va="center")
@@ -152,11 +168,11 @@ def chart(order, base, added, path):
         axis.set_xlim(start, end)
         if delta is not None:
             offsets = MaxNLocator(nbins=AXIS_TICKS).tick_values(0, end - start)
-            offsets = [offset for offset in offsets if 0 <= offset <= end - start]
+            offsets = [offset for offset in offsets if 0 < offset <= end - start]
             axis.set_xticks([start + offset for offset in offsets], [f"+{offset:g}" for offset in offsets])
-            for edge in (0, 1):
-                axis.plot([0], [edge], transform=axis.transAxes, color=MUTED, clip_on=False,
-                          marker=[(-1, -0.5), (1, 0.5)], markersize=CONTINUATION_SIZE, linestyle="none")
+            axis.annotate("", (ADDED_ARROW_LENGTH, ADDED_ARROW_Y), xytext=(-ADDED_ARROW_LENGTH, ADDED_ARROW_Y),
+                          xycoords=("axes fraction", "data"), arrowprops=dict(arrowstyle="->", color=MUTED),
+                          annotation_clip=False)
         for rate in FRAME_RATES:
             budget = MS_PER_SECOND / rate
             if not start <= budget <= end:
@@ -171,8 +187,9 @@ def chart(order, base, added, path):
         for side in ("top", "right", "left"):
             axis.spines[side].set_visible(False)
         axis.tick_params(axis="y", length=0)
-        figure.legend(handles=[Patch(color=colour[stage], label=stage) for stage in drawn], loc="outside lower center",
-                      ncol=max(1, len(drawn)), frameon=False, fontsize=8)
+        handles = [Patch(color=colour[stage], label=f"{stage} {share_text(shares[stage], signed=delta is not None)}")
+                   for stage in drawn]
+        figure.legend(handles=handles, loc="outside lower center", ncol=max(1, len(drawn)), frameon=False, fontsize=8)
         output.parent.mkdir(parents=True, exist_ok=True)
         figure.savefig(output, dpi=110)
         plt.close(figure)

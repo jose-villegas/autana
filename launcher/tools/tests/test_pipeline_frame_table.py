@@ -36,8 +36,8 @@ class PipelineFrameTableTests(unittest.TestCase):
             self.assertEqual(list(added), ["motion"])
             self.assertEqual(added["motion"], {"r3d.draw": 2, "r3d.resolve": 15, "present.wait": 0, "frame.rest": 6})
             table = frame_stages.table(order, base, added, ["depth", "motion"], [1, 1], "chart.png")
-            self.assertIn("| r3d.resolve | not run | +15.00 |", table)
-            self.assertIn("| total | 41.00 | +23.00 |", table)
+            self.assertIn("| r3d.resolve | not run | not run | +15.00 |", table)
+            self.assertIn("| total | 41.00 | 100% | +23.00 |", table)
             self.assertIn("Not captured: depth.", table)
             self.assertIn("mean of 1 report windows", table)
             self.assertIn("mean of 1 to 3 report windows",
@@ -54,10 +54,10 @@ class PipelineFrameTableTests(unittest.TestCase):
             self.assertEqual(added["motion"]["r3d.draw"], -10)
             self.assertEqual(added["motion"]["frame.rest"], -1)
             table = frame_stages.table(order, base, added, ["depth", "motion", "tiles"], [1, 1, 1], "chart.png")
-            self.assertIn("| r3d.draw | 40.00 | -10.00 | +0.00 |", table)
-            self.assertIn("| frame.rest | 1.00 | -1.00 | -1.00 |", table)
-            self.assertIn("| r3d.show | not run | +2.00 | +1.00 |", table)
-            self.assertIn("| total | 41.00 | -5.00 | +3.00 |", table)
+            self.assertIn("| r3d.draw | 40.00 | 98% | -10.00 | +0.00 |", table)
+            self.assertIn("| frame.rest | 1.00 | 2% | -1.00 | -1.00 |", table)
+            self.assertIn("| r3d.show | not run | not run | +2.00 | +1.00 |", table)
+            self.assertIn("| total | 41.00 | 100% | -5.00 | +3.00 |", table)
             with self.assertRaises(ValueError):
                 frame_stages.stage_costs(root / "missing.log", str(root / "view-{view}.log"), ["motion"])
 
@@ -83,12 +83,17 @@ class PipelineFrameTableTests(unittest.TestCase):
             self.assertEqual([axis.get_xlim()[0] for axis in axes[1:]], [sum(base.values())] * 2)
             self.assertNotEqual(axes[1].get_xlim(), axes[2].get_xlim())
             for axis in axes[1:]:
-                self.assertEqual(axis.get_xticklabels()[0].get_text(), "+0")
-                self.assertTrue(any(line.get_transform() == axis.transAxes for line in axis.lines))
-            self.assertEqual([text.get_text() for text in axes[1].texts if " ms" in text.get_text()][:1], ["41.0 - 9.0 = 32.0 ms"])
+                self.assertTrue(all(text.get_text().startswith("+") and text.get_text() != "+0"
+                                    for text in axis.get_xticklabels()))
+                arrows = [text for text in axis.texts if getattr(text, "arrow_patch", None) is not None]
+                self.assertEqual(len(arrows), 1)
+                self.assertEqual(arrows[0].xy, (frame_stages.ADDED_ARROW_LENGTH, frame_stages.ADDED_ARROW_Y))
+                self.assertEqual(arrows[0].get_position(), (-frame_stages.ADDED_ARROW_LENGTH, frame_stages.ADDED_ARROW_Y))
+                self.assertFalse(any("41.0" in text.get_text() for text in axis.texts))
+            self.assertEqual([text.get_text() for text in axes[1].texts if " ms" in text.get_text()][:1], ["-9.0 ms (-22%)"])
             legends = [axis.figure.legends[0] for axis in axes]
             self.assertEqual([[text.get_text() for text in legend.texts] for legend in legends],
-                             [["r3d.draw", "frame.rest"], ["r3d.show"], ["r3d.draw", "r3d.show"]])
+                             [["r3d.draw 98%", "frame.rest 2%"], ["r3d.show +5%"], ["r3d.draw +2%", "r3d.show +7%"]])
             from matplotlib.colors import to_rgba
             self.assertEqual(axes[0].patches[1].get_facecolor(), to_rgba(frame_stages.SLOTS[2]))
             self.assertEqual(axes[1].patches[0].get_facecolor()[:3], to_rgba(frame_stages.SLOTS[3])[:3])
@@ -110,6 +115,33 @@ class PipelineFrameTableTests(unittest.TestCase):
                 "![Frame stages with the motion view](../images/render/frame.motion.png)",
                 "![Frame stages with the tiles view](../images/render/frame.tiles.png)"])
             self.assertIn("Not captured: depth.", table)
+
+    def test_stage_shares_use_shipped_total_before_rounding(self):
+        base = {"r3d.draw": 7, "r3d.cull": 2, "frame.rest": 3}
+        shipped = sum(base.values())
+        shares = frame_stages.stage_shares(base, shipped)
+        self.assertAlmostEqual(sum(shares.values()), frame_stages.PERCENT_SCALE)
+        self.assertAlmostEqual(shares["r3d.draw"], 7 * frame_stages.PERCENT_SCALE / shipped)
+        added = frame_stages.stage_shares({"r3d.draw": 3, "frame.rest": -1}, shipped)
+        self.assertEqual(added, {"r3d.draw": 25, "frame.rest": -frame_stages.PERCENT_SCALE / shipped})
+        self.assertEqual(frame_stages.share_text(added["r3d.draw"], signed=True), "+25%")
+        self.assertEqual(frame_stages.share_text(added["frame.rest"], signed=True), "-8%")
+
+    def test_segment_labels_and_thin_segment_legends_carry_shares(self):
+        base = {"r3d.draw": 49.5, "r3d.cull": 0.5}
+        added = {"depth": {"r3d.draw": 20, "r3d.cull": 0.5}}
+        import matplotlib.pyplot as plt
+        with tempfile.TemporaryDirectory() as directory, patch("matplotlib.pyplot.close", wraps=plt.close) as close:
+            frame_stages.chart(list(base), base, added, pathlib.Path(directory) / "chart.png")
+        axes = [call.args[0].axes[0] for call in close.call_args_list if hasattr(call.args[0], "axes")]
+        self.assertIn("49.5 · 99%", [text.get_text() for text in axes[0].texts])
+        self.assertIn("20.0 · +40%", [text.get_text() for text in axes[1].texts])
+        self.assertIn("+20.5 ms (+41%)", [text.get_text() for text in axes[1].texts])
+        self.assertEqual([[text.get_text() for text in axis.figure.legends[0].texts] for axis in axes],
+                         [["r3d.draw 99%", "r3d.cull 1%"], ["r3d.draw +40%", "r3d.cull +1%"]])
+        table = frame_stages.table(list(base), base, added, ["depth"], [1, 1], "chart.png")
+        self.assertIn("| Stage | As shipped | Share | depth view adds |", table)
+        self.assertIn("| r3d.cull | 0.50 | 1% | +0.50 |", table)
 
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()
