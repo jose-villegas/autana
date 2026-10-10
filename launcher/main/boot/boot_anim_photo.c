@@ -24,8 +24,12 @@ boot_anim_photo_load(boot_anim_photo_t* out) {
         ESP_LOGW(TAG, "no pack %s: the animation draws without the photograph", BOOT_PHOTO);
         return;
     }
-    gfx_image_t image;
-    asset_status_t status = gfx_image_from_pack(pack, BOOT_PHOTO, &image);
+    gfx_image_t image = {0};
+    asset_view_t entry;
+    asset_status_t status = asset_pack_find(pack, BOOT_PHOTO, GFX_IMAGE_ASSET, &entry);
+    if (status == ASSET_OK) {
+        status = gfx_image_open(entry, &image);
+    }
     if (status == ASSET_OK && (image.width != GFX_WIDTH || image.height != GFX_HEIGHT)) {
         status = ASSET_ERR_FORMAT;
     }

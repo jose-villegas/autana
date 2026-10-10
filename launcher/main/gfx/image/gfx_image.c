@@ -50,14 +50,3 @@ gfx_image_open(asset_view_t entry, gfx_image_t* out) {
     };
     return ASSET_OK;
 }
-
-asset_status_t
-gfx_image_from_pack(const asset_pack_t* pack, const char* id, gfx_image_t* out) {
-    asset_view_t entry;
-    const asset_status_t status = asset_pack_find(pack, id, GFX_IMAGE_ASSET, &entry);
-    if (status != ASSET_OK) {
-        *out = (gfx_image_t){0};
-        return status;
-    }
-    return gfx_image_open(entry, out);
-}

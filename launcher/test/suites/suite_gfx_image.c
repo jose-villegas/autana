@@ -1,6 +1,6 @@
 /*
  * Portable suite: gfx/image/gfx_image, the IMAG pack entry. Every check the
- * reader makes, against entries built here; on both, the boot picture's
+ * reader makes, against entries built here; on both, the boot picture in its
  * shipped pack opens as one panel.
  */
 
@@ -150,39 +150,15 @@ test_a_stride_that_wraps_round_is_out_of_bounds(void) {
 }
 
 static void
-test_a_missing_picture_and_an_entry_of_another_type_are_told_apart(void) {
-    enum { PACK_BYTES = 256 };
-
-    void* raw = NULL;
-    uint8_t* bytes = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, &raw);
-    TEST_ASSERT_NOT_NULL(bytes);
-    test_pack_t writer = test_pack_begin(bytes, PACK_BYTES, 2);
-    const fixture_t f = fixture();
-    memcpy(test_pack_add(&writer, "picture", GFX_IMAGE_ASSET, ENTRY_BYTES), f.entry, ENTRY_BYTES);
-    test_free_aligned(f.raw);
-    (void)test_pack_add(&writer, "other", ASSET_TYPE('O', 'T', 'H', 'R'), 4);
-    const uint32_t size = test_pack_finish(&writer);
-    asset_pack_t pack;
-    const asset_status_t opened = asset_pack_open(&pack, bytes, size);
-    gfx_image_t found, missing, other;
-    const asset_status_t found_status = gfx_image_from_pack(&pack, "picture", &found);
-    const asset_status_t missing_status = gfx_image_from_pack(&pack, "nope", &missing);
-    const asset_status_t other_status = gfx_image_from_pack(&pack, "other", &other);
-    test_free_aligned(raw);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, opened);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, found_status);
-    TEST_ASSERT_EQUAL_UINT16(WIDTH, found.width);
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, missing_status);
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_TYPE, other_status);
-    TEST_ASSERT_NULL(other.pixels);
-}
-
-static void
 test_the_boot_picture_s_pack_opens_as_one_panel(void) {
     const asset_pack_t* pack = asset_store_pack("boot");
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "no boot pack: see the log above");
-    gfx_image_t image;
-    const asset_status_t status = gfx_image_from_pack(pack, "boot", &image);
+    gfx_image_t image = {0};
+    asset_view_t entry;
+    asset_status_t status = asset_pack_find(pack, "boot", GFX_IMAGE_ASSET, &entry);
+    if (status == ASSET_OK) {
+        status = gfx_image_open(entry, &image);
+    }
     asset_store_release("boot");
     TEST_ASSERT_EQUAL_INT(ASSET_OK, status);
     TEST_ASSERT_EQUAL_UINT16(GFX_WIDTH, image.width);
@@ -200,7 +176,6 @@ suite_gfx_image(void) {
     RUN_TEST(test_a_stride_short_of_a_row_or_rows_over_the_header_are_a_format_error);
     RUN_TEST(test_misaligned_rows_are_out_of_bounds);
     RUN_TEST(test_a_stride_that_wraps_round_is_out_of_bounds);
-    RUN_TEST(test_a_missing_picture_and_an_entry_of_another_type_are_told_apart);
     RUN_TEST(test_the_boot_picture_s_pack_opens_as_one_panel);
 }
 
