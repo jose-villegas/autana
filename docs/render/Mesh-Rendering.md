@@ -313,11 +313,15 @@ holds:
 | Bounding box holds | What the draw does |
 |---|---|
 | no centre | nothing: dropped before its colours are read |
-| at most 2 × 2 centres | tests each centre against its three edges, one depth and colour for all |
+| at most 4 × 4 centres | tests each centre against its three edges, one depth and colour for all |
 | more | walks its rows, each edge's column found exactly by an integer step |
 
 Both paths apply the same rule to the same integers, so a small triangle
 and a walked one sharing an edge still meet without a gap or an overlap.
+The per-centre path skips the walk's setup but loses the triangle's
+gradient: at this size that does not show, and larger it shows as facets
+on the walls, so the bound is where cost and look meet
+(`SMALL_MAX_SIDE`, `r3d_span.c`).
 `suite_r3d_lit.c` holds every triangle to a reference implementation of the
 rule, and a mesh of mixed sizes to one fill per pixel.
 
