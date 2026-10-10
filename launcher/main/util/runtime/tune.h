@@ -116,8 +116,10 @@ bool tune_handle_line(const char* line, tune_reply_fn reply);
 
 #endif
 
-/* Pinned device code needs constants unless the image explicitly permits live loads. */
-#if !defined(ESP_PLATFORM) || TUNE_HOT_LIVE
+/* Pinned code needs constants unless the build explicitly permits live
+ * loads; a host build is the default image's code too, and links without
+ * the registry. */
+#if TUNE_HOT_LIVE
 #define TUNE_HOT TUNE
 #else
 #define TUNE_HOT TUNE_CONSTANT

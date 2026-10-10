@@ -107,7 +107,7 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
   fold it the way release does; a timing taken on one is a little
   pessimistic.
 - `TUNE_HOT` is the same declaration for code whose layout is pinned or
-  measured, such as the raster's inner loops: a constant on every device
+  measured, such as the raster's inner loops: a constant in every
   build, live only on an image built with `--hot-tunables`
   ([Build-Variants.md](../Build-Variants.md)), which is what
   `launcher/tools/perf/perf_sweep.sh` flashes.
