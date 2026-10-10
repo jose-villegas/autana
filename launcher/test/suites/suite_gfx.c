@@ -887,9 +887,9 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
  * many times per counter, in three settings: right after a full band, as
  * test_a_narrow_change_costs_less_than_a_full_band measures it; repeated,
  * where only the bus is left; and cold, with all of flash code dropped from
- * the instruction cache first, which is what code layout can cost it. The
- * mean is steady enough to show a few microseconds; the counters say where
- * this core's cycles went. */
+ * the instruction cache first, which is what code layout can cost it, the
+ * last also sent from this core. The mean is steady enough to show a few
+ * microseconds; the counters say where this core's cycles went. */
 #define NARROW_PRESENTS 32
 static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti", "d_stall_all"};
 
@@ -948,6 +948,12 @@ test_narrow_present_counters(void) {
     count_narrow_presents("narrow_after_band", NARROW_AFTER_BAND);
     count_narrow_presents("narrow_repeated", NARROW_REPEATED);
     count_narrow_presents("narrow_cold", NARROW_COLD);
+    /* The present task runs on the other core, where these counters cannot
+     * see it; sent from this core, its stalls are this core's. */
+    const bool async = gfx_present_async_enabled();
+    gfx_set_present_async(false);
+    count_narrow_presents("narrow_cold_here", NARROW_COLD);
+    gfx_set_present_async(async);
     TEST_PASS();
 #endif
 }
