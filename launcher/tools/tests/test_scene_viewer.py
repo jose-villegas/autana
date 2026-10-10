@@ -15,6 +15,8 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
+from anim import track_host
+from r3d import build_pack
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
@@ -75,6 +77,40 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertEqual(run.returncode, 0, run.stderr)
         with Image.open(out) as image:
             return image.copy()
+
+    def test_triangle_sizes_source_poses_match_the_runtime_engine_clip_pixels(self):
+        clip = write_camera_clip(self.root, name="asymmetric", reach=2.0, degrees=30.0)
+        source = self.root / "probe.scene.toml"
+        source.write_text(self.scene.read_text().replace('path = { animation = "fly.anim.toml"',
+                                                        'path = { animation = "asymmetric.anim.toml"'))
+        assets = self.root / "probe-assets"
+        build_pack.write_packs(assets, build_pack.pack_bytes([source]))
+        env = dict(os.environ, AUTANA_ASSET_DIR=str(assets))
+        picture = self.root / "runtime.bmp"
+        runtime = subprocess.run([str(self.binary), "--scene", "probe", "--object", "card", "--quarter", "0",
+                                  "--size", "368x448", "--frames", "6", "--dt", "100", "-o", str(picture)],
+                                 capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(runtime.returncode, 0, runtime.stderr)
+        poses = self.root / "source.poses"
+        poses.write_text(track_host.poses(clip, "camera", 100, 368, 448, 0.6, 1.0, until_ms=700))
+        frames = self.root / "measured"
+        frames.mkdir(exist_ok=True)
+        report = TOOLS / "r3d/report_triangle_sizes.sh"
+        measured_build = self.root / "triangle-sizes"
+        built = subprocess.run([shutil.which("sh"), str(report), "--build-only", "-o", str(measured_build)],
+                               capture_output=True, text=True, timeout=120)
+        self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+        binary = pathlib.Path(built.stdout.strip())
+        measured = subprocess.run([str(binary), str(assets / "probe.apak"), "card", str(poses),
+                                   "--write", str(frames)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(measured.returncode, 0, measured.stdout + measured.stderr)
+        raw = np.fromfile(frames / "pose_06.raw", dtype="<u2").reshape(448, 368)
+        with Image.open(picture) as image:
+            pixels = np.asarray(image)
+        runtime_mask = np.any(pixels != pixels[0, 0], axis=2)
+        measured_mask = raw != 0
+        self.assertGreater(np.count_nonzero(measured_mask), 1000)
+        np.testing.assert_array_equal(measured_mask, runtime_mask)
 
     def test_every_declared_view_name_is_accepted(self):
         run, _ = self.render("--view", "invalid")

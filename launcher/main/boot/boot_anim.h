@@ -33,6 +33,7 @@
 #include "boot/boot_anim_timeline.h"
 #include "gfx/draw/gfx_color.h"
 #include "gfx/draw/gfx_font.h"
+#include "gfx/image/gfx_image.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
@@ -65,6 +66,16 @@ void boot_anim_motion_load(boot_anim_motion_t* out);
 /* Drops the pack boot_anim_motion_load() mounted, if it did, and leaves the
  * rest pose in `motion`, which no longer points into the pack. */
 void boot_anim_motion_release(boot_anim_motion_t* motion);
+
+/* Fills `out` with the photograph the animation crossfades to, the boot
+ * picture's pack entry, mounting its pack. On any failure, including a picture
+ * that is not one panel, it logs why and leaves no pixels, so the animation
+ * draws on without it. */
+void boot_anim_photo_load(gfx_image_t* out);
+
+/* Drops the pack boot_anim_photo_load() mounted, if it did (`photo` has
+ * pixels), and leaves no pixels in `photo`. */
+void boot_anim_photo_release(gfx_image_t* photo);
 
 typedef struct {
     transformf_t camera;
@@ -566,17 +577,25 @@ boot_anim_ink(uint32_t now_ms) {
  * FADE_MS. Plain tween_ramp(), not eased: ease_out(r) + ease_out(255-r)
  * is NOT 255 at every r, so easing either half of a cross-dissolve makes
  * the midpoint read brighter than either end; linear is what keeps the
- * two halves summing to one whole picture throughout. */
+ * two halves summing to one whole picture throughout. The scene shows
+ * through what the reveal leaves, 255 - reveal. */
 static inline uint8_t
-boot_anim_image_reveal(uint32_t now_ms) {
+boot_anim_photo_reveal(uint32_t now_ms) {
     return tween_ramp(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
 }
 
-/* Complement the image reveal directly: separately rounded ramps need not
- * sum to 255. */
-static inline uint8_t
-boot_anim_scene_reach(uint32_t now_ms) {
-    return (uint8_t)(255u - boot_anim_image_reveal(now_ms));
+/* The frame, counted from 0, that mounts the photograph's pack. Mounting
+ * checks the whole pack, about 20 ms on the board: on the first frame it
+ * would delay the first picture, and in the crossfade it would stall a frame
+ * already among the dearest. The early frames are the cheapest (about 15 ms),
+ * so it takes the second. */
+#define BOOT_ANIM_PHOTO_MOUNT_FRAME 1U
+
+/* Whether frame `frame` (counted from 0) mounts the photograph's pack, if no
+ * frame before it tried. */
+static inline bool
+boot_anim_photo_due(uint32_t frame) {
+    return frame >= BOOT_ANIM_PHOTO_MOUNT_FRAME;
 }
 
 #define BOOT_ANIM_HUE_START   875  /* azure, at the foot of the climb */
@@ -665,8 +684,9 @@ boot_anim_finale_reach(uint32_t now_ms) {
  * clear the panel. */
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
-/* Host render tests call this directly and read the firmware framebuffer. */
-void boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms);
+/* Host render tests call this directly and read the firmware framebuffer.
+ * `photo` with no pixels draws the scene through to the end in its place. */
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture
