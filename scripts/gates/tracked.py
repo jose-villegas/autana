@@ -1,5 +1,7 @@
 """The files git tracks under a root; what CI sees, not whatever a build or a
-checkout nested inside this one has left beside them."""
+checkout nested inside this one has left beside them; and the contents of named
+files at a git revision."""
+import io
 import fnmatch
 import pathlib
 import subprocess
@@ -59,3 +61,22 @@ def committable(base):
         return sorted(path for path in (base / line for line in listing) if path.is_file())
     return sorted(path for path in base.rglob("*")
                   if path.is_file() and not any(part in SKIP for part in path.relative_to(base).parts))
+
+
+def revision_contents(root, revision, names, renames=None):
+    renames = renames or {}
+    requests = "".join(f"{revision}:{renames.get(name, name)}\n" for name in names).encode("utf-8")
+    result = subprocess.run(["git", "cat-file", "--batch"], cwd=root, input=requests,
+                            check=True, capture_output=True)
+    stream = io.BytesIO(result.stdout)
+    for name in names:
+        header = stream.readline().rstrip(b"\n")
+        if header.endswith(b" missing"):
+            continue
+        _, kind, size = header.split()
+        if kind != b"blob":
+            raise ValueError(f"Not a source blob: {revision}:{name}")
+        content = stream.read(int(size))
+        if len(content) != int(size) or stream.read(1) != b"\n":
+            raise ValueError(f"Incomplete source blob: {revision}:{name}")
+        yield name, content

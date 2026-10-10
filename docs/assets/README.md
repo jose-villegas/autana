@@ -201,7 +201,9 @@ Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
 and the lock check fails until the author runs `bake.py lock --from-run N`
 with that run and commits the lock. A fit needs the CUDA GPU, so the Bakes GPU
 workflow makes it, started by hand on the branch; no pull request reaches that
-runner. Only a run's
+runner. `--from-run` repeats, so the two runs lock together
+(`--from-run CPU --from-run GPU`); two runs that made one key with different
+bytes fail, naming both. Only a run's
 files can be locked, so every locked file can be published from main; a fit's
 reference frames stay on the machine that fitted. The exception is a seeded
 row (`seeded = true`), written by `bake.py lock --seed` from the files the tree
