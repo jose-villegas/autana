@@ -7,6 +7,10 @@
 #
 # Usage:
 #   launcher/tools/r3d/report_triangle_sizes.sh --mesh NAME POSES|- [--write DIR | --against DIR]
+#   launcher/tools/r3d/report_triangle_sizes.sh --build-only [-o DIR]
+#
+#   --build-only            build the binary, print its path and exit
+#   -o DIR                  build directory (default: tools/r3d/build)
 #
 #   --mesh NAME             the baked mesh: its asset id, read from the pack that holds it, in a folder
 #                           written from the baked meshes in the tree, or the one AUTANA_ASSET_DIR names
@@ -23,22 +27,42 @@ MAIN_DIR="$LAUNCHER_DIR/main"
 
 usage() {
     echo "usage: $0 --mesh NAME POSES|- [--write DIR | --against DIR]" >&2
+    echo "       $0 --build-only [-o DIR]" >&2
     exit 2
 }
 
-[ "${1:-}" = --mesh ] && [ $# -ge 3 ] || usage
-mesh_name=$2
-poses=$3
-shift 3
-asset_dir=${AUTANA_ASSET_DIR:-}
-[ "$poses" = - ] || [ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
+BUILD_DIR="$SCRIPT_DIR/build"
+build_only=0
+mesh_name=""
+poses=""
 mode=""
 dir=""
-case "${1:-}" in
---write | --against) mode=$1 dir="${2:?$1 needs a directory}" ;;
-"") ;;
-*) usage ;;
-esac
+asset_dir=${AUTANA_ASSET_DIR:-}
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --build-only) build_only=1; shift ;;
+    -o) [ $# -ge 2 ] || usage; BUILD_DIR=$2; shift 2 ;;
+    --mesh)
+        [ $# -ge 3 ] || usage
+        mesh_name=$2 poses=$3
+        shift 3
+        ;;
+    --write | --against)
+        [ $# -ge 2 ] || usage
+        mode=$1 dir=$2
+        shift 2
+        ;;
+    --help | -h)
+        sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# *//'
+        exit 0
+        ;;
+    *) usage ;;
+    esac
+done
+if [ "$build_only" -eq 0 ]; then
+    [ -n "$mesh_name" ] && [ -n "$poses" ] || usage
+    [ "$poses" = - ] || [ -f "$poses" ] || { echo "no poses file $poses" >&2; exit 2; }
+fi
 
 # shellcheck source=../build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
@@ -49,8 +73,8 @@ if ! CC_BIN=$(find_cc); then
     exit 1
 fi
 
-BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR"
+BUILD_DIR=$(CDPATH= cd -- "$BUILD_DIR" && pwd)
 OUT_BIN="$BUILD_DIR/triangle_sizes"
 # The same flags as run_tests.sh; -O2 because it draws every pose.
 CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
@@ -73,6 +97,12 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
     "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
+if [ "$build_only" -eq 1 ]; then
+    # shellcheck source=../../../scripts/lib/native_path.sh
+    . "$LAUNCHER_DIR/../scripts/lib/native_path.sh"
+    to_native "$OUT_BIN"
+    exit 0
+fi
 
 # shellcheck source=../../../scripts/lib/python.sh
 . "$LAUNCHER_DIR/../scripts/lib/python.sh"
