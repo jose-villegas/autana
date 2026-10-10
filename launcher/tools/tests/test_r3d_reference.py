@@ -382,9 +382,9 @@ class CudaParityTests(unittest.TestCase):
     """The reference on CUDA against the reference on LLVM, both with bounced light, on a sunlit corridor seen from a
     few poses. The same sampler seeds draw the same paths, so the two differ only in float rounding."""
 
-    # Largest per-pixel difference over the mean pixel; a placeholder until a first measurement on the GPU runner
-    # sets it. Well under a 565 step.
-    RELATIVE_BOUND = 1e-3
+    # Largest per-pixel difference over the mean pixel. None until a first run on a CUDA host measures it: until then
+    # the test reports the difference and skips as not measured, so no bound passes unmeasured.
+    RELATIVE_BOUND = None
 
     def setUp(self):
         if not have_cuda():
@@ -415,7 +415,9 @@ class CudaParityTests(unittest.TestCase):
         cuda = self.render("cuda_ad_rgb")
         self.assertGreater(llvm.mean(), 0.0, "the poses see lit surfaces")
         worst = np.abs(cuda - llvm).max() / llvm.mean()
-        print(f"cuda vs llvm: largest pixel difference {worst:.3g} of the mean pixel")
+        if self.RELATIVE_BOUND is None:
+            self.skipTest(f"not measured: largest pixel difference {worst:.3g} of the mean pixel; set RELATIVE_BOUND "
+                          "from it")
         self.assertLess(worst, self.RELATIVE_BOUND)
 
 
