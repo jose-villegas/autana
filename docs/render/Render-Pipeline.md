@@ -257,7 +257,7 @@ and its share of the shipped total. Segment labels and legends give each
 stage's share of the shipped total, signed for view additions. Dotted lines
 mark the frame-rate budgets when they fall inside the chart.
 
-<!-- generated: pipeline-frame-stages sha256=10ca440b758cf4185f0961750e32b39434c6be76b098fad5e9df81a4cf112269 -->
+<!-- generated: pipeline-frame-stages sha256=4ca11d90dd2b848aa4842035ac3193109d3428e9c6ec73ccb768b6904f650410 -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
 ![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
@@ -270,16 +270,17 @@ mark the frame-rate budgets when they fall inside the chart.
 
 | Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
 |---|---|---|---|---|---|---|
-| r3d.cull | 0.77 | 1% | +0.00 | +0.00 | +0.01 | +0.02 |
-| r3d.transform | 4.94 | 10% | +0.08 | +0.06 | +0.16 | +0.34 |
-| r3d.draw | 41.82 | 81% | +0.36 | +0.44 | +2.01 | +26.22 |
-| r3d.resolve | not run | not run | +0.00 | +0.00 | +14.53 | +0.00 |
+| r3d.cull | 0.76 | 1% | +0.01 | +0.00 | +0.02 | +0.01 |
+| r3d.transform | 4.87 | 10% | +0.10 | +0.02 | +0.22 | +0.02 |
+| r3d.draw | 41.94 | 82% | +0.25 | +0.20 | +1.85 | +23.89 |
+| r3d.resolve | not run | not run | +0.00 | +0.00 | +14.29 | +0.00 |
+| r3d.show | not run | not run | +6.89 | +4.60 | +9.05 | +10.21 |
 | present.wait | 0.00 | 0% | +0.00 | +0.00 | +0.00 | +0.00 |
-| r3d.upscale | 2.81 | 5% | +0.14 | +0.13 | -0.04 | -0.04 |
-| frame.rest | 1.04 | 2% | +6.73 | +4.45 | +8.81 | +9.81 |
-| total | 51.38 | 100% | +7.32 | +5.08 | +25.48 | +36.36 |
+| r3d.upscale | 2.59 | 5% | +0.16 | +0.17 | +0.16 | +0.16 |
+| frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.11 | +0.12 |
+| total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
 
-Board ms per frame, mean of 19 to 20 report windows per capture; a view adds the difference between its capture and the scene as shipped.
+Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
 <!-- /generated: pipeline-frame-stages -->
 
 ### Scene and camera
@@ -457,11 +458,13 @@ The generator writes the `pipeline-frame-stages` chart and table from
 frame-cost report windows: every bracket of the scene as shipped, and for each
 debug view in the view table of `render/context/render_context.c`, what its
 capture adds to each bracket. Capture them all from one development build
-running the demo scene, the first with the scene as shipped, then one per view:
+running the demo scene, the first with the scene as shipped, then one per view.
+Two minutes spans several passes of the camera path, so where along the path a
+capture starts barely moves its means:
 
 ```sh
-autana monitor 30 --out docs/render/data/pipeline-present-board.log
-autana monitor 30 --out docs/render/data/pipeline-view-motion-board.log
+autana monitor 120 --out docs/render/data/pipeline-present-board.log
+autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
 ```
 
 The debug view is a development-build tunable (`autana tune view` lists it):
