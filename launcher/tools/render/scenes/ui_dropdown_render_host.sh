@@ -12,6 +12,7 @@ main/ui/ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
+main/ui/ui_icons.c
 main/ui/ui_pointer.c
 main/ui/ui_snap.c
 main/ui/ui_scroll.c
@@ -19,6 +20,7 @@ main/ui/ui_widgets.c
 components/microui/src/microui.c
 tools/render/scenes/ui_dropdown_render_host.c
 "
+scene_assets="main/engine"
 scene_renders="
 scrolled-and-picked|--quarter 0|368x448
 "

@@ -44,12 +44,17 @@ add_library(editor_runtime STATIC
     runtime/runtime.c
     ${gfx_srcs}
     ${LAUNCHER_DIR}/main/app/app_registry.c
+    ${LAUNCHER_DIR}/main/asset/asset_file.c
+    ${LAUNCHER_DIR}/main/asset/asset_pack.c
+    ${LAUNCHER_DIR}/main/asset/asset_store.c
+    ${LAUNCHER_DIR}/main/asset/asset_store_file.c
     ${LAUNCHER_DIR}/main/input/gesture.c
     ${LAUNCHER_DIR}/main/ui/system_navigation.c
     ${LAUNCHER_DIR}/main/ui/ui.c
     ${LAUNCHER_DIR}/main/ui/ui_bridge.c
     ${LAUNCHER_DIR}/main/ui/ui_build.c
     ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
+    ${LAUNCHER_DIR}/main/ui/ui_icons.c
     ${LAUNCHER_DIR}/main/ui/ui_control_center.c
     ${LAUNCHER_DIR}/main/ui/ui_control_center_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_launcher.c

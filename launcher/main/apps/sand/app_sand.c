@@ -53,8 +53,6 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "icons_dither.h"
-#include "icons_sand.h"
 #include "input/imu.h"
 #include "input/imu_rotation.h"
 #include "input/tilt.h"
@@ -81,6 +79,7 @@
 #include "ui/brush_screen.h"
 #include "ui/options_screen.h"
 #include "ui/palette_screen.h"
+#include "ui/sand_icons.h"
 #include "ui/title_screen.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
@@ -125,13 +124,6 @@ static const char* const dither_names[GFX_DITHER_MODE_COUNT] = {
 };
 
 static gfx_dither_mode_t dither_mode = GFX_DITHER_CELL_BAYER2;
-
-_Static_assert((int)ICON_DITHER_COUNT == (int)GFX_DITHER_MODE_COUNT && (int)ICON_DITHER_NONE == (int)GFX_DITHER_NONE
-                   && (int)ICON_DITHER_CELL_CHECKER == (int)GFX_DITHER_CELL_CHECKER
-                   && (int)ICON_DITHER_CELL_BAYER2 == (int)GFX_DITHER_CELL_BAYER2
-                   && (int)ICON_DITHER_PIXEL_CHECKER2 == (int)GFX_DITHER_PIXEL_CHECKER2
-                   && (int)ICON_DITHER_PIXEL_BAYER4 == (int)GFX_DITHER_PIXEL_BAYER4,
-               "the options screen shows dither swatch i beside dither_names[i]");
 
 /* sand_color_mode_t and sand_colour_state.h's own sand_colour_mode_t share
  * an ordinal order (FULL, 256, 16) by construction - one cast, not a
@@ -424,6 +416,7 @@ sand_enter(void) {
      * no indexed draw path and would touch a framebuffer that does not
      * exist. Idempotent: a plain FULL entry asks for nothing. */
     apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
+    sand_icons_load();
     ui.screen = SAND_UI_MENU;
     sand_menu_init(&menu);
 
@@ -707,6 +700,7 @@ sand_exit(void) {
     apply_gfx_action(sand_colour_on_exit_app(&colour_state));
 
     free_sim_buffers();
+    sand_icons_release();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (frames > 0) {
         ESP_LOGI(TAG,

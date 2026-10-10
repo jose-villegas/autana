@@ -568,6 +568,16 @@ class MainTest(unittest.TestCase):
             code = self.run_main(root, ["--rule", "INCLUDE-DIRECTION"])
         self.assertEqual(code, 2)
 
+    def test_a_folder_of_content_alone_has_no_tier(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
+            gate_tree.write(root, "launcher/main/content/content.pack.toml", "")
+            gate_tree.write(root, "launcher/main/content/icons/set.icons.toml", "")
+            gate_tree.commit(root, "launcher")
+            code = self.run_main(root, ["--rule", "INCLUDE-DIRECTION"])
+        self.assertEqual(code, 0)
+
     def test_a_warning_alone_passes_without_strict_and_fails_with_it(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

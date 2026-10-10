@@ -7,7 +7,7 @@
 #include "ui/ui.h"
 #include "ui/ui_widgets.h"
 
-#include "apps/sand/icons_dither.h"
+#include "apps/sand/ui/sand_icons.h"
 #include "math/scalar/mathi.h"
 #include "sand_theme.h"
 
@@ -166,13 +166,12 @@ draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
     const ui_theme_t* theme = &sand_ui_theme;
     ui_text_in(ctx, lay->dither_caption, OPTIONS_SCREEN_DITHER, theme->caption, theme->text_scale, UI_ALIGN_CENTRE);
 
-    assert(labels->dither_count <= ICON_DITHER_COUNT);
-    ui_dropdown_item_t items[ICON_DITHER_COUNT];
+    assert(labels->dither_count <= GFX_DITHER_MODE_COUNT);
+    ui_dropdown_item_t items[GFX_DITHER_MODE_COUNT];
     const int count = labels->dither_count;
     for (int i = 0; i < count; i++) {
         items[i] = (ui_dropdown_item_t){
-            .icon = &icon_dither_table[i],
-            .icon_rows = icon_dither_rows,
+            .icon = sand_dither_icon((gfx_dither_mode_t)i),
             .label = labels->dither_names[i],
         };
     }

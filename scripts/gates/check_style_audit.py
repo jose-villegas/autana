@@ -319,11 +319,17 @@ def _layer_dirs_match(root):
     every tier comparison below it a guess; fail loudly rather than
     silently trust an order that might already be wrong. A LAYER_TIER entry
     with no folder on disk (a fixture, or a layer deleted since) is not
-    this check's business."""
+    this check's business, and nor is a folder holding no C, which is
+    content (pack sources) and has no tier."""
     main_dir = pathlib.Path(root) / "launcher/main"
-    found = {d.name for d in main_dir.iterdir() if d.is_dir()}
+
+    def has_code(folder):
+        return any(path.suffix in (".c", ".h") for path in folder.rglob("*"))
+
+    found = {d.name for d in main_dir.iterdir() if d.is_dir() and has_code(d)}
     split = {key.split("/")[0] for key in LAYER_TIER if "/" in key}
-    found |= {f"{d.parent.name}/{d.name}" for top in split for d in (main_dir / top).glob("*/") if d.is_dir()}
+    found |= {f"{d.parent.name}/{d.name}" for top in split for d in (main_dir / top).glob("*/")
+              if d.is_dir() and has_code(d)}
     loose = sorted(f"{top}/{p.name}" for top in split if (main_dir / top).is_dir()
                    for p in (main_dir / top).iterdir()
                    if p.is_file() and p.name != f"{top}.h" and not p.name.startswith("."))

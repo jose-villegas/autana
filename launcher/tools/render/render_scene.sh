@@ -17,8 +17,10 @@
 #                   which every scene gets, space or newline separated,
 #                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
-#                   with an optional fourth field, |nopin, for a render
-#                   whose pixels are not integer-exact (see scene_pin).
+#                   with optional flags after it: |nopin for a render
+#                   whose pixels are not integer-exact (see scene_pin), and
+#                   |nopacks for one run with no asset pack, which shows
+#                   what the scene draws when a pack is missing.
 #                   The declared size is checked against what the binary
 #                   says it wrote, so a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
@@ -80,7 +82,7 @@ render_scene_run() {
 
 # The packs of scene_assets' roots, and what the build needs to read them.
 render_scene_packs() {
-    for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
+    for _rs_src in asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
         _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
     done
     # shellcheck source=../../../scripts/lib/python.sh
@@ -193,9 +195,11 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # Every scene draws through gfx: all of it but the device-only *_device.c.
+    # Every scene draws through gfx: all of it but the device-only *_device.c,
+    # and the pack format gfx reads its artwork from.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"
+    _rs_files="$_rs_files $_rs_launcher/main/asset/asset_pack.c"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
@@ -235,13 +239,21 @@ render_scene_render() {
             _rs_tail=${_rs_tail#*|}
             _rs_want=${_rs_tail%%|*}
             _rs_pin_this="$scene_pin"
-            case "$_rs_tail" in
-                *"|nopin") _rs_pin_this=0 ;;
-                *"|"*)
-                    echo "FAIL $scene_name/$_rs_label: unknown render flag '${_rs_tail#*|}'" >&2
-                    exit 1
-                    ;;
-            esac
+            _rs_no_packs=""
+            _rs_flags=${_rs_tail#"$_rs_want"}
+            while [ -n "$_rs_flags" ]; do
+                _rs_flags=${_rs_flags#|}
+                _rs_flag=${_rs_flags%%|*}
+                _rs_flags=${_rs_flags#"$_rs_flag"}
+                case "$_rs_flag" in
+                    nopin) _rs_pin_this=0 ;;
+                    nopacks) _rs_no_packs="$scene_out_dir/no-packs" && mkdir -p "$_rs_no_packs" ;;
+                    *)
+                        echo "FAIL $scene_name/$_rs_label: unknown render flag '$_rs_flag'" >&2
+                        exit 1
+                        ;;
+                esac
+            done
             _rs_path="$scene_out_dir/$_rs_label.bmp"
             _rs_video_args=""
             if [ "$_rs_video" = 1 ]; then
@@ -249,7 +261,10 @@ render_scene_render() {
             fi
 
             # shellcheck disable=SC2086
-            if ! "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args 2> "$_rs_log"; then
+            if ! (
+                [ -z "$_rs_no_packs" ] || export AUTANA_ASSET_DIR="$_rs_no_packs"
+                exec "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args
+            ) 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1

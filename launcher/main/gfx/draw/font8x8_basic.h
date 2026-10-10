@@ -22,8 +22,7 @@
  * host-compilable (see its own top comment), and a header included from more
  * than one translation unit - the firmware's gfx_draw.c and the host test suite,
  * at least - needs a guard against double inclusion within one TU and
- * internal linkage to avoid a duplicate-symbol clash across TUs, the same
- * way icons_system.h's icon_system_rows is `static const` for the same reason.
+ * internal linkage to avoid a duplicate-symbol clash across TUs.
  * `const` also lands the table in flash rather than RAM, matching the model
  * gfx_color.h's own top comment describes. Neither change alters what any
  * reader sees: every existing use already only reads through a `const

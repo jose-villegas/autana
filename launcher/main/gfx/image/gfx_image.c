@@ -1,5 +1,6 @@
 #include "gfx/image/gfx_image.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /* The entry's layout, written by tools/gfx/image_asset.py. */
@@ -37,20 +38,29 @@ gfx_image_open(asset_view_t entry, gfx_image_t* out) {
     const uint16_t height = half(at + AT_HEIGHT);
     const uint32_t stride = word(at + AT_STRIDE);
     const uint32_t pixels = word(at + AT_PIXELS);
-    if (half(at + AT_FORMAT) != GFX_IMAGE_RGB565 || width == 0 || height == 0 || stride < width
-        || pixels < HEADER_SIZE) {
+    const uint16_t format = half(at + AT_FORMAT);
+    const bool mono = format == GFX_IMAGE_MONO1;
+    if ((format != GFX_IMAGE_RGB565 && !mono) || width == 0 || height == 0 || stride < width || pixels < HEADER_SIZE
+        || (mono && stride % GFX_IMAGE_MONO1_STRIDE_STEP != 0)) {
         return ASSET_ERR_FORMAT;
     }
-    const uint64_t end = (uint64_t)pixels + (((uint64_t)stride * (height - 1U)) + width) * sizeof(gfx_color_t);
-    if (((uintptr_t)at + pixels) % PIXEL_ALIGN != 0 || end > entry.size) {
+    const uint64_t last_row = (uint64_t)stride * (height - 1U);
+    const uint64_t end =
+        mono ? pixels + ((last_row + width + 7U) / 8U) : pixels + ((last_row + width) * sizeof(gfx_color_t));
+    if ((!mono && ((uintptr_t)at + pixels) % PIXEL_ALIGN != 0) || end > entry.size) {
         return ASSET_ERR_BOUNDS;
     }
     *out = (gfx_image_t){
-        .pixels = (const gfx_color_t*)(const void*)(at + pixels),
+        .format = (gfx_image_format_t)format,
         .width = width,
         .height = height,
         .stride = stride,
     };
+    if (mono) {
+        out->bits = at + pixels;
+    } else {
+        out->pixels = (const gfx_color_t*)(const void*)(at + pixels);
+    }
     return ASSET_OK;
 }
 

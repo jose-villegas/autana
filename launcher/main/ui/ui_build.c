@@ -446,9 +446,15 @@ ui_draw_icon_emit(void* ctx_, int x, int y, int w, int h) {
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color) {
-    ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
-    icon_walk_blocks(rows + icon->offset, icon->w, icon->h, icon->stride, r.w, r.h, ui_draw_icon_emit, &dc);
+ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color) {
+    if (icon != NULL) {
+        ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
+        icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
+    } else if (text != NULL) {
+        const mu_Font font = c->style->font;
+        const int x = r.x + (r.w - c->text_width(font, text, -1)) / 2;
+        mu_draw_text(c, font, text, -1, mu_vec2(x, r.y + (r.h - c->text_height(font)) / 2), color);
+    }
 }
 
 /* See ui.h. `value`'s own address (not what it points to, same idiom

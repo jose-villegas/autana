@@ -27,7 +27,6 @@
 #include "gfx/draw/gfx_font_roles.h"
 #include "gfx/draw/icon.h"
 #include "gfx/gfx.h"
-#include "icons_sand.h"
 #include "material.h"
 #include "material_palette.h"
 #include "render_host.h"
@@ -35,6 +34,7 @@
 #include "sand_swatch.h"
 #include "sand_ui.h"
 #include "ui/brush_screen.h"
+#include "ui/sand_icons.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
 #include "ui/ui_slider.h"
 #include "ui/ui_style.h"
@@ -108,11 +108,13 @@ icon_emit(void* ctx, int x, int y, int w, int h) {
 }
 
 /* Mirrors ui.c's ui_draw_icon(), with `box` mapped through `t` the way
- * ui.c's own draw_command() maps MU_COMMAND_ICON. */
+ * ui.c's own draw_command() maps MU_COMMAND_ICON; no icon draws nothing. */
 static void
-draw_icon(ui_transform_t t, mu_Rect box, const icon_t* icon, uint32_t color_rgb) {
-    icon_fill_ctx_t ctx = {gfx_rgb(color_rgb)};
-    ui_transform_icon_blocks(t, icon_sand_rows + icon->offset, icon->w, icon->h, icon->stride, box, icon_emit, &ctx);
+draw_icon(ui_transform_t t, mu_Rect box, const gfx_image_t* icon, uint32_t color_rgb) {
+    if (icon != NULL) {
+        icon_fill_ctx_t ctx = {gfx_rgb(color_rgb)};
+        ui_transform_icon_blocks(t, icon, box, icon_emit, &ctx);
+    }
 }
 
 /* Mirrors ui_text_in() for the logical (x, y), then ui.c's
@@ -217,7 +219,11 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             lay.info_button.w - 2 * INFO_ICON_PAD,
             lay.info_button.h - 2 * INFO_ICON_PAD,
         };
-        draw_icon(t, icon_r, &icon_sand_table[ICON_SAND_INFO], SAND_THEME_TEXT_COLOR);
+        if (sand_icon(SAND_ICON_INFO) != NULL) {
+            draw_icon(t, icon_r, sand_icon(SAND_ICON_INFO), SAND_THEME_TEXT_COLOR);
+        } else {
+            draw_text(t, icon_r, "i", SAND_THEME_TEXT_COLOR, scale, 0);
+        }
     }
 
     /* Brush mode: caption, three segments. */
@@ -245,7 +251,7 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             icon_side,
             icon_side,
         };
-        draw_icon(t, icon_r, &icon_sand_table[i], ink);
+        draw_icon(t, icon_r, sand_icon((sand_icon_id_t)i), ink);
 
         const mu_Rect label_r = {
             r.x + SEG_PAD,
@@ -280,6 +286,7 @@ display_quarter_now(void) {
 static bool
 setup(int quarter) {
     transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
+    sand_icons_load();
     screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
     screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
     return true;

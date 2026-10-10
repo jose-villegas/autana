@@ -20,6 +20,10 @@
  * its content out rather than draw from nothing. */
 const asset_pack_t* asset_store_pack(const char* name);
 
+/* How many packs are mounted now: a pack kept for the whole run, such as the
+ * engine's artwork, holds its slot for good. */
+int asset_store_mounted(void);
+
 /* Drops one use of pack `name`; at none it is unmapped or freed, and the
  * pack asset_store_pack() returned for it is gone. */
 void asset_store_release(const char* name);
