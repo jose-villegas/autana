@@ -1,7 +1,8 @@
 # Animation system: design sketch
 
-**Status:** decisions approved (below); M1a built, the rest not built. `[A]` marks a proposal of this sketch that
-nobody asked for.
+**Status:** decisions approved (below); TRCK, SKEL and SKIN are implemented.
+The remaining runtime and SCNE v2 are proposed. `[A]` marks a proposal of
+this sketch that nobody asked for.
 
 Two systems share one sampler and one binding resolver:
 
@@ -78,8 +79,7 @@ sequenceDiagram
   IRAM while `scene_render()` runs, at a higher priority than the job
   worker. When the worker is busy `job_try_core1()` returns false and core 0
   runs both halves, so a frame is never wrong, only slower. The skin
-  buffers sit in internal RAM (the capybara: 613 x 6 position bytes, 613 x 3
-  colour bytes, about 6 KB with bounds), so the job does not contend with
+  buffers sit in internal RAM, so the job does not contend with
   present for PSRAM; the bind data is read through the flash cache.
 - **The job context** (`JOB_CTX_MAX`, 128 bytes) holds a range and pointers:
   `{skin, mesh, palette, buffers, first cluster, cluster count}`.
@@ -89,76 +89,17 @@ sequenceDiagram
 
 ## 3. Pack entries
 
-All baked from any rigged glTF by the mesh import (`mesh_import.py`); nothing
-names a model. Each sits in its owner's pack: a mesh's `SKIN` and `SKEL`, and
-the clips the import file lists, go into the pack of the scene that places the
-mesh, as its `LMSH` does today. Ids are unique within a pack whatever their
-type, so each is derived by rule: a skin is `<mesh id>.skin`; a skeleton is
-the rig's own name (the source's skin or armature), shared by every mesh on
-that rig; a clip is its clip name. An id over 31 bytes fails the bake naming
-it, and two clips of one name fail it naming both sources. Little-endian; every offset counts from the
-entry's first byte and is 4-aligned; no pointers, no fix-up pass; names live
-in the entry's string table (NUL-terminated, each once, offsets `u16`). Each
-reader checks everything once on open and refuses an unknown version
-(`ASSET_ERR_VERSION`).
+The implemented SKEL v1 and SKIN v1 layouts, checks, model-space constraint,
+LMSH position matching, influence quantization and ids are owned by
+[Skeleton and skin entries](../render/Skeleton-and-Skin.md). The uncached
+pack step reads the finished LMSH rather
+than adding work to the mesh bake. `max_influences` is its parameter until
+the import setting lands with the next rebake of the meshes. The skin is
+planned to move into the mesh bake at that rebake.
 
-| Entry | Python writer and reader | C reader |
-|---|---|---|
-| `TRCK` v2 | `tools/anim/tracks_asset.py` | `anim/anim_tracks.c` |
-| `SKEL` v1 | `tools/anim/skeleton_asset.py` new | `anim/anim_skeleton.c` new |
-| `SKIN` v1 | `tools/r3d/skin_asset.py` new | `render/r3d_skin.c` new |
-| `LMSH` | as today; a skinned mesh's `colors` are unlit albedo (`COLOR_0`) | as today |
-
-**TRCK v2:** [The pack entry](../Animation-Tracks.md#the-pack-entry)
-defines its layout.
-
-A scene clip's `path` is a scene object name; a skeleton clip's is a joint
-path from the skeleton's root (`root/spine/chest`), so it plays on any entity
-whose skeleton has those paths. Checks: offsets and sizes in range, every
-string terminated inside the table, known `root`, `type`, `interp`, a
-nonzero component code, times strictly increasing and finite, values
-finite and sized for type and interp, zero padding.
-
-**SKEL v1**:
-
-| Part | Layout |
-|---|---|
-| header, 16 bytes | `u16 version` (1), `u8 joint_count`, 1 zero byte, `u32 strings_off`, `u32 strings_size`, `u32 rest_off` |
-| row per joint, 4 bytes, at 16 | `u16 path` (string offset, the joint's full path from the root), `u8 parent` (`0xFF` for joint 0 only), 1 zero byte |
-| rest, at `rest_off` | `f32 position[3]`, `f32 rotation[4]` (xyzw), `f32 scale[3]` per joint |
-| strings | at `strings_off` |
-
-Checks: `joint_count` 1 to 254, joint 0 is the only root, every other
-`parent` below its own index (parents first, so one forward pass builds model
-space), paths terminated and unique, rest values finite, rotations unit
-within `ANIM_SKELETON_UNIT_TOLERANCE`: `|1 - |q|^2| <= 1e-4`, defined once in
-the C reader and once in the Python writer, each tested at the boundary.
-
-**SKIN v1**:
-
-| Part | Layout |
-|---|---|
-| header, 16 bytes | `u16 version` (1), `u8 joint_count`, `u8 influences` (2 or 4), `u32 vertex_count`, `u32 inverse_bind_off`, `u32 vertices_off` |
-| inverse bind, at `inverse_bind_off` | `f32 m[3][4]` per joint, row-major, model units |
-| vertex record, at `vertices_off`, `2 x influences + 4` bytes | `u8 joint[influences]`, `u8 weight[influences]` (sum 255), `i8 normal[3]`, 1 zero byte |
-
-The normal is the vertex's bind-pose normal in model space, each axis times
-127 and rounded. It lives here because an `LMSH` has none (its light is baked
-colour); if a mesh that is not skinned ever needs normals, they go in `LMSH`,
-not here, so normals never have two homes.
-
-Joint `i` of a `SKIN` is joint `i` of its `SKEL`; vertex `v` is vertex `v`
-of its `LMSH` (the baker writes all three in one pass, after meshlet
-ordering). Checks: `influences` 2 or 4, every joint index below
-`joint_count`, weights summing to 255, matrices finite, zero padding. The
-scene load checks the three agree: `SKIN.joint_count` equals `SKEL`'s,
-`SKIN.vertex_count` equals the `LMSH`'s.
-
-**Influences** are an import setting, `max_influences` (default 2, or 4): the
-baker keeps each vertex's heaviest and renormalises, and the runtime skins 2
-or 4 as the entry says. The capybara: 602 of 613 vertices have at most two;
-11 have three or four, the most weight dropped is 0.49 on one vertex. The M1
-PR shows those 11 posed in gallop and half_bound at 2 and at 4.
+TRCK v2 is defined by [Animation tracks](../Animation-Tracks.md#the-pack-entry).
+Skeleton clips use joint paths from each root joint. SKIN normals hold the
+bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 
 **SCNE v2** adds rows, read like today's:
 
@@ -179,13 +120,7 @@ numbers the static bake used. A version 1 `SCNE` is refused
 ## 4. Types and functions, M1
 
 ```c
-/* anim/anim_skeleton.h: a view of a SKEL entry */
-typedef struct {
-    const uint8_t* parents;          /* parents[i] < i; root's is ANIM_JOINT_NONE */
-    const transformf_t* rest;        /* local rest pose */
-    const char* names;               /* string table, for binding only */
-    uint8_t joint_count;
-} anim_skeleton_t;
+/* anim_skeleton_t and r3d_skin_t: anim/anim_skeleton.h, render/r3d_skin.h */
 asset_status_t anim_skeleton_open(const asset_pack_t* pack, const char* id, anim_skeleton_t* out);
 
 /* anim/anim_pose.h: the blend currency, local joint transforms */
@@ -212,11 +147,6 @@ void anim_layer_advance(anim_layer_t* layer, uint32_t dt_ms);              /* bo
 
 /* render/r3d_skin.h: a view of a SKIN entry, and the per-frame kernels. Each
  * kernel takes a cluster range, so two cores each take half. */
-typedef struct {
-    const float (*inverse_bind)[3][4];
-    const uint8_t* vertices; /* records of 2 x influences + 4 bytes */
-    int vertex_count, joint_count, influences;
-} r3d_skin_t;
 void r3d_skin_palette(const r3d_skin_t* skin, const mat4f_t* model, int position_scale, mat4f_t* palette);
 void r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette,
                        const r3d_skin_light_t* light, int first, int count, r3d_lit_mesh_t* out);
@@ -240,7 +170,7 @@ int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 ```
 
-Render Lab's capybara scene: a dropdown of clip names (`ui_dropdown`) and a
+An animated scene: a dropdown of clip names (`ui_dropdown`) and a
 blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 
 ## 5. Where the later pieces plug in
