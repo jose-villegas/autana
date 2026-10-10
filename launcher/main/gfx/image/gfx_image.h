@@ -2,7 +2,8 @@
  * gfx_image: a picture as an asset-pack entry (IMAG), written by
  * launcher/tools/gfx/image_asset.py. Opening it checks the header and that
  * every row lies inside the entry; the pixels then point into the entry, so a
- * mapped pack draws with no copy and no RAM. The layout is in
+ * mapped pack draws with no copy and no RAM. A caller finds the entry with
+ * asset_pack_find() and GFX_IMAGE_ASSET. The layout is in
  * docs/assets/README.md.
  *
  * No allocation and no ESP-IDF.
@@ -46,6 +47,3 @@ typedef struct {
  * ASSET_ERR_BOUNDS (rows leaving the entry, or RGB565 rows misaligned). Else
  * fills `out`; a caller that draws one format checks `format`. */
 asset_status_t gfx_image_open(asset_view_t entry, gfx_image_t* out);
-
-/* The IMAG entry `id` of `pack`, opened. */
-asset_status_t gfx_image_from_pack(const asset_pack_t* pack, const char* id, gfx_image_t* out);

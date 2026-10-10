@@ -17,15 +17,19 @@
 static const char* TAG = "boot_anim";
 
 void
-boot_anim_photo_load(boot_anim_photo_t* out) {
-    *out = (boot_anim_photo_t){0};
+boot_anim_photo_load(gfx_image_t* out) {
+    *out = (gfx_image_t){0};
     const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
     if (pack == NULL) {
         ESP_LOGW(TAG, "no pack %s: the animation draws without the photograph", BOOT_PHOTO);
         return;
     }
-    gfx_image_t image;
-    asset_status_t status = gfx_image_from_pack(pack, BOOT_PHOTO, &image);
+    gfx_image_t image = {0};
+    asset_view_t entry;
+    asset_status_t status = asset_pack_find(pack, BOOT_PHOTO, GFX_IMAGE_ASSET, &entry);
+    if (status == ASSET_OK) {
+        status = gfx_image_open(entry, &image);
+    }
     if (status == ASSET_OK
         && (image.format != GFX_IMAGE_RGB565 || image.width != GFX_WIDTH || image.height != GFX_HEIGHT)) {
         status = ASSET_ERR_FORMAT;
@@ -36,13 +40,13 @@ boot_anim_photo_load(boot_anim_photo_t* out) {
         asset_store_release(BOOT_PHOTO);
         return;
     }
-    *out = (boot_anim_photo_t){.image = image, .from_pack = true};
+    *out = image;
 }
 
 void
-boot_anim_photo_release(boot_anim_photo_t* photo) {
-    if (photo->from_pack) {
+boot_anim_photo_release(gfx_image_t* photo) {
+    if (photo->pixels != NULL) {
         asset_store_release(BOOT_PHOTO);
     }
-    *photo = (boot_anim_photo_t){0};
+    *photo = (gfx_image_t){0};
 }

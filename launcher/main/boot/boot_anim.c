@@ -647,16 +647,11 @@ draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal) {
         return;
     }
 
-    if (ink == 255) {
-        /* DITHERED, not blended: no framebuffer-read blend hardware, the
-         * same trade this file makes for the title's shadow (draw_title()).
-         * A per-pixel gfx_color_mix() over every pixel was measurably the
-         * most expensive part of a crossfade frame; see
-         * suite_boot_anim_perf.c. */
-        gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal);
-    } else {
-        gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
-    }
+    /* DITHERED, not blended: no framebuffer-read blend hardware, the same
+     * trade this file makes for the title's shadow (draw_title()). A
+     * per-pixel gfx_color_mix() over every pixel was measurably the most
+     * expensive part of a crossfade frame; see suite_boot_anim_perf.c. */
+    gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
 }
 
 /* The loop */
@@ -723,16 +718,18 @@ report_fps_windowed(int64_t now_us, uint32_t now_ms, int64_t* window_start, uint
 #ifdef ESP_PLATFORM
 void
 boot_anim_run(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t entered_us = timing_now_us();
-    boot_anim_motion_t motion;
-    boot_anim_motion_load(&motion);
-    boot_anim_photo_t photo = {0};
-    bool photo_tried = false;
-    const int64_t started_us = timing_now_us();
-    uint32_t frames = 0;
     int64_t first_frame_us = 0;
     int64_t photo_mount_us = 0;
     int64_t photo_frame_us = 0;
+#endif
+    boot_anim_motion_t motion;
+    boot_anim_motion_load(&motion);
+    gfx_image_t photo = {0};
+    bool photo_tried = false;
+    const int64_t started_us = timing_now_us();
+    uint32_t frames = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
     int64_t fps_window_start = started_us;
     uint32_t fps_window_frames = 0;
@@ -752,20 +749,22 @@ boot_anim_run(void) {
         if (mounts) {
             boot_anim_photo_load(&photo);
             photo_tried = true;
+#if CONFIG_LAUNCHER_DEVELOPMENT
             photo_mount_us = timing_now_us() - now_us;
+#endif
         }
-        boot_anim_draw_frame(&motion, &photo.image, now_ms);
+        boot_anim_draw_frame(&motion, &photo, now_ms);
         gfx_present();
+#if CONFIG_LAUNCHER_DEVELOPMENT
         if (frames == 0) {
             first_frame_us = timing_now_us() - entered_us;
         }
         if (mounts) {
             photo_frame_us = timing_now_us() - now_us;
         }
-        frames++;
-#if CONFIG_LAUNCHER_DEVELOPMENT
         report_fps_windowed(now_us, now_ms, &fps_window_start, &fps_window_frames);
 #endif
+        frames++;
 
         /* The same yield the shell's loop makes, for the same reason: the
          * idle task feeds the watchdog. */
@@ -779,7 +778,9 @@ boot_anim_run(void) {
     /* Checked only on the board; not on host. */
     ESP_LOGI(TAG, "%u frames in %d ms (%.1f fps)", (unsigned)frames, BOOT_ANIM_MS,
              (double)frames * 1000.0 / BOOT_ANIM_MS);
+#if CONFIG_LAUNCHER_DEVELOPMENT
     ESP_LOGI(TAG, "first frame %lld us; photograph's frame %lld us, %lld of them mounting it",
              (long long)first_frame_us, (long long)photo_frame_us, (long long)photo_mount_us);
+#endif
 }
 #endif

@@ -141,7 +141,9 @@ suite_ridge_curve(void) {
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
     const asset_pack_t* pack = asset_store_pack(BOOT_PICTURE);
-    if (pack == NULL || gfx_image_from_pack(pack, BOOT_PICTURE, &photo) != ASSET_OK) {
+    asset_view_t entry;
+    if (pack == NULL || asset_pack_find(pack, BOOT_PICTURE, GFX_IMAGE_ASSET, &entry) != ASSET_OK
+        || gfx_image_open(entry, &photo) != ASSET_OK) {
         RUN_TEST(test_the_boot_picture_loads);
     } else {
         RUN_TEST(test_the_curve_shares_the_photographs_frame);

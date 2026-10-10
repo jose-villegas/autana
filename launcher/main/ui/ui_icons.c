@@ -41,7 +41,11 @@ ui_icon_set_load(ui_icon_set_t* set) {
     }
     for (int i = 0; i < set->count; i++) {
         const char* name = set->names[i].name;
-        asset_status_t status = gfx_image_from_pack(pack, name, &set->icons[i]);
+        asset_view_t entry;
+        asset_status_t status = asset_pack_find(pack, name, GFX_IMAGE_ASSET, &entry);
+        if (status == ASSET_OK) {
+            status = gfx_image_open(entry, &set->icons[i]);
+        }
         if (status == ASSET_OK && set->icons[i].format != GFX_IMAGE_MONO1) {
             status = ASSET_ERR_FORMAT;
         }

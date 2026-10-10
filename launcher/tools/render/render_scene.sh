@@ -82,7 +82,7 @@ render_scene_run() {
 
 # The packs of scene_assets' roots, and what the build needs to read them.
 render_scene_packs() {
-    for _rs_src in asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
+    for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
         _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
     done
     # shellcheck source=../../../scripts/lib/python.sh
@@ -195,11 +195,9 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # Every scene draws through gfx: all of it but the device-only *_device.c,
-    # and the pack format gfx reads its artwork from.
+    # Every scene draws through gfx: all of it but the device-only *_device.c.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"
-    _rs_files="$_rs_files $_rs_launcher/main/asset/asset_pack.c"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"
     done
