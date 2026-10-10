@@ -292,6 +292,40 @@ class LockTests(unittest.TestCase):
         kept = bake.lock_rows(found, {"k" * 64: {**self.row, "run": 4}}, made)[0]
         self.assertEqual((kept["run"], kept["sha256"]), (4, self.row["sha256"]))
 
+    def waiting_fit(self):
+        """A fit whose start, key "k" * 64, the lock does not have yet: its own key is unknown."""
+        return bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key=None,
+                         suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+
+    def test_a_run_locks_a_start_while_its_fit_waits_naming_the_fit(self):
+        start = bake_of("k" * 64, self.tree)
+        missing = []
+        rows = bake.lock_rows([start, self.waiting_fit()], {}, {"k" * 64: {**self.row, "run": 9}}, missing)
+        self.assertEqual([row["key"] for row in rows], ["k" * 64])
+        self.assertEqual(len(missing), 1)
+        self.assertIn("two.mesh", missing[0])
+        self.assertIn("is not locked", missing[0])
+        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh"):
+            bake.lock_rows([start, self.waiting_fit()], {}, {"k" * 64: {**self.row, "run": 9}})
+
+    def test_a_waiting_fit_is_never_seeded(self):
+        with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.mesh.*is not locked"):
+            bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.mesh", "key": "j" * 64}})
+
+    def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
+        made = {"k" * 64: {**self.row, "sha256": "f" * 64}}
+        self.assertEqual(bake.locked_starts({"k" * 64: self.row}, made), {"k" * 64: self.row["sha256"]})
+        self.assertEqual(bake.locked_starts({}, made), {"k" * 64: "f" * 64})
+
+    def test_a_fit_fetches_its_locked_start_and_fails_without_one(self):
+        fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="f" * 64,
+                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+        bake.store(self.tree, self.row, bake.MESH_SUFFIX, self.cache)
+        path = produce.start_file(fit, self.cache, {"k" * 64: self.row})
+        self.assertEqual(path.read_bytes(), self.tree.read_bytes())
+        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ is neither locked nor made here"):
+            produce.start_file(fit, self.root / "empty", {})
+
     def test_seeding_fills_only_the_keys_the_lock_lacks(self):
         other = self.root / "two.mesh"
         other.write_bytes(b"LMSH other")

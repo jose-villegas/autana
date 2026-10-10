@@ -1,10 +1,12 @@
 # Baker scalability: design sketch
 
-**Status:** sketch, not approved. `[A]` marks an assumption or a proposal nobody asked for. The measured
-times are on the ticket; this page says where the time goes and what changes.
+**Status:** step 1 approved and built; steps 2 to 5 are a sketch, step 2 waiting on the runner's OptiX probe
+(`Bakes GPU` with `probe`). `[A]` marks an assumption or a proposal nobody asked for. The measured times are
+on the ticket; this page says where the time goes and what changes.
 
 A fit is three stages (see [Cached-Bakes-Design-Sketch.md](Cached-Bakes-Design-Sketch.md)): its start (a
-mesh bake), its reference set, and the fit. All three run on the GPU runner today, one fit after another.
+mesh bake), its reference set, and the fit. Before step 1 all three ran on the GPU runner, one fit after
+another; section 1 describes that.
 
 ## 1. Where the time goes
 
@@ -42,20 +44,20 @@ class ReferenceInputs:            # everything a reference set reads, and nothin
     samples: int
 
 def reference_inputs(job, scene) -> ReferenceInputs
-def render_sets(inputs: ReferenceInputs, out: Path, device=None) -> str
-    # loads the source and builds PathLight once, renders train, train_landscape and held_out,
-    # writes the device it used beside the done marker; returns it
+def render_sets(inputs: ReferenceInputs, sets: list[tuple[Path, Path]]) -> None
+    # loads the source and builds PathLight once, renders each (poses file, folder);
+    # step 2 adds the device it traced on
 
 # r3d/ray_query.py
 def trace_variant(gpu: bool) -> str
     # "cuda_ad_rgb" when gpu and OptiX initialises, else "llvm_ad_rgb" (isa-pinned). Mesh bakes pass False.
 
 # bake/bake.py
-def stage_keys(job, scene, tools, lock) -> dict
+def stage_keys(job, scene, tools, start_sha256=None) -> dict
     # start     = digest(["mesh", mesh_recipe, tools["mesh"]])               unchanged
     # reference = digest(["reference", ReferenceInputs, tools["reference"]]) no longer chains on the start
     # fit       = digest(["fit", reference, start_sha256, fit_recipe, tools["fit"]])
-    #             start_sha256 comes from the start's lock row
+    #             start_sha256 comes from the start's lock row (a run's upload while locking); None until then
 ```
 
 `render_sets` takes only `ReferenceInputs`, so the key and the render read the same value: a field the
@@ -69,7 +71,8 @@ two workflows already run in.
 | `produce.produce_fit` (GPU runner) | `fetch` of the start, `references()`, then `fit()` | no start bake on the runner |
 | `produce.references` | `render_sets` once per reference key | three Sponza fits share one set |
 | `fitted_variant.prepare`, `sweep_references` | `render_sets` | one source load per set, not one per pose file |
-| `bake.py bake --kind fit` | the fits it is asked for | groups fits by reference key so each set is rendered once [A] |
+| `bake.py bake --kind fit` | the fits it is asked for | a set is made once per reference key in the runner's cache, so fits that share it render it once |
+| `bake.py lock --from-run N` | the rows run N made | writes them even while a fit still waits for its start, then names what is left |
 
 ## 3. Per-stage plan, in order
 
