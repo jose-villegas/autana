@@ -59,15 +59,15 @@ flowchart TD
 ```
 
 Planned looks double towards `--max-seeds` and end at the cap. Nominal alpha
-is divided across planned looks, then split equally between Welch difference
-and TOST equivalence families. Each family uses Holm adjustment across rows,
+is divided across planned looks, then split equally between Welch difference<sup>[[37]](../../../docs/Citations.md#37)</sup>
+and TOST equivalence<sup>[[38]](../../../docs/Citations.md#38)</sup> families. Each family uses Holm adjustment<sup>[[39]](../../../docs/Citations.md#39)</sup> across rows,
 including rows decided earlier. Permutation is an AND cross-check at nominal
-alpha. Its Monte Carlo resample count keeps the add-one floor well below that
+alpha. Its Monte Carlo resample count keeps the add-one floor<sup>[[40]](../../../docs/Citations.md#40)</sup> well below that
 alpha; settings exceeding the supported resample budget are refused before
 measurement.
 
 Measured build/flash/boot and run costs, sigma_run and sigma_flash feed
-Kalibera-Jones R and required K. K uses the per-look Holm share and one-sided
+Kalibera-Jones<sup>[[41]](../../../docs/Citations.md#41)</sup> R and required K. K uses the per-look Holm share and one-sided
 TOST alpha. R is clamped between 1 and `MAX_RUNS` (`perf_compare.py`), also
 when the estimated layout variance is zero; the summary states the clamp.
 A later flash uses the largest R recommendation among active rows.

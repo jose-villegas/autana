@@ -88,7 +88,7 @@ mechanism and the full field list.
 
 - **Development-only** (`--dev` or `--diag` build): a release build carries
   none of it.
-- **Serial transfer**: a full frame is streamed as base64 over the console.
+- **Serial transfer**: a full frame is streamed as base64<sup>[[27]](../Citations.md#27)</sup> over the console.
   [Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) records
   the baud and capture workflow. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.

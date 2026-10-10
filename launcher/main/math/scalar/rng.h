@@ -2,11 +2,11 @@
  * rng: a small deterministic pseudo-random generator, for anything that wants
  * one.
  *
- * xorshift32. Three shifts and three exclusive-ors, no multiply, no division,
- * no state beyond a single word, which matters on a chip with no hardware
- * divider and 424 KiB of RAM. Its statistical quality is nowhere near a
- * cryptographic generator's and it is not meant to be: this is for scattering
- * particles and picking shades.
+ * xorshift32 (docs/Citations.md#25). Three shifts and three exclusive-ors, no
+ * multiply, no division, no state beyond a single word, which matters on a
+ * chip with no hardware divider and 424 KiB of RAM. Its statistical quality
+ * is nowhere near a cryptographic generator's and it is not meant to be: this
+ * is for scattering particles and picking shades.
  *
  * NOT for anything security-related. It is trivially predictable from a couple
  * of outputs.
@@ -84,10 +84,11 @@ rng_chance(rng_t* r, int chance) {
 }
 
 /* A counter-based draw: (seed, a, b, c) always hashes to the same value,
- * in any order, on any core, what a checkerboard-parallel step needs,
- * where two same-phase cells may be drawn by either core in either order.
- * rng_avalanche32() is Skeeto's "lowbias32" finalizer; rng_hash() folds
- * three values through it so (step, cell, draw-site) never collides. */
+ * in any order, on any core, what a checkerboard-parallel step needs, where
+ * two same-phase cells may be drawn by either core in either order.
+ * rng_avalanche32() is Skeeto's "lowbias32" finalizer (docs/Citations.md#26);
+ * rng_hash() folds three values through it so (step, cell, draw-site) never
+ * collides. */
 static inline uint32_t
 rng_avalanche32(uint32_t x) {
     x ^= x >> 16;
