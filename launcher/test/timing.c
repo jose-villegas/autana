@@ -51,6 +51,11 @@ extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const 
  * interrupt's saved context plus a log line fails by name instead. */
 #define STACK_RESERVE_BYTES 512U
 
+/* A task deleted while it still runs on the other core is freed later by
+ * the idle task, not by vTaskDelete(). The leak check waits this long at most
+ * for that, so a test that leaves a task running is still caught. */
+#define REAP_WAIT_MS        100U
+
 static void (*watched_test)(void);
 static suite_test_verdict_t watched_verdict;
 static int tests_run;
@@ -67,6 +72,16 @@ call_protected(void (*fn)(void)) {
     }
 }
 
+/* Until every task the body ended is freed: the task count stays up until
+ * then. */
+static void
+await_ended_tasks(UBaseType_t tasks_before) {
+    for (TickType_t waited = 0; uxTaskGetNumberOfTasks() > tasks_before && waited < pdMS_TO_TICKS(REAP_WAIT_MS);
+         waited++) {
+        vTaskDelay(1);
+    }
+}
+
 static size_t
 drop(size_t before, size_t after) {
     return before > after ? before - after : 0;
@@ -78,6 +93,7 @@ static inline __attribute__((always_inline)) void
 run_body(void (*body)(void), suite_test_verdict_t* verdict) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+    UBaseType_t tasks_before = uxTaskGetNumberOfTasks();
     const size_t stack_free_before = uxTaskGetStackHighWaterMark(NULL);
 
     frame_watch_test_begin();
@@ -86,6 +102,7 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
     verdict->watch = frame_watch_test_end();
     verdict->stack_free = uxTaskGetStackHighWaterMark(NULL);
     verdict->stack_deepened = verdict->stack_free < stack_free_before;
+    await_ended_tasks(tasks_before);
 
     /* A first run may fill a cache that lives on; only memory a second run
      * loses again is a leak. */
@@ -95,8 +112,10 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
             || drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT)) > 0)) {
         free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
         free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+        tasks_before = uxTaskGetNumberOfTasks();
         call_protected(body);
         call_protected(suite_run_test_cleanup);
+        await_ended_tasks(tasks_before);
         /* The second run is for the heap alone; its frames are not judged. */
         (void)frame_watch_test_end();
     }
