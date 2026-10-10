@@ -698,9 +698,7 @@ def main(argv):
         die("usage: gen_icons.py <atlas.png> <manifest.json> > <output.h>\n"
             "  the emitted prefix (icon_<prefix>_*) is the manifest's own "
             "filename stem, e.g. system.json -> icon_system_*")
-    # argparse would be the usual choice, but this generator takes exactly
-    # two required positionals - matching gen_boot_anim_image.py's plain
-    # sys.argv handling rather than pulling in argparse for two values.
+    # Two required positionals: plain sys.argv rather than argparse.
     png_path, json_path = argv[1], argv[2]
 
     prefix = Path(json_path).stem

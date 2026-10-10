@@ -2,7 +2,6 @@
 
 | File | Purpose |
 |---|---|
-| [gen_boot_anim_image.py](gen_boot_anim_image.py) | Bakes the boot image into a C header. |
 | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | Bakes the boot animation timeline. |
 | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | Bakes the ordered-dither threshold ranks `gfx_dither.h` reads. |
 | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | Bakes standard graphics palette data. |
@@ -23,7 +22,6 @@ same. Every checked-in output, from the banner each one carries:
 | Output | Generator | Run in | Command |
 |---|---|---|---|
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
-| [boot_anim_image.h](../../main/boot/boot_anim_image.h) | [gen_boot_anim_image.py](gen_boot_anim_image.py) | `launcher/` | `python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png > main/boot/boot_anim_image.h` |
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
 | [gfx_dither_patterns_generated.h](../../main/gfx/draw/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h` |
 | [gfx_palette_standard_generated.h](../../main/gfx/draw/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/gfx/draw/gfx_palette_standard_generated.h` |

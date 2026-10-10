@@ -10,11 +10,14 @@ tracker, and the present path. A caller includes the header for what it does:
 | [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | dirty marking, present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
+| [`gfx/image/gfx_image.h`](../launcher/main/gfx/image/gfx_image.h) | a picture read in place from its pack entry |
 
 The code splits the same way: `draw/` holds `gfx_draw.c` and the pure headers
 it draws with; `present/` holds `gfx_present.c` (the present task and send
 paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
-they send with; `gfx/gfx_internal.h` holds the state they share. The
+they send with; `image/` holds `gfx_image.c`, the reader of a picture's pack
+entry ([the image entry](assets/README.md#the-image-entry)); `gfx/gfx_internal.h`
+holds the state they share. The
 panel link itself, QSPI and each revision's init sequence, is
 `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
