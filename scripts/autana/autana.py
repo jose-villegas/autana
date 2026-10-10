@@ -469,6 +469,23 @@ def reset(args):
     return subprocess.call(command)
 
 
+def coredump(args):
+    """The last panic's core dump from flash, decoded; --erase clears it."""
+    elf, rest = pop_value(list(args), "--elf")
+    erase = "--erase" in rest
+    if erase:
+        rest.remove("--erase")
+    reject_unknown("coredump", rest)
+    if rest or (erase and elf):
+        sys.exit("usage: autana coredump [--elf PATH] | autana coredump --erase")
+    command = device_command("coredump")
+    if erase:
+        command.append("--erase")
+    if elf:
+        command += ["--elf", elf]
+    return subprocess.call(command)
+
+
 def selftest(args):
     """Build+flash the diagnostics+autorun image and run every suite this
     project registers, on the device. Can take minutes: the full run's
@@ -1434,6 +1451,9 @@ COMMAND_GROUPS = (
              "the console live until Ctrl+C, or for N s"),)),
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        Command("coredump", coredump, (
+            ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
+            ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),

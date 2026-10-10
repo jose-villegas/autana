@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "boot/boot_anim.h"
+#include "boot/boot_report.h"
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -131,6 +132,9 @@ app_boot_init(void) {
     console_start();
 #endif
     heap_mark("shell ready");
+    /* Last, not first: the host's port is still re-enumerating after the
+     * PMIC power cycle while the first second of boot is printed. */
+    boot_report_last_reset();
 }
 
 void
