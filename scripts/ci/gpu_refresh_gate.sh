@@ -1,7 +1,8 @@
 #!/bin/sh
 # Decides render=true|false inside the doc-images-gpu concurrency group: fails
-# if this runner's fingerprint differs from the hosted FINGERPRINT, skips an
-# obsolete run, then the latest record alone decides. Writes GPU_ENV to
+# if this runner's fingerprint differs from the hosted FINGERPRINT, skips a run
+# whose trigger SHA is no longer main's head, then the latest record, or FORCE,
+# decides. Writes GPU_ENV to
 # GITHUB_ENV so later steps need not source gpu_env.sh (it puts conda's bin
 # first on PATH). Run from the repository root.
 set -eu

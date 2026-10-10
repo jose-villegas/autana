@@ -157,10 +157,13 @@ The `doc-images-gpu` workflow runs on every main push, nightly and on manual
 dispatch. The latest unexpired rendered or failed record on main decides
 whether these inputs are current. A dispatch with `force` bypasses both
 record checks but still skips an obsolete run. The hosted lookup defers to
-the GPU gate while another run
-of this workflow on main is unfinished. The gate holds the concurrency
-group, skips runs whose trigger SHA is no longer main's head, then checks
-only the latest record.
+the GPU gate while another run of this workflow on main is unfinished. The
+gate holds the concurrency group, skips runs whose trigger SHA is no longer
+main's head, then checks only the latest record. Refresh jobs queue in order
+(`queue: max`); an obsolete one skips in seconds, so the head's job still
+runs; the nightly run is the backstop for anything a missed or failed trigger
+leaves stale. A forced dispatch that becomes obsolete must be dispatched
+again on main.
 
 The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.

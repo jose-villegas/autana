@@ -18,10 +18,11 @@ class GpuRefreshGateTests(unittest.TestCase):
                 root = Path(directory)
                 env = dict(os.environ, FINGERPRINT='hosted', GPU_ENV=str(root / 'env'),
                            GITHUB_ENV=str(root / 'github-env'), GITHUB_OUTPUT=str(root / 'output'))
+                lookup = 'exit 7' if current == 'error' else 'echo ' + current
                 files = {
                     'launcher/tools/r3d/gpu_env.sh': f'export GPU_ENV\nexport SOURCED_INPUTS={fingerprint}\n',
                     'launcher/tools/render/render_doc_images.sh': 'echo "$SOURCED_INPUTS"\n',
-                    'env/bin/python3': f'#!/bin/sh\nprintf "%s\\n" "$*" > lookup\n{('exit 7' if current == 'error' else 'echo ' + current)}\n'}
+                    'env/bin/python3': f'#!/bin/sh\nprintf "%s\\n" "$*" > lookup\n{lookup}\n'}
                 for name, content in files.items():
                     path = root / name
                     path.parent.mkdir(parents=True, exist_ok=True)

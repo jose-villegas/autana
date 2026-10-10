@@ -359,7 +359,7 @@ class RecordedInputsTests(unittest.TestCase):
         refresh = workflow['jobs']['refresh']
         self.assertEqual(refresh['needs'], 'fingerprint')
         self.assertEqual(refresh['if'], "needs.fingerprint.outputs.current != 'true'")
-        self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false'})
+        self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false', 'queue': 'max'})
         self.assertEqual(workflow['env']['FORCE'], '${{ inputs.force }}')
         self.assertNotIn('. launcher/tools/r3d/gpu_env.sh', '\n'.join(step.get('run', '') for step in steps))
 
@@ -392,6 +392,15 @@ class RecordedInputsTests(unittest.TestCase):
                 records.main(['X', '--defer-in-flight'], request=request)
             request.assert_not_called()
 
+    def test_trigger_sha_is_required_without_stdout_verdict(self):
+        with mock.patch.dict(os.environ), contextlib.redirect_stdout(io.StringIO()) as output:
+            os.environ.pop('GITHUB_SHA', None)
+            request = mock.Mock(side_effect=[{'object': {'sha': 'X'}}, {'artifacts': []}])
+            with self.assertRaisesRegex(KeyError, 'GITHUB_SHA'):
+                records.main(['X', '--skip-obsolete'], request=request)
+        self.assertEqual(output.getvalue(), '')
+        request.assert_called_once_with('GET', '/git/ref/heads/main')
+
     def test_delayed_push_gate_skips_after_completed_revert(self):
         record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
@@ -404,7 +413,7 @@ class RecordedInputsTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()) as output:
             request = mock.Mock(return_value={'object': {'sha': 'X'}})
             records.main(['B', '--skip-obsolete'], request=request)
-        self.assertEqual(output.getvalue(), 'obsolete: main moved to X\n')
+        self.assertEqual(output.getvalue(), 'obsolete: main moved to X; dispatch again on main to force\n')
         request.assert_called_once_with('GET', '/git/ref/heads/main')
 
     def test_in_flight_middle_run_on_each_page(self):

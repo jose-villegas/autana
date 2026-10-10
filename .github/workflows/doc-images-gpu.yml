@@ -65,6 +65,7 @@ jobs:
     concurrency:
       group: doc-images-gpu
       cancel-in-progress: false
+      queue: max
     defaults:
       run:
         shell: bash

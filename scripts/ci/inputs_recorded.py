@@ -31,7 +31,7 @@ def main(argv=None, request=call):
     if args.skip_obsolete:
         head = request("GET", "/git/ref/heads/main")["object"]["sha"]
         if os.environ["GITHUB_SHA"] != head:
-            print(f"obsolete: main moved to {head}")
+            print(f"obsolete: main moved to {head}; dispatch again on main to force")
             return
     if args.defer_in_flight:
         own_run = os.environ["GITHUB_RUN_ID"]
