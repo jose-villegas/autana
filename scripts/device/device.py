@@ -1848,12 +1848,6 @@ def print_statuses(entries, now):
             print("  " + line)
 
 
-# The commands that take the parsed arguments, the lock store and the board
-# and nothing else; listen is the default.
-BOARD_COMMANDS = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
-                  "reset": reset_device, "batch": batch, "screenshot": screenshot}
-
-
 def main(argv=None):
     try:
         autana_config.load()
@@ -2048,7 +2042,10 @@ def main(argv=None):
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
             return send(args, store, board)
         else:
-            return BOARD_COMMANDS.get(args.command, listen)(args, store, board)
+            # Looked up per call, so a test's patch of one of them is the one run.
+            board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
+                              "reset": reset_device, "batch": batch, "screenshot": screenshot}
+            return board_commands.get(args.command, listen)(args, store, board)
         return 0
     except LockBusy as error:
         print("device: " + str(error), file=sys.stderr)
