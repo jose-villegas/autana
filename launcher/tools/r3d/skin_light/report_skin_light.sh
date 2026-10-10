@@ -26,6 +26,8 @@ sheet=${2:-}
 
 # shellcheck source=../../build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
+# shellcheck source=../../build/packages.sh
+. "$LAUNCHER_DIR/tools/build/packages.sh"
 CC_BIN=$(find_cc) || { echo "No C compiler found." >&2; exit 1; }
 # shellcheck source=../../../../scripts/lib/python.sh
 . "$ROOT_DIR/scripts/lib/python.sh"
@@ -36,7 +38,7 @@ mkdir -p "$BUILD_DIR/tables"
 OUT_BIN="$BUILD_DIR/skin_light_bench"
 # -fno-tree-vectorize: the board's FPU is scalar, so the host stays scalar too.
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 -fno-tree-vectorize \
-    -I "$LAUNCHER_DIR/main" "$SCRIPT_DIR/skin_light_bench.c" -lm -o "$OUT_BIN"
+    -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") "$SCRIPT_DIR/skin_light_bench.c" -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
 cd "$LAUNCHER_DIR"

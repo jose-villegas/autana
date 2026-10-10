@@ -96,7 +96,7 @@ def problems(root="."):
 
 OWNED_NAME_RE = re.compile(r"\b(esp_timer_|heap_caps_|MALLOC_CAP_)\w*")
 OWNER_OF = {"esp_timer_": "timing", "heap_caps_": "memory", "MALLOC_CAP_": "memory"}
-CHECKED = ("launcher/main/", "launcher/test/suites/", "launcher/tools/")
+CHECKED = ("launcher/main/", "launcher/packages/", "launcher/test/suites/", "launcher/tools/")
 CORE = "launcher/main/core/"
 
 

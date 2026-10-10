@@ -47,8 +47,10 @@ RESTATE = "RESTATE"
 PROTOCOL = "PROTOCOL"
 C_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
 
-# launcher/main/CMakeLists.txt exposes main/ and test/; editor/CMakeLists.txt exposes include/ and src/.
+# launcher/main/CMakeLists.txt exposes main/ and test/, each launcher/packages/<name>/ its include/
+# (package_roots); editor/CMakeLists.txt exposes include/ and src/.
 INCLUDE_ROOTS = ("launcher/main", "launcher/test", "editor/include", "editor/src")
+PACKAGE_INCLUDE = re.compile(r"^(launcher/packages/[^/]+/include)/")
 INCLUDE = re.compile(r'^[ \t]*#[ \t]*include\s*"([^"\n]+)"', re.M)
 ASSERT = re.compile(r"\b(?:_Static_assert|static_assert)\s*\(")
 ARRAY_BOUND = re.compile(
@@ -80,7 +82,7 @@ def eligible_c(path, text):
 
 
 def protocol_source(path, text):
-    return (path.startswith("launcher/main/") and Path(path).suffix in {".c", ".h"}
+    return (path.startswith(("launcher/main/", "launcher/packages/")) and Path(path).suffix in {".c", ".h"}
             and eligible_c(path, text))
 
 
@@ -186,9 +188,14 @@ def python_strings(text):
             yield node.lineno, node.value
 
 
+def package_roots(names):
+    return tuple(sorted({m.group(1) for name in names if (m := PACKAGE_INCLUDE.match(name))}))
+
+
 def include_graph(texts):
+    roots = INCLUDE_ROOTS + package_roots(texts)
     return {name: tuple(target for include in INCLUDE.findall(blank_comments(text))
-                        if (target := resolve_include(name, include, INCLUDE_ROOTS, texts.__contains__)))
+                        if (target := resolve_include(name, include, roots, texts.__contains__)))
             for name, text in texts.items() if Path(name).suffix in C_SUFFIXES}
 
 

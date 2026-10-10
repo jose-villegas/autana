@@ -64,52 +64,74 @@ def catalogue(root):
                     matches = [resolved.relative_to(root).as_posix()] if resolved.is_relative_to(root) else []
                 if len(matches) == 1 and matches[0] in users:
                     users[matches[0]].add(source.parent.as_posix())
-    rows = []
-    for path in sorted(owners):
-        if len(users[path]) < 2:
+    return [(path, *describe(path, texts[path])) for path in sorted(owners) if len(users[path]) >= 2]
+
+
+def describe(path, text):
+    """A header's or module's banner sentence and its public names."""
+    if path.endswith(".py"):
+        tree = ast.parse(text, filename=path)
+        prose = ast.get_docstring(tree) or ""
+        names = set()
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(node.name)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                names.update(child.id for target in targets for child in ast.walk(target)
+                             if isinstance(child, ast.Name))
+        names = sorted(name for name in names if not name.startswith("_"))
+    else:
+        header = file_header(path, text)
+        prose = header.text if header else ""
+        pasted = {name.replace("##", "__"): name
+                  for name in re.findall(r"\b\w+(?:##\w+)+", blank_comments(text, "code"))}
+        declarations = c_declarations(text.replace("##", "__").replace("\\\n", "\n"))
+        declarations[2].update(re.findall(r"\bclass\s+([A-Za-z_]\w*)", blank_comments(text, "code")))
+        guards = {name for name in re.findall(
+            r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+\1[ \t]*$",
+            blank_comments(text), re.M)
+            if ("_" + re.sub(r"\W", "_", path).upper()).endswith("_" + name)}
+        names = sorted(pasted.get(name, name) for name in set().union(*declarations)
+                       if not name.startswith("_") and name not in guards)
+    purpose = next(sentences(None, prose), (0, ""))[1].strip()
+    return " ".join(purpose.split()), ", ".join(names)
+
+
+def package_apis(root):
+    """{README: rows} for each launcher/packages/<name>/: a row per header under its include/,
+    spelled from the package folder."""
+    root = pathlib.Path(root).resolve()
+    apis = {}
+    for path in tracked_files(root):
+        parts = pathlib.PurePosixPath(path).parts
+        if parts[:2] != ("launcher", "packages") or parts[3:4] != ("include",) or not path.endswith(".h"):
             continue
-        text = texts[path]
-        if path.endswith(".py"):
-            tree = ast.parse(text, filename=path)
-            prose = ast.get_docstring(tree) or ""
-            names = set()
-            for node in tree.body:
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    names.add(node.name)
-                elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                    names.update(child.id for target in targets for child in ast.walk(target)
-                                 if isinstance(child, ast.Name))
-            names = sorted(name for name in names if not name.startswith("_"))
-        else:
-            header = file_header(path, text)
-            prose = header.text if header else ""
-            pasted = {name.replace("##", "__"): name
-                      for name in re.findall(r"\b\w+(?:##\w+)+", blank_comments(text, "code"))}
-            declarations = c_declarations(text.replace("##", "__").replace("\\\n", "\n"))
-            declarations[2].update(re.findall(r"\bclass\s+([A-Za-z_]\w*)", blank_comments(text, "code")))
-            guards = {name for name in re.findall(
-                r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+\1[ \t]*$",
-                blank_comments(text), re.M)
-                if ("_" + re.sub(r"\W", "_", path).upper()).endswith("_" + name)}
-            names = sorted(pasted.get(name, name) for name in set().union(*declarations)
-                           if not name.startswith("_") and name not in guards)
-        purpose = next(sentences(None, prose), (0, ""))[1].strip()
-        rows.append((path, " ".join(purpose.split()), ", ".join(names)))
-    return rows
+        apis.setdefault("/".join((*parts[:3], "README.md")), []).append(
+            ("/".join(parts[3:]), *describe(path, (root / path).read_text(encoding="utf-8"))))
+    return {readme: sorted(rows) for readme, rows in apis.items()}
+
+
+def table(owner, rows, link):
+    lines = [f"| {owner} | Purpose | Public names |", "|---|---|---|"]
+    for path, prose, names in rows:
+        prose = prose.replace("|", "&#124;").replace("<", "&lt;").replace(">", "&gt;")
+        lines.append(f"| [{path}]({link}{path}) | {prose} | `{names}` |")
+    return "\n".join(lines)
 
 
 def update(root, check=False):
     root = pathlib.Path(root)
     rows = catalogue(root)
-    lines = ["| Owner | Purpose | Public names |", "|---|---|---|"]
-    for path, prose, names in rows:
-        prose = prose.replace("|", "&#124;").replace("<", "&lt;").replace(">", "&gt;")
-        lines.append(f"| [{path}](../{path}) | {prose} | `{names}` |")
-    changed = replace_block(root / PAGE, "shared-helpers", "\n".join(lines), check, CHECK)
-    state = "stale: run python3 launcher/tools/gen/shared_helpers.py and git add docs/Shared-Helpers.md"         if changed and check else "current"
+    stale = [PAGE.as_posix()] if replace_block(root / PAGE, "shared-helpers", table("Owner", rows, "../"),
+                                               check, CHECK) else []
+    for readme, api in package_apis(root).items():
+        if replace_block(root / readme, "package-api", table("Header", api, ""), check, CHECK):
+            stale.append(readme)
+    state = (f"stale: run python3 launcher/tools/gen/shared_helpers.py and git add {' '.join(stale)}"
+             if stale and check else "current")
     print(f"shared helpers: {len(rows)} owner files; {state}")
-    return int(check and changed)
+    return int(check and bool(stale))
 
 
 def main():

@@ -56,6 +56,8 @@ BUILD_DIR="$SCRIPT_DIR/build"
 # Sourced, not copied - see tools/build/find_cc.sh's own top comment.
 # shellcheck source=../../../../tools/build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
+# shellcheck source=../../../../tools/build/packages.sh
+. "$LAUNCHER_DIR/tools/build/packages.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -92,7 +94,7 @@ for MODE in normal forced; do
     # palette.c and row_runs.c
     # are draw-path concerns the grid state does not depend on.
     # shellcheck disable=SC2086
-    "$CC_BIN" $CFLAGS $FORCE_FLAG -I "$MAIN_DIR" -I "$SAND_DIR" \
+    "$CC_BIN" $CFLAGS $FORCE_FLAG -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
         "$SCRIPT_DIR/grid_fingerprint.c" \
         "$MAIN_DIR/core/job.c" \
         "$SAND_DIR/sand.c" \

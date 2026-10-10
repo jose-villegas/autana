@@ -166,7 +166,7 @@ and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
 falls short. Float division (`__divsf3`) is the FPU's exact
 `div0.s`/`divn.s` sequence behind a call. Where a hot loop needs 1 / z,
-`mathf_recip()` in `launcher/main/math/scalar/mathf.h` is cheaper: the FPU's
+`mathf_recip()` in `launcher/packages/math/include/math/scalar/mathf.h` is cheaper: the FPU's
 `recip0.s` seed and two Newton steps, within an ulp of the quotient; its
 comment holds the board's cycle counts.
 

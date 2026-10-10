@@ -3,24 +3,27 @@
 
     python scripts/gates/check_file_headers.py [--paths FILE...]
 
-A module is a .c and its .h with the same name in the same folder; one of
-them opens with a comment that says what the module is (a `#pragma once`
+A module is a .c and its .h with the same name in the same folder, or in a
+package (launcher/packages/<name>/) its include/<name>/<path>.h and
+src/<path>.c; one of them opens with a comment that says what the module is (a `#pragma once`
 may come first). The rest of a header's rules are check_comment_length.py's,
 which also owns what counts as a header.
 
-Scope is by folder, not by list: every tracked .c and .h under launcher/main/
-and launcher/test/suites/. A suite (suite_*.c) is exempt: its test names say
+Scope is by folder, not by list: every tracked .c and .h under launcher/main/,
+launcher/packages/ and launcher/test/suites/. A suite (suite_*.c) is exempt: its test names say
 what it proves. So are the sources check_comment_length.py excludes (vendored
 and generated). The editor, the test harness and its stubs are outside the
 scope for now.
 """
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import file_header, sources  # noqa: E402
 
-SCOPE = ("launcher/main/", "launcher/test/suites/")
+SCOPE = ("launcher/main/", "launcher/packages/", "launcher/test/suites/")
+PACKAGE_HALF = re.compile(r"^(launcher/packages/([^/]+))/(?:include/\2|src)/")
 
 
 def in_scope(rp):
@@ -28,13 +31,19 @@ def in_scope(rp):
     return (rp.startswith(SCOPE) and not name.startswith("suite_"))
 
 
+def module_of(rp):
+    """A source's module: its path without the suffix, a package's header and
+    source both spelled from the package folder."""
+    return PACKAGE_HALF.sub(r"\1/", rp).rsplit(".", 1)[0]
+
+
 def problems(root=".", files=None):
-    selected = {rp.rsplit(".", 1)[0] for rp in files} if files is not None else None
+    selected = {module_of(rp) for rp in files} if files is not None else None
     modules = {}
     for path in sources(root, tracked=True):
         rp = path.relative_to(root).as_posix()
         if in_scope(rp):
-            modules.setdefault(rp.rsplit(".", 1)[0], []).append(rp)
+            modules.setdefault(module_of(rp), []).append(rp)
     found = []
     for stem, files in sorted(modules.items()):
         if selected is not None and stem not in selected:

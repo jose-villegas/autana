@@ -37,6 +37,8 @@ BUILD_DIR="$TEST_DIR/build/su-device"
 # shellcheck source=../tools/device/device_profile.sh
 . "$TEST_DIR/../tools/device/device_profile.sh"
 . "$TEST_DIR/../tools/build/espressif.sh"
+# shellcheck source=../tools/build/packages.sh
+. "$TEST_DIR/../tools/build/packages.sh"
 device_profile_load "" "$TEST_DIR/../tools/device/device_profiles" || exit 1
 
 ARCH_FLAGS=$(device_profile_require DP_ARCH_FLAGS) || exit 1
@@ -74,14 +76,14 @@ compile_suite() {
     "$CC_BIN" $STD_FLAG $ARCH_FLAGS $CODEGEN_FLAGS -ffreestanding \
         -Wall -Wextra -Wno-unused-parameter -g \
         $1 -DCONFIG_LAUNCHER_DEVELOPMENT=1 \
-        -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" \
+        -I "$MAIN_DIR" $(package_includes "$TEST_DIR/..") -I "$TEST_DIR" -I "$TEST_DIR/framework" \
         -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -include "$TEST_DIR/timing.h" \
         -fstack-usage -c "$2" -o "$BUILD_DIR/$(basename "$2" .c).o" 2>/dev/null
 }
 
-for f in "$MAIN_DIR"/apps/*/tests/suite_*.c "$TEST_DIR"/suites/suite_*.c; do
+for f in "$MAIN_DIR"/apps/*/tests/suite_*.c "$TEST_DIR"/suites/suite_*.c $(package_suites "$TEST_DIR/.."); do
     [ -e "$f" ] || continue
     if compile_suite -DDEVICE_BUILD "$f"; then
         continue

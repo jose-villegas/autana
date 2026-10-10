@@ -601,7 +601,8 @@ int
 main(void) {
     static pocket_result_t results[POCKET_SEEDS + 1];
 
-    printf("generator: xorshift32, shifts (13, 17, 5), 32-bit state - launcher/main/math/scalar/rng.h\n");
+    printf(
+        "generator: xorshift32, shifts (13, 17, 5), 32-bit state - launcher/packages/math/include/math/scalar/rng.h\n");
     printf("rng_chance(), rng_below() and sand_rng_chance_at() all read the LOW bits\n\n");
 
     print_stream_sections();

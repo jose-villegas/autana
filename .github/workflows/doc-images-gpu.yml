@@ -15,6 +15,7 @@ on:
       - 'launcher/main/**/*.c'
       - 'launcher/main/**/*.h'
       - '!launcher/main/apps/**'
+      - 'launcher/packages/**'
       - 'launcher/demo/**'
       - 'launcher/components/microui/**'
       - '.github/workflows/doc-images-gpu.yml'

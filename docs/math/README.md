@@ -1,8 +1,8 @@
 # Math: vectors, rotations, matrices, transforms
 
-`launcher/main/math/linear/` is the firmware's vector, quaternion, matrix and
+`math/linear/` is the firmware's vector, quaternion, matrix and
 transform library, built on the per-type scalar operations in
-`launcher/main/math/scalar/`: header-only,
+`math/scalar/`, both part of the [math package](../../launcher/packages/math/README.md): header-only,
 static inline, ESP-IDF-free, so a host suite checks every line. Four families
 (vector, quaternion, matrix, transform), each written once as a template
 (`math_template.h` says how) and instantiated per number type. A type's name is
