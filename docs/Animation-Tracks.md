@@ -7,7 +7,7 @@ light, a material value, anything a scene exposes. Its layer is in
 [Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
-The format is glTF 2.0's own animation model, so a track authored in Blender
+The format is glTF 2.0's own animation model [[1]](#references), so a track authored in Blender
 or any other exporter plays back as it was made.
 
 ```mermaid
@@ -32,14 +32,15 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation: linear keys slerp, cubic ones are normalised |
+| `quaternion` | The value is an xyzw rotation: linear keys slerp [[2]](#references), cubic ones are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
-second, exactly as glTF stores them. A track has one interpolation.
+second, exactly as glTF stores them, and samples as the specification's cubic
+Hermite spline [[1]](#references). A track has one interpolation.
 
 A glTF node is animated by up to three tracks, named `node/translation`,
 `node/rotation` and `node/scale`. Anything else is reached by
-`KHR_animation_pointer`, which names a property by path; a track baked from it
+`KHR_animation_pointer` [[3]](#references), which names a property by path; a track baked from it
 is named by that path with the object's index replaced by its glTF name, for
 example `lens/perspective/yfov` for `/cameras/0/perspective/yfov`. Objects
 are bound by name, so a re-export that reorders nodes keeps its track names. A
@@ -125,7 +126,7 @@ For a camera path without Blender, write a `NAME.keys.toml` and name it as
 the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
 glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
 `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
-Translation is a smooth Catmull-Rom curve and rotation interpolates
+Translation is a smooth Catmull-Rom curve [[4]](#references) and rotation interpolates
 short-way quaternions with +Y up; repeat the first key at the end to close
 the loop.
 
@@ -209,3 +210,16 @@ build it, the compiler or the flags change.
 - **Portable.** No ESP-IDF and no allocation; a host suite runs all of it.
 - **The caller owns the environment.** Time is passed in; nothing reads a
   clock.
+
+## References
+
+1. The Khronos Group. *glTF 2.0 Specification*, Animations and Appendix C,
+   Animation Sampler Interpolation Modes.
+   [registry.khronos.org/glTF/specs/2.0](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#appendix-c-interpolation)
+2. K. Shoemake. *Animating Rotation with Quaternion Curves.* SIGGRAPH 1985.
+   [doi:10.1145/325334.325242](https://doi.org/10.1145/325334.325242)
+3. The Khronos Group. *KHR_animation_pointer*, a ratified glTF 2.0 extension.
+   [github.com/KhronosGroup/glTF](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_animation_pointer/README.md)
+4. E. Catmull, R. Rom. *A Class of Local Interpolating Splines.* Computer
+   Aided Geometric Design, Academic Press 1974.
+   [doi:10.1016/B978-0-12-079050-0.50020-5](https://doi.org/10.1016/B978-0-12-079050-0.50020-5)

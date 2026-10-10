@@ -129,6 +129,9 @@ the foreground drapery.
 
 ### Appearance fit of the lite and full meshes
 
+The fit is appearance-driven simplification [[1]](#references);
+[Against the paper](Scene-Files.md#against-the-paper) lists what it changes.
+
 The GPU stage rebuilds GI bakes and fitted meshes from the scene's current
 recipes. It scores every mesh against the same held-out reference poses;
 triangle counts come from the output meshes. The sheets include reference
@@ -337,3 +340,11 @@ walls and floor and around the pots. A curtain stays open on its visible side
 because a double-sided surface takes the less occluded of its two sides.
 
 ![The occlusion factor beside the reference](../images/render/bake-ao-map.png)
+
+## References
+
+1. J. Hasselgren, J. Munkberg, J. Lehtinen, M. Aittala, S. Laine.
+   *Appearance-Driven Automatic 3D Model Simplification.* Eurographics
+   Symposium on Rendering 2021.
+   [doi:10.2312/sr.20211293](https://doi.org/10.2312/sr.20211293),
+   [arXiv:2104.03989](https://arxiv.org/abs/2104.03989)

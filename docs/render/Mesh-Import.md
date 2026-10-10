@@ -110,7 +110,9 @@ share is random, so `process.seed` makes it repeatable.
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget. `dense_edge` is the longest unsplit edge, `props` names materials that
+budget with meshoptimizer's [[1]](#references) quadric error simplifier
+[[2]](#references), with the baked colour as an appearance attribute
+[[3]](#references). `dense_edge` is the longest unsplit edge, `props` names materials that
 reserve the `props_share` part of the budget, and `seal_seams` is described
 under [seal_seams](#seal_seams). The baked colour steers which edges collapse:
 `colour_deviation`, in source units, prices one panel colour step: losing it
@@ -287,8 +289,9 @@ Scene-owned bake, visibility, shading and fit settings are described in
 
 The [`ao` setting](Scene-Files.md#bake-ao) scales a baked point's ambient light,
 and with `indirect = true` its bounced light, by a factor from short
-rays. Each point $x$ casts $R$ cosine-weighted rays, the same directions in its
-own frame as the bounce rays; the ray $i$ that hits a surface at distance
+rays, a distance-limited obscurance [[4]](#references). Each point $x$ casts
+$R$ cosine-weighted rays, the same directions in its own frame as the bounce
+rays; the ray $i$ that hits a surface at distance
 $`t_i`$ within the reach $D$ has weight $`w_i = 1 - t_i/D`$, any other ray
 $`w_i = 0`$. With strength $s$ the factor is
 
@@ -309,7 +312,7 @@ colour, so frame cost and mesh size do not change; only the bake takes longer.
 The bake exports the full-detail source mesh, with its textures at full
 resolution, and the scene's directional and sky lights to Mitsuba once. A baked
 point $x$, a smooth vertex or a flat face sample, sends $R$ cosine-weighted
-rays into that scene. Mitsuba's path integrator follows each ray for up to $K$
+rays into that scene. Mitsuba's [[5]](#references) path integrator [[6]](#references) follows each ray for up to $K$
 bounces with next-event estimation at every hit, so the hit's own shadow, albedo
 and further bounces are all in what comes back. With $`L_i(x)`$ the light
 gathered along ray $i$, the mean is the bounced irradiance over $\pi$, and the
@@ -385,9 +388,10 @@ how well the one colour represents the face.
 
 ### The scores, exactly
 
-A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$,
-taken to CIE XYZ through the linear sRGB primaries, and to CIELAB relative to
-the D65 white. The constants live in `render_compare.py`, which both the
+A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$
+rather than the piecewise sRGB curve, taken to CIE XYZ through the linear sRGB
+primaries [[7]](#references), and to CIELAB relative to the D65 white
+[[8]](#references). The constants live in `render_compare.py`, which both the
 scoring and the fit's loss read.
 
 ```math
@@ -419,9 +423,11 @@ L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
 
 for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
 $`\Delta E_{76}(p)`$ over the frame's pixels and p95 is its 95th percentile.
-Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
-(channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
-window's means $\mu$, variances $\sigma^2$ and covariance $`\sigma_{RT}`$:
+Luma SSIM [[9]](#references) works on the gamma-encoded luma
+$y = 0.2126 r + 0.7152 g + 0.0722 b$ (channels 0 to 1), over every unweighted
+8 by 8 window $w$ of the frame where the paper uses 11 by 11 Gaussian-weighted
+ones, with the window's means $\mu$, variances $\sigma^2$ and covariance
+$`\sigma_{RT}`$; the constants are the paper's:
 
 ```math
 \mathrm{SSIM} = \frac{1}{|W|}\sum_{w \in W}
@@ -444,7 +450,7 @@ described by [fit.prune](Scene-Files.md#fitprune) and
 ## Meshlets
 
 The clusters are **meshlets**: compact runs of at most 32 triangles from
-meshoptimizer's clusterizer, each of one sidedness and owning the vertices its
+meshoptimizer's clusterizer [[1]](#references), each of one sidedness and owning the vertices its
 triangles use. The octree above them is built over the meshlets' centres, and
 its leaves hold a few hundred triangles' worth.
 
@@ -460,3 +466,28 @@ the triangles are the same.
 
 Levels of detail built on the meshlets, and what they would save, are in
 [plans/Cluster-LOD.md](../plans/Cluster-LOD.md).
+
+## References
+
+1. A. Kapoulkine. *meshoptimizer.*
+   [github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer)
+2. M. Garland, P. S. Heckbert. *Surface Simplification Using Quadric Error
+   Metrics.* SIGGRAPH 1997.
+   [doi:10.1145/258734.258849](https://doi.org/10.1145/258734.258849)
+3. H. Hoppe. *New Quadric Metric for Simplifying Meshes with Appearance
+   Attributes.* IEEE Visualization 1999.
+   [doi:10.1109/VISUAL.1999.809869](https://doi.org/10.1109/VISUAL.1999.809869)
+4. S. Zhukov, A. Iones, G. Kronin. *An Ambient Light Illumination Model.*
+   Eurographics Workshop on Rendering 1998.
+   [doi:10.1007/978-3-7091-6453-2_5](https://doi.org/10.1007/978-3-7091-6453-2_5)
+5. *Mitsuba 3.* [mitsuba-renderer.org](https://www.mitsuba-renderer.org/)
+6. J. T. Kajiya. *The Rendering Equation.* SIGGRAPH 1986.
+   [doi:10.1145/15886.15902](https://doi.org/10.1145/15886.15902)
+7. IEC 61966-2-1:1999. *Default RGB colour space: sRGB.*
+   [webstore.iec.ch/publication/6169](https://webstore.iec.ch/en/publication/6169)
+8. ISO/CIE 11664-4:2019. *Colorimetry, Part 4: CIE 1976 L\*a\*b\* colour
+   space.* [iso.org/standard/74166](https://www.iso.org/standard/74166.html)
+9. Z. Wang, A. C. Bovik, H. R. Sheikh, E. P. Simoncelli. *Image Quality
+   Assessment: From Error Visibility to Structural Similarity.* IEEE
+   Transactions on Image Processing 13(4), 2004.
+   [doi:10.1109/TIP.2003.819861](https://doi.org/10.1109/TIP.2003.819861)

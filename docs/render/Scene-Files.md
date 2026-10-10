@@ -164,7 +164,9 @@ cosine-weighted directions each point tests for sky visibility.
 
 #### tonemap_white
 
-`tonemap_white` controls the tone map applied to baked light.
+`tonemap_white` $w$ sets the tone map applied to baked light: radiance $L$
+becomes $L / (1 + wL)$ before the gamma, the global operator of
+[[1]](#references) at $w = 1$ and none at $w = 0$.
 
 ### mesh_renderer
 
@@ -301,7 +303,7 @@ longest edge, grows the mesh to a larger budget, and fits it again. Generated
 tables compare the current budget and cost settings.
 
 The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
-fit to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
+fit [[2]](#references) to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
 triangles $`D_v`$; their screen rows $`\rho_t`$; pixels covered before the depth
 test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 
@@ -323,7 +325,8 @@ used only for scoring.
 
 #### fit.optimise
 
-The appearance fit starts from the renderer's bake at its budget, smooth or
+The appearance fit is appearance-driven simplification
+[[3]](#references). It starts from the renderer's bake at its budget, smooth or
 [flat](#a-flat-fit), and adjusts welded positions and colours against
 reference renders from camera-path poses.
 The triangles stay fixed, so the budget and frame cost hold. A `fit` table
@@ -339,7 +342,7 @@ needs a CUDA GPU and minutes per mesh, with no run-time cost.
 ![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
 
 The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
-differentiable rasterizer $`\mathcal{R}`$ over a random batch $`B`$ of training
+differentiable rasterizer $`\mathcal{R}`$, nvdiffrast [[4]](#references), over a random batch $`B`$ of training
 poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
 the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
 length, $`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
@@ -362,11 +365,12 @@ term $`\mathcal{E}_c`$:
 \mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
 ```
 
-Here $`\mathcal{E}_{\Delta E}`$ is the mean $`\Delta E_{76}`$ between
+Here $`\mathcal{E}_{\Delta E}`$ is the mean $`\Delta E_{76}`$, the CIE 1976
+$`\Delta E^*_{ab}`$ [[5]](#references), between
 $`\mathcal{R}_v(P, C)_p`$ and reference $`T_{v,p}`$ over $`B`$ and $`\Omega`$;
 $`\mathcal{E}_{\mathcal{L}}`$ is the mean squared, edge-length-normalised
-change in the Laplacian; and $`\lambda`$, $`\lambda_n`$, and $`\kappa`$ weigh
-the Laplacian, normal, and cost terms:
+change in the uniform Laplacian [[6]](#references); and $`\lambda`$,
+$`\lambda_n`$, and $`\kappa`$ weigh the Laplacian, normal, and cost terms:
 
 ```math
 \mathcal{E}_{\Delta E}(P, C) =
@@ -393,7 +397,7 @@ $`\mathcal{E}_c`$ is the mean $`\hat t_v(P)`$ over $`B`$:
 \mathcal{E}_c(P) = \frac{1}{|B|}\sum_{v \in B}\hat t_v(P)
 ```
 
-Adam takes the steps, both learning rates decay as
+Adam [[7]](#references) takes the steps, both learning rates decay as
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
 $[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
 clear colour, as the device and reference do. The fitted colours are a bake in
@@ -457,6 +461,22 @@ flowchart LR
 
 [Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
 with its flat fit.
+
+##### Against the paper
+
+The fit keeps the method of [[3]](#references): a decimated start with
+fixed triangles, a differentiable rasterizer [[4]](#references), Adam
+[[7]](#references), a uniform-Laplacian drift term relative to the start,
+and a learning rate decaying geometrically. It changes the rest:
+
+| | Paper [[3]](#references) | This fit |
+|---|---|---|
+| Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
+| Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
+| Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$ [[5]](#references) |
+| Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
+| Further terms | none | $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time [[2]](#references) |
+| Triangle budget | set by the start | the start's, pruned to `budget` by coverage before the fit; a refined fitted mesh can be the start |
 
 #### indirect: off
 
@@ -540,3 +560,28 @@ The reader refuses an entity index out of range, a `pad` that is not zero, an
 empty name or mesh id, text with anything but NULs after its end, a lens value
 that is not finite and positive, a clear colour past 0xFFFFFF, and a clip
 without a node or a node without a clip.
+
+## References
+
+1. E. Reinhard, M. Stark, P. Shirley, J. Ferwerda. *Photographic Tone
+   Reproduction for Digital Images.* ACM Transactions on Graphics 21(3),
+   SIGGRAPH 2002. [doi:10.1145/566654.566575](https://doi.org/10.1145/566654.566575)
+2. C. L. Lawson, R. J. Hanson. *Solving Least Squares Problems.*
+   Prentice-Hall 1974; SIAM reprint 1995.
+   [doi:10.1137/1.9781611971217](https://doi.org/10.1137/1.9781611971217)
+3. J. Hasselgren, J. Munkberg, J. Lehtinen, M. Aittala, S. Laine.
+   *Appearance-Driven Automatic 3D Model Simplification.* Eurographics
+   Symposium on Rendering 2021.
+   [doi:10.2312/sr.20211293](https://doi.org/10.2312/sr.20211293),
+   [arXiv:2104.03989](https://arxiv.org/abs/2104.03989)
+4. S. Laine, J. Hellsten, T. Karras, Y. Seol, J. Lehtinen, T. Aila.
+   *Modular Primitives for High-Performance Differentiable Rendering.* ACM
+   Transactions on Graphics 39(6), SIGGRAPH Asia 2020.
+   [doi:10.1145/3414685.3417861](https://doi.org/10.1145/3414685.3417861),
+   [arXiv:2011.03277](https://arxiv.org/abs/2011.03277)
+5. ISO/CIE 11664-4:2019. *Colorimetry, Part 4: CIE 1976 L\*a\*b\* colour
+   space.* [iso.org/standard/74166](https://www.iso.org/standard/74166.html)
+6. O. Sorkine. *Laplacian Mesh Processing.* Eurographics 2005 State of the
+   Art Reports. [doi:10.2312/egst.20051044](https://doi.org/10.2312/egst.20051044)
+7. D. P. Kingma, J. Ba. *Adam: A Method for Stochastic Optimization.* ICLR
+   2015. [arXiv:1412.6980](https://arxiv.org/abs/1412.6980)
