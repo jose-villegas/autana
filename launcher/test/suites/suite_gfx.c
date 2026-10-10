@@ -882,34 +882,51 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                narrow, 256);
 }
 
-/* An instrument, not a gate: the narrow strip presented many times per
- * counter, for a mean steady enough to show a few microseconds, and where
- * this core's cycles go meanwhile (writing the strip included). */
-#define NARROW_PRESENTS 64
+/* An instrument, not a gate: the narrow strip's present, counted alone,
+ * many times per counter, in two settings: right after a full band, as
+ * test_a_narrow_change_costs_less_than_a_full_band measures it, and
+ * repeated, where only the bus is left. The mean is steady enough to show
+ * a few microseconds; the counters say where this core's cycles went. */
+#define NARROW_PRESENTS 32
 static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti", "d_stall_all"};
+
+static void
+count_narrow_presents(const char* scene, bool after_band) {
+    const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
+    int64_t total_us = 0;
+    (void)present_reference_band(gfx_rgb(0x204060));
+    for (int e = 0; e < events; e++) {
+        const int event = frame_cost_event_index(narrow_present_events[e]);
+        uint64_t cycles_sum = 0;
+        uint64_t value_sum = 0;
+        bool counted = true;
+        for (int i = 0; i < NARROW_PRESENTS; i++) {
+            if (after_band) {
+                (void)present_reference_band(gfx_rgb(0x204060));
+            }
+            write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
+            TEST_ASSERT_TRUE(frame_cost_count_begin(event));
+            total_us += time_present();
+            uint32_t cycles = 0;
+            uint32_t value = 0;
+            counted = frame_cost_count_end(&cycles, &value) && counted;
+            cycles_sum += cycles;
+            value_sum += value;
+        }
+        ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s", scene,
+                 narrow_present_events[e], (unsigned)(cycles_sum / NARROW_PRESENTS),
+                 (unsigned)(value_sum / NARROW_PRESENTS), NARROW_PRESENTS, counted ? "" : " overflow=counters");
+    }
+    ESP_LOGI(TAG, "%s both cores: mean %lldus", scene, (long long)(total_us / (NARROW_PRESENTS * events)));
+}
 
 static void
 test_narrow_present_counters(void) {
 #if !FRAME_COST_ENABLED
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #else
-    (void)present_reference_band(gfx_rgb(0x204060));
-    const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
-    int64_t total_us = 0;
-    for (int e = 0; e < events; e++) {
-        TEST_ASSERT_TRUE(frame_cost_count_begin(frame_cost_event_index(narrow_present_events[e])));
-        for (int i = 0; i < NARROW_PRESENTS; i++) {
-            write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
-            total_us += time_present();
-        }
-        uint32_t cycles = 0;
-        uint32_t value = 0;
-        const bool counted = frame_cost_count_end(&cycles, &value);
-        ESP_LOGI("xtperf", "scene=narrow_present event=%s cycles_per_step=%u value_per_step=%u steps=%d%s",
-                 narrow_present_events[e], (unsigned)(cycles / NARROW_PRESENTS), (unsigned)(value / NARROW_PRESENTS),
-                 NARROW_PRESENTS, counted ? "" : " overflow=counters");
-    }
-    ESP_LOGI(TAG, "narrow present both cores: mean %lldus", (long long)(total_us / (NARROW_PRESENTS * events)));
+    count_narrow_presents("narrow_after_band", true);
+    count_narrow_presents("narrow_repeated", false);
     TEST_PASS();
 #endif
 }
