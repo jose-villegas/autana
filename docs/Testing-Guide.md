@@ -506,7 +506,7 @@ read, so `run_qemu_tests.sh --build-only` builds the image once for a
 driver that then launches several against it. How many to run at once is a
 question about whose desktop this is, not about the runner.
 
-**On Linux, QEMU's own bugs are patched.** Espressif's prebuilt QEMU has
+**Linux can run a QEMU with its bugs patched.** Espressif's prebuilt QEMU has
 races that fail a run of a correct image: the guest takes
 `LoadStorePIFAddrError` on an ordinary register access
 ([espressif/qemu#174](https://github.com/espressif/qemu/issues/174)). Each
