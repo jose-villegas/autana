@@ -112,12 +112,13 @@ boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) 
     return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
 }
 
-/* Q12 re/im and Q8 t convert exactly to Q16.16 metres; the view's Q9 matrix
+/* Q12 re/im and Q8 t convert exactly to Q16.16 meters; the view's Q9 matrix
  * lands them in camera space in 1/512 m. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
-    /* Inside +-2^17 (32 m) on the floor's axes and +-2^15 on t the transform is
-     * three 32-bit products; the long axes and a wild view take the 64-bit one. */
+    /* Inside R3D_X_INPUT_XZ_LIMIT on the floor's axes and
+     * R3D_X_INPUT_Y_LIMIT on t the transform is three 32-bit products;
+     * the long axes and a wild view take the 64-bit one. */
     const bool near = (uint32_t)(re_q12 + R3D_X_INPUT_XZ_LIMIT) < 2u * R3D_X_INPUT_XZ_LIMIT
                       && (uint32_t)(im_q12 + R3D_X_INPUT_XZ_LIMIT) < 2u * R3D_X_INPUT_XZ_LIMIT
                       && (uint32_t)(t_q8 + R3D_X_INPUT_Y_LIMIT) < 2u * R3D_X_INPUT_Y_LIMIT;

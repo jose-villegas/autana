@@ -894,6 +894,34 @@ expect_the_narrow_transform_across_the_motion(const boot_anim_motion_t* motion) 
 }
 
 static void
+test_camera_transform_selects_the_narrow_path_at_negative_input_limits(void) {
+    const boot_anim_view_t original = boot_anim_view(seed, PANEL_W, PANEL_H, 0);
+    TEST_ASSERT_TRUE(original.units_ok);
+    for (int axis = 0; axis < 3; axis++) {
+        const int32_t limit = axis == 1 ? R3D_X_INPUT_Y_LIMIT : R3D_X_INPUT_XZ_LIMIT;
+        for (int sign = -1; sign <= 1; sign += 2) {
+            int32_t raw[3] = {0};
+            raw[axis] = sign * limit;
+            boot_anim_view_t view = original;
+            const vec3x_t point = {raw[0] * (MATHX_ONE / BOOT_ANIM_ONE), raw[1] * (BOOT_ANIM_SPIRAL_Q9 / 2),
+                                   raw[2] * (MATHX_ONE / BOOT_ANIM_ONE)};
+            const vec3x_t wide = mat4x_apply(&view.matrix, point);
+            const vec3x_t narrow = r3d_to_camera_space_units(&view, raw[0], raw[1], raw[2]);
+            const vec3x_t got = boot_anim_to_camera_space(raw[0], raw[2], raw[1], &view);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.x, got.x);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.y, got.y);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.z, got.z);
+            /* A distinct narrow translation makes path selection observable. */
+            view.units[0][3] += 1 << R3D_X_INPUT_SHIFT;
+            const vec3x_t selected = boot_anim_to_camera_space(raw[0], raw[2], raw[1], &view);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.x + 1 : wide.x, selected.x);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.y : wide.y, selected.y);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.z : wide.z, selected.z);
+        }
+    }
+}
+
+static void
 test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion(void) {
     expect_the_narrow_transform_across_the_motion(seed);
 }
@@ -1810,6 +1838,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_spline_cs_matches_transforming_the_world_space_spline);
     RUN_TEST(test_plane_points_match_the_full_camera_space_transform);
     RUN_TEST(test_the_curve_table_stays_inside_the_narrow_range);
+    RUN_TEST(test_camera_transform_selects_the_narrow_path_at_negative_input_limits);
     RUN_TEST(test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);

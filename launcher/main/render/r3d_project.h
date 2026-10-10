@@ -10,7 +10,6 @@
 
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf.h"
-#include "render/r3d_project_x.h"
 #include "render/render_view.h"
 
 /* Past this a projected offset is off any panel; clamping first keeps the

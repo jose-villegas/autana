@@ -309,7 +309,7 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
 }
 
 static void
-test_narrow_matrix_rejects_entries_and_translation_at_the_limits(void) {
+test_narrow_matrix_rejects_entries_at_the_limits(void) {
     const render_view_t view = fixture();
     const float narrow_scale = (float)R3D_X_UNIT_ONE * (float)(1 << R3D_X_INPUT_SHIFT);
     for (int axis = 0; axis < 3; axis++) {
@@ -324,6 +324,12 @@ test_narrow_matrix_rejects_entries_and_translation_at_the_limits(void) {
             }
         }
     }
+}
+
+static void
+test_narrow_matrix_rejects_translation_at_the_limits(void) {
+    const render_view_t view = fixture();
+    const float narrow_scale = (float)R3D_X_UNIT_ONE * (float)(1 << R3D_X_INPUT_SHIFT);
     const float meters_per_unit[] = {0.0F, 0.0F, 0.0F};
     for (int sign = -1; sign <= 1; sign += 2) {
         for (int side = -1; side <= 1; side++) {
@@ -340,12 +346,39 @@ test_narrow_matrix_rejects_entries_and_translation_at_the_limits(void) {
     }
 }
 
+static void
+test_narrow_transform_at_the_sum_bound_matches_the_wide_one(void) {
+    r3d_line_view_x_t view = {0};
+    for (int row = 0; row < 3; row++) {
+        for (int axis = 0; axis < 3; axis++) {
+            const int32_t limit = axis == 1 ? R3D_X_ENTRY_Y_LIMIT : R3D_X_ENTRY_XZ_LIMIT;
+            view.units[row][axis] = limit - 1;
+            view.matrix.m[row][axis] = limit - 1;
+        }
+        view.units[row][3] = R3D_X_TRANSLATION_LIMIT - 1;
+        view.matrix.m[row][3] = view.units[row][3] >> R3D_X_INPUT_SHIFT;
+    }
+    const int32_t input_scale = MATHX_ONE / (1 << R3D_X_INPUT_SHIFT);
+    for (int sign = -1; sign <= 1; sign += 2) {
+        const vec3x_t point = {sign * R3D_X_INPUT_XZ_LIMIT * input_scale, sign * R3D_X_INPUT_Y_LIMIT * input_scale,
+                               sign * R3D_X_INPUT_XZ_LIMIT * input_scale};
+        const vec3x_t wide = mat4x_apply(&view.matrix, point);
+        const vec3x_t narrow = r3d_to_camera_space_units(&view, sign * R3D_X_INPUT_XZ_LIMIT, sign * R3D_X_INPUT_Y_LIMIT,
+                                                         sign * R3D_X_INPUT_XZ_LIMIT);
+        TEST_ASSERT_EQUAL_INT32(wide.x, narrow.x);
+        TEST_ASSERT_EQUAL_INT32(wide.y, narrow.y);
+        TEST_ASSERT_EQUAL_INT32(wide.z, narrow.z);
+    }
+}
+
 void
 run_r3d_project_suite(void) {
     RUN_TEST(test_view_matrix_matches_the_hand_built_one_for_two_unrelated_poses);
 
     RUN_TEST(test_line_points_follow_the_view_and_raster_lens_in_every_quarter);
-    RUN_TEST(test_narrow_matrix_rejects_entries_and_translation_at_the_limits);
+    RUN_TEST(test_narrow_matrix_rejects_entries_at_the_limits);
+    RUN_TEST(test_narrow_matrix_rejects_translation_at_the_limits);
+    RUN_TEST(test_narrow_transform_at_the_sum_bound_matches_the_wide_one);
     RUN_TEST(test_a_point_on_the_optical_axis_lands_on_center);
     RUN_TEST(test_an_off_axis_point_lands_where_the_formula_says);
     RUN_TEST(test_a_point_exactly_at_near_z_counts_as_behind);

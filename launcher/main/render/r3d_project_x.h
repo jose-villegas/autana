@@ -32,15 +32,16 @@ r3d_line_matrix(const render_view_t* view, const transformf_t* model) {
 /* One meter in camera space. */
 #define R3D_X_UNIT_ONE          512
 
-/* The line view's near plane in world units, which this header's camera
- * space reads as meters; a caller may pick its own. */
+/* A near plane for render_view_make() on the line path, in world units,
+ * which this header's camera space reads as meters. */
 #define R3D_LINE_NEAR_Z         0.1F
 
 /* The shift of the narrow transform's sum: entries carry 12 more bits. */
 #define R3D_X_INPUT_SHIFT       12
 
 /* Entry bound times input bound, three terms plus translation, fits the
- * 32-bit sum. Entry and translation bounds are exclusive. */
+ * 32-bit sum. Entry and translation bounds are exclusive; input bounds
+ * are inclusive at -LIMIT and exclusive at +LIMIT. */
 #define R3D_X_ENTRY_XZ_LIMIT    (1 << 12)
 #define R3D_X_ENTRY_Y_LIMIT     (1 << 14)
 #define R3D_X_TRANSLATION_LIMIT (1 << 27)
@@ -62,9 +63,12 @@ typedef struct {
     int pixels_per_unit; /* pixels per projection-plane unit, both axes */
 } r3d_line_view_x_t;
 
-/* units_ok guarantees a 32-bit sum for raw input magnitudes bounded by
- * R3D_X_INPUT_XZ_LIMIT on axes 0 and 2 and R3D_X_INPUT_Y_LIMIT on axis 1.
- * The caller checks those inputs, else uses mat4x_apply(). */
+/* units[r][c] is matrix entry [r][c] times meters_per_unit[c], and
+ * units[r][3] the translation, all in 1/512 m with R3D_X_INPUT_SHIFT more
+ * bits, so r3d_to_camera_space_units() is three 32-bit products and a shift.
+ * units_ok guarantees that sum fits for raw inputs within
+ * R3D_X_INPUT_XZ_LIMIT on axes 0 and 2 and R3D_X_INPUT_Y_LIMIT on axis 1;
+ * the caller checks those inputs, else uses mat4x_apply(). */
 static inline r3d_line_view_x_t
 r3d_line_view_x_make(const render_view_t* view, const transformf_t* model, const float meters_per_unit[3]) {
     const mat4f_t matrix = r3d_line_matrix(view, model);
