@@ -133,16 +133,16 @@ test_a_repeat_in_a_test_that_ends_in_test_pass_is_caught(void) {
 
 /* With both idle tasks held off, only the audit's own wait lets the ended
  * task be freed: without it, its stack reads as leaked every time. Once it
- * is freed, the spinner ends too, and the audit sees both idle tasks pass. */
+ * is freed, the spinner ends too, and the audit sees both idle tasks pass.
+ * That last wait, for an idle task that took the task but has not yet freed
+ * it, is too brief a window to hold open here. */
 static void
 test_a_task_the_test_ended_is_not_a_leak(void) {
     fixture();
     atomic_store(&spinning, true);
-#if portNUM_PROCESSORS > 1
     spin_tasks = uxTaskGetNumberOfTasks() + 1;
     TEST_ASSERT_EQUAL(pdPASS, xTaskCreatePinnedToCore(spin, "spin", TASK_STACK_BYTES, NULL, uxTaskPriorityGet(NULL),
                                                       NULL, !xPortGetCoreID()));
-#endif
     run_trapped(end_a_task);
     atomic_store(&spinning, false);
     TEST_ASSERT_FALSE(escaped);

@@ -33,6 +33,7 @@
 #ifdef DEVICE_BUILD
 #include <stdatomic.h>
 
+#include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -57,7 +58,8 @@ extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const 
 
 /* A task deleted while it still runs, on either core, is freed later by an
  * idle task, not by vTaskDelete(). Before calling a drop a leak, the check
- * waits this long at most for that, so a task left running is still caught. */
+ * waits this long at most for the task count, and again for each core's idle
+ * task, so a task left running is still caught. */
 #define REAP_WAIT_MS        100U
 
 static void (*watched_test)(void);
@@ -91,7 +93,7 @@ count_idle_passes(void) {
     static bool counting;
     if (!counting) {
         for (int core = 0; core < portNUM_PROCESSORS; core++) {
-            (void)esp_register_freertos_idle_hook_for_cpu(count_idle_pass, core);
+            ESP_ERROR_CHECK(esp_register_freertos_idle_hook_for_cpu(count_idle_pass, core));
         }
         counting = true;
     }
@@ -109,7 +111,7 @@ await_ended_tasks(UBaseType_t tasks_before) {
     }
     for (int core = 0; core < portNUM_PROCESSORS; core++) {
         const unsigned passes = atomic_load(&idle_passes[core]);
-        for (; atomic_load(&idle_passes[core]) == passes && waited < wait_max; waited++) {
+        for (waited = 0; atomic_load(&idle_passes[core]) == passes && waited < wait_max; waited++) {
             vTaskDelay(1);
         }
     }
