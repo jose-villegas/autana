@@ -139,8 +139,7 @@ def clip_tracks(document, binary, animation):
         for skin in document.get("skins", []):
             if driven <= set(skin["joints"]):
                 joint_paths = gltf_read.skin_joint_paths(document, skin)
-                if joint_paths is not None:
-                    break
+                break
         tracks = []
         for channel in channels:
             path, component, field, value_type, camera = channel_binding(document, channel, joint_paths)

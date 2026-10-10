@@ -40,7 +40,7 @@ holds `tracks_asset.py`'s writer and reader to each other.
 
 `gltf/gltf_read.py` owns the camera yfov conversion, including the static
 aspect ratio (1 when absent). `test_anim_bake.py` checks square, landscape
-and portrait conversions and cubic tangents. Joint-only clips under one
-skin root use skeleton paths including the joint root and excluding
-non-joint parents; scene clips use node names. The C sampler accepts both
+and portrait conversions and cubic tangents. Joint-only clips of one skin
+use skeleton paths from each joint's root joint, excluding non-joint
+parents; scene clips use node names. The C sampler accepts both
 roots, while `anim_bind()` resolves scene clips.
