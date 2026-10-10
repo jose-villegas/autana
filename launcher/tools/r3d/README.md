@@ -117,7 +117,7 @@ $PY tools/render/render_compare.py --out unused.png --reference-video host.avi r
 ```
 
 The line for each frame, and for the frames' mean, has mean and 95th-percentile
-CIE76 ΔE over its pixels, luma SSIM, and the mean ΔE on edge and on interior
+CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> over its pixels, luma SSIM<sup>[[9]](../../../docs/Citations.md#9)</sup>, and the mean ΔE on edge and on interior
 pixels; the frames-mean line averages each frame's value, p95 included. The
 sheet is, left to right, the reference, the render, the ΔE heatmap and the
 reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
@@ -137,7 +137,7 @@ the tests are small enough for the scalar one.
 |---|---|
 | `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the bake backend's subpixel grid |
 | `--max-depth N` | Path depth cap; 2 is direct light only |
-| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
+| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky<sup>[[8]](../../../docs/Citations.md#8)</sup> (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
 A `sky` light becomes a constant environment of the same radiance. The
 backends differ in these recorded ways, besides transport:
@@ -183,17 +183,18 @@ It prints a table sorted by mean ΔE.
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
 triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
-simplification (Hasselgren, Hofmann, Munkberg, Laine, Aila, Lehtinen,
-*Appearance-Driven Automatic 3D Model Simplification*, EGSR 2021). The
+simplification<sup>[[1]](../../../docs/Citations.md#1)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
+[Scene-Files.md](../../../docs/render/Scene-Files.md#against-the-paper) lists
+what the fit changes from the paper.
 
 | | |
 |---|---|
 | Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
-| Forward model | nvdiffrast draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
-| Loss | the mean CIE76 ΔE of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates from the start's |
-| Schedule | Adam; both learning rates decay tenfold over `--steps` |
+| Forward model | nvdiffrast<sup>[[2]](../../../docs/Citations.md#2)</sup> draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#5)</sup> from the start's |
+| Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
 The fitted colours are the bake, so the mesh enters the import at its last
@@ -348,7 +349,8 @@ as well as colour, and weigh appearance against frame time.
 | Warm start | `--refine-to N` splits the longest edge of the start's worst triangles, by dE summed over the pixels they show, both sides of an edge at once, until N; a fitted coarse mesh then starts a finer fit | `appearance_simplify.refine`, `tessellate.split_marked_edges` |
 
 The cost model's weights come from board frame times of meshes with
-different triangle counts and overdraw, and live with those frames in
+different triangle counts and overdraw, fitted by non-negative least squares<sup>[[6]](../../../docs/Citations.md#6)</sup>,
+and live with those frames in
 [board_cost_weights.txt](board_cost_weights.txt): a `feature` row naming the
 columns, the `weight` row, and one `frame LABEL POSE MS feature...` row per
 measured frame.

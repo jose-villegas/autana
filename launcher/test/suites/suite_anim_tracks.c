@@ -6,6 +6,7 @@
 #include <string.h>
 #include "anim/anim_tracks.h"
 #include "asset/asset_store.h"
+#include "boot/boot_anim.h"
 #include "render/r3d_scene.h"
 #include "suites.h"
 #include "test_alloc.h"
@@ -15,8 +16,6 @@
 #ifndef DEVICE_BUILD
 #include "asset/asset_file.h"
 #endif
-#define BOOT_CLIP "boot_anim_motion"
-
 enum {
     ROW0 = ANIM_TRACKS_HEADER_SIZE,
     STRINGS = ROW0 + ANIM_TRACKS_ROW_SIZE,
@@ -431,3 +430,4 @@ suite_anim_tracks(void) {
 }
 
 SUITE_REGISTER(suite_anim_tracks);
+SUITE_READS(suite_anim_tracks, BOOT_CLIP);

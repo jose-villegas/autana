@@ -25,8 +25,9 @@ _Static_assert(((int64_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT) <= INT32_MAX, "16
 static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 
 /* A triangle whose bounding box holds at most this many pixel centres a
- * side has each centre tested against its edges instead of walked, in one
- * colour and one depth: past 4 its lost gradient shows on the walls. */
+ * side has each centre tested against its edge functions
+ * (docs/Citations.md#32) instead of walked, in one colour and one depth: past
+ * 4 its lost gradient shows on the walls. */
 #define SMALL_MAX_SIDE      4
 #define SMALL_MAX_SIDE_TUNE 16
 

@@ -697,6 +697,14 @@ class LockTests(unittest.TestCase):
             bake.fetch_all([bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache, offline=True)
         network.assert_not_called()
 
+    def test_bakes_that_only_lack_lock_rows_are_unlocked_and_any_other_miss_is_not(self):
+        unlocked = [bake_of("n" * 64, self.tree)]
+        with self.assertRaises(bake.BakeUnlocked):
+            bake.fetch_all(unlocked, {"k" * 64: self.row}, self.cache, offline=True)
+        with self.assertRaises(bake.BakeMissing) as raised:
+            bake.fetch_all(unlocked + [bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache, offline=True)
+        self.assertNotIsInstance(raised.exception, bake.BakeUnlocked)
+
     def test_a_cached_file_with_other_bytes_is_not_used(self):
         self.cache.mkdir()
         (self.cache / f"{self.row['sha256']}.mesh").write_bytes(b"stale")
@@ -965,6 +973,70 @@ class TreeTests(unittest.TestCase):
         for found in bake.bakes([build_pack.DEFAULT_SEARCH]):
             if found.packed:  # a pack holds no export and no fit's start
                 self.assertIn(found.output, err.getvalue())
+
+
+class SkipUnlockedTests(unittest.TestCase):
+    """build_pack.py --skip-unlocked: what test/run_tests.sh builds on a branch waiting on the lock."""
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = pathlib.Path(folder.name)
+        self.cache, self.out, self.listed = self.root / "cache", self.root / "packs", self.root / "unlocked.txt"
+        self.cache.mkdir()
+        self.found, self.lock = filled_cache(self.cache)
+        self.packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
+        self.waiting = self.found[0]
+        entry = self.waiting.output.removesuffix(bake.MESH_SUFFIX)
+        self.holder = next(name for name, entries in self.packs.items() if entry in entries)
+
+    def build(self, rows, *flags):
+        args = ["-o", str(self.out), "--bake-cache", str(self.cache), "--offline", *flags]
+        with mock.patch.object(bake, "read_lock", return_value=rows), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+            return build_pack.main(args), err.getvalue()
+
+    def written(self):
+        return sorted(path.name.removesuffix(build_pack.PACK_SUFFIX) for path in self.out.glob("*" + build_pack.PACK_SUFFIX))
+
+    def test_a_tree_with_every_row_writes_every_pack_and_names_none(self):
+        code, err = self.build(self.lock, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.written(), sorted(self.packs))
+        self.assertEqual(self.listed.read_text(), "")
+
+    def test_a_pack_whose_bake_lacks_its_lock_row_is_left_out_and_named(self):
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.written(), sorted(name for name in self.packs if name != self.holder))
+        self.assertEqual(self.listed.read_text(), f"{self.holder}\n")
+
+    def test_without_the_flag_a_missing_lock_row_still_fails(self):
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows)
+        self.assertEqual(code, 2)
+        self.assertIn(self.waiting.output, err)
+        self.assertIn("has no row for this key", err)
+
+    def test_a_locked_bake_the_cache_cannot_give_still_fails_with_the_flag(self):
+        bake.cached(self.lock[self.waiting.key], bake.MESH_SUFFIX, self.cache).unlink()
+        code, err = self.build(self.lock, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 2)
+        self.assertIn(self.waiting.output, err)
+        self.assertIn("offline", err)
+        self.assertFalse(self.listed.exists())
+
+    def test_one_pack_waiting_and_another_broken_still_fails_naming_the_broken_one(self):
+        broken = next(found for found in self.found
+                      if found.output.removesuffix(bake.MESH_SUFFIX) not in self.packs[self.holder])
+        bake.cached(self.lock[broken.key], bake.MESH_SUFFIX, self.cache).unlink()
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 2)
+        self.assertIn(broken.output, err)
+        self.assertNotIn(self.waiting.output, err)
+        self.assertFalse(self.listed.exists())
 
 
 if __name__ == "__main__":

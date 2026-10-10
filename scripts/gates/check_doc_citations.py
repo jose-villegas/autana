@@ -14,6 +14,13 @@ section a doc or C comment cites must be a heading of the doc it
 names. Under docs/plans/, which names what is not built yet, names are not
 checked; section citations still are.
 
+docs/Citations.md numbers the papers and specs the tree cites, one table row
+each, `| <a id="N"></a>[N] | ... | Cited by |`. Rows ascend, and a deleted
+row's number is not reused. Every `Citations.md#N` a tracked document or
+source file writes must name a row, every row must be cited, and a row's
+"Cited by" cell must link exactly the files that cite it. The gates' own
+tests write citations as fixtures, so they cite nothing.
+
 Without an ESP-IDF checkout, a name this tree does not define cannot be
 told apart from a typo, so it is counted, not failed, and one line says so.
 --require-idf, which CI passes, makes a missing checkout, or a missing
@@ -35,6 +42,12 @@ MACRO = re.compile(r"^[A-Z][A-Z0-9_]*$")
 FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake|md)|CMakeLists\.txt)$")
 PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
+CITATIONS = "docs/Citations.md"
+CITATION_ROW = re.compile(r'^\|\s*<a id="([^"]*)"></a>\[(\d+)\]\s*\|(.*)\|\s*$')
+PAPER = re.compile(r"Citations\.md#(\d+)\b")
+CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
+CITING_SOURCES = ["*.md", "*.c", "*.h", "*.py", "*.sh", "*.mjs"]
+GATE_TESTS = "scripts/gates/tests/"
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
 # and "Two" in X.md. The backtick around the doc name is optional: both
@@ -221,6 +234,73 @@ def unresolved_sections(root):
     return missing
 
 
+def citation_rows(root):
+    """{number: (line, set of cited-by paths)} from docs/Citations.md, and
+    the problems its rows have on their own. Cited-by links resolve
+    relative to docs/."""
+    root = pathlib.Path(root)
+    rows, problems = {}, []
+    path = root / CITATIONS
+    if not path.is_file():
+        return rows, problems
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        m = CITATION_ROW.match(line)
+        if not m:
+            continue
+        anchor, shown, cells = m.group(1), int(m.group(2)), m.group(3)
+        if anchor != str(shown):
+            problems.append(f"{CITATIONS}:{number}: anchor \"{anchor}\" is not its number [{shown}]")
+        if rows and shown <= max(rows):
+            problems.append(f"{CITATIONS}:{number}: [{shown}] follows [{max(rows)}]; rows ascend")
+        cited_by = set()
+        for target in CELL_LINK.findall(cells.rsplit("|", 1)[-1]):
+            resolved = (path.parent / target).resolve()
+            try:
+                cited_by.add(resolved.relative_to(root.resolve()).as_posix())
+            except ValueError:
+                problems.append(f"{CITATIONS}:{number}: cited-by link {target} leaves the tree")
+        rows[shown] = (number, cited_by)
+    return rows, problems
+
+
+def paper_citations(root):
+    """{number: {citing path: first line}} for every `Citations.md#N` the
+    tracked documents and sources write, outside Citations.md itself."""
+    root = pathlib.Path(root)
+    cited = {}
+    for rel in sorted(tracked_files(root, CITING_SOURCES)):
+        if rel == CITATIONS or rel.startswith(GATE_TESTS) or not (root / rel).is_file():
+            continue
+        text = (root / rel).read_text(encoding="utf-8", errors="replace")
+        for number, line in enumerate(text.splitlines(), 1):
+            for n in PAPER.findall(line):
+                cited.setdefault(int(n), {}).setdefault(rel, number)
+    return cited
+
+
+def unresolved_papers(root):
+    """Every problem between docs/Citations.md and what cites it: a number
+    with no row, a row nothing cites, a cited-by cell that differs from
+    the citing files, and a row out of order."""
+    rows, problems = citation_rows(root)
+    cited = paper_citations(root)
+    for n, citers in sorted(cited.items()):
+        if n not in rows:
+            for rel, line in sorted(citers.items()):
+                problems.append(f"{rel}:{line}: cites [{n}], which {CITATIONS} has no row for")
+    for n, (line, cited_by) in sorted(rows.items()):
+        actual = set(cited.get(n, {}))
+        if not actual:
+            problems.append(f"{CITATIONS}:{line}: [{n}] is cited nowhere")
+        elif cited_by != actual:
+            extra, absent = sorted(cited_by - actual), sorted(actual - cited_by)
+            detail = "; ".join(filter(None, [
+                absent and "cited by, not listed: " + ", ".join(absent),
+                extra and "listed, does not cite it: " + ", ".join(extra)]))
+            problems.append(f"{CITATIONS}:{line}: [{n}] {detail}")
+    return problems
+
+
 def _spelling(citation):
     return citation.value + "()" if citation.kind == "function" else citation.value
 
@@ -281,6 +361,7 @@ def main(argv):
     try:
         missing, unchecked = resolve(root, outside)
         missing_sections = unresolved_sections(root)
+        paper_problems = unresolved_papers(root)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
@@ -289,13 +370,17 @@ def main(argv):
               f" (defined neither in this tree nor in ESP-IDF)")
     for citation, reason in missing_sections:
         print(f"{citation.doc}:{citation.line}: missing section citation - {reason}")
+    for problem in paper_problems:
+        print(problem)
     if outside is None:
         print(not_verified_notice(len(unchecked)))
     print(f"{len(missing_sections)} missing section citation"
           f"{'' if len(missing_sections) == 1 else 's'}")
     print(f"{len(missing)} missing documentation citation"
           f"{'' if len(missing) == 1 else 's'}")
-    return 1 if missing or missing_sections else 0
+    print(f"{len(paper_problems)} paper citation problem"
+          f"{'' if len(paper_problems) == 1 else 's'}")
+    return 1 if missing or missing_sections or paper_problems else 0
 
 
 if __name__ == "__main__":
