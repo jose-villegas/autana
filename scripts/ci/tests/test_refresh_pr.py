@@ -1,16 +1,15 @@
 import io
 import json
-import subprocess
-import tempfile
-from unittest import mock
 import os
-import sys
-import unittest
 from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import refresh_pr
 import github_api
+import refresh_pr
 
 
 class Recorder:
@@ -71,16 +70,6 @@ class RefreshPrTests(unittest.TestCase):
                                  ['GET', 'POST'] if action == 'sync' else ['GET', 'POST', 'PATCH', 'DELETE'])
                 self.assertTrue(all(item.args[0].full_url.startswith(
                     'https://api.github.com/repos/owner/repo/') for item in http.call_args_list))
-
-    def test_scripts_import_from_repository_root(self):
-        root = Path(__file__).resolve().parents[3]
-        with mock.patch.dict(os.environ, REFRESH_BRANCH='refresh'):
-            for name in ('refresh_pr', 'inputs_recorded'):
-                result = subprocess.run([sys.executable, f'scripts/ci/{name}.py'], cwd=root,
-                                        capture_output=True, text=True)
-                self.assertEqual(result.returncode, 2, result.stderr)
-                self.assertIn('usage:', result.stderr)
-
 
 if __name__ == "__main__":
     unittest.main()

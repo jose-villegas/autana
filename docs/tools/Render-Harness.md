@@ -156,15 +156,14 @@ and lists every input.
 The `doc-images-gpu` workflow runs on every main push, nightly and on manual
 dispatch. The latest unexpired rendered or failed record on main decides
 whether these inputs are current. A dispatch with `force` bypasses both
-record checks. The hosted lookup defers to the GPU gate while another run
+record checks but still skips an obsolete run. The hosted lookup defers to
+the GPU gate while another run
 of this workflow on main is unfinished. The gate holds the concurrency
-group and checks only the latest record.
+group, skips runs whose trigger SHA is no longer main's head, then checks
+only the latest record.
 
-The first refresh step runs `scripts/ci/gpu_refresh_gate.sh`. It sources
-`gpu_env.sh` and persists `GPU_ENV` through `GITHUB_ENV` for later steps.
-It compares this machine's fingerprint with the hosted fingerprint before
-writing any output, failing with both fingerprints on a mismatch. A match
-checks the latest record and writes `render=true|false` to `GITHUB_OUTPUT`.
+The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
+GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 
 ```mermaid
 flowchart TD
@@ -172,10 +171,12 @@ flowchart TD
     Flight -->|yes| Refresh
     Flight -->|no| Latest{"Latest main record matches?"}
     Latest -->|yes| Skip["Doc images current"]
-    Latest -->|no or force| Refresh["Refresh holds GPU concurrency group"]
-    Refresh --> Check{"GPU fingerprint matches hosted?"}
+    Latest -->|no or force| Refresh["gpu_refresh_gate.sh<br/>holds GPU concurrency group"]
+    Refresh --> Check{"GPU runner's fingerprint matches hosted?"}
     Check -->|no| Error["Fail with both fingerprints"]
-    Check -->|yes| Again{"Latest main record matches?"}
+    Check -->|yes| Head{"Trigger SHA is main head?"}
+    Head -->|no| Obsolete["Skip obsolete run, record nothing"]
+    Head -->|yes| Again{"Latest main record matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
     Render -->|success| Publish["Sync or close refresh PR"]

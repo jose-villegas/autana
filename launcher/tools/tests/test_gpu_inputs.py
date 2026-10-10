@@ -354,6 +354,8 @@ class RecordedInputsTests(unittest.TestCase):
         hosted = workflow['jobs']['fingerprint']['steps'][-1]['run']
         self.assertIn('--defer-in-flight', hosted)
         self.assertEqual(steps[gate]['run'].strip(), 'sh scripts/ci/gpu_refresh_gate.sh')
+        self.assertEqual(steps[gate]['env']['FINGERPRINT'], '${{ needs.fingerprint.outputs.fingerprint }}')
+        self.assertEqual(workflow['jobs']['fingerprint']['outputs']['current'], '${{ steps.inputs.outputs.current }}')
         refresh = workflow['jobs']['refresh']
         self.assertEqual(refresh['needs'], 'fingerprint')
         self.assertEqual(refresh['if'], "needs.fingerprint.outputs.current != 'true'")
@@ -373,6 +375,7 @@ class RecordedInputsTests(unittest.TestCase):
                     if '/runs?' in path:
                         return {'workflow_runs': [{'id': 11, 'status': 'completed'},
                                                   {'id': 10, 'status': 'pending'}]}
+                    # A record read first sees X before the other run finishes and records B.
                     fingerprint = 'X' if matching and len(calls) == 1 else 'B'
                     return {'artifacts': [dict(name=records.RECORD_PREFIXES[0] + fingerprint,
                         created_at='2026', expired=False, workflow_run={'head_branch': 'main'})]}
@@ -381,12 +384,46 @@ class RecordedInputsTests(unittest.TestCase):
             self.assertEqual(calls[0], '/actions/workflows/own.yml/runs?branch=main&per_page=100&page=1')
             self.assertEqual(calls[1], '/actions/artifacts?per_page=100&page=1')
 
-    def test_workflow_id_from_own_run_when_ref_is_unavailable(self):
-        with mock.patch.dict(os.environ, FORCE='', GITHUB_RUN_ID='10'), \
-                contextlib.redirect_stdout(io.StringIO()):
+    def test_workflow_ref_is_required(self):
+        with mock.patch.dict(os.environ, GITHUB_RUN_ID='10'):
             os.environ.pop('GITHUB_WORKFLOW_REF', None)
-            request = mock.Mock(side_effect=[{'workflow_id': 321}, {'workflow_runs': []}, {'artifacts': []}])
-            records.main(['X', '--defer-in-flight'], request=request)
-        self.assertEqual(request.call_args_list[:2], [
-            mock.call('GET', '/actions/runs/10'),
-            mock.call('GET', '/actions/workflows/321/runs?branch=main&per_page=100&page=1')])
+            request = mock.Mock()
+            with self.assertRaises(KeyError):
+                records.main(['X', '--defer-in-flight'], request=request)
+            request.assert_not_called()
+
+    def test_delayed_push_gate_skips_after_completed_revert(self):
+        record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+                      expired=False, workflow_run={'head_branch': 'main'})
+        with mock.patch.dict(os.environ, FORCE='', GITHUB_SHA='X'), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            request = mock.Mock(side_effect=[{'object': {'sha': 'X'}}, {'artifacts': [record]}])
+            records.main(['X', '--skip-obsolete'], request=request)
+        self.assertEqual(output.getvalue(), 'true\n')
+        with mock.patch.dict(os.environ, FORCE='true', GITHUB_SHA='B'), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            request = mock.Mock(return_value={'object': {'sha': 'X'}})
+            records.main(['B', '--skip-obsolete'], request=request)
+        self.assertEqual(output.getvalue(), 'obsolete: main moved to X\n')
+        request.assert_called_once_with('GET', '/git/ref/heads/main')
+
+    def test_in_flight_middle_run_on_each_page(self):
+        from github_api import PER_PAGE
+        for page in (1, 2):
+            for unfinished in (True, False):
+                with self.subTest(page=page, unfinished=unfinished), mock.patch.dict(
+                        os.environ, FORCE='', GITHUB_RUN_ID='10',
+                        GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/own.yml@refs/heads/main'), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    runs = [{'id': 100 + index, 'status': 'completed'} for index in range(PER_PAGE)]
+                    tail = [{'id': 1000 + index, 'status': 'completed'} for index in range(3)]
+                    if unfinished:
+                        (runs if page == 1 else tail)[len(runs) // 2 if page == 1 else 1]['status'] = 'pending'
+                    record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
+                                  expired=False, workflow_run={'head_branch': 'main'})
+                    def request(method, path, body=None):
+                        if '/artifacts?' in path:
+                            return {'artifacts': [record]}
+                        return {'workflow_runs': runs if path.endswith('page=1') else tail}
+                    records.main(['X', '--defer-in-flight'], request=request)
+                self.assertEqual(output.getvalue(), str(not unfinished).lower() + '\n')

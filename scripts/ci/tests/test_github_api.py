@@ -2,7 +2,9 @@
 import io
 import os
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -28,3 +30,12 @@ class GithubApiTests(unittest.TestCase):
         self.assertEqual(list(github_api.pages('/listing?branch=main', 'items', request)), first + ['last'])
         self.assertEqual(request.call_args_list, [mock.call('GET', f'/listing?branch=main&per_page=100&page={page}')
                                                  for page in (1, 2)])
+
+    def test_ci_entry_points_show_usage_from_repository_root(self):
+        root = Path(__file__).resolve().parents[3]
+        with mock.patch.dict(os.environ, REFRESH_BRANCH='refresh'):
+            for name in ('refresh_pr', 'inputs_recorded'):
+                result = subprocess.run([sys.executable, f'scripts/ci/{name}.py'], cwd=root,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn('usage:', result.stderr)

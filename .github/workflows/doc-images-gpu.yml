@@ -54,7 +54,7 @@ jobs:
           if [ "$current" = true ]; then
             echo "doc images current: latest main run recorded inputs $fingerprint"
           else
-            echo "inputs $fingerprint: latest main record differs${FORCE:+ (force: $FORCE)}"
+            echo "inputs $fingerprint: not current (latest main record differs, another run unfinished, or force)"
           fi
 
   refresh:

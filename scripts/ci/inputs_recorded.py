@@ -1,7 +1,8 @@
 """Print true when no other run of this workflow on main is unfinished (with
 --defer-in-flight), and the newest unexpired main record, rendered or failed,
 names this fingerprint, and FORCE is not "true". The GPU gate holds the
-concurrency group and omits --defer-in-flight."""
+concurrency group and omits --defer-in-flight. With --skip-obsolete, prints
+an obsolete-run reason instead if GITHUB_SHA differs from main's head."""
 import argparse
 import os
 
@@ -24,14 +25,18 @@ def main(argv=None, request=call):
     parser.add_argument("fingerprint")
     parser.add_argument("--defer-in-flight", action="store_true",
                         help="hosted lookup: defer while another run is unfinished")
+    parser.add_argument("--skip-obsolete", action="store_true",
+                        help="GPU gate: skip a trigger SHA that is no longer main's head")
     args = parser.parse_args(argv)
+    if args.skip_obsolete:
+        head = request("GET", "/git/ref/heads/main")["object"]["sha"]
+        if os.environ["GITHUB_SHA"] != head:
+            print(f"obsolete: main moved to {head}")
+            return
     if args.defer_in_flight:
         own_run = os.environ["GITHUB_RUN_ID"]
-        workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF")
-        if workflow_ref:
-            workflow = workflow_ref.split("@", 1)[0].rsplit("/", 1)[-1]
-        else:
-            workflow = request("GET", f"/actions/runs/{own_run}")["workflow_id"]
+        workflow_ref = os.environ["GITHUB_WORKFLOW_REF"]
+        workflow = workflow_ref.split("@", 1)[0].rsplit("/", 1)[-1]
         runs = pages(f"/actions/workflows/{workflow}/runs?branch=main", "workflow_runs", request)
         if any(str(run["id"]) != own_run and run["status"] != "completed" for run in runs):
             print("false")
