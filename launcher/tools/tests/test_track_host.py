@@ -183,8 +183,8 @@ class TrackHostTests(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(track_host.main([str(self.clip), "--every", "500"]), 0)
-        self.assertEqual(out.getvalue(), "0 camera/translation 0 0 0\n0 camera/rotation 0 0 0 1\n"
-                                         "500 camera/translation 1 0 0\n500 camera/rotation 0 0 0 1\n")
+        self.assertEqual(out.getvalue(), "0 camera:TRNS.position 0 0 0\n0 camera:TRNS.rotation 0 0 0 1\n"
+                                         "500 camera:TRNS.position 1 0 0\n500 camera:TRNS.rotation 0 0 0 1\n")
 
     def test_the_command_line_fails_with_status_2_naming_the_tool(self):
         for argv in (["--pack", str(self.dir / "none.apak"), "--clip", "walk"], [str(self.dir / "none.anim.toml")]):

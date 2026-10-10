@@ -438,9 +438,10 @@ class TreeTests(unittest.TestCase):
                     continue
                 kind, clip = entries[camera["clip"]]
                 self.assertEqual(kind, tracks_asset.TYPE)
-                tracks = {track["name"] for track in tracks_asset.decode(clip)[0]}
-                for part in ("translation", "rotation"):
-                    self.assertIn(f"{camera['node']}/{part}", tracks, f"{path.name}: clip {camera['clip']!r}")
+                tracks = {(track["path"], track["component"], track["field"]) for track in tracks_asset.decode(clip)[0]}
+                for field in ("position", "rotation"):
+                    self.assertIn((camera["node"], tracks_asset.TRANSFORM, field), tracks,
+                                  f"{path.name}: clip {camera['clip']!r}")
 
 
 if __name__ == "__main__":

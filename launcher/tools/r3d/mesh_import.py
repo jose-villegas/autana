@@ -273,7 +273,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
         with recorder.step("face colours", len(geometry.tris)):
             face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
     return write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
-                          geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, **geometry.scale)
+                          geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
+                          meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
 
 
 def bake(job, scene, out_dir):

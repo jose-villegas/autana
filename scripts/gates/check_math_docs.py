@@ -32,7 +32,7 @@ import pathlib
 import re
 import sys
 
-MATH = pathlib.Path("launcher/main/math/linear")
+MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
 
 FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
