@@ -26,7 +26,7 @@ from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import mitsuba_reference
+from r3d import mesh_import, mitsuba_reference, ray_query
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, drop_masked, light, open_side_occlusion, to_srgb8
@@ -148,8 +148,9 @@ def source_for(scene, name=None, lit=True):
     return lit_source(named[0], scene, lit), named[0]
 
 
-def lit_source(job, scene, lit=True):
-    """The full-detail source of `job`, alpha-masked and lit as it is baked; see source_for."""
+def lit_source(job, scene, lit=True, variant=None):
+    """The full-detail source of `job`, alpha-masked and lit as it is baked, traced on `variant` (`ray_query.VARIANT`
+    when None); see source_for."""
     settings = job.settings
     source = load_source(settings, np.float64 if lit else np.float32)
     if settings.alpha_keep is not None:
@@ -158,22 +159,36 @@ def lit_source(job, scene, lit=True):
     source.corner_normals = corner_normals(source.p, source.tri_v)
     if not lit:
         return source
-    source.intersector = RayQuery(source.p, source.tri_v)
-    source.bounce = path_light_for(source, job, scene)
+    source.intersector = RayQuery(source.p, source.tri_v, variant)
+    source.bounce = path_light_for(source, job, scene, variant)
     return source
 
 
 def render_sets(inputs, sets, samples=4):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    fitted_variant.ReferenceInputs), the source loaded and its bounced light built once for all of them."""
+    fitted_variant.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the GPU
+    where Mitsuba's CUDA variant traces (`ray_query.trace_variant`). Returns the variant it traced on. The poses render
+    in this process, since the probe may have opened CUDA, and on the GPU its arrays are freed before it returns, for
+    the fit that shares the device."""
     job, scene = inputs.job(), inputs.scene()
-    source = lit_source(job, scene)
-    for poses_path, out in sets:
-        width, height, lens, _near, poses = read_poses(poses_path)
-        pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-        peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=True)
-        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
-              flush=True)
+    variant = ray_query.trace_variant()
+    gpu = variant == ray_query.GPU_VARIANT
+    print(f"reference trace variant={variant}", flush=True)
+    source = lit_source(job, scene, variant=variant)
+    try:
+        for poses_path, out in sets:
+            width, height, lens, _near, poses = read_poses(poses_path)
+            pathlib.Path(out).mkdir(parents=True, exist_ok=True)
+            peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=True,
+                                         workers=1)
+            print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
+                  flush=True)
+    finally:
+        if gpu:
+            del source
+            mesh_import.PATH_LIGHTS.clear()
+            ray_query.release_gpu()
+    return variant
 
 
 # Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
@@ -209,7 +224,8 @@ def budget_pose_capacity(budget, rss, estimate, cores):
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Caller must not have initialised CUDA. Every pose's rays are fixed, so the output matches a serial run.
+    A caller that may have initialised CUDA passes workers=1. Every pose's rays are fixed, so the output matches a
+    serial run.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal

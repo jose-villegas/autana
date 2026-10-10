@@ -47,6 +47,7 @@ from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path  # noqa: E402
+from r3d import ray_query  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
@@ -100,18 +101,19 @@ def albedo_at(src, points, spacing, material):
 PATH_LIGHTS = {}
 
 
-def path_light_for(src, job, scene):
-    """The bounced-light tracer of a renderer's source, built once per run: renderers of one import with the same
-    lights and settings share it. None when the renderer takes no bounced light. Only the latest is kept: each holds
-    the source's textures a second time."""
+def path_light_for(src, job, scene, variant=None):
+    """The bounced-light tracer of a renderer's source on `variant` (`ray_query.VARIANT` when None), built once per
+    run: renderers of one import with the same lights, settings and variant share it. None when the renderer takes no
+    bounced light. Only the latest is kept: each holds the source's textures a second time."""
     if job.bake is None or job.bake.indirect is None:
         return None
     settings = job.settings
     boost = scene.indirect.albedo_boost
-    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost)
+    variant = variant or ray_query.VARIANT
+    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant)
     if key not in PATH_LIGHTS:
         PATH_LIGHTS.clear()
-        PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost)
+        PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost, variant)
     return PATH_LIGHTS[key]
 
 

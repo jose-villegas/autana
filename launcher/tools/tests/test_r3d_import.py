@@ -22,7 +22,7 @@ try:
     import numpy as np
     from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
-    from r3d import mesh_import
+    from r3d import mesh_import, ray_query
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8
     from r3d.lit_mesh import read_lit_mesh
 except ImportError:
@@ -849,6 +849,17 @@ class PathLightForTests(unittest.TestCase):
             mesh_import.path_light_for(None, self.job(indirect), scene(1.0))
             mesh_import.path_light_for(None, self.job(indirect), scene(3.0))
         self.assertEqual(built.call_count, 1)
+
+    def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
+        indirect = SimpleNamespace(bounces=1, rays=8)
+        scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
+        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+            bake = mesh_import.path_light_for(None, self.job(indirect), scene)
+            self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.VARIANT), bake,
+                          "no variant is the bake's variant")
+            gpu = mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.GPU_VARIANT)
+        self.assertIsNot(gpu, bake, "a scene traced on one variant is not reused on another")
+        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, ray_query.GPU_VARIANT])
 
 
 class JobTests(unittest.TestCase):

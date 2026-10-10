@@ -522,6 +522,10 @@ def main(argv=None):
         count = write_mesh(out, name, points, rgb, fitted)
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f")
         print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
+    # The fit's cached device memory goes back for a reference set traced next in this process.
+    torch = sys.modules.get("torch")
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return 0
 
 
