@@ -70,7 +70,7 @@ class SceneEntryTests(SceneFiles):
         decoded = scene_asset.decode(scene_asset.bake(path))
         self.assertEqual([c["clip"] for c in decoded["cameras"]], ["fly", "tour"])
         self.assertEqual([decoded["entities"][c["entity"]]["name"] for c in decoded["cameras"]], ["camera", "tour"])
-        packs = build_pack.pack_bytes([self.root])
+        packs = build_pack.pack_bytes([self.root], tree=True)
         self.assertEqual(list(packs), ["hall"])
         self.assertEqual(set(parse_pack(packs["hall"])), {"hall", "a", "b", "fly", "tour"})
 
@@ -217,7 +217,7 @@ class ScenePackTests(SceneFiles):
 
     def test_the_pack_holds_the_entry_every_mesh_and_the_clip_which_makes_no_pack_of_its_own(self):
         path = self.scene(renderer("a.import.toml") + renderer("b.import.toml") + lens("clips/fly.anim.toml"))
-        packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root]).items()}
+        packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root], tree=True).items()}
         self.assertEqual(sorted(packs), ["hall"])
         hall = packs["hall"]
         self.assertEqual(hall["hall"], (scene_asset.TYPE, scene_asset.bake(path)))
@@ -228,11 +228,11 @@ class ScenePackTests(SceneFiles):
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
         (self.root / "scratch.mesh").write_bytes(b"9")
-        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
+        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"], tree=True)
         self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, b"9"))
         for entry in ("hall", "fly"):
             with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])
+                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"], tree=True)
 
     def test_a_scene_and_its_clip_cannot_share_an_id_and_the_refusal_names_both_files(self):
         (self.root / "clips" / "hall.anim.toml").write_text(CLIP)

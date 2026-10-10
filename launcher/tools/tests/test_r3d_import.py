@@ -986,10 +986,10 @@ class LocalSourceTests(unittest.TestCase):
             scene = load_scene(scene_path)
             job = scene.renderers[0]
             for name in ("m.obj", "m.mtl", "texture.weird"):
-                before = recipe_digest(job, scene), reference_digest(scene_path, job, scene)
+                before = recipe_digest(job, scene), reference_digest(job, scene)
                 path = asset / name
                 path.write_bytes(path.read_bytes() + b"\n# changed")
-                after = recipe_digest(job, scene), reference_digest(scene_path, job, scene)
+                after = recipe_digest(job, scene), reference_digest(job, scene)
                 self.assertTrue(all(a != b for a, b in zip(before, after)), name)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
@@ -1004,7 +1004,7 @@ class LocalSourceTests(unittest.TestCase):
                                          + sun_object() + camera(path=True, region=False), HEAD)
                 scene = load_scene(scene_path)
                 job = scene.renderers[0]
-                return recipe_digest(job, scene), reference_digest(scene_path, job, scene)
+                return recipe_digest(job, scene), reference_digest(job, scene)
 
         first = digests()
         for changed in (digests(reach=2.0), digests(degrees=30.0)):
