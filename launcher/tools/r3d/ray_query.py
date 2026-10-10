@@ -5,16 +5,17 @@ every hit along a ray. `RayQuery` answers them as `first_hit`, `blocked` and `al
 the raw arrays behind the first. Triangle ids are the row numbers of the `tris` given, and every triangle
 is hit from both sides.
 
-The bake is NumPy-bound on the CPU, so the queries run on the LLVM variant: a CUDA context per forked pose worker
-would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA. Tests set
-`VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker forked after a query
-inherits the scene and traces serially on its own thread.
+A mesh bake is NumPy-bound on the CPU, so its queries run on the LLVM variant `VARIANT`: a CUDA context per forked
+pose worker would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA.
+A reference set traces on `trace_variant(True)`, Mitsuba's CUDA variant on OptiX where it loads (README, "Reference
+on the GPU"). Tests set `VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker
+forked after a query inherits the scene and traces serially on its own thread.
 """
 import sys
 
 import numpy as np
 
-from r3d.mitsuba_reference import import_mitsuba
+from r3d.mitsuba_reference import default_variant, import_mitsuba
 
 VARIANT = "llvm_ad_rgb"
 # Rays per Mitsuba call: bounds the arrays a large query allocates.
@@ -24,6 +25,29 @@ BATCH = 1 << 22
 STEP = 1e-4
 STEP_RELATIVE = 1e-6
 MAX_HITS = 100
+GPU_VARIANT = "cuda_ad_rgb"
+
+
+def trace_variant(gpu):
+    """The variant a trace runs on: `GPU_VARIANT` when `gpu` and it loads a scene here, else `VARIANT`. Mesh bakes
+    pass False, so their bytes never depend on a GPU; a reference set passes True."""
+    if gpu:
+        mi = import_mitsuba()
+        if mi is not None and default_variant(mi) == GPU_VARIANT:
+            return GPU_VARIANT
+    return VARIANT
+
+
+def release_gpu():
+    """Returns Dr.Jit's cached device memory once the GPU variant's scenes are dropped, so a CUDA user that follows
+    in the process (the fit's torch) gets it back."""
+    import gc
+
+    import drjit as dr
+
+    gc.collect()
+    dr.sync_thread()
+    dr.flush_malloc_cache()
 
 
 class RayQuery:

@@ -7,7 +7,8 @@ shadow and further bounces are all in it. Light that reaches the point without a
 adds it from shadow rays. The mean of the cosine-weighted radiance is the irradiance over pi, the unit `light.light`
 returns, so the albedo of the surface being baked multiplies it once.
 
-Mitsuba's variant is process-wide and the ray queries pin it, so this runs on `ray_query.VARIANT` too.
+Mitsuba's variant is process-wide, so this runs on the variant of the ray queries beside it, `ray_query.VARIANT`
+unless the caller names one (`ray_query.trace_variant`).
 """
 import numpy as np
 
@@ -22,19 +23,20 @@ BATCH = 1 << 18
 
 
 class PathLight:
-    def __init__(self, source, lights, double_sided, indirect, albedo_boost):
+    def __init__(self, source, lights, double_sided, indirect, albedo_boost, variant=None):
         """`indirect` is the scene's `[bake].indirect` (bounces, rays) and `albedo_boost` its `[indirect]` boost, which
         belongs to the exported materials. Pure transport: the intensity is applied where the light is summed.
         Ambient has no transport meaning and stays with `light.light`."""
         emitters = [item for item in lights if item["type"] != "ambient"]
         source.corner_normals = corner_normals(source.p, source.tri_v)
-        self.scene = prepare(source, emitters, double_sided, variant=ray_query.VARIANT, keep_textures=True,
+        variant = variant or ray_query.VARIANT
+        self.scene = prepare(source, emitters, double_sided, variant=variant, keep_textures=True,
                              albedo_boost=albedo_boost)
         self.mi = self.scene.mi
         # Mitsuba counts the ray itself as depth 1, so each bounce adds one.
         self.integrator = self.mi.load_dict(integrator(indirect.bounces + 1))
         self.rays = indirect.rays
-        self.scalar = ray_query.VARIANT.startswith("scalar")
+        self.scalar = variant.startswith("scalar")
 
     def bounce(self, points, normals, ray_offset):
         """The bounced light at each point, on its `normals` side. Points go through in chunks so the rays in flight stay within BATCH however many points there are."""
