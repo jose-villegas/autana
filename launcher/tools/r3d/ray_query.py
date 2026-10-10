@@ -30,12 +30,16 @@ GPU_VARIANT = "cuda_ad_rgb"
 
 def trace_variant(gpu):
     """The variant a trace runs on: `GPU_VARIANT` when `gpu` and it loads a scene here, else `VARIANT`. Mesh bakes
-    pass False, so their bytes never depend on a GPU; a reference set passes True."""
-    if gpu:
-        mi = import_mitsuba()
-        if mi is not None and default_variant(mi) == GPU_VARIANT:
-            return GPU_VARIANT
-    return VARIANT
+    pass False, so their bytes never depend on a GPU; a reference set passes True. Mitsuba is left on the variant
+    it was on."""
+    mi = import_mitsuba() if gpu else None
+    if mi is None:
+        return VARIANT
+    before = mi.variant()
+    found = default_variant(mi)
+    if before is not None:
+        mi.set_variant(before)
+    return GPU_VARIANT if found == GPU_VARIANT else VARIANT
 
 
 def release_gpu():

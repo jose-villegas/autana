@@ -275,11 +275,18 @@ class TraceDeviceTests(unittest.TestCase):
         from r3d import ray_query
         with patch.object(ray_query, "default_variant", side_effect=AssertionError("asked for a device")):
             self.assertEqual(ray_query.trace_variant(False), ray_query.VARIANT)
-        with patch.object(ray_query, "import_mitsuba", return_value=object()):
-            for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
-                                (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
-                with patch.object(ray_query, "default_variant", return_value=found):
-                    self.assertEqual(ray_query.trace_variant(True), want, found)
+        for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
+                            (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
+            mi = SimpleNamespace(now="scalar_rgb", variant=lambda: mi.now)
+            mi.set_variant = lambda name: setattr(mi, "now", name)
+
+            def probe(mi):
+                mi.set_variant(found)
+                return found
+
+            with patch.object(ray_query, "import_mitsuba", return_value=mi),                     patch.object(ray_query, "default_variant", side_effect=probe):
+                self.assertEqual(ray_query.trace_variant(True), want, found)
+            self.assertEqual(mi.now, "scalar_rgb", "the probe leaves Mitsuba on the variant it was on")
 
     def test_a_set_on_the_gpu_renders_in_this_process_and_frees_the_device_after(self):
         from unittest.mock import patch
