@@ -797,12 +797,12 @@ by a substring of the name, so treat it as a lookup, not an area map.
    A suite that reads a pack from the tree (`asset_store_pack()`, directly or
    through `scene_load()` or other engine code) names it beside its
    registration: `SUITE_READS(run_<name>_suite, SPONZA_SCENE);`. The host run
-   fails a suite that reads a pack it did not name. When a pack's bakes lack
-   their `bakes.lock` rows (a branch waiting on the refit run), `run_tests.sh`
+   fails when a suite reads a pack it did not name. When a pack's bakes lack
+   their `bakes.lock` rows (a re-keyed bake not yet locked), `run_tests.sh`
    leaves that pack out, skips the suites that name it, and prints
-   `waiting on lock: <packs> (skipped suites: ...)` without failing. CI's
-   Bakes and lock checks still fail for those rows, so the branch cannot merge
-   until the lock has them.
+   `waiting on lock: <packs> (skipped suites: ...)` without failing. CI stays
+   red for those rows: the Bakes workflow's lock check and the host-tests
+   job's bake fetch both fail until the lock has them.
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section: `suite_job.c` runs every one of its tests on both, and fences

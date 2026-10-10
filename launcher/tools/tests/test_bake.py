@@ -714,6 +714,17 @@ class SkipUnlockedTests(unittest.TestCase):
         self.assertIn("offline", err)
         self.assertFalse(self.listed.exists())
 
+    def test_one_pack_waiting_and_another_broken_still_fails_naming_the_broken_one(self):
+        broken = next(found for found in self.found
+                      if found.output.removesuffix(bake.MESH_SUFFIX) not in self.packs[self.holder])
+        bake.cached(self.lock[broken.key], bake.MESH_SUFFIX, self.cache).unlink()
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 2)
+        self.assertIn(broken.output, err)
+        self.assertNotIn(self.waiting.output, err)
+        self.assertFalse(self.listed.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

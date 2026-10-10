@@ -9,7 +9,6 @@
 #include "asset/asset_store.h"
 #include "suites.h"
 
-#define DIR_ENV     "AUTANA_ASSET_DIR"
 #define WAITING_ENV "AUTANA_PACKS_WAITING"
 
 const asset_pack_t* __real_asset_store_pack(const char* name);
@@ -21,7 +20,7 @@ static int undeclared;
 
 void
 pack_reads_begin(void) {
-    const char* dir = getenv(DIR_ENV);
+    const char* dir = getenv(ASSET_STORE_DIR_ENV);
     runner_dir = dir == NULL ? NULL : strdup(dir);
     const char* list = getenv(WAITING_ENV);
     if (list == NULL || list[0] == '\0') {
@@ -47,7 +46,7 @@ pack_reads_undeclared(void) {
 
 const asset_pack_t*
 __wrap_asset_store_pack(const char* name) {
-    const char* dir = getenv(DIR_ENV);
+    const char* dir = getenv(ASSET_STORE_DIR_ENV);
     if (runner_dir != NULL && dir != NULL && strcmp(dir, runner_dir) == 0 && !suites_current_reads(name)) {
         const char* suite = suites_current();
         undeclared++;

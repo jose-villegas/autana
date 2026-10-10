@@ -468,10 +468,10 @@ PYTHON=$(find_python) || exit 1
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
 # The asset packs the suites read, one per root asset in the tree. A pack
-# whose bakes only lack their lock rows (a branch waiting on the refit run) is
+# whose bakes only lack their lock rows (a re-keyed bake not yet locked) is
 # left out, and host_tests skips the suites that name it in SUITE_READS and
-# prints them; CI's Bakes and lock checks stay red for those rows. Any other
-# build failure fails here.
+# prints them (docs/Testing-Guide.md, "Adding a suite"). Any other build
+# failure fails here.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR
 UNLOCKED="$BUILD_DIR/unlocked_packs.txt"

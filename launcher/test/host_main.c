@@ -93,13 +93,14 @@ main(int argc, char** argv) {
     /* A suite that did not fit is a test that did not run, so this run must
      * not come back green having quietly checked less than the whole set. */
     if (suites_dropped() > 0) {
-        printf("FAIL: %d suite(s) dropped; raise SUITE_MAX in suites.h\n", suites_dropped());
+        printf("FAIL: %d registration(s) dropped; raise the limit the SUITE OVERFLOW line names\n", suites_dropped());
         failures += suites_dropped();
     }
-    /* A pack not built waits on the bake lock: its suites did not run, and
-     * the run says which; CI's lock check is what goes red for it. A read no
-     * SUITE_READS names fails the run, so that skip cannot miss a suite. */
-    suites_print_waiting();
+    /* Only a full run skips the suites of a pack waiting on the lock. A read
+     * no SUITE_READS names fails the run, so the skip cannot miss a suite. */
+    if (argc <= 1) {
+        suites_print_waiting();
+    }
     failures += pack_reads_undeclared();
     return failures;
 }

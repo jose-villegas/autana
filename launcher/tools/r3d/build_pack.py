@@ -23,8 +23,8 @@ the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
 it. What the cache lacks is downloaded, so a cold cache needs the network once;
 --offline never downloads, and a bake that is not available fails, naming
 each; --skip-unlocked FILE instead leaves out a pack whose bakes only lack
-their lock rows, writing its name to FILE. The lock is this repository's: a mesh of a scene outside it is the file
-beside it.
+their lock rows, writing its name to FILE. The lock is this repository's: a
+mesh of a scene outside it is the file beside it.
 --pack-of prints the pack that holds entry ID. Run from the repository
 root; standard library only, and no mesh is baked. Packs are build
 products, never committed.

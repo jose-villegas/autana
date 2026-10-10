@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /* Headroom over the ~130 suites registered; a suite past it fails the run. */
 #define SUITE_MAX 192
@@ -45,7 +46,7 @@ void suite_register_on_request(const char* name, suite_fn fn);
 /* SUITE_READS(fn, "pack", ...) names the packs suite `fn` reads from the
  * runner's asset folder (asset/asset_store.h), so a run whose pack waits on the
  * bake lock skips that suite rather than fail it. The host runner fails a run
- * in which a suite reads a pack it did not name, so the names cannot go stale.
+ * in which a suite reads a pack it did not name, so no read goes unnamed.
  * At most SUITE_READS_MAX suites name packs; one past it fails the run. */
 #define SUITE_READS_MAX 16
 void suite_reads(const char* name, const char* const* packs);
