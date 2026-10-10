@@ -67,10 +67,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "build"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "qemu"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
+import patched_qemu  # noqa: E402  (path must be set up first)
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
@@ -393,8 +395,14 @@ def main(argv):
     log_path = args.log or os.path.join(workdir, "qemu_serial.log")
 
     python = idf_python()
-    qemu = find_one(str(espressif_tools_root() / "tools" / "qemu-xtensa" / "*" / "qemu" / "bin" /
-                        "qemu-system-xtensa*"), "qemu-system-xtensa")
+    qemu = patched_qemu.installed(args.idf_path)
+    if qemu:
+        print("qemu_run: QEMU %s, with launcher/test/qemu/patches" % qemu)
+    else:
+        qemu = find_one(str(espressif_tools_root() / "tools" / "qemu-xtensa" / "*" / "qemu" / "bin" /
+                            "qemu-system-xtensa*"), "qemu-system-xtensa")
+        print("qemu_run: Espressif's prebuilt QEMU, without launcher/test/qemu/patches; "
+              "`patched_qemu.py build` adds them on Linux")
 
     merge_flash(args.build_dir, flash, python)
     with open(efuse, "wb") as fh:
