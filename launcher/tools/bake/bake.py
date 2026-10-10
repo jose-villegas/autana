@@ -66,7 +66,6 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
 from build import packages  # noqa: E402
-from build import packages  # noqa: E402
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
 REPO = TOOLS.parents[1]
