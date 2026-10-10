@@ -6,11 +6,12 @@ in patches/ beside this file, for the runs qemu_run.py starts.
     python3 launcher/test/qemu/patched_qemu.py path    # the binary, or exit 1
     python3 launcher/test/qemu/patched_qemu.py deps    # Debian/Ubuntu packages
 
-Each patch fixes a QEMU bug that fails runs of this firmware and names its
-upstream issue in its header; a patch is deleted once the QEMU version
-ESP-IDF installs has the fix (it then stops applying, and the build says
-which one). The version is read from ESP-IDF's own tools.json, so a newer
-ESP-IDF rebuilds against its QEMU with no edit here.
+Each patch fixes a QEMU bug that fails runs of this firmware. Its header
+says, on lines of their own, the upstream issue (Upstream:), the QEMU tag
+it was made against (Applies to:) and when to delete it (Remove:). The
+version built is read from ESP-IDF's own tools.json, so a newer ESP-IDF
+rebuilds against its QEMU with no edit here; a patch that no longer
+applies stops the build at `git apply`, naming the file.
 
 The build installs into launcher/build.qemu-xtensa/<version>-<patch hash>/,
 one directory per version and patch set; qemu_run.py runs that binary when
