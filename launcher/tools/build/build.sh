@@ -8,7 +8,7 @@
 #
 # Usage:
 #   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
-#                        [--layout-seed N] [--verbose] [IDF_EXPORT]
+#                        [--layout-seed N] [--hot-tunables] [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -70,6 +70,7 @@ AUTORUN=0
 VERBOSE=0
 IDF_EXPORT_ARG=""
 LAYOUT_SEED=0
+HOT_TUNABLES=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -77,6 +78,7 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
+        --hot-tunables) HOT_TUNABLES=1; shift ;;
         --layout-seed)
             [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; exit 2; }
             LAYOUT_SEED=$2; shift 2 ;;
@@ -103,6 +105,11 @@ fi
 
 if [ "$AUTORUN" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--autorun runs the SUITES at boot, so it needs --diag" >&2
+    exit 2
+fi
+
+if [ "$HOT_TUNABLES" -eq 1 ] && [ "$VARIANT" = release ]; then
+    echo "--hot-tunables needs --dev or --diag" >&2
     exit 2
 fi
 
@@ -147,6 +154,9 @@ if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
 fi
 VARIANT_OPTIONS="$VARIANT_OPTIONS --layout-seed $LAYOUT_SEED"
+if [ "$HOT_TUNABLES" -eq 1 ]; then
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --hot-tunables"
+fi
 # shellcheck disable=SC2086
 quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 

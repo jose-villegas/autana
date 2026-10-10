@@ -133,6 +133,10 @@ A perf-scoped build is **not a gate**: it drops behaviour coverage on purpose.
 Never take a merge decision from one, and never diff its numbers against an
 unscoped capture's: different scope, different layout.
 
+`--hot-tunables` (dev/diag) enables live `TUNE_HOT` values for sweeps; default
+device images keep them constant. Like `--layout-seed`, it selects the image
+built and requires `--flash` when running suites.
+
 ## Float maths is single precision, and the build holds it there
 
 The S3's FPU has no double: every `double` operation is a libgcc call, about

@@ -1078,6 +1078,50 @@ NOTHING_MATCHED = (b"SUITE_TEST name=test_gas_fits selected=0\n"
                    b"\nRUNSUITE_COMPLETE name=sand found=1 selected=0 unmatched=1\n")
 
 
+class TuneSetTests(unittest.TestCase):
+    """--set: each value is SET on the held port before RUNSUITE, and a
+    value the board does not echo back stops the capture before it runs."""
+
+    def apply(self, setting, *chunks):
+        connection = FakeConnection(list(chunks))
+        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.05), mock.patch("builtins.print"):
+            device.apply_tunables(connection, [setting])
+        return b"".join(connection.writes)
+
+    def test_an_echoed_value_is_set(self):
+        self.assertEqual(self.apply("r3d.side=3", b"TUNE_OK r3d.side=3\n"), b"\nSET r3d.side 3\n")
+
+    def test_hex_is_compared_as_the_board_prints_it(self):
+        self.apply("a.rgb=0x10", b"log line\nI (5) console: TUNE_OK a.rgb=16\n")
+
+    def test_a_dropped_line_is_asked_again(self):
+        class AnswersSecondAsk(FakeConnection):
+            def read(self, unused_size):
+                return b"TUNE_OK r3d.side=3\n" if len(self.writes) == 2 else b""
+
+        connection = AnswersSecondAsk()
+        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.05), mock.patch("builtins.print"):
+            device.apply_tunables(connection, ["r3d.side=3"])
+        self.assertEqual(len(connection.writes), 2)
+
+    def test_a_refusal_a_wrong_echo_or_silence_stops(self):
+        for chunks in ([b"TUNE_ERR range r3d.side 99\n"], [b"TUNE_OK r3d.side=2\n"], []):
+            with self.subTest(chunks=chunks), self.assertRaises(device.TuneRefused):
+                self.apply("r3d.side=3", *chunks)
+
+    def test_the_set_precedes_the_run_request(self):
+        connection = FakeConnection([b"TUNE_OK r3d.side=3\n", b"SUITE_DONE sand\n"])
+        args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None, max_seconds=1,
+                         idle_seconds=None, expect_build_id=None, test_filter=[], tune_set=["r3d.side=3"])
+        with tempfile.TemporaryDirectory() as directory:
+            args.out = str(Path(directory) / "capture.log")
+            with mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=Path(directory) / "records"), \
+                 mock.patch("builtins.print"):
+                device.run_suite(args, mock_store(), BOARD)
+        self.assertEqual(b"".join(connection.writes), b"\nSET r3d.side 3\n\nRUNSUITE sand\n")
+
+
 class TestFilterRunTests(unittest.TestCase):
     """`--test` narrows a suite on the board: the request carries the
     patterns, a pattern that selects nothing or one the board cannot take is
