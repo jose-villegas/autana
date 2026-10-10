@@ -102,6 +102,23 @@ program_counters(int event_index) {
     xtensa_perfmon_start();
 }
 
+bool
+frame_cost_count_begin(int event_index) {
+    if (!frame_cost_counters_idle() || frame_cost_event_at(event_index) == NULL) {
+        return false;
+    }
+    program_counters(event_index);
+    return true;
+}
+
+bool
+frame_cost_count_end(uint32_t* cycles, uint32_t* value) {
+    xtensa_perfmon_stop();
+    *cycles = xtensa_perfmon_value(0);
+    *value = xtensa_perfmon_value(1);
+    return xtensa_perfmon_overflow(0) == ESP_OK && xtensa_perfmon_overflow(1) == ESP_OK;
+}
+
 /* The frame loop's own task claims ownership on its first bracket; a begin
  * from any other task is refused rather than corrupt the shared instance. */
 int

@@ -266,8 +266,6 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "gfx/present/gfx_present.h"
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
-#include "xtensa/xt_perf_consts.h"
-#include "xtensa_perfmon_access.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */
@@ -1777,36 +1775,22 @@ test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget(void) {
     perf_target("mixed-scene gravity flip", per_step, 13800, 16860);
 }
 
-/* Counter 0 is cycles, seeded the way xtensa_perfmon_exec() seeds it (select
- * 0, mask 0xffff). kernelcnt 0 / tracelevel -1 is its own encoding for
- * "no interrupt-level filter" (xtensa_perfmon_config_t: negative tracelevel
- * means the filter is ignored) - every level counts, none excluded, which is
- * what a whole-step instrument needs. */
 static void
-measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps,
-                     const frame_cost_event_t* event, uint32_t* out_cycles, uint32_t* out_value) {
-    TEST_ASSERT_TRUE_MESSAGE(frame_cost_counters_idle(),
+measure_xtperf_event(const char* scene, sand_t* real, int gx, int gy, int gz, int steps, int event_index,
+                     uint32_t* out_cycles, uint32_t* out_value) {
+    const frame_cost_event_t* const event = frame_cost_event_at(event_index);
+    TEST_ASSERT_TRUE_MESSAGE(frame_cost_count_begin(event_index),
                              "the counters are armed through frame_cost; disarm them first");
-    xtensa_perfmon_stop();
-    xtensa_perfmon_init(0, XTPERF_CNT_CYCLES, 0xffff, 0, -1);
-    xtensa_perfmon_init(1, event->select, event->mask, 0, -1);
-    xtensa_perfmon_reset(0);
-    xtensa_perfmon_reset(1);
-    xtensa_perfmon_start();
-
     for (int i = 0; i < steps; i++) {
         sand_step(real, gx, gy, gz);
     }
+    uint32_t cycles = 0;
+    uint32_t value = 0;
+    const bool counted = frame_cost_count_end(&cycles, &value);
 
-    xtensa_perfmon_stop();
-    const uint32_t cycles = xtensa_perfmon_value(0);
-    const uint32_t value = xtensa_perfmon_value(1);
-    const bool cycles_overflowed = xtensa_perfmon_overflow(0) != ESP_OK;
-    const bool value_overflowed = xtensa_perfmon_overflow(1) != ESP_OK;
-
-    ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s%s", scene, event->name,
+    ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s", scene, event->name,
              (unsigned)(cycles / (uint32_t)steps), (unsigned)(value / (uint32_t)steps), steps,
-             cycles_overflowed ? " overflow=cycles" : "", value_overflowed ? " overflow=value" : "");
+             counted ? "" : " overflow=counters");
 
     if (strcmp(event->name, FRAME_COST_DEFAULT_EVENT) == 0 && value != 0) {
         const uint32_t cpi_x100 = (uint32_t)(((uint64_t)cycles * 100) / value);
@@ -1857,7 +1841,7 @@ run_xtperf_over_scene(const xtperf_scene_t* scene, uint64_t* total_cycles, uint6
         scene->build(real, big, blocks);
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event(scene->name, real, 0, scene->gy, 0, scene->steps, frame_cost_event_at(e), &cycles, &value);
+        measure_xtperf_event(scene->name, real, 0, scene->gy, 0, scene->steps, e, &cycles, &value);
 
         free(real);
         free(big);

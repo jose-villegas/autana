@@ -401,6 +401,14 @@ int frame_cost_event_index(const char* name);
 const frame_cost_event_t* frame_cost_event_at(int index);
 int frame_cost_event_count(void);
 
+/* A window the caller times itself, on the core it runs on: cycles and the
+ * event at `event_index` counted from zero. False, counting nothing, while
+ * frame_cost's own arm holds the counters or for an unknown event. */
+bool frame_cost_count_begin(int event_index);
+
+/* Stops the window's counters and reads them; false when either wrapped. */
+bool frame_cost_count_end(uint32_t* cycles, uint32_t* value);
+
 /* The names seen so far, for a console listing; NULL past the last. */
 const char* frame_cost_name_at(int index);
 int frame_cost_names_dropped(void);
