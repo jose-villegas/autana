@@ -248,13 +248,21 @@ Reference: [the asset packs](../assets/README.md#packs).
 
 ## Every frame, on the board
 
-The top bar is the scene as shipped, one segment per stage. Each bar below it
-is what one debug view adds when selected, drawn hatched past the shipped
-frame: none of it runs unless that view is on. The dotted lines are the 30 and
-60 fps budgets.
+Separate charts show the shipped frame and each debug view on the same time
+scale. The shipped chart has one solid segment per stage; each view chart
+shows only its hatched additions, starting at the shipped total. The dotted
+lines mark the 30 and 60 fps budgets.
 
-<!-- generated: pipeline-frame-stages sha256=db980330fd2601dfd66cc093194b33c8ae4d653467fb412bc961fb4622e8efc0 -->
-![Frame stages as shipped, and what each debug view adds](../images/render/pipeline-frame-stages.png)
+<!-- generated: pipeline-frame-stages sha256=44726291d0d240a533081e0892897ffec63781dc4b245fb6946dfcb3fe0b2024 -->
+![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
+
+![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
+
+![Frame stages with the tiles view](../images/render/pipeline-frame-stages.tiles.png)
+
+![Frame stages with the motion view](../images/render/pipeline-frame-stages.motion.png)
+
+![Frame stages with the meshlets view](../images/render/pipeline-frame-stages.meshlets.png)
 
 | Stage | As shipped | depth view adds | tiles view adds | motion view adds | meshlets view adds |
 |---|---|---|---|---|---|

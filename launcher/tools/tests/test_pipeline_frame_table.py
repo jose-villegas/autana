@@ -54,6 +54,41 @@ class PipelineFrameTableTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 frame_stages.stage_costs(root / "missing.log", str(root / "view-{view}.log"), ["motion"])
 
+    def test_each_captured_view_has_its_own_chart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            shipped = root / "frame.png"
+            order = ["r3d.draw", "frame.rest"]
+            base = {"r3d.draw": 40, "frame.rest": 1}
+            added = {"motion": {"r3d.draw": 2, "frame.rest": 6},
+                     "tiles": {"r3d.draw": 1, "frame.rest": 3}}
+            names = ["depth", "motion", "tiles"]
+            import matplotlib.pyplot as plt
+            with patch("matplotlib.pyplot.close", wraps=plt.close) as close:
+                frame_stages.chart(order, base, added, shipped)
+            axes = [call.args[0].axes[0] for call in close.call_args_list
+                    if hasattr(call.args[0], "axes")]
+            self.assertEqual([axis.get_title() for axis in axes],
+                             ["As shipped", "With the motion view", "With the tiles view"])
+            self.assertTrue(all(axis.get_xlim() == axes[0].get_xlim() for axis in axes))
+            self.assertEqual(axes[0].patches[0].get_x(), 0)
+            for axis in axes[1:]:
+                self.assertEqual(axis.patches[0].get_x(), sum(base.values()))
+                self.assertTrue(all(bar.get_x() >= sum(base.values()) and bar.get_hatch()
+                                    for bar in axis.patches))
+            for axis in axes:
+                self.assertEqual([line.get_xdata()[0] for line in axis.lines],
+                                 [frame_stages.MS_PER_SECOND / rate for rate in frame_stages.FRAME_RATES])
+            self.assertEqual({path.name for path in root.glob("*.png")},
+                             {"frame.png", "frame.motion.png", "frame.tiles.png"})
+            table = frame_stages.table(order, base, added, names, [1, 1, 1], shipped.name)
+            images = [line for line in table.splitlines() if line.startswith("![")]
+            self.assertEqual(images, [
+                "![Frame stages as shipped](../images/render/frame.png)",
+                "![Frame stages with the motion view](../images/render/frame.motion.png)",
+                "![Frame stages with the tiles view](../images/render/frame.tiles.png)"])
+            self.assertIn("Not captured: depth.", table)
+
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()
         self.assertIn("motion", names)
