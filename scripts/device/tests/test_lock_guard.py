@@ -1213,18 +1213,20 @@ class SuiteFailureTests(Store):
             self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
         self.assertEqual(self.errors()["batch"], "a batch capture failed")
 
-    def test_a_board_that_stopped_reading_ends_the_batch(self):
+    def test_a_board_that_would_answer_every_run_the_same_ends_the_batch(self):
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
                          suite=["sand"], runs=2, perf_scope=False, flash=False, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None)
-        with mock.patch.object(device, "run_suite",
-                               side_effect=device.BoardNotReading("not reading")) as run_suite, \
-                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
-                contextlib.redirect_stdout(io.StringIO()):
-            with self.assertRaises(device.BoardNotReading):
-                device.batch(args, self.store, BOARD_A)
-        self.assertEqual(run_suite.call_count, 1)
-        self.assertIsNone(self.store.read_json(self.store.lock_path(BOARD_A)))
+        for error in (device.BoardNotReading("not reading"), device.TuneRefused("refused"),
+                      device.TestFilterError("no filter")):
+            with self.subTest(error=type(error).__name__), \
+                    mock.patch.object(device, "run_suite", side_effect=error) as run_suite, \
+                    mock.patch.object(device, "git_commit", return_value="c0ffee"), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(type(error)):
+                    device.batch(args, self.store, BOARD_A)
+                self.assertEqual(run_suite.call_count, 1)
+                self.assertIsNone(self.store.read_json(self.store.lock_path(BOARD_A)))
 
 
 class DyingHandle(Replies):

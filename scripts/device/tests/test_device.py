@@ -138,8 +138,8 @@ class OpenSerialTests(unittest.TestCase):
         clock only its sleeps move."""
         with self.stalled():
             connection = device.open_serial()
-        type(connection).out_waiting = property(
-            lambda unused: queued.pop(0) if len(queued) > 1 else queued[0])
+        self.enterContext(mock.patch.object(type(connection), "out_waiting", property(
+            lambda unused: queued.pop(0) if len(queued) > 1 else queued[0])))
         clock = [0.0]
         fake_time = types.SimpleNamespace(
             monotonic=lambda: clock[0],
@@ -194,16 +194,21 @@ class PortGuardTests(unittest.TestCase):
     opens a real port or lists the real ones, even where the code under test
     swallowed the refusal."""
 
-    def run_swallowing(self, statement):
-        child = ("import sys; sys.path.insert(0, sys.argv[1]); import port_guard\n"
+    # A name no host has, so a guard that let it through still opens nothing.
+    PORT = "autana-test-no-such-port"
+
+    def run_swallowing(self, statement, guard="port_guard"):
+        child = ("import sys; sys.path.insert(0, sys.argv[1]); import " + guard + "\n"
                  "try:\n    " + statement + "\nexcept BaseException:\n    pass\n")
         return subprocess.run([sys.executable, "-c", child, str(DEVICE / "tests")],
                               capture_output=True, text=True)
 
     def test_opening_a_real_port_fails_the_run(self):
-        result = self.run_swallowing("import serial; serial.Serial('COM9')")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("opened the real serial port COM9", result.stderr)
+        for guard in ("port_guard", "isolation"):
+            with self.subTest(guard=guard):
+                result = self.run_swallowing(f"import serial; serial.Serial({self.PORT!r})", guard)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("opened the real serial port " + self.PORT, result.stderr)
 
     def test_listing_the_real_ports_fails_the_run(self):
         result = self.run_swallowing(
@@ -215,16 +220,17 @@ class PortGuardTests(unittest.TestCase):
         import serial
         sleeps = []
         with self.assertRaises(port_guard.RealPortTouched):
-            device.open_when_free(device.PORT_WAIT_SECONDS, opener=lambda: serial.Serial("COM9"),
-                                  sleep=sleeps.append)
-        port_guard.violations.remove("opened the real serial port COM9")
+            device.open_when_free(device.PORT_WAIT_SECONDS, opener=lambda: serial.Serial(self.PORT),
+                                  sleep=sleeps.append, now=lambda: sum(sleeps))
+        port_guard.violations.remove("opened the real serial port " + self.PORT)
         self.assertEqual(sleeps, [])
 
 
 class PortGuardCoverageTests(unittest.TestCase):
     def test_every_test_module_that_imports_device_imports_the_guard_first(self):
         """Each test directory runs in its own process, so the guard is only
-        there if the module that brings device in brought it in first."""
+        there if the module that brings device in (directly, or through
+        autana) brought it in first."""
         engine = DEVICE.parents[1]
         listed = subprocess.run(["git", "ls-files", "*.py"], cwd=engine, capture_output=True,
                                 text=True, check=True).stdout.split()
@@ -235,7 +241,8 @@ class PortGuardCoverageTests(unittest.TestCase):
                        if isinstance(node, ast.Import) for alias in node.names]
             imports += [(node.lineno, node.module) for node in ast.walk(tree)
                         if isinstance(node, ast.ImportFrom)]
-            device_at = min((line for line, module in imports if module == "device"), default=None)
+            device_at = min((line for line, module in imports if module in ("device", "autana")),
+                            default=None)
             guard_at = min((line for line, module in imports
                             if module in ("port_guard", "isolation")), default=None)
             if device_at is not None and (guard_at is None or guard_at > device_at):
