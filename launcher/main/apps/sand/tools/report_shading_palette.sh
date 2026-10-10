@@ -47,7 +47,7 @@ OUT_BIN="$BIN_DIR/shading_palette"
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools/gen" \
     "$SCRIPT_DIR/shading_palette.c" \
-    "$MAIN_DIR/util/runtime/job.c" \
+    "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_chunk_sched.c" \
     "$SAND_DIR/sand_impulse.c" \

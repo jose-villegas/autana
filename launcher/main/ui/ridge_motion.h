@@ -13,8 +13,8 @@
 
 #include <stdint.h>
 
+#include "math/scalar/trig.h"
 #include "ui/ridge_pose.h"
-#include "util/scalar/trig.h"
 
 /* How much of each. Passed in rather than compiled in because these are
  * judged by eye, on the device, and a caller may be changing them live. */

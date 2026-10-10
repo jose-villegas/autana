@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/runtime/frame_cost.h"
+#include "profile/frame_cost.h"
 
 /* A frame_cost_t is too big for the device's test stack: each test owns a
  * zeroed one on the heap and frees it before it returns. */

@@ -5,7 +5,7 @@
  */
 #include "console/console_verbs.h"
 
-#include "util/runtime/build_id.h"
+#include "services/build_id.h"
 
 #include <stdio.h>
 
