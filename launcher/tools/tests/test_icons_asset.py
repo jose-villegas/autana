@@ -146,32 +146,28 @@ class FolderPackTests(Fixture):
         path = self.write("ui/marks.icons.toml", SET.replace('"marks.png"', '"../marks.png"'))
         self.assertEqual(sorted(build_pack.pack_bytes([path])), ["ui"])
 
-    def test_folder_packs_do_not_nest(self):
-        self.write("ui/ui.pack.toml", "")
-        self.write("ui/inner/inner.pack.toml", "")
-        self.write("ui/inner/marks.icons.toml", SET.replace('"marks.png"', '"../../marks.png"'))
-        with self.assertRaisesRegex(build_pack.SettingsError, "do not nest"):
+    def refused(self, files, message):
+        """build_pack refuses the tree of `files` ({path: text, or a set's
+        folder depth for SET with its atlas found from there}) with `message`."""
+        for path, text in files.items():
+            self.write(path, SET.replace('"marks.png"', '"%smarks.png"' % ("../" * text)) if isinstance(text, int) else text)
+        with self.assertRaisesRegex(build_pack.SettingsError, message):
             build_pack.pack_bytes([self.root])
+
+    def test_folder_packs_do_not_nest(self):
+        self.refused({"ui/ui.pack.toml": "", "ui/inner/inner.pack.toml": "", "ui/inner/marks.icons.toml": 2},
+                     "do not nest")
 
     def test_a_pack_toml_holds_no_settings_yet(self):
-        self.write("ui/ui.pack.toml", "entries = []\n")
-        self.write("ui/marks.icons.toml", SET.replace('"marks.png"', '"../marks.png"'))
-        with self.assertRaisesRegex(build_pack.SettingsError, "unknown keys"):
-            build_pack.pack_bytes([self.root])
+        self.refused({"ui/ui.pack.toml": "entries = []\n", "ui/marks.icons.toml": 1}, "unknown keys")
 
     def test_one_id_twice_in_a_folder_pack_is_refused(self):
-        self.write("ui/ui.pack.toml", "")
-        self.write("ui/a/marks.icons.toml", SET.replace('"marks.png"', '"../../marks.png"'))
-        self.write("ui/b/marks.icons.toml", SET.replace('"marks.png"', '"../../marks.png"'))
-        with self.assertRaisesRegex(build_pack.SettingsError, "ids are unique within a pack"):
-            build_pack.pack_bytes([self.root])
+        self.refused({"ui/ui.pack.toml": "", "ui/a/marks.icons.toml": 2, "ui/b/marks.icons.toml": 2},
+                     "ids are unique within a pack")
 
     def test_a_folder_pack_and_a_root_of_one_name_are_refused(self):
-        self.write("ui/ui.pack.toml", "")
-        self.write("ui/marks.icons.toml", SET.replace('"marks.png"', '"../marks.png"'))
-        self.write("ui.icons.toml", SET.replace('"cross"', '"x"').replace('"bar"', '"y"'))
-        with self.assertRaisesRegex(build_pack.SettingsError, "pack named 'ui'"):
-            build_pack.pack_bytes([self.root])
+        self.refused({"ui/ui.pack.toml": "", "ui/marks.icons.toml": 1,
+                      "ui.icons.toml": SET.replace('"cross"', '"x"').replace('"bar"', '"y"')}, "pack named 'ui'")
 
     def test_the_tree_packs_the_system_icons_in_the_engine_pack_and_every_icon_reads_back(self):
         packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])

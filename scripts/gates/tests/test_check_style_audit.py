@@ -559,24 +559,22 @@ class MainTest(unittest.TestCase):
             code = self.run_main(root, [])
         self.assertEqual(code, 1)
 
-    def test_an_unknown_layer_folder_exits_two_instead_of_crashing(self):
+    def include_direction_beside(self, files):
+        """The INCLUDE-DIRECTION exit code over one gfx source and `files`."""
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
-            gate_tree.write(root, "launcher/main/newlayer/thing.h", "#pragma once\n")
+            for path, text in files.items():
+                gate_tree.write(root, path, text)
             gate_tree.commit(root, "launcher")
-            code = self.run_main(root, ["--rule", "INCLUDE-DIRECTION"])
-        self.assertEqual(code, 2)
+            return self.run_main(root, ["--rule", "INCLUDE-DIRECTION"])
+
+    def test_an_unknown_layer_folder_exits_two_instead_of_crashing(self):
+        self.assertEqual(self.include_direction_beside({"launcher/main/newlayer/thing.h": "#pragma once\n"}), 2)
 
     def test_a_folder_of_content_alone_has_no_tier(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
-            gate_tree.write(root, "launcher/main/content/content.pack.toml", "")
-            gate_tree.write(root, "launcher/main/content/icons/set.icons.toml", "")
-            gate_tree.commit(root, "launcher")
-            code = self.run_main(root, ["--rule", "INCLUDE-DIRECTION"])
-        self.assertEqual(code, 0)
+        self.assertEqual(self.include_direction_beside({"launcher/main/content/content.pack.toml": "",
+                                                        "launcher/main/content/icons/set.icons.toml": ""}), 0)
 
     def test_a_warning_alone_passes_without_strict_and_fails_with_it(self):
         with tempfile.TemporaryDirectory() as temp:
