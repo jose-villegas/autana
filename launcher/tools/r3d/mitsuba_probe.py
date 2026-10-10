@@ -12,7 +12,7 @@ import argparse
 import sys
 import time
 
-# The render: Mitsuba's own Cornell box, small enough to take a second where the variant works.
+# The render: Mitsuba's own Cornell box, small enough to finish quickly.
 SIZE = 128
 SAMPLES_PER_PIXEL = 64
 

@@ -114,7 +114,7 @@ class ReferenceInputs:
     tonemap_white: float
     camera: SimpleNamespace       # the scene camera: lens, background and path
     size: tuple                   # the camera-path visibility size the poses are sampled at
-    poses: dict                   # train_every_ms, held_out_every_ms, coverage_every_ms
+    poses: dict                   # the fit recipe's POSE_SPACING fields
 
     def job(self):
         return SimpleNamespace(settings=self.settings, bake=self.bake)

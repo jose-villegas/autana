@@ -31,6 +31,17 @@ TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
 START_SHA256 = "5" * 64
 
 
+class AnyStart(dict):
+    """Starts that all have the bytes `sha256`, whatever their key."""
+
+    def __init__(self, sha256=START_SHA256):
+        super().__init__()
+        self.sha256 = sha256
+
+    def get(self, key, default=None):
+        return self.sha256
+
+
 def fitted_job():
     """A fitted renderer of the tree and its scene."""
     for path in sorted(build_pack.input_files([build_pack.DEFAULT_SEARCH])):
@@ -194,34 +205,34 @@ class StageTests(unittest.TestCase):
 
     def test_a_fit_edit_rekeys_the_fit_alone(self):
         job, scene = fitted_job()
-        keys = bake.stage_keys(job, scene, TOOL_KEYS, START_SHA256)
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())
         fit = copy.deepcopy(job)
         fit.renderer.fit.steps += 1
-        refit = bake.stage_keys(fit, scene, TOOL_KEYS, START_SHA256)
+        refit = bake.stage_keys(fit, scene, TOOL_KEYS, AnyStart())
         self.assertEqual((keys["start"], keys["reference"]), (refit["start"], refit["reference"]))
         self.assertNotEqual(keys["fit"], refit["fit"])
-        retool = bake.stage_keys(job, scene, {**TOOL_KEYS, "fit": "changed"}, START_SHA256)
+        retool = bake.stage_keys(job, scene, {**TOOL_KEYS, "fit": "changed"}, AnyStart())
         self.assertEqual((keys["start"], keys["reference"]), (retool["start"], retool["reference"]))
         self.assertNotEqual(keys["fit"], retool["fit"])
 
     def test_the_references_do_not_read_the_start(self):
         """Fits that differ only in their start, its budget or its shading, share one reference set."""
         job, scene = fitted_job()
-        keys = bake.stage_keys(job, scene, TOOL_KEYS, START_SHA256)
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())
         other = copy.deepcopy(job)
         other.renderer.variant.triangles += 1
         other.renderer.shading = "changed"
-        moved = bake.stage_keys(other, scene, TOOL_KEYS, START_SHA256)
+        moved = bake.stage_keys(other, scene, TOOL_KEYS, AnyStart())
         self.assertNotEqual(keys["start"], moved["start"])
         self.assertEqual(keys["reference"], moved["reference"])
-        rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"}, START_SHA256)
+        rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"}, AnyStart())
         self.assertNotEqual(keys["start"], rebaked["start"])
         self.assertEqual((keys["reference"], keys["fit"]), (rebaked["reference"], rebaked["fit"]))
 
     def test_the_fit_is_keyed_on_its_starts_bytes_and_unknown_without_them(self):
         job, scene = fitted_job()
-        keys = bake.stage_keys(job, scene, TOOL_KEYS, START_SHA256)
-        self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, "f" * 64)["fit"])
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())
+        self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, AnyStart("f" * 64))["fit"])
         self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS)["fit"])
 
     def test_the_reference_key_counts_every_field_its_render_reads(self):
@@ -317,14 +328,28 @@ class LockTests(unittest.TestCase):
         self.assertEqual(bake.locked_starts({"k" * 64: self.row}, made), {"k" * 64: self.row["sha256"]})
         self.assertEqual(bake.locked_starts({}, made), {"k" * 64: "f" * 64})
 
-    def test_a_fit_fetches_its_locked_start_and_fails_without_one(self):
+    def test_a_fit_fetches_the_start_its_key_names_and_fails_without_it(self):
+        start = bake_of("k" * 64, self.tree)
         fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="f" * 64,
-                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh",
+                        stages={"start": "k" * 64, "start_sha256": self.row["sha256"]}, start=start)
         bake.store(self.tree, self.row, bake.MESH_SUFFIX, self.cache)
         path = produce.start_file(fit, self.cache, {"k" * 64: self.row})
         self.assertEqual(path.read_bytes(), self.tree.read_bytes())
-        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ is neither locked nor made here"):
-            produce.start_file(fit, self.root / "empty", {})
+        other = {"k" * 64: {**self.row, "sha256": "e" * 64}}
+        for lock, cache in (({}, self.root / "empty"), (other, self.root / "empty")):
+            with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ with sha256 .* is neither locked"):
+                produce.start_file(fit, cache, lock)
+
+    def test_one_seed_from_a_run_locks_the_start_and_carries_the_fits_bytes(self):
+        start = bake_of("k" * 64, self.tree)
+        fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="n" * 64,
+                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+        old_fit = {**self.row, "output": "two.mesh", "key": "o" * 64, "run": 3}
+        bake.store(self.tree, old_fit, bake.MESH_SUFFIX, self.cache)
+        rows = bake.seed([start, fit], self.cache, {"o" * 64: old_fit}, {"k" * 64: {**self.row, "run": 9}})
+        self.assertEqual([(row["key"], row.get("seeded", False)) for row in rows],
+                         [("k" * 64, False), ("n" * 64, True)])
 
     def test_seeding_fills_only_the_keys_the_lock_lacks(self):
         other = self.root / "two.mesh"
