@@ -4,8 +4,9 @@ The offline half of `main/anim/`: bakes a glTF 2.0 animation into a pack entry
 and prints what a clip's tracks hold through the device's
 sampler. What a track is, how to author one and how to target a new property
 is in [docs/Animation-Tracks.md](../../../docs/Animation-Tracks.md).
-The [pose input rule](../../../docs/render/Mesh-Import.md#the-offline-tools)
-describes which input `track_host.py --poses` reads.
+`track_host.py --poses` takes a `.anim.toml`: a poses file is in the source
+frame, and a built pack's tracks are in the engine frame
+([the offline tools](../../../docs/render/Mesh-Import.md#the-offline-tools)).
 Nothing here runs on the board.
 
 A camera path without Blender is a `NAME.keys.toml` that a `.anim.toml` names
@@ -23,7 +24,7 @@ because +Y up cannot define their roll.
 |---|---|
 | [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes a track per channel, node TRS or `KHR_animation_pointer`, keys and interpolation as authored, with the checks every bake makes. `r3d/build_pack.py` calls it. |
 | [camera_keys.py](camera_keys.py) | Builds a camera `.keys.toml` into glTF bytes; `gltf/gltf_read.py`'s `load_asset` calls it. |
-| [track_host.py](track_host.py), [track_host.c](track_host.c) | Prints every track of a clip's `TRCK` entry every N ms, or a camera node as a poses file, through `main/anim/`'s reader and sampler. A `.anim.toml` is first baked into a scratch pack of just that clip. `r3d/poses.py` gets a scene camera's poses from it. |
+| [track_host.py](track_host.py), [track_host.c](track_host.c) | Prints every track of a clip's `TRCK` entry every N ms, or a camera node as a poses file, through `main/anim/`'s reader and sampler. A `.anim.toml` is first baked into a scratch pack of just that clip. Its poses are right only from a `.anim.toml`. `r3d/poses.py` gets a scene camera's poses from it. |
 
 ```sh
 python tools/anim/track_host.py PATH/NAME.anim.toml --every 250

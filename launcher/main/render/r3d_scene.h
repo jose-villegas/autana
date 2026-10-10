@@ -1,6 +1,7 @@
 /*
  * r3d_scene: a baked camera: its lens, where it stands and the animation
- * it flies, sampled at a time. Reads anim/ tracks; the raster does not.
+ * it flies, sampled at a time; and a placement made from a pose. Reads
+ * anim/ tracks; the raster does not.
  */
 #pragma once
 

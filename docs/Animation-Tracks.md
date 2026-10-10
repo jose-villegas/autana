@@ -171,7 +171,9 @@ milliseconds, read from the clip's `TRCK` entry by the same
 given `--pack PACK --clip ID`, it reads the built pack in the engine frame.
 With `--poses NODE W H TAN NEAR`, it prints a camera node as the poses file
 [`report_triangle_sizes.sh`](../launcher/tools/r3d/README.md#triangle-sizes)
-reads. See [the pose input rule](render/Mesh-Import.md#the-offline-tools).
+reads. A poses file is in the source frame, so `--poses` takes a `.anim.toml`:
+a built pack's tracks are in the engine frame and give wrong poses
+([Mesh-Import.md](render/Mesh-Import.md#the-offline-tools)).
 
 ```sh
 python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 250
