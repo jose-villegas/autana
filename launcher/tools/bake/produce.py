@@ -34,6 +34,11 @@ def index_path(key, cache):
     return pathlib.Path(cache) / KEY_INDEX / f"{key}.json"
 
 
+def write_atomically(target, text):
+    """Writes by rename, so a build reading the cache meanwhile never sees half a file."""
+    keys.place(text.encode("utf-8"), target)
+
+
 def made(key, cache):
     """The row a bake made for `key` in this cache, with its file there, or None."""
     path = index_path(key, cache)
@@ -53,9 +58,7 @@ def record(bake, path, cache, run=None):
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
-    target = index_path(bake.key, cache)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
+    write_atomically(index_path(bake.key, cache), json.dumps(row, sort_keys=True) + "\n")
     return row
 
 

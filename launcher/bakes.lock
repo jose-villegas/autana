@@ -36,7 +36,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "cd330a60848a14857edbd588184849b00dfec95f0f7497e3d9b97338f087d8a7"
+key = "3b4e75a47690c3f73f59b39869ef8d03b0891fe1abe4cc294eaa72ea185fb2fd"
 sha256 = "90e6d49fe8ea06e938dffcf9f3dd0333375eb2c7b3860183a6fa5163e5aba96f"
 size = 143492
 seeded = true
@@ -44,7 +44,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "e4aded03b5aff91830240474c22cda0929064408426622b6e9b70d85b318154c"
+key = "be4d175c8621bc5d1ee404a59770c17a11d0698c14a974b06a1cbab547c11916"
 sha256 = "6d8145d1bb3f5cc83390cfa90f8e3b32d87541f560612d7fc5bdf28f547aca3f"
 size = 277776
 seeded = true
@@ -60,7 +60,7 @@ seeded = true
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "4bd1b389c2afad9cc8d0dae1b32ca4ca6d9e559bb488b4c3610a742579bac74e"
+key = "cc8448461e0308914026107182340ba742e9483322aae6835417a7e82b88d8e7"
 sha256 = "0433c27f010083bfbed06af9649fd815e3d491d23fc985330cfee4d4aba6e7a1"
 size = 250352
 seeded = true

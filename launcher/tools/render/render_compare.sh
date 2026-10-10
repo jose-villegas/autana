@@ -36,7 +36,8 @@
 # frames come from r3d/reference_render.py at the poses in FILE, the camera
 # path sampled at the renderer's --dt (tools/anim/track_host.py --every DT),
 # and are cached under r3d/.cache/reference by a hash of the scene, its import
-# files (which pin the source model's sha256), the r3d sources, the poses and N
+# files (which pin the source model's sha256), the reference stage's code as
+# bake/bake.py keys it (`bake.py tool reference`), the poses and N
 # (--samples N is the supersampling, default 4). It
 # implies --video: <label>.mp4 is reference | render | dE heatmap | edge pixels
 # per frame, at --fps 30 unless 40, 60 or 80 is given, and summary.txt gets
@@ -216,7 +217,7 @@ for path in sys.argv[1:-1]:
     digest.update(pathlib.Path(path).read_bytes())
 digest.update(sys.argv[-1].encode())
 print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses")" \
-        $(for f in "$scene_dir"/*.import.toml "$TOOLS_DIR/../r3d"/*.py "$TOOLS_DIR/render_compare.py"; do to_native "$f"; done)         "$samples")
+        $(for f in "$scene_dir"/*.import.toml "$TOOLS_DIR/render_compare.py"; do to_native "$f"; done)         "$samples $("$PYTHON" "$(to_native "$TOOLS_DIR/../bake/bake.py")" tool reference)")
     cache="$REPO_DIR/launcher/tools/r3d/.cache/reference/$key"
     if [ ! -f "$cache/done" ]; then
         [ -n "$r3d_python" ] || r3d_python=$(find_r3d_python "$REPO_DIR") || exit 1

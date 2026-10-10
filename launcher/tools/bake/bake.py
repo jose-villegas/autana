@@ -26,7 +26,9 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written; it repeats, so the meshes of a Bakes run and the
 fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
-locks the meshes in the tree as they are, marking each row `seeded`: its bytes
+locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
+of the stale row for the same output when there is one, else the tree's file,
+and each new row is marked `seeded`: its bytes
 were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
@@ -39,8 +41,10 @@ clone. Standard library only; Python 3.12 or later.
 import argparse
 import ast
 import dataclasses
+import fnmatch
 import functools
 import hashlib
+import io
 import json
 import os
 import pathlib
@@ -49,10 +53,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tokenize
 import tomllib
 import urllib.error
 import urllib.request
+import zipfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -63,9 +69,14 @@ REPO = TOOLS.parents[1]
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
+API_URL = "https://api.github.com/repos/jose-villegas/autana"
 MESH_SUFFIX = ".mesh"
 DOWNLOAD_TIMEOUT_S = 60
+# A rename into the cache another process holds open is retried this often, waiting a growing step.
+PLACE_ATTEMPTS = 8
+PLACE_WAIT_S = 0.05
 RUN_ARTIFACTS = "bakes-*"
+CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
 # bake is reproducible only on one kind of host; a seeded row has none.
 ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "seeded")
@@ -81,6 +92,7 @@ BLEND_EXPORT = "gltf/blend_skin_to_glb.py"
 GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend.
 KINDS = ("blend", "mesh", "fit")
+ENTRIES = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries}
 REQUIREMENTS_NAME = "requirements.txt"
 REQUIREMENTS_GLOB = "requirements*.txt"
 C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
@@ -111,6 +123,9 @@ class Bake:
 
 
 def default_cache():
+    """AUTANA_BAKE_CACHE when a process sets it (a build with a cache of its own), else the user cache."""
+    if os.environ.get(CACHE_VARIABLE):
+        return pathlib.Path(os.environ[CACHE_VARIABLE])
     for name in ("LOCALAPPDATA", "XDG_CACHE_HOME"):
         if os.environ.get(name):
             return pathlib.Path(os.environ[name]) / "autana" / "bakes"
@@ -226,7 +241,7 @@ def closure(entries, stop=()):
             if path in found or path in stop:
                 continue
             tree, _, added = module_facts(path)
-            if imports_bake(tree):
+            if path.is_relative_to(TOOLS / "bake") or (imports_bake(tree) and path not in ENTRIES):
                 continue
             found.add(path)
             roots += [directory for directory in added if directory not in roots]
@@ -479,16 +494,35 @@ def cached(row, suffix, cache):
     return pathlib.Path(cache) / f"{row['sha256']}{suffix}"
 
 
+def place(data, target, sha256=None):
+    """Writes `data` to `target` by rename, so no reader ever sees half a file. Builds run side by side
+    share the cache: on Windows a rename onto a file another process has open is refused, so when the
+    target already holds these bytes the write is done, and otherwise it is retried briefly. The
+    scratch file never stays behind."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as scratch:
+        scratch.write(data)
+    try:
+        for attempt in range(PLACE_ATTEMPTS):
+            try:
+                os.replace(scratch.name, target)
+                return target
+            except PermissionError:
+                if target.is_file() and (sha256 or hashlib.sha256(data).hexdigest()) == file_sha256(target):
+                    return target
+                time.sleep(PLACE_WAIT_S * (attempt + 1))
+        raise BakeMissing(f"{target}: another process holds it; the write was refused {PLACE_ATTEMPTS} times")
+    finally:
+        if os.path.exists(scratch.name):
+            os.unlink(scratch.name)
+
+
 def store(path, row, suffix, cache):
     """Copies `path` into the cache under its locked SHA-256, by rename, so a cut copy leaves nothing."""
     target = cached(row, suffix, cache)
     if target.is_file() and file_sha256(target) == row["sha256"]:
         return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as scratch:
-        scratch.write(pathlib.Path(path).read_bytes())
-    os.replace(scratch.name, target)
-    return target
+    return place(pathlib.Path(path).read_bytes(), target, row["sha256"])
 
 
 def describe(bake, why, again):
@@ -517,15 +551,9 @@ def download(row, suffix, cache):
         if error.code == 404:
             return None
         raise
-    target = cached(row, suffix, cache)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as scratch:
-        scratch.write(data)
     if hashlib.sha256(data).hexdigest() != row["sha256"]:
-        os.unlink(scratch.name)
         raise BakeMissing(f"{RELEASE_URL}{name} does not have the SHA-256 its name and the lock give")
-    os.replace(scratch.name, target)
-    return target
+    return place(data, cached(row, suffix, cache), row["sha256"])
 
 
 def fetch_all(found, lock, cache, offline=False):
@@ -547,6 +575,8 @@ def fetch_all(found, lock, cache, offline=False):
                 path = download(row, bake.suffix, cache)
             except (urllib.error.URLError, TimeoutError) as error:
                 path, where = None, f"the release could not be reached ({error}); a cold cache needs the network"
+            if path is None and "run" in row:
+                path, where = from_run(row, bake.suffix, cache), f"not on the release, and run {row['run']}'s uploads could not be read (gh signed in?)"
         if path is None:
             missing.append(describe(bake, f"locked as {row['sha256']}, not in {cache} and {where}",
                                     "run bake.py fetch online, or wait for main to publish it"))
@@ -569,14 +599,25 @@ def check(found, lock):
 
 
 def seed(found, cache, lock=None):
-    """Rows locking the tree's own files, each copied into the cache and marked seeded: the bytes are
-    carried over from the tree, not made by the code their key names. A run that makes the key again
-    writes a row without the mark. A key `lock` holds a made row for keeps it, as with a run's make."""
+    """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
+    that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
+    it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
+    under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
+    Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
+    lock = lock or {}
+    needed = {bake.key for bake in found}
+    previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, missing = [], []
     for bake in found:
-        made = (lock or {}).get(bake.key)
-        if made is not None and not made.get("seeded"):
-            rows.append({name: made[name] for name in ROW_FIELDS if name in made})
+        held = lock.get(bake.key)
+        if held is not None and not held.get("seeded"):
+            rows.append({name: held[name] for name in ROW_FIELDS if name in held})
+            continue
+        carried = previous.get(bake.output) if held is None else (None if bake.tree.is_file() else held)
+        if carried is not None:
+            fetch_all([bake], {bake.key: carried}, cache)
+            rows.append({**{name: carried[name] for name in ("output", "source", "sha256", "size")},
+                         "key": bake.key, "seeded": True})
             continue
         if not bake.tree.is_file():
             missing.append(describe(bake, f"{relative(bake.tree)} is not in the tree to seed from", bake_again(bake)))
@@ -591,9 +632,65 @@ def seed(found, cache, lock=None):
     return rows
 
 
+def from_run(row, suffix, cache):
+    """The locked file from the CI run that made it, before main publishes it; None when that fails."""
+    from bake import produce
+
+    try:
+        with tempfile.TemporaryDirectory() as folder:
+            produce.import_run(run_files(row["run"], pathlib.Path(folder)), row["run"], cache)
+    except (OSError, urllib.error.URLError, subprocess.CalledProcessError, BakeMissing, zipfile.BadZipFile):
+        return None
+    path = cached(row, suffix, cache)
+    return path if path.is_file() and file_sha256(path) == row["sha256"] else None
+
+
+def github_token():
+    """GH_TOKEN or GITHUB_TOKEN as CI sets them, else the signed-in gh's; None without either."""
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if os.environ.get(name):
+            return os.environ[name]
+    if shutil.which("gh"):
+        out = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    return None
+
+
+class KeepRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def github_get(url, token):
+    """GET with the token; a redirect (an artifact's storage link, signed already) is followed
+    without it, since the storage refuses a request that carries one."""
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
+                                                   "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.build_opener(KeepRedirect).open(request, timeout=DOWNLOAD_TIMEOUT_S) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        location = error.headers.get("Location")
+        error.close()
+        if error.code not in (301, 302, 303, 307, 308) or not location:
+            raise
+    with urllib.request.urlopen(location, timeout=DOWNLOAD_TIMEOUT_S) as response:
+        return response.read()
+
+
 def run_files(run, folder):
-    """Downloads what CI run `run` uploaded into `folder`."""
-    subprocess.run(["gh", "run", "download", str(run), "--pattern", RUN_ARTIFACTS, "--dir", str(folder)], check=True)
+    """Downloads what CI run `run` uploaded (its bakes-* artifacts) into `folder`, with the standard
+    library and GitHub's API, so a runner without gh can too; artifacts need a token even when public."""
+    token = github_token()
+    if token is None:
+        raise BakeMissing(f"reading run {run}'s uploads needs a GitHub token: GH_TOKEN, or gh signed in")
+    listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
+    for artifact in listing["artifacts"]:
+        if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
+            data = github_get(artifact["archive_download_url"], token)
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                archive.extractall(pathlib.Path(folder) / artifact["name"])
     return folder
 
 
@@ -673,7 +770,7 @@ def publish(found, lock, cache):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "publish"))
+    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "publish", "tool"))
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
@@ -691,6 +788,12 @@ def main(argv=None):
 
     cache = pathlib.Path(args.cache) if args.cache else default_cache()
     try:
+        if args.command == "tool":
+            for stage in args.paths:
+                if stage not in STAGES:
+                    parser.error(f"tool: no stage {stage!r}; stages: {', '.join(STAGES)}")
+                print(tool_digest(stage))
+            return 0
         found = bakes(args.paths or [DEFAULT_SEARCH])
         lock = read_lock()
         if args.command == "list":

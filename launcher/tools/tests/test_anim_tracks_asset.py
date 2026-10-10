@@ -217,18 +217,18 @@ class SourceTests(unittest.TestCase):
         (self.root / "deeper" / "still").mkdir(parents=True)
         (self.root / "deeper" / "still" / "probe.glb").write_bytes(probe_glb())
         self.write("deeper/still/run.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
-        packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root]).items()}
+        packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root], tree=True).items()}
         self.assertEqual(sorted(packs), ["run", "walk"])
         self.assertEqual(packs["walk"], {"walk": (tracks_asset.TYPE, probe_entry())})
 
     def test_build_pack_takes_a_clip_file_named_on_its_own(self):
         path = self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
-        self.assertEqual(sorted(build_pack.pack_bytes([path])), ["walk"])
+        self.assertEqual(sorted(build_pack.pack_bytes([path], tree=True)), ["walk"])
 
     def test_a_bad_clip_ends_build_pack_with_a_usage_error_naming_it(self):
         bad = self.write("clips/bad.anim.toml", 'source = "probe.glb"\nanimation = "nope"\n')
         with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr, self.assertRaises(SystemExit) as stop:
-            build_pack.main(["-o", str(self.root / "out"), str(bad)])
+            build_pack.main(["--from-tree", "-o", str(self.root / "out"), str(bad)])
         self.assertEqual(stop.exception.code, 2)
         self.assertIn("nope", stderr.getvalue())
 
@@ -238,10 +238,10 @@ class SourceTests(unittest.TestCase):
             (self.root / folder / "probe.glb").write_bytes(probe_glb())
             self.write(folder + "/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
         with self.assertRaisesRegex(build_pack.SettingsError, "pack named 'walk'"):
-            build_pack.pack_bytes([self.root])
+            build_pack.pack_bytes([self.root], tree=True)
 
     def test_every_clip_in_the_tree_packs_and_reads_back(self):
-        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]).values()
+        packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], tree=True).values()
         clips = {name: data for pack in packs for name, (kind, data) in parse_pack(pack).items() if kind == tracks_asset.TYPE}
         self.assertGreater(len(clips), 0)
         for name, data in clips.items():
