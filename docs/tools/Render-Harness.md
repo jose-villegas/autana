@@ -299,8 +299,10 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called.
-The boot animation's tracks call `acosf` for the slerp and
-are `|nopin`. A render that is not integer-exact ends its line
+The boot animation is pinned as well: its slerp calls `acosf` and
+`sinf`, whose last bit can differ between libms, but MinGW-w64's and glibc's
+render its pinned frames identically, and a last-bit difference moves a pixel
+only where a sum lands on a rounding boundary. A render that is not integer-exact ends its line
 with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
 or rasterises in float belongs there. A scene whose pin can fail for a

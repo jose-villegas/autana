@@ -61,11 +61,13 @@
 
 # Empty where the platform has neither, which turns the pinned-hash check
 # into a notice rather than a silent pass, see render_scene_run() below.
+# The file goes in on stdin: given a name with a backslash in it (a Windows
+# temp path), sha256sum escapes its line and the hash starts with one too.
 render_scene_sha256() {
     if command -v sha256sum > /dev/null 2>&1; then
-        sha256sum "$1" | cut -d' ' -f1
+        sha256sum < "$1" | cut -d' ' -f1
     elif command -v shasum > /dev/null 2>&1; then
-        shasum -a 256 "$1" | cut -d' ' -f1
+        shasum -a 256 < "$1" | cut -d' ' -f1
     else
         printf ''
     fi
