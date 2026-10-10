@@ -875,12 +875,12 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                "for itself",
                narrow, full_band);
 
-    /* Wider spread than the full-band reference because this path does a
-     * memcpy into gather_buf on top of the same DMA wait, and that copy is
-     * what varies. */
+    /* Its spread used to be whether the present's code was still in the
+     * instruction cache; that code runs from IRAM now (main/linker.lf), and
+     * a strip that costs more again likely runs from flash once more. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
-               "gather-copy path may have regressed",
-               narrow, 256);
+               "gather-copy path may have regressed, or a present's code left IRAM",
+               narrow, 241);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
