@@ -154,8 +154,9 @@ Detected in task "main" at 0x4200b2f8
 
 ### Flash
 
-`launcher/partitions.csv` gives the flash past the app partition to one data
-partition, `assets`, which holds the [asset pack](../assets/README.md).
+`launcher/partitions.csv` keeps 64 KB after the app partition for the last
+panic's core dump ([Debugging](Debugging.md)) and gives the rest of the flash
+to one data partition, `assets`, which holds the [asset pack](../assets/README.md).
 `esp_partition_mmap()` reads it like an array; mapped reads go
 through the cache, so sequential access is fast and random access thrashes.
 

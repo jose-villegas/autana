@@ -20,7 +20,7 @@ flowchart LR
 |---|---|
 | Reference | float bind normal, skinned, renormalised, N.L per light |
 | Direct | skinned, not renormalised, N.L per light; bind normal as float or int8 per axis |
-| Table, nearest | int8 bind normal, skinned, its octahedral point (`vec3f_octahedral`, any length) picks one cell |
+| Table, nearest | int8 bind normal, skinned, its octahedral point<sup>[[21]](../Citations.md#21)</sup> (`vec3f_octahedral`, any length) picks one cell |
 | Table, bilinear | the same point blends the four nearest cell centres with 8-bit weights |
 
 Each table cell holds the light of its centre's direction as three bytes, padded to

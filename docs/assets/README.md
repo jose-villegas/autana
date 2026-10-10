@@ -8,17 +8,19 @@ mesh or an animation clip is one entry. Nothing is compiled into the app for it,
 the app image does not grow with content.
 
 ```mermaid
-flowchart LR
-    Import["mesh_import.py"] --> Entry["name.mesh<br/><i>one entry, committed</i>"]
-    Entry --> Build["build_pack.py"]
-    Build --> Files["DIR/name.apak<br/><i>one file per pack</i>"]
-    Build --> Image["assets.bin<br/><i>pack directory and every pack</i>"]
-    Image --> Flash["assets partition<br/><i>device: each pack mapped alone</i>"]
-    Store["asset_store_pack(name)<br/><i>mounts on first use, counted</i>"] --> Flash
+flowchart TB
+    Import["mesh_import.py"] -->|source frame| Entry["name.mesh in bake cache"]
+    Entry -->|source frame| Mirror["engine_frame.to_engine"]
+    Authored["scene / clip bake"] -->|source frame| Mirror
+    Mirror -->|engine frame| Build["build_pack.py"]
+    Build --> Files["DIR/name.apak"]
+    Build --> Image["assets.bin"]
+    Image --> Flash["assets partition"]
+    Store["asset_store_pack(name)"] --> Flash
     Store --> Files
-    Flash --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
+    Flash --> Open["asset_pack_open(base, size)"]
     Files --> Open
-    Open --> View["r3d_lit_mesh_open()<br/><i>pointers into the pack</i>"]
+    Open --> View["r3d_lit_mesh_open()"]
 ```
 
 ## Packs
@@ -31,6 +33,7 @@ searching, so no list is kept:
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh its renderers name, the clip its camera flies |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
+| `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
 
 The default search is `launcher/main/`. An app's `demo_assets.toml` adds
 each folder it names in `demo = ["name", ...]` from `launcher/demo/`.
@@ -70,6 +73,32 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 |---|---|---|
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
 | `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
+| `IMAG` | A picture | [The image entry](#the-image-entry) |
+
+### The image entry
+
+`NAME.image.toml` names a PNG in its own folder (`source = "x.png"`) and how
+many quarter turns clockwise take it to the stored pixels
+(`quarter_turns`, 0 to 3; a picture drawn in a landscape frame is turned
+into the panel's portrait one once, here, so drawing it reads rows in
+order). The source must be opaque. Offsets count from the entry's first
+byte.
+
+| Offset | Size | Holds |
+|---|---|---|
+| 0 | 2 | version, 1 |
+| 2 | 2 | format: 1 is `gfx_color_t`, byte-swapped RGB565 as the panel takes it; 2 to 15 are kept for icons |
+| 4 | 2 | width |
+| 6 | 2 | height |
+| 8 | 4 | stride: pixels from one row's start to the next, at least the width |
+| 12 | 4 | where the rows start, 4-aligned and after the header |
+| rows | stride x (height - 1) + width pixels | the pixels, top row first |
+
+`gfx_image_open()` returns `ASSET_ERR_VERSION` for another version,
+`ASSET_ERR_FORMAT` for a format it does not read, an empty picture, a stride
+shorter than a row or rows over the header, and `ASSET_ERR_BOUNDS` for rows
+that leave the entry or are misaligned. The pixels it returns point into the
+entry.
 
 ## The pack directory
 
@@ -133,7 +162,8 @@ the app.
 |---|---|---|
 | `nvs` | `0x9000` | `0x6000` |
 | `phy_init` | `0xF000` | `0x1000` |
-| `factory` (the app) | `0x10000` | 8 MB |
+| `factory` (the app) | `0x10000` | `0x7F0000` |
+| `coredump` | `0x800000` | `0x10000` |
 | `assets` | `0x810000` | `0x7F0000` |
 
 On the first mount the store finds the partition and reads its directory into
@@ -170,12 +200,13 @@ renderer.
 
 `launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
 directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
-entry, `launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c` and `anim_tracks.c` are the one reader of
-each.
+entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
+`launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
+the one reader of each.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
-entry is baked from its source when the packs are built. Packs are never
+or image entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
