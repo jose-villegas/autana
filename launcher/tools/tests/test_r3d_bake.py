@@ -397,6 +397,17 @@ class LitMeshTests(unittest.TestCase):
         self.assertEqual(by_side[True], (10, 20, 30))
         self.assertEqual(by_side[False], (200, 210, 220))
 
+    def test_triangles_welded_onto_one_winding_bake_as_the_first_of_them(self):
+        # The second triangle lies within the weld of the first's corners.
+        nudge = 0.25 / lit_mesh.POSITION_SCALE / lit_mesh.WELD_PER_TICK
+        p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (nudge, 0, 0), (1, nudge, 0), (0, 1, 0)])
+        tris = np.array([(0, 1, 2), (4, 5, 3)])
+        faces = np.array([(10, 20, 30), (200, 210, 220)])
+        flat = bake_lit_mesh(p, None, tris, np.zeros(2, dtype=int), face_rgb=faces)
+        self.assertEqual(np.asarray(flat.face_colors).tolist(), [[10, 20, 30]])
+        smooth = bake_lit_mesh(p, np.full((len(p), 3), 128), tris, np.zeros(2, dtype=int))
+        self.assertEqual(len(smooth.tris), 1)
+
     def test_a_smooth_bake_carries_no_face_colours(self):
         p, tris = grid(2)
         mesh = bake_lit_mesh(p, np.full((len(p), 3), 128), tris, np.zeros(len(tris), dtype=int))
