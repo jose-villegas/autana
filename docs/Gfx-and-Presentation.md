@@ -87,7 +87,7 @@ the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 | Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
 | Content kept between frames | yes | **no**: a band is gone once sent | yes |
 | For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | the launcher, any microui screen | a software 3D renderer | a frame that is a grid of palette indices |
+| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices |
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
@@ -124,7 +124,7 @@ so marking inlines into the fill and pixel hot paths. One tracker serves all thr
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
 takes rows only and has to claim every column at full width: what
-`gfx_pixel()` and `gfx_clear()`'s full path are left with.
+`gfx_pixel()` is left with it; `gfx_clear()` marks the whole grid.
 
 ```
          92 px (COL_WIDTH)
@@ -211,13 +211,28 @@ sequenceDiagram
 | Call | Does |
 |---|---|
 | `gfx_present()` | `gfx_present_begin()` then `gfx_present_wait()` |
-| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`util/runtime/frame_watch.h`). |
+| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
 | `gfx_present_wait()` | blocks until everything queued has landed |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
 
 The wait is mandatory: DMA is still reading the buffer until it returns.
 
+## Presentation memory policy
+
+Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
+by core 1 into internal DMA buffers while core 0 updates app state; drawing
+waits for that read to finish. A catch-up copy between PSRAM framebuffers
+costs 6–15 ms per frame, so presentation uses one retained framebuffer.
+The mesh raster is a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM.
+See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
+memory throughput and placement.
+
 ## The band ring
+
+The ring overlaps drawing and sending, so frame time approaches the larger
+of render cost and transfer cost, plus setup and slot waits, rather than
+their sum. Device timing is required to establish the overlap for a caller;
+host state-machine tests do not measure the panel bus.
 
 A picture is either **persistent**, a framebuffer or index image read by gfx
 on core 1 after `frame()`, or **transient**, an app's `draw_band` callback,
@@ -318,9 +333,8 @@ sent, so gfx holds nothing to resend.
 | Call | Effect |
 |---|---|
 | `gfx_mark_all_dirty()` | send everything next present |
-| `gfx_invalidate()` | next `gfx_clear()` wipes in full; next band frame forces every band |
+| `gfx_invalidate()` | next band frame forces every band |
 | `gfx_request_full_redraw()` | both of the above, plus a pending flag the shell answers with the app's `invalidate()` |
-| `gfx_set_partial_clear()` | `gfx_clear()` erases only last frame's dirty bounding box. Off by default. |
 | `gfx_set_interlace()` | alternate strips on alternate presents; skipped strips stay dirty. Off by default, RGB565 full framebuffer only. |
 
 ## Guards

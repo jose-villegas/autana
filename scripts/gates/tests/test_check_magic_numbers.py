@@ -305,6 +305,21 @@ int x = 1 << {shift};
             self.assertIn("editor: RESTATE=2", output.getvalue())
             self.assertIn("(2 hits)", output.getvalue())
 
+    def test_report_included_header_visibility(self):
+        header = "launcher/main/math/scalar/value.h"
+        for included, expected in ((True, 1), (False, 0)):
+            with self.subTest(included=included):
+                include = '#include "math/scalar/value.h"\n' if included else ""
+                with temporary_tree([(header, f"#define VALUE {RARE}\n"),
+                                     (C_PATH, f"{include}int x = {RARE};\n")]) as root:
+                    commit(root, ".")
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(gate.main(["--report"], root=root), 0)
+                    self.assertIn(f"RESTATE={expected} PROTOCOL=0", output.getvalue())
+                    if included:
+                        self.assertIn(f"VALUE ({header}:1)", output.getvalue())
+
     def test_report_line_order(self):
         hits = {(PY_PATH, gate.PROTOCOL): [gate.Hit(PY_PATH, line, str(line)) for line in (3, 1, 2)]}
         output = io.StringIO()

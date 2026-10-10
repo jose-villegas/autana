@@ -18,9 +18,9 @@
  */
 #include "material_palette.h"
 
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
 #include "sand_palette256.h" /* see material_palette256_index() below */
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathi.h"
 
 /* `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)

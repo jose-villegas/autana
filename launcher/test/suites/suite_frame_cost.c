@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/runtime/frame_cost.h"
+#include "profile/frame_cost.h"
 
 /* A frame_cost_t is too big for the device's test stack: each test owns a
  * zeroed one on the heap and frees it before it returns. */
@@ -585,7 +585,7 @@ test_a_longest_name_and_largest_counts_fit_their_buffers(void) {
     arm(cost, name, 0);
     leave_counted(cost, name, 0, 0xfffffff0u, 0, 0xfffffff0u);
 
-    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "icache_miss_stall", counts, sizeof counts));
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "d_stall_all", counts, sizeof counts));
     TEST_ASSERT_NOT_NULL(strstr(counts, " n=1"));
     free(cost);
 }

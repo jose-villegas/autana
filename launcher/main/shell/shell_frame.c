@@ -1,16 +1,16 @@
 /* shell_frame: the shell chrome drawn into a framebuffer or replayed over expanded strips. */
 #include <stdio.h>
 
+#include "build/build_variant.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "services/build_id.h"
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/build_id.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #define BUILD_MARK_GLYPH        8

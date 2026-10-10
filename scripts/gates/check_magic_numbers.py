@@ -47,7 +47,7 @@ RESTATE = "RESTATE"
 PROTOCOL = "PROTOCOL"
 C_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
 
-# INCLUDE_DIRS and selftest PRIV_INCLUDE_DIRS in launcher/main/CMakeLists.txt; editor target_include_directories.
+# launcher/main/CMakeLists.txt exposes main/ and test/; editor/CMakeLists.txt exposes include/ and src/.
 INCLUDE_ROOTS = ("launcher/main", "launcher/test", "editor/include", "editor/src")
 INCLUDE = re.compile(r'^[ \t]*#[ \t]*include\s*"([^"\n]+)"', re.M)
 ASSERT = re.compile(r"\b(?:_Static_assert|static_assert)\s*\(")
@@ -77,6 +77,11 @@ def eligible_c(path, text):
     return (path.startswith(("launcher/", "editor/")) and Path(path).suffix in C_SUFFIXES
             and not path.startswith(EXCLUDED) and not is_generated(text)
             and not {"fixture", "fixtures"}.intersection(PurePosixPath(path).parts))
+
+
+def protocol_source(path, text):
+    return (path.startswith("launcher/main/") and Path(path).suffix in {".c", ".h"}
+            and eligible_c(path, text))
 
 
 def revision_tree(root, revision):
@@ -194,16 +199,14 @@ def affected_files(texts, changed, direct):
 
 def scan(texts, candidates=None, *, direct):
     clean = {name: blank_comments(text) for name, text in texts.items()
-             if name.startswith("launcher/main/") and Path(name).suffix in {".c", ".h"}
-             and eligible_c(name, text)}
+             if protocol_source(name, text)}
     index = ConstantIndex({name: text for name, text in texts.items() if eligible_c(name, text)})
     hits, logged, errors = {}, [], []
     owners = defaultdict(list)
     for path, text in sorted(texts.items()):
         restate_source = eligible_c(path, text)
-        protocol_source = (restate_source and path.startswith("launcher/main/")
-                           and Path(path).suffix in {".c", ".h"})
-        if not restate_source and not protocol_source:
+        is_protocol_source = protocol_source(path, text)
+        if not restate_source and not is_protocol_source:
             continue
         skipped, found, invalid = escapes(path, text)
         logged.extend(found)
@@ -214,7 +217,7 @@ def scan(texts, candidates=None, *, direct):
                 group = list(restatements(path, text, index.visible(closure), skipped))
                 if group or candidates is not None:
                     hits[path, RESTATE] = group
-        if protocol_source:
+        if is_protocol_source:
             source = INCLUDE_DIRECTIVE.sub(lambda match: "\n" * match[0].count("\n"), clean[path])
             for kind, start, end in tokens(source):
                 if kind == "literal" and source[start] == '"':

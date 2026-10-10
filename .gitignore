@@ -71,6 +71,7 @@ node_modules/
 ### ESP-IDF
 build/
 !launcher/tools/build/
+!launcher/main/build/
 # Variant build directories, e.g. build.diag from `autana flash diag`.
 # Each variant keeps its own sdkconfig so it never disturbs the normal build.
 build.*/
