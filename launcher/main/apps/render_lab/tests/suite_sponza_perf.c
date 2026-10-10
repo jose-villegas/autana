@@ -13,8 +13,10 @@
 #ifdef DEVICE_BUILD
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
+#include "test_cleanup.h"
 #include "unity.h"
 
 #include "esp_log.h"
@@ -26,11 +28,14 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_motion.h"
 #include "scene/scene.h"
+#include "services/build_id.h"
+#include "services/tune.h"
 #include "sponza_suite.h"
 
 static const char* TAG = "sponza_perf";
@@ -215,15 +220,29 @@ test_sponza_draw_stage_breakdown(void) {
 /* `moving`, when not NULL, is the instance's placement, nudged every frame
  * so an attached motion tags every triangle. */
 static void
-report_frame_cost(const char* label, const r3d_instance_t* instance, const raster_attachment_t* const* attachments,
-                  r3d_placement_t* moving) {
+report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance,
+                  const raster_attachment_t* const* attachments, r3d_placement_t* moving) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
     bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
              mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
+    const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
+    TEST_ASSERT_NOT_NULL(culling);
+    int size = 0;
+    for (int i = 0; i < mesh->cluster_count; i++) {
+        if (mesh->clusters[i].triangle_count > size) {
+            size = mesh->clusters[i].triangle_count;
+        }
+    }
     const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+    ESP_LOGI(TAG, "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u pose_every_ms=%u",
+             build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
+             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS);
+    char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(report);
+    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
     int64_t frame_sum = 0;
     int64_t worst = 0;
     int samples = 0;
@@ -238,14 +257,33 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);
+        (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
+        ESP_LOGI(TAG, "ms/frame avg/worst: %s", report);
         frame_sum += us;
         worst = us > worst ? us : worst;
         samples++;
     }
     ESP_LOGI(TAG, "%s both cores: mean %lldus (%.1f fps before present), worst %lldus", label,
              (long long)(frame_sum / samples), 1e6 * samples / (double)frame_sum, (long long)worst);
+    memory_free(report);
     bench_close(b);
     memory_free(b);
+}
+
+static int32_t saved_cull;
+
+static void
+cull_reply(const char* line) {
+    ESP_LOGI(TAG, "%s", line);
+}
+
+static void
+restore_culling(void) {
+    char command[sizeof("SET render.cull -2147483648")];
+    const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
+    if (length > 0 && (size_t)length < sizeof command) {
+        (void)tune_handle_line(command, cull_reply);
+    }
 }
 
 void
@@ -255,10 +293,18 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     ESP_LOGI(TAG, "internal heap: free %u largest %u", (unsigned)memory_free_bytes(MEMORY_INTERNAL),
              (unsigned)memory_largest_block(MEMORY_INTERNAL));
     open_the_meshes();
+    const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
+    TEST_ASSERT_NOT_NULL(culling);
+    saved_cull = *culling->value;
+    suite_set_test_cleanup(restore_culling);
+    (void)tune_handle_line("RESET render.cull", cull_reply);
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
-        report_frame_cost(sponza_bakes[i], &instance, NULL, NULL);
+        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL);
     }
+    (void)tune_handle_line("SET render.cull 0", cull_reply);
+    const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
+    report_frame_cost("cull_off", sponza_bakes[SPONZA_BAKE_FULL], &full, NULL, NULL);
     TEST_PASS();
 }
 
@@ -273,12 +319,12 @@ test_sponza_frame_cost_with_motion(void) {
     const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
     const r3d_instance_t still = {&meshes[0], NULL};
-    report_frame_cost("motion", &still, attached, NULL);
+    report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL);
     raster_motion_forget(motion);
     r3d_placement_t placement = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, {0.0F, 0.0F, 0.0F}};
     const r3d_instance_t moving = {&meshes[0], &placement};
-    report_frame_cost("motion_moving", &moving, attached, &placement);
-    report_frame_cost("placed", &moving, NULL, &placement);
+    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &placement);
+    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &placement);
     memory_free(motion);
     TEST_PASS();
 }

@@ -39,12 +39,13 @@ class WriteBakedTests(unittest.TestCase):
 
     def write(self, face_samples):
         import numpy as np
-        from r3d.lit_mesh import read_lit_mesh
+        from r3d.lit_mesh import MESHLET_TRIANGLES, read_lit_mesh
 
         positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
         geometry = SimpleNamespace(positions=positions, rgb=np.full((4, 3), 100), tris=np.array([[0, 1, 2], [0, 2, 3]]),
                                    tri_double=np.zeros(2, dtype=int), scale={"position_scale": 8})
-        job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples))
+        job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples),
+                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES))
         faces = np.array([[255.0, 0.0, 0.0], [0.0, 0.0, 255.0]])
         with tempfile.TemporaryDirectory() as directory, \
                 unittest.mock.patch.object(mesh_import, "flat_colours", return_value=faces) as lit:

@@ -18,6 +18,7 @@ import gfx_color  # noqa: E402  (path must be set up first)
 from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
+from r3d.import_settings import MESHLET_TRIANGLES
 from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
 INT16_MAX = 32767
@@ -27,8 +28,6 @@ MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
 
-# What a bake uses unless asked otherwise, and the only place these are set.
-MESHLET_TRIANGLES = 32
 LEAF_TRIANGLES = 320
 MAX_DEPTH = 10
 POSITION_SCALE = 8
