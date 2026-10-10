@@ -1,8 +1,7 @@
 name: QEMU proof t8jy
 
-# Throwaway: never merged. A stress suite (core 0 remaps flash, core 1 reads
-# registers) under Espressif's prebuilt QEMU vs the patched one, 8 jobs x 3
-# boots each.
+# Throwaway: never merged. An uncached patched_qemu.py build, then one
+# suite under it, to prove the staged install is relocatable.
 
 on:
   push:
@@ -12,70 +11,23 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  image:
+  build-and-run:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/idf-build
-        with:
-          cache-name: qemu-proof-shell
-          command: sh test/run_qemu_tests.sh --suite run_qemu_tlb_stress_suite --build-only
-      - uses: actions/upload-artifact@v4
-        with:
-          name: shell-image
-          path: |
-            launcher/build.qemu.shell/flasher_args.json
-            launcher/build.qemu.shell/launcher.elf
-            launcher/build.qemu.shell/*.bin
-            launcher/build.qemu.shell/*/*.bin
-
-  run:
-    needs: image
-    name: ${{ matrix.qemu }} ${{ matrix.n }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        qemu: [prebuilt, patched]
-        n: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: shell-image
-          path: launcher/shell-image
-      - if: matrix.qemu == 'patched'
-        uses: actions/cache/restore@v4
-        with:
-          path: launcher/build.qemu-xtensa
-          key: qemu-xtensa-
-          restore-keys: qemu-xtensa-
-      - if: matrix.qemu == 'patched'
-        uses: ./.github/actions/idf-build
+          name: qemu-image
+          run-id: 38063449116
+          github-token: ${{ github.token }}
+          path: launcher/ci-image
+      - uses: ./.github/actions/idf-build
         with:
           cache-name: qemu-proof
           command: >-
-            (python3 test/qemu/patched_qemu.py path
-            || (apt-get update -qq
+            apt-get update -qq
             && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq
-            && python3 test/qemu/patched_qemu.py build))
-            && for i in 1 2 3; do python3 test/qemu_run.py shell-image --suite run_qemu_tlb_stress_suite --timeout 600 --workdir run$i --log run$i/serial.log; done; true
-      - if: matrix.qemu == 'prebuilt'
-        uses: ./.github/actions/idf-build
-        with:
-          cache-name: qemu-proof
-          command: >-
-            for i in 1 2 3; do python3 test/qemu_run.py shell-image --suite run_qemu_tlb_stress_suite --timeout 600 --workdir run$i --log run$i/serial.log; done; true
-      - if: ${{ !cancelled() }}
-        run: |
-          for i in 1 2 3; do
-            f=launcher/run$i/serial.log
-            echo "${{ matrix.qemu }} ${{ matrix.n }}.$i: panics=$(grep -a -c 'Meditation' $f) $(grep -a -o 'EXCVADDR: 0x[0-9a-f]*' $f | tr '\n' ' ') $(grep -a -o 'maps=[0-9]* core1_reads=[0-9]*' $f | tail -1) $(grep -a -o 'test_core_1[a-z_0-9]*:[A-Z]*' $f | tail -1)" | tee -a $GITHUB_STEP_SUMMARY
-          done
-      - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: log-${{ matrix.qemu }}-${{ matrix.n }}
-          path: launcher/run*/serial.log
+            && python3 test/qemu/patched_qemu.py build
+            && ls build.qemu-xtensa
+            && python3 test/qemu_run.py ci-image --timeout 3000 --workdir ci-run
