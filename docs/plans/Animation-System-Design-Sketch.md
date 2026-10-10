@@ -271,7 +271,7 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 | M1b | `SKEL` and `SKIN` bake from any rigged glb; readers | host: skinned positions match `gltf_skin.py` for every frame of a probe rig |
 | M1c | pose sample, blend, model, palette, skin, bounds | host render of a frame beside the reference; host test of a transition blend's endpoints and midpoint |
 | M1d | lighting kernel moved in; scene carries the bake's lights | ymur board check; host render |
-| M1e | scene components, Render Lab picker | board: Âµs per vertex (budget 1), frame time, `autana status` and `buildid` around each |
+| M1e | scene components, Render Lab picker | board: Âµs per vertex (budget 1), frame time, one core against two, free internal RAM and its largest block before and after; `autana status` and `buildid` around each |
 
 ## Bake keys
 
