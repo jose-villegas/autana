@@ -8,17 +8,19 @@ mesh or an animation clip is one entry. Nothing is compiled into the app for it,
 the app image does not grow with content.
 
 ```mermaid
-flowchart LR
-    Import["mesh_import.py"] --> Entry["name.mesh<br/><i>one entry, committed</i>"]
-    Entry --> Build["build_pack.py"]
-    Build --> Files["DIR/name.apak<br/><i>one file per pack</i>"]
-    Build --> Image["assets.bin<br/><i>pack directory and every pack</i>"]
-    Image --> Flash["assets partition<br/><i>device: each pack mapped alone</i>"]
-    Store["asset_store_pack(name)<br/><i>mounts on first use, counted</i>"] --> Flash
+flowchart TB
+    Import["mesh_import.py"] -->|source space| Entry["name.mesh in bake cache"]
+    Entry -->|source space| Mirror["engine_frame.to_engine"]
+    Authored["scene / clip bake"] -->|source space| Mirror
+    Mirror -->|engine frame| Build["build_pack.py"]
+    Build --> Files["DIR/name.apak"]
+    Build --> Image["assets.bin"]
+    Image --> Flash["assets partition"]
+    Store["asset_store_pack(name)"] --> Flash
     Store --> Files
-    Flash --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
+    Flash --> Open["asset_pack_open(base, size)"]
     Files --> Open
-    Open --> View["r3d_lit_mesh_open()<br/><i>pointers into the pack</i>"]
+    Open --> View["r3d_lit_mesh_open()"]
 ```
 
 ## Packs

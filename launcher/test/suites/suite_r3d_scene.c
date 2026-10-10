@@ -74,7 +74,7 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
 /* A placement that scales every axis by `scale` and moves by (x, 0, z). */
 static r3d_placement_t
 placed(float x, float z, float scale) {
-    return (r3d_placement_t){{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, {x, 0, -z}};
+    return (r3d_placement_t){{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, {x, 0, z}};
 }
 
 /* The quad is 3.2 pixels from its centre in each direction at depth 10 and
@@ -156,7 +156,7 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
 
 static void
 test_every_lens_operation_keeps_the_affine_bottom_row(void) {
-    const r3d_placement_t placement = placed(3.0F, 2.0F, 0.5F);
+    const r3d_placement_t placement = placed(3.0F, -2.0F, 0.5F);
     for (int quarter = 0; quarter < 4; quarter++) {
         r3d_lens_t lens;
         memset(&lens, 0x5a, sizeof lens);
@@ -215,7 +215,7 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     quad_t green;
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
-    const r3d_placement_t nearer = placed(0.0F, 2.0F, 1.0F);
+    const r3d_placement_t nearer = placed(0.0F, -2.0F, 1.0F);
     const r3d_instance_t near_first[] = {{&green.mesh, &nearer}, {&red.mesh, NULL}};
     const r3d_instance_t far_first[] = {{&red.mesh, NULL}, {&green.mesh, &nearer}};
     void* scratch;
@@ -247,7 +247,8 @@ test_a_placement_from_a_pose_stands_the_camera_there_looking_down_its_plus_z(voi
     transformf_t pose = TRANSFORMF_IDENTITY;
     transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
     transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
-    const r3d_placement_t placement = r3d_scene_camera_placement(&pose);
+    transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
+    const r3d_placement_t placement = r3d_placement_from(&pose);
     const r3d_scene_camera_t camera = {1.0F, 1.0F, &placement, NULL};
     vec3f_t eye;
     vec3f_t forward;

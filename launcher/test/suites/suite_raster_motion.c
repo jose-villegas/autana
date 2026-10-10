@@ -35,8 +35,8 @@ static r3d_placement_t
 turned(float degrees, vec3f_t at) {
     const float a = degrees * 3.14159265F / 180.0F;
     const float c = cosf(a);
-    const float s = -sinf(a);
-    return (r3d_placement_t){{{c, 0.0F, s}, {0.0F, 1.0F, 0.0F}, {-s, 0.0F, c}}, {at.x, at.y, -at.z}};
+    const float s = sinf(a);
+    return (r3d_placement_t){{{c, 0.0F, s}, {0.0F, 1.0F, 0.0F}, {-s, 0.0F, c}}, at};
 }
 
 static vec3f_t
@@ -193,7 +193,7 @@ motion_of(const raster_rig_t* r) {
 static fixture_camera_t
 camera_at(vec3f_t eye, float yaw_degrees) {
     const float a = yaw_degrees * 3.14159265F / 180.0F;
-    return (fixture_camera_t){{eye.x, eye.y, -eye.z}, {sinf(a), 0.0F, cosf(a)}, 0.5F, 1.0F};
+    return (fixture_camera_t){eye, {sinf(a), 0.0F, cosf(a)}, 0.5F, 1.0F};
 }
 
 /* Whether pixel (x, y) and its 3x3 neighbourhood show surface `what`, and
@@ -245,7 +245,7 @@ assert_motion_is_true(const raster_rig_t* r, const pose_t* now, const pose_t* be
 static void
 test_the_first_picture_knows_no_motion(void) {
     raster_rig_t* r = rig_open(false, false);
-    const pose_t now = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
+    const pose_t now = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), NULL};
     draw(r, &now, W, H);
     const raster_motion_px_t* m = motion_of(r);
     for (int i = 0; i < W * H; i++) {
@@ -256,8 +256,8 @@ test_the_first_picture_knows_no_motion(void) {
 static void
 test_a_still_camera_and_scene_have_no_motion(void) {
     raster_rig_t* r = rig_open(true, false);
-    const r3d_placement_t at = turned(20.0F, (vec3f_t){0.0F, 0.0F, 100.0F});
-    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), &at};
+    const r3d_placement_t at = turned(-20.0F, (vec3f_t){0.0F, 0.0F, -100.0F});
+    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), &at};
     draw(r, &pose, W, H);
     draw(r, &pose, W, H);
     const raster_motion_px_t* m = motion_of(r);
@@ -267,7 +267,6 @@ test_a_still_camera_and_scene_have_no_motion(void) {
     }
 }
 
-/* Cases are authored in source space; camera and placement constructors return engine coordinates. */
 typedef struct {
     float turn;
     vec3f_t box;
@@ -282,8 +281,8 @@ typedef struct {
 
 static void
 pose_change(const change_t* c, bool with_box, posed_t* p) {
-    const vec3f_t box = {0.0F, 0.0F, 100.0F};
-    const vec3f_t eye = {0.0F, 0.0F, 300.0F};
+    const vec3f_t box = {0.0F, 0.0F, -100.0F};
+    const vec3f_t eye = {0.0F, 0.0F, -300.0F};
     p->box[0] = turned(0.0F, box);
     p->box[1] = turned(c->turn, vec3f_add(box, c->box));
     p->before = (pose_t){camera_at(eye, 0.0F), with_box ? &p->box[0] : NULL};
@@ -309,14 +308,14 @@ check_change(const change_t* c, bool with_box, int w0, int h0, posed_t* p) {
 
 static void
 test_camera_motion_is_the_reprojection_through_the_previous_pose(void) {
-    static const change_t c = {0.0F, {0.0F, 0.0F, 0.0F}, {12.0F, -10.0F, -20.0F}, 3.0F};
+    static const change_t c = {0.0F, {0.0F, 0.0F, 0.0F}, {12.0F, -10.0F, 20.0F}, 3.0F};
     posed_t p;
     TEST_ASSERT_GREATER_THAN_INT(W * H * 3 / 4, check_change(&c, false, W, H, &p));
 }
 
 static void
 test_a_moving_instance_moves_by_its_previous_placement(void) {
-    static const change_t c = {15.0F, {14.0F, 4.0F, 10.0F}, {0.0F, 0.0F, 0.0F}, 0.0F};
+    static const change_t c = {-15.0F, {14.0F, 4.0F, -10.0F}, {0.0F, 0.0F, 0.0F}, 0.0F};
     posed_t p;
     check_change(&c, true, W, H, &p);
     float mx;
@@ -328,7 +327,7 @@ test_a_moving_instance_moves_by_its_previous_placement(void) {
 
 static void
 test_camera_and_instance_motion_add_up(void) {
-    static const change_t c = {20.0F, {-10.0F, 5.0F, 15.0F}, {15.0F, -5.0F, -15.0F}, 4.0F};
+    static const change_t c = {-20.0F, {-10.0F, 5.0F, -15.0F}, {15.0F, -5.0F, 15.0F}, 4.0F};
     posed_t p;
     check_change(&c, true, W, H, &p);
 }
@@ -336,14 +335,14 @@ test_camera_and_instance_motion_add_up(void) {
 /* The previous picture was half the size: motion is still in this one's pixels. */
 static void
 test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
-    static const change_t c = {12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, -10.0F}, 1.5F};
+    static const change_t c = {-12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, 10.0F}, 1.5F};
     posed_t p;
     check_change(&c, true, W / 2, H / 2, &p);
 }
 
 static void
 test_shape_and_quarter_changes_reproject_in_the_current_picture(void) {
-    static const change_t c = {12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, -10.0F}, 1.5F};
+    static const change_t c = {-12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, 10.0F}, 1.5F};
     raster_rig_t* r = rig_open(true, false);
     posed_t p;
     pose_change(&c, true, &p);
@@ -402,8 +401,8 @@ check_quarter_picture(raster_rig_t* r, const pose_t* now, const pose_t* before, 
 static void
 test_a_steady_quarter_preserves_moving_and_still_motion(void) {
     raster_rig_t* r = rig_open(false, false);
-    const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
-    const pose_t moving = {camera_at((vec3f_t){8.0F, 0.0F, 290.0F}, 1.5F), NULL};
+    const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), NULL};
+    const pose_t moving = {camera_at((vec3f_t){8.0F, 0.0F, -290.0F}, 1.5F), NULL};
     for (int quarter = 1; quarter <= 3; quarter += 2) {
         check_quarter_picture(r, &moving, &before, quarter);
         check_quarter_picture(r, &before, &before, quarter);
@@ -413,7 +412,7 @@ test_a_steady_quarter_preserves_moving_and_still_motion(void) {
 /* Attaching motion changes no colour and no depth. */
 static void
 test_motion_leaves_colour_and_depth_as_they_are(void) {
-    static const change_t c = {30.0F, {10.0F, 0.0F, 20.0F}, {4.0F, 2.0F, -10.0F}, 1.0F};
+    static const change_t c = {-30.0F, {10.0F, 0.0F, -20.0F}, {4.0F, 2.0F, 10.0F}, 1.0F};
     posed_t p;
     pose_change(&c, true, &p);
     uint16_t* plain = malloc(sizeof(uint16_t) * 2 * W * H);
@@ -433,7 +432,7 @@ test_motion_leaves_colour_and_depth_as_they_are(void) {
 static void
 test_forgetting_makes_the_next_picture_first(void) {
     raster_rig_t* r = rig_open(false, false);
-    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
+    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), NULL};
     draw(r, &pose, W, H);
     raster_motion_forget(&own_of(r)->motion);
     draw(r, &pose, W, H);

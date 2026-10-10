@@ -59,9 +59,9 @@ so no list is kept. A
 clip no scene names is a [pack](assets/README.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
-The [asset-pack boundary](render/Mesh-Import.md#the-offline-tools) converts
-coordinate tracks, including cubic tangents, into engine space; key times
-and interpolation stay as authored.
+The [asset-pack boundary](render/Mesh-Import.md#the-offline-tools) mirrors
+translation and rotation tracks, cubic tangents included, into the engine
+frame; other tracks, key times and interpolation stay as authored.
 
 ```toml
 source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one

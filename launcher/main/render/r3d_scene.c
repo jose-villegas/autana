@@ -12,7 +12,8 @@ r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t
     if (camera->path == NULL) {
         const r3d_placement_t* at = camera->placement;
         *eye = at == NULL ? (vec3f_t){0.0F, 0.0F, 0.0F} : at->position;
-        *forward = at == NULL ? (vec3f_t){0.0F, 0.0F, 1.0F} : (vec3f_t){at->m[0][2], at->m[1][2], at->m[2][2]};
+        *forward = at == NULL ? (vec3f_t){0.0F, 0.0F, 1.0F}
+                              : vec3f_normalize((vec3f_t){at->m[0][2], at->m[1][2], at->m[2][2]});
         return;
     }
     float position[ANIM_WIDTH_MAX];
@@ -33,13 +34,4 @@ r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t vi
     r3d_scene_camera_sample(camera, t_ms, &position, &forward);
     const transformf_t pose = transformf_looking(position, forward, (vec3f_t){0.0F, 1.0F, 0.0F});
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
-}
-
-r3d_placement_t
-r3d_scene_camera_placement(const transformf_t* pose) {
-    const mat4f_t matrix = transformf_compute_matrix(pose);
-    return (r3d_placement_t){{{matrix.m[0][0], matrix.m[0][1], matrix.m[0][2]},
-                              {matrix.m[1][0], matrix.m[1][1], matrix.m[1][2]},
-                              {matrix.m[2][0], matrix.m[2][1], matrix.m[2][2]}},
-                             pose->position};
 }

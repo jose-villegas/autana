@@ -61,6 +61,7 @@ class TrackHostTests(unittest.TestCase):
     def host(self, *args):
         """track_host over the walk clip's pack, bounded in time: a run that
         never ends fails the test instead of hanging the suite."""
+        args = ["--source-poses" if str(arg) == "--poses" else arg for arg in args]
         return subprocess.run([str(track_host.program()), "--pack", str(self.pack()), "--clip", "walk", *map(str, args)],
                               capture_output=True, text=True, timeout=60)
 
@@ -178,6 +179,18 @@ class TrackHostTests(unittest.TestCase):
             track_host.run(["--pack", pack, "--clip", "run"])
         with self.assertRaisesRegex(track_host.TrackHostError, "node lens: "):
             track_host.poses(self.clip, "lens", 100, 8, 6, 0.5, 1.0)
+
+    def test_public_pack_poses_is_a_source_space_usage_error(self):
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error):
+            self.assertEqual(track_host.main(["--pack", str(self.pack()), "--clip", "walk", "--poses",
+                                              "camera", "8", "6", "0.5", "1"]), 2)
+        self.assertIn(".anim.toml", error.getvalue())
+        self.assertIn("source space", error.getvalue())
+        raw = subprocess.run([str(track_host.program()), "--pack", str(self.pack()), "--clip", "walk", "--poses",
+                              "camera", "8", "6", "0.5", "1"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(raw.returncode, 2)
+        self.assertIn("source", raw.stderr)
 
     def test_the_command_line_takes_an_anim_toml(self):
         out = io.StringIO()

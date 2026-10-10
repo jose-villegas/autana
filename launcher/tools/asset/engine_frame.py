@@ -1,7 +1,7 @@
 """Mirror source-space entries into the engine frame at the asset-pack boundary.
 
-Cached bakes retain their authored frame and ordering. The pack carries engine
-coordinates; colours, topology, key times and interpolation are unchanged.
+The frame split and conversion are defined in docs/render/Mesh-Import.md,
+under "The offline tools".
 """
 
 import struct

@@ -72,7 +72,7 @@ fail(const char* what) {
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    const scene_transform_t placement = r3d_scene_camera_placement(&pose);
+    const scene_transform_t placement = r3d_placement_from(&pose);
     scene_entity_set_transform(capybara, camera_entity, &placement);
 }
 

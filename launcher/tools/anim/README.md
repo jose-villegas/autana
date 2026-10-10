@@ -4,6 +4,9 @@ The offline half of `main/anim/`: bakes a glTF 2.0 animation into a pack entry
 and prints what a clip's tracks hold through the device's
 sampler. What a track is, how to author one and how to target a new property
 is in [docs/Animation-Tracks.md](../../../docs/Animation-Tracks.md).
+Poses are bake-time source-space artifacts; `--poses` reads a `.anim.toml`,
+not a built pack. Built packs hold engine-frame tracks
+([the boundary](../../../docs/render/Mesh-Import.md#the-offline-tools)).
 Nothing here runs on the board.
 
 A camera path without Blender is a `NAME.keys.toml` that a `.anim.toml` names
@@ -25,7 +28,7 @@ because +Y up cannot define their roll.
 
 ```sh
 python tools/anim/track_host.py PATH/NAME.anim.toml --every 250
-python tools/anim/track_host.py --pack PACK --clip ID --every 5000 --poses camera 184 224 0.62 6
+python tools/anim/track_host.py PATH/NAME.anim.toml --every 5000 --poses camera 184 224 0.62 6
 ```
 
 The reader and writer are in [`tools/gltf/`](../gltf/); the sampler in

@@ -499,7 +499,8 @@ and `node` the glTF node in it that is the camera. The clip's id is `NAME`, and
 it travels in the scene's pack; `<node>/translation` must fit a track name's
 31 bytes. `background` (0xRRGGBB, default black) is the colour
 a pixel no mesh covers shows, on the panel and in the source reference. Without
-a path the camera sits at its transform, looking down its own -Z.
+a path the camera sits at its transform, looking down its own -z in the source frame; the pack carries it in the
+engine frame ([Mesh-Import.md](Mesh-Import.md#the-offline-tools)).
 
 ## What the scene must carry
 

@@ -8,10 +8,11 @@ renamed into place, so runs started together on a cold cache never see a
 half-written program. Older builds are left in place: another run may be
 about to start one.
 
-A clip is handed to it as a pack: either a pack and an id, as track_host
-takes them, or a NAME.anim.toml, baked into a scratch pack of just that clip
-by tracks_asset.py. That is the same TRCK entry the device reads, so the same
-samples.
+A NAME.anim.toml is baked into a scratch pack of just that clip by
+tracks_asset.py, in source space as the bake-time tools read it; a pack
+build_pack.py wrote holds the clip in the engine frame
+(docs/render/Mesh-Import.md#the-offline-tools). --poses reads a .anim.toml,
+not a built pack, and prints bake-time source-space poses.
 
     python tools/anim/track_host.py CLIP.anim.toml [track_host's options]
     python tools/anim/track_host.py --pack PACK --clip ID [track_host's options]
@@ -120,7 +121,7 @@ def run(args):
 
 
 def clip_pack(animation):
-    """A pack of just the clip a NAME.anim.toml names, under id NAME."""
+    """A source-space scratch pack for the sampler, never shipped; id NAME."""
     return build_pack([(tracks_asset.clip_id(animation), tracks_asset.TYPE, tracks_asset.bake(animation))])
 
 
@@ -129,6 +130,7 @@ def sample(animation, args):
     with tempfile.TemporaryDirectory() as directory:
         pack = pathlib.Path(directory) / "clip.apak"
         pack.write_bytes(clip_pack(animation))
+        args = ["--source-poses" if str(arg) == "--poses" else arg for arg in args]
         return run(["--pack", pack, "--clip", tracks_asset.clip_id(animation), *args])
 
 
@@ -147,6 +149,8 @@ def main(argv=None):
         if argv and argv[0].endswith(tracks_asset.SUFFIX):
             text = sample(argv[0], argv[1:])
         else:
+            if "--poses" in argv:
+                raise TrackHostError("--poses requires a .anim.toml in source space, not --pack")
             text = run(argv)
     except (TrackHostError, tracks_asset.TracksError) as error:
         print(f"track_host: {error}", file=sys.stderr)
