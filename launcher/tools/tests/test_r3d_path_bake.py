@@ -269,6 +269,14 @@ class LlvmBounceTests(unittest.TestCase):
         ray_query.VARIANT = "scalar_rgb"
         mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
 
+    def test_a_path_light_traces_on_the_variant_it_is_given_whatever_the_bake_variant(self):
+        ray_query.VARIANT = "scalar_rgb"
+        scalar = bounce_at_the_wall_foot()
+        source = corridor()
+        path = PathLight(source, [SUN], set(), SimpleNamespace(bounces=1, rays=256), 1.0, "llvm_ad_rgb")
+        self.assertEqual((path.mi.variant(), path.scalar), ("llvm_ad_rgb", False))
+        np.testing.assert_allclose(bounce_at(path, [0.5])[0], scalar, rtol=1e-4)
+
     def test_the_wall_answer_holds_on_the_llvm_variant(self):
         ray_query.VARIANT = "scalar_rgb"
         scalar = bounce_at_the_wall_foot()
