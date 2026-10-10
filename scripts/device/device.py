@@ -114,6 +114,15 @@ class PortUnavailable(RuntimeError):
     """The board's port did not open within the wait it was given."""
 
 
+class BatchEnding(RuntimeError):
+    """An error that ends a batch: the next run would meet the same board."""
+
+
+class BoardNotReading(BatchEnding):
+    """The board stopped taking console input: a write did not drain within
+    the port's write timeout."""
+
+
 Board = collections.namedtuple("Board", "serial port")
 
 
@@ -209,6 +218,9 @@ def wait_for_port(board=None, seconds=PORT_REAPPEAR_SECONDS, probe=probe_port,
             sleep(0.5)
 
 
+FLUSH_POLL_SECONDS = 0.05
+
+
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses a
     second open on its own; POSIX needs `exclusive` (an advisory flock, so it
@@ -220,15 +232,41 @@ def open_serial():
         import serial
     except ImportError as error:
         raise RuntimeError("pyserial is required; run this with the ESP-IDF Python") from error
-    connection = serial.Serial()
+
+    class BoardSerial(serial.Serial):
+        """Every wait to send is bounded by write_timeout. pyserial's own
+        flush has no limit (tcdrain on POSIX, a poll on Windows), and its
+        write timeout says only "Write timeout"."""
+
+        def not_reading(self):
+            return BoardNotReading(
+                f"the board stopped reading its console: a write did not drain within "
+                f"{self.write_timeout:g}s (a half-written image or a wedged app) - "
+                f"autana flash, or autana reset")
+
+        def write(self, data):
+            try:
+                return super().write(data)
+            except serial.SerialTimeoutException as error:
+                raise self.not_reading() from error
+
+        def flush(self):
+            deadline = time.monotonic() + self.write_timeout
+            while self.out_waiting:
+                if time.monotonic() >= deadline:
+                    raise self.not_reading()
+                time.sleep(FLUSH_POLL_SECONDS)
+
+    connection = BoardSerial()
     if os.name != "nt":
         connection.exclusive = True
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
     # A board that stops reading its console would otherwise block a write
-    # in the OS forever, holding the lock with it.
-    connection.write_timeout = 5.0
+    # in the OS forever, holding the lock with it. A reading board drains a
+    # line at once; the longest a healthy one goes without reading is its boot.
+    connection.write_timeout = BOOT_WAIT_SECONDS
     connection.dtr = False
     connection.rts = False
     connection.open()
@@ -1232,9 +1270,8 @@ def suite_request(suite, patterns):
             + "\n").encode("ascii")
 
 
-class TestFilterError(RuntimeError):
-    """The board cannot or will not run the filter asked for. It ends the
-    batch: the next run would meet the same board."""
+class TestFilterError(BatchEnding):
+    """The board cannot or will not run the filter asked for."""
 
     __test__ = False
 
@@ -1293,7 +1330,6 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             with open_when_free(FLASH_PORT_WAIT_SECONDS if held_lock else PORT_WAIT_SECONDS) as connection:
                 apply_tunables(connection, getattr(args, "tune_set", None) or [])
                 connection.write(suite_request(args.suite, patterns))
-                connection.flush()
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
@@ -1475,7 +1511,6 @@ def exchange(connection, line, reply, until, seconds):
     found = []
     connection.reset_input_buffer()
     connection.write(("\n" + line + "\n").encode("ascii"))
-    connection.flush()
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         require_unlost()
@@ -1494,9 +1529,8 @@ TUNE_SET_SECONDS = 3.0
 TUNE_SET_ATTEMPTS = 3
 
 
-class TuneRefused(RuntimeError):
-    """A --set the board refused or did not echo. It ends a batch: the next
-    run would meet the same board."""
+class TuneRefused(BatchEnding):
+    """A --set the board refused or did not echo."""
 
 
 def apply_tunables(connection, settings):
@@ -1615,11 +1649,11 @@ def batch(args, store, board):
     summary across all runs. `args.flash` builds and flashes first, as the
     point of one lock is nobody else flashing between two captures of that
     image; without it, every suite runs against whatever is already on the
-    board. A capture that errors is recorded and the batch continues; only a
-    failed build or flash stops it. One suite run once collapses to exactly
-    what a standalone `run-suite` leaves behind: one capture under its own
-    name, no `batch` summary or manifest row, since there is nothing across
-    runs for either to tell apart."""
+    board. A capture that errors is recorded and the batch continues; a
+    failed build or flash stops it, and so does a BatchEnding. One suite run
+    once collapses to exactly what a standalone `run-suite` leaves behind:
+    one capture under its own name, no `batch` summary or manifest row, since
+    there is nothing across runs for either to tell apart."""
     extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
     patterns = test_patterns(getattr(args, "test_filter", None))
     if args.out and (len(args.suite) != 1 or args.runs != 1):
@@ -1674,7 +1708,7 @@ def batch(args, store, board):
                 try:
                     failed = bool(run_suite(suite_args, store, board, held_lock=held,
                                             worktree=worktree, commit=commit))
-                except (TestFilterError, TuneRefused):
+                except BatchEnding:
                     # The same board would answer the same in every remaining run.
                     raise
                 except RuntimeError as caught:

@@ -103,8 +103,8 @@ class PrimitiveGuardTests(Store):
         primitives = {
             node.name for node in tree.body if isinstance(node, ast.FunctionDef)
             and not (node.args.args and node.args.args[0].arg == "port")  # handed its port, not asking
-            and (any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                     and call.func.attr == "Serial" for call in ast.walk(node))
+            and (any(isinstance(use, ast.Attribute) and use.attr == "Serial"
+                     for use in ast.walk(node))  # a call or a subclass
                  or (any(isinstance(arg, ast.Constant) and arg.value == "esptool"
                          for arg in ast.walk(node))
                      and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
@@ -1181,35 +1181,47 @@ class SuiteFailureTests(Store):
             self.assertEqual(device.selftest(args, self.store, BOARD_A), 1)
         self.assertIsNone(self.errors()["selftest"])
 
-    def test_batch(self):
-        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
-                         suite=["sand"], runs=2, perf_scope=False, flash=True, max_seconds=5,
+    def batch_args(self, runs, flash=True):
+        return Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
+                         suite=["sand"], runs=runs, perf_scope=False, flash=flash, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None)
-        with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc"), \
-                mock.patch.object(device, "open_when_free",
-                                  side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
-                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
-                contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
+
+    def batched(self, args, **stubs):
+        """device.batch(args) with the build, the image write, the boot wait
+        and git stubbed, plus `stubs` (name: patch keywords) on device."""
+        stubs = {"build_image": {}, "write_image": {"return_value": "abc"}, "await_console": {},
+                 "git_commit": {"return_value": "c0ffee"}, **stubs}
+        with contextlib.ExitStack() as stack:
+            for name, keywords in stubs.items():
+                stack.enter_context(mock.patch.object(device, name, **keywords))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            return device.batch(args, self.store, BOARD_A)
+
+    def test_batch(self):
+        code = self.batched(self.batch_args(runs=2), open_when_free={
+            "side_effect": lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)})
+        self.assertEqual(code, 1)
         self.assertIsNone(self.errors()["batch"])
         index = isolation.RECORDS / "index.jsonl"
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((entry["command"], entry["error"]), ("batch", None))
 
     def test_a_batch_capture_that_breaks_is_an_error(self):
-        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
-                         suite=["sand"], runs=1, perf_scope=False, flash=True, max_seconds=5,
-                         idle_seconds=None, out=None, expect_build_id=None)
-        with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc"), \
-                mock.patch.object(device, "run_suite", side_effect=RuntimeError("port lost")), \
-                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
-                contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
+        code = self.batched(self.batch_args(runs=1),
+                                    run_suite={"side_effect": RuntimeError("port lost")})
+        self.assertEqual(code, 1)
         self.assertEqual(self.errors()["batch"], "a batch capture failed")
+
+    def test_a_board_that_would_answer_every_run_the_same_ends_the_batch(self):
+        for error in (device.BoardNotReading("not reading"), device.TuneRefused("refused"),
+                      device.TestFilterError("no filter")):
+            run_suite = mock.Mock(side_effect=error)
+            with self.subTest(error=type(error).__name__):
+                with self.assertRaises(type(error)):
+                    self.batched(self.batch_args(runs=2, flash=False), run_suite={"new": run_suite})
+                self.assertEqual(run_suite.call_count, 1)
+                self.assertIsNone(self.store.read_json(self.store.lock_path(BOARD_A)))
 
 
 class DyingHandle(Replies):

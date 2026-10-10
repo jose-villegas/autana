@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import host_runner  # noqa: E402
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
 import device_report  # noqa: E402
 

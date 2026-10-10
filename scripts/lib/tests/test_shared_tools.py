@@ -13,6 +13,8 @@ sys.path.insert(0, str(LIB))
 sys.path.insert(0, str(LIB.parent / 'device'))
 import pinned_tool
 import native_path
+sys.path.insert(0, str(LIB.parent / 'device' / 'tests'))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device
 import device_capture as capture
 

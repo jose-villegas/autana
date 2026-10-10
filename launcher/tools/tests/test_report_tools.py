@@ -17,6 +17,8 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "sweeps"))
 
 import validate_capture  # noqa: E402
+sys.path.insert(0, str(TOOLS.parents[1] / "scripts" / "device" / "tests"))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 
 BOOT = "ESP-ROM:esp32s3-20210327\nI (31) boot: ESP-IDF v5.5\n"
 COMPLETE = "I (3000) selftest: SELFTEST_COMPLETE failures=0 elapsed_ms=380\n"
