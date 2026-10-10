@@ -179,6 +179,57 @@ class PooledReferenceTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class ReferenceSetTests(unittest.TestCase):
+    def test_render_sets_writes_the_files_main_writes_for_each_pose_file_with_normals(self):
+        import contextlib
+        import io
+        import tempfile
+        from unittest.mock import patch
+        from r3d import process_budget as budget, reference_render
+        from r3d.fitted_variant import ReferenceInputs, poses_text
+
+        size, lens, near = 8, 1., .01
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        job, scene = sun_scene([0., 0., 1.])
+        scene.tonemap_white = 2.
+        background = SimpleNamespace(background=0x123456)
+        scene.camera = SimpleNamespace(component=background)
+        inputs = ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=None,
+                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={})
+        shifts = ([0.], [.5], [-.5, 1.])
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            files = []
+            for index, shift in enumerate(shifts):
+                poses = [(LOOK_DOWN + np.array([x, 0., 0., 0., 0., 0.])).tolist() for x in shift]
+                files.append(root / f"poses{index}.txt")
+                files[-1].write_text(poses_text(size, size, lens, near, poses))
+            together = [(file, root / "together" / file.stem) for file in files]
+            # One worker, whatever this host's memory and cores: the pool's budget reads /proc.
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(patch.object(budget, "task_reservation", return_value=None))
+                stack.enter_context(patch.object(budget, "available_bytes", return_value=(1 << 60,) * 3))
+                stack.enter_context(patch.object(budget, "cores_available", return_value=1))
+                stack.enter_context(patch.object(budget, "worker_capacity", return_value=1))
+                with patch.object(reference_render, "lit_source", return_value=source):
+                    reference_render.render_sets(inputs, together)
+                stack.enter_context(patch.object(reference_render, "load_scene", return_value=scene))
+                stack.enter_context(patch.object(reference_render, "source_for", return_value=(source, job)))
+                for file in files:
+                    reference_render.main(["scene", "--poses", str(file), "--out", str(root / "alone" / file.stem),
+                                           "--normals"])
+            for file in files:
+                names = sorted(path.name for path in (root / "alone" / file.stem).iterdir())
+                self.assertTrue(any(name.endswith(".normal.npy") for name in names), "main wrote normals")
+                self.assertTrue(any(name.endswith(".png") for name in names))
+                self.assertEqual(sorted(path.name for path in (root / "together" / file.stem).iterdir()), names)
+                for name in names:
+                    self.assertEqual((root / "together" / file.stem / name).read_bytes(),
+                                     (root / "alone" / file.stem / name).read_bytes(), name)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
 class BounceReferenceTests(unittest.TestCase):
     class Constant:
         def bounce(self, points, normals, ray_offset):
