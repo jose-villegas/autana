@@ -11,11 +11,11 @@
 
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
 #include "esp_core_dump.h"
-#endif
 
 /* The panic reason a core dump carries, e.g. "assert failed: ..." or an
  * exception name; longer text is cut, the dump itself keeps all of it. */
 #define BOOT_REPORT_PANIC_REASON_MAX 120
+#endif
 
 static const char*
 reset_reason_name(esp_reset_reason_t reason) {

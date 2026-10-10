@@ -134,6 +134,9 @@ which the host misses while USB re-enumerates):
 | `COREDUMP=none` | no core dump in the `coredump` partition |
 | `COREDUMP=present panic="<reason>"` | the last panic's dump is in flash, and the reason it records |
 
+The `COREDUMP=` lines and the dump itself are in development and diagnostics
+builds only; a release build keeps the partition but writes no dump.
+
 On the board every warm reset becomes a PMIC power cycle
 (`bootloader_components/pmic_cold_boot/`), so after a crash the reason reads
 `POWERON` and USB drops before the panic text reaches the host. The panic

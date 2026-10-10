@@ -34,3 +34,11 @@ CONFIG_HEAP_USE_HOOKS=y
 # The bootloader's own Kconfig cannot see LAUNCHER_DEVELOPMENT, so a
 # development-type build turns the reset drain on here.
 CONFIG_PMIC_COLD_BOOT_HOST_DRAIN=y
+
+# The panic handler writes an ELF core dump to the coredump partition
+# (partitions.csv, shared by every variant), and boot says whether one is
+# there (boot/boot_report.h). Every warm reset becomes a PMIC power cycle that
+# drops USB, so the dump is the crash's only record. Development-type builds
+# only: it costs about 4 KB of internal RAM, 1.8 KB of it the dump's own stack.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
