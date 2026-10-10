@@ -30,7 +30,8 @@ r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t
 
 render_view_t
 r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t viewport) {
-    vec3f_t position, forward;
+    vec3f_t position;
+    vec3f_t forward;
     r3d_scene_camera_sample(camera, t_ms, &position, &forward);
     const transformf_t pose = transformf_looking(position, forward, (vec3f_t){0.0F, 1.0F, 0.0F});
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
