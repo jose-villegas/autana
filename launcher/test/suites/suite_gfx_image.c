@@ -13,6 +13,7 @@
 #include "unity.h"
 
 #include "asset/asset_store.h"
+#include "boot/boot_anim.h"
 #include "gfx/gfx.h"
 #include "gfx/image/gfx_image.h"
 #include "test_alloc.h"
@@ -201,15 +202,15 @@ test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds(void) {
 
 static void
 test_the_boot_picture_s_pack_opens_as_one_panel(void) {
-    const asset_pack_t* pack = asset_store_pack("boot");
+    const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
     TEST_ASSERT_NOT_NULL_MESSAGE(pack, "no boot pack: see the log above");
     gfx_image_t image = {0};
     asset_view_t entry;
-    asset_status_t status = asset_pack_find(pack, "boot", GFX_IMAGE_ASSET, &entry);
+    asset_status_t status = asset_pack_find(pack, BOOT_PHOTO, GFX_IMAGE_ASSET, &entry);
     if (status == ASSET_OK) {
         status = gfx_image_open(entry, &image);
     }
-    asset_store_release("boot");
+    asset_store_release(BOOT_PHOTO);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, status);
     TEST_ASSERT_EQUAL_UINT16(GFX_WIDTH, image.width);
     TEST_ASSERT_EQUAL_UINT16(GFX_HEIGHT, image.height);
@@ -233,3 +234,4 @@ suite_gfx_image(void) {
 }
 
 SUITE_REGISTER(suite_gfx_image);
+SUITE_READS(suite_gfx_image, BOOT_PHOTO);

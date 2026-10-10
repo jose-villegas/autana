@@ -1,0 +1,101 @@
+accel/tcg: the MMIO slow path keeps the attrs it copied before taking the BQL
+
+Upstream: https://github.com/espressif/qemu/issues/174
+Applies to: esp-develop-9.2.2-20260417 (accel/tcg/cputlb.c as in upstream v9.2.2)
+Remove: delete this file once the QEMU version ESP-IDF's tools.json
+recommends has the fix.
+
+do_ld_mmio_beN() / do_st_mmio_leN() and their 16-byte forms copy
+full->attrs, take the BQL, then re-read full->attrs after it. Waiting for
+the lock, the CPUTLBEntryFull can be freed and its memory reused as a fast
+TLB table that a flush fills with 0xff; attrs then reads 0xffffffff, the
+access is rejected, and the guest takes LoadStorePIFAddrError on an
+ordinary mapped register. On esp32s3 every flash-MMU write flushes the
+TLBs, so a firmware mapping flash on one core while the other touches a
+peripheral hits it: core 1's FreeRTOS tick faulting on SYSTIMER registers
+while core 0 maps a pack. The fix passes the pre-lock copy down.
+
+diff --git a/accel/tcg/cputlb.c b/accel/tcg/cputlb.c
+index b76a4ea..b17e585 100644
+--- a/accel/tcg/cputlb.c
++++ b/accel/tcg/cputlb.c
+@@ -1933,7 +1933,8 @@ static void *atomic_mmu_lookup(CPUState *cpu, vaddr addr, MemOpIdx oi,
+ static uint64_t int_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
+                                 uint64_t ret_be, vaddr addr, int size,
+                                 int mmu_idx, MMUAccessType type, uintptr_t ra,
+-                                MemoryRegion *mr, hwaddr mr_offset)
++                                MemoryRegion *mr, hwaddr mr_offset,
++                                MemTxAttrs attrs)
+ {
+     do {
+         MemOp this_mop;
+@@ -1947,7 +1948,7 @@ static uint64_t int_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
+         this_mop |= MO_BE;
+ 
+         r = memory_region_dispatch_read(mr, mr_offset, &val,
+-                                        this_mop, full->attrs);
++                                        this_mop, attrs);
+         if (unlikely(r != MEMTX_OK)) {
+             io_failed(cpu, full, addr, this_size, type, mmu_idx, r, ra);
+         }
+@@ -1981,7 +1982,7 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
+ 
+     BQL_LOCK_GUARD();
+     return int_ld_mmio_beN(cpu, full, ret_be, addr, size, mmu_idx,
+-                           type, ra, mr, mr_offset);
++                           type, ra, mr, mr_offset, attrs);
+ }
+ 
+ static Int128 do_ld16_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
+@@ -2002,9 +2003,9 @@ static Int128 do_ld16_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
+ 
+     BQL_LOCK_GUARD();
+     a = int_ld_mmio_beN(cpu, full, ret_be, addr, size - 8, mmu_idx,
+-                        MMU_DATA_LOAD, ra, mr, mr_offset);
++                        MMU_DATA_LOAD, ra, mr, mr_offset, attrs);
+     b = int_ld_mmio_beN(cpu, full, ret_be, addr + size - 8, 8, mmu_idx,
+-                        MMU_DATA_LOAD, ra, mr, mr_offset + size - 8);
++                        MMU_DATA_LOAD, ra, mr, mr_offset + size - 8, attrs);
+     return int128_make128(b, a);
+ }
+ 
+@@ -2474,7 +2475,8 @@ static Int128 do_ld16_mmu(CPUState *cpu, vaddr addr,
+ static uint64_t int_st_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
+                                 uint64_t val_le, vaddr addr, int size,
+                                 int mmu_idx, uintptr_t ra,
+-                                MemoryRegion *mr, hwaddr mr_offset)
++                                MemoryRegion *mr, hwaddr mr_offset,
++                                MemTxAttrs attrs)
+ {
+     do {
+         MemOp this_mop;
+@@ -2487,7 +2489,7 @@ static uint64_t int_st_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
+         this_mop |= MO_LE;
+ 
+         r = memory_region_dispatch_write(mr, mr_offset, val_le,
+-                                         this_mop, full->attrs);
++                                         this_mop, attrs);
+         if (unlikely(r != MEMTX_OK)) {
+             io_failed(cpu, full, addr, this_size, MMU_DATA_STORE,
+                       mmu_idx, r, ra);
+@@ -2522,7 +2524,7 @@ static uint64_t do_st_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
+ 
+     BQL_LOCK_GUARD();
+     return int_st_mmio_leN(cpu, full, val_le, addr, size, mmu_idx,
+-                           ra, mr, mr_offset);
++                           ra, mr, mr_offset, attrs);
+ }
+ 
+ static uint64_t do_st16_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
+@@ -2542,9 +2544,9 @@ static uint64_t do_st16_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
+ 
+     BQL_LOCK_GUARD();
+     int_st_mmio_leN(cpu, full, int128_getlo(val_le), addr, 8,
+-                    mmu_idx, ra, mr, mr_offset);
++                    mmu_idx, ra, mr, mr_offset, attrs);
+     return int_st_mmio_leN(cpu, full, int128_gethi(val_le), addr + 8,
+-                           size - 8, mmu_idx, ra, mr, mr_offset + 8);
++                           size - 8, mmu_idx, ra, mr, mr_offset + 8, attrs);
+ }
+ 
+ /*

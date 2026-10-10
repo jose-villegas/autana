@@ -58,6 +58,8 @@ export VERBOSE
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
+# shellcheck disable=SC1007
+LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
 # --build-dir keeps two runs from clobbering each other: the build dir holds
 # one host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
@@ -113,6 +115,7 @@ $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
+$TEST_DIR/pack_reads.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
@@ -137,6 +140,7 @@ $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
+$MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
@@ -158,7 +162,6 @@ $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
-$MAIN_DIR/math/motion/orbit_motion.c
 $MAIN_DIR/input/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
@@ -179,6 +182,13 @@ $MAIN_DIR/../tools/gen/gfx_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 $TEST_DIR/../components/microui/src/microui.c
 "
+
+# Every package's sources and suites, found the same way (tools/build/packages.sh).
+# shellcheck source=../tools/build/packages.sh
+. "$TEST_DIR/../tools/build/packages.sh"
+SOURCES="$SOURCES
+$(package_sources "$LAUNCHER_DIR")
+$(package_suites "$LAUNCHER_DIR")"
 
 # Every gfx source but the device-only *_device.c, found rather than listed.
 for gfx_src in $(find "$MAIN_DIR/gfx" -name '*.c' ! -name '*_device.c' | sort); do
@@ -237,7 +247,8 @@ case "${1:-}" in
         ;;
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
-            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+            -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
+            -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
@@ -257,6 +268,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
     [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
     quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
+    grep '^waiting on lock:' "$QUIET_LOG" || true
     export QUIET_SUMMARY
     QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
     if [ -n "$QUIET_FAILURES" ]; then
@@ -283,6 +295,7 @@ fi
 # does not build is caught here rather than on the board.
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
+    "$TEST_DIR/check_packages_alone.sh"
     "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
@@ -354,11 +367,15 @@ CC_MK=$CC_BIN
 case "$CC_BIN" in */* | *\\*) CC_MK=$(native "$CC_BIN") ;; esac
 MAIN_N=$(native "$MAIN_DIR")
 TEST_N=$(native "$TEST_DIR")
-LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
+LAUNCHER_N=$(native "$LAUNCHER_DIR")
 BUILD_N=$(native "$BUILD_DIR")
-COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
+PACKAGE_INC=""
+for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
+    PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
+done
+COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -pthread -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the
@@ -467,10 +484,17 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
-# The asset packs the suites read, one per root asset in the tree.
+# The asset packs the suites read, one per root asset in the tree. A pack
+# whose bakes only lack their lock rows (a re-keyed bake not yet locked) is
+# left out, and host_tests skips the suites that name it in SUITE_READS and
+# prints them (docs/Testing-Guide.md, "Adding a suite"). Any other build
+# failure fails here.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR
-"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" "$MAIN_DIR" > /dev/null
+UNLOCKED="$BUILD_DIR/unlocked_packs.txt"
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" --skip-unlocked "$UNLOCKED" "$MAIN_DIR" > /dev/null
+AUTANA_PACKS_WAITING=$(paste -sd, "$UNLOCKED")
+export AUTANA_PACKS_WAITING
 # The test clip suite_anim_tracks.c holds to the Python sampler.
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE

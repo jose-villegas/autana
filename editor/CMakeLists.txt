@@ -27,6 +27,17 @@ include(FetchContent)
 
 set(LAUNCHER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../launcher")
 
+# The firmware's packages (launcher/packages/<name>/), each a library target of
+# its own name: its CMakeLists.txt builds one outside ESP-IDF.
+file(GLOB package_lists CONFIGURE_DEPENDS ${LAUNCHER_DIR}/packages/*/CMakeLists.txt)
+set(launcher_packages "")
+foreach(package_list IN LISTS package_lists)
+    get_filename_component(package_dir "${package_list}" DIRECTORY)
+    get_filename_component(package "${package_dir}" NAME)
+    add_subdirectory("${package_dir}" "packages/${package}")
+    list(APPEND launcher_packages ${package})
+endforeach()
+
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     nlohmann_json
@@ -73,6 +84,7 @@ target_include_directories(editor_runtime
         runtime/host
         ${LAUNCHER_DIR}/components/microui/include
 )
+target_link_libraries(editor_runtime PUBLIC ${launcher_packages})
 # ui_scroll.c's momentum uses expf(); only MinGW links libm unasked.
 if(NOT WIN32)
     target_link_libraries(editor_runtime PUBLIC m)

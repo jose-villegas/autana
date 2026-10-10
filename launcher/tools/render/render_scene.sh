@@ -170,6 +170,8 @@ render_scene_build() {
 
     # shellcheck source=../build/find_cc.sh
     . "$_rs_tools/build/find_cc.sh"
+    # shellcheck source=../build/packages.sh
+    . "$_rs_tools/build/packages.sh"
     if ! _rs_cc=$(find_cc); then
         echo "No C compiler found." >&2
         echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
@@ -188,7 +190,8 @@ render_scene_build() {
     # the real header is used for, so a scene reaching a call nothing has
     # stubbed fails at the link rather than compiling into something else.
     # 64-bit pointers and 8-byte alignment make every command bigger on the host.
-    _rs_flags="-I $_rs_launcher/main -I $_rs_launcher/components/microui/include"
+    _rs_flags="-I $_rs_launcher/main $(package_includes "$_rs_launcher")"
+    _rs_flags="$_rs_flags -I $_rs_launcher/components/microui/include"
     _rs_flags="$_rs_flags -I $_rs_tools/render -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
     for _rs_inc in $scene_includes; do
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
@@ -197,6 +200,9 @@ render_scene_build() {
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
     # Every scene draws through gfx: all of it but the device-only *_device.c.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" -name '*.c' ! -name '*_device.c' | sort | tr '
+' ' ')"
+    # And through the packages (tools/build/packages.sh), all of each.
+    _rs_files="$_rs_files $(package_sources "$_rs_launcher" | tr '
 ' ' ')"
     for _rs_src in $scene_sources; do
         _rs_files="$_rs_files $_rs_launcher/$_rs_src"

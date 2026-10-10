@@ -14,9 +14,9 @@ sys.path.insert(0, str(TOOLS / "tests"))
 
 from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
-from asset.asset_pack import parse_pack  # noqa: E402
-from r3d import build_pack, scene_asset
-from asset.engine_frame import to_engine
+from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
+from r3d import build_pack, scene_asset  # noqa: E402
+from asset.engine_frame import to_engine  # noqa: E402
 from test_engine_frame import mesh_entry  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
@@ -123,14 +123,18 @@ class SceneEntryTests(SceneFiles):
         objects = renderer("a.import.toml") + lens("clips/fly.anim.toml")
         self.assertEqual(self.entry(objects), self.entry(objects))
 
-    def test_a_camera_path_names_an_existing_anim_file_and_a_short_node(self):
+    def test_a_camera_path_names_an_existing_anim_file_and_a_valid_node(self):
         for path, pattern in (("clips/gone.anim.toml", "is not an .anim.toml file"),
                               ("clips/probe.glb", "is not an .anim.toml file")):
             with self.subTest(path=path), self.assertRaisesRegex(SettingsError, pattern):
                 load_scene(self.scene(renderer("a.import.toml") + lens(path)))
-        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + "n" * 20 + '"')
-        with self.assertRaisesRegex(SettingsError, "track names exceed"):
-            load_scene(self.scene(renderer("a.import.toml") + long_node))
+        node = "n" * (NAME_BYTES - 1)
+        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + node + '"')
+        scene = load_scene(self.scene(renderer("a.import.toml") + long_node))
+        self.assertEqual(scene.camera.component.path.node, node)
+        with self.assertRaisesRegex(SettingsError, "at most"):
+            load_scene(self.scene(renderer("a.import.toml") +
+                       long_node.replace(node, "n" * NAME_BYTES)))
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
             load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('"lamp"', '"no-good"')))
 

@@ -6,6 +6,7 @@ set(app_srcs
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
     "boot/boot_anim_photo.c"
+    "boot/boot_report.c"
     "selftest/post.c"
     "selftest/post_layout.c"
     "selftest/post_ui.c"
@@ -45,6 +46,7 @@ set(app_srcs
     "ui/ui_widgets.c"
     "anim/anim_track.c"
     "anim/anim_tracks.c"
+    "anim/anim_binding.c"
     "asset/asset_pack.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
@@ -62,7 +64,6 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "math/motion/orbit_motion.c"
     "input/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
@@ -192,10 +193,10 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
+             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon, unity and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF
@@ -212,7 +213,8 @@ set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              perfmon unity esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
-    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The

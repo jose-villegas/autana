@@ -4,6 +4,7 @@ for byte. build_pack.py's tree path has its own suite, test_asset_pack.py."""
 
 import contextlib
 import copy
+import dataclasses
 import hashlib
 import io
 import json
@@ -12,6 +13,7 @@ import platform
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 import urllib.error
 import zipfile
@@ -24,9 +26,29 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from bake import bake, produce  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from test_r3d_import import write_import  # noqa: E402
+from test_r3d_import import (FIT, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
+                             write_import, write_scene)
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
+START_SHA256 = "5" * 64
+# The bytes a lock row and a run's make give one start, told apart by their first digit.
+LOCKED_SHA256 = "1" * 64
+MADE_SHA256 = "2" * 64
+SEEDED_SHA256 = "3" * 64
+FIT_SHA256 = "4" * 64
+RUN = 9
+FIT_STEPS = 20  # the steps FIT sets
+
+
+class AnyStart(dict):
+    """Starts that all have the bytes `sha256`, whatever their key."""
+
+    def __init__(self, sha256=START_SHA256):
+        super().__init__()
+        self.sha256 = sha256
+
+    def get(self, key, default=None):
+        return self.sha256
 
 
 def fitted_job():
@@ -121,7 +143,7 @@ class NativeTests(unittest.TestCase):
     def test_the_pose_samplers_c_and_headers_are_in_the_mesh_stage(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
-                         "launcher/main/math/scalar/mathf.h"} <= set(names))
+                         "launcher/packages/math/include/math/scalar/mathf.h"} <= set(names))
 
     def test_a_compiled_submodule_counts_as_its_pinned_commit(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
@@ -190,19 +212,245 @@ class StageTests(unittest.TestCase):
             self.assertFalse(any(name.startswith("bake/") for name in self.names(stage)), stage)
             self.assertNotIn("r3d/build_pack.py", self.names(stage), stage)
 
-    def test_a_fit_edit_rekeys_the_fit_alone_and_a_mesh_edit_every_stage(self):
+    def test_a_fit_edit_rekeys_the_fit_alone(self):
         job, scene = fitted_job()
-        keys = bake.stage_keys(job, scene, TOOL_KEYS)
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())
         fit = copy.deepcopy(job)
         fit.renderer.fit.steps += 1
-        refit = bake.stage_keys(fit, scene, TOOL_KEYS)
-        self.assertEqual(keys["reference"], refit["reference"])
+        refit = bake.stage_keys(fit, scene, TOOL_KEYS, AnyStart())
+        self.assertEqual((keys["start"], keys["reference"]), (refit["start"], refit["reference"]))
         self.assertNotEqual(keys["fit"], refit["fit"])
-        retool = bake.stage_keys(job, scene, {**TOOL_KEYS, "fit": "changed"})
+        retool = bake.stage_keys(job, scene, {**TOOL_KEYS, "fit": "changed"}, AnyStart())
         self.assertEqual((keys["start"], keys["reference"]), (retool["start"], retool["reference"]))
         self.assertNotEqual(keys["fit"], retool["fit"])
-        rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"})
-        self.assertTrue(all(keys[stage] != rebaked[stage] for stage in keys))
+
+    def test_the_references_do_not_read_the_start(self):
+        """Fits that differ only in their start, its budget or its shading, share one reference set."""
+        job, scene = fitted_job()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())
+        other = copy.deepcopy(job)
+        other.renderer.variant.triangles += 1
+        other.renderer.shading = "changed"
+        moved = bake.stage_keys(other, scene, TOOL_KEYS, AnyStart())
+        self.assertNotEqual(keys["start"], moved["start"])
+        self.assertEqual(keys["reference"], moved["reference"])
+        rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"}, AnyStart())
+        self.assertNotEqual(keys["start"], rebaked["start"])
+        self.assertEqual((keys["reference"], keys["fit"]), (rebaked["reference"], rebaked["fit"]))
+
+    def test_the_fit_is_keyed_on_its_starts_bytes_and_unknown_without_them(self):
+        job, scene = fitted_job()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())
+        self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, AnyStart("f" * 64))["fit"])
+        self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS)["fit"])
+
+    def test_the_reference_key_counts_every_field_its_render_reads(self):
+        from r3d.fitted_variant import ReferenceInputs, reference_inputs
+
+        job, scene = fitted_job()
+        inputs = reference_inputs(job, scene)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS)
+        fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
+        self.assertEqual(set(recipe) - {"sources"}, fields)
+        brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
+        self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS)))
+
+    def test_a_fit_brings_its_start_as_a_mesh_bake_no_pack_holds(self):
+        found = bake.bakes([build_pack.DEFAULT_SEARCH])
+        fits = [item for item in found if item.kind == "fit"]
+        if not fits:
+            self.skipTest("no fitted renderer in the tree")
+        starts = {item.key: item for item in found if not item.packed and item.kind == "mesh"}
+        for fit in fits:
+            self.assertIn(fit.stages["start"], starts)
+            self.assertTrue(starts[fit.stages["start"]].output.endswith(bake.START_SUFFIX))
+
+
+def write_fitted_tree(root, names=("fit",), visibility=PATH):
+    """A scene placing one fitted renderer per name, all of one import, so they share a start. Their recipes
+    differ in their steps, so each fit is a bake of its own."""
+    write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+    objects = "".join(
+        renderer(name=name, extra='variant = "mesh"\nbake = true\n' + visibility
+                 + FIT.replace(f"steps = {FIT_STEPS}", f"steps = {FIT_STEPS + index}"))
+        for index, name in enumerate(names))
+    return write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD)
+
+
+def row_of(item, sha256, **fields):
+    """The row a run or the lock holds for `item`."""
+    return {"output": item.output, "source": "scene.scene.toml", "key": item.key, "sha256": sha256, "size": 1,
+            "suffix": bake.MESH_SUFFIX, **fields}
+
+
+class FittedBakeCase(unittest.TestCase):
+    """A temporary tree with fitted renderers, and the commands and keys over it."""
+
+    names = ("fit",)
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.directory.name)
+        self.cache = self.root / "cache"
+        self.scene_path = write_fitted_tree(self.root, self.names)
+        self.start = next(item for item in self.bakes({}) if not item.packed)
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def bakes(self, starts):
+        return bake.bakes([self.root], starts)
+
+    def fits(self, sha256):
+        """The fits of the tree when its start has the bytes `sha256`."""
+        return [item for item in self.bakes({self.start.key: sha256}) if item.kind == "fit"]
+
+    def fit(self, sha256):
+        return self.fits(sha256)[0]
+
+    def command(self, argv, lock, made=None):
+        """Runs bake.py main over the tree with the lock and the runs' makes given and produce.produce stubbed:
+        a start is made with MADE_SHA256, a fit with FIT_SHA256. Returns what it did."""
+        written, produced = [], []
+
+        def stub(item, cache, lock=None, blender=None):
+            produced.append(item)
+            return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(bake, "read_lock", return_value=lock), \
+                mock.patch.object(bake, "write_lock", side_effect=written.append), \
+                mock.patch.object(bake, "runs_made", return_value=made or {}), \
+                mock.patch.object(produce, "produce", side_effect=stub), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = bake.main([*argv, str(self.root), "--cache", str(self.cache)])
+        return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), produced=produced,
+                                     rows={row["output"]: row for row in (written[0] if written else [])})
+
+    def locked(self, sha256, **fields):
+        return {self.start.key: row_of(self.start, sha256, **fields)}
+
+
+class FittedBakeTests(FittedBakeCase):
+    """The bake, lock and list commands over a tree with one fitted renderer, and the keys it gives."""
+
+    def lock_from_run(self, lock):
+        """`lock --from-run` where a run made the start with MADE_SHA256 and the fit of every start there
+        could be: the rows it writes."""
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        for sha256 in (LOCKED_SHA256, SEEDED_SHA256, MADE_SHA256):
+            made[self.fit(sha256).key] = row_of(self.fit(sha256), FIT_SHA256, run=RUN)
+        return self.command(["lock", "--from-run", str(RUN)], lock, made)
+
+    def test_a_seeded_start_is_replaced_by_the_runs_make_in_the_key_of_its_fit(self):
+        done = self.lock_from_run(self.locked(SEEDED_SHA256, seeded=True))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[self.start.output]["sha256"], MADE_SHA256)
+        self.assertEqual(done.rows[self.fit(MADE_SHA256).output]["key"], self.fit(MADE_SHA256).key)
+
+    def test_a_made_start_in_the_lock_wins_over_the_runs_in_the_key_of_its_fit(self):
+        done = self.lock_from_run(self.locked(LOCKED_SHA256, run=RUN - 1))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[self.start.output]["sha256"], LOCKED_SHA256)
+        self.assertEqual(done.rows[self.fit(LOCKED_SHA256).output]["key"], self.fit(LOCKED_SHA256).key)
+
+    def test_a_start_only_the_run_made_keys_its_fit_as_the_lock_writes_it(self):
+        done = self.lock_from_run({})
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[self.start.output]["sha256"], MADE_SHA256)
+        self.assertEqual(done.rows[self.fit(MADE_SHA256).output]["key"], self.fit(MADE_SHA256).key)
+
+    def test_a_run_that_made_the_start_but_not_the_fit_locks_the_start_and_fails_naming_the_fit(self):
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        done = self.command(["lock", "--from-run", str(RUN)], {}, made)
+        self.assertEqual(list(done.rows), [self.start.output])
+        self.assertEqual(done.code, 1)
+        self.assertIn(self.fit(MADE_SHA256).output, done.err)
+
+    def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
+        done = self.command(["bake"], {})
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(MADE_SHA256).key])
+
+    def test_the_locks_start_bytes_win_over_bytes_made_again_here_in_the_key_of_its_fit(self):
+        """--again makes a locked start once more, with other bytes; its fit is still keyed on the lock's."""
+        done = self.command(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertIn(f"sha256 {MADE_SHA256}", done.out)
+        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(LOCKED_SHA256).key])
+
+    def test_a_locked_start_is_not_made_and_keys_its_fit(self):
+        done = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual([item.key for item in done.produced], [self.fit(LOCKED_SHA256).key])
+
+    def test_a_fit_whose_start_is_neither_locked_nor_made_raises_naming_it_and_makes_nothing(self):
+        fit_output = self.fit(MADE_SHA256).output
+        for argv in (["bake", "--kind", "fit"], ["bake", "--only", fit_output]):
+            with self.subTest(argv=argv):
+                done = self.command(argv, {})
+                self.assertEqual(done.code, 1)
+                self.assertIn(fit_output, done.err)
+                self.assertIn("is not locked", done.err)
+                self.assertEqual(done.produced, [])
+
+    def test_list_says_a_fit_waits_for_its_start_until_the_start_is_locked(self):
+        waiting = self.command(["list"], {})
+        lines = {line.split("\t")[0]: line for line in waiting.out.splitlines()}
+        self.assertIn("waits for its start", lines[self.fit(MADE_SHA256).output])
+        self.assertNotIn("waits for its start", lines[self.start.output])
+        ready = self.command(["list"], self.locked(LOCKED_SHA256, run=RUN))
+        line = next(line for line in ready.out.splitlines() if line.startswith(self.fit(LOCKED_SHA256).output))
+        self.assertIn(self.fit(LOCKED_SHA256).key, line)
+
+    def test_a_fits_key_is_unknown_without_its_starts_sha_and_changes_with_it(self):
+        self.assertIsNone(self.fit(None).key)
+        self.assertIsNotNone(self.fit(LOCKED_SHA256).key)
+        self.assertNotEqual(self.fit(LOCKED_SHA256).key, self.fit(MADE_SHA256).key)
+
+    def reference_key(self, change):
+        scene = load_scene(self.scene_path)
+        job = copy.deepcopy(scene.renderers[0])
+        change(job)
+        return bake.stage_keys(job, scene, TOOL_KEYS, AnyStart())["reference"]
+
+    def test_each_pose_spacing_field_changes_the_reference_key(self):
+        unchanged = self.reference_key(lambda job: None)
+        for field in ("train_every_ms", "held_out_every_ms", "coverage_every_ms"):
+            with self.subTest(field=field):
+                def step(job):
+                    setattr(job.renderer.fit, field, getattr(job.renderer.fit, field) + 1)
+
+                self.assertNotEqual(self.reference_key(step), unchanged)
+
+    def test_the_visibility_size_changes_the_reference_key(self):
+        def widen(job):
+            width, height = job.renderer.visibility.size
+            job.renderer.visibility.size = (width + 1, height)
+
+        self.assertNotEqual(self.reference_key(widen), self.reference_key(lambda job: None))
+
+
+class SharedStartTests(FittedBakeCase):
+    """Two fitted renderers of one import."""
+
+    names = ("first", "second")
+
+    def test_fits_that_share_a_start_make_one_start_bake(self):
+        found = self.bakes({})
+        fits = [item for item in found if item.kind == "fit"]
+        starts = [item for item in found if item.kind == "mesh"]
+        self.assertEqual(len(fits), len(self.names))
+        self.assertEqual(len(starts), 1)
+        self.assertEqual({item.stages["start"] for item in fits}, {starts[0].key})
+        self.assertEqual({item.start for item in fits}, {starts[0]})
+
+    def test_a_fits_start_is_an_unpacked_mesh_bake_named_for_its_entry(self):
+        fit = self.fits(MADE_SHA256)[0]
+        self.assertTrue(fit.packed)
+        self.assertFalse(self.start.packed)
+        self.assertEqual(self.start.output, fit.output.removesuffix(bake.MESH_SUFFIX) + bake.START_SUFFIX)
+        self.assertEqual(self.start.kind, "mesh")
+
 
 class LockTests(unittest.TestCase):
     def setUp(self):
@@ -249,6 +497,71 @@ class LockTests(unittest.TestCase):
         self.assertNotIn("seeded", seeded)
         kept = bake.lock_rows(found, {"k" * 64: {**self.row, "run": 4}}, made)[0]
         self.assertEqual((kept["run"], kept["sha256"]), (4, self.row["sha256"]))
+
+    def waiting_fit(self):
+        """A fit whose start, key "k" * 64, the lock does not have yet: its own key is unknown."""
+        return bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key=None,
+                         suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+
+    def test_a_run_locks_a_start_while_its_fit_waits_naming_the_fit(self):
+        start = bake_of("k" * 64, self.tree)
+        missing = []
+        rows = bake.lock_rows([start, self.waiting_fit()], {}, {"k" * 64: {**self.row, "run": 9}}, missing)
+        self.assertEqual([row["key"] for row in rows], ["k" * 64])
+        self.assertEqual(len(missing), 1)
+        self.assertIn("two.mesh", missing[0])
+        self.assertIn("is not locked", missing[0])
+        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh"):
+            bake.lock_rows([start, self.waiting_fit()], {}, {"k" * 64: {**self.row, "run": 9}})
+
+    def test_a_waiting_fit_is_never_seeded(self):
+        with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.mesh.*is not locked"):
+            bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.mesh", "key": "j" * 64}})
+
+    def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
+        made = {"k" * 64: {**self.row, "sha256": "f" * 64}}
+        self.assertEqual(bake.locked_starts({"k" * 64: self.row}, made), {"k" * 64: self.row["sha256"]})
+        self.assertEqual(bake.locked_starts({}, made), {"k" * 64: "f" * 64})
+
+    def test_a_fit_fetches_the_start_its_key_names_and_fails_without_it(self):
+        start = bake_of("k" * 64, self.tree)
+        fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="f" * 64,
+                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh",
+                        stages={"start": "k" * 64, "start_sha256": self.row["sha256"]}, start=start)
+        bake.store(self.tree, self.row, bake.MESH_SUFFIX, self.cache)
+        path = produce.start_file(fit, self.cache, {"k" * 64: self.row})
+        self.assertEqual(path.read_bytes(), self.tree.read_bytes())
+        other = {"k" * 64: {**self.row, "sha256": "e" * 64}}
+        for lock, cache in (({}, self.root / "empty"), (other, self.root / "empty")):
+            with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ with sha256 .* is neither locked"):
+                produce.start_file(fit, cache, lock)
+
+    def fit_of_start_made_here(self, start_sha256):
+        """A fit naming `start_sha256`, whose start this cache made (no lock row) with the bytes of the tree's file."""
+        start = bake_of("k" * 64, self.tree)
+        produce.record(start, self.tree, self.cache)
+        return bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="f" * 64,
+                         suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh",
+                         stages={"start": "k" * 64, "start_sha256": start_sha256}, start=start)
+
+    def test_a_start_made_in_this_cache_with_the_named_sha_is_used_without_a_lock_row(self):
+        fit = self.fit_of_start_made_here(self.row["sha256"])
+        self.assertEqual(produce.start_file(fit, self.cache, {}).read_bytes(), self.tree.read_bytes())
+
+    def test_a_start_made_in_this_cache_with_another_sha_is_refused(self):
+        fit = self.fit_of_start_made_here("e" * 64)
+        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ with sha256 e+ is neither locked"):
+            produce.start_file(fit, self.cache, {})
+
+    def test_one_seed_from_a_run_locks_the_start_and_carries_the_fits_bytes(self):
+        start = bake_of("k" * 64, self.tree)
+        fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="n" * 64,
+                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+        old_fit = {**self.row, "output": "two.mesh", "key": "o" * 64, "run": 3}
+        bake.store(self.tree, old_fit, bake.MESH_SUFFIX, self.cache)
+        rows = bake.seed([start, fit], self.cache, {"o" * 64: old_fit}, {"k" * 64: {**self.row, "run": 9}})
+        self.assertEqual([(row["key"], row.get("seeded", False)) for row in rows],
+                         [("k" * 64, False), ("n" * 64, True)])
 
     def test_seeding_fills_only_the_keys_the_lock_lacks(self):
         other = self.root / "two.mesh"
@@ -383,6 +696,14 @@ class LockTests(unittest.TestCase):
         with mock.patch("urllib.request.urlopen") as network, self.assertRaisesRegex(bake.BakeMissing, "offline"):
             bake.fetch_all([bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache, offline=True)
         network.assert_not_called()
+
+    def test_bakes_that_only_lack_lock_rows_are_unlocked_and_any_other_miss_is_not(self):
+        unlocked = [bake_of("n" * 64, self.tree)]
+        with self.assertRaises(bake.BakeUnlocked):
+            bake.fetch_all(unlocked, {"k" * 64: self.row}, self.cache, offline=True)
+        with self.assertRaises(bake.BakeMissing) as raised:
+            bake.fetch_all(unlocked + [bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache, offline=True)
+        self.assertNotIsInstance(raised.exception, bake.BakeUnlocked)
 
     def test_a_cached_file_with_other_bytes_is_not_used(self):
         self.cache.mkdir()
@@ -585,7 +906,7 @@ class BlendTests(unittest.TestCase):
 def filled_cache(directory):
     """Every mesh the tree's lock names, in the cache `directory`: copied from the user cache, fetched
     there first when it lacks one. Returns the mesh bakes and the lock."""
-    found = [item for item in bake.bakes([build_pack.DEFAULT_SEARCH]) if item.kind != "blend"]
+    found = [item for item in bake.bakes([build_pack.DEFAULT_SEARCH]) if item.packed]
     lock = bake.read_lock()
     for path in bake.fetch_all(found, lock, bake.default_cache()).values():
         shutil.copyfile(path, pathlib.Path(directory) / path.name)
@@ -641,7 +962,7 @@ class TreeTests(unittest.TestCase):
         self.assertEqual(packs, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
 
     def test_every_key_is_unique(self):
-        keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH])]
+        keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH]) if found.key is not None]
         self.assertEqual(len(keys), len(set(keys)))
 
     def test_a_cold_build_fails_naming_each_bake(self):
@@ -650,8 +971,72 @@ class TreeTests(unittest.TestCase):
                                     "--offline"])
         self.assertEqual(code, 2)
         for found in bake.bakes([build_pack.DEFAULT_SEARCH]):
-            if found.kind != "blend":  # a pack holds no export
+            if found.packed:  # a pack holds no export and no fit's start
                 self.assertIn(found.output, err.getvalue())
+
+
+class SkipUnlockedTests(unittest.TestCase):
+    """build_pack.py --skip-unlocked: what test/run_tests.sh builds on a branch waiting on the lock."""
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = pathlib.Path(folder.name)
+        self.cache, self.out, self.listed = self.root / "cache", self.root / "packs", self.root / "unlocked.txt"
+        self.cache.mkdir()
+        self.found, self.lock = filled_cache(self.cache)
+        self.packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
+        self.waiting = self.found[0]
+        entry = self.waiting.output.removesuffix(bake.MESH_SUFFIX)
+        self.holder = next(name for name, entries in self.packs.items() if entry in entries)
+
+    def build(self, rows, *flags):
+        args = ["-o", str(self.out), "--bake-cache", str(self.cache), "--offline", *flags]
+        with mock.patch.object(bake, "read_lock", return_value=rows), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+            return build_pack.main(args), err.getvalue()
+
+    def written(self):
+        return sorted(path.name.removesuffix(build_pack.PACK_SUFFIX) for path in self.out.glob("*" + build_pack.PACK_SUFFIX))
+
+    def test_a_tree_with_every_row_writes_every_pack_and_names_none(self):
+        code, err = self.build(self.lock, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.written(), sorted(self.packs))
+        self.assertEqual(self.listed.read_text(), "")
+
+    def test_a_pack_whose_bake_lacks_its_lock_row_is_left_out_and_named(self):
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.written(), sorted(name for name in self.packs if name != self.holder))
+        self.assertEqual(self.listed.read_text(), f"{self.holder}\n")
+
+    def test_without_the_flag_a_missing_lock_row_still_fails(self):
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows)
+        self.assertEqual(code, 2)
+        self.assertIn(self.waiting.output, err)
+        self.assertIn("has no row for this key", err)
+
+    def test_a_locked_bake_the_cache_cannot_give_still_fails_with_the_flag(self):
+        bake.cached(self.lock[self.waiting.key], bake.MESH_SUFFIX, self.cache).unlink()
+        code, err = self.build(self.lock, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 2)
+        self.assertIn(self.waiting.output, err)
+        self.assertIn("offline", err)
+        self.assertFalse(self.listed.exists())
+
+    def test_one_pack_waiting_and_another_broken_still_fails_naming_the_broken_one(self):
+        broken = next(found for found in self.found
+                      if found.output.removesuffix(bake.MESH_SUFFIX) not in self.packs[self.holder])
+        bake.cached(self.lock[broken.key], bake.MESH_SUFFIX, self.cache).unlink()
+        rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
+        code, err = self.build(rows, "--skip-unlocked", str(self.listed))
+        self.assertEqual(code, 2)
+        self.assertIn(broken.output, err)
+        self.assertNotIn(self.waiting.output, err)
+        self.assertFalse(self.listed.exists())
 
 
 if __name__ == "__main__":

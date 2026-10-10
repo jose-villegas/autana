@@ -22,3 +22,4 @@ indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
 indirect ui_end_over : ui_ridge_paint
 indirect icon_walk_blocks : ui_draw_icon_emit ui_transform_icon_emit
 indirect ui_transform_icon_emit : ui.c:icon_fill_emit
+indirect tune.c:change tune_registry_handle_line : suite_r3d_lit.c:cull_reply

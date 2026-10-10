@@ -115,9 +115,9 @@ everything else; go there once you are capturing that app's numbers.
 
 ## Two runners, one set of suites
 
-Portable suites (`test/suites/`, plus each app's own in its `tests/` folder,
-`apps/*/tests/suite_*.c`) are compiled into every runner that can take them.
-Shell and app suites are discovered by both runners. A device-only suite
+Portable suites (`test/suites/`, each package's `packages/*/tests/`, and each
+app's own in `apps/*/tests/`) are compiled into every runner that can take
+them. Shell, package and app suites are discovered by both runners. A device-only suite
 guards its body with `#ifdef DEVICE_BUILD`; a host-only suite uses the
 opposite guard, defines an empty runner for the device, and registers once
 outside that guard. POST is a third thing again, a boot-time hardware check
@@ -450,7 +450,9 @@ ESP-IDF's driver waits forever on a sensor QEMU does not have.
 accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
 what a user does, one ordered step at a time. Its `screenshot` is the default
 `autana screenshot` view, and its `tap` and `swipe` take that view's pixels,
-as `autana tap` does; `touch` and `--touch` stay in panel pixels:
+as `autana tap` does; `touch` and `--touch` stay in panel pixels. `send`
+writes a console line as typed (`send open <app>`, or an app's own console
+line):
 
 ```sh
 python launcher/test/qemu_run.py launcher/build.qemu.shell \
@@ -466,6 +468,20 @@ suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
 `home_gesture` ignores the swipe here as it does on the board, and the PWR
 button has no stand-in, so such an app cannot be left.
+
+**A crash fails the run.** After every step the image must answer `BUILDID`
+within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
+Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a
+failed `assert`) or a second boot banner, whatever its tests reported. The
+board's captures (`autana suite`, `selftest`, `monitor`) give the same
+verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
+
+A driven tour reaches the shell's lifecycle the way the board does, null
+panel and all. A change whose in-app scene switch broke the gfx mode's
+framebuffer contract, resetting the board on every switch, asserts and
+reboots on its first switch here too; its parent takes every ordered pair
+of its fourteen switch targets, 182 switches, on one boot. A lifecycle
+regression of that kind needs no board to catch.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the
@@ -505,6 +521,26 @@ flash image, eFuse file and console log, and the build directory is only
 read, so `run_qemu_tests.sh --build-only` builds the image once for a
 driver that then launches several against it. How many to run at once is a
 question about whose desktop this is, not about the runner.
+
+**Linux can run a QEMU with its bugs patched.** Espressif's prebuilt QEMU has
+races that fail a run of a correct image: the guest takes
+`LoadStorePIFAddrError` on an ordinary register access
+([espressif/qemu#174](https://github.com/espressif/qemu/issues/174)). Each
+fix is a file in `launcher/test/qemu/patches/`, naming its upstream issue,
+and `patched_qemu.py` beside them rebuilds the QEMU version ESP-IDF installs
+with them, into `launcher/build.qemu-xtensa/`. `qemu_run.py` runs that build
+when it exists and prints which QEMU it started. CI builds it once per QEMU
+version and patch set and caches it.
+
+| host | QEMU a run uses |
+|---|---|
+| CI, and Linux after `patched_qemu.py build` | patched |
+| Linux before that, and Windows | Espressif's prebuilt, unpatched: a crash there can be QEMU's |
+
+```sh
+sudo apt-get install $(python3 launcher/test/qemu/patched_qemu.py deps)   # once
+python3 launcher/test/qemu/patched_qemu.py build                          # minutes, once per QEMU version
+```
 
 ---
 
@@ -766,18 +802,18 @@ against.
 
 ## Which suites cover which area
 
-Shell suites (gfx, ui, input, boot, render, core, math, services) live in
-`launcher/test/suites/`; an app's own are its
-`launcher/main/apps/<name>/tests/suite_*.c`. `autana suite list [text]` filters
+Shell suites (gfx, ui, input, boot, render, core, services) live in
+`launcher/test/suites/`, a package's in `launcher/packages/<name>/tests/`, and
+an app's own in `launcher/main/apps/<name>/tests/`. `autana suite list [text]` filters
 by a substring of the name, so treat it as a lookup, not an area map.
 
 ---
 
 ## Adding a suite
 
-1. Create the file. A suite for shell code goes in `launcher/test/suites/`; a
-   suite for an app goes **inside the app**, in `main/apps/<name>/tests/`, so
-   it is deleted along with it. Suites are found by their `suite_` name, not
+1. Create the file. A suite for shell code goes in `launcher/test/suites/`, one
+   for a package in the package's `tests/`; a suite for an app goes **inside
+   the app**, in `main/apps/<name>/tests/`, so it is deleted along with it. Suites are found by their `suite_` name, not
    by that folder, so one placed elsewhere still runs rather than vanishing.
 2. Write the tests, then a `void run_<name>_suite(void)` that calls
    `RUN_TEST(...)` for each. Do **not** define `setUp`/`tearDown` or call
@@ -793,6 +829,16 @@ by a substring of the name, so treat it as a lookup, not an area map.
    an engine suite or the app's `scope_perf.cmake` for an app suite, together
    with every other source the run links. The build discovers both kinds of
    manifest (see "A diagnostics build can be scoped").
+
+   A suite that reads a pack from the tree (`asset_store_pack()`, directly or
+   through `scene_load()` or other engine code) names it beside its
+   registration: `SUITE_READS(run_<name>_suite, SPONZA_SCENE);`. The host run
+   fails when a suite reads a pack it did not name. When a pack's bakes lack
+   their `bakes.lock` rows (a re-keyed bake not yet locked), `run_tests.sh`
+   leaves that pack out, skips the suites that name it, and prints
+   `waiting on lock: <packs> (skipped suites: ...)` without failing. CI stays
+   red for those rows: the Bakes workflow's lock check and the host-tests
+   job's bake fetch both fail until the lock has them.
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section: `suite_job.c` runs every one of its tests on both, and fences

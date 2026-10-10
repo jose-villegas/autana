@@ -44,3 +44,13 @@ r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t vi
     const transformf_t pose = transformf_looking(position, forward, (vec3f_t){0.0F, 1.0F, 0.0F});
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
 }
+
+static const anim_field_t CAMERA_FIELDS[] = {
+    ANIM_FIELD(r3d_scene_camera_t, half_fov_short_tan, ANIM_VALUE_FLOAT),
+    ANIM_FIELD(r3d_scene_camera_t, near_z, ANIM_VALUE_FLOAT),
+};
+const anim_component_fields_t R3D_SCENE_CAMERA_FIELDS = {
+    ANIM_COMPONENT_CAMERA,
+    CAMERA_FIELDS,
+    sizeof CAMERA_FIELDS / sizeof CAMERA_FIELDS[0],
+};
