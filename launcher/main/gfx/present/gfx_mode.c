@@ -1,4 +1,5 @@
 #include "gfx/present/gfx_mode.h"
+#include "core/memory.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_band_run.h"
@@ -6,7 +7,6 @@
 #include "gfx/present/gfx_full_redraw.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
-#include "util/runtime/memory.h"
 
 #include <assert.h>
 #include <stdlib.h>

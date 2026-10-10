@@ -24,9 +24,13 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
@@ -35,15 +39,13 @@
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 #include "sponza_suite.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "scale_perf";
 
 /* Denser than the scene's own pose spacing, so a size's mean is not two poses. */
-#define POSE_EVERY_MS 2500
-#define POSES_MAX     64
+#define POSE_EVERY_MS    2500
+#define POSES_MAX        64
+#define SCALE_HUNDREDTHS 100
 
 /* Width-first and height-first ladders keep every upscale on a fast path,
  * with the last step reserved for recovery. */
@@ -127,7 +129,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     sum->fill += whole - span_setup;
 }
 
-static void
+static int64_t
 measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
     raster->width = size.width;
     raster->height = size.height;
@@ -161,6 +163,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     ESP_LOGI(TAG, "scale_spans: %dx%d one core us/pose setup %lld rows %lld span_setup %lld fill %lld clear %lld",
              size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.rows / poses),
              (long long)(spans.span_setup / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses));
+    return sum / poses;
 }
 
 /* Whether step `step` of ladder `ladder` is a size an earlier step, of this
@@ -218,6 +221,67 @@ test_raster_stage_split_by_size(void) {
     memory_free(destination);
     memory_free(raster.scratch);
     TEST_PASS();
+}
+
+static const char* const counter_events[] = {"d_stall_all", "i_stall_busy"};
+
+/* `event` armed on r3d.draw along the path; the counts line into `report`. */
+static void
+count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const char* event, char* report) {
+    const int index = frame_cost_event_index(event);
+    TEST_ASSERT_TRUE(index >= 0);
+    frame_cost_shared_post_arm(bracket, index);
+    const uint32_t period = r3d_scene_camera_period_ms(path);
+    for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
+        const render_view_t view = r3d_scene_view_at(path, t_ms, raster_viewport(raster, 0));
+        (void)raster_draw(raster, &view);
+        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
+    }
+    const int length = frame_cost_take_counts(report, FRAME_COST_REPORT_MAX);
+    frame_cost_shared_post_arm(-1, 0);
+    const int mark = frame_cost_begin();
+    (void)frame_cost_end(mark, "counters.disarm");
+    TEST_ASSERT_TRUE_MESSAGE(length > 0, "the draw counter did not arm");
+}
+
+static void
+test_raster_counters(void) {
+#if !FRAME_COST_ENABLED
+    TEST_IGNORE_MESSAGE("frame_cost is a development build's");
+#else
+    TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
+    const r3d_instance_t instance = {&mesh, NULL};
+    const resolution_step_t size = {GFX_WIDTH * SCALE_HUNDREDTHS / render_lab_scale(),
+                                    GFX_HEIGHT * SCALE_HUNDREDTHS / render_lab_scale()};
+    raster_t raster = {.instances = &instance,
+                       .instance_count = 1,
+                       .upscaled = true,
+                       .width = size.width,
+                       .height = size.height,
+                       .destination_width = GFX_WIDTH,
+                       .destination_height = GFX_HEIGHT};
+    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
+    gfx_color_t* destination = memory_alloc(sizeof(*destination) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
+    char* report = malloc(FRAME_COST_REPORT_MAX);
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    TEST_ASSERT_NOT_NULL(destination);
+    TEST_ASSERT_NOT_NULL(frame_us);
+    TEST_ASSERT_NOT_NULL(report);
+    const int64_t mean_us = measure_size(&raster, destination, size, frame_us, report);
+    ESP_LOGI(TAG, "raster both cores: mean %lldus", (long long)mean_us);
+    const int bracket = frame_cost_shared_name_index("r3d.draw");
+    TEST_ASSERT_TRUE(bracket >= 0);
+    /* Counters cover core 0's half of the draw. */
+    for (size_t event = 0; event < sizeof counter_events / sizeof counter_events[0]; event++) {
+        count_along_path(&raster, destination, bracket, counter_events[event], report);
+        ESP_LOGI(TAG, "%s", report);
+    }
+    free(report);
+    free(frame_us);
+    memory_free(destination);
+    memory_free(raster.scratch);
+#endif
 }
 
 #define FRAME_DT_MS 50
@@ -474,6 +538,7 @@ run_raster_scale_perf_suite(void) {
     }
     RUN_TEST(test_dynamic_resolution_refit_cost);
     RUN_TEST(test_raster_stage_split_by_size);
+    RUN_TEST(test_raster_counters);
     RUN_TEST(test_dynamic_resolution_policies_along_the_path);
     loaded = (sponza_suite_t){scene, pack, path};
     sponza_suite_release(&loaded);

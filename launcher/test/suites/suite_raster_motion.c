@@ -413,6 +413,7 @@ test_a_steady_quarter_preserves_moving_and_still_motion(void) {
     }
 }
 
+/* Attaching motion changes no colour and no depth. */
 static void
 test_motion_leaves_colour_and_depth_as_they_are(void) {
     static const change_t c = {30.0F, {10.0F, 0.0F, 20.0F}, {4.0F, 2.0F, -10.0F}, 1.0F};

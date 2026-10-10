@@ -31,6 +31,7 @@
 #include <stdio.h>
 
 #include "app/app.h"
+#include "build/build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
@@ -38,7 +39,6 @@
 #include "input/imu.h"
 #include "selftest/post_layout.h"
 #include "selftest/post_ui.h"
-#include "util/build/build_variant.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "selftest/selftest.h"
 #endif

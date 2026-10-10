@@ -26,6 +26,7 @@
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #endif
+#include "core/memory.h"
 #include "render/context/render_context.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
@@ -34,7 +35,6 @@
 #include "test_anim_tracks.h"
 #include "test_cleanup.h"
 #include "test_pack.h"
-#include "util/runtime/memory.h"
 
 #ifndef DEVICE_BUILD
 #include <stdio.h>

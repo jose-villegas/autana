@@ -6,7 +6,7 @@
 #include "unity.h"
 
 #include "apps/sand/sand_paint_clock.h"
-#include "util/scalar/mathx.h"
+#include "math/scalar/mathx.h"
 
 #define SHINE_MS               SAND_PAINT_SHINE_STEP_MS
 #define SHINE_STEPS_PER_PERIOD (SAND_PAINT_SHINE_PERIOD / SAND_PAINT_SHINE_STEP_PX)

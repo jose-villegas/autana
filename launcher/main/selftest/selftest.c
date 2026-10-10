@@ -21,10 +21,10 @@
 #include "esp_log.h"
 #include "unity.h"
 
+#include "core/timing.h"
 #include "display/display.h"
 #include "suites.h"
 #include "test_harness.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "selftest";
 

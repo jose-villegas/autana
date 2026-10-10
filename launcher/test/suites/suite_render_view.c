@@ -2,9 +2,9 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/scalar/mathf.h"
 #include "render/r3d_pipeline.h"
 #include "render/render_view.h"
-#include "util/scalar/mathf.h"
 
 #define WIDTH          80
 #define HEIGHT         60

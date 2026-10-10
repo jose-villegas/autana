@@ -36,5 +36,4 @@ render_view_refit(render_view_t* view, viewport_t viewport) {
     const int shorter = view->viewport.width < view->viewport.height ? view->viewport.width : view->viewport.height;
     const float half_fov_short_tan = (float)shorter / (2.0F * view->pixels_per_unit);
     view_frame(view, right, down, half_fov_short_tan, viewport);
-    view->viewport = viewport;
 }

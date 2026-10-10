@@ -15,14 +15,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "math/linear/mat4f.h"
+#include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/render_view.h"
 #include "render/viewport.h"
-#include "util/math/mat4f.h"
-#include "util/scalar/mathi.h"
 
 #if defined(ESP_PLATFORM)
 #include "sdkconfig.h"

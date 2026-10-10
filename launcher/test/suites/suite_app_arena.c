@@ -6,7 +6,7 @@
 #include "app/app_arena.h"
 
 #if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
-#include "util/runtime/memory.h"
+#include "core/memory.h"
 #endif
 #ifdef HOST_HEAP_ARENA
 #include <stdlib.h>

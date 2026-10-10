@@ -94,7 +94,7 @@ latency. Measure scan timing and the complete send path before adding a wait.
 
 The ESP32-S3 has no pixel-processing accelerator or GPU. Rendering is CPU
 work. The shell runs the frame loop on core 0; the present task and job worker
-use core 1. A parallel stage uses `launcher/main/util/runtime/job.h`; see
+use core 1. A parallel stage uses `launcher/main/core/job.h`; see
 [Mesh-Rendering.md](../render/Mesh-Rendering.md#on-both-cores).
 
 ## Related

@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 #define RIDGE_POSE_SHIFT 14
 #define RIDGE_POSE_ONE   (1 << RIDGE_POSE_SHIFT)

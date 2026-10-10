@@ -11,7 +11,7 @@
  * never sees its name or the space after it; `args` is only what follows.
  *
  * CONSOLE_VERB() is how a device-only file joins the shared registry before
- * app_main() runs, the same self-registering shape as TUNE() (util/runtime/tune.h)
+ * app_main() runs, the same self-registering shape as TUNE() (services/tune.h)
  * and APP_REGISTER() (app.h). Its _Static_assert is the point: a verb whose
  * name plus its longest possible args cannot fit CONSOLE_LINE_MAX would
  * silently truncate on the device and nowhere else, so that mistake is
@@ -23,7 +23,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 /* The longest line any registered verb needs today: "SET " (4) + a
  * TUNE_NAME_MAX-long tunable name + " " (1) + an int32_t's longest text
@@ -103,7 +103,7 @@ typedef struct {
 } console_registry_t;
 
 /* Kept in name order, so dispatch and any future listing never depend on
- * link order, the same discipline tune_register() (util/runtime/tune.c) already
+ * link order, the same discipline tune_register() (services/tune.c) already
  * uses. A name already taken by a different verb is refused (false); the
  * same verb object registered twice is a no-op (true, since it is already
  * there). */

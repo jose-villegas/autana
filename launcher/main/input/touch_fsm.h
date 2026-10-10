@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#include "util/math/vec2i.h"
+#include "math/linear/vec2i.h"
 
 #include <stdbool.h>
 #include <stdint.h>

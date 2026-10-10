@@ -7,10 +7,10 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
 #include "render/code_layout.h"
 #include "render/viewport.h"
-#include "util/scalar/mathf.h"
-#include "util/scalar/mathi.h"
 
 static void
 set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
