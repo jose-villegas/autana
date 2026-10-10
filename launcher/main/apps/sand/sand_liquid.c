@@ -15,9 +15,9 @@
 
 #include "sand_priv.h"
 
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
 #include "sand_liquid_move.h"
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathi.h"
 
 /* See liquid_mask() in sand_priv.h */
 

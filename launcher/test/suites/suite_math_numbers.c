@@ -1,5 +1,5 @@
 /*
- * Portable suite: util/math/'s number types. The same operations run on
+ * Portable suite: math/linear/'s number types. The same operations run on
  * float, int32, int16 and Q16.16 vectors, and the fixed-point rotation maths
  * on Q16.16, and each is judged against the float result within its own
  * precision. Conversions round-trip, and overflow saturates where the
@@ -15,10 +15,10 @@
 #include "transform_cache.h"
 #include "unity.h"
 
-#include "util/math/transformf.h"
-#include "util/math/transformx.h"
-#include "util/math/vec_convert.h"
-#include "util/scalar/mathf.h"
+#include "math/linear/transformf.h"
+#include "math/linear/transformx.h"
+#include "math/linear/vec_convert.h"
+#include "math/scalar/mathf.h"
 
 #define Q           ((float)MATHX_ONE)
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -41,6 +41,22 @@ assert_x_near_f(vec3f_t want, vec3x_t got, float slack) {
 /* One pair of whole-number vectors, so every type holds them exactly. */
 static const vec3f_t A = {3.0F, -2.0F, 5.0F};
 static const vec3f_t B = {1.0F, 4.0F, -6.0F};
+
+static void
+test_looking_keeps_forward_at_large_positions(void) {
+    const vec3f_t forward = {1.0F, 0.0F, 0.0F};
+    const vec3f_t up = {0.0F, 1.0F, 0.0F};
+    const vec3f_t far = {1e9F, 1e9F, 1e9F};
+    const transformf_t pose = transformf_looking(far, forward, up);
+    const vec3f_t got = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.x, got.x);
+    TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.y, got.y);
+    TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.z, got.z);
+    TEST_ASSERT_EQUAL_FLOAT(far.x, pose.position.x);
+    const transformx_t fixed =
+        transformx_looking(to_x(30000.0F, 0.0F, 0.0F), to_x(1.0F, 0.0F, 0.0F), to_x(0.0F, 1.0F, 0.0F));
+    assert_x_near_f(forward, quatx_rotate(fixed.rotation, to_x(0.0F, 0.0F, 1.0F)), FIXED_SLACK);
+}
 
 static void
 test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type(void) {
@@ -537,6 +553,7 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
 
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);

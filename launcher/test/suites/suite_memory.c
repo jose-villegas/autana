@@ -13,7 +13,7 @@
 
 #include "unity.h"
 
-#include "util/runtime/memory.h"
+#include "core/memory.h"
 
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"

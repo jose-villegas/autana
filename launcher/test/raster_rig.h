@@ -26,6 +26,8 @@ typedef struct {
     r3d_placement_t placement[RASTER_RIG_QUADS]; /* each placed quad's, set before a draw */
     r3d_instance_t instance[RASTER_RIG_QUADS];
     raster_t raster;
+    render_view_t view;
+    r3d_lens_t lens;
     int width, height; /* the largest picture its scratch holds */
     max_align_t own[]; /* the suite's own state, as many bytes as it asked for */
 } raster_rig_t;

@@ -13,8 +13,8 @@ scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
 prunes the start to the recipe's budget, fits it with the recipe's settings
-and writes the renderer's mesh beside the scene, printing the mesh's and
-the recipe's SHA-256, which the renderer's `fit` table then records.
+and writes the renderer's mesh into DIR. bake/bake.py runs both into the bake
+cache, keyed, and its lock records what the fit made.
 """
 
 import argparse
@@ -99,29 +99,6 @@ def camera_clip(scene):
     return tracks_asset.bake(scene.camera.component.path.animation)
 
 
-def recipe_digest(job, scene):
-    """SHA-256 over the parsed effective recipe and its camera clip."""
-    from r3d.import_settings import MESHLET_TRIANGLES
-
-    renderer = job.renderer
-    tracks = hashlib.sha256(camera_clip(scene)).hexdigest()
-    settings = SimpleNamespace(**{name: value for name, value in vars(job.settings).items()
-                                  if name not in ("path", "out_dir", "mesh_dir", "named", "variants")})
-    if settings.meshlet_triangles == MESHLET_TRIANGLES:
-        del settings.meshlet_triangles
-    fit = SimpleNamespace(**vars(renderer.fit))
-    del fit.sha256
-    del fit.recipe_sha256
-    entry = SimpleNamespace(**{name: value for name, value in vars(renderer).items() if name != "settings"})
-    entry.fit = fit
-    look = scene.indirect if job.bake.indirect else None
-    # An absent `ao` is left out of the digest, so a scene without it keeps its recorded digest.
-    bake = SimpleNamespace(**{name: value for name, value in vars(job.bake).items() if name != "ao" or value is not None})
-    scene_recipe = SimpleNamespace(lights=scene.lights, tonemap_white=scene.tonemap_white, bake=bake, indirect=look)
-    return hashlib.sha256(json.dumps([canonical(settings), canonical(entry), canonical(scene_recipe), tracks,
-                                     source_digest(job.settings)], sort_keys=True).encode()).hexdigest()
-
-
 def prepare(scene_path, scene, job, work, recorder=None):
     from r3d.mesh_import import camera_path_poses, write_baked
     from r3d.reference_render import main as reference_main
@@ -145,21 +122,18 @@ def prepare(scene_path, scene, job, work, recorder=None):
     log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
 
 
-def reference_digest(scene_path, job, scene):
-    """The source and lighting inputs that determine a sweep's references."""
-    digest = hashlib.sha256()
-    for path in (scene_path, job.settings.path):
-        digest.update(pathlib.Path(path).read_bytes())
-    digest.update(camera_clip(scene))
-    digest.update(job.object.name.encode())
-    digest.update(source_digest(job.settings).encode())
-    return digest.hexdigest()
+def reference_digest(job, scene):
+    """A sweep's references are the fit's reference stage: its key, from bake/bake.py, the one owner of
+    bake keys."""
+    from bake import bake
+
+    return bake.stage_keys(job, scene, {stage: bake.tool_digest(stage) for stage in bake.STAGES})["reference"]
 
 
 def sweep_references(scene_path, scene, job, work):
     """Prepare one reusable reference set for a sweep's unchanged inputs."""
     marker = pathlib.Path(work) / "references.json"
-    digest = reference_digest(scene_path, job, scene)
+    digest = reference_digest(job, scene)
     if marker.is_file() and json.loads(marker.read_text()).get("digest") == digest:
         return
     prepare(scene_path, scene, job, work)
@@ -183,13 +157,10 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).with_name("board_cost_weights.txt")), "--cost-weight", str(cost_weight)]
     fit_main(command)
-    committed = target is None
     if target is None:
-        target = job.asset_path
+        target = pathlib.Path(work) / f"{job.asset_name}.mesh"
     shutil.copyfile(out / f"{variant.name}.mesh", target)
-    if committed:
-        print(f"{target.name}: sha256 = \"{hashlib.sha256(target.read_bytes()).hexdigest()}\", "
-              f"recipe_sha256 = \"{recipe_digest(job, scene)}\"")
+    log(f"wrote {target}")
     return target
 
 

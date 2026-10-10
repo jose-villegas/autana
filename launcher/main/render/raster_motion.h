@@ -1,5 +1,5 @@
 /*
- * raster_motion: previous-position offsets from camera depth and previous
+ * raster_motion: previous-position offsets from view depth and previous
  * instance placements, in current-picture pixels so resolution changes
  * need no conversion.
  * This experiment is removable as its files plus its view table row.
@@ -9,14 +9,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "render/camera.h"
+#include "math/linear/mat4f.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
-#include "util/math/mat4f.h"
+#include "render/render_view.h"
 
 /* A pixel's motion: the previous position minus this one, in half pixels
  * of this picture, so +-63.5 pixels. RASTER_MOTION_UNKNOWN on either axis:
- * nothing drawn, no previous picture, behind the previous camera or farther
+ * nothing drawn, no previous picture, behind the previous view or farther
  * than that. */
 typedef struct {
     int8_t dx, dy;
@@ -30,7 +30,7 @@ typedef struct {
  * it, zeroed, for as long as the attachment is attached. */
 typedef struct {
     bool has_previous;
-    camera_t camera;
+    render_view_t previous;
     int seen_count;
     const r3d_placement_t* seen_key[RASTER_MOTION_INSTANCES_MAX];
     r3d_placement_t seen[RASTER_MOTION_INSTANCES_MAX];

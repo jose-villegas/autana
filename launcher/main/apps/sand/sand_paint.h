@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #include "material_palette.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 /* Unlike the two-walk design's own ceiling (34, raised above
  * MATERIAL_LIQUID_DEPTH_BAND's 24), this walk needs no raise: that design's

@@ -10,7 +10,7 @@
 #pragma once
 
 #include "anim/anim_track.h"
-#include "util/math/transformf.h"
+#include "math/linear/transformf.h"
 
 static inline transformf_t
 anim_transform_sample(const anim_node_tracks_t* node, float seconds) {

@@ -45,7 +45,7 @@ ULTRA's 41,216-byte grid is the largest single allocation the sand app
 makes.
 
 The 322 KiB framebuffer lives entirely in PSRAM (`MEMORY_PSRAM`,
-`util/runtime/memory.h`), so it does not compete with the sand grid, or anything else,
+`core/memory.h`), so it does not compete with the sand grid, or anything else,
 for internal SRAM.
 
 The encoding stays one byte: a second byte at ULTRA would fit the internal
@@ -1542,7 +1542,7 @@ decay, mobility and walk draws, while `s->rng_hashed` is armed. That is
 true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
 Armed, it hashes `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
-through `rng_hash()` (`util/scalar/rng.h`); disarmed, it is `rng_next(&s->rng)`
+through `rng_hash()` (`math/scalar/rng.h`); disarmed, it is `rng_next(&s->rng)`
 unchanged, so reactions and every serial gas step retain sequential draws,
 and the whole step with the switch off is unchanged.
 
@@ -1559,7 +1559,7 @@ behaviour loss rather than a race on that queue.
 
 ### Scheduling: below present, not around it
 
-The core-1 task (`util/runtime/job.c`, shared by every engine client, not owned
+The core-1 task (`core/job.c`, shared by every engine client, not owned
 by this app) runs at priority 3, below gfx's present task at 5, not in a
 window carved out before or after present, because `sand_step()` can run
 while a previous frame is still presenting (`shell/shell_apps.c`'s
@@ -1579,7 +1579,7 @@ chain has no timeout anywhere in it either, and has always been one
 wedged strip-sent interrupt away from hanging the whole frame loop. A
 second task on core 1 must not risk exposing that same latent assumption.
 
-`job_wait()` (`util/runtime/job.h`) takes a timeout instead: every sand call
+`job_wait()` (`core/job.h`) takes a timeout instead: every sand call
 site here passes 100 ms, far above any dispatch this file makes. A
 timeout that fires falls back to inline dispatch only for as long as the
 stuck job still holds the worker: the flag it leaves set routes every

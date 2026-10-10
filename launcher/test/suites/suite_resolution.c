@@ -5,8 +5,8 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/scalar/rng.h"
 #include "render/resolution/resolution.h"
-#include "util/scalar/rng.h"
 
 #define BUDGET_US 66000
 

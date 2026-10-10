@@ -15,9 +15,9 @@
 #include "freertos/task.h"
 
 #include "board/board.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "post";
 

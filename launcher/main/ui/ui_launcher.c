@@ -13,9 +13,9 @@
 #include "app/app.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "profile/frame_cost.h"
 #include "ui/ui.h"
 #include "ui/ui_ridge.h"
-#include "util/runtime/frame_cost.h"
 
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {

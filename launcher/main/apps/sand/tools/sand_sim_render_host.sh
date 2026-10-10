@@ -4,8 +4,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=sand_sim
 scene_sources="
-main/util/runtime/tune.c
-main/util/runtime/job.c
+main/services/tune.c
+main/core/job.c
 main/input/tilt.c
 main/apps/sand/sand.c
 main/apps/sand/sand_chunk_sched.c

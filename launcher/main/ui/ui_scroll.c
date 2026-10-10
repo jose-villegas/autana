@@ -3,8 +3,8 @@
 
 #include <math.h>
 
+#include "math/scalar/mathi.h"
 #include "ui/ui.h"
-#include "util/scalar/mathi.h"
 
 ui_scroll_view_config_t
 ui_scroll_view_default(void) {

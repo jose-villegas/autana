@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
@@ -12,11 +13,10 @@
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
+#include "services/tune.h"
 #include "ui/render_lab_hud_screen.h"
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/tune.h"
 
 extern const render_lab_scene_t scene_sponza;
 extern const render_lab_scene_t scene_capybara;
@@ -61,12 +61,12 @@ current_scene(void) {
 bool render_lab_show_hud = true;
 
 TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RENDER_VIEW_SHADED, RENDER_VIEW_SHADED, RENDER_VIEW_COUNT);
+TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
 TUNE(render_lab, scale, 200, 100, 800);
 TUNE(render_lab, budget, 0, 0, 200);
 
 int
-render_lab_view(void) {
+render_lab_debug_view(void) {
     return (int)view;
 }
 

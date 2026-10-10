@@ -131,9 +131,9 @@ $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
 $MAIN_DIR/selftest/post_layout.c
-$MAIN_DIR/util/runtime/job.c
-$MAIN_DIR/util/runtime/memory.c
-$MAIN_DIR/util/runtime/settings_policy.c
+$MAIN_DIR/core/job.c
+$MAIN_DIR/core/memory.c
+$MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/asset/asset_pack.c
@@ -142,6 +142,7 @@ $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/render/r3d_lit_mesh.c
+$MAIN_DIR/render/render_view.c
 $MAIN_DIR/render/raster.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/raster_motion.c
@@ -156,9 +157,9 @@ $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
-$MAIN_DIR/util/motion/orbit_motion.c
+$MAIN_DIR/math/motion/orbit_motion.c
 $MAIN_DIR/input/orbit_motion_touch.c
-$MAIN_DIR/util/runtime/tune.c
+$MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c

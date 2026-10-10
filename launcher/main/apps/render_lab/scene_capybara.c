@@ -20,13 +20,13 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/orbit_motion_touch.h"
+#include "math/motion/orbit_motion.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
-#include "util/motion/orbit_motion.h"
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 static const char* TAG = "capybara";
 
@@ -118,7 +118,7 @@ scene_capybara_enter(void) {
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
 #if TUNE_ENABLED
-    render_context_set_view(render_context_main(), render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
 }
 
@@ -147,7 +147,7 @@ static void
 scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
 #if TUNE_ENABLED
-    render_context_set_view(render_context_main(), render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
 }
 

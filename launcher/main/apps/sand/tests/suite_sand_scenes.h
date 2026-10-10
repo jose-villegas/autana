@@ -14,7 +14,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_controls.h"
 #include "apps/sand/sand_limits.h"
-#include "util/scalar/fixed.h"
+#include "math/scalar/fixed.h"
 
 /* How much of the mixed all-pairs scene is left empty, so a gravity flip
  * has somewhere to launch into. */

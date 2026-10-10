@@ -54,11 +54,11 @@ sand_skip_sites_report(void) {
 #include <stdlib.h>
 #include <string.h>
 
+#include "build/build_variant.h"
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
 #include "sand_limits.h"
 #include "sand_liquid_move.h"
-#include "util/build/build_variant.h"
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathi.h"
 
 /* See sand_priv.h. Defined here, not sand_liquid.c: move_liquid_grain()
  * (sand_liquid_move.h) is called only from this file's own sweep. */

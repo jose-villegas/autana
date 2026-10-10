@@ -10,6 +10,7 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
+#include "core/memory.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
@@ -20,6 +21,8 @@
 #include "input/imu_rotation.h"
 #include "input/input.h"
 #include "input/tilt.h"
+#include "profile/frame_cost.h"
+#include "profile/frame_watch.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
@@ -30,9 +33,6 @@
 #include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/frame_watch.h"
-#include "util/runtime/memory.h"
 
 #include "esp_log.h"
 

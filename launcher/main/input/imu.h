@@ -21,8 +21,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "input/imu_sample.h"
-#include "util/build/build_variant.h"
 
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */

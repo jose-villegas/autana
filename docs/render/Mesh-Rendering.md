@@ -6,9 +6,10 @@ in [Mesh-Import.md](Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: cameras, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
-offline. It sits beside `gfx/`, and the only other thing it includes is
-`util/`, so boot and apps both call it. The one exception is `r3d_scene.h`, which
-reads `anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
+offline. It sits above `gfx/`, whose render targets it draws into, and
+otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
+mesh from a pack), so boot and apps both call it. `r3d_scene.h` also reads
+`anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
@@ -20,11 +21,11 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | Noun | What it is |
 |---|---|
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Mesh-Import.md](Mesh-Import.md#the-baked-mesh)) |
-| `camera_t` | A pinhole camera in model units: eye, look direction, lens, near plane |
-| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras take one, and `raster_draw()` builds its own from the size and the quarter |
+| `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
+| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras and `render_view_make()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
-| `raster_draw()` | Draws every instance through a camera, turned for the panel's quarter |
+| `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
@@ -37,8 +38,14 @@ Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
 carries a colour per face and the raster draws what the mesh carries.
 
 A camera that moves is an [animation track](../Animation-Tracks.md), sampled
-into the camera's eye and look direction; `r3d_scene_camera_at()` does it for
-a baked camera object.
+into a look-at pose; `r3d_scene_view_at()` builds its frame view with
+`render_view_make()`, which folds in the panel's quarter turn, fits its lens
+to the shorter picture side, ignores the pose's scale and keeps its roll.
+Poses are in math/linear's frame
+([math/README.md](../math/README.md#conventions)) but for one exception:
+before the quarter turn, `render_view_make()` puts the pose's −x at picture
+right and its −y at picture down, the right-handed frame baked scenes are
+authored in.
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
@@ -55,7 +62,7 @@ exactly.
 | File | What it is |
 |---|---|
 | `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
-| `camera.h` | The camera |
+| `render_view.h` | The frame view and its pose-and-lens builder |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
@@ -71,15 +78,14 @@ exactly.
 | `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
 
-The line camera stays apart from `camera_t`: its pose is a `transformf_t`
-that composes with a model transform and carries a roll. Only
+Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
 
 ## The maths
 
 The line camera, the boot animation, the animation tracks and the raster all
-take their types from `util/math/`, documented in
+take their types from `math/linear/`, documented in
 [../math/README.md](../math/README.md): the raster's lens and motion maps are
 `mat4f_t`, composed with `mat4f_mul_affine()`, inverted with
 `mat4f_invert_affine()` and applied to each vertex with `mat4f_apply()`.
@@ -87,30 +93,32 @@ take their types from `util/math/`, documented in
 ## One frame
 
 ```mermaid
-flowchart LR
-    Camera["camera_t<br/><i>eye, forward, lens</i>"] --> Picture
+flowchart TB
+    View["render_view_t<br/><i>basis, fit, picture</i>"] --> Census
     subgraph Census["raster_census()"]
+        direction LR
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
-    Cull --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
-    Size["the render size"] --> Fit
-    List --> Fit
+    Census --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
+    View --> Draw
+    Size["the render size"] --> Draw
+    List --> Draw
     subgraph Draw["raster_draw_culled()"]
+        direction LR
         Fit["r3d_lens_init(), r3d_lens_fit(), r3d_lens_place()<br/><i>per instance, fitted to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
-    DrawStage --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
+    Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
 
-A caller fills a camera, then calls `raster_draw()`, which culls and draws
-each instance in turn with one fitted lens shared by culling and drawing,
+A caller builds a frame view and passes its `const render_view_t*` to
+`raster_draw()`, which culls and draws each instance in turn with one fitted lens shared by culling and drawing,
 and `raster_upscale()` with the destination width and height to compose
-that picture. A
-caller that picks the render size from what culling kept, as the render
+that picture. A caller that picks the render size from what culling kept, as the render
 context does, calls `raster_census()`, sets the size, then
-`raster_draw_culled()`. The stages inside are `r3d_pipeline.h`'s, for a suite
-or tool that schedules them itself.
+`raster_draw_culled()` with the same `const render_view_t*`. The stages inside
+are `r3d_pipeline.h`'s, for a suite or tool that schedules them itself.
 
 Culling and clipping use caller-owned workspace sized by
 `r3d_pipeline_work_bytes()`. The raster's arena, sized by
@@ -131,10 +139,10 @@ width and still show the same view.
 
 ### The render context
 
-A camera is perspective only. What a frame is drawn at belongs to the render
+A frame view is perspective only. What a frame is drawn at belongs to the render
 context (`context/render_context.h`): it owns the raster and its scratch
 block, the render size and the debug view. A caller hands it instances, a
-camera and a clear colour, then a destination to upscale into. The scene
+frame view and a clear colour, then a destination to upscale into. The scene
 manager draws the active camera through the engine's one context,
 `render_context_main()`, released when an app exits.
 
@@ -142,14 +150,14 @@ manager draws the active camera through the engine's one context,
 |---|---|
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
 | `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
-| `render_context_set_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
 ### On both cores
 
 The work before the framebuffer runs in the app's `update()`, overlapped
 with sending the previous frame. Each stage is split between the two cores,
-core 1's half dispatched through `util/runtime/job.h`. It runs inline when core 1
+core 1's half dispatched through `core/job.h`. It runs inline when core 1
 is busy, and always on a host.
 
 ```mermaid
@@ -176,12 +184,13 @@ sequenceDiagram
 
 ### View modes
 
-Development builds select one row from the `render_view_t` table in
+Development builds select one row from the `render_debug_view_t` table in
 `render/context/render_context.c`: depth, tiles, motion or meshlets.
-`render_context_set_view()` attaches that row and owns its zeroed PSRAM state.
-Switching frees the previous state; `RENDER_VIEW_SHADED` detaches it, and
-`render_context_release()` frees it. `render_context_view()` exposes the row's
-name and constructor to tools.
+`render_context_set_debug_view()` attaches that row and owns its zeroed PSRAM
+state.
+Switching frees the previous state; `RENDER_DEBUG_VIEW_SHADED` detaches it, and
+`render_context_release()` frees it. `render_context_debug_view()` exposes the
+row's name and constructor to tools.
 
 `raster_show()` runs the attached view's `show` hook after drawing and before
 `raster_upscale()`. It repaints colour while leaving depth intact.
@@ -233,7 +242,7 @@ flowchart LR
 | Hook | When | What it may do |
 |---|---|---|
 | `clear` | the first instance of a picture, on its rows | start its pixels; the only hook colour and depth have |
-| `begin` | once per `raster_draw()`, before anything is drawn | read the camera and the instances, keep its own state |
+| `begin` | once per `raster_draw()`, before anything is drawn | read the `const render_view_t*` and the instances, keep its own state |
 | `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
 | `resolve` | once every instance is drawn | turn what was written into the final map |
 | `show` | `raster_show()` | paint the colour from it |

@@ -34,9 +34,9 @@
 #include <string.h>
 
 #include "material.h"
+#include "math/scalar/rng.h"
 #include "sand.h"
 #include "sand_priv.h"
-#include "util/scalar/rng.h"
 
 /* The suite's own sealed-pocket geometry on the suite's own 8x8 grid: a
  * 3x3 stone ring with gas in the middle and one corner opened, so the
@@ -601,7 +601,7 @@ int
 main(void) {
     static pocket_result_t results[POCKET_SEEDS + 1];
 
-    printf("generator: xorshift32, shifts (13, 17, 5), 32-bit state - launcher/main/util/scalar/rng.h\n");
+    printf("generator: xorshift32, shifts (13, 17, 5), 32-bit state - launcher/main/math/scalar/rng.h\n");
     printf("rng_chance(), rng_below() and sand_rng_chance_at() all read the LOW bits\n\n");
 
     print_stream_sections();

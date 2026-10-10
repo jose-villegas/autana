@@ -45,6 +45,7 @@ set(app_srcs
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
+    "render/render_view.c"
     "render/raster.c"
     "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
@@ -57,22 +58,22 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "util/motion/orbit_motion.c"
+    "math/motion/orbit_motion.c"
     "input/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
     "shell/shell_frame.c"
     "shell/shell_system.c"
-    "util/runtime/frame_cost.c"
-    "util/runtime/frame_watch.c"
-    "util/runtime/build_id.c"
-    "util/runtime/job.c"
-    "util/runtime/memory.c"
-    "util/runtime/settings_device.c"
-    "util/runtime/settings_policy.c"
-    "util/runtime/timing_device.c"
-    "util/runtime/tune.c"
+    "core/job.c"
+    "core/memory.c"
+    "core/timing_device.c"
+    "profile/frame_cost.c"
+    "profile/frame_watch.c"
+    "services/build_id.c"
+    "services/settings_device.c"
+    "services/settings_policy.c"
+    "services/tune.c"
 )
 
 function(launcher_glob output)
@@ -192,18 +193,19 @@ set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
-             # perfmon and unity are both listed unconditionally, NOT inside
-             # the block below: ESP-IDF expands REQUIRES in an early pass
+             # perfmon, unity and esp_mm (a perf suite's cache control) are
+             # listed unconditionally, NOT inside the block below: ESP-IDF
+             # expands REQUIRES in an early pass
              # where CONFIG_* is not yet defined, so a Kconfig-gated REQUIRES
              # silently does nothing; SRCS and compile definitions are
              # evaluated later and do work, which makes the failure look
              # baffling: the code compiles but cannot find the header.
              #
-             # This costs release nothing. IDF puts both in the component
+             # This costs release nothing. IDF puts them in the component
              # graph either way; REQUIRES only decides whether main can see
              # their headers. With nothing built that references them,
              # --gc-sections drops them from the image.
-             perfmon unity)
+             perfmon unity esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
     launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
@@ -324,6 +326,9 @@ idf_component_register(
 )
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
+    if(TUNE_HOT_LIVE)
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE TUNE_HOT_LIVE=1)
+    endif()
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
 
     # The FPU has no double: a float promoted to one, or a double constant in

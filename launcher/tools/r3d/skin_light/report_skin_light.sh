@@ -8,8 +8,8 @@
 #   launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb [CLIP[:PHASE]]
 #
 #   ASSET.glb      a skinned glTF with normals and animations; the document's
-#                  numbers come from demo/capybara/capybara.glb,
-#                  drawn at gallop
+#                  numbers come from the capybara's export, the cached bake
+#                  `bake/bake.py path capybara.glb` prints, drawn at gallop
 #   CLIP[:PHASE]   the frame the sheet draws (skin_light_data.py's --sheet)
 
 set -eu

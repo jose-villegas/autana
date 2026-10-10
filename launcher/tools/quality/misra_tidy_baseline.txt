@@ -37,7 +37,7 @@ bugprone-unused-return-value	main/selftest/post_ui.c	1
 bugprone-unused-return-value	main/console/console_screenshot.c	2
 bugprone-unused-return-value	main/console/console_tune.c	2
 bugprone-unused-return-value	main/ui/ui_widgets.c	2
-bugprone-unused-return-value	main/util/runtime/tune.c	5
+bugprone-unused-return-value	main/services/tune.c	5
 cert-err33-c	main/apps/diagnostics/tests/suite_command_list_budget.c	1
 cert-err33-c	main/apps/diagnostics/ui/toggles_screen.c	6
 cert-err33-c	main/apps/input_lab/app_input_lab.c	6
@@ -85,7 +85,7 @@ cert-err33-c	main/console/console_tune.c	2
 cert-err33-c	main/main.c	1
 cert-err33-c	main/shell/shell.c	10
 cert-err33-c	main/ui/ui_widgets.c	2
-cert-err33-c	main/util/runtime/tune.c	5
+cert-err33-c	main/services/tune.c	5
 readability-isolate-declaration	main/apps/input_lab/app_input_lab.c	4
 readability-isolate-declaration	main/apps/input_lab/tests/suite_touch_probe.c	6
 readability-isolate-declaration	main/apps/input_lab/touch_probe.c	2

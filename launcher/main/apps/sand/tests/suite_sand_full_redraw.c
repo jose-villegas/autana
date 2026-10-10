@@ -17,12 +17,12 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "core/memory.h"
 #include "esp_log.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
-#include "util/runtime/memory.h"
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);

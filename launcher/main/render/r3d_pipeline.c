@@ -7,10 +7,10 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
 #include "render/code_layout.h"
 #include "render/viewport.h"
-#include "util/scalar/mathf.h"
-#include "util/scalar/mathi.h"
 
 static void
 set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
@@ -20,36 +20,21 @@ set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_uni
     row[3] = -vec3f_dot(axis, eye) * scale;
 }
 
-static vec3f_t
-upright_step(vec3f_t right, vec3f_t down, int step_right, int step_down) {
-    return vec3f_add(vec3f_scale(right, (float)step_right), vec3f_scale(down, (float)step_down));
-}
-
 void
-r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport) {
-    const vec3f_t eye = camera->eye;
-    const float near_z = camera->near_z;
-    const vec3f_t f = vec3f_normalize(camera->forward);
-    const vec3f_t right = vec3f_normalize(vec3f_cross(f, (vec3f_t){0.0F, 1.0F, 0.0F}));
-    const vec3f_t down = vec3f_cross(f, right);
-
-    const int shorter = viewport.width < viewport.height ? viewport.width : viewport.height;
-    const float k = (float)shorter / (2.0F * camera->half_fov_short_tan);
+r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const float ticks_to_units = 1.0F / (float)position_scale;
-
-    const viewport_quarter_axes_t a = viewport_quarter_axes(viewport.quarter);
     lens->m = mat4f_identity();
-    set_row(lens->m.m[0], upright_step(right, down, a.x_right, a.x_down), eye, k, ticks_to_units);
-    set_row(lens->m.m[1], upright_step(right, down, a.y_right, a.y_down), eye, k, ticks_to_units);
-    set_row(lens->m.m[2], f, eye, 1.0F, ticks_to_units);
-    lens->center_x = (float)viewport.width * 0.5F;
-    lens->center_y = (float)viewport.height * 0.5F;
-    lens->near_z = near_z;
-    lens->near_subpixels = near_z / (float)R3D_SUBPIXEL;
+    set_row(lens->m.m[0], view->screen_x, view->position, view->pixels_per_unit, ticks_to_units);
+    set_row(lens->m.m[1], view->screen_y, view->position, view->pixels_per_unit, ticks_to_units);
+    set_row(lens->m.m[2], view->forward, view->position, 1.0F, ticks_to_units);
+    lens->center_x = view->center_x;
+    lens->center_y = view->center_y;
+    lens->near_z = view->near_z;
+    lens->near_subpixels = view->near_z / (float)R3D_SUBPIXEL;
     lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
-    lens->width = viewport.width;
-    lens->height = viewport.height;
+    lens->width = view->viewport.width;
+    lens->height = view->viewport.height;
 }
 
 void

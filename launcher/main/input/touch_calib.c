@@ -2,8 +2,8 @@
 
 #include <math.h>
 
-#include "util/scalar/mathi.h"
-#include "util/scalar/mathx.h"
+#include "math/scalar/mathi.h"
+#include "math/scalar/mathx.h"
 
 #define ONE ((float)MATHX_ONE)
 

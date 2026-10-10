@@ -211,11 +211,17 @@ sequenceDiagram
 | Call | Does |
 |---|---|
 | `gfx_present()` | `gfx_present_begin()` then `gfx_present_wait()` |
-| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`util/runtime/frame_watch.h`). |
+| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
 | `gfx_present_wait()` | blocks until everything queued has landed |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
 
 The wait is mandatory: DMA is still reading the buffer until it returns.
+
+A present's own code, from `gfx_present()` down to the SPI queue, runs from
+IRAM (`main/linker.lf`, `CONFIG_SPI_MASTER_IN_IRAM`): from flash its cost
+moved with whatever else the image linked. suite_gfx
+`test_narrow_present_counters` measures it warm, with the instruction cache
+cold, and sent from the caller's core.
 
 ## Presentation memory policy
 

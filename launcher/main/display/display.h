@@ -19,7 +19,7 @@
 
 #include <stdbool.h>
 
-#include "util/math/vec2i.h"
+#include "math/linear/vec2i.h"
 
 /* The cover glass hides roughly this many pixels along every edge of the
  * panel, and more where the corners round off. Anything meant to be read

@@ -7,9 +7,9 @@
 #include <stdint.h>
 
 #include "anim/anim_track.h"
-#include "render/camera.h"
+#include "math/linear/transformf.h"
 #include "render/r3d_instance.h"
-#include "util/math/transformf.h"
+#include "render/render_view.h"
 
 /* A glTF camera animation's two tracks and the clip that plays them, by
  * value; the tracks point at their keys, which are not copied. */
@@ -31,10 +31,10 @@ uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);
 /* The eye and look direction t_ms into the path, which wraps at its period. */
 void r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
 
-/* The camera t_ms into its path. */
-camera_t r3d_scene_camera_at(const r3d_scene_camera_t* camera, uint32_t t_ms);
+/* The view through `camera` t_ms into its path, framed for `viewport`. */
+render_view_t r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t viewport);
 
 /* The placement that stands a camera without a path at `pose`, looking down
- * the pose's +z as util/math's transforms do. Its third column is that
+ * the pose's +z as math/linear's transforms do. Its third column is that
  * direction negated, since such a camera looks down its placement's -Z. */
 r3d_placement_t r3d_scene_camera_placement(const transformf_t* pose);

@@ -7,6 +7,7 @@ import re
 RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>\w+):(?P<status>PASS|FAIL|IGNORE)(?::\s*(?P<message>.*))?$")
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")
 BUILD_ID_BYTES_RE = re.compile(BUILD_ID_RE.pattern.encode())
+PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
 # The device prints this line only when the self-test loop actually reaches
 # its end; absent means the run never finished, for any reason (timeout,
 # device wedged, serial dropped). A capture of ONE suite triggered by
