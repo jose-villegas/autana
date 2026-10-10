@@ -29,8 +29,9 @@ import statistics
 DESTINATION = (368, 448)
 
 SPLIT = re.compile(r"scale_split: (\d+)x(\d+) poses=(\d+) tris=(\d+) frame mean/p50/max us (\d+)/(\d+)/(\d+) \| (.*?) \| total")
-STAGE = re.compile(r"(r3d\.\w+) ([\d.]+)/([\d.]+)")
+STAGE = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
 SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) rows (-?\d+) span_setup (-?\d+) fill (-?\d+) clear (-?\d+)")
+SPAN_FIELDS = ("setup", "rows", "span_setup", "fill", "clear")
 STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
 FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")
 
@@ -49,7 +50,7 @@ def read_captures(paths, refit=None):
                 stages = {name: float(avg) for name, avg, _ in STAGE.findall(m[8])}
                 splits[size] = {"tris": int(m[4]), "mean": int(m[5]), "p50": int(m[6]), "max": int(m[7]), **stages}
             elif m := SPANS.search(line):
-                spans[(int(m[1]), int(m[2]))] = dict(zip(("setup", "rows", "span_setup", "fill", "clear"),
+                spans[(int(m[1]), int(m[2]))] = dict(zip(SPAN_FIELDS,
                                                          (int(v) for v in m.groups()[2:])))
             elif m := STEP.search(line):
                 ladders.setdefault(m[1], {})[int(m[2])] = (int(m[3]), int(m[4]))

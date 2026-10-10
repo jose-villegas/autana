@@ -134,3 +134,51 @@ then each run's min/max/avg/median/p95 per phase.
 
 See [Layout-Noise.md](../../../docs/tools/Layout-Noise.md) for seeded builds
 and pilot variance definitions.
+
+## Sweep
+
+`perf_sweep.sh` flashes one perf-scoped diagnostic image per build and layout
+seed with `--hot-tunables` whenever a `--knob` is given. The plan records
+this flag and the table header identifies live knobs. Each flash is one
+capture of the first suite, which waits for the image to boot and is
+discarded, so no point takes the first capture after a boot. Default device images
+keep `TUNE_HOT` values constant. Every round visits the Cartesian product of knob values in a fresh,
+recorded random order. The first build and first value of each knob form the
+baseline. Each capture sets its point's knobs under its own lock
+(`autana suite --set`), so whoever holds the board between two captures cannot
+change what is measured. The wrapper restores `origin/main`'s release image
+afterwards unless `--no-restore` is passed.
+
+```sh
+launcher/tools/perf/perf_sweep.sh --knob r3d_span.small_max_side=2,3,4 \
+  --suite run_raster_scale_perf_suite counters - --runs 5
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--out DIR` | Captures, plan and generated `sweep.md` / `sweep.json`; defaults to a temporary directory in the wrapper |
+| `--build LABEL=REV` | Repeatable revision or directory; defaults to this project, labelled `here` |
+| `--knob NAME=V1,V2,...` | Repeatable console tunable and integer values |
+| `--suite NAME TESTS TABLE` | Repeatable suite, filters and report command with `@CAPTURE@`, `@TABLE@`, `@PROJECT@`; `-` reads raw metrics |
+| `--seeds S1 S2 ...` | Distinct layout seeds; default `1` |
+| `--runs R` | Rounds per flash; default `DEFAULT_RUNS` in `perf_sweep.py` |
+| `--rng-seed N` | Replay the recorded point order |
+| `--threshold PCT`, `--alpha P` | Equivalence margin and family error rate; defaults shared with `perf_compare.py` |
+| `--timeout SECONDS`, `--wait SECONDS` | Capture and board queue deadlines |
+| `--autana COMMAND` | Override acquisition, status checks and restore for host replay |
+| `--dry-run` | Print flashes, capture count and point order without board access |
+| `--no-restore` | Omit the wrapper's release restore |
+
+The table has one row per metric every capture reported: timing rows, the
+suite's own frame-cost stage averages, one-core span fields and per-call
+counters. A knob point is compared with its build's baseline point on the same
+images, so layout is shared and the interleaved runs are the observations; it
+counts as improved or regressed when significant, beyond the threshold, and in
+the same direction on every seed. A build is compared with the first build by
+per-seed means, which carry layout noise; with one seed that comparison is
+inconclusive. `seed_statistics.compare()` applies Welch, TOST, permutation
+agreement and Holm across the table's cells.
+
+`plan.json` and per-capture JSON retain failures; two consecutive capture
+failures stop acquisition. Rebuild the generated report with
+`python launcher/tools/perf/perf_sweep.py report DIR`.
