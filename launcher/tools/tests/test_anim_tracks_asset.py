@@ -214,6 +214,24 @@ class BindingMappingTests(unittest.TestCase):
         self.assertEqual([t["path"] for t in mixed], ["root", "child", "camera"])
         self.assertEqual(root, tracks_asset.ROOT_SCENE)
 
+    def test_a_skin_with_two_root_joints_bakes_a_skeleton_clip(self):
+        identity = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+        nodes = [{"name": "rig", "children": [1, 2]}, {"name": "hips", "children": [3]}, {"name": "spine"},
+                 {"name": "leg"}]
+        skin = [{"joints": [1, 2, 3], "inverse_binds": [identity] * 3}]
+        channels = [channel(n, "translation", [0], [(1, 2, 3)]) for n in (1, 2, 3)]
+        tracks, _, root = self.tracks(nodes, channels, skins=skin)
+        self.assertEqual([t["path"] for t in tracks], ["hips", "spine", "hips/leg"])
+        self.assertEqual(root, tracks_asset.ROOT_SKELETON)
+
+    def test_two_joints_with_one_path_fail_the_bake(self):
+        identity = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+        nodes = [{"name": "rig", "children": [1, 2]}, {"name": "bone"}, {"name": "bone"}]
+        skin = [{"joints": [1, 2], "inverse_binds": [identity] * 2}]
+        channels = [channel(n, "translation", [0], [(1, 2, 3)]) for n in (1, 2)]
+        with self.assertRaisesRegex(tracks_asset.TracksError, "same path"):
+            self.tracks(nodes, channels, skins=skin)
+
     def test_every_value_type_and_interpolation_round_trips(self):
         tracks, _, _ = probe_tracks()
         for value_type, width in enumerate(tracks_asset.WIDTHS):

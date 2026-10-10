@@ -61,11 +61,12 @@ def camera_half_fov_short_tan_curve(values, interpolation, aspect_ratio):
 
 
 def skin_joint_paths(document, skin):
-    """Joint paths from one joint root, excluding non-joint ancestors; None for multiple roots."""
+    """Each joint's path from its root joint (a skin may have several), excluding
+    non-joint ancestors. Two joints with one path fail."""
     nodes = document.get("nodes", [])
     parents = {child: i for i, node in enumerate(nodes) for child in node.get("children", [])}
     joints = set(skin["joints"])
-    paths, roots = {}, set()
+    paths = {}
     for joint in skin["joints"]:
         chain, seen, node = [], set(), joint
         while True:
@@ -74,11 +75,12 @@ def skin_joint_paths(document, skin):
             seen.add(node)
             chain.append(nodes[node].get("name") or "nodes%d" % node)
             if parents.get(node) not in joints:
-                roots.add(node)
                 break
             node = parents[node]
         paths[joint] = "/".join(reversed(chain))
-    return paths if len(roots) == 1 else None
+    if len(set(paths.values())) != len(paths):
+        raise ValueError("two joints of one skin have the same path")
+    return paths
 
 
 def load_glb(path):
