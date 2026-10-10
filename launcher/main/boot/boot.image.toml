@@ -1,0 +1,3 @@
+source = "boot.png"
+# Drawn in the reading frame, turned into the panel's portrait framebuffer.
+quarter_turns = 1
