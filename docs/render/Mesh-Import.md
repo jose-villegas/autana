@@ -218,8 +218,28 @@ source is `ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry;
 
 ## The offline tools
 
-A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, a
-bake product made into the bake cache
+Source assets, scene TOMLs, cached bakes and bake-time tools use the
+right-handed source frame: +x right, +y up, a camera looking down -z.
+`build_pack.py` mirrors entries once into the
+[engine frame](../math/README.md#conventions), through
+[`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py).
+The mirror negates position z; a placement's matrix `M` becomes `S M S`,
+where `S = diag(1, 1, -1)`, and quaternions `(x, y, z, w)` become
+`(-x, -y, z, w)`. Clips' translation and rotation tracks, including cubic
+tangents, are mirrored; other tracks, key times and interpolation stay as
+authored. Bounds swap their mirrored z endpoints; triangle order and baked
+colours stay intact. A z coordinate equal to the int16 minimum is rejected
+because its negation cannot fit. Cached meshes carry no normals: shading is
+already baked.
+
+A poses file is in the source frame.
+[`track_host.py`](../../launcher/tools/anim/track_host.py) writes one with
+`--poses` from a `.anim.toml`, baked into an unmirrored scratch pack;
+`triangle_sizes` mirrors each pose as it reads it. A built pack's clips are
+in the engine frame, so `--poses` on a `--pack` gives wrong poses.
+
+A cached `<name>.mesh` bake supplies an entry of the
+[asset pack](../assets/README.md). It is made into the bake cache
 ([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)) by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
