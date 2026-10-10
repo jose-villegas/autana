@@ -15,7 +15,7 @@ MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
 LITERAL = re.compile(r"(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*$")
 INTEGER = re.compile(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*(?![\w.])")
 FUNCTION_BODY = re.compile(
-    r"\)(?:\s*(?!(?:enum|typedef|struct|class|namespace)\b)[A-Za-z_]\w*\b)*\s*$"
+    r"\)(?:\s*(?!(?:enum|typedef|struct|class|union|namespace)\b)[A-Za-z_]\w*\b)*\s*$"
 )
 SCALAR = re.compile(r"\b(?:static\s+)?const\s+(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*)\s*=\s*([^;{},]+);", re.S)
 OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,

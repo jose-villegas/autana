@@ -27,8 +27,7 @@ class MagicTests(unittest.TestCase):
         gate.git(cls.root, "init", "-q")
 
     def scan(self, files):
-        with mock.patch.object(gate, "revision_tree", return_value=files):
-            return gate.scan(self.root, "HEAD")
+        return gate.scan(files, direct=gate.include_graph(files))
 
     def tree(self, files):
         if (self.root / ".git").exists():
@@ -142,12 +141,20 @@ int x = 1 << {shift};
         before = {C_PATH: code, header: "", other: f"#define OTHER {RARE}\nint x = {RARE};"}
         output = self.check_change(before, {header: f"#define VALUE {RARE}"}, 1, changed={header})
         self.assertNotIn(other, output)
-        with mock.patch.object(gate, "revision_tree", return_value=before):
-            hits = gate.scan(self.root, "HEAD", gate.affected_files(before, {header}))[0]
+        direct = gate.include_graph(before)
+        hits = gate.scan(before, gate.affected_files(before, {header}, direct), direct=direct)[0]
         self.assertIn((C_PATH, gate.RESTATE), hits)
         self.assertNotIn((other, gate.RESTATE), hits)
         self.check_change({C_PATH: "", PY_PATH: 'x = "FRAME_READY"'},
                           {C_PATH: 'char *x = "FRAME_READY";'}, 1)
+
+    def test_two_hop_header_change_exposes_growth(self):
+        middle = "launcher/main/render/mid.h"
+        deep = "launcher/main/render/deep.h"
+        before = {C_PATH: f'#include "mid.h"\nint x = {RARE};',
+                  middle: '#include "deep.h"\n', deep: ""}
+        output = self.check_change(before, {deep: f"#define VALUE {RARE}\n"}, 1, changed={deep})
+        self.assertIn(f"{C_PATH}: RESTATE 0 -> 1", output)
 
     def test_sibling_header_addition_preserves_existing_count(self):
         sibling = "launcher/main/render/value.h"
@@ -162,11 +169,14 @@ int x = 1 << {shift};
     def test_sibling_header_deletion_exposes_growth(self):
         sibling = "launcher/main/render/value.h"
         root_header = "launcher/main/value.h"
+        other = "launcher/main/other.c"
         with temporary_tree([(C_PATH, f'#include "value.h"\nint x = {RARE};'),
+                             (other, "int unrelated = 0;\n"),
                              (sibling, f"#define VALUE {RARE + 1}\n"),
                              (root_header, f"#define VALUE {RARE}\n")]) as root:
             base = commit(root, ".")
             (root / sibling).unlink()
+            write(root, other, "int unrelated = 1;\n")
             commit(root, ".")
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
@@ -189,6 +199,12 @@ int x = 1 << {shift};
             with self.subTest(declaration=declaration):
                 code = f"#define IDENTITY(x) (x)\n{declaration}\nint x = {RARE};"
                 self.assertEqual([hit.line for hit in self.restates(code)], [3])
+        for scope in ("namespace N", "struct S", "class C", "union U"):
+            with self.subTest(scope=scope):
+                value = RARE + 1
+                code = f"#if defined(X)\n{scope} {{ enum {{ V = {value} }}; }};\nint x = {value};"
+                hits = self.scan({"editor/src/a.cpp": code})[0]
+                self.assertEqual([hit.line for hit in hits.get(("editor/src/a.cpp", gate.RESTATE), [])], [3])
 
     def test_cpp_qualified_function_body_masks_local_owners(self):
         for qualifier in ("const", "noexcept", "override", "final", "const noexcept"):

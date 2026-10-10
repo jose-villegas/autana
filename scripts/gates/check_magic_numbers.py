@@ -187,18 +187,15 @@ def include_graph(texts):
             for name, text in texts.items() if Path(name).suffix in C_SUFFIXES}
 
 
-def affected_files(texts, changed):
-    direct = include_graph(texts)
+def affected_files(texts, changed, direct):
     return {path for path, text in texts.items() if eligible_c(path, text)
             and include_closure(path, direct).intersection(changed)}
 
 
-def scan(root, revision, candidates=None, *, texts=None):
-    if texts is None:
-        texts = revision_tree(root, revision)
+def scan(texts, candidates=None, *, direct):
     clean = {name: blank_comments(text) for name, text in texts.items()
-             if Path(name).suffix in C_SUFFIXES}
-    direct = include_graph(texts)
+             if name.startswith("launcher/main/") and Path(name).suffix in {".c", ".h"}
+             and eligible_c(name, text)}
     index = ConstantIndex({name: text for name, text in texts.items() if eligible_c(name, text)})
     hits, logged, errors = {}, [], []
     owners = defaultdict(list)
@@ -272,7 +269,8 @@ def main(argv=None, root=ROOT):
     started = time.perf_counter()
     try:
         if args.report:
-            hits, logged, errors = scan(root, "HEAD")
+            texts = revision_tree(root, "HEAD")
+            hits, logged, errors = scan(texts, direct=include_graph(texts))
             report(hits)
             grown = []
             old = {}
@@ -281,12 +279,14 @@ def main(argv=None, root=ROOT):
             changed, renames, deleted = changed_paths(root, base, "HEAD")
             head_texts = revision_tree(root, "HEAD")
             base_texts = revision_tree(root, base)
+            head_direct = include_graph(head_texts)
+            base_direct = include_graph(base_texts)
             reverse_renames = {previous: path for path, previous in renames.items()}
             base_changed = {renames.get(path, path) for path in changed} | deleted
-            candidates = affected_files(head_texts, changed) | {
-                reverse_renames.get(path, path) for path in affected_files(base_texts, base_changed)}
-            hits, logged, errors = scan(root, "HEAD", candidates, texts=head_texts)
-            old, _, _ = scan(root, base, {renames.get(path, path) for path in candidates}, texts=base_texts)
+            candidates = affected_files(head_texts, changed, head_direct) | {
+                reverse_renames.get(path, path) for path in affected_files(base_texts, base_changed, base_direct)}
+            hits, logged, errors = scan(head_texts, candidates, direct=head_direct)
+            old, _, _ = scan(base_texts, {renames.get(path, path) for path in candidates}, direct=base_direct)
             compared = set(hits) | {(reverse_renames.get(path, path), rule) for path, rule in old}
             old = {(path, rule): old.get((renames.get(path, path), rule), []) for path, rule in compared}
             grown = []
