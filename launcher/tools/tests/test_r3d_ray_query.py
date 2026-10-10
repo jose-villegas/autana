@@ -35,7 +35,7 @@ needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
 
 
 def brute_force(positions, tris, origin, direction):
-    """Every (distance, triangle) a ray crosses, nearest first, by the Moller-Trumbore test."""
+    """Every (distance, triangle) a ray crosses, nearest first, by the Moller-Trumbore test (docs/Citations.md#24)."""
     a, b, c = positions[tris[:, 0]], positions[tris[:, 1]], positions[tris[:, 2]]
     edge1, edge2 = b - a, c - a
     p = np.cross(direction, edge2)

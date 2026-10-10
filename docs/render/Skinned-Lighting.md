@@ -20,7 +20,7 @@ flowchart LR
 |---|---|
 | Reference | float bind normal, skinned, renormalised, N.L per light |
 | Direct | skinned, not renormalised, N.L per light; bind normal as float or int8 per axis |
-| Table, nearest | int8 bind normal, skinned, its octahedral point [[1]](#references) (`vec3f_octahedral`, any length) picks one cell |
+| Table, nearest | int8 bind normal, skinned, its octahedral point<sup>[[21]](../Citations.md#21)</sup> (`vec3f_octahedral`, any length) picks one cell |
 | Table, bilinear | the same point blends the four nearest cell centres with 8-bit weights |
 
 Each table cell holds the light of its centre's direction as three bytes, padded to
@@ -175,10 +175,3 @@ launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb gallop
 
 It builds and runs the benchmark, redraws the sheet and rewrites the three
 tables above.
-
-## References
-
-1. Z. H. Cigolle, S. Donow, D. Evangelakos, M. Mara, M. McGuire, Q. Meyer.
-   *A Survey of Efficient Representations for Independent Unit Vectors.*
-   Journal of Computer Graphics Techniques 3(2), 2014.
-   [jcgt.org/published/0003/02/01](https://jcgt.org/published/0003/02/01/)

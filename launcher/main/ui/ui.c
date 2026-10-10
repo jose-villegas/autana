@@ -228,7 +228,7 @@ paint_canvas(const mu_Container* cnt) {
     gfx_clear_clip();
 }
 
-/* FNV-1a. Cheap, and only ever run over the few hundred bytes a canvas's
+/* FNV-1a (docs/Citations.md#29). Cheap, and only ever run over the few hundred bytes a canvas's
  * commands occupy; the buffer is 8 KiB but almost none of it is used. */
 static uint64_t
 hash_canvas(const mu_Container* cnt) {

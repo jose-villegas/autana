@@ -151,7 +151,7 @@ applied to a direction. At 17 degrees about 62% of steps fall straight down
 and 38% down-right, and at 60 fps the eye integrates the two directions into
 one smooth angle. The choice costs one random number per step, not per moving
 grain. The weight needs `atan`, since at 22.5 degrees the component ratio is
-0.414 rather than 0.5; Rajan's approximation covers it in integers to within
+0.414 rather than 0.5; Rajan's approximation<sup>[[48]](../Citations.md#48)</sup> covers it in integers to within
 a degree.
 
 ## The water model
@@ -1139,7 +1139,7 @@ for cache configuration and memory placement.
 The device's own `gfx_present()` overlaps with `sand_step()` on the other
 core already; see `docs/Firmware-Architecture.md`. Splitting the step
 itself across cores is harder, for a reason that has nothing to do with
-sweep order: `sand_t.rng` is one `xorshift32` word, drawn from a
+sweep order: `sand_t.rng` is one `xorshift32`<sup>[[25]](../Citations.md#25)</sup> word, drawn from a
 data-dependent number of times per cell by every pass.
 
 Two cores drawing from it at once race on that word; the fix is to stop
@@ -1367,7 +1367,7 @@ is what buys the sweep that guarantee back.
 A grain that crosses into a chunk whose pass has not run would be picked up
 once more there, and at a chunk corner handed on twice: three cells in the
 step where serial moves it one. The **step stamp**
-stops that, the per-cell "moved this frame" mark Noita uses: one bit per
+stops that, the per-cell "moved this frame" mark Noita uses<sup>[[49]](../Citations.md#49)</sup>: one bit per
 cell (`sand_enable_step_stamps()`, caller-owned beside the settled blocks,
 a byte per eight cells of a row). A pass that asks for stamps marks the
 destination of every move that leaves its chunk, and skips a stamped cell
@@ -1541,7 +1541,7 @@ is actually there.
 decay, mobility and walk draws, while `s->rng_hashed` is armed. That is
 true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
-Armed, it hashes `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
+Armed, it hashes<sup>[[50]](../Citations.md#50)</sup> `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
 through `rng_hash()` (`math/scalar/rng.h`); disarmed, it is `rng_next(&s->rng)`
 unchanged, so reactions and every serial gas step retain sequential draws,
 and the whole step with the switch off is unchanged.

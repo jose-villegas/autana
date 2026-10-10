@@ -7,7 +7,7 @@
  * measured costs moves it one step at a time, with separate thresholds, a
  * cooldown that doubles after a reversal, and a panic drop for one frame far
  * over budget. The predictor acts first: it scales and offsets the offline
- * fit's price by what recent frames cost, with a small Kalman filter that
+ * fit's price by what recent frames cost, with a small Kalman filter (docs/Citations.md#22) that
  * leans back to the fit and clips one outlier frame. It prices every step from
  * what survived culling this frame, and the finest step that fits is drawn.
  *

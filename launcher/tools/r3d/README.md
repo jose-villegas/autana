@@ -117,7 +117,7 @@ $PY tools/render/render_compare.py --out unused.png --reference-video host.avi r
 ```
 
 The line for each frame, and for the frames' mean, has mean and 95th-percentile
-CIE76 ΔE [[1]](#references) over its pixels, luma SSIM [[2]](#references), and the mean ΔE on edge and on interior
+CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> over its pixels, luma SSIM<sup>[[9]](../../../docs/Citations.md#9)</sup>, and the mean ΔE on edge and on interior
 pixels; the frames-mean line averages each frame's value, p95 included. The
 sheet is, left to right, the reference, the render, the ΔE heatmap and the
 reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
@@ -137,7 +137,7 @@ the tests are small enough for the scalar one.
 |---|---|
 | `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the bake backend's subpixel grid |
 | `--max-depth N` | Path depth cap; 2 is direct light only |
-| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky [[3]](#references) (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
+| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky<sup>[[8]](../../../docs/Citations.md#8)</sup> (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
 A `sky` light becomes a constant environment of the same radiance. The
 backends differ in these recorded ways, besides transport:
@@ -183,7 +183,7 @@ It prints a table sorted by mean ΔE.
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
 triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
-simplification [[4]](#references). The
+simplification<sup>[[1]](../../../docs/Citations.md#1)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
 [Scene-Files.md](../../../docs/render/Scene-Files.md#against-the-paper) lists
 what the fit changes from the paper.
@@ -192,9 +192,9 @@ what the fit changes from the paper.
 |---|---|
 | Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
-| Forward model | nvdiffrast [[5]](#references) draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
-| Loss | the mean CIE76 ΔE [[1]](#references) of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates [[6]](#references) from the start's |
-| Schedule | Adam [[7]](#references); both learning rates decay tenfold over `--steps` |
+| Forward model | nvdiffrast<sup>[[2]](../../../docs/Citations.md#2)</sup> draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#5)</sup> from the start's |
+| Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
 The fitted colours are the bake, so the mesh enters the import at its last
@@ -317,8 +317,8 @@ as well as colour, and weigh appearance against frame time.
 | Warm start | `--refine-to N` splits the longest edge of the start's worst triangles, by dE summed over the pixels they show, both sides of an edge at once, until N; a fitted coarse mesh then starts a finer fit | `appearance_simplify.refine`, `tessellate.split_marked_edges` |
 
 The cost model's weights come from board frame times of meshes with
-different triangle counts and overdraw, fitted by non-negative least squares
-[[8]](#references), and live with those frames in
+different triangle counts and overdraw, fitted by non-negative least squares<sup>[[6]](../../../docs/Citations.md#6)</sup>,
+and live with those frames in
 [board_cost_weights.txt](board_cost_weights.txt): a `feature` row naming the
 columns, the `weight` row, and one `frame LABEL POSE MS feature...` row per
 measured frame.
@@ -354,32 +354,3 @@ input: a scene prints its poses from its own camera rather than keeping a
 copy that can go stale.
 `--write` keeps each pose's frame and `--against` diffs a later build's
 frames with them, pixel by pixel.
-
-## References
-
-1. ISO/CIE 11664-4:2019. *Colorimetry, Part 4: CIE 1976 L\*a\*b\* colour
-   space.* [iso.org/standard/74166](https://www.iso.org/standard/74166.html)
-2. Z. Wang, A. C. Bovik, H. R. Sheikh, E. P. Simoncelli. *Image Quality
-   Assessment: From Error Visibility to Structural Similarity.* IEEE
-   Transactions on Image Processing 13(4), 2004.
-   [doi:10.1109/TIP.2003.819861](https://doi.org/10.1109/TIP.2003.819861)
-3. L. Hosek, A. Wilkie. *An Analytic Model for Full Spectral Sky-Dome
-   Radiance.* ACM Transactions on Graphics 31(4), SIGGRAPH 2012.
-   [doi:10.1145/2185520.2185591](https://doi.org/10.1145/2185520.2185591)
-4. J. Hasselgren, J. Munkberg, J. Lehtinen, M. Aittala, S. Laine.
-   *Appearance-Driven Automatic 3D Model Simplification.* Eurographics
-   Symposium on Rendering 2021.
-   [doi:10.2312/sr.20211293](https://doi.org/10.2312/sr.20211293),
-   [arXiv:2104.03989](https://arxiv.org/abs/2104.03989)
-5. S. Laine, J. Hellsten, T. Karras, Y. Seol, J. Lehtinen, T. Aila.
-   *Modular Primitives for High-Performance Differentiable Rendering.* ACM
-   Transactions on Graphics 39(6), SIGGRAPH Asia 2020.
-   [doi:10.1145/3414685.3417861](https://doi.org/10.1145/3414685.3417861),
-   [arXiv:2011.03277](https://arxiv.org/abs/2011.03277)
-6. O. Sorkine. *Laplacian Mesh Processing.* Eurographics 2005 State of the
-   Art Reports. [doi:10.2312/egst.20051044](https://doi.org/10.2312/egst.20051044)
-7. D. P. Kingma, J. Ba. *Adam: A Method for Stochastic Optimization.* ICLR
-   2015. [arXiv:1412.6980](https://arxiv.org/abs/1412.6980)
-8. C. L. Lawson, R. J. Hanson. *Solving Least Squares Problems.*
-   Prentice-Hall 1974; SIAM reprint 1995.
-   [doi:10.1137/1.9781611971217](https://doi.org/10.1137/1.9781611971217)

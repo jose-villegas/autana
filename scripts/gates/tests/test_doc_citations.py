@@ -461,6 +461,14 @@ class DocCitationTest(unittest.TestCase):
             bad = check_doc_index.check_anchors(root)
         self.assertEqual(bad, [])
 
+    def test_anchor_link_to_an_explicit_anchor_is_not_flagged(self):
+        with gate_tree.temporary_tree([
+                ("docs/A.md", "[1](B.md#1) [2](B.md#2)\n"),
+                ("docs/B.md", '| <a id="1"></a>[1] | x |\n'),
+        ]) as root:
+            bad = check_doc_index.check_anchors(root)
+        self.assertEqual([item[3] for item in bad], ["2"])
+
     def test_anchor_link_to_a_directory_is_not_checked(self):
         # A directory link ([notes](docs/notes/#top)) resolves to a folder,
         # not a .md file; it is what reachable() expands to that folder's
@@ -580,6 +588,43 @@ class DocCitationTest(unittest.TestCase):
             "doc": "docs/Bound.md", "kind": "function", "line": 1,
             "symbol": "fixture",
         }])
+
+
+class PaperCitationTest(unittest.TestCase):
+    TABLE = "| [n] | Source | Cited by |\n|---|---|---|\n"
+
+    def problems(self, rows, files):
+        with gate_tree.temporary_tree([("docs/Citations.md", self.TABLE + rows), *files]) as root:
+            return check_doc_citations.unresolved_papers(root)
+
+    def test_cited_rows_listing_their_citers_pass(self):
+        self.assertEqual(self.problems(
+            '| <a id="1"></a>[1] | Paper | [Guide.md](Guide.md), [tool.py](../scripts/tool.py) |\n',
+            [("docs/Guide.md", "Text<sup>[[1]](Citations.md#1)</sup>.\n"),
+             ("scripts/tool.py", "# After the paper in docs/Citations.md#1.\n")]), [])
+
+    def test_a_number_with_no_row_is_flagged_where_it_is_cited(self):
+        found = self.problems('| <a id="1"></a>[1] | Paper | [Guide.md](Guide.md) |\n',
+                              [("docs/Guide.md", "[[1]](Citations.md#1) [[2]](Citations.md#2)\n")])
+        self.assertEqual(found, ["docs/Guide.md:1: cites [2], which docs/Citations.md has no row for"])
+
+    def test_a_row_nothing_cites_is_flagged(self):
+        found = self.problems('| <a id="1"></a>[1] | Paper | [Guide.md](Guide.md) |\n',
+                              [("docs/Guide.md", "No citation.\n")])
+        self.assertEqual(found, ["docs/Citations.md:3: [1] is cited nowhere"])
+
+    def test_a_cited_by_cell_must_match_the_citing_files(self):
+        found = self.problems('| <a id="1"></a>[1] | Paper | [Other.md](Other.md) |\n',
+                              [("docs/Guide.md", "[[1]](Citations.md#1)\n"), ("docs/Other.md", "None.\n")])
+        self.assertEqual(found, ["docs/Citations.md:3: [1] cited by, not listed: docs/Guide.md; "
+                                 "listed, does not cite it: docs/Other.md"])
+
+    def test_rows_number_from_one_without_gaps_and_anchor_their_number(self):
+        found = self.problems('| <a id="1"></a>[1] | A | [Guide.md](Guide.md) |\n'
+                              '| <a id="2"></a>[3] | B | [Guide.md](Guide.md) |\n',
+                              [("docs/Guide.md", "[[1]](Citations.md#1) [[3]](Citations.md#3)\n")])
+        self.assertEqual(found, ['docs/Citations.md:4: anchor "2" is not its number [3]',
+                                 "docs/Citations.md:4: [3] follows [1]; rows run 1, 2, 3 with no gap"])
 
 
 if __name__ == "__main__":
