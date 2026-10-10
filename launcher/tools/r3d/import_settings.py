@@ -448,8 +448,6 @@ def load_camera_path(path, base, where):
     if not animation.name.endswith(tracks_asset.SUFFIX) or not animation.is_file():
         raise SettingsError(f"{where}.animation {path['animation']!r} is not an {tracks_asset.SUFFIX} file")
     node = identifier(path["node"], f"{where}.node")
-    if len(f"{node}/translation") >= tracks_asset.NAME_BYTES:
-        raise SettingsError(f"{where}.node {node!r}: its track names exceed {tracks_asset.NAME_BYTES - 1} bytes")
     clip = tracks_asset.clip_id(animation)
     if len(clip.encode("utf-8")) >= NAME_BYTES:
         raise SettingsError(f"{where}.animation: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")

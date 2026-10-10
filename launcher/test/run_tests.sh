@@ -138,6 +138,7 @@ $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
+$MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c

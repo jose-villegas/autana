@@ -37,7 +37,7 @@ from build import packages  # noqa: E402
 HERE = TOOLS / "anim"
 MAIN = TOOLS.parent / "main"
 BUILD = HERE / "build"
-SOURCES = (HERE / "track_host.c", MAIN / "anim" / "anim_track.c", MAIN / "anim" / "anim_tracks.c",
+SOURCES = (HERE / "track_host.c", MAIN / "anim" / "anim_track.c", MAIN / "anim" / "anim_tracks.c", MAIN / "anim" / "anim_binding.c",
            MAIN / "asset" / "asset_pack.c", MAIN / "asset" / "asset_file.c")
 FLAGS = ("-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O2")
 EXE = ".exe" if sys.platform == "win32" else ""

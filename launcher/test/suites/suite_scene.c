@@ -115,38 +115,49 @@ static const struct {
 
 /* A clip of the camera node flying 5 units along x in a second, facing down
  * -z. Both tracks share the times; each array starts where the last ends. */
-enum { FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
+enum {
+    FLIGHT_TIMES = TEST_TRACKS_HEADER_SIZE + (2 * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT)),
+    FLIGHT_POSITIONS = FLIGHT_TIMES + (2 * sizeof(float)),
+    FLIGHT_TURNS = FLIGHT_POSITIONS + (6 * sizeof(float)),
+    FLIGHT_BYTES = FLIGHT_TURNS + (8 * sizeof(float))
+};
 
 /* "flight" is the clip as a scene reads it; "skewed" has a translation 2 wide
  * and "unturned" no rotation, which a scene must refuse. */
 static const struct {
     const char* id;
-    int translation_width, track_count;
-} CLIPS[] = {{"flight", 3, 2}, {"skewed", 2, 2}, {"unturned", 3, 1}};
+    anim_value_t position_type;
+    int track_count;
+} CLIPS[] = {{"flight", ANIM_VALUE_VEC3, 2}, {"skewed", ANIM_VALUE_VEC2, 2}, {"unturned", ANIM_VALUE_VEC3, 1}};
 
 #define CLIP_COUNT ((int)(sizeof CLIPS / sizeof CLIPS[0]))
 
 static void
-make_clip_entry(uint8_t* entry, int translation_width, int track_count) {
+make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     const float times[] = {0.0F, 1.0F};
     const float positions[] = {0, 0, 10, 5, 0, 10};
     const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
     test_tracks_header(entry, track_count, 1000);
     test_track_row(entry, 0,
-                   &(test_track_t){.name = "camera/translation",
+                   &(test_track_t){.path = "camera",
+                                   .field = "position",
+                                   .component = ANIM_COMPONENT_TRANSFORM,
                                    .times = FLIGHT_TIMES,
                                    .values = FLIGHT_POSITIONS,
                                    .keys = 2,
-                                   .width = translation_width,
+                                   .type = position_type,
                                    .interp = ANIM_LINEAR});
-    test_track_row(entry, 1,
-                   &(test_track_t){.name = "camera/rotation",
-                                   .times = FLIGHT_TIMES,
-                                   .values = FLIGHT_TURNS,
-                                   .keys = 2,
-                                   .width = 4,
-                                   .interp = ANIM_LINEAR,
-                                   .quaternion = true});
+    if (track_count > 1) {
+        test_track_row(entry, 1,
+                       &(test_track_t){.path = "camera",
+                                       .field = "rotation",
+                                       .component = ANIM_COMPONENT_TRANSFORM,
+                                       .times = FLIGHT_TIMES,
+                                       .values = FLIGHT_TURNS,
+                                       .keys = 2,
+                                       .type = ANIM_VALUE_QUAT,
+                                       .interp = ANIM_LINEAR});
+    }
     test_pack_put_floats(entry + FLIGHT_TIMES, times, 2);
     test_pack_put_floats(entry + FLIGHT_POSITIONS, positions, 6);
     test_pack_put_floats(entry + FLIGHT_TURNS, turns, 8);
@@ -306,7 +317,7 @@ make_pack(uint8_t* bytes) {
     make_scene_entry(bad, &SCENES[0]);
     test_pack_put16(bad + 24 + (3 * (32 + sizeof(scene_transform_t))) + sizeof(scene_asset_renderer_t), 9);
     for (int i = 0; i < CLIP_COUNT; i++) {
-        make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].translation_width,
+        make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].position_type,
                         CLIPS[i].track_count);
     }
     return test_pack_finish(&pack);
