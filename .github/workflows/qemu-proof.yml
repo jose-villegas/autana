@@ -1,7 +1,8 @@
 name: QEMU proof t8jy
 
-# Throwaway: never merged. CI's own image of 34c77534 (run 38063449116),
-# autorun 8 times per QEMU, prebuilt vs patched.
+# Throwaway: never merged. A stress suite (core 0 remaps flash, core 1 reads
+# registers) under Espressif's prebuilt QEMU vs the patched one, 8 jobs x 3
+# boots each.
 
 on:
   push:
@@ -11,7 +12,26 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: qemu-proof-shell
+          command: sh test/run_qemu_tests.sh --suite run_qemu_tlb_stress_suite --build-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shell-image
+          path: |
+            launcher/build.qemu.shell/flasher_args.json
+            launcher/build.qemu.shell/launcher.elf
+            launcher/build.qemu.shell/*.bin
+            launcher/build.qemu.shell/*/*.bin
+
   run:
+    needs: image
     name: ${{ matrix.qemu }} ${{ matrix.n }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -24,10 +44,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: qemu-image
-          run-id: 38063449116
-          github-token: ${{ github.token }}
-          path: launcher/ci-image
+          name: shell-image
+          path: launcher/shell-image
       - if: matrix.qemu == 'patched'
         uses: actions/cache/restore@v4
         with:
@@ -43,19 +61,21 @@ jobs:
             || (apt-get update -qq
             && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq
             && python3 test/qemu/patched_qemu.py build))
-            && python3 test/qemu_run.py ci-image --timeout 3000 --workdir ci-run
+            && for i in 1 2 3; do python3 test/qemu_run.py shell-image --suite run_qemu_tlb_stress_suite --timeout 600 --workdir run$i --log run$i/serial.log; done; true
       - if: matrix.qemu == 'prebuilt'
         uses: ./.github/actions/idf-build
         with:
           cache-name: qemu-proof
-          command: python3 test/qemu_run.py ci-image --timeout 3000 --workdir ci-run
+          command: >-
+            for i in 1 2 3; do python3 test/qemu_run.py shell-image --suite run_qemu_tlb_stress_suite --timeout 600 --workdir run$i --log run$i/serial.log; done; true
       - if: ${{ !cancelled() }}
         run: |
-          f=launcher/ci-run/qemu_serial.log
-          echo "${{ matrix.qemu }} ${{ matrix.n }}: panics=$(grep -a -c 'Guru Meditation\|uru Meditation' $f) $(grep -a -o 'EXCVADDR: 0x[0-9a-f]*' $f | tr '\n' ' ') $(grep -a -o 'SELFTEST_COMPLETE.*' $f | tail -1)" | tee -a $GITHUB_STEP_SUMMARY
-          grep -a -m1 'qemu_run: ' launcher/ci-run/*.txt 2>/dev/null || true
+          for i in 1 2 3; do
+            f=launcher/run$i/serial.log
+            echo "${{ matrix.qemu }} ${{ matrix.n }}.$i: panics=$(grep -a -c 'Meditation' $f) $(grep -a -o 'EXCVADDR: 0x[0-9a-f]*' $f | tr '\n' ' ') $(grep -a -o 'maps=[0-9]* core1_reads=[0-9]*' $f | tail -1) $(grep -a -o 'test_core_1[a-z_0-9]*:[A-Z]*' $f | tail -1)" | tee -a $GITHUB_STEP_SUMMARY
+          done
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: log-${{ matrix.qemu }}-${{ matrix.n }}
-          path: launcher/ci-run/qemu_serial.log
+          path: launcher/run*/serial.log
