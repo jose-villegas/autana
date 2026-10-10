@@ -14,6 +14,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "math/motion/spring_line.h"
+#include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
 #include "profile/frame_cost.h"
@@ -148,12 +149,6 @@ typedef struct {
 
 static ridge_t* ridge;
 static bool allocation_tried;
-
-static int
-round_subpixel(int value) {
-    return value >= 0 ? (value + RIDGE_SUBPIXEL_ONE / 2) / RIDGE_SUBPIXEL_ONE
-                      : (value - RIDGE_SUBPIXEL_ONE / 2) / RIDGE_SUBPIXEL_ONE;
-}
 
 static uint32_t
 rgb_mix(uint32_t a, uint32_t b, int amount) {
@@ -371,10 +366,10 @@ raster_boundaries(void) {
         int y0 = 0;
         for (int point = 0; point < RIDGE_COLUMNS; point++) {
             const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * (RIDGE_SUBPIXEL_ONE / 2));
-            const int x1 =
-                round_subpixel(((GFX_WIDTH - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_x + (h * dx)));
-            const int y1 =
-                round_subpixel(((GFX_HEIGHT - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_y + (h * dy)));
+            const int x1 = fx_round_shift32(
+                ((GFX_WIDTH - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_x + (h * dx)), RIDGE_SUBPIXEL_SHIFT);
+            const int y1 = fx_round_shift32(
+                ((GFX_HEIGHT - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_y + (h * dy)), RIDGE_SUBPIXEL_SHIFT);
             if (point > 0) {
                 raster_segment(layer, x0, y0, x1, y1);
             }
