@@ -1,8 +1,11 @@
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import port_guard
+import ast
 import base64
 import io
 import contextlib
 import gzip
+import importlib.util
 import json
 import os
 import re
@@ -10,6 +13,7 @@ import struct
 import subprocess
 import tempfile
 import time
+import types
 import unittest
 import zlib
 from argparse import Namespace
@@ -84,22 +88,166 @@ class InterpreterTests(unittest.TestCase):
         call.assert_not_called()
 
 
+class SerialTimeoutException(OSError):
+    """pyserial's, an IOError like every port error it raises."""
+
+
+class StalledSerial(FakeConnection):
+    """pyserial's Serial on a port the board stopped draining: a write times
+    out, and what was queued never leaves."""
+
+    out_waiting = 1
+
+    def open(self):
+        pass
+
+    def write(self, unused_data):
+        raise SerialTimeoutException("Write timeout")
+
+
 class OpenSerialTests(unittest.TestCase):
     """A board that stops reading its console (a half-written image, a
     wedged app) must fail the command, not hold the lock forever: pyserial
     with no write timeout blocks in the OS write with no limit."""
 
-    def opened(self):
-        serial = mock.MagicMock()
-        with mock.patch.dict(sys.modules, {"serial": serial}),                 mock.patch.object(device, "locked_port", return_value="COM5"):
-            device.open_serial()
-        return serial.Serial.return_value
+    @contextlib.contextmanager
+    def stalled(self):
+        serial = types.ModuleType("serial")
+        serial.Serial = StalledSerial
+        serial.SerialTimeoutException = SerialTimeoutException
+        with mock.patch.dict(sys.modules, {"serial": serial}), \
+             mock.patch.object(device, "locked_port", return_value="COM5"):
+            yield
 
-    def test_writes_are_bounded_like_reads(self):
-        connection = self.opened()
-        self.assertIsInstance(connection.write_timeout, (int, float))
-        self.assertGreater(connection.write_timeout, 0)
-        connection.open.assert_called_once_with()
+    def test_a_write_waits_no_longer_than_a_boot(self):
+        with self.stalled():
+            connection = device.open_serial()
+        self.assertEqual(connection.write_timeout, device.BOOT_WAIT_SECONDS)
+
+    def test_a_write_the_board_never_takes_is_an_error(self):
+        with self.stalled():
+            connection = device.open_serial()
+        with self.assertRaisesRegex(device.BoardNotReading,
+                                    f"stopped reading its console: a write did not drain "
+                                    f"within {device.BOOT_WAIT_SECONDS}s"):
+            connection.write(b"RUNSUITE sand\n")
+
+    def flushed(self, queued):
+        """(seconds waited, the error or None) for a flush on a port whose
+        output queue reads `queued` in turn, the last value repeating, on a
+        clock only its sleeps move."""
+        with self.stalled():
+            connection = device.open_serial()
+        self.enterContext(mock.patch.object(type(connection), "out_waiting", property(
+            lambda unused: queued.pop(0) if len(queued) > 1 else queued[0])))
+        clock = [0.0]
+        fake_time = types.SimpleNamespace(
+            monotonic=lambda: clock[0],
+            sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+        with mock.patch.object(device, "time", fake_time):
+            try:
+                connection.flush()
+            except device.BoardNotReading as error:
+                return clock[0], error
+        return clock[0], None
+
+    def test_a_flush_returns_once_the_queue_drains(self):
+        self.assertEqual(self.flushed([0]), (0, None))
+        self.assertEqual(self.flushed([2, 1, 0]), (2 * device.FLUSH_POLL_SECONDS, None))
+
+    def test_a_flush_that_never_drains_fails_at_the_write_timeout(self):
+        waited, error = self.flushed([1])
+        self.assertIsInstance(error, device.BoardNotReading)
+        self.assertGreaterEqual(waited, device.BOOT_WAIT_SECONDS)
+        self.assertLess(waited, device.BOOT_WAIT_SECONDS + 2 * device.FLUSH_POLL_SECONDS)
+
+    def test_a_write_that_times_out_releases_the_lock(self):
+        store = mock_store()
+        with tempfile.TemporaryDirectory() as directory, self.stalled(), \
+             mock.patch.object(device, "open_when_free",
+                               side_effect=lambda *unused, **unused_kw: device.open_serial()), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(device.BoardNotReading):
+                device.run_suite(suite_args(), store, BOARD)
+        store.release.assert_called_once_with(BOARD, "token")
+
+    @unittest.skipUnless(hasattr(os, "openpty") and importlib.util.find_spec("serial"),
+                         "needs a pseudo-terminal and pyserial")
+    def test_a_real_port_nobody_reads_fails_the_write(self):
+        """The OS, not a stand-in, refuses the write: a pseudo-terminal whose
+        other end is never read fills, and pyserial's write timeout fires."""
+        with port_guard.fake_port() as (unused, name), \
+             mock.patch.object(device, "locked_port", return_value=name):
+            with device.open_serial() as connection:
+                connection.write_timeout = 0.5
+                started = time.monotonic()
+                with self.assertRaises(device.BoardNotReading):
+                    connection.write(bytes(1 << 20))
+                self.assertLess(time.monotonic() - started, device.BOOT_WAIT_SECONDS)
+
+
+@unittest.skipUnless(importlib.util.find_spec("serial"), "needs pyserial")
+class PortGuardTests(unittest.TestCase):
+    """No test reaches a real board: port_guard fails the run of one that
+    opens a real port or lists the real ones, even where the code under test
+    swallowed the refusal."""
+
+    # A name no host has, so a guard that let it through still opens nothing.
+    PORT = "autana-test-no-such-port"
+
+    def run_swallowing(self, statement, guard="port_guard"):
+        child = ("import sys; sys.path.insert(0, sys.argv[1]); import " + guard + "\n"
+                 "try:\n    " + statement + "\nexcept BaseException:\n    pass\n")
+        return subprocess.run([sys.executable, "-c", child, str(DEVICE / "tests")],
+                              capture_output=True, text=True)
+
+    def test_opening_a_real_port_fails_the_run(self):
+        for guard in ("port_guard", "isolation"):
+            with self.subTest(guard=guard):
+                result = self.run_swallowing(f"import serial; serial.Serial({self.PORT!r})", guard)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("opened the real serial port " + self.PORT, result.stderr)
+
+    def test_listing_the_real_ports_fails_the_run(self):
+        result = self.run_swallowing(
+            "from serial.tools import list_ports; list_ports.comports()")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("listed the real USB serial ports", result.stderr)
+
+    def test_a_refused_open_is_not_waited_out_as_a_busy_port(self):
+        import serial
+        sleeps = []
+        with self.assertRaises(port_guard.RealPortTouched):
+            device.open_when_free(device.PORT_WAIT_SECONDS, opener=lambda: serial.Serial(self.PORT),
+                                  sleep=sleeps.append, now=lambda: sum(sleeps))
+        port_guard.violations.remove("opened the real serial port " + self.PORT)
+        self.assertEqual(sleeps, [])
+
+
+class PortGuardCoverageTests(unittest.TestCase):
+    def test_every_test_module_that_imports_device_imports_the_guard_first(self):
+        """Each test directory runs in its own process, so the guard is only
+        there if the module that brings device in (directly, or through
+        autana) brought it in first."""
+        engine = DEVICE.parents[1]
+        listed = subprocess.run(["git", "ls-files", "*.py"], cwd=engine, capture_output=True,
+                                text=True, check=True).stdout.split()
+        unguarded = []
+        for name in (name for name in listed if "/tests/" in name):
+            tree = ast.parse((engine / name).read_text(encoding="utf-8"))
+            imports = [(node.lineno, alias.name) for node in ast.walk(tree)
+                       if isinstance(node, ast.Import) for alias in node.names]
+            imports += [(node.lineno, node.module) for node in ast.walk(tree)
+                        if isinstance(node, ast.ImportFrom)]
+            device_at = min((line for line, module in imports if module in ("device", "autana")),
+                            default=None)
+            guard_at = min((line for line, module in imports
+                            if module in ("port_guard", "isolation")), default=None)
+            if device_at is not None and (guard_at is None or guard_at > device_at):
+                unguarded.append(name)
+        self.assertEqual(unguarded, [])
 
 
 class HookIsolationTests(unittest.TestCase):

@@ -67,8 +67,8 @@ typedef struct {
     vec3f_t forward[R3D_SIZES_POSES_MAX];
 } r3d_sizes_poses_t;
 
-/* True when the file was read whole; else false, with what is wrong and on
- * which line written to `problem`. */
+/* Reads poses from the source frame into the engine frame. False reports what is
+ * wrong and on which line in `problem`. */
 bool r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out, char* problem, size_t problem_size);
 
 /* The same from a path, "-" reading standard input, so a generator can pipe

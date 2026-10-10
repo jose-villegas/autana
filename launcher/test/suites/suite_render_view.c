@@ -38,7 +38,7 @@ expect_vector(vec3f_t expected, vec3f_t actual) {
 }
 
 static void
-test_basis_is_orthonormal_and_picture_axes_are_right_handed(void) {
+test_basis_is_orthonormal_and_picture_right_is_pose_plus_x(void) {
     const transformf_t pose = fixture();
     const render_view_t view = view_of(&pose, 0);
     expect_vector((vec3f_t){1.0F, 1.0F, 1.0F},
@@ -47,8 +47,8 @@ test_basis_is_orthonormal_and_picture_axes_are_right_handed(void) {
     expect_vector((vec3f_t){0.0F, 0.0F, 0.0F},
                   (vec3f_t){vec3f_dot(view.screen_x, view.screen_y), vec3f_dot(view.screen_x, view.forward),
                             vec3f_dot(view.screen_y, view.forward)});
-    expect_vector(view.forward, vec3f_cross(view.screen_x, view.screen_y));
-    expect_vector(quatf_rotate(pose.rotation, (vec3f_t){-1.0F, 0.0F, 0.0F}), view.screen_x);
+    expect_vector(view.forward, vec3f_cross(view.screen_y, view.screen_x));
+    expect_vector(quatf_rotate(pose.rotation, (vec3f_t){1.0F, 0.0F, 0.0F}), view.screen_x);
     expect_vector(pose.position, view.position);
 }
 
@@ -102,7 +102,7 @@ test_point_straight_ahead_projects_to_center(void) {
 static void
 test_off_axis_lens_projection_and_anisotropic_fit(void) {
     static const float offsets[4][2] = {
-        {-OFFSET_X, -OFFSET_Y}, {OFFSET_Y, -OFFSET_X}, {OFFSET_X, OFFSET_Y}, {-OFFSET_Y, OFFSET_X}};
+        {OFFSET_X, -OFFSET_Y}, {OFFSET_Y, OFFSET_X}, {-OFFSET_X, OFFSET_Y}, {-OFFSET_Y, -OFFSET_X}};
     transformf_t pose = TRANSFORMF_IDENTITY;
     pose.position = (vec3f_t){3.0F, 4.0F, 5.0F};
     const vec3f_t ticks = vec3f_scale(vec3f_add(pose.position, (vec3f_t){OFFSET_X, OFFSET_Y, AHEAD_Z}), POSITION_SCALE);
@@ -136,14 +136,14 @@ test_pose_roll_rotates_the_picture(void) {
     const render_view_t upright = view_of(&pose, 0);
     pose.rotation = quatf_from_axis_angle(upright.forward, MATH_TAU * 0.25F);
     const render_view_t rolled = view_of(&pose, 0);
-    expect_vector(upright.screen_y, rolled.screen_x);
-    expect_vector(vec3f_scale(upright.screen_x, -1.0F), rolled.screen_y);
+    expect_vector(vec3f_scale(upright.screen_y, -1.0F), rolled.screen_x);
+    expect_vector(upright.screen_x, rolled.screen_y);
     expect_vector(upright.forward, rolled.forward);
 }
 
 void
 run_render_view_suite(void) {
-    RUN_TEST(test_basis_is_orthonormal_and_picture_axes_are_right_handed);
+    RUN_TEST(test_basis_is_orthonormal_and_picture_right_is_pose_plus_x);
     RUN_TEST(test_quarter_turns_follow_viewport_axes);
     RUN_TEST(test_lens_fits_the_shorter_side);
     RUN_TEST(test_point_straight_ahead_projects_to_center);

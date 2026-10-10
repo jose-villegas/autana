@@ -9,6 +9,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device/tests"))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device
 
 

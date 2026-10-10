@@ -100,8 +100,10 @@ per suite: every timing per run with min, max and spread; every test whose
 result changed between runs of the image (a test that flaps on one binary is
 a finding, not noise); the tests that failed in every run; and each
 `PERF TARGET` per run. A capture that errors or reports a failed test
-is recorded and the run continues, then exits 1; only a failed build or
-flash stops it. `--perf-scope` builds the perf-scoped image. `--out PATH`
+is recorded and the run continues, then exits 1. A failed build or flash
+stops it, and so does a board that would answer every later run the same
+way: a refused `--test` filter or tunable, or a board that stopped reading
+its console. `--perf-scope` builds the perf-scoped image. `--out PATH`
 writes the one raw capture to `PATH`, only with exactly one suite and
 `--runs 1`. `selftest` builds the autorun diagnostics image and captures the
 boot-time run until `SELFTEST_COMPLETE`.
