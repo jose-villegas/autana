@@ -829,6 +829,16 @@ by a substring of the name, so treat it as a lookup, not an area map.
    an engine suite or the app's `scope_perf.cmake` for an app suite, together
    with every other source the run links. The build discovers both kinds of
    manifest (see "A diagnostics build can be scoped").
+
+   A suite that reads a pack from the tree (`asset_store_pack()`, directly or
+   through `scene_load()` or other engine code) names it beside its
+   registration: `SUITE_READS(run_<name>_suite, SPONZA_SCENE);`. The host run
+   fails when a suite reads a pack it did not name. When a pack's bakes lack
+   their `bakes.lock` rows (a re-keyed bake not yet locked), `run_tests.sh`
+   leaves that pack out, skips the suites that name it, and prints
+   `waiting on lock: <packs> (skipped suites: ...)` without failing. CI stays
+   red for those rows: the Bakes workflow's lock check and the host-tests
+   job's bake fetch both fail until the lock has them.
 4. Guard anything needing hardware with `#ifdef DEVICE_BUILD`, including its
    `RUN_TEST` line. A suite can be portable and still have a device-only
    section: `suite_job.c` runs every one of its tests on both, and fences
