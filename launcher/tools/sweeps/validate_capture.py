@@ -30,18 +30,12 @@ import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
-from device_capture import results, SELFTEST_COMPLETE_RE
+from device_capture import BOOT_BANNER, BOOTS_FROM_RESET, CRASH_LINE_RE, reboot_sign, results, SELFTEST_COMPLETE_RE
 
-# Both phrases appear on ESP-IDF's panic banner; either is sufficient to
-# call it a crash. The parenthesised text after "panic'ed" is the exception
-# type (e.g. "Stack protection fault") and is worth surfacing verbatim;
-# it is usually enough on its own to point at the offending change.
-PANIC_LINE_RE = re.compile(r"Guru Meditation|panic'ed")
+# The parenthesised text after "panic'ed" is the exception type (e.g. "Stack
+# protection fault") and is worth surfacing verbatim; it is usually enough on
+# its own to point at the offending change.
 PANIC_TYPE_RE = re.compile(r"panic'ed\s*\(([^)]+)\)")
-
-# One per boot. More than one means the device reset mid-run, a crash
-# loop, not a slow run, which changes what a stall in the capture means.
-BOOT_BANNER = "ESP-ROM:esp32s3"
 
 # Not fatal by itself, but its presence means an old diag image: the
 # current build disables the task watchdog on purpose, because historically
@@ -85,7 +79,7 @@ def validate(capture_path: str, sentinels=(), require_complete: bool = True):
     panic_index = None
     panic_type = None
     for i, line in enumerate(lines):
-        if PANIC_LINE_RE.search(line):
+        if CRASH_LINE_RE.search(line):
             panic_index = i
             tm = PANIC_TYPE_RE.search(line)
             panic_type = tm.group(1) if tm else line.strip()
@@ -98,17 +92,18 @@ def validate(capture_path: str, sentinels=(), require_complete: bool = True):
                 "\n      ".join(context)
         failures.append(msg)
 
+    # A RUNSUITE capture opens after the boot, so only a whole run has one;
+    # a second means a crash loop, which changes what a stall here means.
     boot_count = text.count(BOOT_BANNER)
-    # A RUNSUITE capture opens after the boot, so only a whole run has one.
     if boot_count == 0 and require_complete:
         failures.append(
             f"no boot banner ({BOOT_BANNER!r}) found - this doesn't look like "
             "a capture that started from a device reset at all."
         )
-    elif boot_count > 1:
+    elif reboot := reboot_sign(text, BOOTS_FROM_RESET):
         failures.append(
-            f"{boot_count} boot banners found, expected 1 - the device "
-            "rebooted mid-run. That means a crash loop, not a slow run."
+            f"{reboot} - the device rebooted mid-run. That means a crash "
+            "loop, not a slow run."
         )
 
     # A capture with no result line in it ran no test, whatever else it

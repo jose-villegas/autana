@@ -1078,36 +1078,27 @@ test_the_picture_is_lit_until_the_dissolve_and_dark_at_the_end(void) {
     TEST_ASSERT_TRUE(boot_anim_ink(BOOT_ANIM_MS - 100) < 255);
 }
 
-/* boot_anim_image_reveal()'s own two guaranteed endpoints: the crossfade
+/* boot_anim_photo_reveal()'s own two guaranteed endpoints: the crossfade
  * has not started at or before BOOT_ANIM_IMAGE_START_MS, and it is fully
  * arrived (and stays arrived) once BOOT_ANIM_IMAGE_FADE_MS has passed
  * since. */
 static void
 test_the_photograph_arrives_over_its_own_window(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(0));
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(BOOT_ANIM_IMAGE_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_image_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS));
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_image_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 1000));
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_photo_reveal(0));
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS));
+    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS));
+    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 1000));
 }
 
-/* The whole point of the pair (see boot_anim_scene_reach()'s own comment
- * in boot_anim.h): one window, two halves that always sum to a whole
- * picture. If these ever stopped summing to 255 the crossfade would
- * visibly dip or bloom partway through: exactly the artefact plain, not
- * eased, tween_ramp() is chosen to avoid. */
+/* Boot mounts the photograph's pack after the first frame, so the first
+ * picture never waits on it, and the first frame, drawn at 0 ms, never needs
+ * the photograph it has not mounted yet. */
 static void
-test_the_scene_leaves_exactly_as_fast_as_the_photograph_arrives(void) {
-    const uint32_t from = BOOT_ANIM_IMAGE_START_MS > 200 ? BOOT_ANIM_IMAGE_START_MS - 200 : 0;
-    const uint32_t to = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 200;
-
-    for (uint32_t ms = from; ms <= to; ms += 5) {
-        TEST_ASSERT_EQUAL_UINT16_MESSAGE(255, (uint16_t)boot_anim_image_reveal(ms) + boot_anim_scene_reach(ms),
-                                         "the photograph and the scene did not sum to one whole "
-                                         "picture - the crossfade would visibly dip or bloom");
-    }
-
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_scene_reach(BOOT_ANIM_IMAGE_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_scene_reach(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS));
+test_the_photograph_is_mounted_after_the_first_frame(void) {
+    TEST_ASSERT_FALSE(boot_anim_photo_due(0));
+    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_PHOTO_MOUNT_FRAME));
+    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_PHOTO_MOUNT_FRAME + 1U));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_photo_reveal(0), "the first frame shows the photograph");
 }
 
 /* The two clocks (ink and the crossfade) are independent by design, but
@@ -1579,7 +1570,7 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
  * so the store mounts what the case leaves.
  */
 
-#define FALLBACK_PACK   "./boot_anim_motion.apak"
+#define FALLBACK_PACK   "./" BOOT_CLIP ".apak"
 #define NO_PACKS        "./suite_boot_anim_no_such_folder"
 #define FALLBACK_TRACKS 6
 
@@ -1595,7 +1586,7 @@ six_tracks(test_track_t rows[FALLBACK_TRACKS]) {
     }
 }
 
-/* Writes pack "boot_anim_motion" in "." holding a TRCK of `rows`, one key
+/* Writes pack BOOT_CLIP in "." holding a TRCK of `rows`, one key
  * each, row i holding i * 10 + 1, + 2, ... so each track can be told apart. */
 static void
 write_clip(const test_track_t* rows, int count) {
@@ -1606,7 +1597,7 @@ write_clip(const test_track_t* rows, int count) {
     uint8_t* bytes = malloc(BYTES);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, BYTES, 1);
-    uint8_t* entry = test_pack_add(&pack, "boot_anim_motion", ANIM_TRACKS_ASSET, values_at + (16U * (uint32_t)count));
+    uint8_t* entry = test_pack_add(&pack, BOOT_CLIP, ANIM_TRACKS_ASSET, values_at + (16U * (uint32_t)count));
     test_tracks_header(entry, count, 1000);
     const float at_start[] = {0.0F};
     test_pack_put_floats(entry + times_at, at_start, 1);
@@ -1665,8 +1656,7 @@ expect_the_rest_pose(const char* dir) {
     }
     suite_set_test_cleanup(gfx_reset_for_test);
     const uint32_t now_ms = BOOT_ANIM_TITLE_START_MS - 1;
-    TEST_ASSERT_TRUE(boot_anim_scene_reach(now_ms) > 0);
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(now_ms));
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_photo_reveal(now_ms));
 
     boot_anim_motion_t rest;
     load_from(NO_PACKS, &rest);
@@ -1675,7 +1665,8 @@ expect_the_rest_pose(const char* dir) {
     const bool from_pack = motion.from_pack;
     const bool is_rest = !from_pack && motion.clip.duration_ms == rest.clip.duration_ms
                          && same_node(&motion.camera, &rest.camera) && same_node(&motion.space, &rest.space);
-    boot_anim_draw_frame(&motion, now_ms);
+    const gfx_image_t no_photo = {0};
+    boot_anim_draw_frame(&motion, &no_photo, now_ms);
     boot_anim_motion_release(&motion);
     TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
     TEST_ASSERT_TRUE_MESSAGE(is_rest, "a failed load left something other than the rest pose");
@@ -1760,6 +1751,144 @@ test_the_rest_pose_keeps_the_seeds_view_rules(void) {
     expect_the_curve_near_the_panel_throughout(&rest);
     expect_three_distinct_axes(&rest);
     expect_the_narrow_transform_across_the_motion(&rest);
+}
+
+/*
+ * The photograph
+ *
+ * Without the boot picture's pack, or with a picture boot cannot draw, boot
+ * draws on without it: the scene stays where the photograph would have
+ * covered it, and nothing stays mounted.
+ */
+
+#define PICTURE_PACK "./" BOOT_PHOTO ".apak"
+
+/* Writes pack BOOT_PHOTO in "." holding a white IMAG of `width` x `height`, its
+ * header stating `version`. */
+static void
+write_picture(int version, int width, int height) {
+    const uint32_t pixels_at = 16;
+    const uint32_t entry_size = pixels_at + ((uint32_t)(width * height) * sizeof(gfx_color_t));
+    const uint32_t capacity = 256 + entry_size;
+    uint8_t* bytes = malloc(capacity);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t pack = test_pack_begin(bytes, capacity, 1);
+    uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, GFX_IMAGE_ASSET, entry_size);
+    test_pack_put16(entry, version);
+    test_pack_put16(entry + 2, GFX_IMAGE_RGB565);
+    test_pack_put16(entry + 4, width);
+    test_pack_put16(entry + 6, height);
+    test_pack_put32(entry + 8, (uint32_t)width);
+    test_pack_put32(entry + 12, pixels_at);
+    memset(entry + pixels_at, 0xFF, entry_size - pixels_at);
+    const uint32_t size = test_pack_finish(&pack);
+    test_write_file(PICTURE_PACK, bytes, size);
+    free(bytes);
+}
+
+static void
+load_photo_from(const char* dir, gfx_image_t* out) {
+    test_asset_dir_use(dir);
+    boot_anim_photo_load(out);
+    test_asset_dir_restore();
+}
+
+/* The lit pixels of the shipped motion's frame at `now_ms` drawn over `photo`. */
+static int
+lit_over(const gfx_image_t* photo, uint32_t now_ms) {
+    boot_anim_motion_t motion;
+    boot_anim_motion_load(&motion);
+    boot_anim_draw_frame(&motion, photo, now_ms);
+    boot_anim_motion_release(&motion);
+    return lit_pixels();
+}
+
+/* Loads the picture from `dir` and expects none, holding nothing mounted;
+ * then, once the crossfade would be over, expects the frame to light more
+ * than the same frame over a black photograph, which shows the title alone. */
+static void
+expect_no_photograph(const char* dir) {
+    if (gfx_mode_current()->width == 0) {
+        TEST_ASSERT_TRUE(gfx_init());
+    }
+    suite_set_test_cleanup(gfx_reset_for_test);
+    const uint32_t now_ms = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS;
+    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_ink(now_ms));
+
+    gfx_image_t photo;
+    load_photo_from(dir, &photo);
+    const bool no_pixels = photo.pixels == NULL;
+    const int without = lit_over(&photo, now_ms);
+    boot_anim_photo_release(&photo);
+
+    /* One black row repeated down the panel: a stride of 0. */
+    gfx_color_t* black = calloc(GFX_WIDTH, sizeof(gfx_color_t));
+    TEST_ASSERT_NOT_NULL(black);
+    const gfx_image_t covered = {black, GFX_WIDTH, GFX_HEIGHT, 0};
+    const int title_only = lit_over(&covered, now_ms);
+    free(black);
+
+    TEST_ASSERT_TRUE_MESSAGE(no_pixels, "a failed load left the photograph's pixels behind");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(title_only + (GFX_WIDTH * GFX_HEIGHT / 100), without,
+                                         "without the photograph the scene did not stay");
+}
+
+/* A failed load holds no use of the pack: the next load mounts the shipped
+ * pack, not the one that failed. */
+static void
+expect_a_good_picture_loads_next(void) {
+    gfx_image_t photo;
+    boot_anim_photo_load(&photo);
+    const bool from_pack = photo.pixels != NULL;
+    boot_anim_photo_release(&photo);
+    TEST_ASSERT_TRUE_MESSAGE(from_pack, "the failed load left its pack mounted");
+}
+
+static void
+test_with_no_pack_the_scene_stays_where_the_photograph_would_be(void) {
+    expect_no_photograph(NO_PACKS);
+}
+
+static void
+test_with_a_picture_not_one_panel_the_scene_stays_and_nothing_stays_mounted(void) {
+    write_picture(GFX_IMAGE_VERSION, 2, 2);
+    expect_no_photograph(".");
+    (void)remove(PICTURE_PACK);
+    expect_a_good_picture_loads_next();
+}
+
+static void
+test_with_a_malformed_picture_the_scene_stays_and_nothing_stays_mounted(void) {
+    write_picture(GFX_IMAGE_VERSION + 1, 2, 2);
+    expect_no_photograph(".");
+    (void)remove(PICTURE_PACK);
+    expect_a_good_picture_loads_next();
+}
+
+/* With the shipped pack, the crossfade ends on the photograph itself: every
+ * pixel the title leaves is the picture's. */
+static void
+test_the_crossfade_ends_on_the_shipped_photograph(void) {
+    if (gfx_mode_current()->width == 0) {
+        TEST_ASSERT_TRUE(gfx_init());
+    }
+    suite_set_test_cleanup(gfx_reset_for_test);
+    gfx_image_t photo;
+    boot_anim_photo_load(&photo);
+    if (photo.pixels == NULL) {
+        TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
+    }
+    (void)lit_over(&photo, BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS);
+    const gfx_color_t* fb = gfx_framebuffer();
+    int same = 0;
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            same += fb[(y * GFX_WIDTH) + x] == photo.pixels[(y * (int)photo.stride) + x];
+        }
+    }
+    boot_anim_photo_release(&photo);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(GFX_WIDTH * GFX_HEIGHT * 9 / 10, same,
+                                         "the end of the crossfade is not the photograph");
 }
 #endif
 
@@ -1853,7 +1982,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seed_finishes_the_curve_before_the_dissolve_starts);
     RUN_TEST(test_the_picture_is_lit_until_the_dissolve_and_dark_at_the_end);
     RUN_TEST(test_the_photograph_arrives_over_its_own_window);
-    RUN_TEST(test_the_scene_leaves_exactly_as_fast_as_the_photograph_arrives);
+    RUN_TEST(test_the_photograph_is_mounted_after_the_first_frame);
     RUN_TEST(test_the_seed_finishes_the_crossfade_before_the_dissolve_starts);
     RUN_TEST(test_the_floor_fades_in_from_the_origin_outward);
     RUN_TEST(test_the_floor_fades_out_with_distance_rather_than_stopping);
@@ -1890,7 +2019,12 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted);
     RUN_TEST(test_each_part_of_the_motion_is_the_track_of_its_name);
     RUN_TEST(test_the_rest_pose_keeps_the_seeds_view_rules);
+    RUN_TEST(test_with_no_pack_the_scene_stays_where_the_photograph_would_be);
+    RUN_TEST(test_with_a_picture_not_one_panel_the_scene_stays_and_nothing_stays_mounted);
+    RUN_TEST(test_with_a_malformed_picture_the_scene_stays_and_nothing_stays_mounted);
+    RUN_TEST(test_the_crossfade_ends_on_the_shipped_photograph);
 #endif
 }
 
 SUITE_REGISTER(run_boot_anim_suite);
+SUITE_READS(run_boot_anim_suite, BOOT_CLIP, BOOT_PHOTO);

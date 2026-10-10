@@ -113,6 +113,7 @@ $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
+$TEST_DIR/pack_reads.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
@@ -130,6 +131,7 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
+$MAIN_DIR/boot/boot_anim_photo.c
 $MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/core/job.c
 $MAIN_DIR/core/memory.c
@@ -255,6 +257,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
     [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
     quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
+    grep '^waiting on lock:' "$QUIET_LOG" || true
     export QUIET_SUMMARY
     QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
     if [ -n "$QUIET_FAILURES" ]; then
@@ -356,7 +359,7 @@ LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
 BUILD_N=$(native "$BUILD_DIR")
 COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -pthread -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the
@@ -465,10 +468,17 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
-# The asset packs the suites read, one per root asset in the tree.
+# The asset packs the suites read, one per root asset in the tree. A pack
+# whose bakes only lack their lock rows (a re-keyed bake not yet locked) is
+# left out, and host_tests skips the suites that name it in SUITE_READS and
+# prints them (docs/Testing-Guide.md, "Adding a suite"). Any other build
+# failure fails here.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR
-"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" "$MAIN_DIR" > /dev/null
+UNLOCKED="$BUILD_DIR/unlocked_packs.txt"
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" --skip-unlocked "$UNLOCKED" "$MAIN_DIR" > /dev/null
+AUTANA_PACKS_WAITING=$(paste -sd, "$UNLOCKED")
+export AUTANA_PACKS_WAITING
 # The test clip suite_anim_tracks.c holds to the Python sampler.
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE

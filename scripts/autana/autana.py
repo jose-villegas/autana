@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
-from device_capture import PERF_SEGMENT  # noqa: E402
+from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
 
 EXIT_BUSY = autana_config.EXIT_BUSY
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
@@ -355,7 +355,7 @@ def buildid(args):
     a build directory: the point of the question is whether the two agree."""
     reject_unknown("buildid", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana buildid [--json]")
-    code, replies = send("BUILDID", reply="BUILD_ID")
+    code, replies = send(BUILD_ID_REQUEST, reply="BUILD_ID")
     if code != 0 or not replies:
         return code or 1
     if json_output:
@@ -466,6 +466,23 @@ def reset(args):
             command += ["--seconds", str(seconds)]
     if verbose:
         command.append("--verbose")
+    return subprocess.call(command)
+
+
+def coredump(args):
+    """The last panic's core dump from flash, decoded; --erase clears it."""
+    elf, rest = pop_value(list(args), "--elf")
+    erase = "--erase" in rest
+    if erase:
+        rest.remove("--erase")
+    reject_unknown("coredump", rest)
+    if rest or (erase and elf):
+        sys.exit("usage: autana coredump [--elf PATH] | autana coredump --erase")
+    command = device_command("coredump")
+    if erase:
+        command.append("--erase")
+    if elf:
+        command += ["--elf", elf]
     return subprocess.call(command)
 
 
@@ -1434,6 +1451,9 @@ COMMAND_GROUPS = (
              "the console live until Ctrl+C, or for N s"),)),
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        Command("coredump", coredump, (
+            ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
+            ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
