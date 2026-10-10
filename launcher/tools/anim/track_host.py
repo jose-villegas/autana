@@ -32,6 +32,7 @@ sys.path.insert(0, str(TOOLS))
 
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
+from build import packages  # noqa: E402
 
 HERE = TOOLS / "anim"
 MAIN = TOOLS.parent / "main"
@@ -61,7 +62,8 @@ def compiler():
 def compile_args(cc):
     """The compile, without its output: what both the build and the key's
     file list run, so the key always sees the files the build reads."""
-    return [cc, *FLAGS, "-I", str(MAIN), *map(str, SOURCES)]
+    roots = [arg for root in packages.include_roots() for arg in ("-I", str(root))]
+    return [cc, *FLAGS, *roots, *map(str, SOURCES)]
 
 
 def inputs(cc):
