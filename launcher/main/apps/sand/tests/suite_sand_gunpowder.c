@@ -28,7 +28,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 /* Gunpowder is a fuse, not a bomb: ignition writes GUNPOWDER_LIT, a
  * burning STATE like wood's. Only at burn-out does the cell ask

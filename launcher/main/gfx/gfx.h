@@ -15,8 +15,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_color.h"
-#include "util/build/build_variant.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */

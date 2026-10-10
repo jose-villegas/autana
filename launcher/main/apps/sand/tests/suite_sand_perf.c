@@ -41,8 +41,8 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "apps/sand/tests/suite_sand_scenes.h"
-#include "util/runtime/frame_watch.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
+#include "profile/frame_watch.h"
 
 /* Sand and dirt in equal amounts under water would soak; this instead pairs
  * sand against water across a settled stone-X divider that never lets the
@@ -258,14 +258,14 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
+#include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "panel_clock_pin.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/timing.h"
+#include "profile/frame_cost.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */

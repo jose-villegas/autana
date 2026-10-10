@@ -31,9 +31,9 @@
 
 #include "gfx/draw/gfx_font.h"
 #include "gfx/draw/icon.h"
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathx.h"
 #include "microui.h"
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathx.h"
 
 typedef int32_t ui_fp_t;
 
@@ -46,7 +46,7 @@ typedef struct {
 } ui_transform_t;
 
 /*
- * Thin wrappers over util/scalar/fixed.h, where the arithmetic and its
+ * Thin wrappers over math/scalar/fixed.h, where the arithmetic and its
  * floor-vs-round reasoning live: fixed-point multiply is not a UI concept,
  * and other callers need the same operation at a different shift.
  *

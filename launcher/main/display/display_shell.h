@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #include "display/display.h"
-#include "util/math/vec2i.h"
+#include "math/linear/vec2i.h"
 
 /* The shell's orientation sampler: the quarter and when it may next ask for
  * gravity, so the cadence is as testable as the decision. 10 Hz is enough

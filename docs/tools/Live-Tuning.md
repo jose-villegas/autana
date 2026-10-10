@@ -56,7 +56,7 @@ sequenceDiagram
     participant D as device.py
     participant C as console.c
     participant S as console_tune.c
-    participant R as util/runtime/tune.c
+    participant R as services/tune.c
     T->>D: tune theme_rgb 0x1199C8
     D->>C: SET ridge.theme_rgb 0x1199C8
     C->>S: the SET verb
@@ -65,7 +65,7 @@ sequenceDiagram
     R-->>D: TUNE_OK ridge.theme_rgb=1153480
 ```
 
-The console protocol is four lines, answered by `util/runtime/tune`:
+The console protocol is four lines, answered by `services/tune`:
 
 | line | replies |
 |---|---|
@@ -83,7 +83,7 @@ own. The console answers from the shared one, `tune_shared()`.
 ## Making something tunable
 
 ```c
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 TUNE_OWNER(ridge);                    /* once per file, before its tunables */
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);

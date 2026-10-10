@@ -567,12 +567,16 @@ def check(found, lock):
     return problems
 
 
-def seed(found, cache):
+def seed(found, cache, lock=None):
     """Rows locking the tree's own files, each copied into the cache and marked seeded: the bytes are
     carried over from the tree, not made by the code their key names. A run that makes the key again
-    writes a row without the mark."""
+    writes a row without the mark. A key `lock` holds a made row for keeps it, as with a run's make."""
     rows, missing = [], []
     for bake in found:
+        made = (lock or {}).get(bake.key)
+        if made is not None and not made.get("seeded"):
+            rows.append({name: made[name] for name in ROW_FIELDS if name in made})
+            continue
         if not bake.tree.is_file():
             missing.append(describe(bake, f"{relative(bake.tree)} is not in the tree to seed from", bake_again(bake)))
             continue
@@ -697,7 +701,7 @@ def main(argv=None):
                 produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
             if args.seed:
-                rows = seed(found, cache)
+                rows = seed(found, cache, lock)
             elif args.from_run is not None:
                 from bake import produce
 

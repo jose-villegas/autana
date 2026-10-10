@@ -28,7 +28,7 @@
 #include <time.h>
 
 #include "gfx/draw/gfx_color.h"
-#include "util/math/vec3f.h"
+#include "math/linear/vec3f.h"
 
 #define MAX_JOINTS   64
 #define MAX_LIGHTS   8

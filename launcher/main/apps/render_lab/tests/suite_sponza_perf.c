@@ -22,6 +22,9 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
+#include "core/job.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
@@ -29,9 +32,6 @@
 #include "render/raster_motion.h"
 #include "scene/scene.h"
 #include "sponza_suite.h"
-#include "util/runtime/job.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 static const char* TAG = "sponza_perf";
 

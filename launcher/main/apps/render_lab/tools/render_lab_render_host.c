@@ -27,9 +27,9 @@
 #include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
+#include "services/tune.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/runtime/tune.h"
 
 static int shell_quarter;
 
