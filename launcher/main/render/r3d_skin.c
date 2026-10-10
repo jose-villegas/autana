@@ -89,23 +89,22 @@ check_records(const r3d_skin_t* skin) {
     return ASSET_OK;
 }
 
+/* The header, the inverse binds, then every vertex record, of an opened entry. */
+static asset_status_t
+parse(asset_view_t entry, r3d_skin_t* skin) {
+    asset_status_t status = read_header(entry, skin);
+    status = status == ASSET_OK ? check_inverse_binds(skin) : status;
+    return status == ASSET_OK ? check_records(skin) : status;
+}
+
 asset_status_t
 r3d_skin_open(const asset_pack_t* pack, const char* id, r3d_skin_t* out) {
     *out = (r3d_skin_t){0};
     asset_view_t entry;
+    r3d_skin_t skin;
     asset_status_t status = asset_entry_open(pack, id, R3D_SKIN_ASSET, R3D_SKIN_VERSION, R3D_SKIN_AT_VERSION,
                                              R3D_SKIN_HEADER_SIZE, R3D_SKIN_ALIGNMENT, &entry);
-    if (status != ASSET_OK) {
-        return status;
-    }
-    r3d_skin_t skin;
-    status = read_header(entry, &skin);
-    if (status == ASSET_OK) {
-        status = check_inverse_binds(&skin);
-    }
-    if (status == ASSET_OK) {
-        status = check_records(&skin);
-    }
+    status = status == ASSET_OK ? parse(entry, &skin) : status;
     if (status == ASSET_OK) {
         *out = skin;
     }
