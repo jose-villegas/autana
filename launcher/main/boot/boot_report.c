@@ -52,22 +52,22 @@ reset_reason_name(esp_reset_reason_t reason) {
 static void
 report_core_dump(void) {
     if (esp_core_dump_image_check() != ESP_OK) {
-        printf("COREDUMP=none\n");
+        (void)printf("COREDUMP=none\n");
         return;
     }
     char reason[BOOT_REPORT_PANIC_REASON_MAX];
     if (esp_core_dump_get_panic_reason(reason, sizeof reason) != ESP_OK) {
         reason[0] = '\0';
     }
-    printf("COREDUMP=present panic=\"%s\"\n", reason);
+    (void)printf("COREDUMP=present panic=\"%s\"\n", reason);
 }
 #endif
 
 void
 boot_report_last_reset(void) {
-    printf("RESET_REASON=%s\n", reset_reason_name(esp_reset_reason()));
+    (void)printf("RESET_REASON=%s\n", reset_reason_name(esp_reset_reason()));
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
     report_core_dump();
 #endif
-    fflush(stdout);
+    (void)fflush(stdout);
 }
