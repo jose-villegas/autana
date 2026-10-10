@@ -17,8 +17,8 @@
 static const char* TAG = "boot_anim";
 
 void
-boot_anim_photo_load(boot_anim_photo_t* out) {
-    *out = (boot_anim_photo_t){0};
+boot_anim_photo_load(gfx_image_t* out) {
+    *out = (gfx_image_t){0};
     const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
     if (pack == NULL) {
         ESP_LOGW(TAG, "no pack %s: the animation draws without the photograph", BOOT_PHOTO);
@@ -39,13 +39,13 @@ boot_anim_photo_load(boot_anim_photo_t* out) {
         asset_store_release(BOOT_PHOTO);
         return;
     }
-    *out = (boot_anim_photo_t){.image = image, .from_pack = true};
+    *out = image;
 }
 
 void
-boot_anim_photo_release(boot_anim_photo_t* photo) {
-    if (photo->from_pack) {
+boot_anim_photo_release(gfx_image_t* photo) {
+    if (photo->pixels != NULL) {
         asset_store_release(BOOT_PHOTO);
     }
-    *photo = (boot_anim_photo_t){0};
+    *photo = (gfx_image_t){0};
 }

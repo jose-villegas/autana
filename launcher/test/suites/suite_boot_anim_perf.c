@@ -326,17 +326,17 @@ test_boot_anim_performance_by_checkpoint(void) {
     }
     /* Boot mounts the photograph's pack inside the frame that first shows
      * it, so that frame costs this on top of its drawing. */
-    boot_anim_photo_t photo;
+    gfx_image_t photo;
     const int64_t mount_start = timing_now_us();
     boot_anim_photo_load(&photo);
     const int64_t mount_us = timing_now_us() - mount_start;
-    if (!photo.from_pack) {
+    if (photo.pixels == NULL) {
         boot_anim_motion_release(&motion);
         TEST_FAIL_MESSAGE("the boot picture did not load: this would time boot without the photograph");
     }
     ESP_LOGI(TAG, "Photo mount: %lldus", (long long)mount_us);
     for (int i = 0; i < 7; i++) {
-        run_checkpoint(&motion, &photo.image, &checkpoints[i]);
+        run_checkpoint(&motion, &photo, &checkpoints[i]);
     }
     boot_anim_photo_release(&photo);
     boot_anim_motion_release(&motion);

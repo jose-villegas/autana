@@ -1786,7 +1786,7 @@ write_picture(int version, int width, int height) {
 }
 
 static void
-load_photo_from(const char* dir, boot_anim_photo_t* out) {
+load_photo_from(const char* dir, gfx_image_t* out) {
     test_asset_dir_use(dir);
     boot_anim_photo_load(out);
     test_asset_dir_restore();
@@ -1814,11 +1814,10 @@ expect_no_photograph(const char* dir) {
     const uint32_t now_ms = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS;
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_ink(now_ms));
 
-    boot_anim_photo_t photo;
+    gfx_image_t photo;
     load_photo_from(dir, &photo);
-    const bool from_pack = photo.from_pack;
-    const bool no_pixels = photo.image.pixels == NULL;
-    const int without = lit_over(&photo.image, now_ms);
+    const bool no_pixels = photo.pixels == NULL;
+    const int without = lit_over(&photo, now_ms);
     boot_anim_photo_release(&photo);
 
     /* One black row repeated down the panel: a stride of 0. */
@@ -1828,8 +1827,7 @@ expect_no_photograph(const char* dir) {
     const int title_only = lit_over(&covered, now_ms);
     free(black);
 
-    TEST_ASSERT_FALSE_MESSAGE(from_pack, "the photograph came from the pack");
-    TEST_ASSERT_TRUE_MESSAGE(no_pixels, "a failed load left pixels behind");
+    TEST_ASSERT_TRUE_MESSAGE(no_pixels, "a failed load left the photograph's pixels behind");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(title_only + (GFX_WIDTH * GFX_HEIGHT / 100), without,
                                          "without the photograph the scene did not stay");
 }
@@ -1838,9 +1836,9 @@ expect_no_photograph(const char* dir) {
  * pack, not the one that failed. */
 static void
 expect_a_good_picture_loads_next(void) {
-    boot_anim_photo_t photo;
+    gfx_image_t photo;
     boot_anim_photo_load(&photo);
-    const bool from_pack = photo.from_pack;
+    const bool from_pack = photo.pixels != NULL;
     boot_anim_photo_release(&photo);
     TEST_ASSERT_TRUE_MESSAGE(from_pack, "the failed load left its pack mounted");
 }
@@ -1874,17 +1872,17 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
         TEST_ASSERT_TRUE(gfx_init());
     }
     suite_set_test_cleanup(gfx_reset_for_test);
-    boot_anim_photo_t photo;
+    gfx_image_t photo;
     boot_anim_photo_load(&photo);
-    if (!photo.from_pack) {
+    if (photo.pixels == NULL) {
         TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
     }
-    (void)lit_over(&photo.image, BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS);
+    (void)lit_over(&photo, BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS);
     const gfx_color_t* fb = gfx_framebuffer();
     int same = 0;
     for (int y = 0; y < GFX_HEIGHT; y++) {
         for (int x = 0; x < GFX_WIDTH; x++) {
-            same += fb[(y * GFX_WIDTH) + x] == photo.image.pixels[(y * (int)photo.image.stride) + x];
+            same += fb[(y * GFX_WIDTH) + x] == photo.pixels[(y * (int)photo.stride) + x];
         }
     }
     boot_anim_photo_release(&photo);

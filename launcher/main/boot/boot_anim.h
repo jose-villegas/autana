@@ -64,21 +64,15 @@ void boot_anim_motion_load(boot_anim_motion_t* out);
  * rest pose in `motion`, which no longer points into the pack. */
 void boot_anim_motion_release(boot_anim_motion_t* motion);
 
-/* The photograph the animation crossfades to: the boot picture's pack entry,
- * pointing into its pack, or no pixels when it cannot be read. */
-typedef struct {
-    gfx_image_t image;
-    bool from_pack;
-} boot_anim_photo_t;
+/* Fills `out` with the photograph the animation crossfades to, the boot
+ * picture's pack entry, mounting its pack. On any failure, including a picture
+ * that is not one panel, it logs why and leaves no pixels, so the animation
+ * draws on without it. */
+void boot_anim_photo_load(gfx_image_t* out);
 
-/* Fills `out` from the boot picture's pack, mounting it. On any failure,
- * including a picture that is not one panel, it logs why and leaves no
- * pixels, so the animation draws on without it. */
-void boot_anim_photo_load(boot_anim_photo_t* out);
-
-/* Drops the pack boot_anim_photo_load() mounted, if it did, and leaves no
- * pixels in `photo`. */
-void boot_anim_photo_release(boot_anim_photo_t* photo);
+/* Drops the pack boot_anim_photo_load() mounted, if it did (`photo` has
+ * pixels), and leaves no pixels in `photo`. */
+void boot_anim_photo_release(gfx_image_t* photo);
 
 typedef struct {
     transformf_t camera;

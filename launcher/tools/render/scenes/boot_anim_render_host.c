@@ -37,7 +37,7 @@
 
 static uint32_t now_ms;
 static boot_anim_motion_t motion;
-static boot_anim_photo_t photo;
+static gfx_image_t photo;
 
 static bool
 options(int argc, char** argv) {
@@ -56,7 +56,7 @@ options(int argc, char** argv) {
     boot_anim_photo_load(&photo);
     /* The fallbacks only when asked for, by pointing AUTANA_ASSET_DIR at a
      * folder without the packs: a renderer that lost its packs must fail. */
-    if ((!motion.from_pack || !photo.from_pack) && getenv("AUTANA_ASSET_DIR") == NULL) {
+    if ((!motion.from_pack || photo.pixels == NULL) && getenv("AUTANA_ASSET_DIR") == NULL) {
         fprintf(stderr, "no boot clip or picture in the pack folder built into this renderer\n");
         return false;
     }
@@ -83,7 +83,7 @@ setup(int quarter) {
 static void
 draw(const render_frame_t* frame) {
     const uint32_t t_ms = now_ms + frame->elapsed_ms;
-    boot_anim_draw_frame(&motion, &photo.image, t_ms);
+    boot_anim_draw_frame(&motion, &photo, t_ms);
 }
 
 const render_scene_t render_scene = {
