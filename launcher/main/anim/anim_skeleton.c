@@ -17,8 +17,8 @@ read_header(asset_view_t entry, anim_skeleton_t* out, uint32_t* out_strings_size
     const uint32_t strings = asset_read_u32(entry.data + ANIM_SKELETON_AT_STRINGS);
     const uint32_t strings_size = asset_read_u32(entry.data + ANIM_SKELETON_AT_STRINGS_SIZE);
     const uint32_t rest = asset_read_u32(entry.data + ANIM_SKELETON_AT_REST);
-    const uint32_t table_end = ANIM_SKELETON_HEADER_SIZE + count * ANIM_SKELETON_ROW_SIZE;
-    const uint64_t rest_end = (uint64_t)rest + count * ANIM_SKELETON_REST_WIDTH * sizeof(float);
+    const uint32_t table_end = ANIM_SKELETON_HEADER_SIZE + (count * ANIM_SKELETON_ROW_SIZE);
+    const uint64_t rest_end = (uint64_t)rest + (count * ANIM_SKELETON_REST_WIDTH * sizeof(float));
     if (rest % ANIM_SKELETON_ALIGNMENT != 0 || strings % ANIM_SKELETON_ALIGNMENT != 0 || rest < table_end
         || strings < rest_end || (uint64_t)strings + strings_size != entry.size
         || strings_size > ANIM_SKELETON_STRING_MAX) {

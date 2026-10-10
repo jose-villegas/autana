@@ -18,8 +18,8 @@ read_header(asset_view_t entry, r3d_skin_t* out) {
     const uint32_t vertices = asset_read_u32(entry.data + R3D_SKIN_AT_VERTICES);
     const uint32_t inverse = asset_read_u32(entry.data + R3D_SKIN_AT_INVERSE);
     const uint32_t records = asset_read_u32(entry.data + R3D_SKIN_AT_RECORDS);
-    const uint8_t stride = influences * 2 + R3D_SKIN_RECORD_TAIL;
-    const uint64_t inverse_end = (uint64_t)inverse + joints * R3D_SKIN_MATRIX_WIDTH * sizeof(float);
+    const uint8_t stride = (influences * 2) + R3D_SKIN_RECORD_TAIL;
+    const uint64_t inverse_end = (uint64_t)inverse + (joints * R3D_SKIN_MATRIX_WIDTH * sizeof(float));
     if (inverse % R3D_SKIN_ALIGNMENT != 0 || records % R3D_SKIN_ALIGNMENT != 0 || inverse < R3D_SKIN_HEADER_SIZE
         || records < inverse_end || (uint64_t)records + (uint64_t)vertices * stride != entry.size) {
         return ASSET_ERR_BOUNDS;
@@ -65,7 +65,7 @@ check_record(const r3d_skin_t* skin, const uint8_t* row) {
     }
     int nonzero = 0;
     for (int k = 0; k < R3D_SKIN_NORMAL_WIDTH; k++) {
-        const int8_t value = (int8_t)row[skin->influences * 2 + k];
+        const int8_t value = (int8_t)row[(skin->influences * 2) + k];
         if (value < -R3D_SKIN_NORMAL_SCALE) {
             return ASSET_ERR_FORMAT;
         }
@@ -80,7 +80,7 @@ check_record(const r3d_skin_t* skin, const uint8_t* row) {
 static asset_status_t
 check_records(const r3d_skin_t* skin) {
     for (uint32_t i = 0; i < skin->vertex_count; i++) {
-        const uint8_t* row = skin->vertices + (size_t)i * skin->vertex_stride;
+        const uint8_t* row = skin->vertices + ((size_t)i * skin->vertex_stride);
         const asset_status_t status = check_record(skin, row);
         if (status != ASSET_OK) {
             return status;
