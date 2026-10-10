@@ -3,8 +3,8 @@
 
 #include "render/context/render_context.h"
 
-/* The selected render context view, RENDER_VIEW_SHADED by default. */
-int render_lab_view(void);
+/* The selected render context view, RENDER_DEBUG_VIEW_SHADED by default. */
+int render_lab_debug_view(void);
 
 /* The tunable render_lab.scale in hundredths: 200 renders at half size. */
 int render_lab_scale(void);

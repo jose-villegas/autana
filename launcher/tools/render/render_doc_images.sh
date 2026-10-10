@@ -25,7 +25,8 @@
 # per image and "changed <doc>#<name>" per changed table, and exits 1 when
 # any changed. An image in the folder that no script made is reported as
 # "orphan" and also exits 1. Exit 2 means the images or tables could not be
-# made or compared; failed commands and render-log tails are printed.
+# made or compared; the failed command is printed, with the end of each log
+# that records a failure (a command's own error goes to its log).
 #
 # doc_images_demo.sh and the dynamic-resolution report write out/tables/NAME.md.
 # generated_blocks.py rewrites the matching named blocks; --check compares
@@ -68,13 +69,14 @@ comparing=0
 finish() {
     code=$?
     if [ "$comparing" = 0 ] && [ "$code" != 0 ]; then
+        # A command run with its output sent to a log leaves its error and
+        # run's "failed (exit N)" line there; print only those logs.
         if [ -d "$WORK" ]; then
-            find "$WORK" -type f -name '*.log' -exec sh -c '
-                for log do
+            find "$WORK" -type f -name '*.log' -exec grep -l ': failed (exit [0-9]*):' {} + |
+                while read -r log; do
                     echo "--- $log" >&2
-                    tail -n 20 "$log" >&2
+                    tail -n 40 "$log" >&2
                 done
-            ' sh {} +
         fi
         exit 2
     fi

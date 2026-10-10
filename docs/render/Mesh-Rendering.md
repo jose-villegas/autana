@@ -148,7 +148,7 @@ manager draws the active camera through the engine's one context,
 |---|---|
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
 | `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
-| `render_context_set_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
 ### On both cores
@@ -184,10 +184,11 @@ sequenceDiagram
 
 Development builds select one row from the `render_debug_view_t` table in
 `render/context/render_context.c`: depth, tiles, motion or meshlets.
-`render_context_set_view()` attaches that row and owns its zeroed PSRAM state.
-Switching frees the previous state; `RENDER_VIEW_SHADED` detaches it, and
-`render_context_release()` frees it. `render_context_view()` exposes the row's
-name and constructor to tools.
+`render_context_set_debug_view()` attaches that row and owns its zeroed PSRAM
+state.
+Switching frees the previous state; `RENDER_DEBUG_VIEW_SHADED` detaches it, and
+`render_context_release()` frees it. `render_context_debug_view()` exposes the
+row's name and constructor to tools.
 
 `raster_show()` runs the attached view's `show` hook after drawing and before
 `raster_upscale()`. It repaints colour while leaving depth intact.
