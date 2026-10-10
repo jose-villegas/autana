@@ -1848,6 +1848,12 @@ def print_statuses(entries, now):
             print("  " + line)
 
 
+# The commands that take the parsed arguments, the lock store and the board
+# and nothing else; listen is the default.
+BOARD_COMMANDS = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
+                  "reset": reset_device, "batch": batch, "screenshot": screenshot}
+
+
 def main(argv=None):
     try:
         autana_config.load()
@@ -2037,24 +2043,12 @@ def main(argv=None):
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built:
                 write_image(built, store, board)
-        elif args.command == "run-suite":
-            return run_suite(args, store, board)
-        elif args.command == "selftest":
-            return selftest(args, store, board)
-        elif args.command == "coredump":
-            return coredump(args, store, board)
-        elif args.command == "reset":
-            return reset_device(args, store, board)
-        elif args.command == "batch":
-            return batch(args, store, board)
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
             return send(args, store, board)
-        elif args.command == "screenshot":
-            return screenshot(args, store, board)
         else:
-            return listen(args, store, board)
+            return BOARD_COMMANDS.get(args.command, listen)(args, store, board)
         return 0
     except LockBusy as error:
         print("device: " + str(error), file=sys.stderr)

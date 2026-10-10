@@ -25,3 +25,7 @@ CONFIG_PMIC_COLD_BOOT_HOST_DRAIN=y
 # only: it costs about 4 KB of internal RAM, 1.8 KB of it the dump's own stack.
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+# The dump turns the FreeRTOS task wrapper on by default: 32 more bytes under
+# every task, which the main task's stack-chain reserve has no room for. A
+# backtrace without it ends at the task function, which is all one needs.
+CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER=n

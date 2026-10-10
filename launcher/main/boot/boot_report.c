@@ -17,27 +17,35 @@
 #define BOOT_REPORT_PANIC_REASON_MAX 120
 #endif
 
+/* esp_reset_reason_t's values, each printed as its name without ESP_RST_. */
+#define RESET_REASONS(X)                                                                                               \
+    X(UNKNOWN)                                                                                                         \
+    X(POWERON)                                                                                                         \
+    X(EXT)                                                                                                             \
+    X(SW)                                                                                                              \
+    X(PANIC)                                                                                                           \
+    X(INT_WDT)                                                                                                         \
+    X(TASK_WDT)                                                                                                        \
+    X(WDT)                                                                                                             \
+    X(DEEPSLEEP)                                                                                                       \
+    X(BROWNOUT)                                                                                                        \
+    X(SDIO)                                                                                                            \
+    X(USB)                                                                                                             \
+    X(JTAG)                                                                                                            \
+    X(EFUSE)                                                                                                           \
+    X(PWR_GLITCH)                                                                                                      \
+    X(CPU_LOCKUP)
+#define RESET_REASON_NAME(name) [ESP_RST_##name] = #name,
+
+static const char* const reset_reason_names[] = {RESET_REASONS(RESET_REASON_NAME)};
+
 static const char*
 reset_reason_name(esp_reset_reason_t reason) {
-    switch (reason) {
-        case ESP_RST_POWERON: return "POWERON";
-        case ESP_RST_EXT: return "EXT";
-        case ESP_RST_SW: return "SW";
-        case ESP_RST_PANIC: return "PANIC";
-        case ESP_RST_INT_WDT: return "INT_WDT";
-        case ESP_RST_TASK_WDT: return "TASK_WDT";
-        case ESP_RST_WDT: return "WDT";
-        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-        case ESP_RST_BROWNOUT: return "BROWNOUT";
-        case ESP_RST_SDIO: return "SDIO";
-        case ESP_RST_USB: return "USB";
-        case ESP_RST_JTAG: return "JTAG";
-        case ESP_RST_EFUSE: return "EFUSE";
-        case ESP_RST_PWR_GLITCH: return "PWR_GLITCH";
-        case ESP_RST_CPU_LOCKUP: return "CPU_LOCKUP";
-        case ESP_RST_UNKNOWN:
-        default: return "UNKNOWN";
+    const size_t index = (size_t)reason;
+    if (index >= sizeof reset_reason_names / sizeof reset_reason_names[0] || reset_reason_names[index] == NULL) {
+        return reset_reason_names[ESP_RST_UNKNOWN];
     }
+    return reset_reason_names[index];
 }
 
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH

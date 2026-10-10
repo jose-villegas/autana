@@ -130,7 +130,7 @@ which the host misses while USB re-enumerates):
 
 | Line | Says |
 |---|---|
-| `RESET_REASON=<name>` | `esp_reset_reason()`, named as in `esp_reset_reason_t` without `ESP_RST_` |
+| `RESET_REASON=<name>` | `esp_reset_reason()`, its `esp_reset_reason_t` value's name without the prefix (`ESP_RST_PANIC` prints `PANIC`) |
 | `COREDUMP=none` | no core dump in the `coredump` partition |
 | `COREDUMP=present panic="<reason>"` | the last panic's dump is in flash, and the reason it records |
 
