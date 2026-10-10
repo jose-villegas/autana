@@ -12,6 +12,9 @@
 
 #include "asset/asset_pack.h"
 
+/* The variable that names a host's pack folder. */
+#define ASSET_STORE_DIR_ENV    "AUTANA_ASSET_DIR"
+
 /* How many packs may be mounted at once. */
 #define ASSET_STORE_MOUNTS_MAX 8
 

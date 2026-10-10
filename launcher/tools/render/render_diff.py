@@ -39,12 +39,14 @@ BMP_HEADER_SIZE = 54
 
 
 class Image:
-    """Rows of (r, g, b) bytes, top row first."""
+    """Rows of (r, g, b) bytes, top row first; `opaque` is False when a
+    source alpha below 255 was dropped."""
 
-    def __init__(self, width, height, rows):
+    def __init__(self, width, height, rows, opaque=True):
         self.width = width
         self.height = height
         self.rows = rows
+        self.opaque = opaque
 
     def pixel(self, x, y):
         row = self.rows[y]
@@ -70,7 +72,7 @@ def read_bmp(data):
         rgb = bytearray(len(bgr))
         rgb[0::3], rgb[1::3], rgb[2::3] = bgr[2::3], bgr[1::3], bgr[0::3]
         rows.append(bytes(rgb))
-    return Image(width, height, rows)
+    return Image(width, height, rows, opaque)
 
 
 def _unfilter(raw, width, height, bpp):
@@ -145,7 +147,10 @@ def read_png(data):
     lines = _unfilter(zlib.decompress(b"".join(idat)), width, height, samples)
 
     rows = []
+    opaque = True
     for line in lines:
+        if colour == 6:
+            opaque = opaque and min(line[3::4]) == 255
         if colour == 2:
             rows.append(line)
             continue
@@ -159,7 +164,7 @@ def read_png(data):
             else:
                 rgb[x * 3:x * 3 + 3] = line[x * 4:x * 4 + 3]
         rows.append(bytes(rgb))
-    return Image(width, height, rows)
+    return Image(width, height, rows, opaque)
 
 
 def load(path):

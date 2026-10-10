@@ -128,7 +128,7 @@ plot(int x, int y, gfx_color_t color, unsigned flags) {
     *dst = (flags & GFX_LINE_ADD) ? gfx_color_add(*dst, color) : color;
 }
 
-/* Bresenham, treats both axes alike, no case analysis. */
+/* Bresenham (docs/Citations.md#30), treats both axes alike, no case analysis. */
 static void
 walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
     const int dx = mathi_abs(x1 - x0);

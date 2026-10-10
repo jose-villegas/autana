@@ -88,7 +88,7 @@ mechanism and the full field list.
 
 - **Development-only** (`--dev` or `--diag` build): a release build carries
   none of it.
-- **Serial transfer**: a full frame is streamed as base64 over the console.
+- **Serial transfer**: a full frame is streamed as base64<sup>[[27]](../Citations.md#27)</sup> over the console.
   [Flash-and-Captures.md](../tools/Flash-and-Captures.md#screenshots) records
   the baud and capture workflow. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.
@@ -122,6 +122,32 @@ directory whose own `build_id.txt` matches the capture's `BUILD_ID`, or
 matters for more than bookkeeping; it carries the debug symbols that turn
 a crash address into a file and line number. See
 [`../tools/Autana-CLI.md`](../tools/Autana-CLI.md).
+
+## After a crash: the reset reason and the core dump
+
+Every boot prints, once the shell is ready (after the first second of boot,
+which the host misses while USB re-enumerates):
+
+| Line | Says |
+|---|---|
+| `RESET_REASON=<name>` | `esp_reset_reason()`, its `esp_reset_reason_t` value's name without the prefix (`ESP_RST_PANIC` prints `PANIC`) |
+| `COREDUMP=none` | no core dump in the `coredump` partition |
+| `COREDUMP=present panic="<reason>"` | the last panic's dump is in flash, and the reason it records |
+
+The `COREDUMP=` lines and the dump itself are in development and diagnostics
+builds only; a release build keeps the partition but writes no dump.
+
+On the board every warm reset becomes a PMIC power cycle
+(`bootloader_components/pmic_cold_boot/`), so after a crash the reason reads
+`POWERON` and USB drops before the panic text reaches the host. The panic
+handler writes the dump to flash before that reset, so it survives. Under
+QEMU the reason is the real one (`PANIC`).
+
+`autana coredump` reads the dump under the device lock and decodes it
+against the ELF of the build the board runs (`--elf` for another): the
+crashed task's backtrace, registers and every task's stack. A new crash
+overwrites the dump; `autana coredump --erase` clears it, so the next one is
+told from this one. Both reset the board, as esptool does.
 
 ## The console is USB-Serial-JTAG, not UART0
 
