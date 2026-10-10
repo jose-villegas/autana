@@ -47,6 +47,17 @@ def project_call(git_output=None):
         yield called
 
 
+def forwarded_command(handler, args, git_output=None):
+    """The device command `handler` builds from `args`."""
+    with project_call(git_output) as called:
+        handler(args)
+    return called.call_args[0][0]
+
+
+def value_after(command, flag):
+    return command[command.index(flag) + 1]
+
+
 @contextlib.contextmanager
 def sent_reply(result):
     with mock.patch.object(autana, "send", return_value=result) as sent, mock.patch("builtins.print"):
@@ -605,9 +616,7 @@ class FlashCommandTests(unittest.TestCase):
         self.assertNotIn("--perf-scope", command)
 
     def test_hot_tunables_are_forwarded(self):
-        with project_call() as called:
-            autana.flash(["diag", "--quiet", "--hot-tunables"])
-        self.assertIn("--hot-tunables", called.call_args[0][0])
+        self.assertIn("--hot-tunables", forwarded_command(autana.flash, ["diag", "--quiet", "--hot-tunables"]))
 
     def test_layout_seed_is_forwarded(self):
         with project_call(git_output="") as called:
@@ -999,16 +1008,12 @@ class BatchCommandTests(unittest.TestCase):
             autana.batch(["run_sand_perf_suite", "--bogus"])
 
     def test_out_is_forwarded(self):
-        with project_call() as called:
-            autana.batch(["run_sand_perf_suite", "--runs", "1", "--out", "capture.log"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--out") + 1], "capture.log")
+        command = forwarded_command(autana.batch, ["run_sand_perf_suite", "--runs", "1", "--out", "capture.log"])
+        self.assertEqual(value_after(command, "--out"), "capture.log")
 
     def test_expect_build_id_is_forwarded(self):
-        with project_call() as called:
-            autana.batch(["run_sand_perf_suite", "--expect-build-id", "abc123-diag"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
+        command = forwarded_command(autana.batch, ["run_sand_perf_suite", "--expect-build-id", "abc123-diag"])
+        self.assertEqual(value_after(command, "--expect-build-id"), "abc123-diag")
 
     def test_project_is_resolved_and_used(self):
         with project_directory() as directory:
@@ -1032,21 +1037,16 @@ class SuiteCommandTests(unittest.TestCase):
         called.assert_not_called()
 
     def test_out_is_forwarded(self):
-        with project_call() as called:
-            autana.suite(["run_gfx_suite", "--out", "capture.log"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--out") + 1], "capture.log")
+        command = forwarded_command(autana.suite, ["run_gfx_suite", "--out", "capture.log"])
+        self.assertEqual(value_after(command, "--out"), "capture.log")
 
     def test_expect_build_id_is_forwarded(self):
-        with project_call() as called:
-            autana.suite(["run_gfx_suite", "--expect-build-id", "abc123-diag"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--expect-build-id") + 1], "abc123-diag")
+        command = forwarded_command(autana.suite, ["run_gfx_suite", "--expect-build-id", "abc123-diag"])
+        self.assertEqual(value_after(command, "--expect-build-id"), "abc123-diag")
 
     def test_each_set_is_forwarded(self):
-        with project_call() as called:
-            autana.suite(["run_gfx_suite", "--set", "r3d_span.small_max_side=3", "--set", "a.b=0x10"])
-        command = called.call_args[0][0]
+        command = forwarded_command(
+            autana.suite, ["run_gfx_suite", "--set", "r3d_span.small_max_side=3", "--set", "a.b=0x10"])
         self.assertEqual([command[i + 1] for i, word in enumerate(command) if word == "--set"],
                          ["r3d_span.small_max_side=3", "a.b=0x10"])
 
@@ -1777,20 +1777,15 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
 
     def test_perf_scope_is_forwarded(self):
-        with project_call() as called:
-            autana.suite(["run_gfx_suite", "--flash", "--perf-scope"])
-        self.assertIn("--perf-scope", called.call_args[0][0])
+        self.assertIn("--perf-scope", forwarded_command(autana.suite, ["run_gfx_suite", "--flash", "--perf-scope"]))
 
     def test_hot_tunables_are_forwarded(self):
-        with project_call() as called:
-            autana.suite(["run_gfx_suite", "--flash", "--hot-tunables"])
-        self.assertIn("--hot-tunables", called.call_args[0][0])
+        self.assertIn("--hot-tunables",
+                      forwarded_command(autana.suite, ["run_gfx_suite", "--flash", "--hot-tunables"]))
 
     def test_layout_seed_is_forwarded(self):
-        with project_call() as called:
-            autana.suite(["run_gfx_suite", "--flash", "--layout-seed", "5"])
-        command = called.call_args[0][0]
-        self.assertEqual(command[command.index("--layout-seed") + 1], "5")
+        command = forwarded_command(autana.suite, ["run_gfx_suite", "--flash", "--layout-seed", "5"])
+        self.assertEqual(value_after(command, "--layout-seed"), "5")
 
     def test_no_suite_name_is_rejected(self):
         with self.assertRaises(SystemExit):
