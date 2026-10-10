@@ -1758,10 +1758,9 @@ test_the_rest_pose_keeps_the_seeds_view_rules(void) {
  * covered it, and nothing stays mounted.
  */
 
-#define PICTURE_PACK "./boot.apak"
-#define PICTURE_ID   "boot"
+#define PICTURE_PACK "./" BOOT_PHOTO ".apak"
 
-/* Writes pack "boot" in "." holding a white IMAG of `width` x `height`, its
+/* Writes pack BOOT_PHOTO in "." holding a white IMAG of `width` x `height`, its
  * header stating `version`. */
 static void
 write_picture(int version, int width, int height) {
@@ -1771,7 +1770,7 @@ write_picture(int version, int width, int height) {
     uint8_t* bytes = malloc(capacity);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, capacity, 1);
-    uint8_t* entry = test_pack_add(&pack, PICTURE_ID, GFX_IMAGE_ASSET, entry_size);
+    uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, GFX_IMAGE_ASSET, entry_size);
     test_pack_put16(entry, version);
     test_pack_put16(entry + 2, GFX_IMAGE_RGB565);
     test_pack_put16(entry + 4, width);
@@ -2004,4 +2003,4 @@ run_boot_anim_suite(void) {
 }
 
 SUITE_REGISTER(run_boot_anim_suite);
-SUITE_READS(run_boot_anim_suite, BOOT_CLIP);
+SUITE_READS(run_boot_anim_suite, BOOT_CLIP, BOOT_PHOTO);

@@ -48,6 +48,8 @@
 
 /* The boot clip: its pack and its one entry, built from boot_anim_motion.anim.toml. */
 #define BOOT_CLIP     "boot_anim_motion"
+/* The boot photograph: its pack and its one picture entry. */
+#define BOOT_PHOTO    "boot"
 
 /* How the camera and the space move: the boot clip's nodes "camera" and
  * "space", pointing into its pack, or the rest pose when the clip cannot be
