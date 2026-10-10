@@ -15,9 +15,9 @@ typedef struct {
 } transform_t;
 
 static const anim_field_t TRANSFORM_FIELDS[] = {
-    {"position", ANIM_VALUE_VEC3, offsetof(transform_t, position)},
-    {"rotation", ANIM_VALUE_QUAT, offsetof(transform_t, rotation)},
-    {"scale", ANIM_VALUE_VEC3, offsetof(transform_t, scale)},
+    ANIM_FIELD(transform_t, position, ANIM_VALUE_VEC3),
+    ANIM_FIELD(transform_t, rotation, ANIM_VALUE_QUAT),
+    ANIM_FIELD(transform_t, scale, ANIM_VALUE_VEC3),
 };
 static const anim_component_fields_t TRANSFORM = {
     ANIM_COMPONENT_TRANSFORM,
