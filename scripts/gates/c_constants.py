@@ -14,6 +14,9 @@ ENUM = re.compile(r"\benum\s*(?:[A-Za-z_]\w*\s*)?\{([^{}]*)\}", re.S)
 MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
 LITERAL = re.compile(r"(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*$")
 INTEGER = re.compile(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*(?![\w.])")
+FUNCTION_BODY = re.compile(
+    r"\)(?:\s*(?!(?:enum|typedef|struct|class|namespace)\b)[A-Za-z_]\w*\b)*\s*$"
+)
 SCALAR = re.compile(r"\b(?:static\s+)?const\s+(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*)\s*=\s*([^;{},]+);", re.S)
 OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
              ast.LShift: operator.lshift, ast.RShift: operator.rshift,
@@ -72,10 +75,8 @@ def file_scope(code):
     masked = list(code)
     start = code.find("{")
     while start >= 0:
-        previous = start - 1
-        while previous >= 0 and code[previous].isspace():
-            previous -= 1
-        if previous >= 0 and code[previous] == ")":
+        previous = code.rfind(")", 0, start)
+        if previous >= 0 and FUNCTION_BODY.fullmatch(code, previous, start):
             end = balanced_end(code, start)
             masked[start:end] = ["\n" if char == "\n" else " " for char in code[start:end]]
         else:

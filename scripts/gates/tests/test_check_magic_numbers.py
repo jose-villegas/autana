@@ -143,11 +143,65 @@ int x = 1 << {shift};
         output = self.check_change(before, {header: f"#define VALUE {RARE}"}, 1, changed={header})
         self.assertNotIn(other, output)
         with mock.patch.object(gate, "revision_tree", return_value=before):
-            hits = gate.scan(self.root, "HEAD", {header})[0]
+            hits = gate.scan(self.root, "HEAD", gate.affected_files(before, {header}))[0]
         self.assertIn((C_PATH, gate.RESTATE), hits)
         self.assertNotIn((other, gate.RESTATE), hits)
         self.check_change({C_PATH: "", PY_PATH: 'x = "FRAME_READY"'},
                           {C_PATH: 'char *x = "FRAME_READY";'}, 1)
+
+    def test_sibling_header_addition_preserves_existing_count(self):
+        sibling = "launcher/main/render/value.h"
+        root_header = "launcher/main/value.h"
+        definition = f"#define VALUE {RARE}\n"
+        before = {C_PATH: f'#include "value.h"\nint x = {RARE};', root_header: definition}
+        output = self.check_change(before, {sibling: definition}, 0, changed={sibling})
+        self.assertIn("RESTATE (compared files)=1 -> 1", output)
+        self.check_change(before, {sibling: definition}, 0, rename=True,
+                          changed={sibling, "launcher/main/render/renamed.c"})
+
+    def test_sibling_header_deletion_exposes_growth(self):
+        sibling = "launcher/main/render/value.h"
+        root_header = "launcher/main/value.h"
+        with temporary_tree([(C_PATH, f'#include "value.h"\nint x = {RARE};'),
+                             (sibling, f"#define VALUE {RARE + 1}\n"),
+                             (root_header, f"#define VALUE {RARE}\n")]) as root:
+            base = commit(root, ".")
+            (root / sibling).unlink()
+            commit(root, ".")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(gate.main(["--base", base], root=root), 1)
+            self.assertIn(f"{C_PATH}: RESTATE 0 -> 1", output.getvalue())
+
+    def test_file_scope_enums_survive_function_masking(self):
+        for declaration in (f"enum {{ VALUE = {RARE} }};",
+                            f"typedef enum {{ VALUE = {RARE} }} value_t;"):
+            with self.subTest(declaration=declaration):
+                code = (f"void first(void) {{ enum {{ VALUE = {RARE + 1} }}; }}\n"
+                        f"{declaration}\nint x = {RARE};\nint y = {RARE + 1};")
+                self.assertEqual([hit.line for hit in self.restates(code)], [3])
+                local = f"void f(void) {{ {declaration} }}\nint x = {RARE};"
+                self.assertFalse(self.restates(local))
+
+    def test_file_scope_enum_after_macro_call(self):
+        for declaration in (f"enum {{ VALUE = {RARE} }};",
+                            f"typedef enum {{ VALUE = {RARE} }} value_t;"):
+            with self.subTest(declaration=declaration):
+                code = f"#define IDENTITY(x) (x)\n{declaration}\nint x = {RARE};"
+                self.assertEqual([hit.line for hit in self.restates(code)], [3])
+
+    def test_cpp_qualified_function_body_masks_local_owners(self):
+        for qualifier in ("const", "noexcept", "override", "final", "const noexcept"):
+            with self.subTest(qualifier=qualifier):
+                code = f"int f() {qualifier} {{ enum {{ LOCAL = {RARE} }}; }}\nint x = {RARE};"
+                self.assertFalse(self.scan({"editor/src/a.cpp": code})[0])
+
+    def test_nested_function_bodies_mask_local_owners(self):
+        for scope in ("namespace n", 'extern "C"', "class C"):
+            for declaration in (f"enum {{ LOCAL = {RARE} }};", f"const int LOCAL = {RARE};"):
+                with self.subTest(scope=scope, declaration=declaration):
+                    code = f"{scope} {{ void f() {{ {declaration} }} }};\nint x = {RARE};"
+                    self.assertFalse(self.scan({"editor/src/a.cpp": code})[0])
 
     def test_escapes(self):
         code = f"#define VALUE {RARE}\nint x = {RARE}; /* magic: wire value */"
@@ -308,7 +362,7 @@ int x = 1 << {shift};
         output = self.check_change({C_PATH: before}, {C_PATH: after}, 1)
         self.assertNotIn(f"{RARE} restates", output)
         self.assertIn(f"{RARE + 1} restates OTHER", output)
-        self.assertIn("compared files: RESTATE=1 -> 2", output)
+        self.assertIn("RESTATE (compared files)=1 -> 2", output)
 
     def test_conflicting_names_do_not_fold(self):
         code = f"#define VALUE {RARE}\n#define VALUE {RARE + 1}\n#define NEXT (VALUE + 2)\nint x = {RARE + 2};"

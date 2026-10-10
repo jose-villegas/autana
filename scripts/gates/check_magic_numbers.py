@@ -181,13 +181,24 @@ def python_strings(text):
             yield node.lineno, node.value
 
 
-def scan(root, revision, candidates=None):
-    texts = revision_tree(root, revision)
+def include_graph(texts):
+    return {name: tuple(target for include in INCLUDE.findall(blank_comments(text))
+                        if (target := resolve_include(name, include, INCLUDE_ROOTS, texts.__contains__)))
+            for name, text in texts.items() if Path(name).suffix in C_SUFFIXES}
+
+
+def affected_files(texts, changed):
+    direct = include_graph(texts)
+    return {path for path, text in texts.items() if eligible_c(path, text)
+            and include_closure(path, direct).intersection(changed)}
+
+
+def scan(root, revision, candidates=None, *, texts=None):
+    if texts is None:
+        texts = revision_tree(root, revision)
     clean = {name: blank_comments(text) for name, text in texts.items()
              if Path(name).suffix in C_SUFFIXES}
-    direct = {name: tuple(target for include in INCLUDE.findall(code)
-                          if (target := resolve_include(name, include, INCLUDE_ROOTS, texts.__contains__)))
-              for name, code in clean.items()}
+    direct = include_graph(texts)
     index = ConstantIndex({name: text for name, text in texts.items() if eligible_c(name, text)})
     hits, logged, errors = {}, [], []
     owners = defaultdict(list)
@@ -201,8 +212,8 @@ def scan(root, revision, candidates=None):
         logged.extend(found)
         errors.extend(invalid)
         if restate_source:
-            closure = include_closure(path, direct)
-            if candidates is None or closure.intersection(candidates):
+            if candidates is None or path in candidates:
+                closure = include_closure(path, direct)
                 group = list(restatements(path, text, index.visible(closure), skipped))
                 if group or candidates is not None:
                     hits[path, RESTATE] = group
@@ -267,10 +278,15 @@ def main(argv=None, root=ROOT):
             old = {}
         else:
             base = comparison_base(root, against=args.base)
-            changed, renames, _ = changed_paths(root, base, "HEAD")
-            hits, logged, errors = scan(root, "HEAD", changed)
-            old, _, _ = scan(root, base, {renames.get(path, path) for path in changed})
+            changed, renames, deleted = changed_paths(root, base, "HEAD")
+            head_texts = revision_tree(root, "HEAD")
+            base_texts = revision_tree(root, base)
             reverse_renames = {previous: path for path, previous in renames.items()}
+            base_changed = {renames.get(path, path) for path in changed} | deleted
+            candidates = affected_files(head_texts, changed) | {
+                reverse_renames.get(path, path) for path in affected_files(base_texts, base_changed)}
+            hits, logged, errors = scan(root, "HEAD", candidates, texts=head_texts)
+            old, _, _ = scan(root, base, {renames.get(path, path) for path in candidates}, texts=base_texts)
             compared = set(hits) | {(reverse_renames.get(path, path), rule) for path, rule in old}
             old = {(path, rule): old.get((renames.get(path, path), rule), []) for path, rule in compared}
             grown = []
@@ -292,9 +308,9 @@ def main(argv=None, root=ROOT):
         counts = Counter({rule: sum(len(group) for (path, candidate), group in hits.items() if candidate == rule)
                           for rule in (RESTATE, PROTOCOL)})
         summary = (f"RESTATE={counts[RESTATE]} PROTOCOL={counts[PROTOCOL]}" if args.report else
-                   "compared files: " + " ".join(
-                       f"{rule}={sum(len(group) for (path, candidate), group in old.items() if candidate == rule)} -> {counts[rule]}"
-                       for rule in (RESTATE, PROTOCOL)))
+                   "; ".join(
+                       f"{rule} ({scope})={sum(len(group) for (path, candidate), group in old.items() if candidate == rule)} -> {counts[rule]}"
+                       for rule, scope in ((RESTATE, "compared files"), (PROTOCOL, "all Python"))))
         print(f"{'FAIL' if failed else 'PASS'}: {len(grown)} growing file/rule counts; "
               f"{summary}; "
               f"{time.perf_counter() - started:.2f}s.")
