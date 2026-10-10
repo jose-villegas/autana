@@ -66,6 +66,44 @@ class TokenTests(unittest.TestCase):
                      'SCALE = 8\nNAME = "a"\ng(SCALE)\n'):
             self.assertNotEqual(code, self.tokens(edit), edit)
 
+    def test_imports_and_sys_path_edits_are_where_code_lives_not_what_it_computes(self):
+        code = self.tokens('import sys\nsys.path.insert(0, "a")\nfrom pkg.helper import f\nprint(f(1))\n')
+        moved = self.tokens('import sys\nsys.path.insert(0, "b/c")\nfrom other.place.helper import (\n    f)\nprint(f(1))\n')
+        self.assertEqual(code, moved)
+        self.assertNotEqual(code, self.tokens('import sys\nfrom pkg.helper import f\nprint(f(2))\n'))
+
+
+class ContentKeyTests(unittest.TestCase):
+    def test_a_c_file_keys_without_its_include_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "a.c").write_bytes(b'#include "util/scalar/mathf.h"\nint f(void) { return 1; }\n')
+            (root / "b.c").write_bytes(b'  #  include "core/mathf.h"\n#include <stdint.h>\nint f(void) { return 1; }\n')
+            (root / "c.c").write_bytes(b'#include "core/mathf.h"\nint f(void) { return 2; }\n')
+            self.assertEqual(bake.c_content(root / "a.c"), bake.c_content(root / "b.c"))
+            self.assertNotEqual(bake.c_content(root / "a.c"), bake.c_content(root / "c.c"))
+
+    def test_a_moved_module_keys_the_same_and_an_edited_one_does_not(self):
+        def key(layout, value="1"):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                helper, line = layout
+                (root / helper).parent.mkdir(parents=True, exist_ok=True)
+                (root / helper).write_text(f"VALUE = {value}\n")
+                (root / "entry.py").write_text(f"import pathlib\nimport sys\n{line}\nprint(VALUE)\n")
+                bake.module_facts.cache_clear()
+                return sorted(bake.digest(bake.code_tokens(path)) for path in bake.closure([root / "entry.py"]))
+
+        here = ("helpers/values.py", 'sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "helpers"))\n'
+                                     "from values import VALUE")
+        there = ("lib/deep/values.py", 'sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib" / "deep"))\n'
+                                       "from values import VALUE")
+        try:
+            self.assertEqual(key(here), key(there))
+            self.assertNotEqual(key(here), key(here, value="2"))
+        finally:
+            bake.module_facts.cache_clear()
+
 
 class NativeTests(unittest.TestCase):
     def test_c_includes_follows_quoted_headers_beside_the_file_and_in_the_include_dirs(self):
