@@ -1,6 +1,6 @@
 # anim
 
-The offline half of `main/anim/`: bakes a glTF 2.0 animation into a pack entry
+The offline half of `main/anim/`: bakes a glTF 2.0 animation<sup>[[17]](../../../docs/Citations.md#17)</sup> into a pack entry
 and prints what a clip's tracks hold through the device's
 sampler. What a track is, how to author one and how to target a new property
 is in [docs/Animation-Tracks.md](../../../docs/Animation-Tracks.md).
@@ -14,7 +14,7 @@ as its source; `camera_keys.py` builds it into glTF in memory at the bake. The
 TOML sets `node` and `animation`, with `[[keys]]`
 tables holding `t` in seconds, `eye = [x,y,z]` and `look_at = [x,y,z]`.
 Times start at zero and increase strictly. Translation uses CUBICSPLINE
-Catmull-Rom tangents; rotation uses LINEAR quaternions, local -Z forward,
+Catmull-Rom tangents<sup>[[20]](../../../docs/Citations.md#20)</sup>; rotation uses LINEAR quaternions, local -Z forward,
 world +Y up, with successive quaternions in the same hemisphere. A repeated
 first key at the end wraps the translation tangents for a smooth loop.
 The tool needs only Python's standard library. Vertical views are refused

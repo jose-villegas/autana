@@ -129,6 +129,9 @@ the foreground drapery.
 
 ### Appearance fit of the lite and full meshes
 
+The fit is appearance-driven simplification<sup>[[1]](../Citations.md#1)</sup>;
+[Against the paper](Scene-Files.md#against-the-paper) lists what it changes.
+
 The GPU stage rebuilds GI bakes and fitted meshes from the scene's current
 recipes. It scores every mesh against the same held-out reference poses;
 triangle counts come from the output meshes. The sheets include reference
