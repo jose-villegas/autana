@@ -14,6 +14,7 @@
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_store.h"
+#include "boot/boot_anim.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
 #include "test_pack.h"
@@ -33,8 +34,6 @@ enum {
     B_VALUES = 148,
     ENTRY_BYTES = 160,
 };
-
-#define BOOT_CLIP "boot_anim_motion"
 
 typedef struct {
     uint8_t* entry;
@@ -586,3 +585,4 @@ suite_anim_tracks(void) {
 }
 
 SUITE_REGISTER(suite_anim_tracks);
+SUITE_READS(suite_anim_tracks, BOOT_CLIP);

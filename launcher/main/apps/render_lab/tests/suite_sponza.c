@@ -400,3 +400,4 @@ run_sponza_suite(void) {
 }
 
 SUITE_REGISTER(run_sponza_suite);
+SUITE_READS(run_sponza_suite, SPONZA_SCENE);

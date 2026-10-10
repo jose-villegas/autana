@@ -6,24 +6,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_store.h"
 #include "unity.h"
-
-#define DIR_ENV "AUTANA_ASSET_DIR"
 
 static char* saved;
 
 static void
 set_dir(const char* dir) {
 #ifdef _WIN32
-    TEST_ASSERT_EQUAL_INT(0, _putenv_s(DIR_ENV, dir == NULL ? "" : dir));
+    TEST_ASSERT_EQUAL_INT(0, _putenv_s(ASSET_STORE_DIR_ENV, dir == NULL ? "" : dir));
 #else
-    TEST_ASSERT_EQUAL_INT(0, dir == NULL ? unsetenv(DIR_ENV) : setenv(DIR_ENV, dir, 1));
+    TEST_ASSERT_EQUAL_INT(0, dir == NULL ? unsetenv(ASSET_STORE_DIR_ENV) : setenv(ASSET_STORE_DIR_ENV, dir, 1));
 #endif
 }
 
 void
 test_asset_dir_use(const char* dir) {
-    const char* runner = getenv(DIR_ENV);
+    const char* runner = getenv(ASSET_STORE_DIR_ENV);
     free(saved);
     saved = runner == NULL ? NULL : strdup(runner);
     set_dir(dir);
