@@ -109,17 +109,19 @@ flowchart TB
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
 - **core/, build/ and the packages are the base.** Every layer above
-  `core/` builds on it: `core/job.h` hands one copied job at a time to
+  `core/` builds on `core/`: `core/job.h` hands one copied job at a time to
   core 1, and runs it inline when core 1 is busy or on a host;
   `core/memory.h` places memory by kind; `core/timing.h` reads time.
   `build/build_variant.h` says which build this is. Below every folder of
   `main/`, `board/` included, sit the packages: first-party libraries in
   `launcher/packages/<name>/`, each its own ESP-IDF component with an
-  `include/` root, `src/` and `tests/`. The first is
+  `include/` root, `src/` and `tests/`, such as
   [math](../launcher/packages/math/README.md). A package includes nothing
-  outside itself but the toolchain and the build config (the style audit's
-  PACKAGE-INCLUDE rule), so the firmware, the host tests, the tools and the
-  editor all build it.
+  outside itself but the C library and the build config, so the firmware,
+  the host tests, the tools and the editor all build it: the style audit's
+  PACKAGE-INCLUDE rule names a reach into the firmware, and
+  `launcher/test/check_packages_alone.sh` compiles each package file with
+  only its own include root.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits

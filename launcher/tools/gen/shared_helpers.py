@@ -1,6 +1,8 @@
 """Catalogue every tracked C/C++ header or Python module outside apps/, test/
 and tests/ folders and c_comments.EXCLUDED paths that is included or imported
 from more than one directory, using its banner sentence and public names.
+It also fills each launcher/packages/<name>/README.md's generated header
+index, one row per header under its include/ with its banner sentence.
 
     python launcher/tools/gen/shared_helpers.py [--check]
 """
@@ -98,9 +100,9 @@ def describe(path, text):
     return " ".join(purpose.split()), ", ".join(names)
 
 
-def package_apis(root):
+def package_headers(root):
     """{README: rows} for each launcher/packages/<name>/: a row per header under its include/,
-    spelled from the package folder."""
+    spelled from the package folder; the README lists each header and its purpose."""
     root = pathlib.Path(root).resolve()
     apis = {}
     for path in tracked_files(root):
@@ -112,11 +114,11 @@ def package_apis(root):
     return {readme: sorted(rows) for readme, rows in apis.items()}
 
 
-def table(owner, rows, link):
-    lines = [f"| {owner} | Purpose | Public names |", "|---|---|---|"]
-    for path, prose, names in rows:
+def table(owner, rows, link, names=True):
+    lines = [f"| {owner} | Purpose | Public names |", "|---|---|---|"] if names else [f"| {owner} | Purpose |", "|---|---|"]
+    for path, prose, public in rows:
         prose = prose.replace("|", "&#124;").replace("<", "&lt;").replace(">", "&gt;")
-        lines.append(f"| [{path}]({link}{path}) | {prose} | `{names}` |")
+        lines.append(f"| [{path}]({link}{path}) | {prose} |" + (f" `{public}` |" if names else ""))
     return "\n".join(lines)
 
 
@@ -125,8 +127,8 @@ def update(root, check=False):
     rows = catalogue(root)
     stale = [PAGE.as_posix()] if replace_block(root / PAGE, "shared-helpers", table("Owner", rows, "../"),
                                                check, CHECK) else []
-    for readme, api in package_apis(root).items():
-        if replace_block(root / readme, "package-api", table("Header", api, ""), check, CHECK):
+    for readme, headers in package_headers(root).items():
+        if replace_block(root / readme, "package-headers", table("Header", headers, "", names=False), check, CHECK):
             stale.append(readme)
     state = (f"stale: run python3 launcher/tools/gen/shared_helpers.py and git add {' '.join(stale)}"
              if stale and check else "current")

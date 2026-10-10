@@ -28,6 +28,7 @@ import io
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
+import sys
 import time
 import tokenize
 
@@ -38,6 +39,8 @@ from tracked import revision_contents
 from c_includes import resolve_include
 from idf_vocabulary import FLOW, WORD
 from check_generated_files import is_generated
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.packages import FIRST_PARTY  # noqa: E402
 
 RARE_MINIMUM = 300
 ROUND_MULTIPLE = 100
@@ -82,7 +85,7 @@ def eligible_c(path, text):
 
 
 def protocol_source(path, text):
-    return (path.startswith(("launcher/main/", "launcher/packages/")) and Path(path).suffix in {".c", ".h"}
+    return (path.startswith(FIRST_PARTY) and Path(path).suffix in {".c", ".h"}
             and eligible_c(path, text))
 
 

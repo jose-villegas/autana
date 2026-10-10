@@ -34,10 +34,12 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.packages import FIRST_PARTY  # noqa: E402
 
 # Below the apps: all of launcher/main/ except apps/, the packages and the
 # test tree. A new folder is checked from the day it exists.
-ENGINE = ("launcher/main/", "launcher/packages/", "launcher/test/")
+ENGINE = (*FIRST_PARTY, "launcher/test/")
 APPS = "launcher/main/apps"
 
 

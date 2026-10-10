@@ -38,6 +38,8 @@ import re
 import sys
 
 from tracked import tracked_files
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.packages import FIRST_PARTY  # noqa: E402
 
 MAIN = "launcher/main/main.c"
 SHELL = "launcher/main/shell/"
@@ -96,7 +98,7 @@ def problems(root="."):
 
 OWNED_NAME_RE = re.compile(r"\b(esp_timer_|heap_caps_|MALLOC_CAP_)\w*")
 OWNER_OF = {"esp_timer_": "timing", "heap_caps_": "memory", "MALLOC_CAP_": "memory"}
-CHECKED = ("launcher/main/", "launcher/packages/", "launcher/test/suites/", "launcher/tools/")
+CHECKED = (*FIRST_PARTY, "launcher/test/suites/", "launcher/tools/")
 CORE = "launcher/main/core/"
 
 

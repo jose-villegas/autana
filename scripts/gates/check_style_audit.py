@@ -384,8 +384,10 @@ def rule_include_direction(root, path, text):
 # includes nothing outside itself: no #include, quoted or angled, may reach a
 # tracked header of the firmware or of another package. A header that resolves
 # nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
-# "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) is no
-# include root of the firmware, so neither is in reach of this rule.
+# "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) sits under
+# no firmware include root, so neither resolves and the rule passes both.
+# launcher/test/check_packages_alone.sh compiles each package file with only
+# its own include root, which catches what no resolver here can see.
 
 ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
@@ -724,7 +726,7 @@ def _function_body_comments(text, comments):
 
 @c_line_rule("UNDEF-PLACEMENT")
 def rule_undef_placement(root, path, text):
-    if not relpath(root, path).startswith(("launcher/main/", "launcher/packages/")):
+    if not relpath(root, path).startswith(packages.FIRST_PARTY):
         return
     comments = scan(relpath(root, path), text)
     code = blank_comments(text, mode="code")

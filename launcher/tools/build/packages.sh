@@ -1,7 +1,7 @@
 #!/bin/sh
 #
-# The first-party packages under launcher/packages/ (math/ first), for a host
-# build that compiles firmware code without CMake. Each package is one folder
+# The first-party packages under launcher/packages/, for a host build that
+# compiles firmware code without CMake. Each package is one folder
 # holding include/, src/ and tests/; found by globbing, so adding a package
 # changes no script.
 #

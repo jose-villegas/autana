@@ -235,5 +235,5 @@ echo "Report: $REPORT ($total lines)"
 echo "  MISRA findings:        ${misra_count:-0} (${own_count:-0} in main/ and packages/)"
 echo "  native error/warning:  ${other_count:-0}"
 echo ""
-echo "Top MISRA rules hit in main/:"
+echo "Top MISRA rules hit in main/ and packages/:"
 printf '%s\n' "$own" | grep -oE 'misra-c2012-[0-9.]+' | sort | uniq -c | sort -rn | head -10 || true
