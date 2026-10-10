@@ -3,7 +3,7 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N | --seed] [--cache DIR]
+    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
     python launcher/tools/bake/bake.py path OUTPUT [--cache DIR] [--offline]
@@ -25,7 +25,8 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new row is written, so every locked file can be published; `--seed`
+way a new row is written; it repeats, so the meshes of a Bakes run and the
+fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
 and each new row is marked `seeded`: its bytes
@@ -101,6 +102,7 @@ C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
 SKIPPED_TOKENS = {"COMMENT", "NL", "ENCODING"}
 SHAPE_TOKENS = {"NEWLINE", "INDENT", "DEDENT"}
 QUOTED_INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
+INCLUDE_LINE = re.compile(rb'^[ \t]*#[ \t]*include\b[^\n]*\n?', re.MULTILINE)
 # What a module-level constant may be built from when it is read without running the module.
 CONSTANT_NAMES = {"pathlib": pathlib, "os": os, "str": str, "sorted": sorted, "tuple": tuple, "list": list}
 
@@ -267,12 +269,32 @@ def closure(entries, stop=()):
     return sorted(found)
 
 
+def plumbing_lines(tree):
+    """The lines of a module's import statements and sys.path edits: where its code lives, not what it
+    computes. The files they reach are in the stage by content, so a move that rewrites them keys the same."""
+    lines = set()
+    for node in ast.walk(tree):
+        plumbing = isinstance(node, (ast.Import, ast.ImportFrom))
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            plumbing = ast.unparse(node.value.func) in ("sys.path.insert", "sys.path.append")
+        if plumbing:
+            lines.update(range(node.lineno, node.end_lineno + 1))
+    return lines
+
+
 def code_tokens(path):
-    """A file's tokens without comments, blank lines or layout: the same on every Python from 3.12."""
+    """A file's tokens without comments, blank lines, layout or import plumbing: the same on every
+    Python from 3.12, and wherever the file lives."""
+    skipped = plumbing_lines(module_facts(path)[0])
     with path.open("rb") as source:
         return [[tokenize.tok_name[token.type], "" if tokenize.tok_name[token.type] in SHAPE_TOKENS else token.string]
                 for token in tokenize.tokenize(source.readline)
-                if tokenize.tok_name[token.type] not in SKIPPED_TOKENS]
+                if tokenize.tok_name[token.type] not in SKIPPED_TOKENS and token.start[0] not in skipped]
+
+
+def c_content(path):
+    """A C file's bytes without its #include lines: the headers they reach are in the stage by content."""
+    return hashlib.sha256(INCLUDE_LINE.sub(b"", pathlib.Path(path).read_bytes())).hexdigest()
 
 
 @functools.cache
@@ -330,7 +352,7 @@ def native_inputs(files):
         if holder(item) is not None:
             keyed[relative(holder(item))] = pinned[holder(item)]
         else:
-            keyed[relative(item)] = file_sha256(item)
+            keyed[relative(item)] = c_content(item)
     return keyed
 
 
@@ -362,11 +384,15 @@ def requirement_pins(stage):
 
 @functools.cache
 def tool_digest(stage):
-    """The code of a stage: its files' tokens, what they compile and the requirements it counts."""
+    """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
+    digests, no paths, so a move or rename keys the same; plus the submodules it builds and the
+    requirements it counts."""
     paths = stage_files(stage)
-    files = {relative(path): code_tokens(path) for path in paths}
-    files.update(native_inputs(paths))
-    return digest([files, [list(pin) for pin in requirement_pins(stage)]])
+    native = native_inputs(paths)
+    pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
+    contents = [digest(code_tokens(path)) for path in paths]
+    contents += [value for path, value in native.items() if path not in pinned]
+    return digest([sorted(contents), pinned, [list(pin) for pin in requirement_pins(stage)]])
 
 
 def canonical(value):
@@ -599,18 +625,25 @@ def check(found, lock):
     return problems
 
 
-def seed(found, cache, stale=()):
-    """Rows for keys LOCK lacks, each marked seeded: the bytes are carried over, not made by the code
-    their key names. They come from a `stale` row for the same output when there is one (a re-key
-    keeps what a run made, its file fetched as any locked file), else from the tree's own file. A run
-    that makes the key again writes a row without the mark."""
+def seed(found, cache, lock=None):
+    """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
+    that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
+    it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
+    under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
+    Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
+    lock = lock or {}
+    needed = {bake.key for bake in found}
+    previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, missing = [], []
-    previous = {row["output"]: row for row in stale}
     for bake in found:
-        if bake.output in previous:
-            old = previous[bake.output]
-            fetch_all([bake], {bake.key: old}, cache)
-            rows.append({**{name: old[name] for name in ("output", "source", "sha256", "size")},
+        held = lock.get(bake.key)
+        if held is not None and not held.get("seeded"):
+            rows.append({name: held[name] for name in ROW_FIELDS if name in held})
+            continue
+        carried = previous.get(bake.output) if held is None else (None if bake.tree.is_file() else held)
+        if carried is not None:
+            fetch_all([bake], {bake.key: carried}, cache)
+            rows.append({**{name: carried[name] for name in ("output", "source", "sha256", "size")},
                          "key": bake.key, "seeded": True})
             continue
         if not bake.tree.is_file():
@@ -688,6 +721,22 @@ def run_files(run, folder):
     return folder
 
 
+def runs_made(runs, cache):
+    """{key: row} of what each CI run in `runs` uploaded, its files put in the cache. A key two runs made with the
+    same bytes keeps the first run's row; with different bytes it fails, naming both, so the author lists one run."""
+    from bake import produce
+
+    made = {}
+    for run in runs:
+        with tempfile.TemporaryDirectory() as folder:
+            for key, row in produce.import_run(run_files(run, pathlib.Path(folder)), run, cache).items():
+                first = made.setdefault(key, row)
+                if first["sha256"] != row["sha256"]:
+                    raise BakeMissing(f"{row['output']} key {key}: run {first['run']} made sha256 {first['sha256']}, "
+                                      f"run {run} made {row['sha256']}; lock from only the run whose bytes you want")
+    return made
+
+
 def lock_rows(found, lock, made=None):
     """Rows for the bakes `found` need: the lock's own, else those in `made`; raises naming the rest."""
     rows, missing = [], []
@@ -752,7 +801,8 @@ def main(argv=None):
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
-    parser.add_argument("--from-run", type=int, metavar="N", help="lock: add the rows CI run N made")
+    parser.add_argument("--from-run", type=int, action="append", metavar="N",
+                        help="lock: add the rows CI run N made; repeatable")
     parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
@@ -799,16 +849,9 @@ def main(argv=None):
                 produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
             if args.seed:
-                held = [bake for bake in found if bake.key in lock]
-                needed = {bake.key for bake in found}
-                stale = [row for key, row in lock.items() if key not in needed]
-                rows = lock_rows(held, lock) + seed([bake for bake in found if bake.key not in lock], cache, stale)
-            elif args.from_run is not None:
-                from bake import produce
-
-                with tempfile.TemporaryDirectory() as folder:
-                    made = produce.import_run(run_files(args.from_run, pathlib.Path(folder)), args.from_run, cache)
-                rows = lock_rows(found, lock, made)
+                rows = seed(found, cache, lock)
+            elif args.from_run:
+                rows = lock_rows(found, lock, runs_made(args.from_run, cache))
             else:
                 rows = lock_rows(found, lock)
             write_lock(rows)

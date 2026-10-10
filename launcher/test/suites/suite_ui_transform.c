@@ -440,16 +440,16 @@ test_axis_preserving_accepts_identity_and_every_quarter_turn(void) {
 
 static void
 test_axis_preserving_accepts_translation(void) {
-    const ui_transform_t translate = {UI_FP_ONE, 0, 0, UI_FP_ONE, 40 * UI_FP_ONE, -12 * UI_FP_ONE};
+    const ui_transform_t translate = {MATHX_ONE, 0, 0, MATHX_ONE, 40 * MATHX_ONE, -12 * MATHX_ONE};
     TEST_ASSERT_TRUE_MESSAGE(ui_transform_is_axis_preserving(translate),
                              "a pure translation keeps every rect axis-aligned");
 }
 
 static void
 test_axis_preserving_accepts_integer_scale(void) {
-    const ui_transform_t scale_up = {2 * UI_FP_ONE, 0, 0, 2 * UI_FP_ONE, 0, 0};
+    const ui_transform_t scale_up = {2 * MATHX_ONE, 0, 0, 2 * MATHX_ONE, 0, 0};
     const ui_transform_t scale_and_swap = /* an integer-scaled quarter turn */
-        {0, 3 * UI_FP_ONE, -3 * UI_FP_ONE, 0, 100, 0};
+        {0, 3 * MATHX_ONE, -3 * MATHX_ONE, 0, 100, 0};
     TEST_ASSERT_TRUE_MESSAGE(ui_transform_is_axis_preserving(scale_up),
                              "an integer scale keeps every rect axis-aligned");
     TEST_ASSERT_TRUE_MESSAGE(ui_transform_is_axis_preserving(scale_and_swap),
@@ -462,7 +462,7 @@ static void
 test_axis_preserving_rejects_a_shear(void) {
     /* c and d unrotated, but b is nonzero too: the y-axis now has a
      * component along x as well as y, which is exactly a shear. */
-    const ui_transform_t shear = {UI_FP_ONE, UI_FP_ONE / 2, 0, UI_FP_ONE, 0, 0};
+    const ui_transform_t shear = {MATHX_ONE, MATHX_ONE / 2, 0, MATHX_ONE, 0, 0};
     TEST_ASSERT_FALSE_MESSAGE(ui_transform_is_axis_preserving(shear),
                               "a shear must be rejected - it turns an axis-aligned rect into a "
                               "parallelogram, which gfx_fill_rect() cannot draw");
@@ -475,7 +475,7 @@ test_axis_preserving_rejects_a_non_90_degree_rotation(void) {
      * classifier only needs to see that both columns are mixed to reject
      * it, which is exactly what a genuine 45 degree rotation would also
      * present. */
-    const ui_transform_t skew_rotation = {UI_FP_ONE, UI_FP_ONE / 2, UI_FP_ONE / 2, UI_FP_ONE, 0, 0};
+    const ui_transform_t skew_rotation = {MATHX_ONE, MATHX_ONE / 2, MATHX_ONE / 2, MATHX_ONE, 0, 0};
     TEST_ASSERT_FALSE_MESSAGE(ui_transform_is_axis_preserving(skew_rotation),
                               "a rotation that is not a multiple of 90 degrees must be rejected - "
                               "gfx_text_turned() only has four quarters to offer it");
@@ -485,7 +485,7 @@ test_axis_preserving_rejects_a_non_90_degree_rotation(void) {
 
 static void
 test_invert_fails_on_a_singular_matrix(void) {
-    const ui_transform_t zero_scale = {UI_FP_ONE, 0, 0, 0, 0, 0};
+    const ui_transform_t zero_scale = {MATHX_ONE, 0, 0, 0, 0, 0};
     const ui_transform_t all_zero = {0, 0, 0, 0, 0, 0};
     ui_transform_t out;
 

@@ -6,9 +6,9 @@
 
 #include "gfx/present/gfx_indexed.h"
 #include "material_palette.h"
+#include "math/scalar/mathi.h"
 #include "sand_limits.h"
 #include "sand_paint.h"
-#include "util/scalar/mathi.h"
 
 #define SAND_PAINT_ROW_FLAG_SHINE          (1u << 0)
 #define SAND_PAINT_ROW_FLAG_LIQUID         (1u << 1)

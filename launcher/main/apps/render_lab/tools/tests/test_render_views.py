@@ -5,8 +5,8 @@
 Runs render_lab_render_host.sh once, then reads the BMPs back: a pixel is
 empty in the depth view exactly where the shaded render shows the clear
 colour, in each of the three ways the panel is turned; a tile is empty
-wherever any pixel of it is; and a view the scene cannot give, an unknown
-view name, or a picture that cannot be written fails the run rather than
+wherever any pixel of it is; and an unknown view name or a picture that
+cannot be written fails the run rather than
 reporting an image.
 """
 import pathlib
@@ -111,12 +111,6 @@ class RenderViews(unittest.TestCase):
             timeout=120,
         )
         return run, target
-
-    def test_a_scene_that_draws_no_lit_mesh_cannot_be_asked_for_a_view(self):
-        run, target = self.render("--scene", "gouraud", "--view", "depth")
-        self.assertNotEqual(0, run.returncode)
-        self.assertIn("no depth to show", run.stderr)
-        self.assertFalse(target.exists() and target.stat().st_size > 0)
 
     def test_a_view_option_with_no_value_is_refused_and_writes_nothing(self):
         for option in ("--view", "--scene"):

@@ -9,7 +9,7 @@
  * Camera-space points are int32 in 1/512 of a meter, the resolution a pixel
  * needs and one a 32-bit product with a Q9 focal length cannot overflow at.
  * The view's matrix entries are Q9 too, so mat4x_apply() of a Q16.16 point
- * (util/scalar/mathx.h) lands in that space with no further shift. Header-only,
+ * (math/scalar/mathx.h) lands in that space with no further shift. Header-only,
  * static inline and ESP-IDF-free.
  */
 #pragma once
@@ -17,9 +17,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/linear/mat4x.h"
+#include "math/linear/vec_convert.h"
+#include "math/scalar/mathx.h"
 #include "render/r3d_project.h"
-#include "util/math/mat4x.h"
-#include "util/math/vec_convert.h"
 
 /* One meter in camera space, and the focal length's one. */
 #define R3D_X_UNIT_ONE    512
@@ -128,10 +129,10 @@ r3d_project_segment_cs_x(vec3x_t p0, vec3x_t p1, const r3d_line_view_x_t* view, 
     if (front0 != front1) {
         vec3x_t* behind = front0 ? &p1 : &p0;
         const vec3x_t* front = front0 ? &p0 : &p1;
-        const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) * 65536) / (front->z - behind->z);
+        const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) * MATHX_ONE) / (front->z - behind->z);
 
-        behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> 16);
-        behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> 16);
+        behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> MATHX_SHIFT);
+        behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> MATHX_SHIFT);
         behind->z = view->near_z;
     }
 

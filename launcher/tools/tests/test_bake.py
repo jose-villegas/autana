@@ -67,6 +67,44 @@ class TokenTests(unittest.TestCase):
                      'SCALE = 8\nNAME = "a"\ng(SCALE)\n'):
             self.assertNotEqual(code, self.tokens(edit), edit)
 
+    def test_imports_and_sys_path_edits_are_where_code_lives_not_what_it_computes(self):
+        code = self.tokens('import sys\nsys.path.insert(0, "a")\nfrom pkg.helper import f\nprint(f(1))\n')
+        moved = self.tokens('import sys\nsys.path.insert(0, "b/c")\nfrom other.place.helper import (\n    f)\nprint(f(1))\n')
+        self.assertEqual(code, moved)
+        self.assertNotEqual(code, self.tokens('import sys\nfrom pkg.helper import f\nprint(f(2))\n'))
+
+
+class ContentKeyTests(unittest.TestCase):
+    def test_a_c_file_keys_without_its_include_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "a.c").write_bytes(b'#include "util/scalar/mathf.h"\nint f(void) { return 1; }\n')
+            (root / "b.c").write_bytes(b'  #  include "core/mathf.h"\n#include <stdint.h>\nint f(void) { return 1; }\n')
+            (root / "c.c").write_bytes(b'#include "core/mathf.h"\nint f(void) { return 2; }\n')
+            self.assertEqual(bake.c_content(root / "a.c"), bake.c_content(root / "b.c"))
+            self.assertNotEqual(bake.c_content(root / "a.c"), bake.c_content(root / "c.c"))
+
+    def test_a_moved_module_keys_the_same_and_an_edited_one_does_not(self):
+        def key(layout, value="1"):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                helper, line = layout
+                (root / helper).parent.mkdir(parents=True, exist_ok=True)
+                (root / helper).write_text(f"VALUE = {value}\n")
+                (root / "entry.py").write_text(f"import pathlib\nimport sys\n{line}\nprint(VALUE)\n")
+                bake.module_facts.cache_clear()
+                return sorted(bake.digest(bake.code_tokens(path)) for path in bake.closure([root / "entry.py"]))
+
+        here = ("helpers/values.py", 'sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "helpers"))\n'
+                                     "from values import VALUE")
+        there = ("lib/deep/values.py", 'sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib" / "deep"))\n'
+                                       "from values import VALUE")
+        try:
+            self.assertEqual(key(here), key(there))
+            self.assertNotEqual(key(here), key(here, value="2"))
+        finally:
+            bake.module_facts.cache_clear()
+
 
 class NativeTests(unittest.TestCase):
     def test_c_includes_follows_quoted_headers_beside_the_file_and_in_the_include_dirs(self):
@@ -83,7 +121,7 @@ class NativeTests(unittest.TestCase):
     def test_the_pose_samplers_c_and_headers_are_in_the_mesh_stage(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
-                         "launcher/main/util/scalar/mathf.h"} <= set(names))
+                         "launcher/main/math/scalar/mathf.h"} <= set(names))
 
     def test_a_compiled_submodule_counts_as_its_pinned_commit(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
@@ -195,6 +233,13 @@ class LockTests(unittest.TestCase):
         self.assertTrue(all(row["seeded"] for row in bake.seed(found, self.cache)))
         made = {"k" * 64: {**self.row, "run": 9}}
         self.assertNotIn("seeded", bake.lock_rows(found, {}, made)[0])
+
+    def test_seeding_keeps_a_made_row_and_reseeds_a_seeded_one(self):
+        found = [bake_of("k" * 64, self.tree)]
+        made = {**self.row, "sha256": "f" * 64, "run": 4, "host": "Linux x86_64"}
+        self.assertEqual(bake.seed(found, self.cache, {"k" * 64: made}), [made])
+        stale = {**self.row, "sha256": "f" * 64, "seeded": True}
+        self.assertEqual(bake.seed(found, self.cache, {"k" * 64: stale})[0]["sha256"], self.row["sha256"])
 
     def test_a_runs_make_replaces_a_seeded_row_but_never_a_made_one(self):
         found = [bake_of("k" * 64, self.tree)]
@@ -416,6 +461,39 @@ class ProduceTests(unittest.TestCase):
         (out / "files" / f"{row['sha256']}.mesh").write_bytes(b"other")
         with self.assertRaisesRegex(bake.BakeMissing, "run 41"):
             produce.import_run(out, 41, self.root / "third")
+
+    def test_two_runs_lock_together(self):
+        """A Bakes run's meshes and a Bakes GPU run's fits: neither run alone has every key, both together do."""
+        row = self.produce()
+        uploads = {41: self.root / "run41", 42: self.root / "run42"}
+        produce.export([row], self.cache, uploads[41])
+        other = {**row, "key": "k" * 64}
+        produce.export([row], self.cache, uploads[42])
+        (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").unlink()
+        (uploads[42] / produce.KEY_INDEX / f"{other['key']}.json").write_text(json.dumps(other), encoding="utf-8")
+        found = [self.found[0], bake_of(other["key"], self.root / "tree")]
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
+            for alone in (41, 42):
+                with self.assertRaisesRegex(bake.BakeMissing, "no CI run has made this key"):
+                    bake.lock_rows(found, {}, bake.runs_made([alone], self.root / f"c{alone}"))
+            rows = bake.lock_rows(found, {}, bake.runs_made([41, 42], self.root / "both"))
+        self.assertEqual([row["run"] for row in rows], [41, 42])
+
+    def test_two_runs_that_made_one_key_differently_fail_naming_both(self):
+        row = self.produce()
+        uploads = {41: self.root / "run41", 42: self.root / "run42", 43: self.root / "run43"}
+        for upload in uploads.values():
+            produce.export([row], self.cache, upload)
+        other = {**row, "sha256": hashlib.sha256(b"other").hexdigest()}
+        (uploads[42] / "files" / f"{other['sha256']}.mesh").write_bytes(b"other")
+        (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(other), encoding="utf-8")
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
+            with self.assertRaises(bake.BakeMissing) as failed:
+                bake.runs_made([41, 42], self.root / "differ")
+            same = bake.runs_made([41, 43], self.root / "same")
+        for named in (row["key"], "run 41", "run 42", row["sha256"], other["sha256"]):
+            self.assertIn(named, str(failed.exception))
+        self.assertEqual(same[row["key"]]["run"], 41)
 
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()

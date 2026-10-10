@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "ui/ui.h"
-#include "util/build/build_variant.h"
 
 /* mu_checkbox() takes its id from the state pointer, and `v` sits at the
  * same stack address for every row: without an id scope per row, all rows

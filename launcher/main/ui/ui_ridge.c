@@ -8,19 +8,30 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/memory.h"
 #include "gfx/draw/gfx_dither.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "math/motion/spring_line.h"
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
+#include "math/scalar/mathx.h"
+#include "profile/frame_cost.h"
+#include "services/tune.h"
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
-#include "util/motion/spring_line.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/tune.h"
-#include "util/scalar/mathi.h"
+
+/* One panel pixel of depth2: doubled coordinates times a RIDGE_POSE_ONE pose. */
+#define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)
+#define RIDGE_DEPTH2_ONE     (1 << RIDGE_DEPTH2_SHIFT)
+
+/* Ridge positions in sub-pixels: the generated curve's, which the spring line writes. */
+#define RIDGE_SUBPIXEL_SHIFT RIDGE_CURVE_Q_SHIFT
+#define RIDGE_SUBPIXEL_ONE   (1 << RIDGE_SUBPIXEL_SHIFT)
+_Static_assert(SPRING_LINE_OUT_SHIFT == RIDGE_SUBPIXEL_SHIFT, "the spring line writes ridge sub-pixels");
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
@@ -97,7 +108,7 @@ TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 #define POSE_LANDSCAPE      ((ridge_vector_t){-RIDGE_POSE_ONE, 0})
 #define POSE_STEP_LANDSCAPE (POSE_STEPS * 3 / 4)
 
-/* Where each shade edge crosses a row for one pose, in 1/65536 columns:
+/* Where each shade edge crosses a row for one pose, in 1/MATHX_ONE columns:
  * `at_row0[edge] + (y * per_row)`. A pose with no sideways part crosses no
  * row, and its edges lie wholly to one side of each. */
 typedef struct {
@@ -139,11 +150,6 @@ typedef struct {
 static ridge_t* ridge;
 static bool allocation_tried;
 
-static int
-round_q4(int value) {
-    return value >= 0 ? (value + 8) / 16 : (value - 8) / 16;
-}
-
 static uint32_t
 rgb_mix(uint32_t a, uint32_t b, int amount) {
     uint32_t mixed = 0;
@@ -182,7 +188,7 @@ sky_depth2(int x, int y) {
 
 static inline __attribute__((always_inline)) gfx_color_t
 sky_from_depth2(int32_t depth2) {
-    int along = ridge->sky_half + (depth2 >> 15);
+    int along = ridge->sky_half + (depth2 >> RIDGE_DEPTH2_SHIFT);
     along = along < 0 ? 0 : along > 2 * ridge->sky_half ? 2 * ridge->sky_half : along;
     return ridge->sky[along];
 }
@@ -263,16 +269,18 @@ build_layers(void) {
                          : 0;
     uint32_t travelled[2];
     for (int layer = 0; layer < 2; layer++) {
-        travelled[layer] = (uint32_t)((uint64_t)ridge->wave_ms * 65536U / (uint32_t)period[layer]);
+        travelled[layer] = (uint32_t)((uint64_t)ridge->wave_ms * TRIG_TURN / (uint32_t)period[layer]);
     }
     for (int x = 0; x < RIDGE_COLUMNS; x++) {
         for (int layer = 0; layer < 2; layer++) {
-            const uint32_t phase = ((uint32_t)x * 65536U / (uint32_t)wavelength[layer]) - travelled[layer];
-            const int echo = spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (SPRING_LINE_ONE / 16);
-            const int wave = amplitude[layer] * trig_sin((uint16_t)phase) / 2048 * gain / 256;
-            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * 16) + wave + echo);
+            const uint32_t phase = ((uint32_t)x * TRIG_TURN / (uint32_t)wavelength[layer]) - travelled[layer];
+            const int echo =
+                spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / RIDGE_SUBPIXEL_ONE);
+            const int wave = amplitude[layer] * trig_sin((uint16_t)phase)
+                             / (1 << (TRIG_SIN_SHIFT - RIDGE_SUBPIXEL_SHIFT)) * gain / 256;
+            ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * RIDGE_SUBPIXEL_ONE) + wave + echo);
         }
-        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * 16));
+        ridge->layers[2][x] = (int16_t)(ridge->heights[x] + (front_offset * RIDGE_SUBPIXEL_ONE));
     }
 }
 
@@ -309,7 +317,7 @@ raster_segment(int layer, int x0, int y0, int x1, int y1) {
  * 64-bit division: a library call on this chip, four per curve point. */
 static inline __attribute__((always_inline)) int
 pose_scale(int32_t value) {
-    return value >= 0 ? value >> 14 : -((-value) >> 14);
+    return value >= 0 ? value >> RIDGE_POSE_SHIFT : -((-value) >> RIDGE_POSE_SHIFT);
 }
 
 /* The pose the ridge is drawn at: the eased pose snapped to 0.5 degree
@@ -351,22 +359,24 @@ raster_boundaries(void) {
         const int32_t ry = -pose.down_x;
         const int32_t dx = pose.down_x;
         const int32_t dy = pose.down_y;
-        const int32_t u0 = -(RIDGE_COLUMNS - 1) * 8;
+        const int32_t u0 = -(RIDGE_COLUMNS - 1) * (RIDGE_SUBPIXEL_ONE / 2);
         int32_t along_x = u0 * rx;
         int32_t along_y = u0 * ry;
         int x0 = 0;
         int y0 = 0;
         for (int point = 0; point < RIDGE_COLUMNS; point++) {
-            const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * 8);
-            const int x1 = round_q4(((GFX_WIDTH - 1) * 8) + pose_scale(along_x + (h * dx)));
-            const int y1 = round_q4(((GFX_HEIGHT - 1) * 8) + pose_scale(along_y + (h * dy)));
+            const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * (RIDGE_SUBPIXEL_ONE / 2));
+            const int x1 = fx_round_shift32(
+                ((GFX_WIDTH - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_x + (h * dx)), RIDGE_SUBPIXEL_SHIFT);
+            const int y1 = fx_round_shift32(
+                ((GFX_HEIGHT - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_y + (h * dy)), RIDGE_SUBPIXEL_SHIFT);
             if (point > 0) {
                 raster_segment(layer, x0, y0, x1, y1);
             }
             x0 = x1;
             y0 = y1;
-            along_x += 16 * rx;
-            along_y += 16 * ry;
+            along_x += RIDGE_SUBPIXEL_ONE * rx;
+            along_y += RIDGE_SUBPIXEL_ONE * ry;
         }
     }
     build_sky_gradient();
@@ -812,7 +822,7 @@ repaint_changed(void) {
 
 static inline __attribute__((always_inline)) int32_t
 sky_edge_depth2(int edge) {
-    return (ridge->sky_edge[edge] - ridge->sky_half) * 32768;
+    return (ridge->sky_edge[edge] - ridge->sky_half) * RIDGE_DEPTH2_ONE;
 }
 
 static void
@@ -823,9 +833,9 @@ edge_lines(edge_lines_t* lines, ridge_vector_t pose) {
     }
     const int64_t per_column = 2 * (int64_t)pose.down_x;
     const int64_t origin = ((int64_t)(GFX_WIDTH - 1) * pose.down_x) + ((int64_t)(GFX_HEIGHT - 1) * pose.down_y);
-    lines->per_row = (-2 * (int64_t)pose.down_y * 65536) / per_column;
+    lines->per_row = (-2 * (int64_t)pose.down_y * MATHX_ONE) / per_column;
     for (int edge = 0; edge < ridge->sky_edge_count; edge++) {
-        lines->at_row0[edge] = ((sky_edge_depth2(edge) + origin) * 65536) / per_column;
+        lines->at_row0[edge] = ((sky_edge_depth2(edge) + origin) * MATHX_ONE) / per_column;
     }
 }
 
@@ -845,10 +855,10 @@ edge_swept_columns(int edge, int y, int64_t was_offset, int64_t now_offset, int*
     const int64_t b = edge_column_q16(&ridge->now_lines, edge, y, now_offset);
     int64_t lo = a < b ? a : b;
     int64_t hi = a > b ? a : b;
-    lo = lo < -2 * 65536 ? -2 * 65536 : lo;
-    hi = hi > (int64_t)(GFX_WIDTH + 2) * 65536 ? (int64_t)(GFX_WIDTH + 2) * 65536 : hi;
-    *x0 = mathi_clamp((int)(lo >> 16) - 1, 0, GFX_WIDTH);
-    *x1 = mathi_clamp((int)((hi + 65535) >> 16) + 2, 0, GFX_WIDTH);
+    lo = lo < -2 * MATHX_ONE ? -2 * MATHX_ONE : lo;
+    hi = hi > (int64_t)(GFX_WIDTH + 2) * MATHX_ONE ? (int64_t)(GFX_WIDTH + 2) * MATHX_ONE : hi;
+    *x0 = mathi_clamp((int)(lo >> MATHX_SHIFT) - 1, 0, GFX_WIDTH);
+    *x1 = mathi_clamp((int)((hi + (MATHX_ONE - 1)) >> MATHX_SHIFT) + 2, 0, GFX_WIDTH);
 }
 
 /* Only the front layer shows the gradient, so a swept pixel it does not
@@ -1263,7 +1273,7 @@ pluck_from_touch(const input_t* input) {
         ridge_pose_column_under(ridge->attitude.pose, GFX_WIDTH, GFX_HEIGHT, RIDGE_COLUMNS, input->x, input->y);
     if (input->pressed || abs(x - ridge->last_pluck_x) >= STRUM_STEP_PX) {
         spring_line_poke(&ridge->line, x, pluck_width,
-                         -(int32_t)((int64_t)SPRING_LINE_ONE * (input->pressed ? pluck_tap : pluck_strum) / 1000));
+                         -(int32_t)((int64_t)MATHX_ONE * (input->pressed ? pluck_tap : pluck_strum) / 1000));
         ridge->last_pluck_x = x;
     }
 }
@@ -1276,7 +1286,7 @@ shape_this_frame(uint32_t dt_ms) {
     }
     const ridge_motion_params_t params = {.breath_ms = breath_ms,
                                           .breath_depth = breath_depth,
-                                          .wave_height_q4 = front_amplitude * 16,
+                                          .wave_height = front_amplitude * RIDGE_SUBPIXEL_ONE,
                                           .wave_length = front_wavelength,
                                           .wave_passes_in_ms = front_period_ms,
                                           .push = tilt_push,
@@ -1299,7 +1309,7 @@ pluck_from_shaking(void) {
     }
     ridge->shake_seed = ridge->shake_seed * 1664525U + 1013904223U;
     spring_line_poke(&ridge->line, (int)((ridge->shake_seed >> 8) % RIDGE_COLUMNS), SHAKE_HALF_WIDTH,
-                     (ridge->shake_seed & 0x80U ? 1 : -1) * (SPRING_LINE_ONE / 128) * ridge->shake);
+                     (ridge->shake_seed & 0x80U ? 1 : -1) * (MATHX_ONE / 128) * ridge->shake);
 }
 
 static void

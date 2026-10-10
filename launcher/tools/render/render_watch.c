@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "util/runtime/frame_watch.h"
+#include "profile/frame_watch.h"
 
 #if defined(_WIN32)
 #include <io.h>

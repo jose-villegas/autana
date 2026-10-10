@@ -57,22 +57,22 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "util/motion/orbit_motion.c"
+    "math/motion/orbit_motion.c"
     "input/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
     "shell/shell_frame.c"
     "shell/shell_system.c"
-    "util/runtime/frame_cost.c"
-    "util/runtime/frame_watch.c"
-    "util/runtime/build_id.c"
-    "util/runtime/job.c"
-    "util/runtime/memory.c"
-    "util/runtime/settings_device.c"
-    "util/runtime/settings_policy.c"
-    "util/runtime/timing_device.c"
-    "util/runtime/tune.c"
+    "core/job.c"
+    "core/memory.c"
+    "core/timing_device.c"
+    "profile/frame_cost.c"
+    "profile/frame_watch.c"
+    "services/build_id.c"
+    "services/settings_device.c"
+    "services/settings_policy.c"
+    "services/tune.c"
 )
 
 function(launcher_glob output)
@@ -105,6 +105,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/console_buildid.c"
         "console/console_freeze.c"
+        "console/console_frame_request.c"
         "console/console_frame_watch.c"
         "console/console_navigation.c"
         "console/console_perf.c"
@@ -323,6 +324,9 @@ idf_component_register(
 )
 
 if(NOT CMAKE_SCRIPT_MODE_FILE)
+    if(TUNE_HOT_LIVE)
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE TUNE_HOT_LIVE=1)
+    endif()
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros)
 
     # The FPU has no double: a float promoted to one, or a double constant in
