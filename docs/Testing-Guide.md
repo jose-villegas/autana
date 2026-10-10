@@ -115,9 +115,9 @@ everything else; go there once you are capturing that app's numbers.
 
 ## Two runners, one set of suites
 
-Portable suites (`test/suites/`, plus each app's own in its `tests/` folder,
-`apps/*/tests/suite_*.c`) are compiled into every runner that can take them.
-Shell and app suites are discovered by both runners. A device-only suite
+Portable suites (`test/suites/`, each package's `packages/*/tests/`, and each
+app's own in `apps/*/tests/`) are compiled into every runner that can take
+them. Shell, package and app suites are discovered by both runners. A device-only suite
 guards its body with `#ifdef DEVICE_BUILD`; a host-only suite uses the
 opposite guard, defines an empty runner for the device, and registers once
 outside that guard. POST is a third thing again, a boot-time hardware check
@@ -766,18 +766,18 @@ against.
 
 ## Which suites cover which area
 
-Shell suites (gfx, ui, input, boot, render, core, math, services) live in
-`launcher/test/suites/`; an app's own are its
-`launcher/main/apps/<name>/tests/suite_*.c`. `autana suite list [text]` filters
+Shell suites (gfx, ui, input, boot, render, core, services) live in
+`launcher/test/suites/`, a package's in `launcher/packages/<name>/tests/`, and
+an app's own in `launcher/main/apps/<name>/tests/`. `autana suite list [text]` filters
 by a substring of the name, so treat it as a lookup, not an area map.
 
 ---
 
 ## Adding a suite
 
-1. Create the file. A suite for shell code goes in `launcher/test/suites/`; a
-   suite for an app goes **inside the app**, in `main/apps/<name>/tests/`, so
-   it is deleted along with it. Suites are found by their `suite_` name, not
+1. Create the file. A suite for shell code goes in `launcher/test/suites/`, one
+   for a package in the package's `tests/`; a suite for an app goes **inside
+   the app**, in `main/apps/<name>/tests/`, so it is deleted along with it. Suites are found by their `suite_` name, not
    by that folder, so one placed elsewhere still runs rather than vanishing.
 2. Write the tests, then a `void run_<name>_suite(void)` that calls
    `RUN_TEST(...)` for each. Do **not** define `setUp`/`tearDown` or call

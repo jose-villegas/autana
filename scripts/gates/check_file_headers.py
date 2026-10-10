@@ -5,13 +5,13 @@
 
 A module is a .c and its .h with the same name in the same folder, or in a
 package (launcher/packages/<name>/) its include/<name>/<path>.h and
-src/<path>.c; one of them opens with a comment that says what the module is (a `#pragma once`
-may come first). The rest of a header's rules are check_comment_length.py's,
+src/<path>.c; one of them opens with a comment that says what the module is
+(a `#pragma once` may come first). The rest of a header's rules are check_comment_length.py's,
 which also owns what counts as a header.
 
 Scope is by folder, not by list: every tracked .c and .h under launcher/main/,
-launcher/packages/ and launcher/test/suites/. A suite (suite_*.c) is exempt: its test names say
-what it proves. So are the sources check_comment_length.py excludes (vendored
+launcher/packages/ and launcher/test/suites/. A suite (suite_*.c) is exempt:
+its test names say what it proves. So are the sources check_comment_length.py excludes (vendored
 and generated). The editor, the test harness and its stubs are outside the
 scope for now.
 """
@@ -21,8 +21,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import file_header, sources  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.packages import FIRST_PARTY  # noqa: E402
 
-SCOPE = ("launcher/main/", "launcher/packages/", "launcher/test/suites/")
+SCOPE = (*FIRST_PARTY, "launcher/test/suites/")
 PACKAGE_HALF = re.compile(r"^(launcher/packages/([^/]+))/(?:include/\2|src)/")
 
 

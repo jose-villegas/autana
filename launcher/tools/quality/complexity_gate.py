@@ -3,10 +3,11 @@
 complexity_gate.py: a ratchet on clang-tidy's own
 readability-function-cognitive-complexity check, not a fixed threshold.
 
-Measures every first-party .c file under launcher/main/ (the ESP-IDF
-diagnostics build's own compile database, esp-clang targeting Xtensa) and
-every portable file the host test runner compiles, merged into one set
-with no double counting. A .c file under launcher/main/ that neither
+Measures every first-party .c file under launcher/main/ and
+launcher/packages/ (the ESP-IDF diagnostics build's own compile database,
+esp-clang targeting Xtensa) and every portable file the host test runner
+compiles, merged into one set with no double counting. A .c file under
+either that neither
 source measures, and that is not on EXCLUDED_MAIN_FILES below with a
 reason, fails the gate by name: coverage cannot silently shrink.
 
@@ -716,11 +717,11 @@ def main():
           f"host-only, {counts['tools']} apps/*/tools/**/*.c)")
 
     total_on_disk, missing = check_main_coverage(all_sources)
-    print(f"launcher/main/ coverage: {total_on_disk} .c files on disk, "
+    print(f"first-party coverage: {total_on_disk} .c files on disk, "
           f"{len(missing)} unmeasured and unexcluded")
     if missing:
         sys.exit(
-            "FAIL: the following launcher/main/ files are measured by "
+            "FAIL: the following first-party files are measured by "
             "nothing and are not on EXCLUDED_MAIN_FILES:\n" +
             "\n".join(f"  {m}" for m in missing)
         )

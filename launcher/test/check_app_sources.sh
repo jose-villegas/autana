@@ -49,11 +49,13 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only"
 # compiled too; they are the ones nobody looks at until they break.
 DEFS="-DCONFIG_LAUNCHER_DEVELOPMENT=1"
 
-# Packages and vendored components the apps include directly. Discovered rather than
-# listed, so a new one needs no change here, the same reasoning
+# Packages and vendored components the apps include directly. Discovered
+# rather than listed, so a new one needs no change here, the same reasoning
 # run_tests.sh uses for finding app sources.
+# shellcheck source=../tools/build/packages.sh
+. "$HERE/../tools/build/packages.sh"
 INCS="-I $STUBS -I $MAIN_DIR"
-for inc in "$HERE"/../packages/*/include "$HERE"/../components/*/include; do
+for inc in $(package_include_dirs "$HERE/..") "$HERE"/../components/*/include; do
     [ -d "$inc" ] || continue
     INCS="$INCS -I $inc"
 done
