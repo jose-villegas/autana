@@ -159,7 +159,7 @@ whether these inputs are current. A dispatch with `force` bypasses both
 record checks but still skips an obsolete run. The hosted lookup defers to
 the GPU gate while another run of this workflow on main is unfinished. The
 gate holds the concurrency group, skips runs whose trigger SHA is no longer
-main's head, then checks only the latest record. Refresh jobs queue in order
+main's head, then checks only the latest record. Refresh jobs queue instead of replacing each other
 (`queue: max`); an obsolete one skips in seconds, so the head's job still
 runs; the nightly run is the backstop for anything a missed or failed trigger
 leaves stale. A forced dispatch that becomes obsolete must be dispatched
