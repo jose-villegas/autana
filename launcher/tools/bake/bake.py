@@ -496,11 +496,13 @@ def bakes(paths, starts=None):
 
 
 def locked_starts(lock, *made):
-    """{key: sha256} of every row in `made` ({key: row}) and `lock`, the lock's winning: the start bytes a
-    fit's key names."""
-    starts = {}
-    for rows in (*made, lock):
-        starts.update((key, row["sha256"]) for key, row in rows.items())
+    """{key: sha256} of the start bytes a fit's key names: the lock's row, except that a run's make replaces a
+    seeded one, as lock_rows writes it."""
+    starts = {key: row["sha256"] for key, row in lock.items()}
+    for rows in made:
+        for key, row in rows.items():
+            if key not in lock or lock[key].get("seeded"):
+                starts[key] = row["sha256"]
     return starts
 
 
