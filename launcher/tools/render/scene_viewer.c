@@ -14,7 +14,7 @@ static char** object_names;
 static int object_count;
 static int shell_quarter;
 static int size_width, size_height;
-static int view = RENDER_VIEW_SHADED;
+static int view = RENDER_DEBUG_VIEW_SHADED;
 
 static bool
 options(int argc, char** argv) {
@@ -40,10 +40,10 @@ options(int argc, char** argv) {
                 return false;
             }
         } else if (strcmp(flag, "--view") == 0) {
-            view = render_context_view_named(value);
-            if (view == RENDER_VIEW_UNKNOWN) {
+            view = render_context_debug_view_named(value);
+            if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
                 fprintf(stderr, "scene_viewer: --view is ");
-                render_context_print_views(stderr);
+                render_context_print_debug_views(stderr);
                 fprintf(stderr, ", not %s\n", value);
                 return false;
             }
@@ -117,7 +117,7 @@ setup(int quarter) {
         scene_unload(scene);
         return false;
     }
-    if (view != RENDER_VIEW_SHADED) {
+    if (view != RENDER_DEBUG_VIEW_SHADED) {
         bool has_mesh = false;
         for (int i = 0; i < scene_entity_count(scene); i++) {
             const scene_entity_t entity = (scene_entity_t)i;
@@ -130,7 +130,7 @@ setup(int quarter) {
         }
     }
     render_context_t* context = render_context_main();
-    render_context_set_view(context, view);
+    render_context_set_debug_view(context, view);
     if (size_width > 0) {
         const resolution_step_t size = {size_width, size_height};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);

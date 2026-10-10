@@ -118,7 +118,7 @@ scene_capybara_enter(void) {
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
 #if TUNE_ENABLED
-    render_context_set_view(render_context_main(), render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
 }
 
@@ -147,7 +147,7 @@ static void
 scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
 #if TUNE_ENABLED
-    render_context_set_view(render_context_main(), render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
 }
 

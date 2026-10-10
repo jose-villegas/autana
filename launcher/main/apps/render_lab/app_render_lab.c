@@ -61,12 +61,12 @@ current_scene(void) {
 bool render_lab_show_hud = true;
 
 TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RENDER_VIEW_SHADED, RENDER_VIEW_SHADED, RENDER_VIEW_COUNT);
+TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
 TUNE(render_lab, scale, 200, 100, 800);
 TUNE(render_lab, budget, 0, 0, 200);
 
 int
-render_lab_view(void) {
+render_lab_debug_view(void) {
     return (int)view;
 }
 

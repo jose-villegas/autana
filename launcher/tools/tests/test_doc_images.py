@@ -41,6 +41,17 @@ class EngineDocImageFailureTest(unittest.TestCase):
         self.assertIn("missing_meshoptimizer", result.stderr)
         self.assertIn("app/variant/bake.log", result.stderr)
 
+    def test_only_the_failed_steps_log_is_printed(self):
+        result = self.run_failure(
+            'mkdir -p "$WORK/app"\n'
+            'run sh -c "echo healthy_render_line >&2" 2> "$WORK/app/still.log"\n'
+            'run sh -c "echo broken_bake_line >&2; exit 7" 2> "$WORK/app/bake.log"\n'
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("broken_bake_line", result.stderr)
+        self.assertNotIn("healthy_render_line", result.stderr)
+        self.assertNotIn("app/still.log", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
