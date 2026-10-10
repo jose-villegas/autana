@@ -43,9 +43,9 @@ typedef struct {
     raster_attachment_t (*attachment)(void* state);
 } render_debug_view_t;
 
-#define RENDER_VIEW_UNKNOWN -2
-#define RENDER_VIEW_SHADED  0
-#define RENDER_VIEW_COUNT   4 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_UNKNOWN -2
+#define RENDER_DEBUG_VIEW_SHADED  0
+#define RENDER_DEBUG_VIEW_COUNT   4 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_t raster; /* keeps its upscale maps from frame to frame */
@@ -81,16 +81,16 @@ void render_context_set_scale(render_context_t* context, int percent);
 void render_context_set_dynamic_resolution(render_context_t* context, const resolution_config_t* config,
                                            const resolution_model_t* model, int first_step);
 
-/* Development views, or RENDER_VIEW_SHADED to detach the view. */
-void render_context_set_view(render_context_t* context, int view);
+/* Development views, or RENDER_DEBUG_VIEW_SHADED to detach the view. */
+void render_context_set_debug_view(render_context_t* context, int view);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
-const render_debug_view_t* render_context_view(int view);
+const render_debug_view_t* render_context_debug_view(int view);
 
-/* A view number, RENDER_VIEW_SHADED, or RENDER_VIEW_UNKNOWN for an unknown name. */
-int render_context_view_named(const char* name);
+/* A view number, RENDER_DEBUG_VIEW_SHADED, or RENDER_DEBUG_VIEW_UNKNOWN for an unknown name. */
+int render_context_debug_view_named(const char* name);
 
 /* Comma-separated names, shaded first, followed by the table order. */
-void render_context_print_views(FILE* out);
+void render_context_print_debug_views(FILE* out);
 
 /* Draws `count` instances through `view`; false when there is no scratch for it. */
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,

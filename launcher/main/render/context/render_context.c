@@ -18,13 +18,13 @@ static const render_debug_view_t views[] = {
     {"motion", sizeof(raster_motion_t), raster_motion_view},
     {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view},
 };
-_Static_assert(RENDER_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
+_Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
 
 const render_debug_view_t*
-render_context_view(int view) {
+render_context_debug_view(int view) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    return view > RENDER_VIEW_SHADED && view <= RENDER_VIEW_COUNT ? &views[view - 1] : NULL;
+    return view > RENDER_DEBUG_VIEW_SHADED && view <= RENDER_DEBUG_VIEW_COUNT ? &views[view - 1] : NULL;
 #else
     (void)view;
     return NULL;
@@ -32,24 +32,24 @@ render_context_view(int view) {
 }
 
 int
-render_context_view_named(const char* name) {
+render_context_debug_view_named(const char* name) {
     if (strcmp(name, "shaded") == 0) {
-        return RENDER_VIEW_SHADED;
+        return RENDER_DEBUG_VIEW_SHADED;
     }
-    for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
-        const render_debug_view_t* row = render_context_view(i);
+    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
+        const render_debug_view_t* row = render_context_debug_view(i);
         if (row != NULL && strcmp(name, row->name) == 0) {
             return i;
         }
     }
-    return RENDER_VIEW_UNKNOWN;
+    return RENDER_DEBUG_VIEW_UNKNOWN;
 }
 
 void
-render_context_print_views(FILE* out) {
+render_context_print_debug_views(FILE* out) {
     (void)fputs("shaded", out);
-    for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
-        const render_debug_view_t* row = render_context_view(i);
+    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
+        const render_debug_view_t* row = render_context_debug_view(i);
         if (row != NULL) {
             (void)fprintf(out, ", %s", row->name);
         }
@@ -99,18 +99,18 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
 }
 
 void
-render_context_set_view(render_context_t* c, int view) {
+render_context_set_debug_view(render_context_t* c, int view) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    const render_debug_view_t* row = render_context_view(view);
-    if (view != RENDER_VIEW_SHADED && row == NULL) {
+    const render_debug_view_t* row = render_context_debug_view(view);
+    if (view != RENDER_DEBUG_VIEW_SHADED && row == NULL) {
         return;
     }
-    if (c->view == view && (view == RENDER_VIEW_SHADED || c->raster.attachment_count != 0)) {
+    if (c->view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
     memory_free(c->view_state);
     c->view_state = NULL;
-    c->view = RENDER_VIEW_SHADED;
+    c->view = RENDER_DEBUG_VIEW_SHADED;
     c->raster.attachment_count = 0;
     c->raster.attachments = NULL;
     if (row == NULL) {

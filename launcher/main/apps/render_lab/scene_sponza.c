@@ -97,7 +97,7 @@ enter_with(sponza_bake_t shown) {
     applied_budget_ms = -1;
     apply_budget();
 #if TUNE_ENABLED
-    render_context_set_view(render_context_main(), render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_view());
 #endif
 }
 
@@ -144,7 +144,7 @@ scene_sponza_frame(uint32_t dt_ms) {
     (void)dt_ms;
     apply_budget();
 #if TUNE_ENABLED
-    render_context_set_view(render_context_main(), render_lab_view());
+    render_context_set_debug_view(render_context_main(), render_lab_view());
 #endif
 }
 
