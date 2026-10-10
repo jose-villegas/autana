@@ -145,7 +145,11 @@ def source_for(scene, name=None, lit=True):
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
-    job = named[0]
+    return lit_source(named[0], scene, lit), named[0]
+
+
+def lit_source(job, scene, lit=True):
+    """The full-detail source of `job`, alpha-masked and lit as it is baked; see source_for."""
     settings = job.settings
     source = load_source(settings, np.float64 if lit else np.float32)
     if settings.alpha_keep is not None:
@@ -153,10 +157,23 @@ def source_for(scene, name=None, lit=True):
                                                                  source.tri_m, source.textures, settings.alpha_keep)
     source.corner_normals = corner_normals(source.p, source.tri_v)
     if not lit:
-        return source, job
+        return source
     source.intersector = RayQuery(source.p, source.tri_v)
     source.bounce = path_light_for(source, job, scene)
-    return source, job
+    return source
+
+
+def render_sets(inputs, sets, samples=4):
+    """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
+    fitted_variant.ReferenceInputs), the source loaded and its bounced light built once for all of them."""
+    job, scene = inputs.job(), inputs.scene()
+    source = lit_source(job, scene)
+    for poses_path, out in sets:
+        width, height, lens, _near, poses = read_poses(poses_path)
+        pathlib.Path(out).mkdir(parents=True, exist_ok=True)
+        peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=True)
+        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
+              flush=True)
 
 
 # Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
