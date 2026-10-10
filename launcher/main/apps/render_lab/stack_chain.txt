@@ -13,3 +13,10 @@ indirect render_lab_frame : scene_capybara_frame capybara_status
 indirect switch_to_scene : scene_capybara_enter scene_capybara_exit
 indirect render_lab_update : scene_capybara_steer
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
+
+root test_console_scene_requests_survive_expanded_frames test
+indirect run_frame : render_lab_update render_lab_frame
+indirect test_console_scene_requests_survive_expanded_frames : render_lab_enter render_lab_console render_lab_exit
+indirect render_lab_enter : scene_sponza_enter
+indirect render_lab_exit : scene_sponza_exit
+indirect switch_to_scene : scene_sponza_flat_fitted_enter
