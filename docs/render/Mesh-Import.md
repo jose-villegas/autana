@@ -222,6 +222,11 @@ Source assets, scene TOMLs, cached bakes and bake-time tools use right-handed
 source space: +x right, +y up, a camera looking down -z. `build_pack.py` converts each mesh, placement and animation
 track once at the asset-pack boundary, through
 [`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py).
+Poses files and `track_host` output are source space. The public
+[`sample_tracks.py`](../../launcher/tools/anim/sample_tracks.py) wrapper
+accepts `--poses` only with a source `.anim.toml`; it refuses built packs,
+whose tracks use the engine frame. The bake-time `track_host` sampler reads
+source-space scratch packs.
 Everything from the pack onward follows the
 [engine frame](../math/README.md#conventions). Positions mirror z; placements
 use a placement's matrix `M` as `S M S` for `S = diag(1, 1, -1)` and quaternions `(x, y, z, w)` become

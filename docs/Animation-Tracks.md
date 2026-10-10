@@ -164,18 +164,19 @@ translation, rotation and scale tracks into a `math/linear/transformf.h`
 
 ## Looking at a baked animation
 
-`launcher/tools/anim/track_host.py` prints every track of a clip every N
+`launcher/tools/anim/sample_tracks.py` prints every track of a clip every N
 milliseconds, read from the clip's `TRCK` entry by the same
 `anim_tracks_from_pack()` and `anim_track_sample()` the firmware runs. Given a
 `NAME.anim.toml`, it bakes the clip into a scratch pack of its own first; given
 `--pack PACK --clip ID`, it reads that pack. With `--poses NODE W H TAN NEAR`
 it prints a camera node as the poses file
 [`report_triangle_sizes.sh`](../launcher/tools/r3d/README.md#triangle-sizes)
-reads, so the poses are always the animation's own.
+reads. Poses use source space, so `--poses` requires a `.anim.toml` and
+refuses built packs. The wrapper delegates sampling to `track_host.py`.
 
 ```sh
-python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 250
-python launcher/tools/anim/track_host.py --pack PACK --clip ID --every 5000 --poses camera 184 224 0.62 6
+python launcher/tools/anim/sample_tracks.py PATH/NAME.anim.toml --every 250
+python launcher/tools/anim/sample_tracks.py PATH/NAME.anim.toml --every 5000 --poses camera 184 224 0.62 6
 ```
 
 The program, `track_host.c`, is one for every clip: it is compiled once into

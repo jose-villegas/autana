@@ -1,6 +1,4 @@
-"""Bake-time source-space camera poses, as defined in docs/render/Mesh-Import.md.
-
-The camera poses file tools/anim/track_host.py writes: `size W H`,
+"""The camera poses file tools/anim/track_host.py writes: `size W H`,
 `lens TAN NEAR`, then one `pose EYE_XYZ FORWARD_XYZ` line per sample."""
 
 import pathlib

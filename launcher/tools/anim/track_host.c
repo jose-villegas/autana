@@ -5,15 +5,14 @@
  * firmware calls. One program for every clip: track_host.py builds it once.
  *
  *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
- *   track_host --pack SCRATCH --clip ID [--every MS] [--until MS] --source-poses NODE W H TAN NEAR
+ *   track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR
  *
  * By default one line per track per sample time: `<t_ms> <name> <value...>`,
- * from --from (0) to --until (the clip's duration). With --source-poses it prints the
+ * from --from (0) to --until (the clip's duration). With --poses it prints the
  * poses file r3d's triangle_sizes reads, for the camera node NODE: its
- * translation as the eye, its rotation turning -z, the source frame's
- * camera forward; --source-poses is only for the sampler's source-space
- * scratch pack. These bake-time artifacts use the lens and
- * size given, from 0 and looping, so --from and --clamp are refused with it. --source-poses comes last. --every 0 is refused.
+ * translation as the eye, the way its rotation turns glTF's -Z as the
+ * forward, over the lens and size given, from 0 and looping, so --from and
+ * --clamp are refused with it. --poses comes last. --every 0 is refused.
  * The clock counts in 64 bits, so a step past an --until near the u32
  * maximum ends the run instead of wrapping to 0.
  */
@@ -37,9 +36,8 @@ typedef struct {
 
 static int
 usage(void) {
-    fprintf(stderr,
-            "usage: track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]\n"
-            "       track_host --pack PACK --clip ID [--every MS] [--until MS] --source-poses NODE W H TAN NEAR\n");
+    fprintf(stderr, "usage: track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]\n"
+                    "       track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR\n");
     return 2;
 }
 
@@ -132,10 +130,7 @@ main(int argc, char** argv) {
             at.until_given = true;
         } else if (strcmp(argv[i], "--clamp") == 0) {
             at.wrap = ANIM_CLAMP;
-        } else if (strcmp(argv[i], "--poses") == 0) {
-            fprintf(stderr, "track_host: --poses requires track_host.py and a source-space .anim.toml, not --pack\n");
-            return usage();
-        } else if (strcmp(argv[i], "--source-poses") == 0 && i + 6 == argc) {
+        } else if (strcmp(argv[i], "--poses") == 0 && i + 6 == argc) {
             pose_args = argv + i + 1;
             break;
         } else {

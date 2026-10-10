@@ -1,10 +1,7 @@
 /*
- * Portable suite: the scene manager (scene/scene.h). Each test loads scenes
- * from a small pack built here: scene entries (SCNE), camera clips (TRCK)
- * and unit quads in distinct colours, so what was drawn is read straight
- * off the picture: a pixel is a quad's colour or the clear colour. The
- * camera stands at z = -10 with a half field of view of 1, which puts a unit
- * of x 3.2 pixels from the centre of a 64-pixel picture.
+ * Portable scene-manager tests use small packs with distinct quad colours
+ * so pixels identify the drawn entry. A camera at z = -10 with half field
+ * of view 1 projects each x unit 3.2 pixels from the centre of a 64-pixel view.
  */
 
 #include <stdint.h>

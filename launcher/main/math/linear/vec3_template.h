@@ -39,7 +39,7 @@
     /* equal = (ax == bx && ay == by && az == bz), exact, no tolerance. */                                             \
     static inline bool P##_equal(P##_t a, P##_t b) { return a.x == b.x && a.y == b.y && a.z == b.z; }                  \
                                                                                                                        \
-    /* Cross product: x × y = z */                                                                                     \
+    /* Right-handed: a x b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx) */                                          \
     static inline P##_t P##_cross(P##_t a, P##_t b) {                                                                  \
         return (P##_t){OPS##_sub(OPS##_mul(a.y, b.z), OPS##_mul(a.z, b.y)),                                            \
                        OPS##_sub(OPS##_mul(a.z, b.x), OPS##_mul(a.x, b.z)),                                            \
