@@ -21,7 +21,7 @@ ao = { distance = 40.0, rays = 32, indirect = true }
 
 [[objects]]
 name = "sun"
-rotation = [22.450814295724417, -37.230418121890686, 0.0]   # toward (-0.25, 1.0, 0.329)
+rotation = [25.0, -47.5, 0.0]   # toward (-0.344, 1.0, 0.315)
 
 [objects.light]
 type = "directional"
@@ -99,8 +99,8 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "9cd15eaa37d4e14a4f0080f3c5d6a0857024e575c9b2a8046f4ddb798dd7cc32"
-recipe_sha256 = "b6bb2e1258f8cb0e5262e3d4f0a1cd4119209891f644d0d5e974010d24056c67"
+sha256 = "90e6d49fe8ea06e938dffcf9f3dd0333375eb2c7b3860183a6fa5163e5aba96f"
+recipe_sha256 = "5538d5f218176824ed5636a761fc539a2859b3410d30e634fd5b94e064495b98"
 
 [[objects]]
 name = "atrium_fitted_full"
@@ -126,8 +126,8 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
-recipe_sha256 = "8a8adbfce7367f3e1afbe4af92b460c8b3ab2602b9951c2bb89326a88da9ac0f"
+sha256 = "6d8145d1bb3f5cc83390cfa90f8e3b32d87541f560612d7fc5bdf28f547aca3f"
+recipe_sha256 = "2945e1f6e74aaeb3d9e084834b5ad3b9802292db27b5e77c5ddb50bb869d8a72"
 
 [[objects]]
 name = "atrium_flat_fitted"
@@ -154,5 +154,5 @@ laplacian = 10.0
 normal_weight = 1.0
 
 [objects.mesh_renderer.fit.hashes]
-sha256 = "429c686bb58052cf62b46f42213f7caf2fec3fb33b9079880aa502d64b6c0d04"
-recipe_sha256 = "44cf6658939ae18a4f71911620b64f04cca9d5e59eddbed287af6a189170257a"
+sha256 = "0433c27f010083bfbed06af9649fd815e3d491d23fc985330cfee4d4aba6e7a1"
+recipe_sha256 = "6525d317218835395d0c4d63ac16fa72129fa97bdc4972ac3e660b19afcfa1bd"
