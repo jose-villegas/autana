@@ -49,7 +49,7 @@ test_python_probe_views(void) {
     TEST_ASSERT_EQUAL_INT(3, skin.vertex_count);
     TEST_ASSERT_EQUAL_FLOAT(1, skin.inverse_binds[0][0]);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_skin_open(&f.pack, "probe2.skin", &skin));
-    TEST_ASSERT_EQUAL_INT(R3D_SKIN_INFLUENCES_DEFAULT, skin.influences);
+    TEST_ASSERT_EQUAL_INT(R3D_SKIN_INFLUENCES_MIN, skin.influences);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_skeleton_open(&f.pack, "missing", &skeleton));
     TEST_ASSERT_NULL(skeleton.rest);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_TYPE, r3d_skin_open(&f.pack, "armature", &skin));
@@ -184,7 +184,7 @@ test_skin_open_refusals(void) {
         check_mutation(&f, f.skin, "probe.skin", changes[i], 1);
     }
     const uint32_t records = asset_read_u32(f.skin.data + R3D_SKIN_AT_RECORDS);
-    check_mutation(&f, f.skin, "probe.skin", (mutation_t){records, R3D_SKIN_JOINT_MAX, 1, ASSET_ERR_FORMAT}, 1);
+    check_mutation(&f, f.skin, "probe.skin", (mutation_t){records, ANIM_SKELETON_JOINT_MAX, 1, ASSET_ERR_FORMAT}, 1);
     check_mutation(&f, f.skin, "probe.skin", (mutation_t){records + R3D_SKIN_INFLUENCES_MAX, 0, 1, ASSET_ERR_FORMAT},
                    1);
     check_mutation(&f, f.skin, "probe.skin",

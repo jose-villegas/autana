@@ -11,7 +11,9 @@ VERSION = 1
 ROOT = 255
 JOINT_MAX = 254
 ALIGNMENT = 4
-ANIM_SKELETON_UNIT_TOLERANCE = 1e-4
+UNIT_TOLERANCE = 1e-4
+ROTATION = 3
+ROTATION_WIDTH = 4
 MODEL_SPACE_TOLERANCE = 1e-5
 HEADER = struct.Struct('<HBBIII')
 ROW = struct.Struct('<HBB')
@@ -80,7 +82,7 @@ def decode(entry):
         paths.add(path)
         rest = REST.unpack_from(entry, rest_off + index * REST.size)
         if (not all(map(math.isfinite, rest))
-                or abs(1 - sum(q * q for q in rest[3:7])) > ANIM_SKELETON_UNIT_TOLERANCE):
+                or abs(1 - sum(q * q for q in rest[ROTATION:ROTATION + ROTATION_WIDTH])) > UNIT_TOLERANCE):
             raise ValueError('SKEL: nonfinite rest or nonunit rotation')
         result.append((path, parent, rest))
     return result

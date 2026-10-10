@@ -79,8 +79,7 @@ sequenceDiagram
   IRAM while `scene_render()` runs, at a higher priority than the job
   worker. When the worker is busy `job_try_core1()` returns false and core 0
   runs both halves, so a frame is never wrong, only slower. The skin
-  buffers sit in internal RAM (the capybara: 613 x 6 position bytes, 613 x 3
-  colour bytes, about 6 KB with bounds), so the job does not contend with
+  buffers sit in internal RAM, so the job does not contend with
   present for PSRAM; the bind data is read through the flash cache.
 - **The job context** (`JOB_CTX_MAX`, 128 bytes) holds a range and pointers:
   `{skin, mesh, palette, buffers, first cluster, cluster count}`.
@@ -92,11 +91,11 @@ sequenceDiagram
 
 The implemented SKEL v1 and SKIN v1 layouts, checks, model-space constraint,
 LMSH position matching, influence quantization and ids are owned by
-[Skeleton and skin entries](../render/Skeleton-and-Skin.md). Skeletons support
-multiple root joints, with joint zero a root and all other parents below
-their own indices. The uncached pack step reads the finished LMSH rather
+[Skeleton and skin entries](../render/Skeleton-and-Skin.md). The uncached
+pack step reads the finished LMSH rather
 than adding work to the mesh bake. `max_influences` is its parameter until
-the import setting joins a refit train.
+the import setting lands with the next rebake of the meshes. The skin is
+planned to move into the mesh bake at that rebake.
 
 TRCK v2 is defined by [Animation tracks](../Animation-Tracks.md#the-pack-entry).
 Skeleton clips use joint paths from each root joint. SKIN normals hold the
@@ -121,13 +120,7 @@ numbers the static bake used. A version 1 `SCNE` is refused
 ## 4. Types and functions, M1
 
 ```c
-/* anim/anim_skeleton.h: a view of a SKEL entry */
-typedef struct {
-    const uint8_t* parents;          /* parents[i] < i; root's is ANIM_JOINT_NONE */
-    const transformf_t* rest;        /* local rest pose */
-    const char* names;               /* string table, for binding only */
-    uint8_t joint_count;
-} anim_skeleton_t;
+/* anim_skeleton_t and r3d_skin_t: anim/anim_skeleton.h, render/r3d_skin.h */
 asset_status_t anim_skeleton_open(const asset_pack_t* pack, const char* id, anim_skeleton_t* out);
 
 /* anim/anim_pose.h: the blend currency, local joint transforms */
@@ -154,11 +147,6 @@ void anim_layer_advance(anim_layer_t* layer, uint32_t dt_ms);              /* bo
 
 /* render/r3d_skin.h: a view of a SKIN entry, and the per-frame kernels. Each
  * kernel takes a cluster range, so two cores each take half. */
-typedef struct {
-    const float (*inverse_bind)[3][4];
-    const uint8_t* vertices; /* records of 2 x influences + 4 bytes */
-    int vertex_count, joint_count, influences;
-} r3d_skin_t;
 void r3d_skin_palette(const r3d_skin_t* skin, const mat4f_t* model, int position_scale, mat4f_t* palette);
 void r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette,
                        const r3d_skin_light_t* light, int first, int count, r3d_lit_mesh_t* out);
@@ -182,7 +170,7 @@ int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 ```
 
-Render Lab's capybara scene: a dropdown of clip names (`ui_dropdown`) and a
+An animated scene: a dropdown of clip names (`ui_dropdown`) and a
 blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 
 ## 5. Where the later pieces plug in

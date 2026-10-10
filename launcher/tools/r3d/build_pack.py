@@ -15,7 +15,10 @@ variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip. A
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
 a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
 from their files, each with its stem for id. Ids are unique within a pack,
-whatever their type. Each pack is written to DIR/<name>.apak; --image also
+whatever their type. A skinned mesh also brings its
+<mesh id>.skin, its rig's skeleton and each clip in its
+source.clips (docs/render/Skeleton-and-Skin.md). Each pack is written to
+DIR/<name>.apak; --image also
 writes the partition image, the pack directory and every pack.
 Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
 the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
@@ -34,9 +37,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from bake import bake  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
-from r3d import scene_asset, skin_asset  # noqa: E402
+from r3d import scene_asset, skin_asset, skin_pack  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
@@ -142,7 +146,8 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
     """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
-    or import outside it (a test's or a scratch scene) is the file beside it."""
+    or import outside it (a test's or a scratch scene) is the file beside it.
+    The uncached skin step adds rig entries with `max_influences` weights per vertex."""
     packs, jobs = pack_jobs(paths)
     replaced = {}
     for item in replace:
@@ -151,8 +156,6 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
         if holder is None or holder[mesh].name.endswith((SCENE, CLIP)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
-    from bake import bake
-
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
     wanted = [found for found in bake.bakes_in(packs, locked)
               if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
@@ -172,8 +175,6 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
     missing = [str(source) for sources in packs.values() for source in sources.values() if not source.is_file()]
     if missing:
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
-    from r3d import skin_pack
-
     result = {}
     for name, sources in sorted(packs.items()):
         entry_rows = [pack_entry(key, source) for key, source in sorted(sources.items())]

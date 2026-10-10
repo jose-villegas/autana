@@ -9,26 +9,38 @@
 #include <string.h>
 #include "asset/asset_pack.h"
 
-/* Callers supply the format's header size and alignment; version is its leading u16. */
+#define ASSET_ENTRY_UNVERSIONED 0U
+
+/* Version zero identifies a format without a version field. */
 static inline asset_status_t
-asset_entry_open(const asset_pack_t* pack, const char* id, uint32_t type, uint16_t version, uint32_t header_size,
-                 uint32_t alignment, asset_view_t* out) {
+asset_entry_validate(asset_view_t entry, uint16_t version, uint32_t version_offset, uint32_t header_size,
+                     uint32_t alignment) {
+    if (entry.data == NULL || entry.size < header_size || (uintptr_t)entry.data % alignment != 0) {
+        return ASSET_ERR_BOUNDS;
+    }
+    if (version != ASSET_ENTRY_UNVERSIONED) {
+        uint16_t stored_version;
+        memcpy(&stored_version, entry.data + version_offset, sizeof stored_version);
+        if (stored_version != version) {
+            return ASSET_ERR_VERSION;
+        }
+    }
+    return ASSET_OK;
+}
+
+static inline asset_status_t
+asset_entry_open(const asset_pack_t* pack, const char* id, uint32_t type, uint16_t version, uint32_t version_offset,
+                 uint32_t header_size, uint32_t alignment, asset_view_t* out) {
     *out = (asset_view_t){0};
     asset_view_t entry;
     asset_status_t status = asset_pack_find(pack, id, type, &entry);
-    if (status != ASSET_OK) {
-        return status;
+    if (status == ASSET_OK) {
+        status = asset_entry_validate(entry, version, version_offset, header_size, alignment);
     }
-    if (entry.size < header_size || (uintptr_t)entry.data % alignment != 0) {
-        return ASSET_ERR_BOUNDS;
+    if (status == ASSET_OK) {
+        *out = entry;
     }
-    uint16_t stored_version;
-    memcpy(&stored_version, entry.data, sizeof stored_version);
-    if (stored_version != version) {
-        return ASSET_ERR_VERSION;
-    }
-    *out = entry;
-    return ASSET_OK;
+    return status;
 }
 
 /* The caller has checked first <= end <= entry.size. */

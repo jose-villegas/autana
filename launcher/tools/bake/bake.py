@@ -459,6 +459,15 @@ def bakes(paths):
     return bakes_in(*pack_jobs(paths))
 
 
+def blend_export(settings, tools):
+    """The blend stage record shared by cache producers and pack consumers."""
+    blend = settings.source["path"]
+    key = blend_key(settings, tools)
+    return Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=settings.path,
+                holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
+                tree=blend.with_suffix(GLB_SUFFIX), job=settings, stages={"blend": key})
+
+
 def bakes_in(packs, jobs):
     """The bakes of build_pack.pack_jobs()'s packs."""
     tools = {stage: tool_digest(stage) for stage in STAGES}
@@ -469,11 +478,8 @@ def bakes_in(packs, jobs):
                 continue
             job, scene, asker = jobs[source.resolve()]
             if is_blend(job.settings):
-                blend = job.settings.source["path"]
-                key = blend_key(job.settings, tools)
-                exports.setdefault(key, Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=job.settings.path,
-                                             holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
-                                             tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key}))
+                export = blend_export(job.settings, tools)
+                exports.setdefault(export.key, export)
             keys = stage_keys(job, scene, tools)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name

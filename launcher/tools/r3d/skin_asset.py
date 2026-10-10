@@ -15,6 +15,8 @@ DEFAULT_INFLUENCES = 2
 WEIGHT_SUM = 255
 NORMAL_SCALE = 127
 HEADER = struct.Struct('<HBBIII')
+# mesh_asset owns the LMSH position layout.
+MESH_POSITION = struct.Struct('<3h')
 MATRIX = struct.Struct('<12f')
 NORMAL = struct.Struct('<3bx')
 MATRIX_AFFINE_TOLERANCE = 1e-6
@@ -72,7 +74,7 @@ def decode(entry):
 
 
 def quantize_position(position, position_scale):
-    # lit_mesh.bake_lit_mesh owns this rule; the drift test pins this adapter to its output.
+    # lit_mesh.bake_lit_mesh owns this rule; test_quantizer_matches_mesh_owner pins this adapter to its output.
     return tuple(round(float(value) * position_scale) for value in position)
 
 
@@ -103,10 +105,9 @@ def mesh_positions(entry):
     if len(entry) < mesh_asset.BLOB_HEADER.size:
         raise ValueError('SKIN: truncated LMSH')
     vertices, _, _, _, scale, positions_off, *_ = mesh_asset.BLOB_HEADER.unpack_from(entry)
-    position = struct.Struct('<3h')
-    if not scale or positions_off < mesh_asset.BLOB_HEADER.size or positions_off + vertices * position.size > len(entry):
+    if not scale or positions_off < mesh_asset.BLOB_HEADER.size or positions_off + vertices * MESH_POSITION.size > len(entry):
         raise ValueError('SKIN: invalid LMSH positions')
-    return [position.unpack_from(entry, positions_off + i * position.size) for i in range(vertices)], scale
+    return [MESH_POSITION.unpack_from(entry, positions_off + i * MESH_POSITION.size) for i in range(vertices)], scale
 
 
 def match_vertices(positions, position_scale, source_positions, source_normals, source_joints,

@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
+#include "anim/anim_skeleton.h"
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 
@@ -10,15 +11,15 @@ asset_status_t
 r3d_skin_open(const asset_pack_t* pack, const char* id, r3d_skin_t* out) {
     *out = (r3d_skin_t){0};
     asset_view_t entry;
-    asset_status_t status =
-        asset_entry_open(pack, id, R3D_SKIN_ASSET, R3D_SKIN_VERSION, R3D_SKIN_HEADER_SIZE, R3D_SKIN_ALIGNMENT, &entry);
+    asset_status_t status = asset_entry_open(pack, id, R3D_SKIN_ASSET, R3D_SKIN_VERSION, R3D_SKIN_AT_VERSION,
+                                             R3D_SKIN_HEADER_SIZE, R3D_SKIN_ALIGNMENT, &entry);
     if (status != ASSET_OK) {
         return status;
     }
     const uint8_t joints = entry.data[R3D_SKIN_AT_JOINTS];
     const uint8_t influences = entry.data[R3D_SKIN_AT_INFLUENCES];
-    if (joints == 0 || joints > R3D_SKIN_JOINT_MAX
-        || (influences != R3D_SKIN_INFLUENCES_DEFAULT && influences != R3D_SKIN_INFLUENCES_MAX)) {
+    if (joints == 0 || joints > ANIM_SKELETON_JOINT_MAX
+        || (influences != R3D_SKIN_INFLUENCES_MIN && influences != R3D_SKIN_INFLUENCES_MAX)) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t vertices = asset_read_u32(entry.data + R3D_SKIN_AT_VERTICES);

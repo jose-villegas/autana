@@ -5,6 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from anim import skeleton_asset
 from r3d import skin_asset
 
@@ -156,7 +157,7 @@ class Refusals(unittest.TestCase):
                 skin_asset.decode(entry[:cut])
 
     def test_unit_tolerance_adjacent_f32_boundary(self):
-        tolerance = skeleton_asset.ANIM_SKELETON_UNIT_TOLERANCE
+        tolerance = skeleton_asset.UNIT_TOLERANCE
         for sign in (-1, 1):
             bits = struct.unpack('<I', struct.pack('<f', math.sqrt(1 + sign * tolerance)))[0]
             candidates = [struct.unpack('<f', struct.pack('<I', b))[0] for b in (bits - 1, bits, bits + 1)]
@@ -200,14 +201,18 @@ class PackStep(unittest.TestCase):
             (path / 'rig.glb').write_bytes(data)
             (path / 'rig.import.toml').write_text('[source]\npath="rig.glb"\ncredit="probe"\n[output]\nname="rig"\n')
             (path / 'room.scene.toml').write_text('[[objects]]\nname="rig"\n[objects.mesh_renderer]\nmesh="rig.import.toml"\n')
-            packs, _ = build_pack.pack_jobs([path])
-            mesh_id = next(key for key, source in packs['room'].items() if source.suffix == '.mesh')
-            mesh_source = packs['room'][mesh_id]
-            mesh_source.write_bytes(skin_probe.mesh_entry())
-            decoded = parse_pack(build_pack.pack_bytes([path], offline=True)['room'])
-            self.assertEqual(decoded['armature'][0], skeleton_asset.TYPE)
-            self.assertEqual(decoded[mesh_id + '.skin'][0], skin_asset.TYPE)
-            self.assertNotIn('move', decoded)
+            for placed in (True, False):
+                with self.subTest(placed=placed):
+                    if not placed:
+                        (path / 'room.scene.toml').unlink()
+                    packs, _ = build_pack.pack_jobs([path])
+                    mesh_id = next(key for key, source in packs['room' if placed else 'rig'].items() if source.suffix == '.mesh')
+                    mesh_source = packs['room' if placed else 'rig'][mesh_id]
+                    mesh_source.write_bytes(skin_probe.mesh_entry())
+                    decoded = parse_pack(build_pack.pack_bytes([path], offline=True)['room' if placed else 'rig'])
+                    self.assertEqual(decoded['armature'][0], skeleton_asset.TYPE)
+                    self.assertEqual(decoded[mesh_id + '.skin'][0], skin_asset.TYPE)
+                    self.assertNotIn('move', decoded)
 
     def test_ids_and_duplicate_sources(self):
         from r3d import skin_pack

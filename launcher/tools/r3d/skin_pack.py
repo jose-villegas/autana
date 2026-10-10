@@ -1,5 +1,6 @@
-"""Uncached rig entries added to a scene pack after its LMSH entries are ready."""
+"""Uncached rig entries added to scene and import packs after their LMSH entries are ready."""
 
+from bake import bake
 from anim import skeleton_asset, tracks_asset
 from asset.asset_pack import NAME_BYTES
 from gltf import gltf_read
@@ -10,23 +11,16 @@ ID_BYTES = NAME_BYTES - 1
 
 
 def entries(meshes, jobs, cache, offline, influences=skin_asset.DEFAULT_INFLUENCES):
-    """(id, type, bytes, source identity) for rigs placed by a scene."""
-    from bake import bake
-
+    """(id, type, bytes, source identity) for rigs in scene or standalone import packs."""
     loaded, result = {}, []
     for mesh_id, mesh_source, mesh_entry in meshes:
         job, scene, root = jobs[mesh_source.resolve()]
-        if scene is None:
-            continue
         settings = job.settings
         source = settings.source['path']
         origin = source
         if source.suffix == bake.BLEND_SUFFIX:
             stages = {'blend': bake.tool_digest('blend')}
-            key = bake.blend_key(settings, stages)
-            export = bake.Bake(output=source.with_suffix(bake.GLB_SUFFIX).name, source=settings.path,
-                               holder=source.name, kind='blend', key=key, suffix=bake.GLB_SUFFIX,
-                               tree=source.with_suffix(bake.GLB_SUFFIX), job=settings)
+            export = bake.blend_export(settings, stages)
             source = bake.fetch_all([export], bake.read_lock(), cache, offline)[export]
         if source.suffix.lower() not in gltf_read.ASSET_SUFFIXES:
             continue
