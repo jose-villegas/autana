@@ -9,7 +9,7 @@ MARKER. The first non-blank line after the marker, stripped of comment
 decoration, is the command that regenerates it, written the way a person
 types it:
 
-    python tools/gen/gen_icons.py main/gfx/icons.png main/gfx/icons.json > main/gfx/icons.h
+    python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
     python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h
 
 The command runs from the nearest folder above the file in which its script

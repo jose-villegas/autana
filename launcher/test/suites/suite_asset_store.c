@@ -218,13 +218,17 @@ test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released(void) {
         (void)snprintf(names[i], sizeof names[i], "suite_pack_%d", i);
         write_pack(names[i], names[i], 0);
     }
-    for (int i = 0; i < ASSET_STORE_MOUNTS_MAX; i++) {
+    /* Packs the run keeps mounted (the engine's artwork) hold their slots. */
+    const int free_slots = ASSET_STORE_MOUNTS_MAX - asset_store_mounted();
+    TEST_ASSERT_GREATER_THAN_INT(0, free_slots);
+    for (int i = 0; i < free_slots; i++) {
         TEST_ASSERT_NOT_NULL(asset_store_pack(names[i]));
     }
-    TEST_ASSERT_NULL(asset_store_pack(names[ASSET_STORE_MOUNTS_MAX]));
+    TEST_ASSERT_EQUAL_INT(ASSET_STORE_MOUNTS_MAX, asset_store_mounted());
+    TEST_ASSERT_NULL(asset_store_pack(names[free_slots]));
     asset_store_release(names[0]);
-    TEST_ASSERT_EQUAL_STRING(names[ASSET_STORE_MOUNTS_MAX], note_of(asset_store_pack(names[ASSET_STORE_MOUNTS_MAX])));
-    for (int i = 1; i <= ASSET_STORE_MOUNTS_MAX; i++) {
+    TEST_ASSERT_EQUAL_STRING(names[free_slots], note_of(asset_store_pack(names[free_slots])));
+    for (int i = 1; i <= free_slots; i++) {
         asset_store_release(names[i]);
     }
     for (int i = 0; i <= ASSET_STORE_MOUNTS_MAX; i++) {

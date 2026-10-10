@@ -4,7 +4,7 @@
 #include "ui/ui.h"
 #include "ui/ui_widgets.h"
 
-#include "apps/sand/icons_sand.h"
+#include "apps/sand/ui/sand_icons.h"
 #include "math/scalar/mathi.h"
 #include "sand_theme.h"
 
@@ -25,9 +25,9 @@ static const char* const LABELS[SAND_TITLE_BUTTON_COUNT] = {
     [SAND_TITLE_GUIDE] = "GUIDE",          [SAND_TITLE_EXIT] = "EXIT",
 };
 
-static const icon_sand_id_t ICONS[SAND_TITLE_BUTTON_COUNT] = {
-    [SAND_TITLE_START] = ICON_SAND_START, [SAND_TITLE_LOAD] = ICON_SAND_LOAD, [SAND_TITLE_OPTIONS] = ICON_SAND_OPTIONS,
-    [SAND_TITLE_GUIDE] = ICON_SAND_GUIDE, [SAND_TITLE_EXIT] = ICON_SAND_EXIT,
+static const sand_icon_id_t ICONS[SAND_TITLE_BUTTON_COUNT] = {
+    [SAND_TITLE_START] = SAND_ICON_START, [SAND_TITLE_LOAD] = SAND_ICON_LOAD, [SAND_TITLE_OPTIONS] = SAND_ICON_OPTIONS,
+    [SAND_TITLE_GUIDE] = SAND_ICON_GUIDE, [SAND_TITLE_EXIT] = SAND_ICON_EXIT,
 };
 
 static const char* const IDS[SAND_TITLE_BUTTON_COUNT] = {
@@ -101,8 +101,7 @@ title_screen_draw(mu_Context* ctx) {
     sand_title_button_t hit = SAND_TITLE_NONE;
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
         const ui_widget_button_t button = {
-            .icon = &icon_sand_table[ICONS[i]],
-            .icon_rows = icon_sand_rows,
+            .icon = sand_icon(ICONS[i]),
             .label = LABELS[i],
             .enabled = title_screen_button_enabled((sand_title_button_t)i),
         };

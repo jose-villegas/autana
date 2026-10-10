@@ -216,10 +216,9 @@ ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
  * any quarter turn, the bug MU_COMMAND_RECT/_TEXT never had. `box` is
  * LOGICAL, the same one microui's command carries. */
 static inline void
-ui_transform_icon_blocks(ui_transform_t t, const uint8_t* rows, int iw, int ih, int stride, mu_Rect box,
-                         icon_emit_fn emit, void* ctx) {
+ui_transform_icon_blocks(ui_transform_t t, const gfx_image_t* icon, mu_Rect box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
-    icon_walk_blocks(rows, iw, ih, stride, box.w, box.h, ui_transform_icon_emit, &ic);
+    icon_walk_blocks(icon, box.w, box.h, ui_transform_icon_emit, &ic);
 }
 
 /* Which of gfx_text_turned()'s four quarters `t` represents, for a

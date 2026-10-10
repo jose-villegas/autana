@@ -10,8 +10,8 @@
 #include <string.h>
 
 #include "gfx/draw/gfx_font_roles.h"
-#include "gfx/draw/icons_system.h"
 #include "ui/ui.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_slider.h"
 
 static const mu_Color color_panel = {0x10, 0x2C, 0x3B, 255};
@@ -54,13 +54,12 @@ draw_panel(mu_Context* ctx, mu_Rect panel, mu_Color face, mu_Color border) {
 
 static void
 draw_connectivity_card(mu_Context* ctx, mu_Rect panel, const char* title, const char* status, mu_Color accent,
-                       bool active, icon_system_id_t icon) {
+                       bool active, ui_icon_id_t icon) {
     const mu_Id id = mu_get_id(ctx, title, (int)strlen(title));
     mu_update_control(ctx, id, panel, 0);
     const bool highlighted = active || ctx->focus == id || ctx->hover == id;
     draw_panel(ctx, panel, highlighted ? color_panel_focus : color_panel, highlighted ? accent : color_border);
-    ui_draw_icon(ctx, mu_rect(panel.x + 12, panel.y + (panel.h - 24) / 2, 24, 24), &icon_system_table[icon],
-                 icon_system_rows, accent);
+    ui_draw_system_icon(ctx, mu_rect(panel.x + 12, panel.y + (panel.h - 24) / 2, 24, 24), icon, accent);
     draw_text(ctx, mu_rect(panel.x + 46, panel.y + panel.h / 2 - 18, panel.w - 58, 16), title, color_text);
     draw_text(ctx, mu_rect(panel.x + 46, panel.y + panel.h / 2 + 4, panel.w - 58, 16), status, color_muted);
     mu_draw_rect(ctx, mu_rect(panel.x + panel.w - 16, panel.y + 12, 6, 6), active ? accent : color_muted);
@@ -85,17 +84,17 @@ draw_slider(mu_Context* ctx, mu_Rect panel, const char* label, int* value, mu_Co
 
 static void
 draw_notification(mu_Context* ctx, mu_Rect panel, const char* title, const char* status, mu_Color accent,
-                  icon_system_id_t icon) {
+                  ui_icon_id_t icon) {
     const mu_Id id = mu_get_id(ctx, title, (int)strlen(title));
     mu_update_control(ctx, id, panel, 0);
     draw_panel(ctx, panel, ctx->focus == id || ctx->hover == id ? color_panel_focus : color_panel, color_border);
     const mu_Rect badge = mu_rect(panel.x + 12, panel.y + (panel.h - 24) / 2, 24, 24);
     mu_draw_rect(ctx, badge, accent);
-    ui_draw_icon(ctx, badge, &icon_system_table[icon], icon_system_rows, color_text);
+    ui_draw_system_icon(ctx, badge, icon, color_text);
     draw_text(ctx, mu_rect(panel.x + 48, panel.y + panel.h / 2 - 17, panel.w - 82, 16), title, color_text);
     draw_text(ctx, mu_rect(panel.x + 48, panel.y + panel.h / 2 + 3, panel.w - 82, 16), status, color_muted);
-    ui_draw_icon(ctx, mu_rect(panel.x + panel.w - 28, panel.y + (panel.h - 16) / 2, 16, 16),
-                 &icon_system_table[ICON_SYSTEM_CHEVRON_RIGHT], icon_system_rows, color_cyan);
+    ui_draw_system_icon(ctx, mu_rect(panel.x + panel.w - 28, panel.y + (panel.h - 16) / 2, 16, 16),
+                        UI_ICON_CHEVRON_RIGHT, color_cyan);
 }
 
 void
@@ -108,11 +107,11 @@ ui_control_center_draw(mu_Context* ctx, const control_center_layout_t* layout) {
 
     if (ui_begin_screen(ctx, "Control Center", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         draw_connectivity_card(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_WIFI), "WI-FI", "STUDIO-5G", color_cyan,
-                               true, ICON_SYSTEM_WIFI);
+                               true, UI_ICON_WIFI);
         draw_connectivity_card(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_BLUETOOTH), "BLUETOOTH", "CONTROLLER",
-                               color_purple, false, ICON_SYSTEM_GAMEPAD);
+                               color_purple, false, UI_ICON_GAMEPAD);
         draw_connectivity_card(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_LINK), "LINK", "USB READY",
-                               color_orange, false, ICON_SYSTEM_MONITOR);
+                               color_orange, false, UI_ICON_MONITOR);
 
         draw_slider(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_VOLUME), "VOLUME", &volume, color_purple);
         draw_slider(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_BRIGHTNESS), "BRIGHTNESS", &brightness,
@@ -126,9 +125,9 @@ ui_control_center_draw(mu_Context* ctx, const control_center_layout_t* layout) {
                           notifications.h),
                   clear, color_cyan);
         draw_notification(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_LIBRARY_NOTIFICATION),
-                          "LIBRARY SCAN COMPLETE", "12 GAMES READY TO PLAY", color_cyan, ICON_SYSTEM_PLUS);
+                          "LIBRARY SCAN COMPLETE", "12 GAMES READY TO PLAY", color_cyan, UI_ICON_PLUS);
         draw_notification(ctx, control_rect(layout, CONTROL_CENTER_ELEMENT_CONTROLLER_NOTIFICATION),
-                          "CONTROLLER CONNECTED", "INPUT PROFILE LOADED", color_purple, ICON_SYSTEM_GAMEPAD);
+                          "CONTROLLER CONNECTED", "INPUT PROFILE LOADED", color_purple, UI_ICON_GAMEPAD);
         mu_end_window(ctx);
     }
     ui_set_font(gfx_font_ui());

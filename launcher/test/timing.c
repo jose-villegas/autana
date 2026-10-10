@@ -31,11 +31,16 @@
 #endif
 
 #ifdef DEVICE_BUILD
+#include <stdatomic.h>
+
+#include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "test_harness.h"
 #include "unity.h"
+
+#include "esp_freertos_hooks.h" /* after FreeRTOS.h, which it needs */
 #endif
 
 /* Not pulled from unity.h: that header only declares this when RUN_TEST is
@@ -50,6 +55,12 @@ extern void UnityDefaultTestRun(void (*Func)(void), const char* FuncName, const 
  * context switch and resets the chip, so a test that leaves less than an
  * interrupt's saved context plus a log line fails by name instead. */
 #define STACK_RESERVE_BYTES 512U
+
+/* A task deleted while it still runs, on either core, is freed later by an
+ * idle task, not by vTaskDelete(). Before calling a drop a leak, the check
+ * waits this long at most for the task count, and again for each core's idle
+ * task, so a task left running is still caught. */
+#define REAP_WAIT_MS        100U
 
 static void (*watched_test)(void);
 static suite_test_verdict_t watched_verdict;
@@ -67,9 +78,65 @@ call_protected(void (*fn)(void)) {
     }
 }
 
+static atomic_uint idle_passes[portNUM_PROCESSORS];
+
+/* Runs once per pass of a core's idle task, after that pass has freed the
+ * tasks it took off the list of deleted ones. */
+static bool
+count_idle_pass(void) {
+    atomic_fetch_add(&idle_passes[xPortGetCoreID()], 1);
+    return true;
+}
+
+static void
+count_idle_passes(void) {
+    static bool counting;
+    if (!counting) {
+        for (int core = 0; core < portNUM_PROCESSORS; core++) {
+            ESP_ERROR_CHECK(esp_register_freertos_idle_hook_for_cpu(count_idle_pass, core));
+        }
+        counting = true;
+    }
+}
+
+/* Until every task the body ended is freed. The task count stays up until an
+ * idle task takes the task off its list, and that idle task frees it just
+ * after, so once the count is down each core's idle task finishes a pass. */
+static void
+await_ended_tasks(UBaseType_t tasks_before) {
+    const TickType_t wait_max = pdMS_TO_TICKS(REAP_WAIT_MS);
+    TickType_t waited = 0;
+    for (; uxTaskGetNumberOfTasks() > tasks_before && waited < wait_max; waited++) {
+        vTaskDelay(1);
+    }
+    for (int core = 0; core < portNUM_PROCESSORS; core++) {
+        const unsigned passes = atomic_load(&idle_passes[core]);
+        for (waited = 0; atomic_load(&idle_passes[core]) == passes && waited < wait_max; waited++) {
+            vTaskDelay(1);
+        }
+    }
+}
+
 static size_t
 drop(size_t before, size_t after) {
     return before > after ? before - after : 0;
+}
+
+static bool
+heap_below(size_t free_8bit, size_t free_32bit) {
+    return drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT)) > 0
+           || drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT)) > 0;
+}
+
+/* Whether the heap is still below where it was once any task the body ended
+ * is freed; only a drop is worth that wait. */
+static bool
+heap_dropped(size_t free_8bit, size_t free_32bit, UBaseType_t tasks_before) {
+    if (!heap_below(free_8bit, free_32bit)) {
+        return false;
+    }
+    await_ended_tasks(tasks_before);
+    return heap_below(free_8bit, free_32bit);
 }
 
 /* Inlined into both callers: under RUN_TEST, a frame of its own is 32 bytes
@@ -78,6 +145,8 @@ static inline __attribute__((always_inline)) void
 run_body(void (*body)(void), suite_test_verdict_t* verdict) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+    UBaseType_t tasks_before = uxTaskGetNumberOfTasks();
+    count_idle_passes();
     const size_t stack_free_before = uxTaskGetStackHighWaterMark(NULL);
 
     frame_watch_test_begin();
@@ -90,13 +159,13 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
     /* A first run may fill a cache that lives on; only memory a second run
      * loses again is a leak. */
     const bool judged = !Unity.CurrentTestFailed && !Unity.CurrentTestIgnored;
-    if (judged
-        && (drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT)) > 0
-            || drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT)) > 0)) {
+    if (judged && heap_dropped(free_8bit, free_32bit, tasks_before)) {
         free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
         free_32bit = heap_caps_get_free_size(MALLOC_CAP_32BIT);
+        tasks_before = uxTaskGetNumberOfTasks();
         call_protected(body);
         call_protected(suite_run_test_cleanup);
+        (void)heap_dropped(free_8bit, free_32bit, tasks_before);
         /* The second run is for the heap alone; its frames are not judged. */
         (void)frame_watch_test_end();
     }

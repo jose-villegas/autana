@@ -176,12 +176,12 @@ ui_centered_rect(int canvas_w, int w, int h, int y) {
     return (mu_Rect){(canvas_w - w) / 2, y, w, h};
 }
 
-/* Draws a baked icons_<name>.h glyph (icon_t) filling `r`, in `color`, via
- * icon_walk_blocks(), streamed rather than collected, so an icon's run
- * count no longer bounds artwork. `rows` is separate from `icon` because
- * icon_t.offset indexes into its own header's blob, not a self-contained
- * pointer; see gfx/draw/icon.h. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color);
+/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
+ * rather than collected, so an icon's run count does not bound artwork. A
+ * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
+ * current font; a control with a label beside its icon passes NULL `text`
+ * and keeps the label alone. */
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like
  * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong

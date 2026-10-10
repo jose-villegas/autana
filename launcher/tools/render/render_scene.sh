@@ -17,8 +17,10 @@
 #                   which every scene gets, space or newline separated,
 #                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
-#                   with an optional fourth field, |nopin, for a render
-#                   whose pixels are not integer-exact (see scene_pin).
+#                   with optional flags after it: |nopin for a render
+#                   whose pixels are not integer-exact (see scene_pin), and
+#                   |nopacks for one run with no asset pack, which shows
+#                   what the scene draws when a pack is missing.
 #                   The declared size is checked against what the binary
 #                   says it wrote, so a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
@@ -28,6 +30,9 @@
 #                   hash, which is taken from the .bmp alone.
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
+#                   --deps compiles nothing: it prints `flags` and the compile
+#                   flags, then the compiler's -MM list (sources and project
+#                   headers; -MM omits system headers).
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
 #                   the scene reads as packs: build_pack.py writes them to
@@ -59,11 +64,13 @@
 
 # Empty where the platform has neither, which turns the pinned-hash check
 # into a notice rather than a silent pass, see render_scene_run() below.
+# The file goes in on stdin: given a name with a backslash in it (a Windows
+# temp path), sha256sum escapes its line and the hash starts with one too.
 render_scene_sha256() {
     if command -v sha256sum > /dev/null 2>&1; then
-        sha256sum "$1" | cut -d' ' -f1
+        sha256sum < "$1" | cut -d' ' -f1
     elif command -v shasum > /dev/null 2>&1; then
-        shasum -a 256 "$1" | cut -d' ' -f1
+        shasum -a 256 < "$1" | cut -d' ' -f1
     else
         printf ''
     fi
@@ -71,6 +78,9 @@ render_scene_sha256() {
 
 render_scene_run() {
     render_scene_build "$@" || return $?
+    if [ "$_rs_deps" = 1 ]; then
+        return 0
+    fi
     if [ "$_rs_build_only" = 1 ]; then
         echo "built $_rs_bin"
         return 0
@@ -80,9 +90,6 @@ render_scene_run() {
 
 # The packs of scene_assets' roots, and what the build needs to read them.
 render_scene_packs() {
-    for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
-        _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
-    done
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
     . "$_rs_launcher/../scripts/lib/native_path.sh"
@@ -149,16 +156,18 @@ render_scene_build() {
     _rs_repin=0
     _rs_video=0
     _rs_build_only=0
+    _rs_deps=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -o) scene_out_dir="$2"; shift 2 ;;
             --update-baseline) _rs_repin=1; shift ;;
             --video) _rs_video=1; shift ;;
             --build-only) _rs_build_only=1; shift ;;
+            --deps) _rs_deps=1; shift ;;
             --asset-file)
                 [ $# -ge 2 ] || { echo "--asset-file needs a scene file" >&2; return 2; }
                 scene_asset_file="$2"; shift 2 ;;
-            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only]" >&2; return 2 ;;
+            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only|--deps]" >&2; return 2 ;;
         esac
     done
 
@@ -207,7 +216,20 @@ render_scene_build() {
     done
     _rs_asset_flags=
     if [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; then
-        render_scene_packs || return 1
+        for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
+            _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
+        done
+        if [ "$_rs_deps" = 0 ]; then
+            render_scene_packs || return 1
+        fi
+    fi
+    _rs_cflags="-std=c11 -Wall -Wextra -ffp-contract=off -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -O1 -g"
+    _rs_ldflags="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
+    if [ "$_rs_deps" = 1 ]; then
+        echo "flags $_rs_cflags $_rs_flags $scene_defines $_rs_ldflags"
+        # shellcheck disable=SC2086
+        "$_rs_cc" -MM $_rs_cflags $_rs_flags $scene_defines $_rs_files
+        return $?
     fi
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and
@@ -223,9 +245,7 @@ render_scene_build() {
         set -- "$_rs_asset_flags"
     fi
     # shellcheck disable=SC2086
-    "$_rs_cc" -std=c11 -Wall -Wextra -ffp-contract=off -Wno-unused-parameter -Wno-unused-function \
-        -Wno-unused-variable -O1 -g $_rs_flags $scene_defines "$@" $_rs_files -o "$_rs_bin" \
-        -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm || return 1
+    "$_rs_cc" $_rs_cflags $_rs_flags $scene_defines "$@" $_rs_files -o "$_rs_bin" $_rs_ldflags || return 1
 }
 
 render_scene_render() {
@@ -241,13 +261,21 @@ render_scene_render() {
             _rs_tail=${_rs_tail#*|}
             _rs_want=${_rs_tail%%|*}
             _rs_pin_this="$scene_pin"
-            case "$_rs_tail" in
-                *"|nopin") _rs_pin_this=0 ;;
-                *"|"*)
-                    echo "FAIL $scene_name/$_rs_label: unknown render flag '${_rs_tail#*|}'" >&2
-                    exit 1
-                    ;;
-            esac
+            _rs_no_packs=""
+            _rs_flags=${_rs_tail#"$_rs_want"}
+            while [ -n "$_rs_flags" ]; do
+                _rs_flags=${_rs_flags#|}
+                _rs_flag=${_rs_flags%%|*}
+                _rs_flags=${_rs_flags#"$_rs_flag"}
+                case "$_rs_flag" in
+                    nopin) _rs_pin_this=0 ;;
+                    nopacks) _rs_no_packs="$scene_out_dir/no-packs" && mkdir -p "$_rs_no_packs" ;;
+                    *)
+                        echo "FAIL $scene_name/$_rs_label: unknown render flag '$_rs_flag'" >&2
+                        exit 1
+                        ;;
+                esac
+            done
             _rs_path="$scene_out_dir/$_rs_label.bmp"
             _rs_video_args=""
             if [ "$_rs_video" = 1 ]; then
@@ -255,7 +283,10 @@ render_scene_render() {
             fi
 
             # shellcheck disable=SC2086
-            if ! "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args 2> "$_rs_log"; then
+            if ! (
+                [ -z "$_rs_no_packs" ] || export AUTANA_ASSET_DIR="$_rs_no_packs"
+                exec "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args
+            ) 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1

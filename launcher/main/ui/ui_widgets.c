@@ -5,8 +5,8 @@
 #include <string.h>
 
 #include "gfx/draw/gfx_font_roles.h"
-#include "gfx/draw/icons_system.h"
 #include "ui/ui.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_style.h"
 
 #define BUTTON_PAD      8
@@ -92,11 +92,11 @@ ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme)
 
 /* The icon at the left and the label centred in `label_w` after it. */
 static void
-draw_icon_and_label(mu_Context* ctx, mu_Rect r, const icon_t* icon, const uint8_t* icon_rows, const char* label,
-                    int label_w, mu_Color ink, const ui_theme_t* theme) {
+draw_icon_and_label(mu_Context* ctx, mu_Rect r, const gfx_image_t* icon, const char* label, int label_w, mu_Color ink,
+                    const ui_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
-        ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + (r.h - side) / 2, side, side), icon, icon_rows, ink);
+        ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + (r.h - side) / 2, side, side), icon, NULL, ink);
     }
     const int label_x = r.x + BUTTON_PAD + (icon != NULL ? theme->icon_side + BUTTON_ICON_GAP : 0);
     ui_text_in(ctx, mu_rect(label_x, r.y, label_w, r.h), label, ink, theme->text_scale, UI_ALIGN_CENTRE);
@@ -106,7 +106,7 @@ bool
 ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button, const ui_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
     const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
-    draw_icon_and_label(ctx, r, button->icon, button->icon_rows, button->label, label_w, c.ink, theme);
+    draw_icon_and_label(ctx, r, button->icon, button->label, label_w, c.ink, theme);
     return c.clicked;
 }
 
@@ -230,7 +230,6 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
         snprintf(row_id, sizeof row_id, "item %d", i);
         const ui_widget_button_t row = {
             .icon = items[i].icon,
-            .icon_rows = items[i].icon_rows,
             .label = items[i].label,
             .enabled = true,
             .selected = i == selected,
@@ -283,13 +282,11 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
     const bool was_open = ui_dropdown_is_open(ctx, id);
     const control_t c = begin_control(ctx, id, r, true, false, theme);
     const ui_dropdown_item_t* chosen = &items[selected];
-    draw_icon_and_label(ctx, r, chosen->icon, chosen->icon_rows, chosen->label, ui_dropdown_label_width(r.w, theme),
-                        c.ink, theme);
+    draw_icon_and_label(ctx, r, chosen->icon, chosen->label, ui_dropdown_label_width(r.w, theme), c.ink, theme);
 
-    const icon_system_id_t chevron = was_open ? ICON_SYSTEM_CHEVRON_UP : ICON_SYSTEM_CHEVRON_DOWN;
     const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + (r.h - CHEVRON_SIDE) / 2, CHEVRON_SIDE,
                                CHEVRON_SIDE};
-    ui_draw_icon(ctx, chevron_r, &icon_system_table[chevron], icon_system_rows, c.ink);
+    ui_draw_system_icon(ctx, chevron_r, was_open ? UI_ICON_CHEVRON_UP : UI_ICON_CHEVRON_DOWN, c.ink);
 
     if (c.clicked && !was_open) {
         mu_open_popup(ctx, list_id);
@@ -335,7 +332,7 @@ ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
 
     const mu_Rect icon = ui_tile_icon_rect(r, theme);
     if (button->icon != NULL) {
-        ui_draw_icon(ctx, icon, button->icon, button->icon_rows, c.ink);
+        ui_draw_icon(ctx, icon, button->icon, NULL, c.ink);
     }
     const int label_h = gfx_font_height(gfx_font_ui(), theme->text_scale);
     const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - 2 * TILE_PAD, label_h};

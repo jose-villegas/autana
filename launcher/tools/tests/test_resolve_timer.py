@@ -19,16 +19,17 @@ class ResolveTimerTests(unittest.TestCase):
             work = pathlib.Path(directory)
             header = work / "profile/frame_cost.h"
             header.parent.mkdir(parents=True)
-            header.write_text('#include <string.h>\nextern int charges;\n'
+            header.write_text('#include <string.h>\nextern int charges, shows;\n'
                               '#define FRAME_COST_BEGIN(mark) ((void)0)\n'
-                              '#define FRAME_COST_END(mark, name) (charges += !strcmp(name, "r3d.resolve"))\n')
+                              '#define FRAME_COST_END(mark, name) (charges += !strcmp(name, "r3d.resolve"), shows += !strcmp(name, "r3d.show"))\n')
             source = work / "probe.c"
             source.write_text('''#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include "render/raster.h"
+#include "render/raster_show.h"
 #include "r3d_quad_mesh.h"
-int charges;
+int charges, shows;
 static void clear(const raster_attachment_t* a, const raster_t* r, void* pixels, size_t count) {
     memset(pixels, 0, count * 2);
 }
@@ -55,12 +56,16 @@ int main(void) {
     r.attachment_count = 0;
     raster_draw(&r, &view);
     assert(charges == 1);
+    a = raster_depth_view(NULL);
+    r.attachment_count = 1;
+    raster_show(&r);
+    assert(shows == 1);
     free(r.scratch);
     return 0;
 }
 ''')
             binary = work / "probe.exe"
-            sources = ["render/render_view.c", "render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
+            sources = ["render/render_view.c", "render/raster.c", "render/raster_show.c", "render/r3d_pipeline.c", "render/r3d_span.c",
                        "render/r3d_lit_mesh.c", "render/upscale.c", "core/job.c", "services/tune.c", "asset/asset_pack.c"]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), *(arg for root in packages.include_roots() for arg in ("-I", str(root))),

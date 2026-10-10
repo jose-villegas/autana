@@ -76,6 +76,8 @@ def read_bmp(data):
 
 
 def _unfilter(raw, width, height, bpp):
+    """Undoes each scanline's filter, the five of the PNG spec (docs/Citations.md#28),
+    Paeth included."""
     stride = width * bpp
     out = []
     previous = bytearray(stride)

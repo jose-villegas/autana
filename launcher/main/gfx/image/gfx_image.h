@@ -22,12 +22,20 @@
  * new kind of picture is a new format here, not a new entry type. */
 typedef enum {
     GFX_IMAGE_RGB565 = 1, /* gfx_color_t: byte-swapped RGB565, as the panel takes it */
-    /* 2 to 15 are kept for the icon formats. */
+    GFX_IMAGE_MONO1 = 2,  /* one bit, the most significant leftmost, 1 ink; a row is stride / 8 bytes */
 } gfx_image_format_t;
+
+/* A MONO1 stride is whole bytes. */
+#define GFX_IMAGE_MONO1_STRIDE_STEP 8U
 
 /* An opened entry. Holds no copy: the pack must outlive it. */
 typedef struct {
-    const gfx_color_t* pixels;
+    union {
+        const gfx_color_t* pixels; /* GFX_IMAGE_RGB565 */
+        const uint8_t* bits;       /* GFX_IMAGE_MONO1 */
+    };
+
+    gfx_image_format_t format;
     uint16_t width;
     uint16_t height;
     uint32_t stride; /* pixels from one row's start to the next */
@@ -35,6 +43,7 @@ typedef struct {
 
 /* Checks the entry and returns the first failure: ASSET_ERR_VERSION,
  * ASSET_ERR_FORMAT (a format this does not read, an empty image, a stride shorter
- * than a row, rows over the header) or ASSET_ERR_BOUNDS (rows leaving the
- * entry, or misaligned). Else fills `out`. */
+ * than a row or, for MONO1, not whole bytes, rows over the header) or
+ * ASSET_ERR_BOUNDS (rows leaving the entry, or RGB565 rows misaligned). Else
+ * fills `out`; a caller that draws one format checks `format`. */
 asset_status_t gfx_image_open(asset_view_t entry, gfx_image_t* out);
