@@ -71,7 +71,7 @@ def install_dir(idf_path):
 
 
 def binary(prefix):
-    return prefix / "bin" / ("qemu-system-xtensa.exe" if os.name == "nt" else "qemu-system-xtensa")
+    return prefix / "bin" / "qemu-system-xtensa"
 
 
 def installed(idf_path):
@@ -96,17 +96,25 @@ def build(idf_path):
         return
     version = idf_qemu_version(idf_path)
     work = INSTALL_ROOT / ("src-" + prefix.name)
+    # Installed beside the final name and renamed into it whole, so a build
+    # that stops part way never leaves a binary installed() would accept.
+    staging = INSTALL_ROOT / ("partial-" + prefix.name)
     shutil.rmtree(work, ignore_errors=True)
-    run(["git", "clone", "--quiet", "--depth", "1", "--branch", version.replace("_", "-"),
-         SOURCE, work], INSTALL_ROOT)
-    for patch in patch_files():
-        run(["git", "apply", "--verbose", patch], work)
-    run(["./configure", "--prefix=%s" % prefix, "--bindir=bin", "--datadir=share/qemu",
-         "--with-suffix=", "--target-list=%s" % TARGET, "--without-default-features",
-         "--enable-gcrypt", "--enable-pixman", "--enable-slirp",
-         "--with-pkgversion=%s+%s" % (version, patch_hash())], work)
-    run(["make", "-j%d" % (os.cpu_count() or 1), "install"], work)
-    shutil.rmtree(work)
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        run(["git", "clone", "--quiet", "--depth", "1", "--branch", version.replace("_", "-"),
+             SOURCE, work], INSTALL_ROOT)
+        for patch in patch_files():
+            run(["git", "apply", "--verbose", patch], work)
+        run(["./configure", "--prefix=%s" % staging, "--bindir=bin", "--datadir=share/qemu",
+             "--with-suffix=", "--target-list=%s" % TARGET, "--without-default-features",
+             "--enable-gcrypt", "--enable-pixman", "--enable-slirp",
+             "--with-pkgversion=%s+%s" % (version, patch_hash())], work)
+        run(["make", "-j%d" % (os.cpu_count() or 1), "install"], work)
+        os.replace(staging, prefix)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
     # Other versions and patch sets: nothing runs them any more.
     for stale in INSTALL_ROOT.iterdir():
         if stale != prefix:
