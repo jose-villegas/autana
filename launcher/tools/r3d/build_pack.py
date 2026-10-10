@@ -36,7 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
-from r3d import scene_asset  # noqa: E402
+from r3d import scene_asset, skin_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
@@ -138,7 +138,7 @@ def pack_jobs(paths):
     return packs, jobs
 
 
-def pack_bytes(paths, replace=(), cache=None, offline=False):
+def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin_asset.DEFAULT_INFLUENCES):
     """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
@@ -164,6 +164,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False):
     if unkeyed:
         raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
                                "copy is never taken: " + ", ".join(unkeyed))
+    original_packs = packs
     packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
              for name, entries in packs.items()}
     for name, entries in packs.items():
@@ -171,8 +172,17 @@ def pack_bytes(paths, replace=(), cache=None, offline=False):
     missing = [str(source) for sources in packs.values() for source in sources.values() if not source.is_file()]
     if missing:
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
-    return {name: build_pack([pack_entry(key, source) for key, source in sorted(sources.items())])
-            for name, sources in sorted(packs.items())}
+    from r3d import skin_pack
+
+    result = {}
+    for name, sources in sorted(packs.items()):
+        entry_rows = [pack_entry(key, source) for key, source in sorted(sources.items())]
+        mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
+                     if kind == LIT_MESH and original_packs[name][key].resolve() in jobs]
+        additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
+        skin_pack.append(entry_rows, additions, dict(original_packs[name]))
+        result[name] = build_pack(sorted(entry_rows))
+    return result
 
 
 def pack_entry(key, source):
@@ -221,6 +231,8 @@ def main(argv=None):
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
     parser.add_argument("--bake-cache", metavar="DIR", help="the bake cache; the user cache when omitted")
     parser.add_argument("--offline", action="store_true", help="never download a bake the cache lacks")
+    parser.add_argument("--max-influences", type=int, choices=skin_asset.INFLUENCES, default=skin_asset.DEFAULT_INFLUENCES,
+                        help="heaviest skin influences per vertex (uncached skin step)")
     args = parser.parse_args(argv)
     paths = args.paths or [DEFAULT_SEARCH]
     try:
@@ -233,7 +245,7 @@ def main(argv=None):
         if not args.out:
             parser.error("-o DIR is required")
         cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
-        packs = pack_bytes(paths, args.replace, cache, args.offline)
+        packs = pack_bytes(paths, args.replace, cache, args.offline, args.max_influences)
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
