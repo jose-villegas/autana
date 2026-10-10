@@ -18,7 +18,8 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from anim import tracks_asset  # noqa: E402
 from anim.tracks_asset import HEADER, ROW, TracksError  # noqa: E402
 from anim_probe import channel, probe_entry, probe_glb  # noqa: E402
-from asset.asset_pack import parse_pack  # noqa: E402
+from asset.asset_pack import parse_pack
+from asset.engine_frame import to_engine  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 from r3d import build_pack  # noqa: E402
 
@@ -300,7 +301,7 @@ class SourceTests(unittest.TestCase):
         self.write("deeper/still/run.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
         packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root]).items()}
         self.assertEqual(sorted(packs), ["run", "walk"])
-        self.assertEqual(packs["walk"], {"walk": (tracks_asset.TYPE, probe_entry())})
+        self.assertEqual(packs["walk"], {"walk": (tracks_asset.TYPE, to_engine(tracks_asset.TYPE, probe_entry()))})
 
     def test_build_pack_takes_a_clip_file_named_on_its_own(self):
         path = self.write("clips/walk.anim.toml", 'source = "probe.glb"\nanimation = "clip"\n')
