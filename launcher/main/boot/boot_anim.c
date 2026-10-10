@@ -104,15 +104,8 @@ lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
     return gfx_color_mix(COL_BG, whitened, alpha);
 }
 
-/*
- * Which projection a call site reads depends on what it draws: a lone point
- * reads boot_anim_project_point(), which rejects rather than draw somewhere
- * nonsensical for a point behind the camera; a LINE reads
- * boot_anim_project_segment(), which clips a segment straddling the near
- * plane instead of rejecting it whole. Nothing reads the raw, unclipped
- * boot_anim_project(). There is no "shrunk" variant: scale lives in the
- * space transform's own SCALE channel.
- */
+/* Points reject the near plane; lines clip a straddling segment.
+ * Scale belongs to the space transform's SCALE channel. */
 
 /* A whole number of grid units, as a Q12 value. */
 static int32_t
@@ -160,12 +153,9 @@ grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int
     int32_t re, im;
     polar_point(radius, turn, &re, &im);
     *cs = boot_anim_plane_point(plane, re, im);
-    *front = cs->z > view->near_z;
     *sx = 0;
     *sy = 0;
-    if (*front) {
-        r3d_camera_to_screen_x(*cs, view, sx, sy);
-    }
+    *front = r3d_project_point_cs_x(*cs, view, sx, sy);
 }
 
 static void
@@ -401,8 +391,6 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (t > pen_t_q8) {
             break; /* the table is in order, so nothing after it either */
         }
-        /* Not boot_anim_project(): marker off-screen issue; see
-         * boot_anim_project_point(). */
         int x, y;
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
             continue;
@@ -484,11 +472,10 @@ typedef struct {
 static void
 draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color, int width,
                    const boot_anim_view_t* view) {
-    const bool next_front = next_cs.z > view->near_z;
+    int nsx, nsy;
+    const bool next_front = r3d_project_point_cs_x(next_cs, view, &nsx, &nsy);
 
     if (segment->prev_front && next_front) {
-        int nsx, nsy;
-        r3d_camera_to_screen_x(next_cs, view, &nsx, &nsy);
         draw_stroke(segment->prev_sx, segment->prev_sy, nsx, nsy, color, width, segment->joined);
         segment->joined = true;
         segment->prev_sx = nsx;
@@ -542,10 +529,8 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     boot_anim_pt_t s1 = boot_anim_sample(0);
     vec3x_t ta = boot_anim_key_to_camera_space(&s0, view);
     vec3x_t tb = boot_anim_key_to_camera_space(&s1, view);
-    curve_segment_t segment = {.prev_cs = tb, .prev_front = tb.z > view->near_z};
-    if (segment.prev_front) {
-        r3d_camera_to_screen_x(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
-    }
+    curve_segment_t segment = {.prev_cs = tb};
+    segment.prev_front = r3d_project_point_cs_x(tb, view, &segment.prev_sx, &segment.prev_sy);
 
     int32_t a0 = 0;
 

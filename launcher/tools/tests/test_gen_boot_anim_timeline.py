@@ -60,6 +60,14 @@ class TimelineGeneratorTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unknown timing key(s): title_font", result.stderr)
 
+    def test_nonpositive_half_fov_short_tan_is_rejected(self):
+        for value in (0.0, -1.0):
+            with self.subTest(value=value):
+                result = self.generate(config_change=lambda config: config.update(
+                    camera_half_fov_short_tan=value))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("camera_half_fov_short_tan must be greater than 0", result.stderr)
+
     def test_zero_scale_fails(self):
         result = self.generate(lambda timing: timing.update(title_scale=0))
         self.assertNotEqual(result.returncode, 0)

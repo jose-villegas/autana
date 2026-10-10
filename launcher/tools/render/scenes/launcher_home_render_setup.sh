@@ -1,6 +1,7 @@
 #!/bin/sh
 # Firmware launcher sources and host setup shared by home and boot scenes.
 launcher_home_sources="
+main/render/render_view.c
 main/app/app_registry.c
 main/ui/ui.c
 main/ui/ui_bridge.c

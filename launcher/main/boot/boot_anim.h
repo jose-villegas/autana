@@ -38,8 +38,8 @@
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
-#include "render/r3d_line_camera.h"
 #include "render/r3d_project_x.h"
+#include "render/render_view.h"
 
 #define BOOT_ANIM_Q   12
 #define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
@@ -99,19 +99,17 @@ static inline boot_anim_view_t
 boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
     boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
-    const r3d_line_camera_t camera = {.pose = st.camera, .focal = BOOT_ANIM_CAMERA_FOCAL, .near_z = R3D_LINE_NEAR_Z};
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
-     * so r3d_line_camera_view()'s shorter-axis fit is exactly half w; boot's
+     * so render_view_make()'s shorter-axis fit is exactly half w; boot's
      * pixels must not move if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
-    const r3d_line_view_t view = r3d_line_camera_view(camera, &st.space, viewport);
-    r3d_line_view_x_t out = r3d_line_view_to_x(&view);
+    const render_view_t view =
+        render_view_make(&st.camera, BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN, R3D_LINE_NEAR_Z, viewport);
     /* Meters per raw unit of (re, t, im): Q12, Q8 climbing 132/512 m a unit, Q12. */
     const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
                                       (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
                                       1.0F / (float)BOOT_ANIM_ONE};
-    r3d_line_view_x_set_inputs(&out, &view, meters_per_unit);
-    return out;
+    return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
 }
 
 /* Q12 re/im and Q8 t convert exactly to Q16.16 metres; the view's Q9 matrix
@@ -159,13 +157,6 @@ boot_anim_plane_point(const boot_anim_plane_t* plane, int32_t re_q12, int32_t im
         mathx_dot2c(plane->re_step.y, re, plane->im_step.y, im, plane->origin.y),
         mathx_dot2c(plane->re_step.z, re, plane->im_step.z, im, plane->origin.z),
     };
-}
-
-static inline void
-boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
-                  int* screen_y) {
-    const vec3x_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
-    r3d_camera_to_screen_x(p, view, screen_x, screen_y);
 }
 
 /* False when the point is at or behind the near plane. */
@@ -292,11 +283,8 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
         return false;
     }
     const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
-    if (view->focal == 0) {
-        return m * view->scale < (int64_t)px * R3D_X_UNIT_ONE;
-    }
     const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * view->focal * view->scale < (int64_t)px * zmin * R3D_X_UNIT_ONE;
+    return m * R3D_X_UNIT_ONE * view->pixels_per_unit < (int64_t)px * zmin * R3D_X_UNIT_ONE;
 }
 
 /* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses

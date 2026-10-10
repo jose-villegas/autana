@@ -16,7 +16,8 @@ them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 ## What a scene uses
 
 A scene that draws a baked mesh or traces rays includes `render/r3d.h`;
-one that projects points and segments takes `render/r3d_line_camera.h`.
+one that projects points and segments takes `render/r3d_project_x.h`.
+Both use `render_view_t` for the per-frame perspective fit and picture basis.
 
 | Noun | What it is |
 |---|---|
@@ -71,8 +72,9 @@ exactly.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
-| `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
-| `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
+| `render_view.h` | Per-frame pose basis, perspective fit and viewport shared by mesh and line projection |
+| `r3d_project.h` | Line camera-space matrix and float reference for near clipping and perspective projection |
+| `r3d_project_x.h` | Fixed-point near clipping and perspective projection of points and segments |
 
 Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
