@@ -60,13 +60,13 @@ def to_engine(kind, entry):
     elif kind == tracks_asset.TYPE:
         tracks, duration_ms = tracks_asset.decode(entry)
         for track in tracks:
-            path = track["name"].rsplit("/", 1)[-1]
-            signs = ROTATION_SIGNS if track["quaternion"] else AXIS_SIGNS if path == "translation" else None
+            position = track["component"] == tracks_asset.TRANSFORM and track["field"] == "position"
+            signs = ROTATION_SIGNS if track["quaternion"] else AXIS_SIGNS if position else None
             if signs is not None:
                 if len(track["values"][0]) != len(signs):
                     raise ValueError("coordinate track has an invalid width")
                 track["values"] = [tuple(value * sign for value, sign in zip(row, signs)) for row in track["values"]]
-        return tracks_asset.encode(tracks, duration_ms)
+        return tracks_asset.encode(tracks, duration_ms, tracks[0]["root"] if tracks else tracks_asset.ROOT_SCENE)
     else:
         raise ValueError("entry has no source-to-engine conversion")
     return bytes(out)
