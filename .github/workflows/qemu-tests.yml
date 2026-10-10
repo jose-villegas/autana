@@ -79,3 +79,19 @@ jobs:
           name: qemu-serial-log
           path: launcher/build.qemu/qemu_serial.log
           if-no-files-found: ignore
+
+      # The image that ran and its ELF: a panic in the log decodes only
+      # against this build's ELF (a local build of the same commit links
+      # differently), and qemu_run.py reruns the image as downloaded.
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-image
+          path: |
+            launcher/build.qemu/flasher_args.json
+            launcher/build.qemu/launcher.elf
+            launcher/build.qemu/*.bin
+            launcher/build.qemu/*/*.bin
+            !launcher/build.qemu/qemu_*.bin
+          retention-days: 14
+          if-no-files-found: ignore
