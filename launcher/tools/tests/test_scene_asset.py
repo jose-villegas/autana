@@ -16,6 +16,8 @@ from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
+from asset.engine_frame import to_engine  # noqa: E402
+from test_engine_frame import mesh_entry  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 from r3d.scene_asset import CAMERA, HEADER, NAME, RENDERER, TRANSFORM, SceneError  # noqa: E402
@@ -43,7 +45,7 @@ class SceneFiles(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         for mesh in ("a", "b"):
             write_import(self.root, f"{mesh}.import.toml", output=f'[output]\nname = "{mesh}"\n')
-            (self.root / f"{mesh}.mesh").write_bytes(mesh.encode())
+            (self.root / f"{mesh}.mesh").write_bytes(mesh_entry())
         (self.root / "clips").mkdir()
         (self.root / "clips" / "probe.glb").write_bytes(probe_glb())
         (self.root / "clips" / "fly.anim.toml").write_text(CLIP)
@@ -224,16 +226,16 @@ class ScenePackTests(SceneFiles):
         packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root]).items()}
         self.assertEqual(sorted(packs), ["hall"])
         hall = packs["hall"]
-        self.assertEqual(hall["hall"], (scene_asset.TYPE, scene_asset.bake(path)))
+        self.assertEqual(hall["hall"], (scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(path))))
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
-        self.assertEqual(hall["fly"][1], probe_entry())
+        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, probe_entry()))
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
-        (self.root / "scratch.mesh").write_bytes(b"9")
+        (self.root / "scratch.mesh").write_bytes(mesh_entry((9, 3, -7)))
         packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
-        self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, b"9"))
+        self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, to_engine(LIT_MESH, mesh_entry((9, 3, -7)))))
         for entry in ("hall", "fly"):
             with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
                 build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])

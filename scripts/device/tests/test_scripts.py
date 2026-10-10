@@ -11,6 +11,7 @@ from pathlib import Path
 DEVICE = Path(__file__).resolve().parents[1]
 ENGINE = DEVICE.parents[1]
 sys.path.insert(0, str(DEVICE))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
 
 FOLDERS = ("scripts/device", "launcher/tools/build")
