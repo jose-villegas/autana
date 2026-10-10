@@ -91,31 +91,6 @@ def ms(us):
     return f"{us / 1000:.1f}"
 
 
-def frame_cost_windows(path, text=None):
-    if text is None:
-        if path is None or not pathlib.Path(path).exists():
-            return None
-        text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
-    windows = [re.findall(r"(\S+) ([\d.]+)/[\d.]+", line.split("ms/frame avg/worst:", 1)[1])
-               for line in text.splitlines()
-               if "ms/frame avg/worst:" in line]
-    if not windows or not all(windows):
-        raise ValueError(f"{path}: no frame-cost windows")
-    return windows
-
-
-def frame_cost_means(path, text=None):
-    """Every bracket in report order, averaged over its report windows."""
-    windows = frame_cost_windows(path, text)
-    if windows is None:
-        return None
-    values = {}
-    for window in windows:
-        for name, value in window:
-            values.setdefault(name, []).append(float(value))
-    return [(name, statistics.mean(samples)) for name, samples in values.items()]
-
-
 def stages_table(splits, spans):
     stages = [("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw")]
     if any("r3d.resolve" in row for row in splits.values()):

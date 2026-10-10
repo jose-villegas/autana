@@ -41,7 +41,7 @@ flowchart TB
         Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size</i>"]
         subgraph Update["Update while the last frame is sent: render/raster, both cores"]
             direction LR
-            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve<br/><i>only with attachments</i>"] --> View["View<br/>modes"]
+            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve<br/><i>only if an attachment resolves</i>"] --> View["View<br/>modes"]
         end
         subgraph After["After the send"]
             direction LR
@@ -248,10 +248,12 @@ Reference: [the asset packs](../assets/README.md#packs).
 
 ## Every frame, on the board
 
-Separate charts show the shipped frame and each debug view on the same time
-scale. The shipped chart has one solid segment per stage; each view chart
-shows only its hatched additions, starting at the shipped total. The dotted
-lines mark the 30 and 60 fps budgets.
+Separate charts show the shipped frame and each debug view. The shipped
+chart has one solid segment per stage; each view chart shows only its hatched
+additions, starting at the shipped total with a continuation mark. Each axis
+fits its own data, and view ticks show added milliseconds. Labels give the
+shipped total, the signed net difference and their sum. Dotted lines mark
+the frame-rate budgets when they fall inside the chart.
 
 <!-- generated: pipeline-frame-stages sha256=44726291d0d240a533081e0892897ffec63781dc4b245fb6946dfcb3fe0b2024 -->
 ![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
@@ -378,8 +380,8 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
 #### Resolve
 
-Once every instance is drawn, each attachment turns what was written into its
-final map, the two cores on disjoint rows.
+Once every instance is drawn, each attachment that resolves turns what was
+written into its final map, the two cores on disjoint rows.
 
 | Reads | Writes | Settings |
 |---|---|---|
@@ -402,7 +404,7 @@ attachment paints colour from the renderer's maps.
 |---|---|---|
 | depth, an attachment | colour | the debug view |
 
-Cost: each view's own bar in the frame-stages chart.
+Cost: `r3d.show` in each view's chart.
 
 Pictures: [depth](../images/render/sponza-depth.gif),
 [tiles](../images/render/sponza-tiles.gif),
@@ -461,7 +463,8 @@ autana monitor 30 --out docs/render/data/pipeline-view-motion-board.log
 ```
 
 The debug view is a development-build tunable (`autana tune view` lists it):
-0 is the scene as shipped, and each view is its place in the view table,
+0 (`RENDER_DEBUG_VIEW_SHADED` in `render/context/render_context.h`) is the
+scene as shipped, and each view is its place in the view table,
 counted from 1. Each view's capture is `pipeline-view-<name>-board.log`, and a
 view without one is listed as not captured. Check `autana status` and `autana buildid`
 before and after each capture. A missing capture of the scene as shipped, or a

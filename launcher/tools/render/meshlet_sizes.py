@@ -9,7 +9,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d.cost_model import FEATURES, mesh_rows
-from r3d.dynres_report import frame_cost_means, frame_cost_windows
+from perf.frame_cost import frame_cost_means, frame_cost_windows
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import read_lit_mesh
 from r3d.poses import sample_camera_path

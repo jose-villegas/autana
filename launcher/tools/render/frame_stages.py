@@ -19,7 +19,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
-from r3d.dynres_report import frame_cost_means, frame_cost_windows
+from perf.frame_cost import frame_cost_means, frame_cost_windows
 
 VIEW_TABLE = ROOT / "launcher/main/render/context/render_context.c"
 FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
@@ -28,7 +28,11 @@ BLOCK = "pipeline-frame-stages"
 LABEL_SHARE = 0.07  # a segment this share of the axis or wider carries its value inside
 INK, MUTED = "#0b0b0b", "#52514e"
 FIGURE_SIZE = (10, 2.4)
-# The reference categorical palette, one slot per bracket in report order.
+BAR_HEIGHT = 0.6
+AXIS_HEADROOM = 0.2
+AXIS_TICKS = 5
+CONTINUATION_SIZE = 8
+# One colour per bracket, in report order.
 SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
 
 
@@ -63,7 +67,7 @@ def stage_costs(present, pattern, names):
             views[name] = brackets
     order = stage_order(shipped, views)
     base = dict(shipped)
-    added = {name: {stage: dict(brackets).get(stage, 0.0) - base.get(stage, 0.0) for stage in order}
+    added = {name: {stage: dict(brackets).get(stage, 0.0) - base.get(stage, 0.0) for stage in dict.fromkeys([*(stage for stage, _ in brackets), *base])}
              for name, brackets in views.items()}
     return order, base, added
 
@@ -83,7 +87,7 @@ def table(order, base, added, names, windows, chart_name):
     for stage in order:
         lines.append(f"| {stage} | " + " | ".join(
             [f"{base[stage]:.2f}" if stage in base else "not run",
-             *(f"{delta[stage]:+.2f}" for delta in added.values())]) + " |")
+             *(f"{delta.get(stage, 0.0):+.2f}" for delta in added.values())]) + " |")
     lines.append("| total | " + " | ".join(
         [f"{sum(base.values()):.2f}", *(f"{sum(delta.values()):+.2f}" for delta in added.values())]) + " |")
     missing = [name for name in names if name not in added]
@@ -100,54 +104,75 @@ def chart(order, base, added, path):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
+    from matplotlib.ticker import MaxNLocator
 
     if len(order) > len(SLOTS):
         raise ValueError(f"{len(order)} stages, {len(SLOTS)} colours")
-    colour = dict(zip(order, SLOTS))
+    colour_order = list(base)
+    for delta in added.values():
+        colour_order.extend(stage for stage in delta if stage not in colour_order)
+    colour = dict(zip(colour_order, SLOTS))
     shipped = sum(base.values())
-    widest = max([shipped + sum(d for d in delta.values() if d > 0) for delta in added.values()] + [shipped])
+    slowest_budget = max(MS_PER_SECOND / rate for rate in FRAME_RATES)
 
     def segment(stage, value, left, **style):
-        axis.barh(0, value, left=left, color=colour[stage], height=0.6, **style)
-        if value >= LABEL_SHARE * widest:
+        drawn.append(stage)
+        axis.barh(0, value, left=left, color=colour[stage], height=BAR_HEIGHT, **style)
+        if value >= LABEL_SHARE * extent:
             axis.text(left + value / 2, 0, f"{value:.1f}", ha="center", va="center", fontsize=8, color=INK)
         return left + value
 
     for name, delta in [(None, None), *added.items()]:
+        drawn = []
         figure, axis = plt.subplots(figsize=FIGURE_SIZE, layout="constrained")
         if delta is None:
-            left = 0.0
+            extent = max(shipped, slowest_budget)
+            start = 0.0
+            left = start
             for stage in order:
-                if stage in base:
+                if base.get(stage, 0) > 0:
                     left = segment(stage, base[stage], left, edgecolor="white", linewidth=1.5)
             label = f"{shipped:.1f} ms"
             title = "As shipped"
             output = pathlib.Path(path)
         else:
-            left = shipped
+            net = sum(delta.values())
+            extent = max(sum(value for value in delta.values() if value > 0), abs(net)) or slowest_budget
+            start = shipped
+            left = start
             for stage in order:
-                if delta[stage] > 0:
+                if delta.get(stage, 0.0) > 0:
                     left = segment(stage, delta[stage], left, alpha=0.45, hatch="///", edgecolor=colour[stage],
                                    linewidth=1)
-            label = f"+{sum(delta.values()):.1f} ms, optional"
+            label = f"{shipped:.1f} {'+' if net >= 0 else '-'} {abs(net):.1f} = {shipped + net:.1f} ms"
             title = f"With the {name} view"
             output = chart_path(path, name)
         axis.annotate(label, (left, 0), xytext=(6, 0), textcoords="offset points", va="center")
+        end = start + extent * (1 + AXIS_HEADROOM)
+        axis.set_xlim(start, end)
+        if delta is not None:
+            offsets = MaxNLocator(nbins=AXIS_TICKS).tick_values(0, end - start)
+            offsets = [offset for offset in offsets if 0 <= offset <= end - start]
+            axis.set_xticks([start + offset for offset in offsets], [f"+{offset:g}" for offset in offsets])
+            for edge in (0, 1):
+                axis.plot([0], [edge], transform=axis.transAxes, color=MUTED, clip_on=False,
+                          marker=[(-1, -0.5), (1, 0.5)], markersize=CONTINUATION_SIZE, linestyle="none")
         for rate in FRAME_RATES:
             budget = MS_PER_SECOND / rate
+            if not start <= budget <= end:
+                continue
             axis.axvline(budget, color=MUTED, linestyle=":", linewidth=1)
-            axis.annotate(f"{rate} fps, {budget:.1f} ms", (budget, -0.45), xytext=(3, 0),
+            axis.annotate(f"{rate} fps, {budget:.1f} ms", (budget, -BAR_HEIGHT * 0.75), xytext=(3, 0),
                           textcoords="offset points", fontsize=8, color=MUTED, va="bottom")
         axis.set_title(title)
         axis.set_yticks([])
-        axis.set_ylim(0.5, -0.9)
-        axis.set_xlim(0, widest * 1.2)
-        axis.set_xlabel("board ms per frame")
+        axis.set_ylim(BAR_HEIGHT * 5 / 6, -BAR_HEIGHT * 1.5)
+        axis.set_xlabel("board ms per frame" if delta is None else "added board ms per frame")
         for side in ("top", "right", "left"):
             axis.spines[side].set_visible(False)
         axis.tick_params(axis="y", length=0)
-        figure.legend(handles=[Patch(color=colour[stage], label=stage) for stage in order], loc="outside lower center",
-                      ncol=len(order), frameon=False, fontsize=8)
+        figure.legend(handles=[Patch(color=colour[stage], label=stage) for stage in drawn], loc="outside lower center",
+                      ncol=max(1, len(drawn)), frameon=False, fontsize=8)
         output.parent.mkdir(parents=True, exist_ok=True)
         figure.savefig(output, dpi=110)
         plt.close(figure)
