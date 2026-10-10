@@ -19,7 +19,9 @@ a scene (r3d/scene_asset.py), a clip (anim/tracks_asset.py) and a picture
 (gfx/image_asset.py) are baked here from their files, each with its stem for
 id. Every scene, clip and mesh is mirrored into the engine frame on the way in
 (asset/engine_frame.py); a picture has no 3D frame. Ids are unique within a pack,
-whatever their type. Each pack is written to DIR/<name>.apak; --image also
+whatever their type. A skinned mesh also brings its <mesh id>.skin, its rig's
+skeleton and each clip in its source.clips (docs/render/Skeleton-and-Skin.md).
+Each pack is written to DIR/<name>.apak; --image also
 writes the partition image, the pack directory and every pack.
 Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
 the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
@@ -39,11 +41,12 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from bake import bake  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
 from gfx import image_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
-from r3d import scene_asset  # noqa: E402
+from r3d import scene_asset, skin_asset, skin_pack  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
@@ -148,12 +151,14 @@ def pack_jobs(paths):
     return packs, jobs
 
 
-def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None):
+def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
+               max_influences=skin_asset.DEFAULT_INFLUENCES):
     """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
     or import outside it (a test's or a scratch scene) is the file beside it. With `unlocked` a list, a
-    pack whose bakes only lack their lock rows (bake.BakeUnlocked) is left out and its name appended."""
+    pack whose bakes only lack their lock rows (bake.BakeUnlocked) is left out and its name appended.
+    The uncached skin step adds rig entries with `max_influences` weights per vertex."""
     packs, jobs = pack_jobs(paths)
     replaced = {}
     for item in replace:
@@ -162,8 +167,6 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None):
         if holder is None or holder[mesh].name.endswith((SCENE, CLIP, IMAGE)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
-    from bake import bake
-
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
     owner = {source.resolve(): name for name, entries in packs.items() for source in entries.values()}
     wanted = {}
@@ -192,6 +195,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None):
     if unkeyed:
         raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
                                "copy is never taken: " + ", ".join(unkeyed))
+    original_packs = packs
     packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
              for name, entries in packs.items()}
     for name, entries in packs.items():
@@ -199,21 +203,35 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None):
     missing = [str(source) for sources in packs.values() for source in sources.values() if not source.is_file()]
     if missing:
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
-    return {name: build_pack([pack_entry(key, source) for key, source in sorted(sources.items())])
-            for name, sources in sorted(packs.items())}
+    result = {}
+    for name, sources in sorted(packs.items()):
+        entry_rows = [pack_entry(key, source, engine_frame=False) for key, source in sorted(sources.items())]
+        mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
+                     if kind == LIT_MESH and original_packs[name][key].resolve() in jobs]
+        additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
+        skin_pack.append(entry_rows, additions, dict(original_packs[name]))
+        mirrored = []
+        for key, kind, data in entry_rows:
+            try:
+                mirrored.append((key, kind, to_engine(kind, data) if kind != image_asset.TYPE else data))
+            except ValueError as error:
+                raise SettingsError(f"entry {key!r}: {error}") from error
+        result[name] = build_pack(sorted(mirrored))
+    return result
 
 
-def pack_entry(key, source):
-    """The pack entry `key`: a scene, clip or picture baked from its file,
-    else a mesh's bytes; a scene, clip or mesh in the engine frame."""
-    if source.name.endswith(IMAGE):
-        return key, image_asset.TYPE, image_asset.bake(source)
+def pack_entry(key, source, engine_frame=True):
+    """A scene, clip, picture or mesh entry; source bytes remain available for skin matching."""
     try:
         if source.name.endswith(SCENE):
-            return key, scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(source))
-        if source.name.endswith(CLIP):
-            return key, tracks_asset.TYPE, to_engine(tracks_asset.TYPE, tracks_asset.bake(source))
-        return key, LIT_MESH, to_engine(LIT_MESH, source.read_bytes())
+            kind, data = scene_asset.TYPE, scene_asset.bake(source)
+        elif source.name.endswith(CLIP):
+            kind, data = tracks_asset.TYPE, tracks_asset.bake(source)
+        elif source.name.endswith(IMAGE):
+            kind, data = image_asset.TYPE, image_asset.bake(source)
+        else:
+            kind, data = LIT_MESH, source.read_bytes()
+        return key, kind, to_engine(kind, data) if engine_frame and kind != image_asset.TYPE else data
     except ValueError as error:
         raise SettingsError(f"entry {key!r} ({source}): {error}") from error
 
@@ -254,6 +272,8 @@ def main(argv=None):
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
     parser.add_argument("--bake-cache", metavar="DIR", help="the bake cache; the user cache when omitted")
     parser.add_argument("--offline", action="store_true", help="never download a bake the cache lacks")
+    parser.add_argument("--max-influences", type=int, choices=skin_asset.INFLUENCES, default=skin_asset.DEFAULT_INFLUENCES,
+                        help="heaviest skin influences per vertex (uncached skin step)")
     parser.add_argument("--skip-unlocked", metavar="FILE",
                         help="leave out each pack whose bakes only lack their lock rows, naming it in FILE, "
                              "one per line; any other missing bake still fails")
@@ -270,7 +290,7 @@ def main(argv=None):
             parser.error("-o DIR is required")
         cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
         unlocked = [] if args.skip_unlocked else None
-        packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked)
+        packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked, args.max_influences)
         if args.skip_unlocked:
             pathlib.Path(args.skip_unlocked).write_text("".join(f"{name}\n" for name in unlocked), newline="\n")
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):

@@ -54,7 +54,7 @@ units, so the device never converts:
 
 A node's path is its glTF name, which must be the name of the scene object
 it drives. A clip whose channels all drive a skin's joints is a skeleton
-clip: each path is the joint names from the skeleton's root down.
+clip: each path is the joint names from its root joints down.
 
 ## 3. What a component lets be animated
 

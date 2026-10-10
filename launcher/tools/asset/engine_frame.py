@@ -6,11 +6,12 @@ under "The offline tools".
 
 import struct
 
-from anim import tracks_asset
-from r3d import mesh_asset, scene_asset
+from anim import tracks_asset, skeleton_asset
+from r3d import mesh_asset, scene_asset, skin_asset
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)
+AFFINE_SIGNS = (*AXIS_SIGNS, 1)
 Z_AXIS = 2
 AXIS_COUNT = len(AXIS_SIGNS)
 POSITION = struct.Struct(f"<{AXIS_COUNT}h")
@@ -29,8 +30,15 @@ def _mirror_box(box):
     return (*low[:Z_AXIS], high[Z_AXIS], *high[:Z_AXIS], low[Z_AXIS])
 
 
+def _mirror_matrix(matrix, column_signs):
+    width = len(column_signs)
+    return tuple(value * AXIS_SIGNS[row] * column_signs[column]
+                 for row in range(AXIS_COUNT)
+                 for column, value in enumerate(matrix[row * width:(row + 1) * width]))
+
+
 def to_engine(kind, entry):
-    """An LMSH, SCNE or TRCK source entry mirrored once, preserving its layout."""
+    """An LMSH, SCNE, TRCK, SKEL or SKIN source entry mirrored once, preserving its layout."""
     out = bytearray(entry)
     if kind == mesh_asset.TYPE:
         vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at = (
@@ -53,10 +61,26 @@ def to_engine(kind, entry):
             at = transforms_at + index * scene_asset.TRANSFORM.size
             values = scene_asset.TRANSFORM.unpack_from(entry, at)
             matrix_width = AXIS_COUNT * AXIS_COUNT
-            matrix = [values[row * AXIS_COUNT + column] * AXIS_SIGNS[row] * AXIS_SIGNS[column]
-                      for row in range(AXIS_COUNT) for column in range(AXIS_COUNT)]
+            matrix = _mirror_matrix(values[:matrix_width], AXIS_SIGNS)
             position = [value * sign for value, sign in zip(values[matrix_width:], AXIS_SIGNS)]
             scene_asset.TRANSFORM.pack_into(out, at, *matrix, *position)
+    elif kind == skeleton_asset.TYPE:
+        joints = skeleton_asset.decode(entry)
+        *_, rest_at = skeleton_asset.HEADER.unpack_from(entry)
+        signs = (*AXIS_SIGNS, *ROTATION_SIGNS, *((1,) * AXIS_COUNT))
+        for index, (_, _, rest) in enumerate(joints):
+            skeleton_asset.REST.pack_into(out, rest_at + index * skeleton_asset.REST.size,
+                                         *(value * sign for value, sign in zip(rest, signs)))
+    elif kind == skin_asset.TYPE:
+        matrices, vertices, influences = skin_asset.decode(entry)
+        *_, matrix_at, vertices_at = skin_asset.HEADER.unpack_from(entry)
+        for index, matrix in enumerate(matrices):
+            skin_asset.MATRIX.pack_into(out, matrix_at + index * skin_asset.MATRIX.size,
+                                       *_mirror_matrix(matrix, AFFINE_SIGNS))
+        record_size = influences * 2 + skin_asset.NORMAL.size
+        for index, (_, _, normal) in enumerate(vertices):
+            skin_asset.NORMAL.pack_into(out, vertices_at + index * record_size + influences * 2,
+                                        *(value * sign for value, sign in zip(normal, AXIS_SIGNS)))
     elif kind == tracks_asset.TYPE:
         tracks, duration_ms = tracks_asset.decode(entry)
         for track in tracks:

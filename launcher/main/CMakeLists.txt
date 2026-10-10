@@ -44,6 +44,8 @@ set(app_srcs
     "ui/ui_widgets.c"
     "anim/anim_track.c"
     "anim/anim_tracks.c"
+    "anim/anim_skeleton.c"
+    "render/r3d_skin.c"
     "anim/anim_binding.c"
     "asset/asset_pack.c"
     "asset/asset_directory.c"

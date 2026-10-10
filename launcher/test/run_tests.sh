@@ -140,6 +140,8 @@ $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
+$MAIN_DIR/anim/anim_skeleton.c
+$MAIN_DIR/render/r3d_skin.c
 $MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
@@ -498,6 +500,9 @@ export AUTANA_PACKS_WAITING
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/anim_probe.py" -o "$AUTANA_ANIM_PROBE"
+AUTANA_SKIN_PROBE="$BUILD_DIR/skin_probe.bin"
+export AUTANA_SKIN_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/skin_probe.py" -o "$AUTANA_SKIN_PROBE"
 # The scene suite_scene.c holds to the scene entry's Python writer.
 AUTANA_SCENE_PROBE="$BUILD_DIR/scene_probe.bin"
 export AUTANA_SCENE_PROBE

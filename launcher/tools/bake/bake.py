@@ -500,6 +500,16 @@ def bakes(paths, starts=None):
     return bakes_in(*pack_jobs(paths), starts)
 
 
+def blend_export(settings, tools):
+    """The blend stage record shared by cache producers and pack consumers."""
+    blend = settings.source["path"]
+    key = blend_key(settings, tools)
+    return Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=settings.path,
+                holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
+                tree=blend.with_suffix(GLB_SUFFIX), job=settings, stages={"blend": key},
+                packed=False)
+
+
 def locked_starts(lock, *made):
     """{key: sha256} of the start bytes a fit's key names: the lock's row, except that a run's make replaces a
     seeded one, as lock_rows writes it."""
@@ -523,12 +533,8 @@ def bakes_in(packs, jobs, starts=None):
                 continue
             job, scene, asker = jobs[source.resolve()]
             if is_blend(job.settings):
-                blend = job.settings.source["path"]
-                key = blend_key(job.settings, tools)
-                exports.setdefault(key, Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=job.settings.path,
-                                             holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
-                                             tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key},
-                                             packed=False))
+                export = blend_export(job.settings, tools)
+                exports.setdefault(export.key, export)
             keys = stage_keys(job, scene, tools, starts)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name

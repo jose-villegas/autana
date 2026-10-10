@@ -9,12 +9,15 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "asset/asset_entry.h"
 #include "scene/scene_internal.h"
 
 /* The header, written by tools/r3d/scene_asset.py: a u16 version and three
  * u16 counts, then the u32 offset of each section. */
 enum {
     HEADER_SIZE = 24,
+    AT_VERSION = 0,
+    ENTRY_ALIGNMENT = 4,
     AT_ENTITIES = 2,
     AT_RENDERERS = 4,
     AT_CAMERAS = 6,
@@ -103,12 +106,10 @@ check_rows(const scene_asset_t* scene) {
 asset_status_t
 scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     *out = (scene_asset_t){0};
-    /* The rows are read in place, so the entry itself must be 4-aligned, as a pack's entries are. */
-    if (entry.size < HEADER_SIZE || (uintptr_t)entry.data % 4U != 0) {
-        return ASSET_ERR_BOUNDS;
-    }
-    if (half(entry.data) != SCENE_ASSET_VERSION) {
-        return ASSET_ERR_VERSION;
+    const asset_status_t header_status =
+        asset_entry_validate(entry, SCENE_ASSET_VERSION, AT_VERSION, HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (header_status != ASSET_OK) {
+        return header_status;
     }
     scene_asset_t scene = {
         .entity_count = half(entry.data + AT_ENTITIES),

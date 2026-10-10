@@ -904,11 +904,14 @@ class BlendTests(unittest.TestCase):
 
 
 def filled_cache(directory):
-    """Every mesh the tree's lock names, in the cache `directory`: copied from the user cache, fetched
-    there first when it lacks one. Returns the mesh bakes and the lock."""
-    found = [item for item in bake.bakes([build_pack.DEFAULT_SEARCH]) if item.packed]
+    """Every mesh the tree's lock names, and every .blend export (the skin step reads a rigged one at pack
+    time), in the cache `directory`: copied from the user cache, fetched there first when it lacks one.
+    Returns the mesh bakes and the lock."""
+    every = bake.bakes([build_pack.DEFAULT_SEARCH])
+    found = [item for item in every if item.packed]
     lock = bake.read_lock()
-    for path in bake.fetch_all(found, lock, bake.default_cache()).values():
+    for path in bake.fetch_all(found + [item for item in every if item.kind == "blend"], lock,
+                               bake.default_cache()).values():
         shutil.copyfile(path, pathlib.Path(directory) / path.name)
     return found, lock
 
