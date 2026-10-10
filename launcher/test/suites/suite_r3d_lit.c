@@ -1842,7 +1842,7 @@ test_cull_off_keeps_every_cluster(void) {
     build_wall_and_stack(p);
     const r3d_instance_t instance = {.mesh = &p->mesh};
     raster_t raster = census_raster(&instance, 1);
-    const fixture_camera_t camera = camera_down_minus_z(10000.0f, 400, 1.0f);
+    const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
     const tune_entry_t* entry = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(entry);
