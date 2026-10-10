@@ -286,20 +286,20 @@ class SweepTests(unittest.TestCase):
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
                                    fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
-                                   visibility=SimpleNamespace(source="camera_path"))
-        job = SimpleNamespace(settings=SimpleNamespace(path="settings"), renderer=renderer, object=SimpleNamespace(name="tiny"))
+                                   visibility=SimpleNamespace(source="camera_path", size=(2, 3)))
+        job = SimpleNamespace(settings=SimpleNamespace(path="settings"), bake=SimpleNamespace(), renderer=renderer,
+                              object=SimpleNamespace(name="tiny"))
+        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
-                 unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
-                 unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
-                 unittest.mock.patch.object(reference_render, "main") as render:
-                fitted_variant.sweep_references("scene", "data", job, work)
-                fitted_variant.sweep_references("scene", "data", job, work)
-        self.assertEqual(render.call_count, 3)
-        for call in render.call_args_list:
-            argv = call.args[0]
-            self.assertEqual(argv[argv.index("--object") + 1], "tiny", "each reference names its object")
+            with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"),                  unittest.mock.patch.object(mesh_import, "write_baked", return_value=start),                  unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses),                  unittest.mock.patch.object(reference_render, "render_sets") as render:
+                fitted_variant.sweep_references("scene", scene, job, work)
+                fitted_variant.sweep_references("scene", scene, job, work)
+        self.assertEqual(render.call_count, 1)
+        inputs, sets = render.call_args.args
+        self.assertIsInstance(inputs, fitted_variant.ReferenceInputs)
+        self.assertEqual([folder.name for _poses, folder in sets],
+                         ["reference", "reference_landscape", "reference_held_out"])
 
     def test_the_front_and_knee_keep_the_best_tradeoffs(self):
         points = [

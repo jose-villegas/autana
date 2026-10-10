@@ -3,9 +3,13 @@ name: Bakes GPU
 # The fits a branch's launcher/bakes.lock lacks (launcher/tools/bake/bake.py),
 # made on the self-hosted CUDA runner, the maintainer's machine. Started only
 # by hand on the branch, so no pull request's code reaches that machine on its
-# own; then `bake.py lock --from-run N` with this run. The fit references stay
-# in the runner's cache. `again` re-makes fits the lock already has, to measure
-# a fit against its locked bytes; those are never locked from this run.
+# own; then `bake.py lock --from-run N` with this run. A fit's start is locked
+# first, from the Bakes run that made it, and fetched here by its bytes; fits
+# that share their reference inputs share one reference set, which stays in the
+# runner's cache. `again` re-makes fits the lock already has, to measure a fit
+# against its locked bytes; those are never locked from this run. `probe`
+# installs and bakes nothing: it reports whether Mitsuba's CUDA variant can
+# trace on the runner (its driver, OptiX, one small render).
 
 on:
   workflow_dispatch:
@@ -18,17 +22,44 @@ on:
         description: 'Fit them even when the lock has them'
         type: boolean
         default: false
+      probe:
+        description: 'Only report whether Mitsuba CUDA traces here; bake nothing'
+        type: boolean
+        default: false
 
 concurrency:
   group: bakes-gpu
   cancel-in-progress: false
 
+# actions: read lets a fit fetch its locked start from the run that made it, before main publishes it.
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  probe:
+    name: Probe Mitsuba CUDA
+    if: inputs.probe
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Driver and OptiX
+        run: |
+          nvidia-smi --query-gpu=name,driver_version --format=csv
+          ls -l /usr/lib/wsl/lib 2>/dev/null | grep -i -e optix -e libcuda || echo "no /usr/lib/wsl/lib OptiX or CUDA library"
+          echo "DRJIT_LIBOPTIX_PATH=${DRJIT_LIBOPTIX_PATH:-unset}"
+
+      - name: One small render on cuda_ad_rgb
+        run: sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
+
   gpu:
     name: Bake missing fits
+    if: ${{ !inputs.probe }}
     runs-on: [self-hosted, linux, gpu]
     timeout-minutes: 600
     defaults:
@@ -51,6 +82,7 @@ jobs:
         env:
           ONLY: ${{ inputs.only }}
           AGAIN: ${{ inputs.again }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           args=(--kind fit --out "$RUNNER_TEMP/bakes")
           for name in $ONLY; do args+=(--only "$name"); done

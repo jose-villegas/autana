@@ -73,6 +73,8 @@ RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
 API_URL = "https://api.github.com/repos/jose-villegas/autana"
 MESH_SUFFIX = ".mesh"
+# A fit's start, the mesh its fit begins from: "<entry>.start.mesh".
+START_SUFFIX = ".start" + MESH_SUFFIX
 DOWNLOAD_TIMEOUT_S = 60
 # A rename into the cache another process holds open is retried this often, waiting a growing step.
 PLACE_ATTEMPTS = 8
@@ -123,6 +125,7 @@ class Bake:
     job: object = dataclasses.field(default=None, compare=False, repr=False)
     scene: object = dataclasses.field(default=None, compare=False, repr=False)
     stages: dict = dataclasses.field(default=None, compare=False, repr=False)
+    packed: bool = dataclasses.field(default=True, compare=False)  # a pack holds it: not an export or a fit's start
 
 
 def default_cache():
@@ -421,13 +424,18 @@ def blend_key(settings, tools):
     return digest(["blend", content_checksum(blend).decode(), settings.source.get("clips"), tools["blend"]])
 
 
+def import_recipe(settings, tools):
+    """(an import's settings without paths, its sources by content): a credit line or a moved file does not
+    rebake, and a .blend counts by its export's key."""
+    recipe = {name: canonical(value) for name, value in vars(settings).items()
+              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
+    return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
+
+
 def mesh_recipe(job, scene, tools):
-    """What a lit or albedo mesh is made from, without its fit and without paths; its sources count by
-    content, so a credit line or a moved file does not rebake, and a .blend by its export's key."""
-    settings = {name: canonical(value) for name, value in vars(job.settings).items()
-                if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
+    """What a lit or albedo mesh is made from, without its fit and without paths."""
+    settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
-    sources = {"blend": blend_key(job.settings, tools)} if is_blend(job.settings) else source_digest(job.settings)
     recipe = {"settings": settings, "renderer": renderer, "sources": sources}
     if job.bake is not None:
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,
@@ -441,28 +449,58 @@ def fit_recipe(fit):
     return dict(vars(fit))
 
 
-def stage_keys(job, scene, tools):
-    """{stage: key} of one job: a mesh alone, or a fit's start, references and fit, each keyed on the one before."""
+def reference_recipe(inputs, tools):
+    """A fit's reference set by every field of its fitted_variant.ReferenceInputs: the import as a mesh counts
+    it, the camera by its lens and clip bytes, the rest as parsed."""
+    recipe = {}
+    for field in dataclasses.fields(inputs):
+        value = getattr(inputs, field.name)
+        if field.name == "settings":
+            recipe["settings"], recipe["sources"] = import_recipe(value, tools)
+        elif field.name == "camera":
+            recipe["camera"] = camera_inputs(inputs.scene())
+        else:
+            recipe[field.name] = canonical(value)
+    return recipe
+
+
+def stage_keys(job, scene, tools, start_sha256=None):
+    """{stage: key} of one job: a mesh alone, or a fit's start, references and fit. The references are keyed
+    on what they read, not on the start, so fits that differ only in their start share them; the fit is
+    keyed on its references and on its start's bytes, `start_sha256`, and is None while those are unknown."""
     start = digest(["mesh", mesh_recipe(job, scene, tools), tools["mesh"]])
     if job.renderer.fit is None:
         return {"mesh": start}
-    fit = fit_recipe(job.renderer.fit)
-    poses = {name: fit[name] for name in ("train_every_ms", "held_out_every_ms", "coverage_every_ms")}
-    reference = digest(["reference", start, poses, camera_inputs(scene), tools["reference"]])
-    return {"start": start, "reference": reference, "fit": digest(["fit", reference, fit, tools["fit"]])}
+    from r3d.fitted_variant import reference_inputs
+
+    reference = digest(["reference", reference_recipe(reference_inputs(job, scene), tools), tools["reference"]])
+    fit = None if start_sha256 is None else digest(["fit", reference, start_sha256, fit_recipe(job.renderer.fit),
+                                                    tools["fit"]])
+    return {"start": start, "reference": reference, "fit": fit}
 
 
-def bakes(paths):
+def bakes(paths, starts=None):
     """Every bake the packs under `paths` hold, in pack and entry order."""
     from r3d.build_pack import pack_jobs
 
-    return bakes_in(*pack_jobs(paths))
+    return bakes_in(*pack_jobs(paths), starts)
 
 
-def bakes_in(packs, jobs):
-    """The bakes of build_pack.pack_jobs()'s packs."""
+def locked_starts(lock, *made):
+    """{key: sha256} of the bytes each of `made` ({key: row}), then `lock`, gives each key: what a fit's key
+    reads for its start."""
+    starts = {}
+    for rows in (*made, lock):
+        starts.update((key, row["sha256"]) for key, row in rows.items())
+    return starts
+
+
+def bakes_in(packs, jobs, starts=None):
+    """The bakes of build_pack.pack_jobs()'s packs. A fit's start is a mesh bake of its own, which no pack
+    holds; the fit's key reads the start's bytes from `starts` ({key: sha256}, the lock's when None)."""
+    starts = locked_starts(read_lock()) if starts is None else starts
     tools = {stage: tool_digest(stage) for stage in STAGES}
-    found, exports = [], {}
+    found, exports, fit_starts = [], {}, {}
     for name, entries in sorted(packs.items()):
         for entry, source in sorted(entries.items()):
             if source.resolve() not in jobs:
@@ -473,13 +511,20 @@ def bakes_in(packs, jobs):
                 key = blend_key(job.settings, tools)
                 exports.setdefault(key, Bake(output=blend.with_suffix(GLB_SUFFIX).name, source=job.settings.path,
                                              holder=blend.name, kind="blend", key=key, suffix=GLB_SUFFIX,
-                                             tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key}))
+                                             tree=blend.with_suffix(GLB_SUFFIX), job=job.settings, stages={"blend": key},
+                                             packed=False))
             keys = stage_keys(job, scene, tools)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
+            if kind == "fit":
+                keys["fit"] = stage_keys(job, scene, tools, starts.get(keys["start"]))["fit"]
+                fit_starts.setdefault(keys["start"], Bake(
+                    output=f"{entry}{START_SUFFIX}", source=asker, holder=holder, kind="mesh", key=keys["start"],
+                    suffix=MESH_SUFFIX, tree=source.with_name(f"{entry}{START_SUFFIX}"), job=job, scene=scene,
+                    stages={"mesh": keys["start"]}, packed=False))
             found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
                               suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys))
-    return list(exports.values()) + found
+    return list(exports.values()) + list(fit_starts.values()) + found
 
 
 def relative(path):
@@ -557,7 +602,18 @@ def describe(bake, why, again):
             f"    {why}\n    {again}")
 
 
+def unlocked(bake):
+    """Why LOCK has no row for `bake`."""
+    if bake.key is None:
+        return (f"its start {bake.stages['start']} is not locked, so its key, which names the start's bytes, "
+                "is not known yet")
+    return f"{relative(LOCK)} has no row for this key: its recipe, a source or its tool changed"
+
+
 def bake_again(bake):
+    if bake.key is None:
+        return ("lock its start first: bake.py lock --from-run N with the Bakes run that made it, then run the "
+                "Bakes GPU workflow on this branch")
     if bake.kind == "blend":
         return ("an export needs Blender: push, the Bakes check exports it on the pull request; then "
                 "bake.py lock --from-run N with that run")
@@ -589,8 +645,7 @@ def fetch_all(found, lock, cache, offline=False):
     for bake in found:
         row = lock.get(bake.key)
         if row is None:
-            missing.append(describe(bake, f"{relative(LOCK)} has no row for this key: its recipe, a source or "
-                                    "its tool changed", bake_again(bake)))
+            missing.append(describe(bake, unlocked(bake), bake_again(bake)))
             continue
         path = cached(row, bake.suffix, cache)
         if path.is_file() and file_sha256(path) == row["sha256"]:
@@ -618,8 +673,7 @@ def fetch_all(found, lock, cache, offline=False):
 def check(found, lock):
     """The problems of LOCK against the bakes `found` need: a key missing, or a key nothing needs."""
     needed = {bake.key for bake in found}
-    problems = [describe(bake, f"{relative(LOCK)} has no row for this key", bake_again(bake))
-                for bake in found if bake.key not in lock]
+    problems = [describe(bake, unlocked(bake), bake_again(bake)) for bake in found if bake.key not in lock]
     problems += [f"  {row['output']}  key {key}: locked, but nothing needs it; run bake.py lock"
                  for key, row in sorted(lock.items()) if key not in needed]
     return problems
@@ -636,6 +690,9 @@ def seed(found, cache, lock=None):
     previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, missing = [], []
     for bake in found:
+        if bake.key is None:
+            missing.append(describe(bake, unlocked(bake), bake_again(bake)))
+            continue
         held = lock.get(bake.key)
         if held is not None and not held.get("seeded"):
             rows.append({name: held[name] for name in ROW_FIELDS if name in held})
@@ -737,18 +794,21 @@ def runs_made(runs, cache):
     return made
 
 
-def lock_rows(found, lock, made=None):
-    """Rows for the bakes `found` need: the lock's own, else those in `made`; raises naming the rest."""
-    rows, missing = [], []
+def lock_rows(found, lock, made=None, missing=None):
+    """Rows for the bakes `found` need: the lock's own, else those in `made`; raises naming the rest, or
+    with a `missing` list collects them there and returns the rows it has."""
+    rows, collect = [], missing is not None
+    missing = [] if missing is None else missing
     for bake in found:
         row = lock.get(bake.key)
         if row is None or (row.get("seeded") and bake.key in (made or {})):
             row = (made or {}).get(bake.key)  # a run's make replaces a seeded row, never a made one
         if row is None:
-            missing.append(describe(bake, "no CI run has made this key", bake_again(bake)))
+            why = unlocked(bake) if bake.key is None else "no CI run has made this key"
+            missing.append(describe(bake, why, bake_again(bake)))
             continue
         rows.append({name: row[name] for name in ROW_FIELDS if name in row})
-    if missing:
+    if missing and not collect:
         raise BakeMissing("cannot lock:\n" + "\n".join(missing))
     return rows
 
@@ -821,24 +881,45 @@ def main(argv=None):
                     parser.error(f"tool: no stage {stage!r}; stages: {', '.join(STAGES)}")
                 print(tool_digest(stage))
             return 0
-        found = [] if args.command == "path" else bakes(args.paths or [DEFAULT_SEARCH])
+        paths = args.paths or [DEFAULT_SEARCH]
         lock = read_lock()
+        made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
+        starts = locked_starts(lock, made)
+        found = [] if args.command == "path" else bakes(paths, starts)
         if args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
                     continue
-                print(f"{bake.output}\t{bake.kind}\t{bake.key}\t{relative(bake.source)}")
+                print(f"{bake.output}\t{bake.kind}\t{bake.key or 'waits for its start'}\t{relative(bake.source)}")
         elif args.command == "bake":
             from bake import produce
 
-            wanted = sorted((bake for bake in found if (args.again or bake.key not in lock)
-                             and args.kind in (None, bake.kind) and (not args.only or bake.output in args.only)),
-                            key=lambda bake: KINDS.index(bake.kind))
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
-            rows = [(None if args.again else produce.made(bake.key, cache)) or produce.produce(bake, cache, lock, args.blender)
-                    for bake in wanted]
+            rows = []
+            for kind in KINDS:
+                if args.kind not in (None, kind):
+                    continue
+                if kind == "fit":
+                    # A fit's key names its start's bytes: those the lock gives, else those made here.
+                    for start in (bake for bake in found if bake.kind == "mesh" and not bake.packed):
+                        row = start.key not in starts and produce.made(start.key, cache)
+                        if row:
+                            starts[start.key] = row["sha256"]
+                    found = bakes(paths, starts)
+                for bake in found:
+                    if (bake.kind != kind or not (args.again or bake.key not in lock)
+                            or (args.only and bake.output not in args.only)):
+                        continue
+                    if bake.key is None:
+                        raise BakeMissing(f"{bake.output}: its start {bake.stages['start']} is neither locked nor "
+                                          "made here; bake.py bake --kind mesh first")
+                    row = (None if args.again else produce.made(bake.key, cache)) or produce.produce(
+                        bake, cache, lock, args.blender)
+                    rows.append(row)
+                    if not bake.packed:
+                        starts.setdefault(bake.key, row["sha256"])
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (
@@ -850,12 +931,14 @@ def main(argv=None):
         elif args.command == "lock":
             if args.seed:
                 rows = seed(found, cache, lock)
-            elif args.from_run:
-                rows = lock_rows(found, lock, runs_made(args.from_run, cache))
             else:
-                rows = lock_rows(found, lock)
+                # A fit waits for its start's row: what is made locks now, and the rest is named.
+                missing = []
+                rows = lock_rows(found, lock, made, missing)
             write_lock(rows)
             print(f"locked {len(rows)} bakes in {relative(LOCK)}")
+            if not args.seed and missing:
+                raise BakeMissing("still to lock:\n" + "\n".join(missing))
         elif args.command == "check":
             problems = check(found, lock)
             if problems:
