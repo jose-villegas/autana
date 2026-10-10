@@ -13,7 +13,6 @@ short helpers are missed. Literal-only fragments and exact self-matches
 are excluded. The pinned engine ignores comments and whitespace.
 """
 import argparse
-import io
 import json
 import re
 from pathlib import Path
@@ -23,6 +22,7 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
+from tracked import revision_contents
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
@@ -97,25 +97,6 @@ def filter_pairs(pairs):
         return not same_range and any(token.group("identifier")
                                       for token in tokens.finditer(pair["fragment"]))
     return [pair for pair in pairs if keep(pair)]
-
-
-def revision_contents(root, revision, names, renames=None):
-    renames = renames or {}
-    requests = "".join(f"{revision}:{renames.get(name, name)}\n" for name in names).encode("utf-8")
-    result = subprocess.run(["git", "cat-file", "--batch"], cwd=root, input=requests,
-                            check=True, capture_output=True)
-    stream = io.BytesIO(result.stdout)
-    for name in names:
-        header = stream.readline().rstrip(b"\n")
-        if header.endswith(b" missing"):
-            continue
-        _, kind, size = header.split()
-        if kind != b"blob":
-            raise ValueError(f"Not a source blob: {revision}:{name}")
-        content = stream.read(int(size))
-        if len(content) != int(size) or stream.read(1) != b"\n":
-            raise ValueError(f"Incomplete source blob: {revision}:{name}")
-        yield name, content
 
 
 def scan(root, minimum, names=None, revision="HEAD", renames=None):

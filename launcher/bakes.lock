@@ -28,47 +28,47 @@ seeded = true
 [[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "e1f7e7cc3d07b750a10e5e0e13ccbbef75f1711db1a5f7f8fc0e470ddb4bf930"
-sha256 = "6aec5179d839348f5701d96b27b352f330f7ed5b264f4184b5bb3cf16e6e8098"
-size = 266100
+key = "2dd166a3af22ab82996679f26aba7b985f44dcc76a9affb0e57f4daacbc03af6"
+sha256 = "649d221759b9424a8f52260088ec7ceb25e3b6a808ff2fd15a041e396311b0ef"
+size = 264924
 seeded = true
 
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "fb84cb291c4fd04c9c219b9eb6757943f47a01bfe881ed5bd1ca848c3809c756"
-sha256 = "9cd15eaa37d4e14a4f0080f3c5d6a0857024e575c9b2a8046f4ddb798dd7cc32"
-size = 144164
+key = "3b4e75a47690c3f73f59b39869ef8d03b0891fe1abe4cc294eaa72ea185fb2fd"
+sha256 = "90e6d49fe8ea06e938dffcf9f3dd0333375eb2c7b3860183a6fa5163e5aba96f"
+size = 143492
 seeded = true
 
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "947f778827f79148f78ce069ef34bb2bb6ba94a56bdfe2e413d05c3a15e46538"
-sha256 = "6b143607d4888826c6dc3f4df69ce361ca3ff18ea15ce54af187659a34d69706"
-size = 277960
+key = "be4d175c8621bc5d1ee404a59770c17a11d0698c14a974b06a1cbab547c11916"
+sha256 = "6d8145d1bb3f5cc83390cfa90f8e3b32d87541f560612d7fc5bdf28f547aca3f"
+size = 277776
 seeded = true
 
 [[bake]]
 output = "sponza.atrium_flat.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "878a3464bbbbae3fb43fdd07f821dc6cdfc89daf10b590a83043a8ee83aa13d1"
-sha256 = "7ddae4c30f88db8f09fb6ace4d4f8d78d101eb92377dc498452b97535ac6f477"
-size = 244024
+key = "60c8e7890044b29c6997a838626785f2acbc2b4b090205fa92a178f30adcdf3e"
+sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
+size = 243452
 seeded = true
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "6a07c8a9bfda4c75c6e86ebf068f04fc063b6d977d828b422bfbbe18a8a968c1"
-sha256 = "429c686bb58052cf62b46f42213f7caf2fec3fb33b9079880aa502d64b6c0d04"
-size = 250680
+key = "cc8448461e0308914026107182340ba742e9483322aae6835417a7e82b88d8e7"
+sha256 = "0433c27f010083bfbed06af9649fd815e3d491d23fc985330cfee4d4aba6e7a1"
+size = 250352
 seeded = true
 
 [[bake]]
 output = "sponza.atrium_lite.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "ff21aff8ab35bf7cac18cbd717c8a66b355a9c91e9310516a6d1595efa04f1e3"
-sha256 = "5111edfdace21164bc800307a0be024fbff16b42388255a3aad03fbdef4e6b4d"
-size = 130384
+key = "48ac8bf69a4d2ae6183741cab4c59140d91f7700f9a100d5d3de6682ba2f86ef"
+sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
+size = 130140
 seeded = true

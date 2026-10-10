@@ -430,6 +430,39 @@ class ProduceTests(unittest.TestCase):
         with self.assertRaisesRegex(bake.BakeMissing, "run 41"):
             produce.import_run(out, 41, self.root / "third")
 
+    def test_two_runs_lock_together(self):
+        """A Bakes run's meshes and a Bakes GPU run's fits: neither run alone has every key, both together do."""
+        row = self.produce()
+        uploads = {41: self.root / "run41", 42: self.root / "run42"}
+        produce.export([row], self.cache, uploads[41])
+        other = {**row, "key": "k" * 64}
+        produce.export([row], self.cache, uploads[42])
+        (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").unlink()
+        (uploads[42] / produce.KEY_INDEX / f"{other['key']}.json").write_text(json.dumps(other), encoding="utf-8")
+        found = [self.found[0], bake_of(other["key"], self.root / "tree")]
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
+            for alone in (41, 42):
+                with self.assertRaisesRegex(bake.BakeMissing, "no CI run has made this key"):
+                    bake.lock_rows(found, {}, bake.runs_made([alone], self.root / f"c{alone}"))
+            rows = bake.lock_rows(found, {}, bake.runs_made([41, 42], self.root / "both"))
+        self.assertEqual([row["run"] for row in rows], [41, 42])
+
+    def test_two_runs_that_made_one_key_differently_fail_naming_both(self):
+        row = self.produce()
+        uploads = {41: self.root / "run41", 42: self.root / "run42", 43: self.root / "run43"}
+        for upload in uploads.values():
+            produce.export([row], self.cache, upload)
+        other = {**row, "sha256": hashlib.sha256(b"other").hexdigest()}
+        (uploads[42] / "files" / f"{other['sha256']}.mesh").write_bytes(b"other")
+        (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(other), encoding="utf-8")
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
+            with self.assertRaises(bake.BakeMissing) as failed:
+                bake.runs_made([41, 42], self.root / "differ")
+            same = bake.runs_made([41, 43], self.root / "same")
+        for named in (row["key"], "run 41", "run 42", row["sha256"], other["sha256"]):
+            self.assertIn(named, str(failed.exception))
+        self.assertEqual(same[row["key"]]["run"], 41)
+
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()
         out = self.root / "upload"
