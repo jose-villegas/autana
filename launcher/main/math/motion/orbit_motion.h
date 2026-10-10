@@ -82,7 +82,7 @@ transformf_t orbit_motion_pose(const orbit_motion_t* orbit);
 
 /* For a camera that orbits: the distance at which a sphere of `radius`
  * centred on the view axis fits a lens of `half_fov_short_tan` (fitted to
- * the picture's shorter axis, as camera_t's is) with `padding` of each
+ * the picture's shorter axis, as render_view_make()'s is) with `padding` of each
  * half-axis left clear. The shorter axis binds, whichever way the picture
  * is held. */
 float orbit_motion_fit_distance(float radius, float half_fov_short_tan, float padding);

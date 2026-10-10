@@ -12,8 +12,8 @@
 #include <stddef.h>
 
 #include "gfx/gfx_render_target.h"
-#include "render/camera.h"
 #include "render/r3d_span.h"
+#include "render/render_view.h"
 
 typedef struct raster raster_t;
 typedef struct raster_attachment raster_attachment_t;
@@ -23,7 +23,7 @@ struct raster_attachment {
     /* Optional. A new picture's `count` pixels, before anything is drawn on them. */
     void (*clear)(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
     /* Optional. Once per raster_draw(), before the first instance. */
-    void (*begin)(const raster_attachment_t* self, const raster_t* raster, const camera_t* camera, int quarter);
+    void (*begin)(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view);
     /* Optional. Chooses `out->span`, `out->value` and `out->per_cluster` for
      * this instance, or returns false to leave this attachment unwritten. */
     bool (*writer)(const raster_attachment_t* self, int instance, r3d_span_writer_t* out);

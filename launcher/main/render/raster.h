@@ -1,5 +1,5 @@
 /*
- * raster: r3d_instance_t meshes drawn through a camera on both cores into a
+ * raster: r3d_instance_t meshes drawn through a view on both cores into a
  * scratch block the caller hands it, then upscaled into a destination
  * picture. One mesh is a count of one. Rendering at half the destination's
  * size quarters the pixels and halves the rows and spans.
@@ -11,9 +11,9 @@
 #include <stdint.h>
 
 #include "gfx/gfx_render_target.h"
-#include "render/camera.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
+#include "render/render_view.h"
 #include "render/upscale.h"
 
 /* The caller's options; the scratch block holds everything else. */
@@ -26,9 +26,8 @@ struct raster {
     int instance_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
-    /* The camera frames by destination_width and destination_height. With
-     * upscaling, colour is not cleared: raster_upscale() supplies the clear
-     * colour wherever depth says nothing was drawn. */
+    /* With upscaling, colour is not cleared: raster_upscale() supplies the
+     * clear colour wherever depth says nothing was drawn. */
     bool upscaled;
     int destination_width, destination_height;
     upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
@@ -37,6 +36,13 @@ struct raster {
     const raster_attachment_t* const* attachments;
     int attachment_count;
 };
+
+/* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
+static inline viewport_t
+raster_viewport(const raster_t* raster, int quarter) {
+    return (viewport_t){raster->upscaled ? raster->destination_width : raster->width,
+                        raster->upscaled ? raster->destination_height : raster->height, quarter};
+}
 
 typedef struct {
     int clusters, triangles; /* what survived culling */
@@ -62,16 +68,16 @@ uint16_t* raster_depth(const raster_t* raster);
  * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
 
-/* Draws every instance as `camera` sees it, turned for the panel's `quarter`. */
-raster_stats_t raster_draw(const raster_t* raster, const camera_t* camera, int quarter);
+/* Draws every instance through the picture basis and fit in `view`. */
+raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
 
 /* The census list lets a caller price sizes before drawing. It stays valid
- * in the same scratch block for unchanged camera, quarter and instances.
+ * in the same scratch block for unchanged view and instances.
  * Upscaled rasters may change render size with a fixed destination; other
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
-raster_stats_t raster_census(const raster_t* raster, const camera_t* camera, int quarter);
-void raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter);
+raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
+void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */

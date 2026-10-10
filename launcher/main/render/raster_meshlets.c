@@ -14,9 +14,8 @@ clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, siz
 }
 
 static void
-begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* camera, int quarter) {
-    (void)camera;
-    (void)quarter;
+begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
+    (void)view;
     raster_meshlets_t* state = self->state;
     state->next = 1;
     state->raster = raster;
