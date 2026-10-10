@@ -360,47 +360,56 @@ test_shape_and_quarter_changes_reproject_in_the_current_picture(void) {
     }
 }
 
-/* Attaching motion changes no colour and no depth. */
+static bool
+check_quarter_pixel(const pose_t* now, const pose_t* before, int quarter, int x, int y, raster_motion_px_t got) {
+    const int ux = quarter == 1 ? y : H - 1 - y;
+    const int uy = quarter == 1 ? H - 1 - x : x;
+    float mx;
+    float my;
+    if (!well_inside(now, before, H, H, ux, uy, &mx, &my)) {
+        return false;
+    }
+    TEST_ASSERT_NOT_EQUAL(RASTER_MOTION_UNKNOWN, got.dx);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, quarter == 1 ? -my : my, (float)got.dx * 0.5F);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, quarter == 1 ? mx : -mx, (float)got.dy * 0.5F);
+    if (now == before) {
+        TEST_ASSERT_EQUAL_INT8(0, got.dx);
+        TEST_ASSERT_EQUAL_INT8(0, got.dy);
+    }
+    return true;
+}
+
+static void
+check_quarter_picture(raster_rig_t* r, const pose_t* now, const pose_t* before, int quarter) {
+    raster_motion_forget(&own_of(r)->motion);
+    draw_at(r, before, H, H, quarter);
+    draw_at(r, now, H, H, quarter);
+    const raster_motion_px_t* motion = motion_of(r);
+    int checked = 0;
+    int nonzero = 0;
+    for (int y = 1; y < H - 1; y++) {
+        for (int x = 1; x < H - 1; x++) {
+            const raster_motion_px_t got = motion[(y * H) + x];
+            if (check_quarter_pixel(now, before, quarter, x, y, got)) {
+                nonzero += got.dx != 0 || got.dy != 0;
+                checked++;
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(H * H / 2, checked);
+    if (now != before) {
+        TEST_ASSERT_GREATER_THAN_INT(0, nonzero);
+    }
+}
+
 static void
 test_a_steady_quarter_preserves_moving_and_still_motion(void) {
     raster_rig_t* r = rig_open(false, false);
     const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
     const pose_t moving = {camera_at((vec3f_t){8.0F, 0.0F, 290.0F}, 1.5F), NULL};
     for (int quarter = 1; quarter <= 3; quarter += 2) {
-        for (int still = 0; still < 2; still++) {
-            const pose_t* now = still ? &before : &moving;
-            raster_motion_forget(&own_of(r)->motion);
-            draw_at(r, &before, H, H, quarter);
-            draw_at(r, now, H, H, quarter);
-            const raster_motion_px_t* motion = motion_of(r);
-            int checked = 0;
-            int nonzero = 0;
-            for (int y = 1; y < H - 1; y++) {
-                for (int x = 1; x < H - 1; x++) {
-                    const int ux = quarter == 1 ? y : H - 1 - y;
-                    const int uy = quarter == 1 ? H - 1 - x : x;
-                    float mx;
-                    float my;
-                    if (!well_inside(now, &before, H, H, ux, uy, &mx, &my)) {
-                        continue;
-                    }
-                    const raster_motion_px_t got = motion[(y * H) + x];
-                    TEST_ASSERT_NOT_EQUAL(RASTER_MOTION_UNKNOWN, got.dx);
-                    TEST_ASSERT_FLOAT_WITHIN(SLACK, quarter == 1 ? -my : my, (float)got.dx * 0.5F);
-                    TEST_ASSERT_FLOAT_WITHIN(SLACK, quarter == 1 ? mx : -mx, (float)got.dy * 0.5F);
-                    if (still) {
-                        TEST_ASSERT_EQUAL_INT8(0, got.dx);
-                        TEST_ASSERT_EQUAL_INT8(0, got.dy);
-                    }
-                    nonzero += got.dx != 0 || got.dy != 0;
-                    checked++;
-                }
-            }
-            TEST_ASSERT_GREATER_THAN_INT(H * H / 2, checked);
-            if (!still) {
-                TEST_ASSERT_GREATER_THAN_INT(0, nonzero);
-            }
-        }
+        check_quarter_picture(r, &moving, &before, quarter);
+        check_quarter_picture(r, &before, &before, quarter);
     }
 }
 

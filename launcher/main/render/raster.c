@@ -291,14 +291,20 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
+/* Frame validation stays outside the inlined draw chain. */
+static __attribute__((noinline)) void
+assert_view_size(const raster_t* raster, const render_view_t* view) {
+    const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
+    assert(view->viewport.width == picture.width);
+    assert(view->viewport.height == picture.height);
+}
+
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
-    const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
-    assert(view->viewport.width == picture.width);
-    assert(view->viewport.height == picture.height);
+    assert_view_size(raster, view);
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -351,9 +357,7 @@ raster_culled_length(const raster_t* raster) {
 raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
-    const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
-    assert(view->viewport.width == picture.width);
-    assert(view->viewport.height == picture.height);
+    assert_view_size(raster, view);
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
