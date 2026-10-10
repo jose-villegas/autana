@@ -47,6 +47,7 @@ from r3d.process_budget import NULL_RECORDER
 from r3d.path_bake import PathLight  # noqa: E402
 from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path  # noqa: E402
+from r3d import ray_query  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
@@ -108,6 +109,7 @@ def path_light_for(src, job, scene, variant=None):
         return None
     settings = job.settings
     boost = scene.indirect.albedo_boost
+    variant = variant or ray_query.VARIANT
     key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant)
     if key not in PATH_LIGHTS:
         PATH_LIGHTS.clear()

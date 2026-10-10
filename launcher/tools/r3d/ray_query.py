@@ -7,7 +7,7 @@ is hit from both sides.
 
 A mesh bake is NumPy-bound on the CPU, so its queries run on the LLVM variant `VARIANT`: a CUDA context per forked
 pose worker would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA.
-A reference set traces on `trace_variant(True)`, Mitsuba's CUDA variant on OptiX where it loads (README, "Reference
+A reference set traces on `trace_variant()`, Mitsuba's CUDA variant on OptiX where it loads (README, "Reference
 on the GPU"). Tests set `VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker
 forked after a query inherits the scene and traces serially on its own thread.
 """
@@ -28,11 +28,11 @@ MAX_HITS = 100
 GPU_VARIANT = "cuda_ad_rgb"
 
 
-def trace_variant(gpu):
-    """The variant a trace runs on: `GPU_VARIANT` when `gpu` and it loads a scene here, else `VARIANT`. Mesh bakes
-    pass False, so their bytes never depend on a GPU; a reference set passes True. Mitsuba is left on the variant
-    it was on."""
-    mi = import_mitsuba() if gpu else None
+def trace_variant():
+    """The variant a reference set traces on: `GPU_VARIANT` when it loads a scene here, else `VARIANT`, the one mesh
+    bakes keep. A variant Mitsuba was already on is restored. The probe may open CUDA in this process even when it falls
+    back, so the caller must not fork workers after it."""
+    mi = import_mitsuba()
     if mi is None:
         return VARIANT
     before = mi.variant()
