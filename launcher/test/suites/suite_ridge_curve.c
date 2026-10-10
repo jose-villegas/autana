@@ -1,10 +1,7 @@
 /*
  * Portable suite: the baked ridge curve, checked against the boot photograph
- * it has to lie on rather than against the drawing the generator read.
- *
- * Host only, listed in run_tests.sh and not in main/CMakeLists.txt:
- * boot_anim_image.h is a static table, so including it here would put a
- * second 644 KiB copy of the photograph in a device image.
+ * it has to lie on, read from the boot picture's pack, rather than against
+ * the drawing the generator read.
  */
 
 #include <stdbool.h>
@@ -13,9 +10,12 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "boot/boot_anim_image.h"
+#include "asset/asset_store.h"
 #include "gfx/draw/gfx_color.h"
+#include "gfx/image/gfx_image.h"
 #include "ui/ridge_curve_generated.h"
+
+#define BOOT_PICTURE         "boot"
 
 #define VIEW_W               RIDGE_CURVE_POINTS
 #define VIEW_H               RIDGE_CURVE_VIEW_H
@@ -35,12 +35,14 @@ curve_row(int x) {
     return (ridge_curve_y[x] + (1 << (RIDGE_CURVE_Q_SHIFT - 1))) >> RIDGE_CURVE_Q_SHIFT;
 }
 
-/* gen_boot_anim_image.py's panel_index() and its byte-swapped RGB565. */
+/* The photograph, stored a quarter turn clockwise into the panel's frame. */
+static gfx_image_t photo;
+
 static void
 photo_rgb(int view_x, int view_y, int rgb[3]) {
-    const int panel_x = BOOT_ANIM_IMAGE_W - 1 - view_y;
+    const int panel_x = photo.width - 1 - view_y;
     const int panel_y = view_x;
-    const uint16_t stored = boot_anim_image[panel_y * BOOT_ANIM_IMAGE_W + panel_x];
+    const uint16_t stored = photo.pixels[(panel_y * (int)photo.stride) + panel_x];
     const uint16_t c = gfx_color_swap(stored);
     rgb[0] = (int)gfx_rgb565_r5(c) * 255 / 31;
     rgb[1] = (int)gfx_rgb565_g6(c) * 255 / 63;
@@ -86,8 +88,8 @@ columns_on_an_edge(int dx, int dy) {
 
 static void
 test_the_curve_shares_the_photographs_frame(void) {
-    TEST_ASSERT_EQUAL_INT(BOOT_ANIM_IMAGE_H, RIDGE_CURVE_POINTS);
-    TEST_ASSERT_EQUAL_INT(BOOT_ANIM_IMAGE_W, RIDGE_CURVE_VIEW_H);
+    TEST_ASSERT_EQUAL_INT(photo.height, RIDGE_CURVE_POINTS);
+    TEST_ASSERT_EQUAL_INT(photo.width, RIDGE_CURVE_VIEW_H);
 }
 
 static void
@@ -129,13 +131,29 @@ test_a_displaced_curve_does_not(void) {
     TEST_ASSERT_LESS_THAN_INT(MAX_COLUMNS_OFF_EDGE, columns_on_an_edge(-8, 0));
 }
 
+static void
+test_the_boot_picture_loads(void) {
+    TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
+}
+
 void
 suite_ridge_curve(void) {
-    RUN_TEST(test_the_curve_shares_the_photographs_frame);
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
-    RUN_TEST(test_the_curve_lies_on_the_photographs_ridge);
-    RUN_TEST(test_a_displaced_curve_does_not);
+    const asset_pack_t* pack = asset_store_pack(BOOT_PICTURE);
+    asset_view_t entry;
+    if (pack == NULL || asset_pack_find(pack, BOOT_PICTURE, GFX_IMAGE_ASSET, &entry) != ASSET_OK
+        || gfx_image_open(entry, &photo) != ASSET_OK) {
+        RUN_TEST(test_the_boot_picture_loads);
+    } else {
+        RUN_TEST(test_the_curve_shares_the_photographs_frame);
+        RUN_TEST(test_the_curve_lies_on_the_photographs_ridge);
+        RUN_TEST(test_a_displaced_curve_does_not);
+    }
+    if (pack != NULL) {
+        asset_store_release(BOOT_PICTURE);
+    }
+    photo = (gfx_image_t){0};
 }
 
 SUITE_REGISTER(suite_ridge_curve);
