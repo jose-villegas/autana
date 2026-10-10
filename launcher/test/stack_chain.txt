@@ -20,3 +20,4 @@ indirect job_dispatch job_on_worker_started : frame_watch_add_task
 indirect send_heal_strips : send_fb_rows send_picture_rows
 indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
 indirect ui_end_over : ui_ridge_paint
+indirect tune.c:change tune_registry_handle_line : suite_r3d_lit.c:cull_reply

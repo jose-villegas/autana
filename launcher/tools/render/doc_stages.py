@@ -1,4 +1,4 @@
-"""Regenerate GPU comparisons or consume board captures with the doc block writer."""
+"""Regenerate measured render documentation from GPU runs or board captures."""
 import argparse
 import copy
 import hashlib
@@ -570,16 +570,26 @@ def check_gpu(out):
     return int(changed)
 
 
+def meshlets(args, out, work):
+    from meshlet_sizes import table
+    body = table(args.scene, args.captures, args.bakes, args.object)
+    (out / "tables/meshlet-sizes.md").write_text(body)
+    changed = apply_tables(ROOT, out / "tables", args.check)
+    return int(args.check and changed)
+
+
 def main(argv=None):
     git_environment()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", type=Path, required=True)
     parser.add_argument("--object", required=True)
-    parser.add_argument("--stage", choices=("gpu", "board"), required=True)
+    parser.add_argument("--stage", choices=("gpu", "board", "meshlets"), required=True)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--capture", type=Path, action="append", default=[])
     parser.add_argument("--build-commit", help="capture commit, default HEAD; firmware sources must still match")
+    parser.add_argument("--captures", type=Path, default=ROOT / "docs/render/data")
+    parser.add_argument("--bakes", type=Path, default=ROOT / "launcher/tools/results/meshlet-sizes/bakes")
     args = parser.parse_args(argv)
     try:
         validate_mode(args.smoke, args.check)
@@ -594,7 +604,7 @@ def main(argv=None):
         (out / "tables").mkdir(parents=True)
         (out / "render/gpu").mkdir(parents=True)
         work.mkdir(parents=True, exist_ok=True)
-        result = gpu(args, out, work) if args.stage == "gpu" else board(args, out, work)
+        result = {"gpu": gpu, "board": board, "meshlets": meshlets}[args.stage](args, out, work)
         if args.stage == "gpu" and not args.smoke:
             files = {path.relative_to(out).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                      for path in out.rglob("*") if path.is_file()}

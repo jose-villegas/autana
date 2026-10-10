@@ -38,6 +38,13 @@ def mesh_entry(point=POINT, points=None):
     return header + positions + bytes(-len(positions) % 4) + cluster + node
 
 
+def transform_track(field, root):
+    """A linear two-key vec3 track of the probe node's transform `field`."""
+    return {"path": "probe", "component": tracks_asset.TRANSFORM, "field": field, "type": tracks_asset.VALUE_VEC3,
+            "root": root, "name": f"probe:TRNS.{field}", "times": [0.0, 1.0],
+            "values": [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], "interpolation": "LINEAR", "quaternion": False}
+
+
 class EngineFrameTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -130,16 +137,11 @@ class EngineFrameTests(unittest.TestCase):
                              box)
 
     def test_scale_track_is_unchanged(self):
-        track = {"path": "probe", "component": tracks_asset.TRANSFORM, "field": "scale", "type": tracks_asset.VALUE_VEC3,
-                 "root": tracks_asset.ROOT_SCENE, "name": "probe:TRNS.scale", "times": [0.0, 1.0],
-                 "values": [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], "interpolation": "LINEAR", "quaternion": False}
-        entry = tracks_asset.encode([track], 1000)
+        entry = tracks_asset.encode([transform_track("scale", tracks_asset.ROOT_SCENE)], 1000)
         self.assertEqual(build_pack.to_engine(tracks_asset.TYPE, entry), entry)
 
     def test_a_skeleton_clip_keeps_its_root(self):
-        track = {"path": "probe", "component": tracks_asset.TRANSFORM, "field": "position", "type": tracks_asset.VALUE_VEC3,
-                 "root": tracks_asset.ROOT_SKELETON, "name": "probe:TRNS.position", "times": [0.0, 1.0],
-                 "values": [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], "interpolation": "LINEAR", "quaternion": False}
+        track = transform_track("position", tracks_asset.ROOT_SKELETON)
         entry = tracks_asset.encode([track], 1000, tracks_asset.ROOT_SKELETON)
         tracks, _ = tracks_asset.decode(build_pack.to_engine(tracks_asset.TYPE, entry))
         self.assertEqual(tracks[0]["root"], tracks_asset.ROOT_SKELETON)
