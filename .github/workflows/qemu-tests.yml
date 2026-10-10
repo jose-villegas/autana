@@ -13,6 +13,7 @@ on:
     paths:
       - '.github/workflows/qemu-tests.yml'
       - 'launcher/test/qemu_run.py'
+      - 'launcher/test/qemu/**'
       - 'launcher/test/run_qemu_tests.sh'
       - 'launcher/sdkconfig.defaults.qemu'
   workflow_dispatch:
@@ -35,6 +36,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Espressif's QEMU rebuilt with launcher/test/qemu/patches, which
+      # qemu_run.py runs in place of the prebuilt one. Built only when no
+      # cache holds this QEMU version and patch set; patched_qemu.py names
+      # the directory and removes any other, so one entry is saved per pair.
+      - id: qemu-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: launcher/build.qemu-xtensa
+          key: qemu-xtensa-
+          restore-keys: qemu-xtensa-
+
       # No --icount: it puts both emulated cores on one host thread, doubling
       # the run, and a QEMU image reports every measured time rather than
       # enforcing it, so instruction counting buys a pass/fail run nothing.
@@ -42,7 +54,24 @@ jobs:
       - uses: ./.github/actions/idf-build
         with:
           cache-name: qemu
-          command: sh test/run_qemu_tests.sh --timeout 4500
+          command: >-
+            (python3 test/qemu/patched_qemu.py path
+            || (apt-get update -qq
+            && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq
+            && python3 test/qemu/patched_qemu.py build))
+            && sh test/run_qemu_tests.sh --timeout 4500
+
+      - id: qemu-built
+        if: ${{ !cancelled() }}
+        run: echo "name=$(cd launcher/build.qemu-xtensa 2>/dev/null && ls -d */bin | cut -d/ -f1)" >> "$GITHUB_OUTPUT"
+
+      - if: >-
+          ${{ !cancelled() && steps.qemu-built.outputs.name != ''
+          && steps.qemu-cache.outputs.cache-matched-key != format('qemu-xtensa-{0}', steps.qemu-built.outputs.name) }}
+        uses: actions/cache/save@v4
+        with:
+          path: launcher/build.qemu-xtensa
+          key: qemu-xtensa-${{ steps.qemu-built.outputs.name }}
 
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
