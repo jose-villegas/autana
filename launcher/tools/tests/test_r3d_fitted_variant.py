@@ -304,6 +304,47 @@ class SweepTests(unittest.TestCase):
         self.assertEqual([folder.name for _poses, folder in sets],
                          ["reference", "reference_landscape", "reference_held_out"])
 
+    def test_a_fit_copies_the_mesh_the_fitter_wrote_under_its_start_files_name(self):
+        """A start is `<entry>.start.mesh`, not the variant's name; the fitter writes out/<start's name>."""
+        start_name, fitted_bytes = "entry.start.mesh", b"LMSH fitted"
+
+        def fitter(command):
+            out = pathlib.Path(command[command.index("--out") + 1])
+            out.mkdir(parents=True)
+            (out / pathlib.Path(command[command.index("--start") + 1]).name).write_bytes(fitted_bytes)
+
+        recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25)
+        job = SimpleNamespace(asset_name="scene.entry", renderer=SimpleNamespace(
+            fit=recipe, variant=SimpleNamespace(name="variant_name")))
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory) / "work"
+            work.mkdir()
+            target = work / "target.mesh"
+            with unittest.mock.patch.dict(sys.modules, {"r3d.appearance_simplify": SimpleNamespace(main=fitter)}):
+                fitted_variant.fit("scene.toml", None, job, work, target=target, inputs=work,
+                                   start=work / start_name)
+            self.assertEqual(target.read_bytes(), fitted_bytes)
+
+    def test_reference_inputs_have_no_size_without_camera_path_visibility(self):
+        fit = SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=3)
+        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
+        size = (8, 6)
+        for source in ("camera_region", None):
+            visibility = None if source is None else SimpleNamespace(source=source, size=size)
+            job = SimpleNamespace(settings=None, bake=None, renderer=SimpleNamespace(fit=fit, visibility=visibility))
+            self.assertIsNone(fitted_variant.reference_inputs(job, scene).size, source)
+        job.renderer.visibility = SimpleNamespace(source="camera_path", size=size)
+        self.assertEqual(fitted_variant.reference_inputs(job, scene).size, size)
+
+    def test_a_reference_set_is_refused_for_inputs_without_a_visibility_size(self):
+        inputs = fitted_variant.ReferenceInputs(
+            settings=None, bake=None, lights=[], indirect=None, tonemap_white=1.0, camera=None, size=None, poses={})
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory) / "references"
+            with self.assertRaisesRegex(fitted_variant.SettingsError, "camera_path visibility"):
+                fitted_variant.prepare_references(inputs, work)
+            self.assertFalse(work.exists(), "nothing is written before the refusal")
+
     def test_the_front_and_knee_keep_the_best_tradeoffs(self):
         points = [
             {"predicted_ms": 2.0, "mean_delta_e": 6.0},
