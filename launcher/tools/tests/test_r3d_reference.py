@@ -1,7 +1,10 @@
 """Checks the source-reference renderer on a one-triangle lit mesh: its light, its pixels and its normal buffer."""
 
+import contextlib
+import io
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -19,6 +22,7 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.test_r3d_path_bake import have_llvm  # noqa: E402
 
 
 def plane_source(corners):
@@ -260,6 +264,89 @@ class BounceReferenceTests(unittest.TestCase):
         from r3d import reference_render as reference
         with self.assertRaisesRegex(ValueError, "leave --workers unset"):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class TraceDeviceTests(unittest.TestCase):
+    """Where a reference set traces: CUDA when it loads a scene, else the mesh bake's variant; mesh bakes never ask."""
+
+    def test_only_a_gpu_trace_asks_for_cuda_and_falls_back_to_the_bake_variant(self):
+        from unittest.mock import patch
+        from r3d import ray_query
+        with patch.object(ray_query, "default_variant", side_effect=AssertionError("asked for a device")):
+            self.assertEqual(ray_query.trace_variant(False), ray_query.VARIANT)
+        with patch.object(ray_query, "import_mitsuba", return_value=object()):
+            for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
+                                (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
+                with patch.object(ray_query, "default_variant", return_value=found):
+                    self.assertEqual(ray_query.trace_variant(True), want, found)
+
+    def test_a_set_on_the_gpu_renders_in_this_process_and_frees_the_device_after(self):
+        from unittest.mock import patch
+        from r3d import ray_query, reference_render
+        from r3d.fitted_variant import poses_text
+
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
+        for variant, workers, freed in ((ray_query.GPU_VARIANT, 1, 1), ("llvm_ad_rgb", None, 0)):
+            with tempfile.TemporaryDirectory() as directory:
+                poses = pathlib.Path(directory) / "poses.txt"
+                poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
+                with contextlib.redirect_stdout(io.StringIO()),                         patch.object(ray_query, "trace_variant", return_value=variant),                         patch.object(reference_render, "lit_source", return_value=object()) as lit,                         patch.object(reference_render, "render_poses", return_value=(0, 1)) as render,                         patch.object(ray_query, "release_gpu") as release:
+                    self.assertEqual(reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")]),
+                                     variant)
+            self.assertEqual(lit.call_args.kwargs["variant"], variant)
+            self.assertEqual(render.call_args.kwargs["workers"], workers, variant)
+            self.assertEqual(release.call_count, freed, variant)
+
+
+def have_cuda():
+    """Whether Mitsuba's CUDA variant traces here; asked only when a test runs, so a CPU host never opens CUDA."""
+    from r3d import ray_query
+    return ray_query.trace_variant(True) == ray_query.GPU_VARIANT
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "needs NumPy")
+class CudaParityTests(unittest.TestCase):
+    """The reference on CUDA against the reference on LLVM, both with bounced light, on a sunlit corridor seen from a
+    few poses. The same sampler seeds draw the same paths, so the two differ only in float rounding."""
+
+    # Largest per-pixel difference over the mean pixel, from a first measurement on the GPU runner [measured
+    # 2026-10-10: see autana-i3mi]; well under a 565 step.
+    RELATIVE_BOUND = 1e-3
+
+    def setUp(self):
+        if not have_cuda():
+            self.skipTest("Mitsuba's CUDA variant does not trace here (no CUDA device, or no OptiX)")
+
+    def tearDown(self):
+        from r3d import mesh_import, mitsuba_reference
+        mesh_import.PATH_LIGHTS.clear()
+        mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
+
+    def render(self, variant):
+        from r3d.path_bake import PathLight
+        from r3d.ray_query import RayQuery
+        from tests.test_r3d_path_bake import SKY, SUN, corridor
+
+        source = corridor()
+        source.intersector = RayQuery(source.p, source.tri_v, variant)
+        source.bounce = PathLight(source, [SUN, SKY], set(), SimpleNamespace(bounces=2, rays=32), 1.0, variant)
+        job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()),
+                              bake=SimpleNamespace(ray_offset=0.01, ao=None))
+        scene = SimpleNamespace(lights=[SUN, SKY], indirect=SimpleNamespace(intensity=1.0))
+        poses = ([30.0, 20.0, 0.0, -0.3, -0.4, 0.0], [60.0, 5.0, 20.0, -1.0, -0.1, -0.3], [5.0, 40.0, -30.0, 0.2, -1.0, 0.4])
+        return np.stack([render_linear(source, job, scene, np.array(pose), 16, 12, 0.6, 2) for pose in poses])
+
+    def test_cuda_and_llvm_references_agree(self):
+        if not have_llvm():
+            self.skipTest("the LLVM variant needs libLLVM")
+        llvm = self.render("llvm_ad_rgb")
+        cuda = self.render("cuda_ad_rgb")
+        self.assertGreater(llvm.mean(), 0.0, "the poses see lit surfaces")
+        worst = np.abs(cuda - llvm).max() / llvm.mean()
+        print(f"cuda vs llvm: largest pixel difference {worst:.3g} of the mean pixel")
+        self.assertLess(worst, self.RELATIVE_BOUND)
 
 
 @needs_mitsuba

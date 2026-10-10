@@ -271,6 +271,38 @@ way up. `fit` prunes to `fit.prune.budget`, fits with
 folder. A refit is not bit-identical, the GPU's sums being unordered, so the
 lock pins the bytes a fit made.
 
+### Reference on the GPU
+
+A reference set traces its rays and bounced light on Mitsuba 3's `cuda_ad_rgb` variant, OptiX on the GPU, when
+that variant loads a scene in the process, and on `llvm_ad_rgb` otherwise (`ray_query.trace_variant`). Mesh bakes,
+starts included, always trace on `llvm_ad_rgb`, so their bytes never depend on a GPU.
+
+| | CUDA | LLVM |
+|---|---|---|
+| Poses | one after another in the process, which frees the device before the fit | one after another, Mitsuba spreading each over every core |
+| Bytes | differ from LLVM's by float rounding; `test_r3d_reference.py` bounds the difference where both run | differ between CPU vendors by an ulp ([isa.py](isa.py)) |
+
+The reference key names the light model, not the device, so a set made on either serves the same fits; the set's
+`traced_on.txt` records which one made it. Under WSL 2 the Windows driver ships no OptiX for Linux: Dr.Jit loads it
+from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
+`libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
+profile:
+
+```sh
+DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
+    sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
+```
+
+The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba 3 (Jakob, Speierer,
+Roussel, Nimier-David, Vicini, Zeltner, Nicolet, Crespo, Leroy, Zhang, *Mitsuba 3 renderer*, 2022,
+<https://mitsuba-renderer.org>) and Dr.Jit (Jakob, Speierer, Roussel, Vicini, *Dr.Jit: A Just-In-Time Compiler for
+Differentiable Rendering*, ACM Transactions on Graphics 41(4), SIGGRAPH 2022,
+doi:[10.1145/3528223.3530099](https://doi.org/10.1145/3528223.3530099)), whose CUDA and LLVM backends the two
+variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
+repository); what changed is where the files go: that page copies them into Windows' own WSL driver folder, a system
+change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's `src/optix_api.cpp`)
+points at.
+
 ### Budget sweep
 
 `fitted_variant.py sweep` remakes and scores a fitted recipe at several
