@@ -1,6 +1,6 @@
 # Animation system: design sketch
 
-**Status:** decisions approved (below); entry formats under review; not built. `[A]` marks a proposal of this sketch that
+**Status:** decisions approved (below); M1a built, the rest not built. `[A]` marks a proposal of this sketch that
 nobody asked for.
 
 Two systems share one sampler and one binding resolver:
@@ -104,25 +104,19 @@ reader checks everything once on open and refuses an unknown version
 
 | Entry | Python writer and reader | C reader |
 |---|---|---|
-| `TRCK` v2 | `tools/anim/tracks_asset.py` (v1 replaced) | `anim/anim_tracks.c` |
+| `TRCK` v2 | `tools/anim/tracks_asset.py` | `anim/anim_tracks.c` |
 | `SKEL` v1 | `tools/anim/skeleton_asset.py` new | `anim/anim_skeleton.c` new |
 | `SKIN` v1 | `tools/r3d/skin_asset.py` new | `render/r3d_skin.c` new |
 | `LMSH` | as today; a skinned mesh's `colors` are unlit albedo (`COLOR_0`) | as today |
 
-**TRCK v2** (the bindings sketch's layout plus a root kind):
-
-| Part | Layout |
-|---|---|
-| header, 20 bytes | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size`, `u8 root` (0 scene, 1 skeleton), 3 zero bytes |
-| row per binding, 24 bytes, at 20 | `u16 path`, `u16 field` (string offsets), `u32 component` (four characters: `TRNS`, `CAMR`), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type` (`anim_value_t`), `u8 interp`, 4 zero bytes |
-| strings | at `strings_off` |
-| data | `f32` times, then `f32` values (cubic: in-tangent, value, out-tangent) |
+**TRCK v2:** [The pack entry](../Animation-Tracks.md#the-pack-entry)
+defines its layout.
 
 A scene clip's `path` is a scene object name; a skeleton clip's is a joint
-path from the skeleton's root (`butt/spine/chest`), so it plays on any entity
+path from the skeleton's root (`root/spine/chest`), so it plays on any entity
 whose skeleton has those paths. Checks: offsets and sizes in range, every
 string terminated inside the table, known `root`, `type`, `interp`, a
-component the reader knows, times strictly increasing and finite, values
+nonzero component code, times strictly increasing and finite, values
 finite and sized for type and interp, zero padding.
 
 **SKEL v1**:
@@ -171,7 +165,7 @@ PR shows those 11 posed in gallop and half_bound at 2 and at 4.
 | Part | Layout |
 |---|---|
 | skinned renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]`, `char skin_id[32]`, `char skeleton_id[32]` |
-| animators (the `c3w3` row) | `u16 entity`, `u16 clip_count`, `u32 first_clip` (index into the clip rows) |
+| animators (the animator row) | `u16 entity`, `u16 clip_count`, `u32 first_clip` (index into the clip rows) |
 | clip rows | `char clip_id[32]` |
 | lights | `u8 kind` (`SCENE_LIGHT_DIRECTIONAL` = 0, the only kind yet), 3 zero bytes, `f32 direction[3]` (unit, scene space, pointing toward the light), `f32 colour[3]` (linear RGB, 0 to 1), `f32 intensity` (the scene file's, unscaled) |
 | header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient_colour[3]` (linear RGB), `f32 ambient_intensity`, `f32 tonemap_white` |
@@ -231,13 +225,13 @@ void r3d_skin_refit_nodes(r3d_lit_mesh_t* out);
 
 Lighting reuses the skinned-lighting kernels (`skin_light_bench.c` moves to
 `render/`): a 16x16 bilinear table rebuilt only when the lights or the
-entity's rotation change, or direct N.L, whichever the board check (ymur)
+entity's rotation change, or direct N.L, whichever the lighting board check
 picks. Same light, ambient and tonemap as the static bake, so the model sits
 in its baked meadow.
 
 **Scene side** [A]: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). The animator is the one
-`c3w3` adds; for M1 it carries a character layer, and a property animator
+the animator row adds; for M1 it carries a character layer, and a property animator
 (the camera path) is the same row with a property clip. App API:
 
 ```c
@@ -270,8 +264,8 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 | M1a | TRCK v2, `anim_bind` (bindings sketch step 1) | host tests per the bindings sketch |
 | M1b | `SKEL` and `SKIN` bake from any rigged glb; readers | host: skinned positions match `gltf_skin.py` for every frame of a probe rig |
 | M1c | pose sample, blend, model, palette, skin, bounds | host render of a frame beside the reference; host test of a transition blend's endpoints and midpoint |
-| M1d | lighting kernel moved in; scene carries the bake's lights | ymur board check; host render |
-| M1e | scene components, Render Lab picker | board: Âµs per vertex (budget 1), frame time, one core against two, free internal RAM and its largest block before and after; `autana status` and `buildid` around each |
+| M1d | lighting kernel moved in; scene carries the bake's lights | the lighting board check; host render |
+| M1e | scene components, Render Lab picker | board: µs per vertex (budget 1), frame time, one core against two, free internal RAM and its largest block before and after; `autana status` and `buildid` around each |
 
 ## Bake keys
 
@@ -282,12 +276,11 @@ glTF export and the static meshes keep their keys. No GPU refit.
 ## Decided (maintainer)
 
 1. M1 builds TRCK v2 and `anim_bind` itself (M1a), kept in step with the
-   bindings sketch; Content Asset Design reviews every entry format first.
+   bindings sketch; every entry format is reviewed before it is built.
 2. A character clip resolves relative to its skeleton, reusable on any
    entity with that rig; a property clip resolves at scene level by object
    name.
-3. Skinning and animators live in scene/ from M1; the animator is `c3w3`'s
-   row. The scene carries its directional lights and ambient as SCNE rows.
+3. Skinning and animators live in scene/ from M1; the animator uses the animator row. The scene carries its directional lights and ambient as SCNE rows.
 4. Influences per vertex: an import setting, default 2, 4 allowed; the
    entry records it and the runtime skins either.
 5. Designed for two cores from the start (section 2); M1 may run single-core.

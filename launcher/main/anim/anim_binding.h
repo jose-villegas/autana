@@ -19,9 +19,13 @@ typedef struct {
 } anim_component_fields_t;
 
 typedef struct {
+    const anim_component_fields_t* fields;
+    void* base;
+} anim_component_ref_t;
+
+typedef struct {
     const char* name;
-    const anim_component_fields_t* const* components;
-    void* const* bases;
+    const anim_component_ref_t* components;
     uint8_t component_count;
     uint8_t* dirty;
     uint8_t dirty_bit;
@@ -32,7 +36,6 @@ typedef struct {
     float* target;
     uint8_t* dirty;
     uint8_t dirty_bit;
-    uint8_t type;
 } anim_bound_t;
 
 typedef enum {
@@ -45,9 +48,12 @@ typedef enum {
     ANIM_BIND_ERR_SPACE,
 } anim_bind_status_t;
 
-/* On failure, failed receives the binding index; root and space use index 0. */
+/* Finds the component and field among components and checks the type. */
+anim_bind_status_t anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* components,
+                                   int component_count, uint8_t* dirty, uint8_t dirty_bit, anim_bound_t* out);
+/* failed is a failed binding's index, or -1 on success and root or space errors. */
 anim_bind_status_t anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_count,
                              anim_bound_t* out, int out_count, int* failed);
-void anim_apply(const anim_bound_t* bound, int first, int count, float seconds);
+void anim_apply(const anim_bound_t* bound, int count, float seconds);
 /* Returns the snprintf length of path:CCCC.field. */
 int anim_binding_describe(const anim_binding_t* binding, char* out, size_t size);

@@ -19,7 +19,7 @@ because +Y up cannot define their roll.
 
 | File | What it does |
 |---|---|
-| [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes TRCK version 2 bindings for node TRS and camera yfov, with string-table paths, component codes, field names, value types and a scene or skeleton root. Camera values and cubic tangents use engine short-axis FOV units. `r3d/build_pack.py` calls it. |
+| [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes TRCK bindings for node TRS and camera yfov, with string-table paths, component codes, field names, value types and a scene or skeleton root. Camera values and cubic tangents use engine short-axis FOV units. `r3d/build_pack.py` calls it. |
 | [camera_keys.py](camera_keys.py) | Builds a camera `.keys.toml` into glTF bytes; `gltf/gltf_read.py`'s `load_asset` calls it. |
 | [track_host.py](track_host.py), [track_host.c](track_host.c) | Prints every track of a clip's `TRCK` entry every N ms, or a camera node as a poses file, through `main/anim/`'s reader and sampler. A `.anim.toml` is first baked into a scratch pack of just that clip. `r3d/poses.py` gets a scene camera's poses from it. |
 

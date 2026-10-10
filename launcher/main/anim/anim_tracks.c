@@ -52,8 +52,7 @@ check_row(const anim_tracks_t* tracks, const uint8_t* row) {
     const uint8_t type = row[ANIM_TRACKS_ROW_TYPE];
     const uint8_t interp = row[ANIM_TRACKS_ROW_INTERP];
     const uint32_t component = word(row + ANIM_TRACKS_ROW_COMPONENT);
-    if (keys == 0 || type > ANIM_VALUE_COLOUR || interp > ANIM_CUBIC
-        || (component != ANIM_COMPONENT_TRANSFORM && component != ANIM_COMPONENT_CAMERA)) {
+    if (keys == 0 || type > ANIM_VALUE_COLOUR || interp > ANIM_CUBIC || component == 0) {
         return ASSET_ERR_FORMAT;
     }
     for (int i = ANIM_TRACKS_ROW_PAD; i < ANIM_TRACKS_ROW_SIZE; i++) {

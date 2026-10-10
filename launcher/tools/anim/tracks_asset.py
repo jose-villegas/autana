@@ -6,8 +6,9 @@ A NAME.anim.toml names its source, a .glb, .fbx or camera .keys.toml in its
 own folder, and the animation in it; the pack id is NAME. The keys and the
 entry's layout are in docs/Animation-Tracks.md, "The pack entry".
 
-Bindings name an object path, component and field. Curves are copied in the
-field's units, and constant channels collapse to one key. Standard library only.
+Each curve is stored in its target field's units (a camera's yfov
+becomes `half_fov_short_tan`), and a channel that never changes
+collapses to one key. Standard library only.
 """
 
 import math
@@ -28,8 +29,7 @@ HEADER = struct.Struct("<HHIIIB3x")
 ROW = struct.Struct("<HHIIIHBB4x")
 HEADER_SIZE = 20
 ROW_SIZE = 24
-AT_VERSION, AT_COUNT, AT_DURATION = 0, 2, 4
-AT_STRINGS, AT_STRINGS_SIZE, AT_ROOT, AT_PAD = 8, 12, 16, 17
+AT_VERSION, AT_ROOT, AT_PAD = 0, 16, 17
 HEADER_PAD_SIZE = 3
 ROW_PATH, ROW_FIELD, ROW_COMPONENT = 0, 2, 4
 ROW_TIMES, ROW_VALUES, ROW_KEYS = 8, 12, 16
@@ -45,11 +45,8 @@ FIELDS = {"translation": ("position", VALUE_VEC3), "rotation": ("rotation", VALU
           "scale": ("scale", VALUE_VEC3)}
 assert HEADER.size == HEADER_SIZE == AT_PAD + HEADER_PAD_SIZE
 assert ROW.size == ROW_SIZE == ROW_PAD + ROW_PAD_SIZE
-WIDTH_MAX = 4
 # glTF's interpolation names, in anim_interp_t's order.
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
-PATHS = ("translation", "rotation", "scale")
-POINTER = re.compile(r"^/([A-Za-z]+)/(\d+)/(.+)$")
 SOURCE_SUFFIXES = (*gltf_read.ASSET_SUFFIXES, gltf_read.KEYS_SUFFIX)
 SOURCE = re.compile(r"[^/\\:]+(?:%s)" % "|".join(re.escape(s) for s in SOURCE_SUFFIXES), re.I)  # a file name: no folder, drive or path separator of either system
 
@@ -75,49 +72,24 @@ def channel_binding(document, channel, joint_paths=None):
         holders = [i for i, node in enumerate(document.get("nodes", [])) if node.get("camera") == camera]
         if camera >= len(document.get("cameras", [])) or len(holders) != 1:
             raise TracksError("channel %s: needs one node holding the camera" % pointer)
-        return object_name(document, "nodes", holders[0]), CAMERA, "half_fov_short_tan", VALUE_FLOAT
+        return object_name(document, "nodes", holders[0]), CAMERA, "half_fov_short_tan", VALUE_FLOAT, camera
     node, path = channel["node"], channel["path"]
     if path not in FIELDS or node is None:
         raise TracksError("channel node %s/%s: unsupported target" % (node, path))
     field, value_type = FIELDS[path]
-    return (joint_paths[node] if joint_paths else object_name(document, "nodes", node)), TRANSFORM, field, value_type
+    return (joint_paths[node] if joint_paths else object_name(document, "nodes", node)), TRANSFORM, field, value_type, None
 
 
 def channel_name(document, channel):
-    path, component, field, _ = channel_binding(document, channel)
-    return "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("ascii"), field)
+    path, component, field, _, _ = channel_binding(document, channel)
+    return binding_name(path, component, field)
 
 
-def skeleton_paths(document, channels):
-    driven = {c["node"] for c in channels}
-    if None in driven:
-        return None
-    for skin in document.get("skins", []):
-        joints = set(skin["joints"])
-        if not driven <= joints:
-            continue
-        parents = {child: i for i, node in enumerate(document.get("nodes", []))
-                   for child in node.get("children", [])}
-        paths = {}
-        roots = set()
-        for joint in driven:
-            chain, seen, node = [], set(), joint
-            while True:
-                if node in seen:
-                    raise TracksError("joint hierarchy contains a cycle")
-                seen.add(node)
-                chain.append(object_name(document, "nodes", node))
-                if parents.get(node) not in joints:
-                    roots.add(node)
-                    break
-                node = parents[node]
-            paths[joint] = "/".join(reversed(chain))
-        if len(roots) == 1:
-            return paths
-    return None
+def binding_name(path, component, field):
+    return "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("latin1"), field)
 
 
-def check(name, channel):
+def check_curve(name, channel):
     times, values = channel["times"], channel["values"]
     keys = len(times)
     per_key = 3 if channel["interpolation"] == "CUBICSPLINE" else 1
@@ -127,14 +99,18 @@ def check(name, channel):
         raise TracksError("%s: %d times but %d values" % (name, keys, len(values)))
     if any(b <= a for a, b in zip(times, times[1:])):
         raise TracksError("%s: key times are not strictly increasing" % name)
-    if not 1 <= len(values[0]) <= WIDTH_MAX:
-        raise TracksError("%s: a value of %d components; tracks hold 1 to %d" % (name, len(values[0]), WIDTH_MAX))
+    if not 1 <= len(values[0]) <= max(WIDTHS):
+        raise TracksError("%s: a value of %d components; tracks hold 1 to %d" % (name, len(values[0]), max(WIDTHS)))
     if any(len(v) != len(values[0]) for v in values):
         raise TracksError("%s: inconsistent value widths" % name)
-    if gltf_read.is_rotation(channel) and len(values[0]) != 4:
-        raise TracksError("%s: a rotation is a quaternion" % name)
     if not all(math.isfinite(x) for x in times + [x for row in values for x in row]):
         raise TracksError("%s: a key holds a value that is not finite" % name)
+
+
+def check(name, channel):
+    check_curve(name, channel)
+    if gltf_read.is_rotation(channel) and len(channel["values"][0]) != 4:
+        raise TracksError("%s: a rotation is a quaternion" % name)
 
 
 def collapse_constant(channel):
@@ -158,11 +134,17 @@ def clip_tracks(document, binary, animation):
         channels = gltf_read.read_animation(document, binary, animation)
         if not channels:
             raise TracksError("no channels")
-        joint_paths = skeleton_paths(document, channels)
+        driven = {c["node"] for c in channels}
+        joint_paths = None
+        for skin in document.get("skins", []):
+            if driven <= set(skin["joints"]):
+                joint_paths = gltf_read.skin_joint_paths(document, skin)
+                if joint_paths is not None:
+                    break
         tracks = []
         for channel in channels:
-            path, component, field, value_type = channel_binding(document, channel, joint_paths)
-            name = "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("ascii"), field)
+            path, component, field, value_type, camera = channel_binding(document, channel, joint_paths)
+            name = binding_name(path, component, field)
             for label in (path, field):
                 raw = label.encode("utf-8")
                 if not raw or len(raw) > STRING_MAX or b"\0" in raw:
@@ -171,26 +153,14 @@ def clip_tracks(document, binary, animation):
             if len(channel["values"][0]) != WIDTHS[value_type]:
                 raise TracksError("%s: values do not match binding type" % name)
             if component == CAMERA:
-                camera = int(POINTER.match(channel["pointer"]).group(2))
                 aspect = document["cameras"][camera]["perspective"].get("aspectRatio", 1.0)
-                values = channel["values"]
-                if channel["interpolation"] == "CUBICSPLINE":
-                    converted = []
-                    for i in range(0, len(values), CUBIC_RUNS):
-                        angle = values[i + 1][0]
-                        slope = gltf_read.camera_half_fov_short_tan_derivative(angle, aspect)
-                        converted.extend(((values[i][0] * slope,),
-                                          (gltf_read.camera_half_fov_short_tan(angle, aspect),),
-                                          (values[i + 2][0] * slope,)))
-                else:
-                    converted = [(gltf_read.camera_half_fov_short_tan(v[0], aspect),) for v in values]
-                channel = dict(channel, values=converted)
+                channel = dict(channel, values=gltf_read.camera_half_fov_short_tan_curve(
+                    channel["values"], channel["interpolation"], aspect))
             channel = collapse_constant(channel)
             tracks.append({"path": path, "component": component, "field": field, "type": value_type,
-                           "root": ROOT_SKELETON if joint_paths else ROOT_SCENE,
                            "name": name, "times": list(channel["times"]), "values": list(channel["values"]),
                            "interpolation": channel["interpolation"], "quaternion": value_type == VALUE_QUAT})
-        return tracks, round(gltf_read.animation_duration(channels) * 1000)
+        return tracks, round(gltf_read.animation_duration(channels) * 1000), ROOT_SKELETON if joint_paths else ROOT_SCENE
     except (ValueError, OverflowError) as error:
         raise TracksError("clip %r: %s" % (animation.get("name", ""), error)) from error
 
@@ -202,8 +172,8 @@ def find_animation(document, name, where):
     return found[0]
 
 
-def encode(tracks, duration_ms):
-    """TRCK v2 bytes for bindings from clip_tracks()."""
+def encode(tracks, duration_ms, root=ROOT_SCENE):
+    """TRCK bytes for bindings from clip_tracks()."""
     strings, offsets, bindings = bytearray(), {}, set()
     for track in tracks:
         binding = (track["path"], track["component"], track["field"])
@@ -221,16 +191,14 @@ def encode(tracks, duration_ms):
         raise TracksError("string table exceeds %d bytes" % STRINGS_MAX)
     if len(tracks) > COUNT_MAX or not 0 <= duration_ms <= DURATION_MAX:
         raise TracksError("%d bindings over %d ms do not fit the entry" % (len(tracks), duration_ms))
-    roots = {t["root"] for t in tracks}
-    root = next(iter(roots), ROOT_SCENE)
-    if len(roots) > 1 or root not in (ROOT_SCENE, ROOT_SKELETON):
-        raise TracksError("bindings have inconsistent roots")
+    if root not in (ROOT_SCENE, ROOT_SKELETON):
+        raise TracksError("unknown root")
     strings_off = HEADER.size + ROW.size * len(tracks)
     padding = bytes(-(strings_off + len(strings)) % ALIGNMENT)
     offset = strings_off + len(strings) + len(padding)
     rows, data = [], bytearray()
     for track in tracks:
-        check(track["name"], dict(track, node=0, path="rotation" if track["quaternion"] else "translation", pointer=None))
+        check_curve(track["name"], track)
         if track["component"] not in (TRANSFORM, CAMERA) or track["type"] not in range(len(WIDTHS)):
             raise TracksError("%s: unknown component or type" % track["name"])
         if any(len(v) != WIDTHS[track["type"]] for v in track["values"]):
@@ -255,7 +223,7 @@ def floats_at(entry, offset, count, table_end):
 
 
 def decode(entry):
-    """Validated bindings and duration of a TRCK v2 entry."""
+    """Validated bindings and duration of a TRCK entry."""
     if len(entry) < struct.calcsize("<H"):
         raise TracksError("shorter than a version")
     version = struct.unpack_from("<H", entry, AT_VERSION)[0]
@@ -283,7 +251,7 @@ def decode(entry):
         path_off, field_off, component, times_at, values_at, keys, value_type, interp = ROW.unpack_from(entry, row_off)
         path, field = string_at(path_off), string_at(field_off)
         if keys == 0 or value_type >= len(WIDTHS) or interp >= len(INTERPOLATIONS) \
-                or component not in (TRANSFORM, CAMERA) or any(entry[row_off + ROW_PAD:row_off + ROW_SIZE]):
+                or component == 0 or any(entry[row_off + ROW_PAD:row_off + ROW_SIZE]):
             raise TracksError("binding %d: unknown field value or padding" % index)
         width = WIDTHS[value_type]
         per_key = CUBIC_RUNS if INTERPOLATIONS[interp] == "CUBICSPLINE" else 1
@@ -292,7 +260,7 @@ def decode(entry):
         if not all(math.isfinite(x) for x in times + values) or any(b <= a for a, b in zip(times, times[1:])):
             raise TracksError("binding %d: non-finite keys or times not increasing" % index)
         tracks.append({"path": path, "field": field, "component": component, "type": value_type, "root": root,
-                       "name": "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("ascii"), field),
+                       "name": binding_name(path, component, field),
                        "times": times, "values": [tuple(values[i:i + width]) for i in range(0, len(values), width)],
                        "interpolation": INTERPOLATIONS[interp], "quaternion": value_type == VALUE_QUAT})
     return tracks, duration_ms
@@ -332,8 +300,8 @@ def bake(path):
         document, binary = gltf_read.load_asset(source)
     except (OSError, ValueError) as error:
         raise TracksError("%s: source %s: %s" % (path, source, error)) from error
-    tracks, duration_ms = clip_tracks(document, binary, find_animation(document, animation, source))
+    tracks, duration_ms, root = clip_tracks(document, binary, find_animation(document, animation, source))
     try:
-        return encode(tracks, duration_ms)
+        return encode(tracks, duration_ms, root)
     except (ValueError, OverflowError) as error:
         raise TracksError("clip %r: %s" % (animation, error)) from error

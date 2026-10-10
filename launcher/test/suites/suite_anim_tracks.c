@@ -6,6 +6,7 @@
 #include <string.h>
 #include "anim/anim_tracks.h"
 #include "asset/asset_store.h"
+#include "render/r3d_scene.h"
 #include "suites.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
@@ -54,6 +55,41 @@ fixture(void) {
 static asset_status_t
 open_fixture(const fixture_t* f, uint32_t size, anim_tracks_t* out) {
     return anim_tracks_open((asset_view_t){f->entry, size}, out);
+}
+
+static void
+test_step_and_single_quaternion_keys_are_unit(void) {
+    fixture_t f = fixture();
+    f.entry[ROW0 + ANIM_TRACKS_ROW_TYPE] = ANIM_VALUE_QUAT;
+    f.entry[ROW0 + ANIM_TRACKS_ROW_INTERP] = ANIM_STEP;
+    const float values[] = {2, 4, 6, 8, 2, 4, 6, 8};
+    test_pack_put_floats(f.entry + VALUES, values, 2 * ANIM_WIDTH_MAX);
+    for (int keys = 1; keys <= 2; keys++) {
+        test_pack_put16(f.entry + ROW0 + ANIM_TRACKS_ROW_KEYS, keys);
+        anim_tracks_t tracks;
+        anim_binding_t binding;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, open_fixture(&f, ENTRY_BYTES, &tracks));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&tracks, 0, &binding));
+        for (int seconds = -1; seconds <= 3; seconds++) {
+            float out[ANIM_WIDTH_MAX];
+            anim_track_sample(&binding.curve, (float)seconds, out);
+            float norm = 0;
+            for (int i = 0; i < ANIM_WIDTH_MAX; i++) {
+                norm += out[i] * out[i];
+            }
+            TEST_ASSERT_FLOAT_WITHIN(0.00001F, 1.0F, norm);
+        }
+    }
+    test_free_aligned(f.raw);
+}
+
+static void
+test_unknown_nonzero_component_opens(void) {
+    fixture_t f = fixture();
+    test_pack_put32(f.entry + ROW0 + ANIM_TRACKS_ROW_COMPONENT, ASSET_TYPE('T', 'E', 'S', 'T'));
+    anim_tracks_t tracks;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_fixture(&f, ENTRY_BYTES, &tracks));
+    test_free_aligned(f.raw);
 }
 
 static void
@@ -113,7 +149,11 @@ test_invalid_fields_and_padding(void) {
     for (size_t i = 0; i < sizeof CASES / sizeof CASES[0]; i++) {
         fixture_t f = fixture();
         anim_tracks_t tracks;
-        f.entry[CASES[i].offset] = CASES[i].value;
+        if (CASES[i].offset == ROW0 + ANIM_TRACKS_ROW_COMPONENT) {
+            test_pack_put32(f.entry + CASES[i].offset, 0);
+        } else {
+            f.entry[CASES[i].offset] = CASES[i].value;
+        }
         TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_fixture(&f, ENTRY_BYTES, &tracks));
         test_free_aligned(f.raw);
     }
@@ -223,19 +263,22 @@ test_find_node_required_parts_and_default_scale(void) {
     TEST_ASSERT_NOT_NULL(entry);
     test_tracks_header(entry, COUNT, 1000);
     test_track_row(entry, 0,
-                   &(test_track_t){.name = "node/translation",
+                   &(test_track_t){.path = "node",
+                                   .field = "position",
+                                   .component = ANIM_COMPONENT_TRANSFORM,
                                    .times = TIMES_AT,
                                    .values = POSITION_AT,
                                    .keys = 1,
-                                   .width = 3,
+                                   .type = ANIM_VALUE_VEC3,
                                    .interp = ANIM_STEP});
     test_track_row(entry, 1,
-                   &(test_track_t){.name = "node/rotation",
+                   &(test_track_t){.path = "node",
+                                   .field = "rotation",
+                                   .component = ANIM_COMPONENT_TRANSFORM,
                                    .times = TIMES_AT,
                                    .values = ROTATION_AT,
                                    .keys = 1,
-                                   .width = 4,
-                                   .quaternion = true,
+                                   .type = ANIM_VALUE_QUAT,
                                    .interp = ANIM_STEP});
     const float rotation[] = {0, 0, 0, 1};
     test_pack_put_floats(entry + ROTATION_AT, rotation, ANIM_WIDTH_MAX);
@@ -372,6 +415,8 @@ test_a_missing_clip_and_an_entry_of_another_type_are_told_apart(void) {
 
 void
 suite_anim_tracks(void) {
+    RUN_TEST(test_step_and_single_quaternion_keys_are_unit);
+    RUN_TEST(test_unknown_nonzero_component_opens);
     RUN_TEST(test_types_and_interpolations);
     RUN_TEST(test_large_key_count_and_sized_cubic_values);
     RUN_TEST(test_find_node_required_parts_and_default_scale);

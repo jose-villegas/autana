@@ -14,11 +14,13 @@ enum {
 };
 
 typedef struct {
-    const char* name;
+    const char* path;
+    const char* field;
+    uint32_t component;
+    anim_value_t type;
     uint32_t times, values;
-    int keys, width;
+    int keys;
     anim_interp_t interp;
-    bool quaternion;
 } test_track_t;
 
 static inline void
@@ -37,19 +39,14 @@ test_track_row(uint8_t* entry, int index, const test_track_t* track) {
     const uint32_t strings = TEST_TRACKS_HEADER_SIZE + (count * TEST_TRACK_ROW_SIZE);
     const uint16_t path = index * TEST_TRACK_STRING_SLOT;
     const uint16_t field = path + TEST_TRACK_FIELD_OFFSET;
-    const char* slash = strrchr(track->name, '/');
-    const size_t length = (size_t)(slash - track->name);
-    memcpy(entry + strings + path, track->name, length);
-    entry[strings + path + length] = 0;
-    const char* part = slash + 1;
-    const char* target = strcmp(part, "translation") == 0 ? "position" : part;
-    strcpy((char*)entry + strings + field, target);
+    strcpy((char*)entry + strings + path, track->path);
+    strcpy((char*)entry + strings + field, track->field);
     test_pack_put16(row + ANIM_TRACKS_ROW_PATH, path);
     test_pack_put16(row + ANIM_TRACKS_ROW_FIELD, field);
-    test_pack_put32(row + ANIM_TRACKS_ROW_COMPONENT, ANIM_COMPONENT_TRANSFORM);
+    test_pack_put32(row + ANIM_TRACKS_ROW_COMPONENT, track->component);
     test_pack_put32(row + ANIM_TRACKS_ROW_TIMES, track->times);
     test_pack_put32(row + ANIM_TRACKS_ROW_VALUES, track->values);
     test_pack_put16(row + ANIM_TRACKS_ROW_KEYS, track->keys);
-    row[ANIM_TRACKS_ROW_TYPE] = track->quaternion ? ANIM_VALUE_QUAT : track->width - 1;
+    row[ANIM_TRACKS_ROW_TYPE] = (uint8_t)track->type;
     row[ANIM_TRACKS_ROW_INTERP] = (uint8_t)track->interp;
 }

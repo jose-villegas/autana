@@ -41,9 +41,44 @@ def camera_half_fov_short_tan(yfov, aspect_ratio=1.0):
 
 
 def camera_half_fov_short_tan_derivative(yfov, aspect_ratio=1.0):
-    """Scale a yfov tangent into short-axis half-angle tangent units."""
+    """d/d(yfov) of camera_half_fov_short_tan():
+    the factor a cubic key's yfov tangent is multiplied by."""
     tangent = math.tan(yfov / 2.0)
     return min(aspect_ratio, 1.0) * (1.0 + tangent * tangent) / 2.0
+
+
+def camera_half_fov_short_tan_curve(values, interpolation, aspect_ratio):
+    """Convert a yfov curve's values and cubic tangents to field units."""
+    if interpolation != "CUBICSPLINE":
+        return [(camera_half_fov_short_tan(v[0], aspect_ratio),) for v in values]
+    converted = []
+    for incoming, value, outgoing in zip(values[0::3], values[1::3], values[2::3]):
+        slope = camera_half_fov_short_tan_derivative(value[0], aspect_ratio)
+        converted.extend(((incoming[0] * slope,),
+                          (camera_half_fov_short_tan(value[0], aspect_ratio),),
+                          (outgoing[0] * slope,)))
+    return converted
+
+
+def skin_joint_paths(document, skin):
+    """Joint paths from one joint root, excluding non-joint ancestors; None for multiple roots."""
+    nodes = document.get("nodes", [])
+    parents = {child: i for i, node in enumerate(nodes) for child in node.get("children", [])}
+    joints = set(skin["joints"])
+    paths, roots = {}, set()
+    for joint in skin["joints"]:
+        chain, seen, node = [], set(), joint
+        while True:
+            if node in seen:
+                raise ValueError("joint hierarchy contains a cycle")
+            seen.add(node)
+            chain.append(nodes[node].get("name") or "nodes%d" % node)
+            if parents.get(node) not in joints:
+                roots.add(node)
+                break
+            node = parents[node]
+        paths[joint] = "/".join(reversed(chain))
+    return paths if len(roots) == 1 else None
 
 
 def load_glb(path):

@@ -1583,12 +1583,16 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
 static const char* const NODE_PARTS[FALLBACK_TRACKS] = {"camera/translation", "camera/rotation", "camera/scale",
                                                         "space/translation",  "space/rotation",  "space/scale"};
 
-/* The boot clip's six tracks, in NODE_PARTS order. */
+static const char* const TRANSFORM_PARTS[] = {"position", "rotation", "scale"};
+
 static void
 six_tracks(test_track_t rows[FALLBACK_TRACKS]) {
     for (int i = 0; i < FALLBACK_TRACKS; i++) {
         const bool rotation = i % 3 == 1;
-        rows[i] = (test_track_t){.name = NODE_PARTS[i], .width = rotation ? 4 : 3, .quaternion = rotation};
+        rows[i] = (test_track_t){.path = i < 3 ? "camera" : "space",
+                                 .field = TRANSFORM_PARTS[i % 3],
+                                 .component = ANIM_COMPONENT_TRANSFORM,
+                                 .type = rotation ? ANIM_VALUE_QUAT : ANIM_VALUE_VEC3};
     }
 }
 
@@ -1717,8 +1721,7 @@ static void
 test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted(void) {
     test_track_t rows[FALLBACK_TRACKS];
     six_tracks(rows);
-    rows[4].quaternion = false;
-    rows[4].width = 3;
+    rows[4].type = ANIM_VALUE_VEC3;
     write_clip(rows, FALLBACK_TRACKS);
     expect_the_rest_pose(".");
     (void)remove(FALLBACK_PACK);
@@ -1746,7 +1749,13 @@ test_each_part_of_the_motion_is_the_track_of_its_name(void) {
     (void)remove(FALLBACK_PACK);
     TEST_ASSERT_TRUE(from_pack);
     for (int i = 0; i < FALLBACK_TRACKS; i++) {
-        TEST_ASSERT_EQUAL_FLOAT_MESSAGE((float)(i * 10) + 1.0F, first[i], NODE_PARTS[i]);
+        float expected = (float)(i * 10) + 1.0F;
+        if (rows[i].type == ANIM_VALUE_QUAT) {
+            const float base = (float)(i * 10);
+            const quatf_t unit = quatf_normalize((quatf_t){base + 1, base + 2, base + 3, base + 4});
+            expected = unit.x;
+        }
+        TEST_ASSERT_EQUAL_FLOAT_MESSAGE(expected, first[i], NODE_PARTS[i]);
     }
 }
 

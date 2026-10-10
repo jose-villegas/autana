@@ -141,8 +141,8 @@ def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=(), n
 def probe_entry():
     """The probe clip's TRCK bytes."""
     document, binary = gltf_read.parse_glb(probe_glb())
-    tracks, duration_ms = tracks_asset.clip_tracks(document, binary, document["animations"][0])
-    return tracks_asset.encode(tracks, duration_ms)
+    tracks, duration_ms, root = tracks_asset.clip_tracks(document, binary, document["animations"][0])
+    return tracks_asset.encode(tracks, duration_ms, root)
 
 
 def single(value):
@@ -159,7 +159,7 @@ def sample_times(track, duration_ms):
     for t_ms in range(0, UNTIL_MS, EVERY_MS):
         seconds = single((t_ms % duration_ms) * 0.001)
         out.append((seconds, copies or seconds <= times[0] or seconds >= times[-1]))
-    return [(single(seconds), exact) for seconds, exact in out]
+    return [(single(seconds), exact and not track["quaternion"]) for seconds, exact in out]
 
 
 def reference_entry(entry):
