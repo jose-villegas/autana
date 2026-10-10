@@ -16,7 +16,7 @@ from r3d.poses import sample_camera_path
 from r3d.fitted_variant import poses_text
 
 ROWS = ("16", "32", "64")
-STAGES = ("r3d.cull", "r3d.transform", "r3d.draw")
+STAGES = ("r3d.cull", "r3d.transform", "r3d.draw")  # magic: the frame-cost stages the table shows, as raster.c names them
 IDENTITY = re.compile(r"\bCAPTURE build_id=([0-9a-f]{12}-diag) pack_crc32=([0-9a-f]{8}) object=(\w+) size=(\d+) cull=([01]) period_ms=(\d+) pose_every_ms=(\d+)")
 BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+)", re.S)
 
@@ -37,7 +37,7 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
             blocks_by_label.setdefault(match[1], []).append(match[0])
         selected = [(row, object_name)]
         if row == "32":
-            selected.insert(0, ("cull-off", "cull_off"))
+            selected.insert(0, ("cull-off", "cull_off"))  # magic: the suite's label for its culling-off pass
         for key, label in selected:
             blocks = blocks_by_label.get(label, [])
             if len(blocks) != 1:
