@@ -130,11 +130,15 @@ class EngineFrameTests(unittest.TestCase):
             self.assertEqual(mesh_asset.NODE.unpack_from(converted, header[9] + index * mesh_asset.NODE.size)[:6],
                              box)
 
+    @staticmethod
+    def vec3_track(field, root):
+        """A two-key linear vec3 track of the probe's transform."""
+        return {"path": "probe", "component": tracks_asset.TRANSFORM, "field": field, "type": tracks_asset.VALUE_VEC3,
+                "root": root, "name": f"probe:TRNS.{field}", "times": [0.0, 1.0],
+                "values": [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], "interpolation": "LINEAR", "quaternion": False}
+
     def test_scale_track_is_unchanged(self):
-        track = {"path": "probe", "component": tracks_asset.TRANSFORM, "field": "scale", "type": tracks_asset.VALUE_VEC3,
-                 "root": tracks_asset.ROOT_SCENE, "name": "probe:TRNS.scale", "times": [0.0, 1.0],
-                 "values": [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], "interpolation": "LINEAR", "quaternion": False}
-        entry = tracks_asset.encode([track], 1000)
+        entry = tracks_asset.encode([self.vec3_track("scale", tracks_asset.ROOT_SCENE)], 1000)
         self.assertEqual(build_pack.to_engine(tracks_asset.TYPE, entry), entry)
 
     def test_skeleton_clip_joint_transforms_are_mirrored_and_root_kept(self):

@@ -58,12 +58,12 @@ anim_skeleton_open(const asset_pack_t* pack, const char* id, anim_skeleton_t* ou
                 return ASSET_ERR_FORMAT;
             }
         }
-        double norm = 0;
+        float norm = 0.0F;
         for (int k = ANIM_SKELETON_ROTATION; k < ANIM_SKELETON_ROTATION + ANIM_SKELETON_ROTATION_WIDTH; k++) {
-            const double q = skeleton.rest[i][k];
+            const float q = skeleton.rest[i][k];
             norm += q * q;
         }
-        if (fabs(1.0 - norm) > ANIM_SKELETON_UNIT_TOLERANCE) {
+        if (fabsf(1.0F - norm) > ANIM_SKELETON_UNIT_TOLERANCE) {
             return ASSET_ERR_FORMAT;
         }
     }

@@ -22,6 +22,8 @@ NORMAL = struct.Struct('<3bx')
 MATRIX_AFFINE_TOLERANCE = 1e-6
 
 
+NORMAL_ATTRIBUTE = 'NORMAL'  # magic: the glTF 2.0 vertex attribute name, not an engine token
+
 def encode(inverse_binds, vertices, influences=DEFAULT_INFLUENCES):
     if influences not in INFLUENCES:
         raise ValueError('SKIN: influences must be 2 or 4')
@@ -145,11 +147,11 @@ def bake(document, binary, mesh_node, mesh_entry, influences=DEFAULT_INFLUENCES)
     positions, normals, joints, weights = [], [], [], []
     for primitive in document['meshes'][node['mesh']]['primitives']:
         attrs = primitive['attributes']
-        if not all(key in attrs for key in ('POSITION', 'NORMAL', 'JOINTS_0', 'WEIGHTS_0')):
+        if not all(key in attrs for key in ('POSITION', NORMAL_ATTRIBUTE, 'JOINTS_0', 'WEIGHTS_0')):
             raise ValueError('SKIN: primitive requires positions, normals, joints and weights')
         read = lambda key: gltf_read.read_accessor(document, binary, attrs[key])
         positions.extend(read('POSITION'))
-        normals.extend(read('NORMAL'))
+        normals.extend(read(NORMAL_ATTRIBUTE))
         joint_rows, weight_rows = read('JOINTS_0'), read('WEIGHTS_0')
         for suffix in sorted(key.removeprefix('JOINTS_') for key in attrs if key.startswith('JOINTS_') and key != 'JOINTS_0'):
             more_joints, more_weights = read('JOINTS_' + suffix), read('WEIGHTS_' + suffix)

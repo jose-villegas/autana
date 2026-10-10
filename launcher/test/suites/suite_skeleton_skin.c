@@ -150,15 +150,16 @@ test_skeleton_unit_boundary(void) {
     const uint32_t at = rest + (ANIM_SKELETON_ROTATION + ANIM_SKELETON_ROTATION_WIDTH - 1) * sizeof(float);
     uint8_t* bytes = (uint8_t*)(uintptr_t)f.skeleton.data;
     for (int sign = -1; sign <= 1; sign += 2) {
-        const float boundary = (float)sqrt(1.0 + sign * ANIM_SKELETON_UNIT_TOLERANCE);
+        const float boundary = sqrtf(1.0F + ((float)sign * ANIM_SKELETON_UNIT_TOLERANCE));
         const float candidates[] = {nextafterf(boundary, 0), boundary, nextafterf(boundary, INFINITY)};
         int accepted = 0;
         int rejected = 0;
         for (size_t i = 0; i < sizeof candidates / sizeof candidates[0]; i++) {
             const float q = candidates[i];
             memcpy(bytes + at, &q, sizeof q);
-            const double norm = (double)q * q;
-            const asset_status_t want = fabs(1.0 - norm) <= ANIM_SKELETON_UNIT_TOLERANCE ? ASSET_OK : ASSET_ERR_FORMAT;
+            const float norm = q * q;
+            const asset_status_t want =
+                fabsf(1.0F - norm) <= ANIM_SKELETON_UNIT_TOLERANCE ? ASSET_OK : ASSET_ERR_FORMAT;
             anim_skeleton_t skeleton;
             TEST_ASSERT_EQUAL_INT(want, anim_skeleton_open(&f.pack, "armature", &skeleton));
             accepted += want == ASSET_OK;
