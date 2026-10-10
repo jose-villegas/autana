@@ -1,7 +1,8 @@
 /*
  * r3d_instance: one mesh drawn where it is placed. A placement is baked by
- * the importer as a 3x3 (rotation times scale) and a position, so the device
- * does no trigonometry; no placement means the mesh is drawn as it is.
+ * the importer as a 3x3 (rotation times scale) and a position, or made from
+ * a pose by r3d_scene.h's r3d_placement_from(); no placement draws the mesh
+ * as it is.
  */
 #pragma once
 
