@@ -11,11 +11,10 @@
 #include "unity.h"
 
 #include "asset/asset_store.h"
+#include "boot/boot_anim.h"
 #include "gfx/draw/gfx_color.h"
 #include "gfx/image/gfx_image.h"
 #include "ui/ridge_curve_generated.h"
-
-#define BOOT_PICTURE         "boot"
 
 #define VIEW_W               RIDGE_CURVE_POINTS
 #define VIEW_H               RIDGE_CURVE_VIEW_H
@@ -140,9 +139,9 @@ void
 suite_ridge_curve(void) {
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
-    const asset_pack_t* pack = asset_store_pack(BOOT_PICTURE);
+    const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
     asset_view_t entry;
-    if (pack == NULL || asset_pack_find(pack, BOOT_PICTURE, GFX_IMAGE_ASSET, &entry) != ASSET_OK
+    if (pack == NULL || asset_pack_find(pack, BOOT_PHOTO, GFX_IMAGE_ASSET, &entry) != ASSET_OK
         || gfx_image_open(entry, &photo) != ASSET_OK) {
         RUN_TEST(test_the_boot_picture_loads);
     } else {
@@ -151,9 +150,10 @@ suite_ridge_curve(void) {
         RUN_TEST(test_a_displaced_curve_does_not);
     }
     if (pack != NULL) {
-        asset_store_release(BOOT_PICTURE);
+        asset_store_release(BOOT_PHOTO);
     }
     photo = (gfx_image_t){0};
 }
 
 SUITE_REGISTER(suite_ridge_curve);
+SUITE_READS(suite_ridge_curve, BOOT_PHOTO);

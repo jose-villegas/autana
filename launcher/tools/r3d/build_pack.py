@@ -2,6 +2,7 @@
 """Write the asset packs: one pack per root asset, named after it.
 
     python launcher/tools/r3d/build_pack.py -o DIR [--image FILE] [PATH ...] [--replace NAME=FILE ...]
+                                            [--skip-unlocked FILE]
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml
@@ -26,8 +27,9 @@ Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
 the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
 it. What the cache lacks is downloaded, so a cold cache needs the network once;
 --offline never downloads, and a bake that is not available fails, naming
-each. The lock is this repository's: a mesh of a scene outside it is the file
-beside it.
+each; --skip-unlocked FILE instead leaves out a pack whose bakes only lack
+their lock rows, writing its name to FILE. The lock is this repository's: a
+mesh of a scene outside it is the file beside it.
 --pack-of prints the pack that holds entry ID. Run from the repository
 root; standard library only, and no mesh is baked. Packs are build
 products, never committed.
@@ -149,11 +151,13 @@ def pack_jobs(paths):
     return packs, jobs
 
 
-def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin_asset.DEFAULT_INFLUENCES):
+def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
+               max_influences=skin_asset.DEFAULT_INFLUENCES):
     """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
-    or import outside it (a test's or a scratch scene) is the file beside it.
+    or import outside it (a test's or a scratch scene) is the file beside it. With `unlocked` a list, a
+    pack whose bakes only lack their lock rows (bake.BakeUnlocked) is left out and its name appended.
     The uncached skin step adds rig entries with `max_influences` weights per vertex."""
     packs, jobs = pack_jobs(paths)
     replaced = {}
@@ -164,10 +168,27 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
-    wanted = [found for found in bake.bakes_in(packs, locked)
-              if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
-    fetched = {found.tree.resolve(): path for found, path in
-               bake.fetch_all(wanted, bake.read_lock(), cache or bake.default_cache(), offline).items()}
+    owner = {source.resolve(): name for name, entries in packs.items() for source in entries.values()}
+    wanted = {}
+    for found in bake.bakes_in(packs, locked):
+        if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced:
+            wanted.setdefault(owner[found.tree.resolve()], []).append(found)
+    lock, cache = bake.read_lock(), cache or bake.default_cache()
+    fetched, errors = {}, []
+    for name in sorted(packs):
+        try:
+            fetched.update((found.tree.resolve(), path) for found, path in
+                           bake.fetch_all(wanted.get(name, []), lock, cache, offline).items())
+        except bake.BakeUnlocked as error:
+            if unlocked is None:
+                errors.append(error)
+            else:
+                unlocked.append(name)
+        except bake.BakeMissing as error:
+            errors.append(error)
+    if errors:
+        raise bake.BakeMissing("\n".join(map(str, errors)))
+    packs = {name: entries for name, entries in packs.items() if name not in (unlocked or ())}
     unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
                if not source.name.endswith((SCENE, CLIP, IMAGE)) and entry not in replaced
                and source.resolve() in locked and source.resolve() not in fetched]
@@ -253,6 +274,9 @@ def main(argv=None):
     parser.add_argument("--offline", action="store_true", help="never download a bake the cache lacks")
     parser.add_argument("--max-influences", type=int, choices=skin_asset.INFLUENCES, default=skin_asset.DEFAULT_INFLUENCES,
                         help="heaviest skin influences per vertex (uncached skin step)")
+    parser.add_argument("--skip-unlocked", metavar="FILE",
+                        help="leave out each pack whose bakes only lack their lock rows, naming it in FILE, "
+                             "one per line; any other missing bake still fails")
     args = parser.parse_args(argv)
     paths = args.paths or [DEFAULT_SEARCH]
     try:
@@ -265,7 +289,10 @@ def main(argv=None):
         if not args.out:
             parser.error("-o DIR is required")
         cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
-        packs = pack_bytes(paths, args.replace, cache, args.offline, args.max_influences)
+        unlocked = [] if args.skip_unlocked else None
+        packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked, args.max_influences)
+        if args.skip_unlocked:
+            pathlib.Path(args.skip_unlocked).write_text("".join(f"{name}\n" for name in unlocked), newline="\n")
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError,

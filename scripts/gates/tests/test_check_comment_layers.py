@@ -42,6 +42,13 @@ class ProblemsTest(unittest.TestCase):
         found = self.problems({"docs/notes/Panel.md": "# Panel\n\nSand fell to 11 fps.\n"})
         self.assertEqual(found, ["docs/notes/Panel.md:3: document names sand"])
 
+    def test_a_citation_rows_cited_by_paths_may_name_an_app(self):
+        found = self.problems({"docs/Citations.md":
+                               '| <a id="1"></a>[1] | Sand piles | [s.md](sand/s.md) |\n'
+                               "Sand prose.\n"})
+        self.assertEqual(found, ["docs/Citations.md:1: document names sand",
+                                 "docs/Citations.md:2: document names sand"])
+
     def test_prose_spellings_of_an_underscored_name_all_match(self):
         found = self.problems({"docs/Gfx.md": "Render Lab\nrender-lab.png\n`render_lab`\nrenderlab\n"})
         self.assertEqual(len(found), 4)
