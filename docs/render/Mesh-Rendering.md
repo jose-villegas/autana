@@ -28,7 +28,7 @@ one that projects points and segments takes `render/r3d_line_camera.h`.
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
-| `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
+| `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
@@ -41,11 +41,7 @@ A camera that moves is an [animation track](../Animation-Tracks.md), sampled
 into a look-at pose; `r3d_scene_view_at()` builds its frame view with
 `render_view_make()`, which folds in the panel's quarter turn, fits its lens
 to the shorter picture side, ignores the pose's scale and keeps its roll.
-Poses are in math/linear's frame
-([math/README.md](../math/README.md#conventions)) but for one exception:
-before the quarter turn, `render_view_make()` puts the pose's −x at picture
-right and its −y at picture down, the right-handed frame baked scenes are
-authored in.
+Poses follow [math/linear's conventions](../math/README.md#conventions).
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
