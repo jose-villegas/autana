@@ -6,8 +6,7 @@
 
 #ifdef DEVICE_BUILD
 
-#include <stdatomic.h>
-
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "freertos/FreeRTOS.h"
@@ -20,22 +19,23 @@
 #define PAGE_BYTES 0x10000
 #define PAGES      64
 
-static atomic_bool stop;
-static atomic_uint reads;
+/* Plain words in internal RAM: QEMU aborts on an atomic to PSRAM. */
+static DRAM_ATTR volatile bool stop;
+static DRAM_ATTR volatile unsigned reads;
 
 static void
 reader(void* arg) {
     (void)arg;
     uint32_t sink = 0;
-    while (!atomic_load(&stop)) {
+    while (!stop) {
         for (int i = 0; i < 256; i++) {
             sink += REG_READ(SYSTIMER_CONF_REG);
             sink += REG_READ(GPIO_IN_REG);
         }
-        atomic_fetch_add(&reads, 512);
+        reads += 512;
     }
     (void)sink;
-    atomic_store(&stop, false);
+    stop = false;
     vTaskDelete(NULL);
 }
 
@@ -43,8 +43,8 @@ static void
 test_core_1_reads_registers_while_core_0_remaps_flash(void) {
     const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "assets");
     TEST_ASSERT_NOT_NULL(part);
-    atomic_store(&stop, false);
-    atomic_store(&reads, 0);
+    stop = false;
+    reads = 0;
     TEST_ASSERT_EQUAL(pdPASS, xTaskCreatePinnedToCore(reader, "tlbstress", 2048, NULL, 1, NULL, 1));
     const TickType_t end = xTaskGetTickCount() + pdMS_TO_TICKS(STRESS_MS);
     unsigned maps = 0;
@@ -59,11 +59,11 @@ test_core_1_reads_registers_while_core_0_remaps_flash(void) {
         esp_partition_munmap(handle);
         maps++;
     }
-    atomic_store(&stop, true);
-    while (atomic_load(&stop)) {
+    stop = true;
+    while (stop) {
         vTaskDelay(1);
     }
-    ESP_LOGI("tlbstress", "maps=%u core1_reads=%u", maps, atomic_load(&reads));
+    ESP_LOGI("tlbstress", "maps=%u core1_reads=%u", maps, reads);
     (void)sink;
 }
 
