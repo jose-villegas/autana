@@ -41,3 +41,46 @@ python launcher/tools/render/code_layout.py --write launcher/build.diag
 A changed layout is measured between revisions with the Sponza performance
 suite through `launcher/tools/perf/perf_compare.sh`. A slower layout is retuned
 with `RENDER_ENTRY_OFFSET` before the generated file is written.
+
+## Meshlet size captures
+
+Prepare the committed scene's size bakes and one scratch firmware tree:
+
+```sh
+python launcher/tools/render/meshlet_capture.py prepare \
+  --scene SCENE.scene.toml --suite SUITE_NAME --sizes 16 32 64
+```
+
+The scene's tools README supplies its scene path and fixed-pose suite name.
+Preparation copies the tracked tree into
+`launcher/tools/results/meshlet-sizes/tree` and re-clusters committed triangles
+through `rebake.py`, without building firmware or accessing the board.
+
+For each size, install its bakes into that tree, then run the single printed
+command before installing the next size:
+
+```sh
+python launcher/tools/render/meshlet_capture.py row 16
+```
+
+The printed `autana --wait 3600 --project TREE suite SUITE_NAME --flash --out LOG`
+command builds incrementally and holds one board lock from flash through capture.
+A capture can take half an hour. The suite measures both culling settings through
+the tune API and restores the previous setting even on assertion failure. Each
+FRAME COST identity carries the image build ID, mounted pack CRC-32, renderer,
+maximum cluster triangle count, culling setting and camera sample interval.
+The cull-off row selects the unculled pass from the size-32 capture.
+
+Refresh the [meshlets block](../../../docs/render/Render-Pipeline.md#meshlets):
+
+```sh
+sh launcher/tools/render/render_doc_images.sh --stage meshlets
+```
+
+`doc_stages.py --stage meshlets --scene PATH --object NAME` validates captures,
+regenerates bakes and their packs, and writes the named table. The renderer must
+have an identity placement. Host counts sample the same fixed camera poses and
+default render size as the suite. Each row averages its own capture's per-pose
+stage reports and draw plus upscale wall times, without panel transfer. Missing
+PASS or completion verdicts, mismatched poses, build IDs, pack hashes, renderer
+geometry or render sizes fail. Monitor logs cannot supply this table.

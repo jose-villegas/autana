@@ -33,6 +33,8 @@ from check_doc_index import blank_fences  # noqa: E402
 from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build import packages  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -220,10 +222,12 @@ def rule_living_document(root, path, raw_lines):
 # "gfx.h", even between two files in the same folder. launcher/main is a
 # registered include root (INCLUDE_DIRS "." in CMakeLists.txt, and -I
 # "$MAIN_DIR" in run_tests.sh), so every header under one of the shared
-# layers, or living at main/'s own root, is reachable without a dot.
+# layers, or living at main/'s own root, is reachable without a dot; so is
+# each package's include/ (launcher/tools/build/packages.py), whose headers
+# are spelled from that root inside the package too.
 #
 # resolve_include() finds the file the way the compiler does: next to the
-# including file first, then from launcher/main, so an app's own local
+# including file first, then from the include roots, so an app's own local
 # header (found next to it) is never mistaken for a layer header that
 # merely shares its basename, and a fix always rewrites to the one spelling
 # that file actually has.
@@ -231,11 +235,24 @@ def rule_living_document(root, path, raw_lines):
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
 
 
+def include_roots(root):
+    return tuple(path.resolve() for path in packages.include_roots(pathlib.Path(root) / "launcher"))
+
+
 def resolve_include(root, path, inc):
     resolved = resolve_quoted_include(path.resolve().as_posix(), inc,
-                                      ((pathlib.Path(root) / "launcher/main").resolve().as_posix(),),
+                                      tuple(path.as_posix() for path in include_roots(root)),
                                       lambda candidate: pathlib.Path(candidate).is_file())
     return pathlib.Path(resolved) if resolved else None
+
+
+def package_of(root, path):
+    """The folder of the launcher/packages/<name>/ package holding `path`, or None."""
+    packages_dir = (pathlib.Path(root) / "launcher/packages").resolve()
+    try:
+        return packages_dir / path.resolve().relative_to(packages_dir).parts[0]
+    except (ValueError, IndexError):
+        return None
 
 
 def _layer_root_files(root):
@@ -246,14 +263,17 @@ def _include_layer_violations(root, path, text):
     """(line_no, include_string, canonical_spelling, message) for each
     include whose written spelling differs from the layer-qualified path
     the file it resolves to actually has."""
-    main_dir = pathlib.Path(root) / "launcher/main"
-    try:
-        rel_to_main = path.resolve().relative_to(main_dir.resolve())
-    except ValueError:
-        return
-    if rel_to_main.parts[:1] == ("apps",) and "tools" in rel_to_main.parts:
-        return  # apps/*/tools/ is excluded from the firmware glob build entirely
+    main_dir = (pathlib.Path(root) / "launcher/main").resolve()
+    package = package_of(root, path)
+    if package is None:
+        try:
+            rel_to_main = path.resolve().relative_to(main_dir)
+        except ValueError:
+            return
+        if rel_to_main.parts[:1] == ("apps",) and "tools" in rel_to_main.parts:
+            return  # apps/*/tools/ is excluded from the firmware glob build entirely
     root_files = _layer_root_files(root)
+    roots = include_roots(root)
     for number, line in enumerate(text.splitlines(), 1):
         m = INCLUDE.match(line)
         if not m:
@@ -262,13 +282,13 @@ def _include_layer_violations(root, path, text):
         resolved = resolve_include(root, path, inc)
         if resolved is None:
             continue
-        try:
-            target_rel = resolved.relative_to(main_dir.resolve())
-        except ValueError:
+        include_root = next((r for r in roots if resolved.is_relative_to(r)), None)
+        if include_root is None:
             continue
+        target_rel = resolved.relative_to(include_root)
         top = target_rel.parts[0] if target_rel.parts else ""
         canonical = target_rel.as_posix()
-        if inc != canonical and (top in LAYER_DIRS or canonical in root_files):
+        if inc != canonical and (include_root != main_dir or top in LAYER_DIRS or canonical in root_files):
             yield number, inc, canonical, f'"{inc}" is not layer-qualified - use "{canonical}"'
 
 
@@ -294,22 +314,14 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
-# row, top first; the folders in a row share a tier). A "<folder>/<sub>" key tiers that subfolder
-# on its own; once one subfolder of a folder is keyed, every subfolder must
-# be, and the folder itself holds only its <folder>.h. A system header such
-# as "driver/temperature_sensor.h" never resolves to a layer.
+# row, top first; the folders in a row share a tier). A system header such
+# as "driver/temperature_sensor.h" never resolves to a layer, and a package
+# (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
 LAYER_ROWS = ("apps", "shell", "boot selftest", "ui console scene", "app", "display input", "render", "gfx", "anim",
-              "asset", "services", "profile", "core", "board", "math math/motion", "math/linear", "math/scalar build")
+              "asset", "services", "profile", "core", "board", "build")
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
-LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps" and "/" not in layer)
-
-
-def layer_of(parts):
-    """The LAYER_TIER key a path under launcher/main/ belongs to: its
-    "<folder>/<sub>" key when there is one, else its top folder."""
-    nested = "/".join(parts[:2])
-    return nested if len(parts) > 2 and nested in LAYER_TIER else parts[0]
+LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}
 
@@ -322,15 +334,6 @@ def _layer_dirs_match(root):
     this check's business."""
     main_dir = pathlib.Path(root) / "launcher/main"
     found = {d.name for d in main_dir.iterdir() if d.is_dir()}
-    split = {key.split("/")[0] for key in LAYER_TIER if "/" in key}
-    found |= {f"{d.parent.name}/{d.name}" for top in split for d in (main_dir / top).glob("*/") if d.is_dir()}
-    loose = sorted(f"{top}/{p.name}" for top in split if (main_dir / top).is_dir()
-                   for p in (main_dir / top).iterdir()
-                   if p.is_file() and p.name != f"{top}.h" and not p.name.startswith("."))
-    if loose:
-        raise ValueError(
-            f"launcher/main has file(s) {loose} loose in a folder whose subfolders are tiered - "
-            "move each into the subfolder it belongs to (check_style_audit.py LAYER_TIER).")
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(
@@ -350,7 +353,7 @@ def rule_include_direction(root, path, text):
     if not parts or parts[0] == "apps" or parts[0] not in LAYER_TIER:
         return
     _layer_dirs_match(root)
-    source_layer = layer_of(parts)
+    source_layer = parts[0]
     source_tier = LAYER_TIER[source_layer]
     source_base = (rel_to_main.parent / rel_to_main.stem).as_posix()
     for number, line in enumerate(text.splitlines(), 1):
@@ -365,7 +368,7 @@ def rule_include_direction(root, path, text):
             target_rel = resolved.relative_to(main_dir.resolve())
         except ValueError:
             continue
-        target_layer = layer_of(target_rel.parts) if target_rel.parts else None
+        target_layer = target_rel.parts[0] if target_rel.parts else None
         if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
         if LAYER_TIER[target_layer] > source_tier:
@@ -375,6 +378,33 @@ def rule_include_direction(root, path, text):
         yield number, (f'"{inc}" reaches from {source_layer}/ (tier {source_tier}) into {target_layer}/ '
                        f"(tier {LAYER_TIER[target_layer]}) - move the shared piece down a tier, or add an "
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
+
+
+# RULE: a package (launcher/packages/<name>/) sits under every layer, so it
+# includes nothing outside itself: no #include, quoted or angled, may reach a
+# tracked header of the firmware or of another package. A header that resolves
+# nowhere in the tree is the toolchain's or the build's own (<stdint.h>,
+# "sdkconfig.h"), and a suite's test harness (suites.h, unity.h) sits under
+# no firmware include root, so neither resolves and the rule passes both.
+# launcher/test/check_packages_alone.sh compiles each package file with only
+# its own include root, which catches what no resolver here can see.
+
+ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
+
+
+@c_line_rule("PACKAGE-INCLUDE")
+def rule_package_include(root, path, text):
+    package = package_of(root, path)
+    if package is None:
+        return
+    for number, line in enumerate(text.splitlines(), 1):
+        m = ANY_INCLUDE.match(line)
+        if not m:
+            continue
+        resolved = resolve_include(root, path, m.group(1))
+        if resolved is not None and not resolved.is_relative_to(package):
+            yield number, (f'"{m.group(1)}" reaches outside the {package.name} package '
+                           f"({relpath(root, resolved)}) - a package includes only itself")
 
 
 # RULE: a personal home-directory path, or one machine's ESP-IDF checkout,
@@ -696,7 +726,7 @@ def _function_body_comments(text, comments):
 
 @c_line_rule("UNDEF-PLACEMENT")
 def rule_undef_placement(root, path, text):
-    if not relpath(root, path).startswith("launcher/main/"):
+    if not relpath(root, path).startswith(packages.FIRST_PARTY):
         return
     comments = scan(relpath(root, path), text)
     code = blank_comments(text, mode="code")

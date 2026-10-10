@@ -146,3 +146,11 @@ and measure the lighting again:
 ```sh
 launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake/bake.py path capybara.glb)" gallop
 ```
+
+## Meshlet size captures
+
+Use the [meshlet capture recipe](../../../../tools/render/README.md#meshlet-size-captures)
+with `--scene launcher/demo/sponza/sponza.scene.toml` and
+`--suite run_sponza_perf_suite`. Its fixed flythrough samples measure the selected
+renderer with both culling settings. The generated table belongs to
+[Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).
