@@ -35,8 +35,8 @@ static r3d_placement_t
 turned(float degrees, vec3f_t at) {
     const float a = degrees * 3.14159265F / 180.0F;
     const float c = cosf(a);
-    const float s = sinf(a);
-    return (r3d_placement_t){{{c, 0.0F, s}, {0.0F, 1.0F, 0.0F}, {-s, 0.0F, c}}, at};
+    const float s = -sinf(a);
+    return (r3d_placement_t){{{c, 0.0F, s}, {0.0F, 1.0F, 0.0F}, {-s, 0.0F, c}}, {at.x, at.y, -at.z}};
 }
 
 static vec3f_t
@@ -71,8 +71,8 @@ typedef struct {
 static basis_t
 basis(const fixture_camera_t* c) {
     const vec3f_t f = vec3f_normalize(c->forward);
-    const vec3f_t right = vec3f_normalize(vec3f_cross(f, (vec3f_t){0.0F, 1.0F, 0.0F}));
-    return (basis_t){right, vec3f_cross(f, right), f};
+    const vec3f_t right = vec3f_normalize(vec3f_cross((vec3f_t){0.0F, 1.0F, 0.0F}, f));
+    return (basis_t){right, vec3f_cross(right, f), f};
 }
 
 /* Where `world` lands in a w x h picture of camera `c`, false behind it. */
@@ -193,7 +193,7 @@ motion_of(const raster_rig_t* r) {
 static fixture_camera_t
 camera_at(vec3f_t eye, float yaw_degrees) {
     const float a = yaw_degrees * 3.14159265F / 180.0F;
-    return (fixture_camera_t){eye, {sinf(a), 0.0F, -cosf(a)}, 0.5F, 1.0F};
+    return (fixture_camera_t){{eye.x, eye.y, -eye.z}, {sinf(a), 0.0F, cosf(a)}, 0.5F, 1.0F};
 }
 
 /* Whether pixel (x, y) and its 3x3 neighbourhood show surface `what`, and
@@ -267,10 +267,7 @@ test_a_still_camera_and_scene_have_no_motion(void) {
     }
 }
 
-/* One change between two pictures. Before, the box stands unturned at
- * (0, 0, 100) and the camera at (0, 0, 300) looks down -z; now the box is
- * turned `turn` degrees about y and moved by `box`, and the camera moved by
- * `eye` and turned `yaw` degrees. */
+/* Cases are authored in source space; camera and placement constructors return engine coordinates. */
 typedef struct {
     float turn;
     vec3f_t box;

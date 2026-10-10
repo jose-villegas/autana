@@ -33,7 +33,7 @@ Fixed-point angles are **turns**, `MATHX_ONE` to a turn, so an eighth of a turn 
 
 | | |
 |---|---|
-| Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z; `render/r3d_scene.c` turns that to +z |
+| Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z |
 | Rotation sense | left-handed, +y up: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
 | Euler | `from_euler` applies Z, then X, then Y about the fixed axes |

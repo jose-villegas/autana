@@ -35,6 +35,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset  # noqa: E402
+from asset.engine_frame import to_engine  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
@@ -179,10 +180,10 @@ def pack_entry(key, source):
     """The pack entry `key` from its source: a scene or a clip baked from its
     file, else a mesh's bytes."""
     if source.name.endswith(SCENE):
-        return key, scene_asset.TYPE, scene_asset.bake(source)
+        return key, scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(source))
     if source.name.endswith(CLIP):
-        return key, tracks_asset.TYPE, tracks_asset.bake(source)
-    return key, LIT_MESH, source.read_bytes()
+        return key, tracks_asset.TYPE, to_engine(tracks_asset.TYPE, tracks_asset.bake(source))
+    return key, LIT_MESH, to_engine(LIT_MESH, source.read_bytes())
 
 
 def write_if_changed(path, data):

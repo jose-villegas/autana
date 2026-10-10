@@ -57,7 +57,7 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL};
 }
 
-static const fixture_camera_t CAMERA = {{0.0F, 0.0F, 10.0F}, {0.0F, 0.0F, -1.0F}, 1.0F, 1.0F};
+static const fixture_camera_t CAMERA = {{0.0F, 0.0F, -10.0F}, {0.0F, 0.0F, 1.0F}, 1.0F, 1.0F};
 
 /* Draws the instances; the caller frees the scratch. */
 static uint16_t*
@@ -74,7 +74,7 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
 /* A placement that scales every axis by `scale` and moves by (x, 0, z). */
 static r3d_placement_t
 placed(float x, float z, float scale) {
-    return (r3d_placement_t){{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, {x, 0, z}};
+    return (r3d_placement_t){{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, {x, 0, -z}};
 }
 
 /* The quad is 3.2 pixels from its centre in each direction at depth 10 and
@@ -235,11 +235,11 @@ test_the_camera_of_a_baked_placement_looks_down_its_third_column(void) {
     vec3f_t forward;
     r3d_scene_camera_sample(&camera, 0, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(5.0F, eye.x);
-    TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.x);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.x);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, forward.z);
     const r3d_scene_camera_t fixed = {1.0F, 1.0F, NULL, NULL};
     r3d_scene_camera_sample(&fixed, 0, &eye, &forward);
-    TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.z);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.z);
 }
 
 static void

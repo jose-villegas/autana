@@ -21,7 +21,7 @@ typedef struct {
 
 typedef struct {
     float half_fov_short_tan, near_z;
-    const r3d_placement_t* placement; /* where it stands without a path; NULL: the origin, looking down -Z */
+    const r3d_placement_t* placement; /* where it stands without a path; NULL: the origin, looking down +z */
     const r3d_scene_path_t* path;     /* NULL for a camera that stays put */
 } r3d_scene_camera_t;
 
@@ -34,7 +34,5 @@ void r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, ve
 /* The view through `camera` t_ms into its path, framed for `viewport`. */
 render_view_t r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t viewport);
 
-/* The placement that stands a camera without a path at `pose`, looking down
- * the pose's +z as math/linear's transforms do. Its third column is that
- * direction negated, since such a camera looks down its placement's -Z. */
+/* The placement is the pose's model matrix. */
 r3d_placement_t r3d_scene_camera_placement(const transformf_t* pose);

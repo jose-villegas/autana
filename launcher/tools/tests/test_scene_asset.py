@@ -7,6 +7,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -39,6 +40,9 @@ class SceneFiles(unittest.TestCase):
     """Two imports with their meshes, and a clip in clips/, in a scratch folder."""
 
     def setUp(self):
+        patch = mock.patch.object(build_pack, "to_engine", side_effect=lambda kind, entry: entry)
+        patch.start()
+        self.addCleanup(patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.temp.name)
         for mesh in ("a", "b"):

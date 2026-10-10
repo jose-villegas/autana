@@ -3,7 +3,7 @@
  * from a small pack built here: scene entries (SCNE), camera clips (TRCK)
  * and unit quads in distinct colours, so what was drawn is read straight
  * off the picture: a pixel is a quad's colour or the clear colour. The
- * camera stands at z = 10 with a half field of view of 1, which puts a unit
+ * camera stands at z = -10 with a half field of view of 1, which puts a unit
  * of x 3.2 pixels from the centre of a 64-pixel picture.
  */
 
@@ -114,7 +114,7 @@ static const struct {
 #define QUAD_COUNT 3
 
 /* A clip of the camera node flying 5 units along x in a second, facing down
- * -z. Both tracks share the times; each array starts where the last ends. */
+ * +z. Both tracks share the times; each array starts where the last ends. */
 enum { FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
 
 /* "flight" is the clip as a scene reads it; "skewed" has a translation 2 wide
@@ -129,7 +129,7 @@ static const struct {
 static void
 make_clip_entry(uint8_t* entry, int translation_width, int track_count) {
     const float times[] = {0.0F, 1.0F};
-    const float positions[] = {0, 0, 10, 5, 0, 10};
+    const float positions[] = {0, 0, -10, 5, 0, -10};
     const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
     test_tracks_header(entry, track_count, 1000);
     test_track_row(entry, 0,
@@ -188,13 +188,13 @@ static const scene_spec_t SCENES[] = {
      3,
      2,
      1,
-     {{"camera", AT(0, 0, 10)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
+     {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
      {{1, "red"}, {2, "green"}},
      {{0, CLEAR_RGB, "", ""}}},
     /* its own camera and one blue quad at the origin */
-    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, 10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, "", ""}}},
+    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, "", ""}}},
     /* the same as solo, its camera clearing to a colour of its own */
-    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, 10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, "", ""}}},
+    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, "", ""}}},
     /* names a mesh the pack does not hold */
     {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
     /* a camera that flies the clip "flight", and a red quad */
@@ -210,7 +210,7 @@ static const scene_spec_t SCENES[] = {
      3,
      1,
      2,
-     {{"left", AT(0, 0, 10)}, {"right", AT(4, 0, 10)}, {"red", IDENTITY}},
+     {{"left", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}, {"red", IDENTITY}},
      {{2, "red"}},
      {{0, CLEAR_RGB, "", ""}, {1, CLEAR_RGB, "", ""}}},
     /* a camera flying a clip the pack does not hold */
@@ -561,7 +561,7 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     vec3f_t forward;
     r3d_scene_camera_sample(flight, 500, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
-    TEST_ASSERT_EQUAL_FLOAT(-1.0F, forward.z);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.z);
 }
 
 /* Where the pair's entry puts its parts, as the pack holds it. */
@@ -1032,7 +1032,7 @@ static void
 test_a_camera_without_a_path_follows_its_entitys_transform(void) {
     fixture();
     scene_t* pair = show("test_pair", "camera");
-    const scene_transform_t aside = AT(4, 0, 10);
+    const scene_transform_t aside = AT(4, 0, -10);
     scene_entity_set_transform(pair, scene_find(pair, "camera"), &aside);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(0.0F)); /* the green quad is 4 units right of the origin */

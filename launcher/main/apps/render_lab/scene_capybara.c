@@ -36,7 +36,7 @@ static const char* TAG = "capybara";
 #define CAPYBARA_SUBJECT        "capybara"
 
 /* Where the view starts: three-quarters from the front, a little above. */
-#define CAPYBARA_HOME_YAW       (MATH_PI * 45.0F / 180.0F)
+#define CAPYBARA_HOME_YAW       (MATH_PI * 135.0F / 180.0F)
 #define CAPYBARA_HOME_PITCH     (MATH_PI * 15.0F / 180.0F)
 
 /* The lowest the eye goes: a little above level, so the meadow stays below it. */

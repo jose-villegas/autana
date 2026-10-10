@@ -200,6 +200,11 @@ def contents(packs):
 
 
 class BuilderTests(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.object(build_pack, "to_engine", side_effect=lambda kind, entry: entry)
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def test_each_free_import_is_a_pack_named_after_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -301,6 +306,9 @@ class BuilderTests(unittest.TestCase):
 
 class DemoAssetTests(unittest.TestCase):
     def setUp(self):
+        patch = mock.patch.object(build_pack, "to_engine", side_effect=lambda kind, entry: entry)
+        patch.start()
+        self.addCleanup(patch.stop)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = pathlib.Path(directory.name)

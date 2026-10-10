@@ -27,9 +27,9 @@
 #define H 48
 
 /* The rig's wall, then a card 80 square in front of it, also facing +z. */
-static const int16_t card[][3] = {{-40, -40, 100}, {40, -40, 100}, {40, 40, 100}, {-40, 40, 100}};
+static const int16_t card[][3] = {{-40, -40, -100}, {40, -40, -100}, {40, 40, -100}, {-40, 40, -100}};
 static const int16_t (*const wall_and_card[])[3] = {raster_rig_wall, card};
-static const fixture_camera_t camera = {{0.0F, 0.0F, 300.0F}, {0.0F, 0.0F, -1.0F}, 0.5F, 1.0F};
+static const fixture_camera_t camera = {{0.0F, 0.0F, -300.0F}, {0.0F, 0.0F, 1.0F}, 0.5F, 1.0F};
 
 static void
 id_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {

@@ -41,11 +41,9 @@ A camera that moves is an [animation track](../Animation-Tracks.md), sampled
 into a look-at pose; `r3d_scene_view_at()` builds its frame view with
 `render_view_make()`, which folds in the panel's quarter turn, fits its lens
 to the shorter picture side, ignores the pose's scale and keeps its roll.
-Poses are in math/linear's frame
-([math/README.md](../math/README.md#conventions)) but for one exception:
-before the quarter turn, `render_view_make()` puts the pose's −x at picture
-right and its −y at picture down, the right-handed frame baked scenes are
-authored in.
+Poses follow [math/linear's conventions](../math/README.md#conventions).
+Before the quarter turn, `render_view_make()` puts the pose's +x at picture
+right and its -y at picture down.
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
