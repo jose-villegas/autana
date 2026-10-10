@@ -14,7 +14,9 @@ Designs written before or during the work they describe. Each plan's own
 | [Qemu-Target-Plan.md](Qemu-Target-Plan.md) | Driving an emulated image from autana, and what it cannot answer. |
 | [Motion-Design-Plan.md](Motion-Design-Plan.md) | Motion for the launcher: springs and easing, a sliding Control Center, a cached blurred backdrop, app open and close, orientation morphs. |
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |
+| [Animation-Bindings-Design-Sketch.md](Animation-Bindings-Design-Sketch.md) | Animation clips as bindings (object path, component, field) resolved once at load, so a clip drives any animatable field. |
 | [Content-in-the-Pack-Design-Sketch.md](Content-in-the-Pack-Design-Sketch.md) | Animation tracks and scenes as asset-pack entries baked from their source files, one pack per root asset, and poses from the device's own sampler. |
 | [Cached-Bakes-Design-Sketch.md](Cached-Bakes-Design-Sketch.md) | Expensive bakes (lit meshes, GPU fits, Blender exports) as files named by a digest of their inputs, made by CI and fetched by every build instead of committed. |
 | [Baker-Scalability-Design-Sketch.md](Baker-Scalability-Design-Sketch.md) | Where a fit's bake time goes, one reference set per set of inputs, the reference on the GPU, and what each change does to the bake keys. |
 | [Image-Kernels-Plan.md](Image-Kernels-Plan.md) | Real-time blur and edge detection over the framebuffer: packed-RGB565 tricks, box blurs, SIMD, and ranked first experiments, every cost an estimate. |
+| [Animation-System-Design-Sketch.md](Animation-System-Design-Sketch.md) | Property and character animation: the whole shape, and milestone 1, a skinned model playing, blending and picking its clips. |
