@@ -1,12 +1,13 @@
-"""Print true when the newest unexpired main record, rendered or failed, is this fingerprint's,
-no other workflow run is in flight, and FORCE is not "true". The concurrency gate omits the run check."""
+"""Print true when no other run of this workflow on main is unfinished (with
+--defer-in-flight), and the newest unexpired main record, rendered or failed,
+names this fingerprint, and FORCE is not "true". The GPU gate holds the
+concurrency group and omits --defer-in-flight."""
 import argparse
 import os
 
 from github_api import call, pages
 
 RECORD_PREFIXES = ("doc-images-inputs-", "doc-images-failed-")
-IN_FLIGHT_STATUSES = ("queued", "in_progress")
 
 
 def current(artifacts, fingerprint, force=False):
@@ -21,14 +22,22 @@ def current(artifacts, fingerprint, force=False):
 def main(argv=None, request=call):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fingerprint")
-    parser.add_argument("--workflow", help="hosted lookup: defer while another run is in flight")
+    parser.add_argument("--defer-in-flight", action="store_true",
+                        help="hosted lookup: defer while another run is unfinished")
     args = parser.parse_args(argv)
+    if args.defer_in_flight:
+        own_run = os.environ["GITHUB_RUN_ID"]
+        workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF")
+        if workflow_ref:
+            workflow = workflow_ref.split("@", 1)[0].rsplit("/", 1)[-1]
+        else:
+            workflow = request("GET", f"/actions/runs/{own_run}")["workflow_id"]
+        runs = pages(f"/actions/workflows/{workflow}/runs?branch=main", "workflow_runs", request)
+        if any(str(run["id"]) != own_run and run["status"] != "completed" for run in runs):
+            print("false")
+            return
     result = current(pages("/actions/artifacts", "artifacts", request), args.fingerprint,
                      os.environ.get("FORCE") == "true")
-    if result and args.workflow:
-        own_run = os.environ["GITHUB_RUN_ID"]
-        runs = pages(f"/actions/workflows/{args.workflow}/runs?branch=main", "workflow_runs", request)
-        result = not any(str(run["id"]) != own_run and run["status"] in IN_FLIGHT_STATUSES for run in runs)
     print(str(result).lower())
 
 

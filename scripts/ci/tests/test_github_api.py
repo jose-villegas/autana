@@ -22,8 +22,9 @@ class GithubApiTests(unittest.TestCase):
         self.assertEqual(request.get_header('Authorization'), 'Bearer token')
         self.assertEqual(request.data, b'{"title": "text"}')
 
-    def test_pages_continue_until_empty_with_existing_query(self):
-        request = mock.Mock(side_effect=[{'items': ['first']}, {'items': ['second']}, {'items': []}])
-        self.assertEqual(list(github_api.pages('/listing?branch=main', 'items', request)), ['first', 'second'])
+    def test_pages_stop_after_short_page_with_existing_query(self):
+        first = list(range(github_api.PER_PAGE))
+        request = mock.Mock(side_effect=[{'items': first}, {'items': ['last']}])
+        self.assertEqual(list(github_api.pages('/listing?branch=main', 'items', request)), first + ['last'])
         self.assertEqual(request.call_args_list, [mock.call('GET', f'/listing?branch=main&per_page=100&page={page}')
-                                                 for page in (1, 2, 3)])
+                                                 for page in (1, 2)])

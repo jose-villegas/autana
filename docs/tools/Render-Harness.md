@@ -157,8 +157,14 @@ The `doc-images-gpu` workflow runs on every main push, nightly and on manual
 dispatch. The latest unexpired rendered or failed record on main decides
 whether these inputs are current. A dispatch with `force` bypasses both
 record checks. The hosted lookup defers to the GPU gate while another run
-of this workflow is queued or in progress, excluding its own run id. The
-gate holds the concurrency group and checks only the latest record.
+of this workflow on main is unfinished. The gate holds the concurrency
+group and checks only the latest record.
+
+The first refresh step runs `scripts/ci/gpu_refresh_gate.sh`. It sources
+`gpu_env.sh` and persists `GPU_ENV` through `GITHUB_ENV` for later steps.
+It compares this machine's fingerprint with the hosted fingerprint before
+writing any output, failing with both fingerprints on a mismatch. A match
+checks the latest record and writes `render=true|false` to `GITHUB_OUTPUT`.
 
 ```mermaid
 flowchart TD

@@ -17,6 +17,8 @@ from test_doc_stages import stages, PATH
 from bake import bake
 
 ROOT = PATH.parents[3]
+sys.path.insert(0, str(ROOT / 'scripts/ci'))
+import inputs_recorded as records
 
 BOOTSTRAP = r"""
 import json, sys
@@ -35,7 +37,8 @@ stages.__file__ = str(tools / 'entry.py')
 stages.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
 stages.host_inputs = lambda scene: {'host flags': (root / 'flags').read_text(),
     'host host.c': stages.content_checksum(root / 'host.c').decode()}
-bake.read_lock = lambda: {(root / 'key').read_text(): {'sha256': (root / 'lock').read_text()}}
+bake.read_lock = lambda: ({(root / 'key').read_text(): {'sha256': (root / 'lock').read_text()}}
+    if (root / 'lock').exists() else {})
 bake.bakes = lambda paths: [NS(key=(root / 'key').read_text(), output='mesh')]
 bake.submodules = lambda: {}
 bake.tracked_modules = lambda: set()
@@ -101,6 +104,12 @@ class GpuFingerprintTests(unittest.TestCase):
     def test_rekeyed_bake_with_identical_bytes_moves_fingerprint(self):
         baseline = self.fingerprint()
         (self.root / 'key').write_text('new key')
+        self.assertNotEqual(self.fingerprint(), baseline)
+
+    def test_unlocked_bake_key_moves_fingerprint(self):
+        (self.root / 'lock').unlink()
+        baseline = self.fingerprint()
+        (self.root / 'key').write_text('another unlocked key')
         self.assertNotEqual(self.fingerprint(), baseline)
 
     def test_native_quoted_header_moves_fingerprint(self):
@@ -273,10 +282,6 @@ class InputContractTests(unittest.TestCase):
 
 class RecordedInputsTests(unittest.TestCase):
     def test_latest_main_record_decides_including_failures_and_force(self):
-        sys.path.insert(0, str(ROOT / 'scripts/ci'))
-        spec = importlib.util.spec_from_file_location('inputs_recorded', ROOT / 'scripts/ci/inputs_recorded.py')
-        records = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(records)
         def artifact(prefix, fingerprint, date, branch='main', expired=False):
             return dict(name=prefix + fingerprint, created_at=date, expired=expired,
                         workflow_run={'head_branch': branch})
@@ -295,16 +300,14 @@ class RecordedInputsTests(unittest.TestCase):
 
 
     def test_exact_name_and_empty_fingerprint(self):
-        sys.path.insert(0, str(ROOT / 'scripts/ci'))
-        import inputs_recorded as records
         record = dict(name=records.RECORD_PREFIXES[0] + 'longABC', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         self.assertFalse(records.current([record], 'ABC'))
         self.assertFalse(records.current([record], ''))
+        record['name'] = records.RECORD_PREFIXES[0]
+        self.assertFalse(records.current([record], ''))
 
     def test_main_force_and_paged_api(self):
-        sys.path.insert(0, str(ROOT / 'scripts/ci'))
-        import inputs_recorded as records
         record = dict(name=records.RECORD_PREFIXES[0] + 'ABC', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
         for force, expected in [('true', 'false'), ('', 'true'), ('false', 'true')]:
@@ -316,34 +319,31 @@ class RecordedInputsTests(unittest.TestCase):
                     return {'artifacts': [record] if path.endswith('&page=1') else []}
                 records.main(['ABC'], request=request)
             self.assertEqual(output.getvalue(), expected + '\n')
-            self.assertEqual(calls, [('GET', '/actions/artifacts?per_page=100&page=1'),
-                                     ('GET', '/actions/artifacts?per_page=100&page=2')])
+            self.assertEqual(calls, [('GET', '/actions/artifacts?per_page=100&page=1')])
 
     def test_hosted_lookup_defers_to_gate_when_other_run_in_flight(self):
-        sys.path.insert(0, str(ROOT / 'scripts/ci'))
-        import inputs_recorded as records
         record = dict(name=records.RECORD_PREFIXES[0] + 'X', created_at='2026',
                       expired=False, workflow_run={'head_branch': 'main'})
-        for status in ('queued', 'in_progress', 'completed'):
+        for status in ('queued', 'in_progress', 'pending', 'requested', 'waiting', 'completed'):
             for run_id in (10, 11):
                 with self.subTest(status=status, run_id=run_id), mock.patch.dict(
-                        os.environ, FORCE='', GITHUB_RUN_ID='10'), \
+                        os.environ, FORCE='', GITHUB_RUN_ID='10',
+                        GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/own.yml@refs/heads/main'), \
                         contextlib.redirect_stdout(io.StringIO()) as output:
                     def request(method, path, body=None):
                         key = 'artifacts' if '/artifacts?' in path else 'workflow_runs'
                         items = [record] if key == 'artifacts' else [{'id': run_id, 'status': status}]
                         return {key: items if path.endswith('&page=1') else []}
-                    records.main(['X', '--workflow', 'doc-images-gpu.yml'], request=request)
+                    records.main(['X', '--defer-in-flight'], request=request)
                 expected = run_id == 10 or status == 'completed'
                 self.assertEqual(output.getvalue(), str(expected).lower() + '\n')
 
     def test_workflow_records_and_every_post_gate_step_are_guarded(self):
         import yaml
-        sys.path.insert(0, str(ROOT / 'scripts/ci'))
-        import inputs_recorded as records
         workflow = yaml.load((ROOT / '.github/workflows/doc-images-gpu.yml').read_text(), Loader=yaml.BaseLoader)
         steps = workflow['jobs']['refresh']['steps']
         gate = next(index for index, step in enumerate(steps) if step.get('id') == 'gate')
+        self.assertEqual(gate, 1)
         names = []
         for step in steps[gate + 1:]:
             self.assertIn("steps.gate.outputs.render == 'true'", step.get('if', ''))
@@ -352,5 +352,41 @@ class RecordedInputsTests(unittest.TestCase):
         self.assertCountEqual(names, [prefix + '${{ needs.fingerprint.outputs.fingerprint }}'
                                       for prefix in records.RECORD_PREFIXES])
         hosted = workflow['jobs']['fingerprint']['steps'][-1]['run']
-        self.assertIn('--workflow doc-images-gpu.yml', hosted)
-        self.assertNotIn('--workflow', steps[gate]['run'])
+        self.assertIn('--defer-in-flight', hosted)
+        self.assertEqual(steps[gate]['run'].strip(), 'sh scripts/ci/gpu_refresh_gate.sh')
+        refresh = workflow['jobs']['refresh']
+        self.assertEqual(refresh['needs'], 'fingerprint')
+        self.assertEqual(refresh['if'], "needs.fingerprint.outputs.current != 'true'")
+        self.assertEqual(refresh['concurrency'], {'group': 'doc-images-gpu', 'cancel-in-progress': 'false'})
+        self.assertEqual(workflow['env']['FORCE'], '${{ inputs.force }}')
+        self.assertNotIn('. launcher/tools/r3d/gpu_env.sh', '\n'.join(step.get('run', '') for step in steps))
+
+    def test_hosted_interleaving_and_nonmatching_record(self):
+        for matching in (True, False):
+            with self.subTest(matching=matching), mock.patch.dict(
+                    os.environ, FORCE='', GITHUB_RUN_ID='10',
+                    GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/own.yml@refs/heads/main'), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                calls = []
+                def request(method, path, body=None):
+                    calls.append(path)
+                    if '/runs?' in path:
+                        return {'workflow_runs': [{'id': 11, 'status': 'completed'},
+                                                  {'id': 10, 'status': 'pending'}]}
+                    fingerprint = 'X' if matching and len(calls) == 1 else 'B'
+                    return {'artifacts': [dict(name=records.RECORD_PREFIXES[0] + fingerprint,
+                        created_at='2026', expired=False, workflow_run={'head_branch': 'main'})]}
+                records.main(['X', '--defer-in-flight'], request=request)
+            self.assertEqual(output.getvalue(), 'false\n')
+            self.assertEqual(calls[0], '/actions/workflows/own.yml/runs?branch=main&per_page=100&page=1')
+            self.assertEqual(calls[1], '/actions/artifacts?per_page=100&page=1')
+
+    def test_workflow_id_from_own_run_when_ref_is_unavailable(self):
+        with mock.patch.dict(os.environ, FORCE='', GITHUB_RUN_ID='10'), \
+                contextlib.redirect_stdout(io.StringIO()):
+            os.environ.pop('GITHUB_WORKFLOW_REF', None)
+            request = mock.Mock(side_effect=[{'workflow_id': 321}, {'workflow_runs': []}, {'artifacts': []}])
+            records.main(['X', '--defer-in-flight'], request=request)
+        self.assertEqual(request.call_args_list[:2], [
+            mock.call('GET', '/actions/runs/10'),
+            mock.call('GET', '/actions/workflows/321/runs?branch=main&per_page=100&page=1')])

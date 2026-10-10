@@ -121,8 +121,9 @@ def host_inputs(scene_path):
 def gpu_inputs(scene_path, object_name):
     """{input: digest} of everything the GPU stage's output is made from: the Python it runs (the import
     closure of this file and of each script its closure names, until none is new, with the C and
-    requirements bake.py counts for them), the other tracked files that code names, the host renderer's compile, the scene file and the
-    key and locked bytes of every bake the scene holds. Its digest (fingerprint) names the stage's run."""
+    requirements bake.py counts for them), the other tracked files that code names, the host renderer's
+    compile, the scene file, its non-bake pack entries, and the key and locked bytes of every bake the
+    scene holds. Its digest (fingerprint) names the stage's run."""
     from bake import bake
     tracked = {(ROOT / name).resolve() for name in tracked_files(ROOT, ("launcher", "scripts"))}
     entries = {Path(__file__).resolve()}
