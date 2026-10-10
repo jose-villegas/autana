@@ -2,8 +2,9 @@
 
 `launcher/main/anim/` plays keyed values over time. A track is a list of
 keys, each a time and a value, and one call gives the value at any moment.
-It does not know what it drives: a caller maps the numbers onto a camera, a
-light, a material value, anything a scene exposes. Its layer is in
+It knows a target only through the field declarations a caller passes to
+`anim_bind()`; a caller may also sample a track and map the numbers itself.
+Its layer is in
 [Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
@@ -32,7 +33,7 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation: linear keys slerp, cubic ones are normalised |
+| `quaternion` | The value is an xyzw rotation: unit samples: linear keys slerp, copied and cubic keys are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
 second, exactly as glTF stores them. A track has one interpolation.
@@ -49,18 +50,19 @@ onto engine fields:
 | `/cameras/N/perspective/yfov` pointer | `CAMR` | `half_fov_short_tan` | `FLOAT` |
 
 The camera pointer binds to the one node holding that camera. The bake uses
-`gltf_read.camera_half_fov_short_tan()`: `tan(yfov / 2) * min(aspectRatio, 1)`.
+`gltf_read.camera_half_fov_short_tan()` for values and
+`gltf_read.camera_half_fov_short_tan_derivative()` for cubic tangents.
 The camera's static perspective aspect ratio defaults to 1 when absent.
-Cubic tangents are multiplied by `min(aspectRatio, 1) * (1 + tan(yfov / 2)^2) / 2`.
-Other pointer targets and morph weights are refused. A channel that never
-changes is baked as one key; cubic channels must also have zero tangents.
+Other pointer targets and morph weights are refused.
+A channel that never changes is baked as one key; a cubic channel counts as
+unchanging only when every tangent is zero.
 
 The clip's root is `SKELETON` when every channel drives a joint in one skin
 and those joints have one joint root. Paths include that joint root, such as
-`butt/spine`, and exclude non-joint ancestors such as an armature node.
-Other clips use `SCENE` and paths name scene nodes. `anim_bind()` accepts
-scene clips; skeleton clips remain readable and sampleable but require a
-skeleton binding owner.
+`root/spine`, and exclude non-joint ancestors such as an armature node.
+Other clips use `SCENE` and paths name scene nodes.
+`anim_bind()` refuses a skeleton clip with `ANIM_BIND_ERR_ROOT`;
+`anim_tracks_binding_at()` and `anim_track_sample()` still read and sample it.
 
 A **clip** is the tracks of one animation, on one timeline as in glTF: a
 track's key times are clip seconds, so tracks that start or end at different
@@ -87,14 +89,15 @@ the entry's first byte:
 | Part | Layout |
 |---|---|
 | header, 20 bytes | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size`, `u8 root` (0 scene, 1 skeleton), 3 zero bytes |
-| row per binding, 24 bytes | `u16 path`, `u16 field` (offsets within the string table), `u32 component` (`TRNS` or `CAMR`), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type`, `u8 interp`, 4 zero bytes |
+| row per binding, 24 bytes | `u16 path`, `u16 field` (offsets within the string table), `u32 component` (nonzero code), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type`, `u8 interp`, 4 zero bytes |
 | string table | deduplicated, NUL-terminated UTF-8 object paths and field names |
 | data | each track's `f32` times, then its `f32` values (cubic: in-tangent, value, out-tangent per key), 4-byte aligned |
 
 Value type codes follow `anim_value_t`: float, vec2, vec3, quaternion and
 colour, with widths 1, 2, 3, 4 and 3. Interpolation codes follow
-`anim_interp_t`. Path and field strings are nonempty and at most 255 UTF-8
-bytes; the string table fits its 16-bit offsets.
+`anim_interp_t`. The bake keeps path and field strings nonempty and at most
+`ANIM_BINDING_STRING_MAX` (255) UTF-8 bytes; the string table fits its 16-bit
+offsets. `strings_off` must be a multiple of 4.
 
 ```c
 anim_tracks_t clip;
@@ -110,7 +113,7 @@ if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
 the aligned entry base, header, row table, aligned string table and every
 aligned key array inside the entry; arrays must follow the string table
 (`ASSET_ERR_BOUNDS`). Each row requires terminated strings inside that table,
-a known component, value type and interpolation, at least one key, all four
+a nonzero component code, known value type and interpolation, at least one key, all four
 padding bytes zero, finite values and finite strictly increasing times.
 The header requires a known root and zero padding (`ASSET_ERR_FORMAT`).
 The Python reader performs the same layout and curve checks.
@@ -124,14 +127,18 @@ Position and rotation are required, with vec3 and quaternion types; absent
 scale keeps unit scale.
 
 `anim_bind()` resolves every scene binding against `anim_target_t` objects
-and their `anim_component_fields_t` declarations into caller-owned
-`anim_bound_t` storage. Missing paths, components, fields, type mismatches,
+and their `anim_component_ref_t` pairs of field declarations and bases into
+caller-owned `anim_bound_t` storage. Missing paths, components, fields, type mismatches,
 insufficient storage and skeleton roots return distinct `anim_bind_status_t`
 errors. The failing index and `anim_binding_describe()` identify the binding
-as `path:CCCC.field`. Apply only a successfully resolved set.
-`anim_apply()` samples a contiguous range into its target fields, normalizes
-quaternions and sets each target's dirty bit when supplied. The camera
-field declaration is `R3D_SCENE_CAMERA_FIELDS` in `render/r3d_scene.h`.
+as `path:CCCC.field`. The failed index is -1 on success and root or storage
+errors; otherwise it identifies the failed binding. `anim_bind_field()` resolves a binding
+against component references without a path lookup. Apply only a successfully
+resolved set.
+`anim_apply(bound, count, seconds)` samples a contiguous range into its target
+fields and sets each target's dirty bit when supplied. Pass `bound + first`
+to apply a range starting later in the array. The sampler normalizes quaternion
+keys. The camera field declaration is `R3D_SCENE_CAMERA_FIELDS` in `render/r3d_scene.h`.
 
 ## Sampling
 
@@ -161,8 +168,8 @@ the loop.
 
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
-   `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a property outside translation,
-   rotation and scale needs the exporter's animation-pointer option.
+   `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a camera's field of view needs the
+   exporter's animation-pointer option; the bake refuses any other pointer.
 2. Keep the file beside the code that plays it, as an asset, and write a
    `NAME.anim.toml` beside it naming the animation, as in
    [The pack entry](#the-pack-entry).
@@ -177,12 +184,13 @@ separate asset.
 
 ## Playing a new property
 
-A new glTF target needs a mapping in `tracks_asset.channel_binding()` and,
-when units differ, a conversion in the bake. The runtime resolves fields
-through component declarations; it does not interpret glTF pointers.
-Declare the field name, `anim_value_t` and byte offset at the component's
-owner. Supply the component declaration and target base to `anim_bind()`,
-then sample with `anim_apply()` using clip seconds.
+A new component needs only its code at its owner, the baker mapping in
+`tracks_asset.channel_binding()` and its field list. Declare each field's name,
+`anim_value_t` and byte offset beside the component's struct. When units differ,
+convert the curve in the bake. The readers accept any nonzero component code;
+an unknown component fails at bind time with `ANIM_BIND_ERR_COMPONENT`, which
+fails the load. Supply the declaration and target base as an
+`anim_component_ref_t` to `anim_bind()`, then apply with clip seconds.
 
 For direct sampling, select the camera field in its baked units:
 

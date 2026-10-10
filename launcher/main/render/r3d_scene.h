@@ -26,6 +26,7 @@ typedef struct {
     const r3d_scene_path_t* path;     /* NULL for a camera that stays put */
 } r3d_scene_camera_t;
 
+#define ANIM_COMPONENT_CAMERA ASSET_TYPE('C', 'A', 'M', 'R')
 extern const anim_component_fields_t R3D_SCENE_CAMERA_FIELDS;
 
 /* The loop's length, or 0 for a camera that stays put. */

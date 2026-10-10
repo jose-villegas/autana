@@ -2,22 +2,12 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "math/linear/quatf.h"
 
-static anim_bind_status_t
-resolve(const anim_binding_t* binding, const anim_target_t* targets, int count, anim_bound_t* out) {
-    const anim_target_t* target = NULL;
-    for (int i = 0; i < count; i++) {
-        if (strcmp(targets[i].name, binding->path) == 0) {
-            target = &targets[i];
-            break;
-        }
-    }
-    if (target == NULL) {
-        return ANIM_BIND_ERR_PATH;
-    }
-    for (int c = 0; c < target->component_count; c++) {
-        const anim_component_fields_t* component = target->components[c];
+anim_bind_status_t
+anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* components, int component_count,
+                uint8_t* dirty, uint8_t dirty_bit, anim_bound_t* out) {
+    for (int c = 0; c < component_count; c++) {
+        const anim_component_fields_t* component = components[c].fields;
         if (component->component != binding->component) {
             continue;
         }
@@ -31,10 +21,9 @@ resolve(const anim_binding_t* binding, const anim_target_t* targets, int count, 
             }
             *out = (anim_bound_t){
                 .curve = binding->curve,
-                .target = (float*)(void*)((uint8_t*)target->bases[c] + field->offset),
-                .dirty = target->dirty,
-                .dirty_bit = target->dirty_bit,
-                .type = binding->type,
+                .target = (float*)(void*)((uint8_t*)components[c].base + field->offset),
+                .dirty = dirty,
+                .dirty_bit = dirty_bit,
             };
             return ANIM_BIND_OK;
         }
@@ -47,7 +36,7 @@ anim_bind_status_t
 anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_count, anim_bound_t* out, int out_count,
           int* failed) {
     if (failed != NULL) {
-        *failed = 0;
+        *failed = -1;
     }
     if (clip->root != ANIM_ROOT_SCENE) {
         return ANIM_BIND_ERR_ROOT;
@@ -58,7 +47,17 @@ anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_co
     for (int i = 0; i < clip->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(clip, i, &binding);
-        const anim_bind_status_t status = resolve(&binding, targets, target_count, &out[i]);
+        const anim_target_t* target = NULL;
+        for (int t = 0; t < target_count; t++) {
+            if (strcmp(targets[t].name, binding.path) == 0) {
+                target = &targets[t];
+                break;
+            }
+        }
+        const anim_bind_status_t status = target == NULL
+                                              ? ANIM_BIND_ERR_PATH
+                                              : anim_bind_field(&binding, target->components, target->component_count,
+                                                                target->dirty, target->dirty_bit, &out[i]);
         if (status != ANIM_BIND_OK) {
             if (failed != NULL) {
                 *failed = i;
@@ -73,18 +72,11 @@ anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_co
 }
 
 void
-anim_apply(const anim_bound_t* bound, int first, int count, float seconds) {
-    for (int i = first; i < first + count; i++) {
+anim_apply(const anim_bound_t* bound, int count, float seconds) {
+    for (int i = 0; i < count; i++) {
         const anim_bound_t* b = &bound[i];
         float value[ANIM_WIDTH_MAX];
         anim_track_sample(&b->curve, seconds, value);
-        if (b->type == ANIM_VALUE_QUAT) {
-            const quatf_t q = quatf_normalize((quatf_t){value[0], value[1], value[2], value[3]});
-            value[0] = q.x;
-            value[1] = q.y;
-            value[2] = q.z;
-            value[3] = q.w;
-        }
         memcpy(b->target, value, b->curve.width * sizeof *value);
         if (b->dirty != NULL) {
             *b->dirty |= b->dirty_bit;

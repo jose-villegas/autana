@@ -15,6 +15,7 @@
 
 #define ANIM_WIDTH_MAX 4
 
+/* The entry's type byte; tracks_asset.py mirrors this order. */
 typedef enum {
     ANIM_VALUE_FLOAT,
     ANIM_VALUE_VEC2,

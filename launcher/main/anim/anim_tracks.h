@@ -1,5 +1,6 @@
 /*
- * anim_tracks: validated bindings and curves in a TRCK pack entry.
+ * anim_tracks: the bindings and curves of a TRCK pack entry, written by
+ * launcher/tools/anim/tracks_asset.py; the layout is in docs/Animation-Tracks.md.
  * Views point into the entry, which must outlive them. No allocation.
  */
 #pragma once
@@ -11,7 +12,7 @@
 #define ANIM_TRACKS_ASSET        ASSET_TYPE('T', 'R', 'C', 'K')
 #define ANIM_TRACKS_VERSION      2U
 #define ANIM_COMPONENT_TRANSFORM ASSET_TYPE('T', 'R', 'N', 'S')
-#define ANIM_COMPONENT_CAMERA    ASSET_TYPE('C', 'A', 'M', 'R')
+#define ANIM_BINDING_STRING_MAX  255U /* Mirrored by tracks_asset.py STRING_MAX. */
 
 enum {
     ANIM_ROOT_SCENE,
@@ -28,6 +29,9 @@ enum {
     ANIM_TRACKS_AT_ROOT = 16,
     ANIM_TRACKS_AT_PAD = 17,
     ANIM_TRACKS_HEADER_PAD_SIZE = 3,
+};
+
+enum {
     ANIM_TRACKS_ROW_SIZE = 24,
     ANIM_TRACKS_ROW_PATH = 0,
     ANIM_TRACKS_ROW_FIELD = 2,
@@ -39,6 +43,9 @@ enum {
     ANIM_TRACKS_ROW_INTERP = 19,
     ANIM_TRACKS_ROW_PAD = 20,
     ANIM_TRACKS_ROW_PAD_SIZE = 4,
+};
+
+enum {
     ANIM_TRACKS_ALIGNMENT = 4,
     ANIM_TRACKS_CUBIC_RUNS = 3,
 };
@@ -64,5 +71,6 @@ asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, a
 asset_status_t anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* out);
 asset_status_t anim_tracks_find(const anim_tracks_t* tracks, const char* path, uint32_t component, const char* field,
                                 anim_track_t* out);
-/* Translation and rotation are required; absent scale is unit scale. */
+/* position and rotation are required; absent scale is unit scale.
+ * A wrong-type field returns ASSET_ERR_FORMAT. */
 asset_status_t anim_tracks_find_node(const anim_tracks_t* tracks, const char* node, anim_node_tracks_t* out);

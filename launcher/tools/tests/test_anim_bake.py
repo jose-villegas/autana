@@ -44,36 +44,29 @@ def baked(glb_bytes):
 
 
 class CameraFovTest(unittest.TestCase):
-    def test_short_axis_tangent_at_square_landscape_and_portrait_aspects(self):
-        angle = math.pi / 3
-        for aspect in (1.0, 2.0, 0.5):
-            with self.subTest(aspect=aspect):
-                self.assertAlmostEqual(gltf_read.camera_half_fov_short_tan(angle, aspect),
-                                       math.tan(angle / 2) * min(aspect, 1.0))
-        self.assertAlmostEqual(gltf_read.camera_half_fov_short_tan(angle), math.tan(angle / 2))
+    def test_curve_conversion_matches_hand_computed_values_and_cubic_tangent(self):
+        # At yfov pi/2 the half-angle tangent is 1 and its derivative is 1.
+        for aspect, expected in ((1.0, 1.0), (2.0, 1.0), (0.5, 0.5)):
+            self.assertAlmostEqual(gltf_read.camera_half_fov_short_tan_curve(
+                [(math.pi / 2,)], "STEP", aspect)[0][0], expected, places=14)
+        converted = gltf_read.camera_half_fov_short_tan_curve(
+            [(2.0,), (math.pi / 2,), (-4.0,)], "CUBICSPLINE", 0.5)
+        for got, expected in zip(converted, (1.0, 0.5, -2.0)):
+            self.assertAlmostEqual(got[0], expected)
 
-    def test_cubic_camera_values_and_tangents_use_static_aspect(self):
-        angles = (0.6, 1.2)
-        tangents = (0.2, -0.3)
-        for aspect in (1.0, 2.0, 0.5):
-            rows = [(tangents[0],), (angles[0],), (tangents[1],),
-                    (tangents[1],), (angles[1],), (tangents[0],)]
-            channels = [channel(None, "pointer", [0.0, 1.0], rows, "CUBICSPLINE",
+    def test_cubic_camera_bake_matches_hand_computed_values_and_tangents(self):
+        for aspect, expected in ((1.0, (2.0, 1.0, -4.0)),
+                                 (2.0, (2.0, 1.0, -4.0)),
+                                 (0.5, (1.0, 0.5, -2.0))):
+            rows = [(2.0,), (math.pi / 2,), (-4.0,)]
+            channels = [channel(None, "pointer", [0.0], rows, "CUBICSPLINE",
                                 pointer="/cameras/0/perspective/yfov")]
             cameras = [{"type": "perspective", "perspective":
-                        {"yfov": angles[0], "znear": 0.1, "aspectRatio": aspect}}]
+                        {"yfov": math.pi / 2, "znear": 0.1, "aspectRatio": aspect}}]
             tracks, _ = baked(gltf_write.build_glb([{"name": "camera", "camera": 0}],
                               [{"name": "clip", "channels": channels}], cameras=cameras))
-            values = tracks["camera:CAMR.half_fov_short_tan"]["values"]
-            for key, angle in enumerate(angles):
-                tangent = math.tan(angle / 2)
-                factor = min(aspect, 1.0)
-                self.assertAlmostEqual(values[key * tracks_asset.CUBIC_RUNS + 1][0],
-                                       tangent * factor, delta=TOLERANCE)
-                for offset in (0, 2):
-                    index = key * tracks_asset.CUBIC_RUNS + offset
-                    self.assertAlmostEqual(values[index][0],
-                        rows[index][0] * factor * (1 + tangent * tangent) / 2, delta=TOLERANCE)
+            for got, want in zip(tracks["camera:CAMR.half_fov_short_tan"]["values"], expected):
+                self.assertAlmostEqual(got[0], want, delta=TOLERANCE)
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
@@ -90,8 +83,8 @@ class BakeRoundTripTest(unittest.TestCase):
             name = tracks_asset.channel_name(cls.document, channel)
             if channel["pointer"]:
                 aspect = cls.document["cameras"][0]["perspective"].get("aspectRatio", 1.0)
-                channel = dict(channel, values=[(gltf_read.camera_half_fov_short_tan(v[0], aspect),)
-                                               for v in channel["values"]])
+                channel = dict(channel, values=gltf_read.camera_half_fov_short_tan_curve(
+                    channel["values"], channel["interpolation"], aspect))
             cls.channels[name] = channel
         cls.duration_ms = round(gltf_read.animation_duration(cls.animation) * 1000)
 
@@ -165,7 +158,7 @@ class BakeRoundTripTest(unittest.TestCase):
         self.assertTrue(all(len(v) == 1 for v in rows))
         self.assertAlmostEqual(rows[0][0], gltf_read.camera_half_fov_short_tan(0.6), delta=TOLERANCE)
 
-    def test_a_pointer_to_a_rotation_slerps(self):
+    def test_a_node_rotation_uses_linear_quaternion_interpolation(self):
         self.assertIn("hand:TRNS.rotation", self.channels)
         tracks, _ = baked(probe_glb())
         self.assertEqual((tracks["hand:TRNS.rotation"]["interpolation"], tracks["hand:TRNS.rotation"]["quaternion"]),

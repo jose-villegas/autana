@@ -67,7 +67,7 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
     return 0;
 }
 
-enum { BINDING_DESCRIPTION_BYTES = 1024 };
+enum { BINDING_DESCRIPTION_BYTES = 2 * ANIM_BINDING_STRING_MAX + 1 + sizeof(uint32_t) + 1 + 1 };
 
 static int
 print_tracks(const anim_tracks_t* tracks, const sampling_t* at) {

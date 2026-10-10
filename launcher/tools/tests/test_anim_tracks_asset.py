@@ -55,7 +55,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(tracks[0]["field"], "position")
 
     def test_every_track_reads_back_as_baked_in_single_precision(self):
-        tracks, duration_ms = probe_tracks()
+        tracks, duration_ms, root = probe_tracks()
         decoded, decoded_ms = tracks_asset.decode(tracks_asset.encode(tracks, duration_ms))
         self.assertEqual(decoded_ms, 3000)
         self.assertEqual([t["name"] for t in decoded], [t["name"] for t in tracks])
@@ -79,12 +79,12 @@ class RoundTripTests(unittest.TestCase):
                 self.assertGreaterEqual(offset, row_at(count))
 
     def test_a_channel_that_never_changes_is_one_key(self):
-        tracks, _ = probe_tracks()
+        tracks, _, _ = probe_tracks()
         held = next(t for t in tracks if t["name"] == "hand:TRNS.position")
         self.assertEqual(held["times"], [0.0])
 
     def test_a_name_holding_a_nul_is_refused(self):
-        tracks, duration_ms = probe_tracks()
+        tracks, duration_ms, root = probe_tracks()
         tracks[0] = dict(tracks[0], path="a\0b")
         with self.assertRaises(TracksError):
             tracks_asset.encode(tracks, duration_ms)
@@ -159,7 +159,7 @@ class CheckTests(unittest.TestCase):
         self.assert_refused(channel(0, "rotation", [0.0, 1.0], [(0, 0, 0)] * 2))
 
     def test_two_tracks_with_one_name_are_refused(self):
-        tracks, duration_ms = probe_tracks()
+        tracks, duration_ms, root = probe_tracks()
         with self.assertRaisesRegex(TracksError, "lamp:TRNS.position"):
             tracks_asset.encode(tracks + [tracks[0]], duration_ms)
 
@@ -178,7 +178,7 @@ class CheckTests(unittest.TestCase):
 class BindingMappingTests(unittest.TestCase):
     def tracks(self, nodes, channels, **kwargs):
         document, binary = gltf_read.parse_glb(gltf_write.build_glb(nodes, [{"name": "named_clip", "channels": channels}], **kwargs))
-        return tracks_asset.clip_tracks(document, binary, document["animations"][0])[0]
+        return tracks_asset.clip_tracks(document, binary, document["animations"][0])
 
     def test_unsupported_pointer_and_weights_name_channel_and_clip(self):
         for c, label in ((channel(0, "weights", [0], [(1,)]), "weights"),
@@ -195,7 +195,7 @@ class BindingMappingTests(unittest.TestCase):
                         [channel(0, "translation", [0], [(1, 2, 3)])])
 
     def test_string_table_interns_repeated_path_and_field(self):
-        tracks, duration = probe_tracks()
+        tracks, duration, root = probe_tracks()
         entry = tracks_asset.encode(tracks, duration)
         _, count, _, strings, size, _ = HEADER.unpack_from(entry)
         names = entry[strings:strings + size].split(b"\0")[:-1]
@@ -207,15 +207,15 @@ class BindingMappingTests(unittest.TestCase):
         nodes = [{"name": "root", "children": [1]}, {"name": "child"}, {"name": "camera"}]
         skin = [{"joints": [0, 1], "inverse_binds": [identity, identity]}]
         channels = [channel(0, "translation", [0], [(1, 2, 3)]), channel(1, "scale", [0], [(1, 1, 1)])]
-        skeleton = self.tracks(nodes, channels, skins=skin)
+        skeleton, _, root = self.tracks(nodes, channels, skins=skin)
         self.assertEqual([t["path"] for t in skeleton], ["root", "root/child"])
-        self.assertTrue(all(t["root"] == tracks_asset.ROOT_SKELETON for t in skeleton))
-        mixed = self.tracks(nodes, channels + [channel(2, "translation", [0], [(1, 2, 3)])], skins=skin)
+        self.assertEqual(root, tracks_asset.ROOT_SKELETON)
+        mixed, _, root = self.tracks(nodes, channels + [channel(2, "translation", [0], [(1, 2, 3)])], skins=skin)
         self.assertEqual([t["path"] for t in mixed], ["root", "child", "camera"])
-        self.assertTrue(all(t["root"] == tracks_asset.ROOT_SCENE for t in mixed))
+        self.assertEqual(root, tracks_asset.ROOT_SCENE)
 
     def test_every_value_type_and_interpolation_round_trips(self):
-        tracks, _ = probe_tracks()
+        tracks, _, _ = probe_tracks()
         for value_type, width in enumerate(tracks_asset.WIDTHS):
             for interp in tracks_asset.INTERPOLATIONS:
                 runs = tracks_asset.CUBIC_RUNS if interp == "CUBICSPLINE" else 1

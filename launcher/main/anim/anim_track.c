@@ -53,6 +53,9 @@ copy_key(const anim_track_t* track, int key, float* out) {
     for (int i = 0; i < track->width; i++) {
         out[i] = v[i];
     }
+    if (track->quaternion) {
+        store_quat(quatf_normalize(load_quat(out)), out);
+    }
 }
 
 static void
