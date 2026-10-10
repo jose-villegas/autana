@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[3]
 BUILD = ROOT / "launcher/tools/build"
 sys.path.insert(0, str(ROOT / "scripts/device"))
 sys.path.insert(0, str(BUILD))
+sys.path.insert(0, str(ROOT / "scripts/device/tests"))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
 import packages  # noqa: E402
 
