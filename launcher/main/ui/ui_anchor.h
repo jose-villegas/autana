@@ -3,8 +3,8 @@
  */
 #pragma once
 
+#include "math/scalar/mathx.h"
 #include "ui/ui_transform.h"
-#include "util/scalar/mathx.h"
 
 typedef struct {
     ui_fp_t x, y;

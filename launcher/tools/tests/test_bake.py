@@ -6,6 +6,7 @@ import contextlib
 import copy
 import hashlib
 import io
+import json
 import pathlib
 import platform
 import sys
@@ -80,7 +81,7 @@ class NativeTests(unittest.TestCase):
     def test_the_pose_samplers_c_and_headers_are_in_the_mesh_stage(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
-                         "launcher/main/util/scalar/mathf.h"} <= set(names))
+                         "launcher/main/math/scalar/mathf.h"} <= set(names))
 
     def test_a_compiled_submodule_counts_as_its_pinned_commit(self):
         names = bake.native_inputs(bake.stage_files("mesh"))
@@ -199,6 +200,13 @@ class LockTests(unittest.TestCase):
         self.assertTrue(all(row["seeded"] for row in bake.seed(found, self.cache)))
         made = {"k" * 64: {**self.row, "run": 9}}
         self.assertNotIn("seeded", bake.lock_rows(found, {}, made)[0])
+
+    def test_seeding_keeps_a_made_row_and_reseeds_a_seeded_one(self):
+        found = [bake_of("k" * 64, self.tree)]
+        made = {**self.row, "sha256": "f" * 64, "run": 4, "host": "Linux x86_64"}
+        self.assertEqual(bake.seed(found, self.cache, {"k" * 64: made}), [made])
+        stale = {**self.row, "sha256": "f" * 64, "seeded": True}
+        self.assertEqual(bake.seed(found, self.cache, {"k" * 64: stale})[0]["sha256"], self.row["sha256"])
 
     def test_a_runs_make_replaces_a_seeded_row_but_never_a_made_one(self):
         found = [bake_of("k" * 64, self.tree)]
@@ -341,6 +349,39 @@ class ProduceTests(unittest.TestCase):
         (out / "files" / f"{row['sha256']}.mesh").write_bytes(b"other")
         with self.assertRaisesRegex(bake.BakeMissing, "run 41"):
             produce.import_run(out, 41, self.root / "third")
+
+    def test_two_runs_lock_together(self):
+        """A Bakes run's meshes and a Bakes GPU run's fits: neither run alone has every key, both together do."""
+        row = self.produce()
+        uploads = {41: self.root / "run41", 42: self.root / "run42"}
+        produce.export([row], self.cache, uploads[41])
+        other = {**row, "key": "k" * 64}
+        produce.export([row], self.cache, uploads[42])
+        (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").unlink()
+        (uploads[42] / produce.KEY_INDEX / f"{other['key']}.json").write_text(json.dumps(other), encoding="utf-8")
+        found = [self.found[0], bake_of(other["key"], self.root / "tree")]
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
+            for alone in (41, 42):
+                with self.assertRaisesRegex(bake.BakeMissing, "no CI run has made this key"):
+                    bake.lock_rows(found, {}, bake.runs_made([alone], self.root / f"c{alone}"))
+            rows = bake.lock_rows(found, {}, bake.runs_made([41, 42], self.root / "both"))
+        self.assertEqual([row["run"] for row in rows], [41, 42])
+
+    def test_two_runs_that_made_one_key_differently_fail_naming_both(self):
+        row = self.produce()
+        uploads = {41: self.root / "run41", 42: self.root / "run42", 43: self.root / "run43"}
+        for upload in uploads.values():
+            produce.export([row], self.cache, upload)
+        other = {**row, "sha256": hashlib.sha256(b"other").hexdigest()}
+        (uploads[42] / "files" / f"{other['sha256']}.mesh").write_bytes(b"other")
+        (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(other), encoding="utf-8")
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
+            with self.assertRaises(bake.BakeMissing) as failed:
+                bake.runs_made([41, 42], self.root / "differ")
+            same = bake.runs_made([41, 43], self.root / "same")
+        for named in (row["key"], "run 41", "run 42", row["sha256"], other["sha256"]):
+            self.assertIn(named, str(failed.exception))
+        self.assertEqual(same[row["key"]]["run"], 41)
 
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()

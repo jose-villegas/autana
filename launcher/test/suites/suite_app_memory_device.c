@@ -5,7 +5,7 @@
 #include "app/app.h"
 #include "unity.h"
 
-#include "util/runtime/memory.h"
+#include "core/memory.h"
 
 static void
 warm_apps(void) {

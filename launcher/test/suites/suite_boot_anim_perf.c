@@ -34,10 +34,10 @@
 
 #include "boot/boot_anim.h"
 #include "boot/boot_anim_timeline.h"
+#include "core/timing.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "util/runtime/timing.h"
 
 /* boot_anim.c's own draw_* functions, exposed specifically for this suite;
  * see boot_anim.c's own comment above draw_floor() for why they are
@@ -311,7 +311,6 @@ test_boot_anim_performance_by_checkpoint(void) {
     TEST_IGNORE_MESSAGE("performance requires the device clock and display");
 #endif
     gfx_clear_clip();
-    gfx_set_partial_clear(false);
     gfx_invalidate();
 
     checkpoint_t checkpoints[7];

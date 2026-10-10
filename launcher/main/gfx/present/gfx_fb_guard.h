@@ -16,7 +16,7 @@
 
 #include <stdbool.h>
 
-#include "util/build/build_variant.h"
+#include "build/build_variant.h"
 
 #if defined(ESP_PLATFORM)
 #include <assert.h>

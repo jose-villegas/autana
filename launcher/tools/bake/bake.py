@@ -3,7 +3,7 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|fit]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND] [--only OUTPUT ...] [--again] [--out DIR]
-    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N | --seed] [--cache DIR]
+    python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
     python launcher/tools/bake/bake.py publish
@@ -24,7 +24,8 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new row is written, so every locked file can be published; `--seed`
+way a new row is written; it repeats, so the meshes of a Bakes run and the
+fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the meshes in the tree as they are, marking each row `seeded`: its bytes
 were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
@@ -567,12 +568,16 @@ def check(found, lock):
     return problems
 
 
-def seed(found, cache):
+def seed(found, cache, lock=None):
     """Rows locking the tree's own files, each copied into the cache and marked seeded: the bytes are
     carried over from the tree, not made by the code their key names. A run that makes the key again
-    writes a row without the mark."""
+    writes a row without the mark. A key `lock` holds a made row for keeps it, as with a run's make."""
     rows, missing = [], []
     for bake in found:
+        made = (lock or {}).get(bake.key)
+        if made is not None and not made.get("seeded"):
+            rows.append({name: made[name] for name in ROW_FIELDS if name in made})
+            continue
         if not bake.tree.is_file():
             missing.append(describe(bake, f"{relative(bake.tree)} is not in the tree to seed from", bake_again(bake)))
             continue
@@ -590,6 +595,22 @@ def run_files(run, folder):
     """Downloads what CI run `run` uploaded into `folder`."""
     subprocess.run(["gh", "run", "download", str(run), "--pattern", RUN_ARTIFACTS, "--dir", str(folder)], check=True)
     return folder
+
+
+def runs_made(runs, cache):
+    """{key: row} of what each CI run in `runs` uploaded, its files put in the cache. A key two runs made with the
+    same bytes keeps the first run's row; with different bytes it fails, naming both, so the author lists one run."""
+    from bake import produce
+
+    made = {}
+    for run in runs:
+        with tempfile.TemporaryDirectory() as folder:
+            for key, row in produce.import_run(run_files(run, pathlib.Path(folder)), run, cache).items():
+                first = made.setdefault(key, row)
+                if first["sha256"] != row["sha256"]:
+                    raise BakeMissing(f"{row['output']} key {key}: run {first['run']} made sha256 {first['sha256']}, "
+                                      f"run {run} made {row['sha256']}; lock from only the run whose bytes you want")
+    return made
 
 
 def lock_rows(found, lock, made=None):
@@ -656,7 +677,8 @@ def main(argv=None):
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
-    parser.add_argument("--from-run", type=int, metavar="N", help="lock: add the rows CI run N made")
+    parser.add_argument("--from-run", type=int, action="append", metavar="N",
+                        help="lock: add the rows CI run N made; repeatable")
     parser.add_argument("--kind", choices=KINDS, help="list, bake: only this kind")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
     parser.add_argument("--missing", action="store_true", help="list: only the bakes LOCK has no row for")
@@ -697,13 +719,9 @@ def main(argv=None):
                 produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
             if args.seed:
-                rows = seed(found, cache)
-            elif args.from_run is not None:
-                from bake import produce
-
-                with tempfile.TemporaryDirectory() as folder:
-                    made = produce.import_run(run_files(args.from_run, pathlib.Path(folder)), args.from_run, cache)
-                rows = lock_rows(found, lock, made)
+                rows = seed(found, cache, lock)
+            elif args.from_run:
+                rows = lock_rows(found, lock, runs_made(args.from_run, cache))
             else:
                 rows = lock_rows(found, lock)
             write_lock(rows)

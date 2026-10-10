@@ -118,7 +118,7 @@ invalidates configuration older than its fragments; use `autana build` for
 the variant you need.
 
 The frame loop in `launcher/main/shell/shell.c` calls `timing_yield()`, which uses `vTaskDelay(1)` in
-`launcher/main/util/runtime/timing_device.c`. `CONFIG_FREERTOS_HZ` sets the tick.
+`launcher/main/core/timing_device.c`. `CONFIG_FREERTOS_HZ` sets the tick.
 Frame rate includes scheduler quantisation; compare device microseconds of
 work when assessing small changes.
 
@@ -128,7 +128,7 @@ work when assessing small changes.
 the caller's disassembly with the toolchain's objdump; a separate function
 symbol alone does not tell whether every call site was inlined. Check for
 remaining calls and register spills. `always_inline`, used by
-`launcher/main/util/runtime/memory.h` and `launcher/main/util/runtime/timing.h`, also needs
+`launcher/main/core/memory.h` and `launcher/main/core/timing.h`, also needs
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 
@@ -166,7 +166,7 @@ and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
 falls short. Float division (`__divsf3`) is the FPU's exact
 `div0.s`/`divn.s` sequence behind a call. Where a hot loop needs 1 / z,
-`mathf_recip()` in `launcher/main/util/scalar/mathf.h` is cheaper: the FPU's
+`mathf_recip()` in `launcher/main/math/scalar/mathf.h` is cheaper: the FPU's
 `recip0.s` seed and two Newton steps, within an ulp of the quotient; its
 comment holds the board's cycle counts.
 

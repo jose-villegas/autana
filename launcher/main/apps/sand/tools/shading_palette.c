@@ -39,9 +39,9 @@
 #include "gfx_palette_gen.h"
 #include "material.h"
 #include "material_palette.h"
+#include "math/scalar/mathi.h"
 #include "sand.h"
 #include "sand_paint_row.h"
-#include "util/scalar/mathi.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
