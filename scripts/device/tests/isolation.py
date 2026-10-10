@@ -9,7 +9,8 @@ folder, where flash snapshots are made, at temporary directories too. A
 project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
 non-zero if one was attempted, even where the code under test swallowed the
-error, or if a snapshot folder outlived the run.
+error, or if a snapshot folder outlived the run. It imports port_guard, so
+no test reaches a real board either.
 """
 
 import atexit
@@ -20,6 +21,8 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+
+import port_guard  # noqa: F401
 
 CHECKOUT = Path(__file__).resolve().parents[3]
 TEMP = Path(tempfile.mkdtemp(prefix="autana-device-tests-"))

@@ -47,8 +47,8 @@ icon_walk_blocks(const gfx_image_t* icon, int box_w, int box_h, icon_emit_fn emi
         return;
     }
 
-    const int origin_x = (box_w - (max_x - min_x + 1) * scale) / 2 - min_x * scale;
-    const int origin_y = (box_h - (max_y - min_y + 1) * scale) / 2 - min_y * scale;
+    const int origin_x = ((box_w - ((max_x - min_x + 1) * scale)) / 2) - (min_x * scale);
+    const int origin_y = ((box_h - ((max_y - min_y + 1) * scale)) / 2) - (min_y * scale);
     for (int y = 0; y < ih; y++) {
         const uint8_t* row = row_at(icon, y);
         int x = 0;
@@ -61,7 +61,7 @@ icon_walk_blocks(const gfx_image_t* icon, int box_w, int box_h, icon_emit_fn emi
             while (x < iw && ink(row, x)) {
                 x++;
             }
-            emit(ctx, origin_x + run_start * scale, origin_y + y * scale, (x - run_start) * scale, scale);
+            emit(ctx, origin_x + (run_start * scale), origin_y + (y * scale), (x - run_start) * scale, scale);
         }
     }
 }

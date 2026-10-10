@@ -324,8 +324,8 @@ test_boot_anim_performance_by_checkpoint(void) {
     if (!motion.from_pack) {
         TEST_FAIL_MESSAGE("the boot clip did not load: this would time the rest pose");
     }
-    /* Boot mounts the photograph's pack inside the frame that first shows
-     * it, so that frame costs this on top of its drawing. */
+    /* Boot mounts the photograph's pack inside frame
+     * BOOT_ANIM_PHOTO_MOUNT_FRAME, which costs this on top of its drawing. */
     gfx_image_t photo;
     const int64_t mount_start = timing_now_us();
     boot_anim_photo_load(&photo);

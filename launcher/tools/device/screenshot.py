@@ -230,7 +230,6 @@ def read_screenshot(port, timeout, on_status=None):
 
     port.reset_input_buffer()
     port.write(TRIGGER)
-    port.flush()
     last_trigger_sent = time.monotonic()
 
     while time.monotonic() < deadline:
@@ -251,7 +250,6 @@ def read_screenshot(port, timeout, on_status=None):
         if total_size is None and now - last_trigger_sent >= 5.0:
             on_status("  ... no response yet, resending trigger (the device may still be booting)")
             port.write(TRIGGER)
-            port.flush()
             last_trigger_sent = now
 
         if now - last_progress >= 3.0:

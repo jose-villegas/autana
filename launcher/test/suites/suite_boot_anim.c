@@ -1087,16 +1087,15 @@ test_the_photograph_arrives_over_its_own_window(void) {
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 1000));
 }
 
-/* Boot mounts the photograph's pack on the first frame that can show it, so
- * no frame before it pays for the mount and no frame of the crossfade misses
- * the photograph. */
+/* Boot mounts the photograph's pack after the first frame, so the first
+ * picture never waits on it, and the first frame, drawn at 0 ms, never needs
+ * the photograph it has not mounted yet. */
 static void
-test_the_photograph_is_due_from_the_first_frame_of_its_crossfade(void) {
-    TEST_ASSERT_FALSE(boot_anim_photo_due(BOOT_ANIM_IMAGE_START_MS - 1));
-    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_IMAGE_START_MS));
-    for (uint32_t ms = 0; ms < BOOT_ANIM_IMAGE_START_MS; ms += 5) {
-        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_photo_reveal(ms), "a frame shows the photograph before it is due");
-    }
+test_the_photograph_is_mounted_after_the_first_frame(void) {
+    TEST_ASSERT_FALSE(boot_anim_photo_due(0));
+    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_PHOTO_MOUNT_FRAME));
+    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_PHOTO_MOUNT_FRAME + 1U));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_photo_reveal(0), "the first frame shows the photograph");
 }
 
 /* The two clocks (ink and the crossfade) are independent by design, but
@@ -1961,7 +1960,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seed_finishes_the_curve_before_the_dissolve_starts);
     RUN_TEST(test_the_picture_is_lit_until_the_dissolve_and_dark_at_the_end);
     RUN_TEST(test_the_photograph_arrives_over_its_own_window);
-    RUN_TEST(test_the_photograph_is_due_from_the_first_frame_of_its_crossfade);
+    RUN_TEST(test_the_photograph_is_mounted_after_the_first_frame);
     RUN_TEST(test_the_seed_finishes_the_crossfade_before_the_dissolve_starts);
     RUN_TEST(test_the_floor_fades_in_from_the_origin_outward);
     RUN_TEST(test_the_floor_fades_out_with_distance_rather_than_stopping);

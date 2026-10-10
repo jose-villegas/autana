@@ -38,7 +38,7 @@ gfx_image_open(asset_view_t entry, gfx_image_t* out) {
     const uint16_t format = half(at + AT_FORMAT);
     const bool mono = format == GFX_IMAGE_MONO1;
     if ((format != GFX_IMAGE_RGB565 && !mono) || width == 0 || height == 0 || stride < width || pixels < HEADER_SIZE
-        || (mono && stride % GFX_IMAGE_MONO1_STRIDE_STEP != 0)) {
+        || (mono && (stride % GFX_IMAGE_MONO1_STRIDE_STEP) != 0)) {
         return ASSET_ERR_FORMAT;
     }
     const uint64_t last_row = (uint64_t)stride * (height - 1U);

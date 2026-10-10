@@ -743,9 +743,7 @@ boot_anim_run(void) {
             break;
         }
 
-        /* Mounting checks the whole pack, so it waits for the frame that
-         * first shows the photograph rather than delaying the first frame. */
-        const bool mounts = !photo_tried && boot_anim_photo_due(now_ms);
+        const bool mounts = !photo_tried && boot_anim_photo_due(frames);
         if (mounts) {
             boot_anim_photo_load(&photo);
             photo_tried = true;
