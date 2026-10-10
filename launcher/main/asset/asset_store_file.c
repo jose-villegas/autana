@@ -6,13 +6,14 @@
 #include <stdlib.h>
 
 #include "asset/asset_file.h"
+#include "asset/asset_store.h"
 #include "asset/asset_store_backend.h"
 
 #define PATH_BYTES 1024
 
 static const char*
 pack_dir(void) {
-    const char* dir = getenv("AUTANA_ASSET_DIR");
+    const char* dir = getenv(ASSET_STORE_DIR_ENV);
 #ifdef ASSET_DIR_DEFAULT_PATH
     dir = dir != NULL ? dir : ASSET_DIR_DEFAULT_PATH;
 #endif
@@ -40,6 +41,6 @@ asset_store_backend_unmount(uintptr_t mapping) {
 void
 asset_store_backend_report(const char* name, asset_status_t status) {
     const char* dir = pack_dir();
-    (void)fprintf(stderr, "asset pack %s/%s.apak: %s (AUTANA_ASSET_DIR names the folder build_pack.py wrote)\n",
+    (void)fprintf(stderr, "asset pack %s/%s.apak: %s (" ASSET_STORE_DIR_ENV " names the folder build_pack.py wrote)\n",
                   dir == NULL ? "(unset)" : dir, name, asset_status_text(status));
 }

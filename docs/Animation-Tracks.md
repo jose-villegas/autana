@@ -8,7 +8,7 @@ Its layer is in
 [Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
-The format is glTF 2.0's own animation model, so a track authored in Blender
+The format is glTF 2.0's own animation model<sup>[[17]](Citations.md#17)</sup>, so a track authored in Blender
 or any other exporter plays back as it was made.
 
 ```mermaid
@@ -33,10 +33,11 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation: unit samples: linear keys slerp, copied and cubic keys are normalised |
+| `quaternion` | The value is an xyzw rotation: unit samples: linear keys slerp<sup>[[19]](Citations.md#19)</sup>, copied and cubic keys are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
-second, exactly as glTF stores them. A track has one interpolation.
+second, exactly as glTF stores them, and samples as the specification's cubic
+Hermite spline<sup>[[17]](Citations.md#17)</sup>. A track has one interpolation.
 
 A binding names an object path, a component and a field. Re-exporting a
 file with reordered nodes preserves these names. The bake maps glTF targets
@@ -47,7 +48,7 @@ onto engine fields:
 | node `translation` | `TRNS` | `position` | `VEC3` |
 | node `rotation` | `TRNS` | `rotation` | `QUAT` |
 | node `scale` | `TRNS` | `scale` | `VEC3` |
-| `/cameras/N/perspective/yfov` pointer | `CAMR` | `half_fov_short_tan` | `FLOAT` |
+| `/cameras/N/perspective/yfov` pointer<sup>[[18]](Citations.md#18)</sup> | `CAMR` | `half_fov_short_tan` | `FLOAT` |
 
 The camera pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
@@ -168,7 +169,7 @@ For a camera path without Blender, write a `NAME.keys.toml` and name it as
 the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
 glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
 `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
-Translation is a smooth Catmull-Rom curve and rotation interpolates
+Translation is a smooth Catmull-Rom curve<sup>[[20]](Citations.md#20)</sup> and rotation interpolates
 short-way quaternions with +Y up; repeat the first key at the end to close
 the loop.
 

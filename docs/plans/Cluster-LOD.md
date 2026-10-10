@@ -4,7 +4,7 @@
 merged; no runtime reads it.
 
 The baked mesh's meshlets can be grouped, simplified with each group's border
-locked, and split again until one is left (meshoptimizer's `clusterlod`
+locked, and split again until one is left<sup>[[54]](../Citations.md#54)</sup> (meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> `clusterlod`
 example), so a runtime draws coarser clusters where they are smaller than a
 pixel. The branch holds that bake, a normal cone per cluster, and a host tool
 that counts what a pick would draw at a camera's poses and diffs the pixels.

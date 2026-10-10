@@ -120,6 +120,10 @@ class BakeMissing(Exception):
     """One or more bakes are not available; the message names each."""
 
 
+class BakeUnlocked(BakeMissing):
+    """Every bake that is not available waits for LOCK to get a row for its key."""
+
+
 @dataclasses.dataclass(frozen=True)
 class Bake:
     output: str            # the file it makes: "<id>.mesh"
@@ -652,12 +656,14 @@ def download(row, suffix, cache):
 
 
 def fetch_all(found, lock, cache, offline=False):
-    """{bake: its file in the cache}; raises BakeMissing naming every bake that is not available."""
-    paths, missing = {}, []
+    """{bake: its file in the cache}; raises BakeMissing naming every bake that is not available,
+    BakeUnlocked when each of them only lacks its LOCK row."""
+    paths, missing, without_row = {}, [], 0
     for bake in found:
         row = lock.get(bake.key)
         if row is None:
             missing.append(describe(bake, unlocked(bake), bake_again(bake)))
+            without_row += 1
             continue
         path = cached(row, bake.suffix, cache)
         if path.is_file() and file_sha256(path) == row["sha256"]:
@@ -678,7 +684,8 @@ def fetch_all(found, lock, cache, offline=False):
         paths[bake] = path
     if missing:
         count = "1 bake is" if len(missing) == 1 else f"{len(missing)} bakes are"
-        raise BakeMissing(f"{count} not available:\n" + "\n".join(missing))
+        error = BakeUnlocked if without_row == len(missing) else BakeMissing
+        raise error(f"{count} not available:\n" + "\n".join(missing))
     return paths
 
 
