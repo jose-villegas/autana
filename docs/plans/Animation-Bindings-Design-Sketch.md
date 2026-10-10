@@ -177,7 +177,7 @@ assumes it [A], and the placement is built from it when the entity is dirty.
 3. The baker converts to the field's units, e.g. glTF `yfov` to
    `half_fov_short_tan`, so the device never converts (section 2).
 4. Property clips resolve at the scene level, by scene object name; skeleton
-   clips resolve relative to their skeleton, by joint path (maintainer,). The stored path can be resolved under an instance root later
+   clips resolve relative to their skeleton, by joint path (maintainer). The stored path can be resolved under an instance root later
    with no format change (section 1).
 5. A binding that does not resolve fails the scene load and is never skipped
    (section 3).
