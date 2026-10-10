@@ -245,7 +245,9 @@ shell does before an app's `frame()`. A scene whose sources include
 active camera; any other scene gets a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
-optionally followed by `|nopin`, and the declared size is checked against
+optionally followed by flags: `|nopin`, and `|nopacks`, which runs that
+render with an empty pack folder to show what the scene draws when its packs
+are missing. The declared size is checked against
 what the binary reports it wrote. That
 is what makes the sweep a check rather than a picture nobody looks at
 twice.
