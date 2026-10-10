@@ -182,7 +182,7 @@ def validate(cfg):
              (timing["title_x_px"], _title_view_w, _title_word_w))
     if timing["image_start_ms"] < 0 or timing["image_fade_ms"] < 0:
         fail("image_start_ms/image_fade_ms must not be negative (%r/%r "
-             "given) - boot_anim_image_reveal() hands both to tween_ramp() "
+             "given) - boot_anim_photo_reveal() hands both to tween_ramp() "
              "as a uint32_t, where a negative duration wraps to an "
              "enormous one and the crossfade would silently never finish" %
              (timing["image_start_ms"], timing["image_fade_ms"]))

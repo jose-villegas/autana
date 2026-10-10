@@ -136,14 +136,23 @@ class EngineFrameTests(unittest.TestCase):
         entry = tracks_asset.encode([track], 1000)
         self.assertEqual(build_pack.to_engine(tracks_asset.TYPE, entry), entry)
 
-    def test_a_skeleton_clip_keeps_its_root(self):
-        track = {"path": "probe", "component": tracks_asset.TRANSFORM, "field": "position", "type": tracks_asset.VALUE_VEC3,
-                 "root": tracks_asset.ROOT_SKELETON, "name": "probe:TRNS.position", "times": [0.0, 1.0],
-                 "values": [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], "interpolation": "LINEAR", "quaternion": False}
-        entry = tracks_asset.encode([track], 1000, tracks_asset.ROOT_SKELETON)
-        tracks, _ = tracks_asset.decode(build_pack.to_engine(tracks_asset.TYPE, entry))
-        self.assertEqual(tracks[0]["root"], tracks_asset.ROOT_SKELETON)
-        self.assertEqual(tracks[0]["values"], [tuple(v * s for v, s in zip(row, MIRROR)) for row in track["values"]])
+    def test_skeleton_clip_joint_transforms_are_mirrored_and_root_kept(self):
+        tracks = []
+        for field, kind, values, signs in (
+                ("position", tracks_asset.VALUE_VEC3, [(2.0, 3.0, 4.0), (5.0, 6.0, 7.0)], MIRROR[:3]),
+                ("rotation", tracks_asset.VALUE_QUAT, [(0.5, 0.5, 0.5, 0.5)] * 2, (-1, -1, 1, 1))):
+            tracks.append(dict(path="joint/child", component=tracks_asset.TRANSFORM, field=field, type=kind,
+                               name=f"joint/child:TRNS.{field}", root=tracks_asset.ROOT_SKELETON, times=[0.0, 1.0], values=values,
+                               interpolation="LINEAR", quaternion=field == "rotation"))
+        entry = tracks_asset.encode(tracks, 1000, tracks_asset.ROOT_SKELETON)
+        converted = build_pack.to_engine(tracks_asset.TYPE, entry)
+        actual, duration = tracks_asset.decode(converted)
+        self.assertEqual(duration, 1000)
+        for before, after, signs in zip(tracks, actual, (MIRROR[:3], (-1, -1, 1, 1))):
+            self.assertEqual(after["root"], tracks_asset.ROOT_SKELETON)
+            self.assertEqual(after["path"], before["path"])
+            self.assertEqual(after["values"], [tuple(v * s for v, s in zip(row, signs)) for row in before["values"]])
+        self.assertEqual(build_pack.to_engine(tracks_asset.TYPE, converted), entry)
 
     def packed_rotation(self, rotation):
         channel = {"node": 0, "path": "rotation", "times": [0.0], "values": [rotation]}

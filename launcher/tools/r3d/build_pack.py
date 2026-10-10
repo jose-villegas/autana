@@ -4,22 +4,23 @@
     python launcher/tools/r3d/build_pack.py -o DIR [--image FILE] [PATH ...] [--replace NAME=FILE ...]
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
-Each PATH is an .import.toml, a .scene.toml, an .anim.toml or a folder
-searched for all three; with none, launcher/main is searched. An app's
+Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml
+or a folder searched for all four; with none, launcher/main is searched. An app's
 demo_assets.toml adds launcher/demo/NAME for each NAME in its `demo` list;
 one inside launcher/demo is refused. A folder reached twice is searched
 once. A root is a file nothing else names: NAME.scene.toml is pack NAME,
 holding the scene entry NAME, every mesh its renderers name and the clip its
 camera flies; an NAME.import.toml no scene places is pack NAME, holding its
-variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip. A mesh
+variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip;
+an NAME.image.toml is pack NAME, holding its one picture. A mesh
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
-a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
-from their files, each with its stem for id. Every entry is mirrored into the
-engine frame on the way in (asset/engine_frame.py). Ids are unique within a pack,
-whatever their type. A skinned mesh also brings its
-<mesh id>.skin, its rig's skeleton and each clip in its
-source.clips (docs/render/Skeleton-and-Skin.md). Each pack is written to
-DIR/<name>.apak; --image also
+a scene (r3d/scene_asset.py), a clip (anim/tracks_asset.py) and a picture
+(gfx/image_asset.py) are baked here from their files, each with its stem for
+id. Every scene, clip and mesh is mirrored into the engine frame on the way in
+(asset/engine_frame.py); a picture has no 3D frame. Ids are unique within a pack,
+whatever their type. A skinned mesh also brings its <mesh id>.skin, its rig's
+skeleton and each clip in its source.clips (docs/render/Skeleton-and-Skin.md).
+Each pack is written to DIR/<name>.apak; --image also
 writes the partition image, the pack directory and every pack.
 Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
 the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
@@ -41,6 +42,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from bake import bake  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
+from gfx import image_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset, skin_asset, skin_pack  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
@@ -49,12 +51,13 @@ from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
 DEMO = REPO / "launcher" / "demo"
-SCENE, IMPORT, CLIP = ".scene.toml", ".import.toml", tracks_asset.SUFFIX
+SCENE, IMPORT, CLIP, IMAGE = ".scene.toml", ".import.toml", tracks_asset.SUFFIX, image_asset.SUFFIX
+ROOTS = (IMPORT, SCENE, CLIP, IMAGE)
 PACK_SUFFIX = ".apak"
 
 
 def input_files(paths):
-    """The import, scene and clip files under `paths` and app-selected demos;
+    """The import, scene, clip and image files under `paths` and app-selected demos;
     manifests inside DEMO are refused, and each folder is searched once."""
     found, searched = set(), set()
     pending = list(map(pathlib.Path, paths))
@@ -64,7 +67,7 @@ def input_files(paths):
             continue
         searched.add(path)
         if path.is_dir():
-            found.update(p for p in path.rglob("*.toml") if p.name.endswith((IMPORT, SCENE, CLIP)))
+            found.update(p for p in path.rglob("*.toml") if p.name.endswith(ROOTS))
             for manifest in sorted(path.rglob("demo_assets.toml")):
                 if manifest.is_relative_to(DEMO.resolve()):
                     raise SettingsError(f"{manifest}: only an app names demo assets")
@@ -73,10 +76,10 @@ def input_files(paths):
                     if not demo.is_dir():
                         raise SettingsError(f"{manifest}: no demo folder for {name!r}")
                     pending.append(demo)
-        elif path.name.endswith((IMPORT, SCENE, CLIP)):
+        elif path.name.endswith(ROOTS):
             found.add(path)
         else:
-            raise SettingsError(f"{path}: not an .import.toml, a .scene.toml, an .anim.toml or a folder")
+            raise SettingsError(f"{path}: not an .import.toml, a .scene.toml, an .anim.toml, an .image.toml or a folder")
     return sorted(found)
 
 
@@ -103,7 +106,7 @@ def scene_entries(path, scene):
 def pack_files(paths):
     """{pack name: {entry id: its source}}, one pack per root under `paths`;
     a mesh's source is its .mesh file, a scene's its .scene.toml, a clip's
-    its .anim.toml."""
+    its .anim.toml, a picture's its .image.toml."""
     return pack_jobs(paths)[0]
 
 
@@ -127,9 +130,11 @@ def pack_jobs(paths):
     for path in files:
         if path.name.endswith(CLIP) and path.resolve() not in placed:
             roots[path] = {tracks_asset.clip_id(path): path}
+        elif path.name.endswith(IMAGE):
+            roots[path] = {image_asset.image_id(path): path}
     packs, owner = {}, {}
     for path, entries in roots.items():
-        name = path.name.removesuffix(SCENE).removesuffix(IMPORT).removesuffix(CLIP)
+        name = path.name.removesuffix(SCENE).removesuffix(IMPORT).removesuffix(CLIP).removesuffix(IMAGE)
         if name in packs:
             raise SettingsError(f"two roots make a pack named {name!r}: {owner[name]} and {path}")
         owner[name] = path
@@ -155,7 +160,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or holder[mesh].name.endswith((SCENE, CLIP)):
+        if holder is None or holder[mesh].name.endswith((SCENE, CLIP, IMAGE)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
@@ -164,7 +169,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
     fetched = {found.tree.resolve(): path for found, path in
                bake.fetch_all(wanted, bake.read_lock(), cache or bake.default_cache(), offline).items()}
     unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
-               if not source.name.endswith((SCENE, CLIP)) and entry not in replaced
+               if not source.name.endswith((SCENE, CLIP, IMAGE)) and entry not in replaced
                and source.resolve() in locked and source.resolve() not in fetched]
     if unkeyed:
         raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
@@ -189,8 +194,10 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
 
 
 def pack_entry(key, source):
-    """The pack entry `key` in the engine frame: a scene or clip baked from
-    its file, else a mesh's bytes, each mirrored."""
+    """The pack entry `key`: a scene, clip or picture baked from its file,
+    else a mesh's bytes; a scene, clip or mesh in the engine frame."""
+    if source.name.endswith(IMAGE):
+        return key, image_asset.TYPE, image_asset.bake(source)
     try:
         if source.name.endswith(SCENE):
             return key, scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(source))
@@ -229,7 +236,7 @@ def write_packs(out, packs, image=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("paths", nargs="*", help="import files, scene files or folders; launcher/main when omitted")
+    parser.add_argument("paths", nargs="*", help="import, scene, clip or image files, or folders; launcher/main when omitted")
     parser.add_argument("-o", "--out", help="the folder the packs are written to")
     parser.add_argument("--image", help="also write the partition image: the pack directory and every pack")
     parser.add_argument("--replace", action="append", default=[], metavar="NAME=FILE",
@@ -254,7 +261,8 @@ def main(argv=None):
         packs = pack_bytes(paths, args.replace, cache, args.offline, args.max_influences)
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
-    except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError) as error:
+    except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError,
+            image_asset.ImageError) as error:
         parser.error(str(error))
     except Exception as error:
         if type(error).__name__ != "BakeMissing":
