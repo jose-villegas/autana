@@ -27,6 +27,7 @@
 
 #include "unity.h"
 
+#include "esp_cache.h"
 #include "esp_log.h"
 
 #include "board/board.h"
@@ -45,6 +46,7 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 #include "panel_clock_pin.h"
+#include "profile/frame_cost.h"
 
 static const char* TAG = "device_tests";
 
@@ -847,6 +849,10 @@ present_reference_band(gfx_color_t colour) {
  * sanity-checking one figure against the other by multiplying is not
  * valid. */
 
+/* The narrow strip: a fraction of a band's width, a band's rows. */
+#define NARROW_STRIP_WIDTH 20
+#define NARROW_STRIP_ROWS  64
+
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
  * through gfx_fill_rect(), which always claims the whole band via
@@ -857,8 +863,8 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
 
     /* A narrow strip within a band, written directly and marked with its
      * real bounds: a caller repainting a narrow changed strip. */
-    const int w = 20;
-    write_dirty_rectangle(0, 0, w, 64, gfx_rgb(0x204060));
+    const int w = NARROW_STRIP_WIDTH;
+    write_dirty_rectangle(0, 0, w, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
     const int64_t narrow = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
@@ -869,12 +875,87 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                "for itself",
                narrow, full_band);
 
-    /* Wider spread than the full-band reference because this path does a
-     * memcpy into gather_buf on top of the same DMA wait, and that copy is
-     * what varies. */
+    /* Its spread used to be whether the present's code was still in the
+     * instruction cache; that code runs from IRAM now (main/linker.lf), and
+     * a strip that costs more again likely runs from flash once more. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
-               "gather-copy path may have regressed",
-               narrow, 256);
+               "gather-copy path may have regressed, or a present's code left IRAM",
+               narrow, 241);
+}
+
+/* An instrument, not a gate: the narrow strip's present, counted alone,
+ * many times per counter, in three settings: right after a full band, as
+ * test_a_narrow_change_costs_less_than_a_full_band measures it; repeated,
+ * where only the bus is left; and cold, with all of flash code dropped from
+ * the instruction cache first, which is what code layout can cost it, the
+ * last also sent from this core. The mean is steady enough to show a few
+ * microseconds; the counters say where this core's cycles went. */
+#define NARROW_PRESENTS 32
+static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti", "d_stall_all"};
+
+typedef enum { NARROW_AFTER_BAND, NARROW_REPEATED, NARROW_COLD } narrow_setting_t;
+
+extern char _instruction_reserved_start[];
+extern char _instruction_reserved_end[];
+
+static void
+drop_flash_code_from_cache(void) {
+    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
+    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
+    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
+    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
+                                              ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_INST));
+}
+
+static void
+count_narrow_presents(const char* scene, narrow_setting_t setting) {
+    const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
+    int64_t total_us = 0;
+    (void)present_reference_band(gfx_rgb(0x204060));
+    for (int e = 0; e < events; e++) {
+        const int event = frame_cost_event_index(narrow_present_events[e]);
+        uint64_t cycles_sum = 0;
+        uint64_t value_sum = 0;
+        bool counted = true;
+        for (int i = 0; i < NARROW_PRESENTS; i++) {
+            if (setting == NARROW_AFTER_BAND) {
+                (void)present_reference_band(gfx_rgb(0x204060));
+            }
+            write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
+            if (setting == NARROW_COLD) {
+                drop_flash_code_from_cache();
+            }
+            TEST_ASSERT_TRUE(frame_cost_count_begin(event));
+            total_us += time_present();
+            uint32_t cycles = 0;
+            uint32_t value = 0;
+            counted = frame_cost_count_end(&cycles, &value) && counted;
+            cycles_sum += cycles;
+            value_sum += value;
+        }
+        ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s", scene,
+                 narrow_present_events[e], (unsigned)(cycles_sum / NARROW_PRESENTS),
+                 (unsigned)(value_sum / NARROW_PRESENTS), NARROW_PRESENTS, counted ? "" : " overflow=counters");
+    }
+    ESP_LOGI(TAG, "%s both cores: mean %lldus", scene, (long long)(total_us / (NARROW_PRESENTS * events)));
+}
+
+static void
+test_narrow_present_counters(void) {
+#if !FRAME_COST_ENABLED
+    TEST_IGNORE_MESSAGE("frame_cost is a development build's");
+#else
+    count_narrow_presents("narrow_after_band", NARROW_AFTER_BAND);
+    count_narrow_presents("narrow_repeated", NARROW_REPEATED);
+    count_narrow_presents("narrow_cold", NARROW_COLD);
+    /* The present task runs on the other core, where these counters cannot
+     * see it; sent from this core, its stalls are this core's. */
+    const bool async = gfx_present_async_enabled();
+    gfx_set_present_async(false);
+    count_narrow_presents("narrow_cold_here", NARROW_COLD);
+    gfx_set_present_async(async);
+    TEST_PASS();
+#endif
 }
 
 /* The box is bounded by area, not width alone, specifically so a
@@ -1450,6 +1531,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_full_present_cost_splits_into_bus_time_and_overhead);
     RUN_TEST(test_a_partial_change_costs_less_than_a_full_frame);
     RUN_TEST(test_a_narrow_change_costs_less_than_a_full_band);
+    RUN_TEST(test_narrow_present_counters);
     RUN_TEST(test_a_short_wide_change_costs_less_than_a_full_band);
     RUN_TEST(test_a_full_width_partial_height_change_costs_less_than_a_band);
     RUN_TEST(test_two_far_corners_cost_less_than_a_full_band);
