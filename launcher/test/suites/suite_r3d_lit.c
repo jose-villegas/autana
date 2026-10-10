@@ -6,6 +6,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +22,7 @@
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_show.h"
+#include "services/tune.h"
 
 #define W 64
 #define H 48
@@ -28,6 +30,14 @@
 static gfx_color_t* color;
 static uint16_t* depth;
 static r3d_pipeline_work_t* work;
+
+static bool cull_changed;
+static int32_t saved_cull;
+
+static void
+cull_reply(const char* line) {
+    (void)line;
+}
 
 static void release_fixture(void);
 
@@ -1827,6 +1837,31 @@ census_raster(const r3d_instance_t* instances, int count) {
     return raster;
 }
 
+static void
+test_cull_off_keeps_every_cluster(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const r3d_instance_t instance = {.mesh = &p->mesh};
+    raster_t raster = census_raster(&instance, 1);
+    const fixture_camera_t camera = camera_down_minus_z(10000.0f, 400, 1.0f);
+    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    const tune_entry_t* entry = tune_find(tune_shared(), "render.cull");
+    TEST_ASSERT_NOT_NULL(entry);
+    saved_cull = *entry->value;
+    cull_changed = true;
+    (void)tune_handle_line("RESET render.cull", cull_reply);
+    const raster_stats_t on = raster_draw(&raster, &view);
+    (void)tune_handle_line("SET render.cull 0", cull_reply);
+    const raster_stats_t off = raster_draw(&raster, &view);
+    TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
+    TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
+    int triangles = 0;
+    for (int i = 0; i < p->mesh.cluster_count; i++) {
+        triangles += p->mesh.clusters[i].triangle_count;
+    }
+    TEST_ASSERT_EQUAL_INT(triangles, off.triangles);
+}
+
 /* The raster at size `z` of `sizes`, drawn directly and then from a census
  * taken at the next size: the same picture, depth and survivors. */
 static void
@@ -2303,6 +2338,14 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
+    if (cull_changed) {
+        char command[sizeof("SET render.cull -2147483648")];
+        const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
+        if (length > 0 && (size_t)length < sizeof command) {
+            (void)tune_handle_line(command, cull_reply);
+        }
+        cull_changed = false;
+    }
     free(work);
     work = NULL;
     free(shared_parts);
@@ -2413,6 +2456,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_frame_workspace_is_aligned);
     RUN_TEST(test_the_frame_carves_its_scratch_without_overlap);
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
+    RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);

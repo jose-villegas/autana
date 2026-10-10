@@ -206,7 +206,7 @@ culls and draws.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| the final mesh | clusters, nodes, the `.mesh` entry | none |
+| the final mesh | clusters, nodes, the `.mesh` entry | `geometry.meshlet_triangles` |
 
 Cost: `meshlets` and `write` in the bake-steps table.
 
@@ -215,6 +215,20 @@ full, lite and fitted meshes. Each instance owns a disjoint ID range, reset on
 every draw; empty pixels keep the clear colour.
 
 ![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
+
+Culling clusters about halves the triangles submitted and takes roughly a
+third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
+boxes let through more triangles than its fewer culls save. Each size on the
+board, against submitting every cluster:
+
+<!-- generated: meshlet-sizes sha256=a2394a367bfaeaea5674c00debb910455e0d05d3ab6a5d512b84eae7023763b0 -->
+| Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
+|---|---|---|---|---|---|---|---|
+| cull off | 583 | 0.934 | 17376.0 | 0.35 | 5.21 | 63.37 | 74.85 |
+| meshlets of 16 | 1225 | 1.061 | 8661.6 | 0.99 | 3.57 | 42.01 | 52.50 |
+| meshlets of 32 (shipped) | 583 | 0.934 | 9564.1 | 0.66 | 3.21 | 42.98 | 52.80 |
+| meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
+<!-- /generated: meshlet-sizes -->
 
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
 
@@ -434,6 +448,10 @@ view set to the motion attachment (a development-build tunable; `autana tune`
 lists it). Check `autana status` and `autana buildid` before and after each
 capture. A missing capture leaves its row `not in capture`; a capture without
 report windows fails the run.
+
+The `meshlet-sizes` table is generated from each size's own suite capture and
+regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
+owns preparation, capture validation and refresh commands.
 
 The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
 rebakes and fits. Refresh them on the GPU runner with:
