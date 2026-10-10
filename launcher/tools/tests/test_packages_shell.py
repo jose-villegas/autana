@@ -103,6 +103,15 @@ class PackagesAlone(FixtureLauncher):
         self.assertIn("ui.h", result.stdout)
         self.assertNotIn("FAIL p: p/p.h", result.stdout)
 
+    def test_a_source_that_reaches_outside_the_package_fails_naming_it(self):
+        self.self_contained()
+        self.write("main/esp_timer.h", "#pragma once\n")
+        self.write("packages/p/src/clock.c", '#include "esp_timer.h"\nint p_clock(void) { return 0; }\n')
+        result = self.check()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("src/clock.c", result.stdout)
+        self.assertNotIn("src/p.c", result.stdout)
+
     def test_no_packages_is_a_failure_not_a_pass(self):
         self.assertNotEqual(0, self.check().returncode)
 

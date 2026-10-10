@@ -15,7 +15,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/gates"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 
+from build.packages import package_part
 from c_comments import EXCLUDED, blank_comments, file_header
 from check_style_audit import resolve_include
 from check_doc_constants import sentences
@@ -106,11 +108,12 @@ def package_headers(root):
     root = pathlib.Path(root).resolve()
     apis = {}
     for path in tracked_files(root):
-        parts = pathlib.PurePosixPath(path).parts
-        if parts[:2] != ("launcher", "packages") or parts[3:4] != ("include",) or not path.endswith(".h"):
+        part = package_part(path)
+        if part is None or part[1] != "include" or not path.endswith(".h"):
             continue
-        apis.setdefault("/".join((*parts[:3], "README.md")), []).append(
-            ("/".join(parts[3:]), *describe(path, (root / path).read_text(encoding="utf-8"))))
+        package = f"launcher/packages/{part[0]}/"
+        apis.setdefault(package + "README.md", []).append(
+            (path.removeprefix(package), *describe(path, (root / path).read_text(encoding="utf-8"))))
     return {readme: sorted(rows) for readme, rows in apis.items()}
 
 

@@ -115,8 +115,8 @@ flowchart TB
   `build/build_variant.h` says which build this is. Below every folder of
   `main/`, `board/` included, sit the packages: first-party libraries in
   `launcher/packages/<name>/`, each its own ESP-IDF component with an
-  `include/` root, `src/` and `tests/`, such as
-  [math](../launcher/packages/math/README.md). A package includes nothing
+  `include/` root, `src/` and `tests/`;
+  [math](../launcher/packages/math/README.md) is one. A package includes nothing
   outside itself but the C library and the build config, so the firmware,
   the host tests, the tools and the editor all build it: the style audit's
   PACKAGE-INCLUDE rule names a reach into the firmware, and

@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 import complexity_gate as complexity
-from packages import FIRST_PARTY
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from build.packages import FIRST_PARTY, package_part  # noqa: E402
 
 CHECKS = (
     "readability-math-missing-parentheses",
@@ -27,10 +28,10 @@ DIAGNOSTIC = re.compile(
 
 
 def first_party(path):
-    """Under launcher/main/ or launcher/packages/: the code the baseline holds. A
-    package's tests/ is left out, as launcher/test/suites/ is."""
+    """Under launcher/main/ or launcher/packages/: the code the baseline holds.
+    A package's tests/ is left out."""
     rel = path.relative_to(complexity.REPO_ROOT).as_posix() if path.is_relative_to(complexity.REPO_ROOT) else ""
-    return rel.startswith(FIRST_PARTY) and not (rel.startswith("launcher/packages/") and "tests" in rel.split("/")[3:4])
+    return rel.startswith(FIRST_PARTY) and (package_part(rel) or ("", ""))[1] != "tests"
 
 
 def count_diagnostics(output):
