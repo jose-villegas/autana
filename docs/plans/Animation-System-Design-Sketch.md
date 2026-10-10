@@ -92,7 +92,11 @@ sequenceDiagram
 All baked from any rigged glTF by the mesh import (`mesh_import.py`); nothing
 names a model. Each sits in its owner's pack: a mesh's `SKIN` and `SKEL`, and
 the clips the import file lists, go into the pack of the scene that places the
-mesh, as its `LMSH` does today. Little-endian; every offset counts from the
+mesh, as its `LMSH` does today. Ids are unique within a pack whatever their
+type, so each is derived by rule: a skin is `<mesh id>.skin`; a skeleton is
+the rig's own name (the source's skin or armature), shared by every mesh on
+that rig; a clip is its clip name. An id over 31 bytes fails the bake naming
+it, and two clips of one name fail it naming both sources. Little-endian; every offset counts from the
 entry's first byte and is 4-aligned; no pointers, no fix-up pass; names live
 in the entry's string table (NUL-terminated, each once, offsets `u16`). Each
 reader checks everything once on open and refuses an unknown version
@@ -133,7 +137,8 @@ finite and sized for type and interp, zero padding.
 Checks: `joint_count` 1 to 254, joint 0 is the only root, every other
 `parent` below its own index (parents first, so one forward pass builds model
 space), paths terminated and unique, rest values finite, rotations unit
-within a tolerance.
+within `ANIM_SKELETON_UNIT_TOLERANCE`: `|1 - |q|^2| <= 1e-4`, defined once in
+the C reader and once in the Python writer, each tested at the boundary.
 
 **SKIN v1**:
 
@@ -142,6 +147,11 @@ within a tolerance.
 | header, 16 bytes | `u16 version` (1), `u8 joint_count`, `u8 influences` (2 or 4), `u32 vertex_count`, `u32 inverse_bind_off`, `u32 vertices_off` |
 | inverse bind, at `inverse_bind_off` | `f32 m[3][4]` per joint, row-major, model units |
 | vertex record, at `vertices_off`, `2 x influences + 4` bytes | `u8 joint[influences]`, `u8 weight[influences]` (sum 255), `i8 normal[3]`, 1 zero byte |
+
+The normal is the vertex's bind-pose normal in model space, each axis times
+127 and rounded. It lives here because an `LMSH` has none (its light is baked
+colour); if a mesh that is not skinned ever needs normals, they go in `LMSH`,
+not here, so normals never have two homes.
 
 Joint `i` of a `SKIN` is joint `i` of its `SKEL`; vertex `v` is vertex `v`
 of its `LMSH` (the baker writes all three in one pass, after meshlet
@@ -163,8 +173,14 @@ PR shows those 11 posed in gallop and half_bound at 2 and at 4.
 | skinned renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]`, `char skin_id[32]`, `char skeleton_id[32]` |
 | animators (the `c3w3` row) | `u16 entity`, `u16 clip_count`, `u32 first_clip` (index into the clip rows) |
 | clip rows | `char clip_id[32]` |
-| lights | `u8 kind` (0 directional), 3 zero bytes, `f32 direction[3]` (toward the light), `f32 colour[3]` (linear, times intensity) |
-| header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient[3]`, `f32 tonemap_white` |
+| lights | `u8 kind` (`SCENE_LIGHT_DIRECTIONAL` = 0, the only kind yet), 3 zero bytes, `f32 direction[3]` (unit, scene space, pointing toward the light), `f32 colour[3]` (linear RGB, 0 to 1), `f32 intensity` (the scene file's, unscaled) |
+| header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient_colour[3]` (linear RGB), `f32 ambient_intensity`, `f32 tonemap_white` |
+
+The lights, ambient and tone map are read by one runtime system: the skinned
+renderers' lighting (`r3d_skin_light_t`, built per skinned renderer from the
+scene's lights in its object space), so a skinned mesh is lit by the same
+numbers the static bake used. A version 1 `SCNE` is refused
+(`ASSET_ERR_VERSION`), as a version 1 `TRCK` is.
 
 ## 4. Types and functions, M1
 
