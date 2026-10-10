@@ -57,9 +57,10 @@ Other pointer targets and morph weights are refused.
 A channel that never changes is baked as one key; a cubic channel counts as
 unchanging only when every tangent is zero.
 
-The clip's root is `SKELETON` when every channel drives a joint in one skin
-and those joints have one joint root. Paths include that joint root, such as
-`root/spine`, and exclude non-joint ancestors such as an armature node.
+The clip's root is `SKELETON` when every channel drives a joint of one skin.
+A path runs from the joint's root joint, which it includes, such as
+`root/spine`, and excludes non-joint ancestors such as an armature node. A
+skin may have several root joints; two joints with one path fail the bake.
 Other clips use `SCENE` and paths name scene nodes.
 `anim_bind()` refuses a skeleton clip with `ANIM_BIND_ERR_ROOT`;
 `anim_tracks_binding_at()` and `anim_track_sample()` still read and sample it.
