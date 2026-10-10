@@ -294,12 +294,9 @@ DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
     sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
 ```
 
-The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba 3 (Jakob, Speierer,
-Roussel, Nimier-David, Vicini, Zeltner, Nicolet, Crespo, Leroy, Zhang, *Mitsuba 3 renderer*, 2022,
-<https://mitsuba-renderer.org>) and Dr.Jit (Jakob, Speierer, Roussel, Vicini, *Dr.Jit: A Just-In-Time Compiler for
-Differentiable Rendering*, ACM Transactions on Graphics 41(4), SIGGRAPH 2022,
-doi:[10.1145/3528223.3530099](https://doi.org/10.1145/3528223.3530099)), whose CUDA and LLVM backends the two
-variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
+The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba
+3<sup>[[15]](../../../docs/Citations.md#15)</sup> and Dr.Jit<sup>[[55]](../../../docs/Citations.md#55)</sup>, whose CUDA
+and LLVM backends the two variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
 repository); what changed is where the files go: that page copies them into Windows' own WSL driver folder, a system
 change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's core library, drjit-core)
 points at.
