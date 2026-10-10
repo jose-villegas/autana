@@ -24,7 +24,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from device_capture import BUILD_ID_BYTES_RE as BUILD_ID, crash_signs
+from device_capture import BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, crash_signs
 
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
@@ -449,8 +449,7 @@ def failures_by_suite(text):
 
 def print_crash_signs(data, boots_allowed):
     """Every capture command's crash verdict: each sign on its own line, and
-    how many there were. `boots_allowed` is one for a capture that starts
-    from a reset, none for one opened on a running board."""
+    how many there were."""
     signs = crash_signs(data.decode("utf-8", errors="replace"), boots_allowed)
     for sign in signs:
         print(sign)
@@ -1365,7 +1364,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
                   file=sys.stderr)
     if patterns:
         check_test_filter(data, args.suite, patterns, reason)
-    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), 0)
+    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
     return 1 if failed else 0
 
 
@@ -1417,7 +1416,7 @@ def selftest(args, store, board):
             except Exception as report_error:  # a report is a convenience, never fails the capture
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
-        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), 1)
+        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
         return 1 if failed else 0
 
 
@@ -1481,7 +1480,7 @@ def listen(args, store, board):
         sink.finish()
     elif data and not data.endswith(b"\n"):
         print()
-    crashed = print_crash_signs(data, 0)
+    crashed = print_crash_signs(data, BOOTS_ON_RUNNING)
     print("listen capture: " + str(final_path))
     print("listen capture ended: " + reason)
     elf = Path(args.elf) if args.elf else find_elf_for_build_id(

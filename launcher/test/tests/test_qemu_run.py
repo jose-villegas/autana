@@ -82,7 +82,7 @@ class LiveConsole(FakeConsole):
 
     def send(self, line):
         super().send(line)
-        if line == qemu_run.HEARTBEAT:
+        if line == qemu_run.BUILD_ID_REQUEST:
             self._lines = ["BUILD_ID=abc"] if self.answers else []
             self.answers -= 1
 
@@ -96,12 +96,12 @@ class HeartbeatTest(unittest.TestCase):
     def test_a_tour_that_answers_after_every_step_passes(self):
         console = LiveConsole(answers=2)
         self.assertTrue(self.drive(console, ["wait 1", "tilt 0 0 4096"]))
-        self.assertEqual(console.sent.count(qemu_run.HEARTBEAT), 2)
+        self.assertEqual(console.sent.count(qemu_run.BUILD_ID_REQUEST), 2)
 
     def test_a_step_with_no_heartbeat_after_it_ends_the_tour(self):
         console = LiveConsole(answers=1)
         self.assertFalse(self.drive(console, ["wait 1", "tilt 0 0 4096", "wait 1"]))
-        self.assertEqual(console.sent.count(qemu_run.HEARTBEAT), 2)
+        self.assertEqual(console.sent.count(qemu_run.BUILD_ID_REQUEST), 2)
 
 
 class RunSuiteTest(unittest.TestCase):

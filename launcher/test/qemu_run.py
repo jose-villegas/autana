@@ -73,12 +73,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "build"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "..", "scripts", "lib"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
-from device_capture import crash_signs  # noqa: E402  (the board tool's own crash verdict)
+from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
+                            crash_signs)  # (the board tool's own crash verdict)
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
@@ -328,15 +327,13 @@ def run_action(console, action):
 # answering proves the firmware is still up. A reboot answers too, once the
 # new boot's console is listening, and is caught by its second boot banner.
 # Generous, because without --icount a heavy frame can starve the console.
-HEARTBEAT = "BUILDID"
-HEARTBEAT_REPLY = "BUILD_ID="
 HEARTBEAT_S = 15
 
 
 def heartbeat(console):
-    console.send(HEARTBEAT)
+    console.send(BUILD_ID_REQUEST)
     for line in console.lines(HEARTBEAT_S):
-        if HEARTBEAT_REPLY in line:
+        if BUILD_ID_RE.search(line):
             return True
     return False
 
@@ -357,10 +354,6 @@ def drive_shell(console, actions):
     return ok
 
 
-# A run starts from QEMU's own power-on: one boot, and no other.
-BOOTS = 1
-
-
 def summarise(log_path):
     with open(log_path, "rb") as fh:
         text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
@@ -373,7 +366,8 @@ def summarise(log_path):
         print("  " + line)
     for name, why in failed:
         print("  FAIL %s: %s" % (name, why[:120]))
-    crashes = crash_signs(text, BOOTS)
+    # A run starts from QEMU's own power-on.
+    crashes = crash_signs(text, BOOTS_FROM_RESET)
     for sign in crashes:
         print("  " + sign)
     sentinel = re.search(r"^%s .*$" % SENTINEL, text, flags=re.M)

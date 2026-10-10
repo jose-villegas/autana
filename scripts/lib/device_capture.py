@@ -5,6 +5,8 @@ import re
 # test ran at all and, around a panic, to name the last few that did.
 # Device results allow an empty file field and include ignored tests.
 RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>\w+):(?P<status>PASS|FAIL|IGNORE)(?::\s*(?P<message>.*))?$")
+# The console line that asks a running image for its BUILD_ID= line.
+BUILD_ID_REQUEST = "BUILDID"
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")
 BUILD_ID_BYTES_RE = re.compile(BUILD_ID_RE.pattern.encode())
 PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
@@ -25,20 +27,29 @@ CRASH_LINE_RE = re.compile(r"Guru Meditation|panic'ed|abort\(\) was called|asser
 # shows more often.
 BOOT_BANNER = "ESP-ROM:esp32s3"
 RESET_LINE_RE = re.compile(r"^rst:0x[0-9a-fA-F]+ \(\w+\).*$", re.M)
+# The boots a capture may hold before one more is a reboot: its own, for a run
+# that starts from a reset; none, for a capture opened on a running board.
+BOOTS_FROM_RESET = 1
+BOOTS_ON_RUNNING = 0
+
+
+def reboot_sign(text, boots_allowed):
+    """"rebooted: ..." when the capture holds more boots than `boots_allowed`,
+    else None."""
+    resets = RESET_LINE_RE.findall(text)
+    boots = max(text.count(BOOT_BANNER), len(resets))
+    if boots <= boots_allowed:
+        return None
+    return "rebooted: %d boots, expected at most %d%s" % (
+        boots, boots_allowed, " (last %s)" % resets[-1].strip() if resets else "")
 
 
 def crash_signs(text, boots_allowed):
     """Why a capture shows the firmware dying, one line per sign: every crash
-    line, and a boot beyond the `boots_allowed` the capture began with (one
-    for a run that starts from a reset, none for a capture opened on a running
-    board). Empty when it shows none."""
+    line, then reboot_sign()'s. Empty when it shows none."""
     signs = ["crash: " + line.strip() for line in text.splitlines() if CRASH_LINE_RE.search(line)]
-    resets = RESET_LINE_RE.findall(text)
-    boots = max(text.count(BOOT_BANNER), len(resets))
-    if boots > boots_allowed:
-        signs.append("rebooted: %d boots, expected at most %d%s" % (
-            boots, boots_allowed, " (last %s)" % resets[-1].strip() if resets else ""))
-    return signs
+    reboot = reboot_sign(text, boots_allowed)
+    return signs + [reboot] if reboot else signs
 
 
 def results(text, *, ignored=False):

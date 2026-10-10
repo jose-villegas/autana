@@ -30,7 +30,7 @@ import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
-from device_capture import BOOT_BANNER, CRASH_LINE_RE, results, SELFTEST_COMPLETE_RE
+from device_capture import BOOT_BANNER, BOOTS_FROM_RESET, CRASH_LINE_RE, reboot_sign, results, SELFTEST_COMPLETE_RE
 
 # The parenthesised text after "panic'ed" is the exception type (e.g. "Stack
 # protection fault") and is worth surfacing verbatim; it is usually enough on
@@ -92,19 +92,18 @@ def validate(capture_path: str, sentinels=(), require_complete: bool = True):
                 "\n      ".join(context)
         failures.append(msg)
 
-    # One per boot; more than one means the device reset mid-run, a crash
-    # loop, not a slow run, which changes what a stall in the capture means.
+    # A RUNSUITE capture opens after the boot, so only a whole run has one;
+    # a second means a crash loop, which changes what a stall here means.
     boot_count = text.count(BOOT_BANNER)
-    # A RUNSUITE capture opens after the boot, so only a whole run has one.
     if boot_count == 0 and require_complete:
         failures.append(
             f"no boot banner ({BOOT_BANNER!r}) found - this doesn't look like "
             "a capture that started from a device reset at all."
         )
-    elif boot_count > 1:
+    elif reboot := reboot_sign(text, BOOTS_FROM_RESET):
         failures.append(
-            f"{boot_count} boot banners found, expected 1 - the device "
-            "rebooted mid-run. That means a crash loop, not a slow run."
+            f"{reboot} - the device rebooted mid-run. That means a crash "
+            "loop, not a slow run."
         )
 
     # A capture with no result line in it ran no test, whatever else it
