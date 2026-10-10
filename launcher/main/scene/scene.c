@@ -6,9 +6,9 @@
 #include <string.h>
 
 #include "asset/asset_store.h"
+#include "core/memory.h"
 #include "gfx/draw/gfx_color.h"
 #include "scene/scene_internal.h"
-#include "util/runtime/memory.h"
 
 #define LOADED_MAX 8
 

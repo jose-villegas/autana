@@ -129,7 +129,7 @@ class DocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             tools = root / "launcher/tools/render"
             tools.mkdir(parents=True)
-            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py"):
+            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py", "gif_from_avi.sh"):
                 shutil.copyfile(ROOT / "launcher/tools/render" / name, tools / name)
             helper = root / "scripts/lib/run.sh"
             helper.parent.mkdir(parents=True)

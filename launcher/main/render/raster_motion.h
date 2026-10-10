@@ -9,10 +9,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/linear/mat4f.h"
 #include "render/camera.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
-#include "util/math/mat4f.h"
 
 /* A pixel's motion: the previous position minus this one, in half pixels
  * of this picture, so +-63.5 pixels. RASTER_MOTION_UNKNOWN on either axis:

@@ -35,7 +35,7 @@ class LayoutPadTest(unittest.TestCase):
         self.assertEqual(len(rodatas), 128)
 
     def test_a_pad_is_repeatable_and_moves_with_the_seed(self):
-        self.assertEqual(pads.pad_sizes(7, "util/runtime/job.c"), pads.pad_sizes(7, "util/runtime/job.c"))
+        self.assertEqual(pads.pad_sizes(7, "core/job.c"), pads.pad_sizes(7, "core/job.c"))
         self.assertNotEqual([pads.pad_sizes(7, s) for s in SOURCES],
                             [pads.pad_sizes(8, s) for s in SOURCES])
 

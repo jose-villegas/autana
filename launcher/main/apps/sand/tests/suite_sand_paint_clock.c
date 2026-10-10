@@ -6,6 +6,7 @@
 #include "unity.h"
 
 #include "apps/sand/sand_paint_clock.h"
+#include "math/scalar/mathx.h"
 
 #define SHINE_MS               SAND_PAINT_SHINE_STEP_MS
 #define SHINE_STEPS_PER_PERIOD (SAND_PAINT_SHINE_PERIOD / SAND_PAINT_SHINE_STEP_PX)
@@ -105,7 +106,12 @@ typedef struct {
 static void
 test_the_gravity_bearing_is_a_quarter_turn_per_axis_and_zero_without_gravity(void) {
     static const bearing_case_t cases[] = {
-        {0, 0, 0}, {0, 256, 65536}, {256, 0, 0}, {0, -256, -65536}, {-256, 0, 131072}, {256, 256, 32768},
+        {0, 0, 0},
+        {0, 256, MATHX_ONE},
+        {256, 0, 0},
+        {0, -256, -MATHX_ONE},
+        {-256, 0, 2 * MATHX_ONE},
+        {256, 256, MATHX_ONE / 2},
     };
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         TEST_ASSERT_EQUAL_INT(cases[i].bearing_q16, sand_paint_gravity_bearing_q16(cases[i].gx, cases[i].gy));

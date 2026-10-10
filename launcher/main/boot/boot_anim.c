@@ -32,15 +32,15 @@
 #include <string.h>
 
 #include "boot/boot_anim_image.h"
+#include "build/build_variant.h"
+#include "core/timing.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/timing.h"
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
 
 /* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
  * draw_image()'s own memcpy fast path below depends on being true. */
@@ -147,8 +147,8 @@ static void
 polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
     const int32_t cos_v = trig_cos(turn);
     const int32_t sin_v = trig_sin(turn);
-    *re = (int32_t)(((int64_t)radius * cos_v) >> 15);
-    *im = (int32_t)(((int64_t)radius * sin_v) >> 15);
+    *re = (int32_t)(((int64_t)radius * cos_v) >> TRIG_SIN_SHIFT);
+    *im = (int32_t)(((int64_t)radius * sin_v) >> TRIG_SIN_SHIFT);
 }
 
 /* step == steps closes loop back to step 0, no gap on last edge. */
@@ -156,7 +156,7 @@ static void
 grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int step, const boot_anim_view_t* view,
                   vec3x_t* cs, bool* front, int* sx, int* sy) {
     const int i = (step == steps) ? 0 : step;
-    const uint16_t turn = (uint16_t)(((uint32_t)i * 65536u) / (uint32_t)steps);
+    const uint16_t turn = (uint16_t)(((uint32_t)i * TRIG_TURN) / (uint32_t)steps);
     int32_t re, im;
     polar_point(radius, turn, &re, &im);
     *cs = boot_anim_plane_point(plane, re, im);
@@ -290,7 +290,7 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
     int32_t rim_re, rim_im;
     polar_point(d, 0, &rim_re, &rim_im);
     const vec3x_t rim_a = boot_anim_plane_point(&plane, rim_re, rim_im);
-    polar_point(d, 32768, &rim_re, &rim_im);
+    polar_point(d, TRIG_TURN / 2, &rim_re, &rim_im);
     const vec3x_t rim_b = boot_anim_plane_point(&plane, rim_re, rim_im);
 
     const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
@@ -322,7 +322,7 @@ draw_floor(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
     if (spoke_reach > 0) {
         for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
-            const uint16_t turn = (uint16_t)((i * 65536) / BOOT_ANIM_GRID_SPOKES);
+            const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
             draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS),
                             spoke_c, BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
         }

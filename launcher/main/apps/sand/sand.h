@@ -24,10 +24,10 @@
 #define SAND_FACT
 #define SAND_FACT_WRITER
 
+#include "build/build_variant.h"
 #include "material.h"
+#include "math/scalar/rng.h"
 #include "sand_impulse.h"
-#include "util/build/build_variant.h"
-#include "util/scalar/rng.h"
 
 /* See material.h for cell encoding. Variant travels with the cell, not the
  * position, to prevent shimmering in a moving pile. */
