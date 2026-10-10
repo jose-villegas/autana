@@ -58,7 +58,7 @@ def probe_pack():
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         for mesh in ("red", "green"):
-            write_import(root, f"{mesh}.import.toml", output=f'[output]\ndirectory = "."\nname = "{mesh}"\n')
+            write_import(root, f"{mesh}.import.toml", output=f'[output]\nname = "{mesh}"\n')
         (root / "probe.glb").write_bytes(probe_glb())
         (root / "probe.anim.toml").write_text('source = "probe.glb"\nanimation = "clip"\n')
         scene = root / "probe_scene.scene.toml"

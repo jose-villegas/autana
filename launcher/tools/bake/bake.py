@@ -6,6 +6,7 @@
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
+    python launcher/tools/bake/bake.py path OUTPUT [--cache DIR] [--offline]
     python launcher/tools/bake/bake.py publish
 
 PATH is what build_pack.py takes; with none, launcher/main is searched. A
@@ -32,7 +33,8 @@ and each new row is marked `seeded`: its bytes
 were carried over, not made by the code its key names. `check` fails when LOCK lacks a
 needed key or holds one nothing needs. `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
-never downloads. `publish`, on main in CI only, uploads each locked file the
+never downloads; `path` fetches one bake by its output's name (`NAME.glb`)
+and prints where it is, for a tool that reads it. `publish`, on main in CI only, uploads each locked file the
 release lacks, taking a row's file from the run that made it. The cache is %LOCALAPPDATA%/autana/bakes, else
 $XDG_CACHE_HOME/autana/bakes, else ~/.cache/autana/bakes, shared by every
 clone. Standard library only; Python 3.12 or later.
@@ -117,7 +119,7 @@ class Bake:
     kind: str              # "blend" | "mesh" | "fit"
     key: str               # SHA-256 hex of everything that determines it
     suffix: str
-    tree: pathlib.Path     # where the tree keeps it today
+    tree: pathlib.Path     # the path its import or scene names: how build_pack matches it to an entry
     job: object = dataclasses.field(default=None, compare=False, repr=False)
     scene: object = dataclasses.field(default=None, compare=False, repr=False)
     stages: dict = dataclasses.field(default=None, compare=False, repr=False)
@@ -436,7 +438,7 @@ def mesh_recipe(job, scene, tools):
 
 
 def fit_recipe(fit):
-    return {name: value for name, value in vars(fit).items() if name not in ("sha256", "recipe_sha256")}
+    return dict(vars(fit))
 
 
 def stage_keys(job, scene, tools):
@@ -795,7 +797,7 @@ def publish(found, lock, cache):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "publish", "tool"))
+    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "path", "publish", "tool"))
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
@@ -819,7 +821,7 @@ def main(argv=None):
                     parser.error(f"tool: no stage {stage!r}; stages: {', '.join(STAGES)}")
                 print(tool_digest(stage))
             return 0
-        found = bakes(args.paths or [DEFAULT_SEARCH])
+        found = [] if args.command == "path" else bakes(args.paths or [DEFAULT_SEARCH])
         lock = read_lock()
         if args.command == "list":
             for bake in found:
@@ -863,8 +865,15 @@ def main(argv=None):
                 raise BakeMissing(f"{relative(LOCK)} is out of date:\n" + "\n".join(problems) + after)
             seeded = sorted(row["output"] for row in lock.values() if row.get("seeded"))
             if seeded:
-                print(f"{len(seeded)} of {len(lock)} rows are seeded: bytes carried over from the tree, not made by "
+                print(f"{len(seeded)} of {len(lock)} rows are seeded: bytes carried over (from an older key or the tree), not made by "
                       "the code their keys name; a CI run that makes a key again clears it: " + ", ".join(seeded))
+        elif args.command == "path":
+            if len(args.paths) != 1:
+                parser.error("path takes one output name")
+            named = [bake for bake in bakes([DEFAULT_SEARCH]) if bake.output == args.paths[0]]
+            if not named:
+                parser.error(f"path: no bake makes {args.paths[0]}")
+            print(fetch_all(named, lock, cache, args.offline)[named[0]])
         elif args.command == "fetch":
             for bake, path in fetch_all(found, lock, cache, args.offline).items():
                 print(f"{bake.output}\t{path}")

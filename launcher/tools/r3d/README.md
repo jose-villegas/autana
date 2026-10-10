@@ -19,7 +19,7 @@ mesh. Nothing here runs on the board.
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
-| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry beside the scene file (a bare import's beside the import file). |
+| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
 | [rebake.py](rebake.py) | Rewrites a baked `.mesh`'s clusters from its own triangles and colours, with no relighting. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [../gltf/blend_skin_to_glb.py](../gltf/blend_skin_to_glb.py) | Run inside Blender: exports any `.blend` armature and the meshes it deforms to a skinned `.glb`, every action (or `--clips`) as an animation; see its header. |
@@ -247,11 +247,10 @@ the fit itself only where CUDA, PyTorch and nvdiffrast import.
 ### A fitted variant
 
 A scene renderer with a `fit` table is made by the fit, not the bake:
-`mesh_import.py` checks that the recipe still hashes to its `recipe_sha256`
-(the import's settings, the renderer with its effective bake, the scene's
-lights, tone map and indirect look, and the camera's tracks) and the
-committed `NAME.mesh` to its `sha256`, and stops there. `fitted_variant.py` remakes it from the recipe, the
-first step in this environment, the second in the GPU one:
+`mesh_import.py` skips it. `bake/bake.py bake --kind fit` makes it into the
+bake cache, keyed on its recipe and code, and `launcher/bakes.lock` records the
+bytes. By hand, `fitted_variant.py` remakes it from the recipe, the first step
+in this environment, the second in the GPU one:
 
 ```sh
 $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prepare   # start, poses, references
@@ -268,10 +267,9 @@ $E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME 
 with their normals in portrait and landscape so the fit holds the panel either
 way up. `fit` prunes to `fit.prune.budget`, fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
-`fit.optimise.normal_weight`, writes the renderer's mesh beside the scene and
-prints `fit.hashes.sha256` and `fit.hashes.recipe_sha256` to record. A refit
-is not bit-identical, the GPU's sums being unordered, so the recipe pins the
-mesh that was committed.
+`fit.optimise.normal_weight` and writes the renderer's mesh into the work
+folder. A refit is not bit-identical, the GPU's sums being unordered, so the
+lock pins the bytes a fit made.
 
 ### Budget sweep
 

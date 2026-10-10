@@ -6,6 +6,5 @@ credit = "The hand-rigged capybara of capybara.blend."
 clips = ["idle", "walk", "walk_fast", "gallop", "half_bound"]
 
 [output]
-directory = "."
 name = "capybara"
 position_scale = 16384   # ticks per metre: the model spans under 2 m, inside int16
