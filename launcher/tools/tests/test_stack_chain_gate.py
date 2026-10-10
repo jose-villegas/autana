@@ -43,7 +43,7 @@ class StackChainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             db = pathlib.Path(directory) / "compile_commands.json"
             root = gate.MAIN_DIR.replace("\\", "/")
-            names = [root + "/render/a.c", root + "/util/b.c", root + "/apps/sample/c.c"]
+            names = [root + "/render/a.c", root + "/core/b.c", root + "/apps/sample/c.c"]
             db.write_text(json.dumps([{"file": n, "directory": directory,
                                        "command": "cc -c " + n} for n in names]))
             self.assertEqual(names[:2], [j[2] for j in gate.app_jobs(str(db))])

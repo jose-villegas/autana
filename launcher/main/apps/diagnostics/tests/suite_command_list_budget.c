@@ -18,10 +18,10 @@
 #include "unity.h"
 
 #include "app/app.h"
+#include "build/build_variant.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/build/build_variant.h"
 
 #include "apps/diagnostics/ui/toggles_screen.h"
 

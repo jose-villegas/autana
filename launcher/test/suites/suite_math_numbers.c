@@ -1,5 +1,5 @@
 /*
- * Portable suite: util/math/'s number types. The same operations run on
+ * Portable suite: math/linear/'s number types. The same operations run on
  * float, int32, int16 and Q16.16 vectors, and the fixed-point rotation maths
  * on Q16.16, and each is judged against the float result within its own
  * precision. Conversions round-trip, and overflow saturates where the
@@ -15,10 +15,10 @@
 #include "transform_cache.h"
 #include "unity.h"
 
-#include "util/math/transformf.h"
-#include "util/math/transformx.h"
-#include "util/math/vec_convert.h"
-#include "util/scalar/mathf.h"
+#include "math/linear/transformf.h"
+#include "math/linear/transformx.h"
+#include "math/linear/vec_convert.h"
+#include "math/scalar/mathf.h"
 
 #define Q           ((float)MATHX_ONE)
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far

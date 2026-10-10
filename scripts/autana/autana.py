@@ -598,8 +598,8 @@ def suite_list(args):
 
     found = {}
     for source in project.glob("launcher/**/*.c"):
-        # A build directory holds generated copies of the same sources.
-        if "build" in source.parts:
+        # A build directory (launcher/build*) holds generated copies of the same sources.
+        if source.relative_to(project).parts[1].startswith("build"):
             continue
         text = source.read_text(encoding="utf-8", errors="replace")
         for on_request, name in SUITE_REGISTRATION.findall(text):
@@ -778,7 +778,7 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
     """One console line to the device, under the lock. Returns (exit code,
     reply lines). `reply` is what the answer's lines start with. `until` are
     the prefixes that end the answer; one reply-line verb needs only
-    `[reply]` itself (device.py's default when `until` is omitted; util/runtime/tune's
+    `[reply]` itself (device.py's default when `until` is omitted; services/tune's
     three endings are its own default for `reply="TUNE"`), a multi-line one
     (an app's own command) passes `[<PREFIX>_END, <PREFIX>_ERR]`. `optional`
     is for a verb that answers only when something is wrong (TOUCH, IMU): a

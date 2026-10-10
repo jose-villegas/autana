@@ -13,7 +13,7 @@ class ResolveTimerTests(unittest.TestCase):
     def test_resolve_is_charged_only_with_a_hook(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            header = work / "util/runtime/frame_cost.h"
+            header = work / "profile/frame_cost.h"
             header.parent.mkdir(parents=True)
             header.write_text('#include <string.h>\nextern int charges;\n'
                               '#define FRAME_COST_BEGIN(mark) ((void)0)\n'
@@ -56,7 +56,7 @@ int main(void) {
 ''')
             binary = work / "probe.exe"
             sources = ["render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
-                       "render/r3d_lit_mesh.c", "render/upscale.c", "util/runtime/job.c", "asset/asset_pack.c"]
+                       "render/r3d_lit_mesh.c", "render/upscale.c", "core/job.c", "asset/asset_pack.c"]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), "-I", str(ROOT / "launcher/main"),
                        "-I", str(ROOT / "launcher/test/stubs"), str(source),

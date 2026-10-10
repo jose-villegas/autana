@@ -24,7 +24,7 @@ import screenshot  # noqa: E402
 def build_bmp(width, height, rows_bgr):
     """A minimal 24bpp BMP: 14-byte file header + 40-byte BITMAPINFOHEADER,
     bottom-up rows padded to 4 bytes, the same layout
-    screenshot_bmp_header() (util/encode/screenshot.h) writes on the device.
+    screenshot_bmp_header() (console/screenshot.h) writes on the device.
     `rows_bgr` is top-down, [(b, g, r), ...] per row; this stores them
     bottom-up as BMP requires."""
     stride = ((width * 3 + 3) // 4) * 4

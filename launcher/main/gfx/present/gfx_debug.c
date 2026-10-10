@@ -1,9 +1,9 @@
 #include "gfx/present/gfx_debug.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 #include <stdlib.h>
 #include <string.h>

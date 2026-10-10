@@ -15,8 +15,8 @@
 #include "display/display_shell.h"
 #include "display/panel_clock.h"
 #include "gfx/present/gfx_present.h"
+#include "services/settings.h"
 #include "unity.h"
-#include "util/runtime/settings.h"
 
 #define TEST_SPACE     "test_settings"
 #define SENTINEL       12345

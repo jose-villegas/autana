@@ -9,15 +9,15 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
+#include "core/memory.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
+#include "services/tune.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/tune.h"
 
 #define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 #define FB_BYTES  (FB_PIXELS * sizeof(gfx_color_t))

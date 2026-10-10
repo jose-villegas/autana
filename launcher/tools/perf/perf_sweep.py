@@ -33,7 +33,7 @@ LAYOUT_SEED_MAX = 2**32 - 1
 TUNE_VALUE_MIN = -(2**31)
 TUNE_VALUE_MAX = 2**31 - 1
 TUNE_NAME_MAX = int(re.search(r"^#define TUNE_NAME_MAX\s+(\d+)",
-                            (REPO / "launcher/main/util/runtime/tune.h").read_text(), re.MULTILINE)[1])
+                            (REPO / "launcher/main/services/tune.h").read_text(), re.MULTILINE)[1])
 
 
 def assignment(text):

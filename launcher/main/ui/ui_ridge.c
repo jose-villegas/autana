@@ -8,20 +8,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/memory.h"
 #include "gfx/draw/gfx_dither.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "math/motion/spring_line.h"
+#include "math/scalar/mathi.h"
+#include "math/scalar/mathx.h"
+#include "profile/frame_cost.h"
+#include "services/tune.h"
 #include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
-#include "util/motion/spring_line.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/tune.h"
-#include "util/scalar/mathi.h"
-#include "util/scalar/mathx.h"
 
 /* One panel pixel of depth2: doubled coordinates times a RIDGE_POSE_ONE pose. */
 #define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)

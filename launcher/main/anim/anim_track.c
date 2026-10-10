@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stdbool.h>
 
-#include "util/math/quatf.h"
+#include "math/linear/quatf.h"
 
 static const float*
 key_value(const anim_track_t* track, int key) {

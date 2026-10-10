@@ -21,7 +21,7 @@
 #include <stdio.h>
 
 #ifdef DEVICE_BUILD
-#include "util/runtime/timing.h"
+#include "core/timing.h"
 #else
 #include <time.h>
 #endif

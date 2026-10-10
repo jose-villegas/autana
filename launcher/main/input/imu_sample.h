@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#include "util/math/vec2i.h"
+#include "math/linear/vec2i.h"
 
 /* Raw sensor counts, in the chip's own axes.
  *

@@ -4,11 +4,11 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "core/job.h"
+#include "profile/frame_cost.h"
 #include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/job.h"
 
 #define JOB_WAIT_MS 1000
 

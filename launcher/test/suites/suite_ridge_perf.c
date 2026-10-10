@@ -10,15 +10,15 @@
 
 #include "esp_log.h"
 
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
+#include "services/tune.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
-#include "util/runtime/tune.h"
 
 static const char* TAG = "ridge_perf";
 

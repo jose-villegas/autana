@@ -33,16 +33,16 @@
 
 #include "esp_log.h"
 
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_target.h"
 #include "gfx/draw/icons_system.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "math/scalar/mathi.h"
 #include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
-#include "util/build/build_variant.h"
-#include "util/scalar/mathi.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static const char* TAG = "ui";

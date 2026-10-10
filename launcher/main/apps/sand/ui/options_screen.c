@@ -8,8 +8,8 @@
 #include "ui/ui_widgets.h"
 
 #include "apps/sand/icons_dither.h"
+#include "math/scalar/mathi.h"
 #include "sand_theme.h"
-#include "util/scalar/mathi.h"
 
 #define COLUMN_W_MAX    400
 #define HEADER_H        36

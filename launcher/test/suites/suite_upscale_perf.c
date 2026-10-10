@@ -9,11 +9,11 @@
 #include "esp_cpu.h"
 #include "esp_log.h"
 
+#include "core/job.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/gfx.h"
 #include "render/upscale.h"
-#include "util/runtime/job.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 #define SAMPLES 100
 
