@@ -619,12 +619,19 @@ class PaperCitationTest(unittest.TestCase):
         self.assertEqual(found, ["docs/Citations.md:3: [1] cited by, not listed: docs/Guide.md; "
                                  "listed, does not cite it: docs/Other.md"])
 
-    def test_rows_number_from_one_without_gaps_and_anchor_their_number(self):
+    def test_rows_ascend_may_skip_a_deleted_number_and_anchor_their_number(self):
         found = self.problems('| <a id="1"></a>[1] | A | [Guide.md](Guide.md) |\n'
-                              '| <a id="2"></a>[3] | B | [Guide.md](Guide.md) |\n',
-                              [("docs/Guide.md", "[[1]](Citations.md#1) [[3]](Citations.md#3)\n")])
-        self.assertEqual(found, ['docs/Citations.md:4: anchor "2" is not its number [3]',
-                                 "docs/Citations.md:4: [3] follows [1]; rows run 1, 2, 3 with no gap"])
+                              '| <a id="3"></a>[3] | B | [Guide.md](Guide.md) |\n'
+                              '| <a id="4"></a>[2] | C | [Guide.md](Guide.md) |\n',
+                              [("docs/Guide.md", "[[1]](Citations.md#1) [[3]](Citations.md#3) [[2]](Citations.md#2)\n")])
+        self.assertEqual(found, ['docs/Citations.md:5: anchor "4" is not its number [2]',
+                                 "docs/Citations.md:5: [2] follows [3]; rows ascend"])
+
+    def test_the_gates_own_test_fixtures_cite_nothing(self):
+        found = self.problems('| <a id="1"></a>[1] | A | [Guide.md](Guide.md) |\n',
+                              [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
+                               ("scripts/gates/tests/test_x.py", "FIXTURE = 'Citations.md#1 Citations.md#9'\n")])
+        self.assertEqual(found, [])
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 /*
- * r3d_span: a depth-tested, Gouraud-shaded (docs/Citations.md#31) triangle filled into a
- * caller's window of rows. Coverage is the top-left rule on 1/16-pixel
- * positions, decided in integers: triangles sharing an edge never both fill
- * or both miss a pixel. Depth is inverse depth in (0, 1], larger nearer.
+ * r3d_span: a depth-tested, Gouraud-shaded (docs/Citations.md#31) triangle
+ * filled into a caller's window of rows. Coverage is the top-left rule on
+ * 1/16-pixel positions, decided in integers: triangles sharing an edge never
+ * both fill or both miss a pixel. Depth is inverse depth in (0, 1], larger
+ * nearer.
  */
 #pragma once
 

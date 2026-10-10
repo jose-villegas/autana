@@ -15,10 +15,11 @@ names. Under docs/plans/, which names what is not built yet, names are not
 checked; section citations still are.
 
 docs/Citations.md numbers the papers and specs the tree cites, one table row
-each, `| <a id="N"></a>[N] | ... | Cited by |`. Rows run 1, 2, 3, ... with no
-gap. Every `Citations.md#N` a tracked document or source file writes must
-name a row, every row must be cited, and a row's "Cited by" cell must link
-exactly the files that cite it.
+each, `| <a id="N"></a>[N] | ... | Cited by |`. Rows ascend, and a deleted
+row's number is not reused. Every `Citations.md#N` a tracked document or
+source file writes must name a row, every row must be cited, and a row's
+"Cited by" cell must link exactly the files that cite it. The gates' own
+tests write citations as fixtures, so they cite nothing.
 
 Without an ESP-IDF checkout, a name this tree does not define cannot be
 told apart from a typo, so it is counted, not failed, and one line says so.
@@ -46,6 +47,7 @@ CITATION_ROW = re.compile(r'^\|\s*<a id="([^"]*)"></a>\[(\d+)\]\s*\|(.*)\|\s*$')
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
 CITING_SOURCES = ["*.md", "*.c", "*.h", "*.py", "*.sh", "*.mjs"]
+GATE_TESTS = "scripts/gates/tests/"
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
 # and "Two" in X.md. The backtick around the doc name is optional: both
@@ -248,8 +250,8 @@ def citation_rows(root):
         anchor, shown, cells = m.group(1), int(m.group(2)), m.group(3)
         if anchor != str(shown):
             problems.append(f"{CITATIONS}:{number}: anchor \"{anchor}\" is not its number [{shown}]")
-        if shown != len(rows) + 1:
-            problems.append(f"{CITATIONS}:{number}: [{shown}] follows [{len(rows)}]; rows run 1, 2, 3 with no gap")
+        if rows and shown <= max(rows):
+            problems.append(f"{CITATIONS}:{number}: [{shown}] follows [{max(rows)}]; rows ascend")
         cited_by = set()
         for target in CELL_LINK.findall(cells.rsplit("|", 1)[-1]):
             resolved = (path.parent / target).resolve()
@@ -267,7 +269,7 @@ def paper_citations(root):
     root = pathlib.Path(root)
     cited = {}
     for rel in sorted(tracked_files(root, CITING_SOURCES)):
-        if rel == CITATIONS or not (root / rel).is_file():
+        if rel == CITATIONS or rel.startswith(GATE_TESTS) or not (root / rel).is_file():
             continue
         text = (root / rel).read_text(encoding="utf-8", errors="replace")
         for number, line in enumerate(text.splitlines(), 1):

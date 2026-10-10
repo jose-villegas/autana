@@ -8,7 +8,8 @@
  *      (gravity's rim table, foam, cullet and glass phases), and collect
  *      the distinct colours per material group.
  *   2. Build a 256-entry palette: a fixed UI block, then per-group budgets
- *      grown greedily by weighted k-means (docs/Citations.md#36) in OKLab until the table is full.
+ *      grown greedily by weighted k-means (docs/Citations.md#36) in OKLab
+ *      until the table is full.
  *   3. Build a 16-entry palette, shared and per scene, whose colours are
  *      approximated by gfx_dither_covers()'s ordered dither between pairs.
  *   4. Settle six landscape scenes with the real simulation, paint them

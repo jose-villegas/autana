@@ -32,3 +32,4 @@ docs/tools/Render-Harness.md	2026-10-09	generated-block marker forms reviewed ag
 docs/Animation-Tracks.md	2026-10-10	citations: reviewed against anim_track.c and camera_keys.py, accurate
 docs/render/Dynamic-Resolution.md	2026-10-10	citations: reviewed against resolution.c, accurate
 docs/render/Skinned-Lighting.md	2026-10-10	citations: reviewed against vec3f.h, accurate
+docs/Citations.md	2026-10-10	citations: rows checked against their DOI and publisher pages, cited-by against the gate

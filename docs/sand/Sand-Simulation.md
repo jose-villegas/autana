@@ -1541,8 +1541,8 @@ is actually there.
 decay, mobility and walk draws, while `s->rng_hashed` is armed. That is
 true during the sweep, liquid cross-flow and gas-walk phases and guards.
 
-Armed, it hashes<sup>[[50]](../Citations.md#50)</sup> `(s->rng_seed_base, s->step_phase, y * s->w + x, slot)`
-through `rng_hash()` (`math/scalar/rng.h`); disarmed, it is `rng_next(&s->rng)`
+Armed, it draws a counter-based number<sup>[[50]](../Citations.md#50)</sup> by hashing
+`(s->rng_seed_base, s->step_phase, y * s->w + x, slot)` through `rng_hash()` (`math/scalar/rng.h`); disarmed, it is `rng_next(&s->rng)`
 unchanged, so reactions and every serial gas step retain sequential draws,
 and the whole step with the switch off is unchanged.
 

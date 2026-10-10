@@ -1,6 +1,7 @@
 /*
  * Skinned-mesh lighting, measured on the host: direct per-vertex N.L against
- * a per-object lookup table indexed by the skinned normal's octahedral cell (docs/Citations.md#21).
+ * a per-object lookup table indexed by the skinned normal's octahedral cell
+ * (docs/Citations.md#21).
  *
  *   skin_light_bench DATA.bin OUT_DIR
  *
