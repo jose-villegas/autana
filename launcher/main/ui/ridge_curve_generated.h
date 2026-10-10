@@ -4,7 +4,7 @@
  *     python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h
  *
  * Cerro Autana's ridge line, one height per column of the 448x368 frame
- * design/boot/boot.png is drawn in, so a curve drawn from this table lies
+ * launcher/main/boot/boot.png is drawn in, so a curve drawn from this table lies
  * on the photograph's own ridge. y grows downward and carries
  * RIDGE_CURVE_Q_SHIFT fractional bits.
  */

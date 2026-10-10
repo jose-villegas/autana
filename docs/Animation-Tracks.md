@@ -7,7 +7,7 @@ light, a material value, anything a scene exposes. Its layer is in
 [Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
-The format is glTF 2.0's own animation model, so a track authored in Blender
+The format is glTF 2.0's own animation model<sup>[[17]](Citations.md#17)</sup>, so a track authored in Blender
 or any other exporter plays back as it was made.
 
 ```mermaid
@@ -32,14 +32,15 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation: linear keys slerp, cubic ones are normalised |
+| `quaternion` | The value is an xyzw rotation: linear keys slerp<sup>[[19]](Citations.md#19)</sup>, cubic ones are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
-second, exactly as glTF stores them. A track has one interpolation.
+second, exactly as glTF stores them, and samples as the specification's cubic
+Hermite spline<sup>[[17]](Citations.md#17)</sup>. A track has one interpolation.
 
 A glTF node is animated by up to three tracks, named `node/translation`,
 `node/rotation` and `node/scale`. Anything else is reached by
-`KHR_animation_pointer`, which names a property by path; a track baked from it
+`KHR_animation_pointer`<sup>[[18]](Citations.md#18)</sup>, which names a property by path; a track baked from it
 is named by that path with the object's index replaced by its glTF name, for
 example `lens/perspective/yfov` for `/cameras/0/perspective/yfov`. Objects
 are bound by name, so a re-export that reorders nodes keeps its track names. A
@@ -59,6 +60,9 @@ so no list is kept. A
 clip no scene names is a [pack](assets/README.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
+The [asset-pack boundary](render/Mesh-Import.md#the-offline-tools) mirrors
+translation and rotation tracks, cubic tangents included, into the engine
+frame; other tracks, key times and interpolation stay as authored.
 
 ```toml
 source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
@@ -122,7 +126,7 @@ For a camera path without Blender, write a `NAME.keys.toml` and name it as
 the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
 glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
 `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
-Translation is a smooth Catmull-Rom curve and rotation interpolates
+Translation is a smooth Catmull-Rom curve<sup>[[20]](Citations.md#20)</sup> and rotation interpolates
 short-way quaternions with +Y up; repeat the first key at the end to close
 the loop.
 
@@ -163,16 +167,18 @@ translation, rotation and scale tracks into a `math/linear/transformf.h`
 
 `launcher/tools/anim/track_host.py` prints every track of a clip every N
 milliseconds, read from the clip's `TRCK` entry by the same
-`anim_tracks_from_pack()` and `anim_track_sample()` the firmware runs. Given a
-`NAME.anim.toml`, it bakes the clip into a scratch pack of its own first; given
-`--pack PACK --clip ID`, it reads that pack. With `--poses NODE W H TAN NEAR`
-it prints a camera node as the poses file
+`anim_tracks_from_pack()` and `anim_track_sample()` the firmware runs. Given
+`NAME.anim.toml`, it bakes the clip into a scratch pack in the source frame;
+given `--pack PACK --clip ID`, it reads the built pack in the engine frame.
+With `--poses NODE W H TAN NEAR`, it prints a camera node as the poses file
 [`report_triangle_sizes.sh`](../launcher/tools/r3d/README.md#triangle-sizes)
-reads, so the poses are always the animation's own.
+reads. A poses file is in the source frame, so `--poses` takes a `.anim.toml`:
+a built pack's tracks are in the engine frame and give wrong poses
+([Mesh-Import.md](render/Mesh-Import.md#the-offline-tools)).
 
 ```sh
 python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 250
-python launcher/tools/anim/track_host.py --pack PACK --clip ID --every 5000 --poses camera 184 224 0.62 6
+python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 5000 --poses camera 184 224 0.62 6
 ```
 
 The program, `track_host.c`, is one for every clip: it is compiled once into

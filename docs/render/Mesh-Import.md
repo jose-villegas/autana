@@ -110,7 +110,9 @@ share is random, so `process.seed` makes it repeatable.
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget. `dense_edge` is the longest unsplit edge, `props` names materials that
+budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
+with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
+`dense_edge` is the longest unsplit edge, `props` names materials that
 reserve the `props_share` part of the budget, and `seal_seams` is described
 under [seal_seams](#seal_seams). The baked colour steers which edges collapse:
 `colour_deviation`, in source units, prices one panel colour step: losing it
@@ -218,8 +220,28 @@ source is `ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry;
 
 ## The offline tools
 
-A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, a
-bake product made into the bake cache
+Source assets, scene TOMLs, cached bakes and bake-time tools use the
+right-handed source frame: +x right, +y up, a camera looking down -z.
+`build_pack.py` mirrors entries once into the
+[engine frame](../math/README.md#conventions), through
+[`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py).
+The mirror negates position z; a placement's matrix `M` becomes `S M S`,
+where `S = diag(1, 1, -1)`, and quaternions `(x, y, z, w)` become
+`(-x, -y, z, w)`. Clips' translation and rotation tracks, including cubic
+tangents, are mirrored; other tracks, key times and interpolation stay as
+authored. Bounds swap their mirrored z endpoints; triangle order and baked
+colours stay intact. A z coordinate equal to the int16 minimum is rejected
+because its negation cannot fit. Cached meshes carry no normals: shading is
+already baked.
+
+A poses file is in the source frame.
+[`track_host.py`](../../launcher/tools/anim/track_host.py) writes one with
+`--poses` from a `.anim.toml`, baked into an unmirrored scratch pack;
+`triangle_sizes` mirrors each pose as it reads it. A built pack's clips are
+in the engine frame, so `--poses` on a `--pack` gives wrong poses.
+
+A cached `<name>.mesh` bake supplies an entry of the
+[asset pack](../assets/README.md). It is made into the bake cache
 ([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)) by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
@@ -267,8 +289,9 @@ Scene-owned bake, visibility, shading and fit settings are described in
 
 The [`ao` setting](Scene-Files.md#bake-ao) scales a baked point's ambient light,
 and with `indirect = true` its bounced light, by a factor from short
-rays. Each point $x$ casts $R$ cosine-weighted rays, the same directions in its
-own frame as the bounce rays; the ray $i$ that hits a surface at distance
+rays, a distance-limited obscurance<sup>[[14]](../Citations.md#14)</sup>. Each point $x$ casts
+$R$ cosine-weighted rays, the same directions in its own frame as the bounce
+rays; the ray $i$ that hits a surface at distance
 $`t_i`$ within the reach $D$ has weight $`w_i = 1 - t_i/D`$, any other ray
 $`w_i = 0`$. With strength $s$ the factor is
 
@@ -289,7 +312,7 @@ colour, so frame cost and mesh size do not change; only the bake takes longer.
 The bake exports the full-detail source mesh, with its textures at full
 resolution, and the scene's directional and sky lights to Mitsuba once. A baked
 point $x$, a smooth vertex or a flat face sample, sends $R$ cosine-weighted
-rays into that scene. Mitsuba's path integrator follows each ray for up to $K$
+rays into that scene. Mitsuba's<sup>[[15]](../Citations.md#15)</sup> path integrator<sup>[[16]](../Citations.md#16)</sup> follows each ray for up to $K$
 bounces with next-event estimation at every hit, so the hit's own shadow, albedo
 and further bounces are all in what comes back. With $`L_i(x)`$ the light
 gathered along ray $i$, the mean is the bounced irradiance over $\pi$, and the
@@ -365,9 +388,10 @@ how well the one colour represents the face.
 
 ### The scores, exactly
 
-A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$,
-taken to CIE XYZ through the linear sRGB primaries, and to CIELAB relative to
-the D65 white. The constants live in `render_compare.py`, which both the
+A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$
+rather than the piecewise sRGB curve, taken to CIE XYZ through the linear sRGB
+primaries<sup>[[10]](../Citations.md#10)</sup>, and to CIELAB relative to the D65 white<sup>[[4]](../Citations.md#4)</sup>.
+The constants live in `render_compare.py`, which both the
 scoring and the fit's loss read.
 
 ```math
@@ -399,9 +423,11 @@ L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
 
 for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
 $`\Delta E_{76}(p)`$ over the frame's pixels and p95 is its 95th percentile.
-Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
-(channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
-window's means $\mu$, variances $\sigma^2$ and covariance $`\sigma_{RT}`$:
+Luma SSIM<sup>[[9]](../Citations.md#9)</sup> works on the gamma-encoded luma
+$y = 0.2126 r + 0.7152 g + 0.0722 b$ (channels 0 to 1), over every unweighted
+8 by 8 window $w$ of the frame where the paper uses 11 by 11 Gaussian-weighted
+ones, with the window's means $\mu$, variances $\sigma^2$ and covariance
+$`\sigma_{RT}`$; the constants are the paper's:
 
 ```math
 \mathrm{SSIM} = \frac{1}{|W|}\sum_{w \in W}
@@ -425,7 +451,7 @@ described by [fit.prune](Scene-Files.md#fitprune) and
 
 The clusters are **meshlets**: compact runs bounded by `geometry.meshlet_triangles`
 (4 through 256, default 32), from
-meshoptimizer's clusterizer, each of one sidedness and owning the vertices its
+meshoptimizer's clusterizer<sup>[[11]](../Citations.md#11)</sup>, each of one sidedness and owning the vertices its
 triangles use. The octree above them is built over the meshlets' centres, and
 its leaves hold a few hundred triangles' worth.
 

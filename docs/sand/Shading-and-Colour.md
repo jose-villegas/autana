@@ -185,7 +185,7 @@ consistent and still wrong.
 
 Local depth is the count of liquid cells of the *same material* between
 this cell and the nearest non-liquid boundary, walked along gravity's own
-ray (Bresenham), not along a screen axis; an obstacle sitting inside a
+ray (Bresenham<sup>[[30]](../Citations.md#30)</sup>), not along a screen axis; an obstacle sitting inside a
 pool must cast a depth shadow along the true tilt, not straight down or
 sideways, and only a ray that actually follows gravity can do that. The
 walk switches between two regimes at 45 degrees, on `|gy| >= |gx|`:
@@ -410,7 +410,7 @@ framebuffer's slow writes (see `docs/notes/Board-and-Memory.md`).
 **The palette.** `main/apps/sand/tools/shading_palette.c` emits
 `sand_palette256.h`: a 256-entry LUT (16 reserved UI entries, 240 sand
 entries), a 65536-entry `sand_rgb565_to_index[]` reverse map keyed by
-native RGB565 (the same per-group OKLab assignment the study computed, not
+native RGB565 (the same per-group OKLab<sup>[[35]](../Citations.md#35)</sup> assignment the study computed, not
 a fresh distance search; a key several materials produce keeps whichever
 material's own on-scene pixel count is larger), and a 256 x 16-phase
 `sand_palette16_dither_rgb[]` table: one precomputed RGB565 value per
@@ -513,7 +513,7 @@ is future work.
   walks a whole column in order, hiding every sparsity bug there is. Give
   the scene a free surface and a trickle, then check the actual number of
   rows repainted on a non-wake frame before trusting a null result.
-- **`panel_luminance()`** (`suite_sand_common.c`) is the Rec.601 luminance
+- **`panel_luminance()`** (`suite_sand_common.c`) is the Rec.601<sup>[[52]](../Citations.md#52)</sup> luminance
   helper already used throughout the suite; reuse it rather than writing a
   second one.
 - **`sand_paint_row_n()` and `sand_paint_update_local_depth_gravity()` live in

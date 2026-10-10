@@ -140,7 +140,7 @@ Reference: [Mesh-Import.md](Mesh-Import.md#thin).
 ### Light
 
 Bakes each vertex's colour: direct sun and sky, local occlusion, and
-path-traced bounced light. Rays are traced by Mitsuba on the CPU (its LLVM
+path-traced bounced light. Rays are traced by Mitsuba<sup>[[15]](../Citations.md#15)</sup> on the CPU (its LLVM
 backend).
 
 | Reads | Writes | Settings |
@@ -178,8 +178,8 @@ Reference: [Mesh-Import.md](Mesh-Import.md#simplify).
 #### Fit
 
 Optional: moves a variant's vertices and colours to match the reference from
-the camera's poses.
-It needs an NVIDIA GPU with CUDA: PyTorch and nvdiffrast draw what the board
+the camera's poses<sup>[[1]](../Citations.md#1)</sup>.
+It needs an NVIDIA GPU with CUDA: PyTorch and nvdiffrast<sup>[[2]](../Citations.md#2)</sup> draw what the board
 draws and fit against the reference; see the
 [fit environment](../../launcher/tools/r3d/README.md#appearance-fit). A smooth mesh fits colours per vertex, a flat one a colour
 per face.

@@ -4,13 +4,13 @@ A change that adds or removes bytes ahead of hot code moves every address
 behind it. The instruction cache (32 KB, 8 ways, 32 B lines) repeats every
 4 KB and the data cache (64 KB, 8 ways, 64 B lines) every 8 KB, so the same
 loop can start fighting different neighbours for a set, and a row can move a
-tenth of a percent with no timed code touched. A comparison of two builds
+tenth of a percent with no timed code touched<sup>[[43]](../Citations.md#43)</sup>. A comparison of two builds
 cannot tell that from a real change unless it also measures how much a
 layout alone moves the row.
 
 ## The seeded build
 
-`--layout-seed N` pads the image so a seed picks one layout:
+`--layout-seed N` pads the image so a seed picks one layout<sup>[[44]](../Citations.md#44)</sup>:
 
 ```sh
 autana build diag --layout-seed 3
@@ -46,9 +46,9 @@ A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 |---|---|
 | sigma_run | the spread of runs inside one flash |
 | sigma_flash | the spread between flashes' means beyond what sigma_run explains: layout plus boot-to-boot |
-| R* | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_run² / sigma_flash²)) |
+| R*<sup>[[41]](../Citations.md#41)</sup> | runs per flash that minimise the cost of a given precision: ceil(sqrt(c_flash / c_run * sigma_run² / sigma_flash²)) |
 | K | flashes per side so the 95% interval on B/A is within +-0.1% or +-0.5%, at the measured runs per flash |
-| Shapiro-Wilk p | whether the flash means look normal; with fewer than about 15 flashes it cannot judge |
+| Shapiro-Wilk p<sup>[[42]](../Citations.md#42)</sup> | whether the flash means look normal; with fewer than about 15 flashes it cannot judge |
 
 Repeating a seed (`--seeds 1 1 1`) flashes the same image again, so that run's
 sigma_flash is boot-to-boot alone; the difference to a run of distinct seeds is
