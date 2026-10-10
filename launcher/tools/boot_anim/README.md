@@ -18,8 +18,9 @@
 `boot_anim_motion.c` reads the clip from its pack when boot starts; without
 it (no assets partition, a bad pack, a malformed clip) the camera and space
 hold an authored rest pose and the animation still draws. Boot reads the
-picture (`boot_anim_photo.c`) on the first frame of the crossfade, so
-checking its 330 KB pack does not delay the first frame; without it the scene
+picture (`boot_anim_photo.c`) on the second frame, one of the cheapest, so
+checking its 330 KB pack neither delays the first frame nor stalls the
+crossfade; without it the scene
 stays where the photograph would have covered it. `boot_anim.h` samples the tracks with the engine's [animation tracks](../../../docs/Animation-Tracks.md) and converts each
 frame's values to a `transformf_t` in `anim/anim_transform.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with

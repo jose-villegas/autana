@@ -15,8 +15,9 @@ variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip;
 an NAME.image.toml is pack NAME, holding its one picture. A mesh
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
 a scene (r3d/scene_asset.py), a clip (anim/tracks_asset.py) and a picture
-(gfx/image_asset.py) are baked here
-from their files, each with its stem for id. Ids are unique within a pack,
+(gfx/image_asset.py) are baked here from their files, each with its stem for
+id. Every scene, clip and mesh is mirrored into the engine frame on the way in
+(asset/engine_frame.py); a picture has no 3D frame. Ids are unique within a pack,
 whatever their type. Each pack is written to DIR/<name>.apak; --image also
 writes the partition image, the pack directory and every pack.
 Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
@@ -37,6 +38,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset  # noqa: E402
+from asset.engine_frame import to_engine  # noqa: E402
 from gfx import image_asset  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset  # noqa: E402
@@ -182,15 +184,18 @@ def pack_bytes(paths, replace=(), cache=None, offline=False):
 
 
 def pack_entry(key, source):
-    """The pack entry `key` from its source: a scene, a clip or a picture
-    baked from its file, else a mesh's bytes."""
-    if source.name.endswith(SCENE):
-        return key, scene_asset.TYPE, scene_asset.bake(source)
-    if source.name.endswith(CLIP):
-        return key, tracks_asset.TYPE, tracks_asset.bake(source)
+    """The pack entry `key`: a scene, clip or picture baked from its file,
+    else a mesh's bytes; a scene, clip or mesh in the engine frame."""
     if source.name.endswith(IMAGE):
         return key, image_asset.TYPE, image_asset.bake(source)
-    return key, LIT_MESH, source.read_bytes()
+    try:
+        if source.name.endswith(SCENE):
+            return key, scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(source))
+        if source.name.endswith(CLIP):
+            return key, tracks_asset.TYPE, to_engine(tracks_asset.TYPE, tracks_asset.bake(source))
+        return key, LIT_MESH, to_engine(LIT_MESH, source.read_bytes())
+    except ValueError as error:
+        raise SettingsError(f"entry {key!r} ({source}): {error}") from error
 
 
 def write_if_changed(path, data):

@@ -581,11 +581,18 @@ boot_anim_photo_reveal(uint32_t now_ms) {
     return tween_ramp(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
 }
 
-/* Whether a frame at `now_ms` may show the photograph: from the first frame
- * of its crossfade, before which its pack need not be mounted. */
+/* The frame, counted from 0, that mounts the photograph's pack. Mounting
+ * checks the whole pack, about 20 ms on the board: on the first frame it
+ * would delay the first picture, and in the crossfade it would stall a frame
+ * already among the dearest. The early frames are the cheapest (about 15 ms),
+ * so it takes the second. */
+#define BOOT_ANIM_PHOTO_MOUNT_FRAME 1U
+
+/* Whether frame `frame` (counted from 0) mounts the photograph's pack, if no
+ * frame before it tried. */
 static inline bool
-boot_anim_photo_due(uint32_t now_ms) {
-    return now_ms >= BOOT_ANIM_IMAGE_START_MS;
+boot_anim_photo_due(uint32_t frame) {
+    return frame >= BOOT_ANIM_PHOTO_MOUNT_FRAME;
 }
 
 #define BOOT_ANIM_HUE_START   875  /* azure, at the foot of the climb */

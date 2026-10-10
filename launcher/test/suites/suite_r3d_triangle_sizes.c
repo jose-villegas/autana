@@ -16,6 +16,7 @@
 #ifndef DEVICE_BUILD
 
 #include "render/r3d_pipeline.h"
+#include "render/r3d_scene.h"
 #include "triangle_sizes.h"
 
 #define GRID  24 /* quads a side */
@@ -107,7 +108,7 @@ static r3d_sizes_t
 sizes_at(const grid_mesh_t* g, float distance) {
     r3d_lens_t lens;
     const render_view_t frame_view = render_view_fixture_at(
-        &(fixture_camera_t){{0.0f, 0.0f, distance}, {0.0f, 0.001f, -1.0f}, 0.5f, 1.0f}, (viewport_t){64, 48, 0});
+        &(fixture_camera_t){{0.0f, 0.0f, -distance}, {0.0f, 0.001f, 1.0f}, 0.5f, 1.0f}, (viewport_t){64, 48, 0});
     r3d_lens_init(&lens, &frame_view, g->mesh.position_scale);
     r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
@@ -247,8 +248,35 @@ test_a_poses_file_gives_its_size_lens_and_poses(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.5f, p->half_fov_short_tan);
     TEST_ASSERT_EQUAL_INT(2, p->count);
     TEST_ASSERT_EQUAL_FLOAT(-2.0f, p->eye[1].y);
+    TEST_ASSERT_EQUAL_FLOAT(-60.0f, p->eye[1].z);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, p->forward[1].z);
     TEST_ASSERT_EQUAL_FLOAT(0.25f, p->forward[1].x);
     free(p);
+}
+
+static void
+test_source_poses_and_the_engine_clip_make_the_same_asymmetric_view(void) {
+    static const float times[] = {0.0F};
+    static const float positions[] = {3.0F, 2.0F, -400.0F};
+    static const float rotations[] = {0.0F, -0.31622777F, 0.0F, 0.9486833F};
+    const r3d_scene_path_t path = {
+        {1000}, {times, positions, 1, 3, ANIM_LINEAR, 0}, {times, rotations, 1, 4, ANIM_LINEAR, 1}};
+    r3d_sizes_poses_t* poses = malloc(sizeof(*poses));
+    TEST_ASSERT_NOT_NULL(poses);
+    TEST_ASSERT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 3 2 400 -0.6 0 -0.8\n", poses));
+    const r3d_scene_camera_t camera = {poses->half_fov_short_tan, poses->near_z, NULL, &path};
+    const viewport_t viewport = {poses->width, poses->height, 0};
+    const render_view_t runtime = r3d_scene_view_at(&camera, 0, viewport);
+    const transformf_t pose = transformf_looking(poses->eye[0], poses->forward[0], (vec3f_t){0, 1, 0});
+    const render_view_t measured = render_view_make(&pose, camera.half_fov_short_tan, camera.near_z, viewport);
+    const vec3f_t runtime_axes[] = {runtime.position, runtime.screen_x, runtime.screen_y, runtime.forward};
+    const vec3f_t measured_axes[] = {measured.position, measured.screen_x, measured.screen_y, measured.forward};
+    for (size_t axis = 0; axis < sizeof runtime_axes / sizeof runtime_axes[0]; axis++) {
+        TEST_ASSERT_FLOAT_WITHIN(1.0E-5F, runtime_axes[axis].x, measured_axes[axis].x);
+        TEST_ASSERT_FLOAT_WITHIN(1.0E-5F, runtime_axes[axis].y, measured_axes[axis].y);
+        TEST_ASSERT_FLOAT_WITHIN(1.0E-5F, runtime_axes[axis].z, measured_axes[axis].z);
+    }
+    free(poses);
 }
 
 static void
@@ -294,6 +322,7 @@ run_r3d_triangle_sizes_suite(void) {
     RUN_TEST(test_a_triangle_counts_by_its_whole_box_and_shading_mode);
     RUN_TEST(test_the_box_table_shares_are_within_each_square);
     RUN_TEST(test_a_poses_file_gives_its_size_lens_and_poses);
+    RUN_TEST(test_source_poses_and_the_engine_clip_make_the_same_asymmetric_view);
     RUN_TEST(test_a_poses_file_missing_a_part_or_a_number_is_refused);
     RUN_TEST(test_poses_read_from_standard_input_when_the_path_is_a_dash);
 }

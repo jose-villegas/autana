@@ -38,7 +38,7 @@ gfx_image_open(asset_view_t entry, gfx_image_t* out) {
         || pixels < HEADER_SIZE) {
         return ASSET_ERR_FORMAT;
     }
-    const uint64_t end = (uint64_t)pixels + (((uint64_t)stride * (height - 1U)) + width) * sizeof(gfx_color_t);
+    const uint64_t end = (uint64_t)pixels + ((((uint64_t)stride * (height - 1U)) + width) * sizeof(gfx_color_t));
     if (((uintptr_t)at + pixels) % PIXEL_ALIGN != 0 || end > entry.size) {
         return ASSET_ERR_BOUNDS;
     }
