@@ -307,7 +307,7 @@ All four are safe only between frames. Palettes are a gfx type
 curated ones ship in `gfx/draw/gfx_palette_standard.h`, chosen at runtime by name.
 Building one is the app's work. The two steps every palette then needs,
 the colour -> index map and the dither table, are
-`tools/gen/gfx_palette_gen.h`: host-only, in OKLab, never in the firmware
+`tools/gen/gfx_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware
 image.
 
 ## Panel clock and heal

@@ -81,7 +81,8 @@ screenshot_bmp_header(uint8_t out[SCREENSHOT_BMP_HEADER_SIZE], int32_t width, in
  * where a hex dump costs two thirds, which matters at 115200 baud for a
  * 322 KiB frame.
  *
- * RFC 4648, no line breaks of its own, '=' padding for a partial group.
+ * RFC 4648 (docs/Citations.md#27), no line breaks of its own, '=' padding for
+ * a partial group.
  */
 
 /* How many bytes screenshot_base64_encode() writes for `len` input bytes,

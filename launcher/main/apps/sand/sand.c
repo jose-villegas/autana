@@ -759,8 +759,8 @@ sand_load_above(const sand_t* s, int x, int y, int dx, int dy) {
 
 /* True angle's diagonal lean (0-256). `r` is ratio of smaller to larger
  * component (0-256), 0 on axis, 256 at 45 degrees. Angle position: Rajan's
- * approximation, atan(r/256) / 45deg, 0.3477 * 256 = 89. Accurate within a
- * degree. */
+ * approximation (docs/Citations.md#48), atan(r/256) / 45deg,
+ * 0.3477 * 256 = 89. Accurate within a degree. */
 static int
 diagonal_weight(int r) {
     return r + ((89 * r * (256 - r)) >> 16);

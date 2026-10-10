@@ -16,7 +16,7 @@ and with no call every frame draws at the context's fixed scale.
 | Predictor | any step, before the cost | a linear model of the frame, priced at every step from the triangles culling kept this frame, then scaled and offset by what recent frames cost | going finer needs a margin under the budget |
 
 The predictor's model is fitted on the board along one camera path. Live
-frames refit it: a two-state Kalman filter learns a scale and an offset on
+frames refit it: a two-state Kalman filter<sup>[[22]](../Citations.md#22)</sup> learns a scale and an offset on
 the fitted price from each frame's measured cost, leans back to the plain fit
 when frames stop disagreeing with it, and clips a single hitch frame. A scale
 and an offset can be learnt from frames at any one step, which four separate

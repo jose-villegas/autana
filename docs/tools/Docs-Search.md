@@ -55,6 +55,9 @@ flowchart LR
     R -.->|"--ask"| A["local chat model<br/>short answer, cited"]
 ```
 
+BM25F<sup>[[46]](../Citations.md#46)</sup> ranks the words, and reciprocal-rank fusion<sup>[[47]](../Citations.md#47)</sup> merges its list with the
+embeddings'.
+
 Plans, `docs_extra` notes and sections headed "Related" or "See also"
 rank below documents of record: a plan describes code that does not exist
 yet, notes from outside the tree are not the record, and a list of links
