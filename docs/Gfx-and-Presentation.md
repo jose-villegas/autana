@@ -217,6 +217,12 @@ sequenceDiagram
 
 The wait is mandatory: DMA is still reading the buffer until it returns.
 
+A present's own code, from `gfx_present()` down to the SPI queue, runs from
+IRAM (`main/linker.lf`, `CONFIG_SPI_MASTER_IN_IRAM`): from flash its cost
+moved with whatever else the image linked. suite_gfx
+`test_narrow_present_counters` measures it warm, with the instruction cache
+cold, and sent from the caller's core.
+
 ## Presentation memory policy
 
 Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
