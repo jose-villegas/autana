@@ -15,6 +15,15 @@
 
 #define ANIM_WIDTH_MAX 4
 
+/* The entry's type byte; tracks_asset.py mirrors this order. */
+typedef enum {
+    ANIM_VALUE_FLOAT,
+    ANIM_VALUE_VEC2,
+    ANIM_VALUE_VEC3,
+    ANIM_VALUE_QUAT,
+    ANIM_VALUE_COLOUR,
+} anim_value_t;
+
 typedef enum {
     ANIM_STEP,   /* holds a key's value until the next key */
     ANIM_LINEAR, /* lerp, or slerp for a quaternion track */

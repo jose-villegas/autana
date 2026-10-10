@@ -55,9 +55,9 @@ class CameraKeysTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             clip = clip_of(pathlib.Path(directory), keys_toml(keys))
             tracks, _ = tracks_asset.decode(tracks_asset.bake(clip))
-            translation = next(t for t in tracks if t["name"] == "camera/translation")
+            translation = next(t for t in tracks if t["name"] == "camera:TRNS.position")
             self.assertEqual(translation["values"][0], translation["values"][-1])
-            rotation = next(t for t in tracks if t["name"] == "camera/rotation")
+            rotation = next(t for t in tracks if t["name"] == "camera:TRNS.rotation")
             for a, b in zip(rotation["values"], rotation["values"][1:]):
                 self.assertGreaterEqual(sum(x * y for x, y in zip(a, b)), 0)
             rows = track_host.sample(clip, ["--every", "1000", "--until", "4000", "--poses", "camera",

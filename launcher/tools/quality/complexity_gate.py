@@ -3,11 +3,11 @@
 complexity_gate.py: a ratchet on clang-tidy's own
 readability-function-cognitive-complexity check, not a fixed threshold.
 
-Measures every first-party .c file under launcher/main/ (the ESP-IDF
-diagnostics build's own compile database, esp-clang targeting Xtensa) and
-every portable file the host test runner compiles, merged into one set
-with no double counting. A .c file under launcher/main/ that neither
-source measures, and that is not on EXCLUDED_MAIN_FILES below with a
+Measures every first-party .c file under launcher/main/ and
+launcher/packages/ (the ESP-IDF diagnostics build's own compile database,
+esp-clang targeting Xtensa) and every portable file the host test runner
+compiles, merged into one set with no double counting. A first-party .c
+file that neither source measures, and that is not on EXCLUDED_MAIN_FILES below with a
 reason, fails the gate by name: coverage cannot silently shrink.
 
 The gate FAILS when a function scores above FAIL_THRESHOLD and either
@@ -70,8 +70,7 @@ FAIL_THRESHOLD = 15
 # a number that different from history.
 MIN_COVERAGE_RATIO = 0.5
 
-# A .c file under launcher/main/ that no source below can give real flags
-# to. Reviewed by hand, not grown casually; each entry needs a reason a
+# A first-party .c file that no source below can give real flags to. Reviewed by hand, not grown casually; each entry needs a reason a
 # reader can check.
 EXCLUDED_MAIN_FILES = {
     "main/apps/sand/tools/crossflow_bench.c":
@@ -419,7 +418,7 @@ def inline_response_file(cmd):
 
 def build_idf_entries(toolchain_root, vendored=False):
     """launcher/build.diag/compile_commands.json, restricted to this
-    project's own main/ and test/ trees (excluding vendored code and
+    project's own main/, packages/ and test/ trees (excluding vendored code and
     apps/*/tools/, which the firmware never links), or, with `vendored`,
     to only the vendored .c files in VENDORED_REFERENCES, with the flags esp-idf
     generated for xtensa-esp32s3-elf-gcc adjusted for esp-clang: the three
@@ -443,7 +442,7 @@ def build_idf_entries(toolchain_root, vendored=False):
         if vendored:
             if ("launcher/" + rel.as_posix()) not in VENDORED_REFERENCES:
                 continue
-        elif not parts or parts[0] not in ("main", "test"):
+        elif not parts or parts[0] not in ("main", "packages", "test"):
             continue
         elif is_vendored(str(rel)) or "tools" in parts:
             continue
@@ -573,12 +572,12 @@ def build_compile_db():
 
 
 def check_main_coverage(measured_files):
-    """Every .c file under launcher/main/, found by walking the
-    filesystem: independent of any build or database. A gap that is not
+    """Every .c file under launcher/main/ and launcher/packages/, found by
+    walking the filesystem: independent of any build or database. A gap that is not
     EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
     the gate by name rather than shrinking quietly."""
     measured = {str(Path(f).resolve()) for f in measured_files}
-    on_disk = sorted((LAUNCHER_DIR / "main").rglob("*.c"))
+    on_disk = sorted([*(LAUNCHER_DIR / "main").rglob("*.c"), *(LAUNCHER_DIR / "packages").rglob("*.c")])
     missing = []
     for path in on_disk:
         resolved = str(path.resolve())
@@ -716,11 +715,11 @@ def main():
           f"host-only, {counts['tools']} apps/*/tools/**/*.c)")
 
     total_on_disk, missing = check_main_coverage(all_sources)
-    print(f"launcher/main/ coverage: {total_on_disk} .c files on disk, "
+    print(f"first-party coverage: {total_on_disk} .c files on disk, "
           f"{len(missing)} unmeasured and unexcluded")
     if missing:
         sys.exit(
-            "FAIL: the following launcher/main/ files are measured by "
+            "FAIL: the following first-party files are measured by "
             "nothing and are not on EXCLUDED_MAIN_FILES:\n" +
             "\n".join(f"  {m}" for m in missing)
         )

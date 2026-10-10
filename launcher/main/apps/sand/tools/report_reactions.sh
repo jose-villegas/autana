@@ -69,6 +69,8 @@ END_MARK='<!-- END GENERATED -->'
 # to avoid, one level over.
 # shellcheck source=../../../../tools/build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
+# shellcheck source=../../../../tools/build/packages.sh
+. "$LAUNCHER_DIR/tools/build/packages.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -86,7 +88,7 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/dump_reactions"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     "$SCRIPT_DIR/dump_reactions.c" "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" -o "$OUT_BIN"
 

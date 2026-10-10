@@ -8,6 +8,7 @@
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
+#   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
 # Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
 # or newer, and the initialized meshoptimizer submodule for scratch bakes.

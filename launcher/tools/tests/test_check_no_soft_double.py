@@ -3,6 +3,7 @@ function's own logging call, and a function's literal pool counts as it."""
 
 import pathlib
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "build"))
@@ -47,6 +48,34 @@ class SoftDoubleGate(unittest.TestCase):
 
     def test_the_offenders_are_exactly_the_three(self):
         self.assertEqual({"hot", "hot_after_a_logger", "literal_only"}, set(self.bad))
+
+
+class ObjectsOfTheFirmware(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.build = pathlib.Path(temp.name, "build")
+        self.launcher = pathlib.Path(temp.name, "launcher")
+        (self.launcher / "packages/math/include").mkdir(parents=True)
+        (self.launcher / "packages/docs_only").mkdir()
+
+    def touch(self, component, name):
+        path = self.build / "esp-idf" / component / "CMakeFiles" / f"__idf_{component}.dir" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return path
+
+    def test_main_and_each_package_with_an_include_folder_are_collected(self):
+        wanted = [self.touch("main", "a.c.obj"), self.touch("math", "src/b.c.obj")]
+        self.touch("docs_only", "c.c.obj")
+        self.touch("esp_lcd", "d.c.obj")
+        self.assertEqual(sorted(wanted), gate.objects(self.build, self.launcher))
+
+    def test_no_objects_says_to_build_the_firmware_first(self):
+        self.touch("esp_lcd", "d.c.obj")
+        with self.assertRaises(SystemExit) as stop:
+            gate.objects(self.build, self.launcher)
+        self.assertIn("build the firmware first", str(stop.exception))
 
 
 if __name__ == "__main__":
