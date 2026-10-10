@@ -16,4 +16,5 @@ Designs written before or during the work they describe. Each plan's own
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |
 | [Content-in-the-Pack-Design-Sketch.md](Content-in-the-Pack-Design-Sketch.md) | Animation tracks and scenes as asset-pack entries baked from their source files, one pack per root asset, and poses from the device's own sampler. |
 | [Cached-Bakes-Design-Sketch.md](Cached-Bakes-Design-Sketch.md) | Expensive bakes (lit meshes, GPU fits, Blender exports) as files named by a digest of their inputs, made by CI and fetched by every build instead of committed. |
+| [Baker-Scalability-Design-Sketch.md](Baker-Scalability-Design-Sketch.md) | Where a fit's bake time goes, one reference set per set of inputs, the reference on the GPU, and what each change does to the bake keys. |
 | [Image-Kernels-Plan.md](Image-Kernels-Plan.md) | Real-time blur and edge detection over the framebuffer: packed-RGB565 tricks, box blurs, SIMD, and ranked first experiments, every cost an estimate. |
