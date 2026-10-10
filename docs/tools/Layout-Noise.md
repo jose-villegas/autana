@@ -27,10 +27,13 @@ autana suite run_sponza_perf_suite --flash --perf-scope --layout-seed 3
 
 The line size, cache size and ways come from the build's sdkconfig, and
 `main/CMakeLists.txt` hands them to `launcher/tools/build/layout_pad.py`, the
-mapping. `launcher/tools/build/layout_pad.h` is the pad: a retained section of
-its own (`.text.layout_pad`, `.rodata.layout_pad`) that nothing refers to,
-which is why `--gc-sections` keeps it and the linker places it first among the
-object's sections. Functions in `render/` start on a cache line and a pad is a
+mapping. `launcher/tools/build/layout_pad.h` is the pad: a section of its own
+ahead of the object's code (`.text.layout_pad_<n>`) and rodata
+(`.rodata.layout_pad`), kept through its symbol (`-u layout_pad_text_<n>`)
+rather than as a retained section. The code pad loads one literal of its own:
+within one linker rule the Xtensa linker places sections that load no literal
+after all the rest, and a retained or literal-free pad landed after all of
+`main`'s code instead of ahead of its object's. Functions in `render/` start on a cache line and a pad is a
 whole number of lines, so the in-line offsets `render/code_layout.h` pins hold
 for every seed; `launcher/tools/render/code_layout.py --check` passes on a
 seeded build. A release build refuses a seed.
