@@ -33,7 +33,7 @@ FIGURE_SIZE = (10, 2.4)
 BAR_HEIGHT = 0.6
 AXIS_HEADROOM = 0.2
 AXIS_TICKS = 5
-ADDED_BASE_LABEL = "frame budget base"
+ADDED_BASE_LABEL = "base cost"
 BUDGET_LABEL_SIZE = 8
 # One colour per bracket, in report order.
 SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
