@@ -43,6 +43,28 @@ asset_entry_open(const asset_pack_t* pack, const char* id, uint32_t type, uint16
     return status;
 }
 
+/* One entry format: what asset_entry_open() checks before a reader parses it. */
+typedef struct {
+    uint32_t type;
+    uint16_t version;
+    uint32_t version_offset, header_size, alignment;
+} asset_entry_format_t;
+
+/* Opens entry `id` as `format` and parses it into `out` (`size` bytes); on
+ * any failure `out` is zeroed, so a reader's view is whole or empty. */
+static inline asset_status_t
+asset_entry_read(const asset_pack_t* pack, const char* id, const asset_entry_format_t* format,
+                 asset_status_t (*parse)(asset_view_t entry, void* out), void* out, size_t size) {
+    asset_view_t entry;
+    asset_status_t status = asset_entry_open(pack, id, format->type, format->version, format->version_offset,
+                                             format->header_size, format->alignment, &entry);
+    status = status == ASSET_OK ? parse(entry, out) : status;
+    if (status != ASSET_OK) {
+        memset(out, 0, size);
+    }
+    return status;
+}
+
 /* The caller has checked first <= end <= entry.size. */
 static inline bool
 asset_entry_zero(asset_view_t entry, uint32_t first, uint32_t end) {

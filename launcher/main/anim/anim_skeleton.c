@@ -88,23 +88,17 @@ check_rows(const anim_skeleton_t* skeleton, uint32_t strings_size) {
 
 /* The header, then every row, of an opened entry. */
 static asset_status_t
-parse(asset_view_t entry, anim_skeleton_t* skeleton) {
+parse(asset_view_t entry, void* out) {
+    anim_skeleton_t* skeleton = out;
     uint32_t strings_size;
     const asset_status_t status = read_header(entry, skeleton, &strings_size);
     return status == ASSET_OK ? check_rows(skeleton, strings_size) : status;
 }
 
+static const asset_entry_format_t FORMAT = {ANIM_SKELETON_ASSET, ANIM_SKELETON_VERSION, ANIM_SKELETON_AT_VERSION,
+                                            ANIM_SKELETON_HEADER_SIZE, ANIM_SKELETON_ALIGNMENT};
+
 asset_status_t
 anim_skeleton_open(const asset_pack_t* pack, const char* id, anim_skeleton_t* out) {
-    *out = (anim_skeleton_t){0};
-    asset_view_t entry;
-    anim_skeleton_t skeleton;
-    asset_status_t status =
-        asset_entry_open(pack, id, ANIM_SKELETON_ASSET, ANIM_SKELETON_VERSION, ANIM_SKELETON_AT_VERSION,
-                         ANIM_SKELETON_HEADER_SIZE, ANIM_SKELETON_ALIGNMENT, &entry);
-    status = status == ASSET_OK ? parse(entry, &skeleton) : status;
-    if (status == ASSET_OK) {
-        *out = skeleton;
-    }
-    return status;
+    return asset_entry_read(pack, id, &FORMAT, parse, out, sizeof *out);
 }
