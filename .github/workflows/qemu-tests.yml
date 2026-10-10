@@ -63,5 +63,6 @@ jobs:
             launcher/build.qemu/launcher.elf
             launcher/build.qemu/*.bin
             launcher/build.qemu/*/*.bin
+            !launcher/build.qemu/qemu_*.bin
           retention-days: 14
           if-no-files-found: ignore
