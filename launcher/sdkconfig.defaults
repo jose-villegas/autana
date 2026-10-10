@@ -16,6 +16,12 @@ CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
+# The panic handler writes an ELF core dump to the coredump partition, and boot
+# says whether one is there (boot/boot_report.h). Every warm reset here becomes
+# a PMIC power cycle that drops USB, so the dump is the crash's only record.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
 # This board's one USB-C port is the SoC's own native USB-Serial/JTAG
 # peripheral, not an external USB-UART bridge chip on UART0. ESP-IDF's own
 # default (CONFIG_ESP_CONSOLE_UART_DEFAULT) assumes that other, more common

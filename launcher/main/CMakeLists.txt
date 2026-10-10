@@ -5,6 +5,7 @@ set(app_srcs
     "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
+    "boot/boot_report.c"
     "selftest/post.c"
     "selftest/post_layout.c"
     "selftest/post_ui.c"
@@ -191,7 +192,7 @@ list(APPEND app_srcs ${discovered_apps})
 set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
+             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon, unity and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF

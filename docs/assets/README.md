@@ -133,7 +133,8 @@ the app.
 |---|---|---|
 | `nvs` | `0x9000` | `0x6000` |
 | `phy_init` | `0xF000` | `0x1000` |
-| `factory` (the app) | `0x10000` | 8 MB |
+| `factory` (the app) | `0x10000` | `0x7F0000` |
+| `coredump` | `0x800000` | `0x10000` |
 | `assets` | `0x810000` | `0x7F0000` |
 
 On the first mount the store finds the partition and reads its directory into
