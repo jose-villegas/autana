@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stddef.h>
+#include "asset/asset_entry.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, lo) == 8
@@ -13,6 +14,7 @@ _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) =
 
 enum {
     HEADER_WORDS = 11,
+    ENTRY_ALIGNMENT = 4,
     COUNT_VERTEX = 0,
     COUNT_TRIANGLE,
     COUNT_CLUSTER,
@@ -86,8 +88,10 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
-    if (asset->size < HEADER_WORDS * 4U) {
-        return ASSET_ERR_BOUNDS;
+    const asset_status_t status = asset_entry_validate(*asset, ASSET_ENTRY_UNVERSIONED, ASSET_ENTRY_UNVERSIONED,
+                                                       HEADER_WORDS * sizeof(uint32_t), ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
     }
     const uint32_t vertices = word(asset->data, COUNT_VERTEX);
     const uint32_t triangles = word(asset->data, COUNT_TRIANGLE);
