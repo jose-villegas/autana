@@ -26,6 +26,7 @@
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #endif
+#include "core/memory.h"
 #include "render/context/render_context.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
@@ -34,7 +35,6 @@
 #include "test_anim_tracks.h"
 #include "test_cleanup.h"
 #include "test_pack.h"
-#include "util/runtime/memory.h"
 
 #ifndef DEVICE_BUILD
 #include <stdio.h>
@@ -43,15 +43,17 @@
 #include "test_asset_dir.h"
 #endif
 
-#define SIZE          64
-#define CENTER        (SIZE / 2)
-#define CLEAR_RGB     0x336699
-#define QUAD_BYTES    132
-#define PACK_MAX      8192
-#define SENTINEL      0x5A5A
+#define SIZE               64
+#define CENTER             (SIZE / 2)
+#define PICTURE_HEIGHT     (SIZE / 2)
+#define GREEN_PIXEL_OFFSET 6
+#define CLEAR_RGB          0x336699
+#define QUAD_BYTES         132
+#define PACK_MAX           8192
+#define SENTINEL           0x5A5A
 
 /* Copies of one mesh a test draws, to make a culled list worth measuring. */
-#define INSTANCES_MAX 64
+#define INSTANCES_MAX      64
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
  * one after another after the 44-byte header. */
@@ -378,6 +380,44 @@ frame(uint32_t dt_ms) {
         fx.pixels[i] = SENTINEL;
     }
     scene_compose(dt_ms, 0, &fx.target);
+}
+
+static void
+test_a_turned_non_square_scene_places_the_coloured_instance(void) {
+    fixture();
+    show("test_pair", NULL);
+    fx.target.height = PICTURE_HEIGHT;
+    for (int quarter = 1; quarter <= 3; quarter += 2) {
+        scene_render(0, quarter, fx.target.width, fx.target.height);
+        scene_compose(0, quarter, &fx.target);
+        const int offset = quarter == 1 ? GREEN_PIXEL_OFFSET : -GREEN_PIXEL_OFFSET;
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), fx.pixels[(((PICTURE_HEIGHT / 2) + offset) * SIZE) + CENTER]);
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB),
+                                fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
+    }
+}
+
+static void
+test_a_scaled_context_preserves_the_non_square_views_destination(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    fx.target.height = PICTURE_HEIGHT;
+    scene_render(0, 0, fx.target.width, fx.target.height);
+    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, 0, (viewport_t){SIZE, SIZE / 2, 0});
+    render_context_t* c = render_context_main();
+    for (int scale = 100; scale >= 50; scale -= 50) {
+        render_context_set_scale(c, scale);
+        TEST_ASSERT_TRUE(render_context_draw(c, scene->instances, 2, &view, GFX_RGB(CLEAR_RGB)));
+        TEST_ASSERT_EQUAL_INT(SIZE, c->raster.destination_width);
+        TEST_ASSERT_EQUAL_INT(SIZE / 2, c->raster.destination_height);
+        TEST_ASSERT_EQUAL_INT(SIZE * scale / 100, c->raster.width);
+        TEST_ASSERT_EQUAL_INT(SIZE * scale / 200, c->raster.height);
+        render_context_compose(c, fx.pixels, NULL);
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00),
+                                fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB),
+                                fx.pixels[(((PICTURE_HEIGHT / 2) + GREEN_PIXEL_OFFSET) * SIZE) + CENTER]);
+    }
 }
 
 static uint16_t
@@ -1077,9 +1117,9 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
     render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
-    const camera_t view = r3d_scene_camera_at(&scene->cameras[0].lens, 0);
+    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, 0, (viewport_t){SIZE, SIZE, 0});
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
-    TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0, 0, SIZE, SIZE));
+    TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
     const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
 
     raster_t finest = c->raster;
@@ -1394,6 +1434,8 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target);
     RUN_TEST(test_the_stats_count_what_the_last_draw_kept);
     RUN_TEST(test_leaving_the_app_unloads_every_scene_and_frees_the_scratch);
+    RUN_TEST(test_a_turned_non_square_scene_places_the_coloured_instance);
+    RUN_TEST(test_a_scaled_context_preserves_the_non_square_views_destination);
     RUN_TEST(test_scene_render_draws_into_scratch_and_leaves_the_framebuffer_alone);
     RUN_TEST(test_a_compose_with_no_framebuffer_writes_nothing);
     RUN_TEST(test_leaving_an_app_while_paused_lifts_the_pause);

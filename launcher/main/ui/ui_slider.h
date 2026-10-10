@@ -16,7 +16,7 @@
 
 #include "microui.h"
 
-#include "util/scalar/fixed.h"
+#include "math/scalar/fixed.h"
 
 /* How far the knob can travel: never the track's own width, or the knob
  * would hang half outside the track at lo and hi. Clamped so a knob wider

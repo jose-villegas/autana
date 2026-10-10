@@ -27,9 +27,9 @@
 #include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
+#include "services/tune.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
-#include "util/runtime/tune.h"
 
 static int shell_quarter;
 
@@ -79,12 +79,12 @@ set_tunable(const char* name, int value) {
 
 static bool
 view_from_name(const char* name) {
-    const int view = render_context_view_named(name);
-    if (view != RENDER_VIEW_UNKNOWN) {
+    const int view = render_context_debug_view_named(name);
+    if (view != RENDER_DEBUG_VIEW_UNKNOWN) {
         return set_tunable("view", view);
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
-    render_context_print_views(stderr);
+    render_context_print_debug_views(stderr);
     (void)fprintf(stderr, ", not %s\n", name);
     return false;
 }

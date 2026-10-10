@@ -10,8 +10,8 @@
 #include <stdint.h>
 
 #include "material_palette.h"
+#include "math/scalar/mathx.h"
 #include "sand_paint_row.h"
-#include "util/scalar/mathx.h"
 
 #define SAND_PAINT_SHINE_STEP_MS       40
 #define SAND_PAINT_SHINE_STEP_PX       2

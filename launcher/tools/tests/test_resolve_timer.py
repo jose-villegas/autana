@@ -13,7 +13,7 @@ class ResolveTimerTests(unittest.TestCase):
     def test_resolve_is_charged_only_with_a_hook(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            header = work / "util/runtime/frame_cost.h"
+            header = work / "profile/frame_cost.h"
             header.parent.mkdir(parents=True)
             header.write_text('#include <string.h>\nextern int charges;\n'
                               '#define FRAME_COST_BEGIN(mark) ((void)0)\n'
@@ -36,27 +36,28 @@ int main(void) {
     r3d_quad_init(&quad, positions);
     r3d_instance_t instance = {.mesh = &quad.mesh};
     raster_t r = {.width = 8, .height = 8, .instances = &instance, .instance_count = 1};
-    camera_t camera = {.eye = {0, 0, 100}, .forward = {0, 0, -1}, .half_fov_short_tan = .5f, .near_z = 1};
+    const transformf_t pose = transformf_looking((vec3f_t){0, 0, 100}, (vec3f_t){0, 0, -100}, (vec3f_t){0, 1, 0});
+    const render_view_t view = render_view_make(&pose, .5f, 1, (viewport_t){r.width, r.height, 0});
     raster_attachment_t a = {.bytes_per_pixel = 2, .clear = clear, .resolve = resolve};
     const raster_attachment_t* attachments[] = {&a};
     r.attachments = attachments;
     r.attachment_count = 1;
     r.scratch = malloc(raster_scratch_bytes(&r));
-    raster_draw(&r, &camera, 0);
+    raster_draw(&r, &view);
     assert(charges == 1);
     a.resolve = NULL;
-    raster_draw(&r, &camera, 0);
+    raster_draw(&r, &view);
     assert(charges == 1);
     r.attachment_count = 0;
-    raster_draw(&r, &camera, 0);
+    raster_draw(&r, &view);
     assert(charges == 1);
     free(r.scratch);
     return 0;
 }
 ''')
             binary = work / "probe.exe"
-            sources = ["render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
-                       "render/r3d_lit_mesh.c", "render/upscale.c", "util/runtime/job.c", "util/runtime/tune.c", "asset/asset_pack.c"]
+            sources = ["render/render_view.c", "render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
+                       "render/r3d_lit_mesh.c", "render/upscale.c", "core/job.c", "services/tune.c", "asset/asset_pack.c"]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), "-I", str(ROOT / "launcher/main"),
                        "-I", str(ROOT / "launcher/test/stubs"), str(source),

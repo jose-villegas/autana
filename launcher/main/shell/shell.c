@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #include "app/app.h"
+#include "core/timing.h"
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/draw/gfx_draw.h"
@@ -23,14 +24,13 @@
 #include "input/input.h"
 #include "input/input_shell.h"
 #include "input/touch.h"
+#include "profile/frame_cost.h"
+#include "profile/frame_watch.h"
+#include "services/build_id.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
-#include "util/runtime/build_id.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/frame_watch.h"
-#include "util/runtime/timing.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"

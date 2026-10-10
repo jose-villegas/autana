@@ -4,12 +4,12 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "core/job.h"
+#include "profile/frame_cost.h"
 #include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
-#include "util/runtime/frame_cost.h"
-#include "util/runtime/job.h"
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
@@ -203,32 +203,24 @@ raster_scratch_bytes(const raster_t* raster) {
     return mathi_size_ceil(prefix, R3D_PIPELINE_WORK_ALIGNMENT) + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t);
 }
 
-/* The shape the camera frames: the destination's when upscaled, so a render
- * scaled more in one axis than the other still shows the same view. */
-static viewport_t
-picture_viewport(const raster_t* raster, int quarter) {
-    if (raster->upscaled && raster->destination_width > 0 && raster->destination_height > 0) {
-        return (viewport_t){raster->destination_width, raster->destination_height, quarter};
-    }
-    return (viewport_t){raster->width, raster->height, quarter};
-}
-
+/* The view's lens fitted to the size drawn at, so a render scaled more
+ * in one axis than the other still shows the same view. */
 void
-raster_lens(const raster_t* raster, const camera_t* camera, int position_scale, int quarter, r3d_lens_t* lens) {
-    r3d_lens_init(lens, camera, position_scale, picture_viewport(raster, quarter));
+raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens) {
+    r3d_lens_init(lens, view, position_scale);
     r3d_lens_fit(lens, raster->width, raster->height);
 }
 
 /* The lens an instance is drawn with: raster_lens(), or the picture's unfitted
  * when `fitted` is false. */
 static void
-instance_lens(const raster_t* raster, const r3d_instance_t* instance, const camera_t* camera, int quarter, bool fitted,
+instance_lens(const raster_t* raster, const r3d_instance_t* instance, const render_view_t* view, bool fitted,
               r3d_lens_t* lens) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     if (fitted) {
-        raster_lens(raster, camera, mesh->position_scale, quarter, lens);
+        raster_lens(raster, view, mesh->position_scale, lens);
     } else {
-        r3d_lens_init(lens, camera, mesh->position_scale, picture_viewport(raster, quarter));
+        r3d_lens_init(lens, view, mesh->position_scale);
     }
     if (instance->placement != NULL) {
         r3d_lens_place(lens, instance->placement, mesh->position_scale);
@@ -312,16 +304,25 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
+/* Frame validation stays outside the inlined draw chain. */
+static __attribute__((noinline)) void
+assert_view_size(const raster_t* raster, const render_view_t* view) {
+    const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
+    assert(view->viewport.width == picture.width);
+    assert(view->viewport.height == picture.height);
+}
+
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
-draw_instances(const raster_t* raster, const camera_t* camera, int quarter, raster_stats_t* stats) {
+draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
+    assert_view_size(raster, view);
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
         if (a->begin != NULL) {
-            a->begin(a, raster, camera, quarter);
+            a->begin(a, raster, view);
         }
         resolves = resolves || a->resolve != NULL;
     }
@@ -330,7 +331,7 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t* lens = &work->lens;
-        instance_lens(raster, instance, camera, quarter, true, lens);
+        instance_lens(raster, instance, view, true, lens);
         if (stats != NULL) {
             FRAME_COST_BEGIN(culled_from);
             culled[0] = (uint16_t)cull_instance(instance, lens, culled + 1, stats, work->buffers.work[0]);
@@ -351,9 +352,9 @@ draw_instances(const raster_t* raster, const camera_t* camera, int quarter, rast
 }
 
 RENDER_ENTRY_OFFSET(4) raster_stats_t
-raster_draw(const raster_t* raster, const camera_t* camera, int quarter) {
+raster_draw(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
-    draw_instances(raster, camera, quarter, &stats);
+    draw_instances(raster, view, &stats);
     return stats;
 }
 
@@ -367,8 +368,9 @@ raster_culled_length(const raster_t* raster) {
 }
 
 raster_stats_t
-raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
+raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
+    assert_view_size(raster, view);
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
@@ -376,7 +378,7 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
-        instance_lens(raster, instance, camera, quarter, false, &lens);
+        instance_lens(raster, instance, view, false, &lens);
         culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats, work->buffers.work[0]);
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
@@ -385,8 +387,8 @@ raster_census(const raster_t* raster, const camera_t* camera, int quarter) {
 }
 
 RENDER_ENTRY_OFFSET(4) void
-raster_draw_culled(const raster_t* raster, const camera_t* camera, int quarter) {
-    draw_instances(raster, camera, quarter, NULL);
+raster_draw_culled(const raster_t* raster, const render_view_t* view) {
+    draw_instances(raster, view, NULL);
 }
 
 RENDER_ENTRY_OFFSET(12) void

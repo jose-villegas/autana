@@ -13,7 +13,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/runtime/job.h"
+#include "core/job.h"
 
 sand_t s;
 uint8_t cells[W * H];

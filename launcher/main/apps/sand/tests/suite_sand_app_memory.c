@@ -5,7 +5,7 @@
 
 #include "app/app.h"
 #include "apps/sand/sand_limits.h"
-#include "util/runtime/memory.h"
+#include "core/memory.h"
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);

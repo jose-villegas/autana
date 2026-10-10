@@ -4,11 +4,11 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "math/scalar/mathf.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster.h"
 #include "render/raster_show.h"
-#include "util/scalar/mathf.h"
 
 /* While drawing, the attachment holds each pixel's tag: 0 for anything
  * that did not move, i + 1 for instance i that did. Resolving turns the tag
@@ -18,13 +18,12 @@ _Static_assert(sizeof(tag_t) == sizeof(raster_motion_px_t), "a tag resolves in p
 
 #define DEPTH_SCALE (1.0F / (float)R3D_DEPTH_NEAREST)
 
-/* World to lens space for `camera`, the raster's own lens at one tick to the
+/* World to lens space for `view`, the raster's own lens at one tick to the
  * unit, then carried by `placement` when it is not NULL, as r3d_lens_place()
  * does for a placed mesh. */
 static void
-lens_map(const camera_t* camera, const raster_t* raster, int quarter, const r3d_placement_t* placement,
-         r3d_lens_t* lens) {
-    raster_lens(raster, camera, 1, quarter, lens);
+lens_map(const render_view_t* view, const raster_t* raster, const r3d_placement_t* placement, r3d_lens_t* lens) {
+    raster_lens(raster, view, 1, lens);
     if (placement != NULL) {
         r3d_lens_place(lens, placement, 1);
     }
@@ -42,15 +41,15 @@ seen_index(const raster_motion_t* m, const r3d_placement_t* key) {
 
 /* Every instance that moved since the previous picture gets its own map. */
 static void
-map_instances(raster_motion_t* m, const raster_t* raster, const camera_t* camera, int quarter) {
+map_instances(raster_motion_t* m, const raster_t* raster, const render_view_t* view) {
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_placement_t* p = raster->instances[i].placement;
         const int seen = p == NULL ? -1 : seen_index(m, p);
         if (seen >= 0 && memcmp(&m->seen[seen], p, sizeof(*p)) != 0) {
             r3d_lens_t before;
             r3d_lens_t now;
-            lens_map(&m->camera, raster, quarter, &m->seen[seen], &before);
-            lens_map(camera, raster, quarter, p, &now);
+            lens_map(&m->previous, raster, &m->seen[seen], &before);
+            lens_map(view, raster, p, &now);
             m->map[i + 1] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
             m->moved[i] = true;
             m->first_moved = m->first_moved < 0 ? i : m->first_moved;
@@ -58,10 +57,10 @@ map_instances(raster_motion_t* m, const raster_t* raster, const camera_t* camera
     }
 }
 
-/* This picture's camera and placements, for the next one. */
+/* This picture's view and placements, for the next one. */
 static void
-remember(raster_motion_t* m, const raster_t* raster, const camera_t* camera) {
-    m->camera = *camera;
+remember(raster_motion_t* m, const raster_t* raster, const render_view_t* view) {
+    m->previous = *view;
     m->has_previous = true;
     m->seen_count = 0;
     for (int i = 0; i < raster->instance_count; i++) {
@@ -76,11 +75,11 @@ remember(raster_motion_t* m, const raster_t* raster, const camera_t* camera) {
 /* The maps for this picture, then this picture kept as the next one's
  * previous. A placement is known by its address from picture to picture. */
 static void
-begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* camera, int quarter) {
+begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     raster_motion_t* m = self->state;
     assert(raster->instance_count <= RASTER_MOTION_INSTANCES_MAX);
     r3d_lens_t now;
-    lens_map(camera, raster, quarter, NULL, &now);
+    lens_map(view, raster, NULL, &now);
     m->center_x = now.center_x;
     m->center_y = now.center_y;
     m->near_z = now.near_z;
@@ -88,12 +87,13 @@ begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* c
     m->first_moved = -1;
     memset(m->moved, 0, sizeof(m->moved));
     if (m->known) {
+        render_view_refit(&m->previous, view->viewport);
         r3d_lens_t before;
-        lens_map(&m->camera, raster, quarter, NULL, &before);
+        lens_map(&m->previous, raster, NULL, &before);
         m->map[0] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
-        map_instances(m, raster, camera, quarter);
+        map_instances(m, raster, view);
     }
-    remember(m, raster, camera);
+    remember(m, raster, view);
 }
 
 static void

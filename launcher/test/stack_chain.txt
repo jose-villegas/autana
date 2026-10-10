@@ -13,9 +13,10 @@ indirect resolve_slice : raster_motion.c:resolve
 indirect draw_slice : clear_color clear_depth raster_motion.c:clear raster_meshlets.c:clear
 indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show tiles_show
 indirect raster_show_map : raster_motion.c:pixel_color raster_meshlets.c:pixel_color
-indirect render_context_set_view : raster_depth_view raster_depth_tiles_view raster_motion_view raster_meshlets_view
+indirect render_context_set_debug_view : raster_depth_view raster_depth_tiles_view raster_motion_view raster_meshlets_view
 indirect job_run_core1 : sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
 indirect expand_rows : shell_frame_overlay
+indirect job_dispatch job_on_worker_started : frame_watch_add_task
 indirect send_heal_strips : send_fb_rows send_picture_rows
 indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
 indirect ui_end_over : ui_ridge_paint

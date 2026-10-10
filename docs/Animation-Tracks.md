@@ -4,8 +4,8 @@
 keys, each a time and a value, and one call gives the value at any moment.
 It does not know what it drives: a caller maps the numbers onto a camera, a
 light, a material value, anything a scene exposes. Its layer is in
-[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`
-and `util/` and allocates nothing.
+[Firmware-Architecture.md](Firmware-Architecture.md); it sits above `asset/`,
+`core/` and `math/`, and allocates nothing.
 
 The format is glTF 2.0's own animation model, so a track authored in Blender
 or any other exporter plays back as it was made.
@@ -114,7 +114,7 @@ seconds once. `ANIM_CLAMP` holds it at the duration instead; a loop authors
 its first key again as its last. `anim_track_sample()` holds a track's first
 value before its first key and its last after its last, as glTF defines.
 `anim_quat_rotate()` turns a vector by a sampled rotation, which is how a
-camera track gives a `camera_t` its look direction.
+camera track supplies the look direction in `r3d_scene_camera_sample()`.
 
 ## Authoring
 
@@ -156,7 +156,7 @@ if (anim_tracks_find(&clip, "lens/perspective/yfov", &yfov) == ASSET_OK) {
 
 Mapping the value onto the object, including any unit conversion, belongs to
 the caller. Tracks are float, and `anim/anim_transform.h` samples a node's
-translation, rotation and scale tracks into a `util/math/transformf.h`
+translation, rotation and scale tracks into a `math/linear/transformf.h`
 `transformf_t`.
 
 ## Looking at a baked animation

@@ -104,7 +104,7 @@ class StyleAuditTest(unittest.TestCase):
         # reference at all, however many other folders happen to have a
         # file with the same basename.
         findings = self.audit("INCLUDE-LAYER", {
-            "launcher/main/util/scalar/fixed.h": "#pragma once\n",
+            "launcher/main/math/scalar/fixed.h": "#pragma once\n",
             "launcher/main/apps/foo/fixed.h": "#pragma once\n",
             "launcher/main/apps/foo/app_foo.c": '#include "fixed.h"\n',
         })
@@ -184,8 +184,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/util/runtime/tune.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "util/runtime/tune.h"\n')
+            gate_tree.write(root, "launcher/main/services/tune.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/apps/foo/app_foo.c", '#include "services/tune.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -194,8 +194,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/util/runtime/tune.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "util/runtime/tune.h"\n')
+            gate_tree.write(root, "launcher/main/services/tune.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "services/tune.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -210,12 +210,12 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
 
-    def test_util_may_not_include_display(self):
+    def test_core_may_not_include_display(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
             gate_tree.write(root, "launcher/main/display/display.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/util/runtime/device_state.c", '#include "display/display.h"\n')
+            gate_tree.write(root, "launcher/main/core/device_state.c", '#include "display/display.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
@@ -252,47 +252,73 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(sorted((f.path, f.line) for f in findings),
                          [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
 
-    PURE_UTIL = ("math", "motion", "encode", "scalar", "build")
+    MATH = ("motion", "linear", "scalar")
 
-    def util_tree(self, root):
+    def base_tree(self, root):
         self.layer_tree(root)
-        for sub in ("runtime",) + self.PURE_UTIL:
-            gate_tree.write(root, f"launcher/main/util/{sub}/{sub}.h", "#pragma once\n")
+        gate_tree.write(root, "launcher/main/core/core.h", "#pragma once\n")
+        for sub in self.MATH:
+            gate_tree.write(root, f"launcher/main/math/{sub}/{sub}.h", "#pragma once\n")
 
-    def test_no_pure_util_folder_may_include_its_runtime_services(self):
+    def test_no_math_folder_may_include_core(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.util_tree(root)
-            for sub in self.PURE_UTIL:
-                gate_tree.write(root, f"launcher/main/util/{sub}/{sub}.c", '#include "util/runtime/runtime.h"\n')
+            self.base_tree(root)
+            for sub in self.MATH:
+                gate_tree.write(root, f"launcher/main/math/{sub}/{sub}.c", '#include "core/core.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(sorted(f.path for f in findings),
-                         sorted(f"launcher/main/util/{sub}/{sub}.c" for sub in self.PURE_UTIL))
+                         sorted(f"launcher/main/math/{sub}/{sub}.c" for sub in self.MATH))
 
-    def test_runtime_may_include_every_pure_util_folder_and_scalar_sits_under_math(self):
+    def test_core_may_include_every_math_folder_and_scalar_sits_under_linear(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.util_tree(root)
-            gate_tree.write(root, "launcher/main/util/runtime/job.c",
-                            "".join(f'#include "util/{sub}/{sub}.h"\n' for sub in self.PURE_UTIL))
-            gate_tree.write(root, "launcher/main/util/math/vec3x.h", '#include "util/scalar/scalar.h"\n')
-            gate_tree.write(root, "launcher/main/util/scalar/fixed.h", '#include "util/math/math.h"\n')
+            self.base_tree(root)
+            gate_tree.write(root, "launcher/main/core/job.c",
+                            "".join(f'#include "math/{sub}/{sub}.h"\n' for sub in self.MATH))
+            gate_tree.write(root, "launcher/main/math/linear/vec3x.h", '#include "math/scalar/scalar.h"\n')
+            gate_tree.write(root, "launcher/main/math/scalar/fixed.h", '#include "math/linear/linear.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual([f.path for f in findings], ["launcher/main/util/scalar/fixed.h"])
+        self.assertEqual([f.path for f in findings], ["launcher/main/math/scalar/fixed.h"])
+
+    BASE_ROWS = (("services",), ("profile",), ("core",), ("board",), ("math/motion",), ("math/linear",),
+                 ("math/scalar", "build"))
+
+    def test_each_base_layer_includes_only_the_rows_below_it(self):
+        # One header per layer, and from each layer one file including every other; only
+        # the includes that reach upward or into the same row of BASE_ROWS are flagged.
+        layers = [layer for row in self.BASE_ROWS for layer in row]
+        row_of = {layer: i for i, row in enumerate(self.BASE_ROWS) for layer in row}
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            self.base_tree(root)
+            for layer in layers:
+                gate_tree.write(root, f"launcher/main/{layer}/{layer.split('/')[-1]}.h", "#pragma once\n")
+            for layer in layers:
+                others = "".join(f'#include "{other}/{other.split("/")[-1]}.h"\n' for other in layers if other != layer)
+                gate_tree.write(root, f"launcher/main/{layer}/probe.c", others)
+            gate_tree.commit(root, "launcher")
+            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
+        expected = []
+        for layer in layers:
+            others = [other for other in layers if other != layer]
+            expected += [(f"launcher/main/{layer}/probe.c", line)
+                         for line, other in enumerate(others, 1) if row_of[other] <= row_of[layer]]
+        self.assertEqual(sorted((f.path, f.line) for f in findings), sorted(expected))
 
     def test_a_file_loose_in_a_split_folder_fails_loudly_but_its_description_header_does_not(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.util_tree(root)
-            gate_tree.write(root, "launcher/main/util/util.h", "#pragma once\n")
+            self.base_tree(root)
+            gate_tree.write(root, "launcher/main/math/math.h", "#pragma once\n")
             gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
             gate_tree.commit(root, "launcher")
             self.assertEqual(self.rule_hits(root, "INCLUDE-DIRECTION"), [])
-            gate_tree.write(root, "launcher/main/util/perf_region.c", "int x;\n")
+            gate_tree.write(root, "launcher/main/math/perf_region.c", "int x;\n")
             gate_tree.commit(root, "launcher")
-            with self.assertRaisesRegex(ValueError, "util/perf_region.c"):
+            with self.assertRaisesRegex(ValueError, "math/perf_region.c"):
                 self.rule_hits(root, "INCLUDE-DIRECTION")
 
     def test_a_subfolder_of_a_split_folder_this_table_does_not_know_about_fails_loudly(self):
@@ -300,9 +326,9 @@ class StyleAuditTest(unittest.TestCase):
             root = pathlib.Path(temp)
             self.layer_tree(root)
             gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
-            gate_tree.write(root, "launcher/main/util/newkind/thing.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/math/newkind/thing.h", "#pragma once\n")
             gate_tree.commit(root, "launcher")
-            with self.assertRaisesRegex(ValueError, "util/newkind"):
+            with self.assertRaisesRegex(ValueError, "math/newkind"):
                 self.rule_hits(root, "INCLUDE-DIRECTION")
 
     def test_a_folder_this_table_does_not_know_about_fails_loudly(self):

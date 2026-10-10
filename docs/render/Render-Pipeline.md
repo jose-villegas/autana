@@ -267,11 +267,12 @@ Source: the scene as shipped, mean of 20 windows; the resolve row is from the sc
 ### Scene and camera
 
 The scene manager moves the active camera along its path and hands the render
-context the scene's instances, the camera and a clear colour.
+context the scene's instances, a `render_view_t` and a clear colour; how the
+view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 
 | Reads | Writes | Settings |
 |---|---|---|
-| the scene's pack: meshes, placements, the camera clip | the frame's instances and camera | the active camera, which renderers are enabled |
+| the scene's pack: meshes, placements, the camera clip | the frame's instances and view | the active camera, which renderers are enabled |
 
 Cost: part of `frame.rest` in the frame-stages table.
 

@@ -1,6 +1,6 @@
 /*
  * r3d_pipeline: the stages raster_draw() runs to draw a r3d_lit_mesh_t
- * through a camera: cluster culling, one transform per vertex, near-plane
+ * through a view: cluster culling, one transform per vertex, near-plane
  * clipping and r3d_span. Internal: render/ and any suite or host tool
  * include it.
  *
@@ -15,20 +15,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "render/camera.h"
+#include "math/linear/mat4f.h"
+#include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
+#include "render/render_view.h"
 #include "render/viewport.h"
-#include "util/math/mat4f.h"
-#include "util/scalar/mathi.h"
 
 #if defined(ESP_PLATFORM)
 #include "sdkconfig.h"
 #endif
 
-/* A camera made ready for one viewport and one mesh's position scale.
+/* A view made ready for one viewport and one mesh's position scale.
  * Lens space: x and y are already pixels at unit depth, turned for the
  * panel's quarter, so a screen position is centre + (x, y) / z. */
 typedef struct {
@@ -48,8 +48,8 @@ typedef struct {
     float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 } r3d_pipeline_vertex_t;
 
-/* Turned for the viewport's quarter as viewport.h maps it. */
-void r3d_lens_init(r3d_lens_t* lens, const camera_t* camera, int position_scale, viewport_t viewport);
+/* Scales the frame's ready basis to the mesh's position ticks. */
+void r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale);
 
 /* Refits a lens made for one picture size to a render `width` by `height`
  * stretched back to it on the way out, each axis on its own, so a render
@@ -132,7 +132,7 @@ r3d_pipeline_culled_bytes(const raster_t* raster) {
 
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
  * the size it renders at, for a mesh of `position_scale`. */
-void raster_lens(const raster_t* raster, const camera_t* camera, int position_scale, int quarter, r3d_lens_t* lens);
+void raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens);
 
 static inline r3d_pipeline_buffers_t
 r3d_pipeline_carve(const raster_t* raster) {

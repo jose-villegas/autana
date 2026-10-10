@@ -160,10 +160,10 @@ renderer.
 
 | Tool | Does |
 |---|---|
-| `mesh_import.py` | bakes a mesh and writes `<name>.mesh`, one entry, beside its import file |
+| `mesh_import.py --out DIR` | bakes a mesh and writes `<name>.mesh`, one entry, into DIR (a scratch bake) |
 | `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
-| `build_pack.py --from-cache [DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` instead of the tree |
+| `build_pack.py [--bake-cache DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` |
 | `bake/bake.py list\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
@@ -174,27 +174,35 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c` and `anim_tracks.c` are the one reader of
 each.
 
-The mesh entries are committed, like the generated C they stand beside; a clip
+No mesh is committed: each is a bake product, fetched by its lock row; a clip
 entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
 
-The meshes are on their way out of the tree
-([Cached-Bakes-Design-Sketch.md](../plans/Cached-Bakes-Design-Sketch.md)).
+How the meshes are cached
+([Cached-Bakes-Design-Sketch.md](../plans/Cached-Bakes-Design-Sketch.md)):
 `launcher/tools/bake/bake.py` keys each one on its recipe, its sources and
 the code that bakes it; `launcher/bakes.lock`, written only by that tool,
 records the bytes made for each key, and main publishes those files to the
-repository's `bakes` release. `build_pack.py --from-cache` builds the same
-packs from them, downloading into the user cache what is not there, and
-fails naming every mesh it cannot get.
+repository's `bakes` release. `build_pack.py`, and so the firmware build, the
+host tests and the render scripts, takes every mesh from the bake cache by
+its lock row: the user cache, one per user and shared by every clone and
+worktree, or the folder `AUTANA_BAKE_CACHE` names for one process. What the
+cache lacks is downloaded from the release, or before main publishes it from
+the CI run that made it (that needs a GitHub token: `GH_TOKEN`, or `gh`
+signed in). **A build with a cold cache needs the network once**; offline, it
+fails naming every mesh it cannot get. Files land in the cache by rename, so
+builds running side by side never read half a file.
 
 A pull request that changes what a mesh is made from gets its bake from the
 Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
 and the lock check fails until the author runs `bake.py lock --from-run N`
 with that run and commits the lock. A fit needs the CUDA GPU, so the Bakes GPU
 workflow makes it, started by hand on the branch; no pull request reaches that
-runner. Only a run's
+runner. `--from-run` repeats, so the two runs lock together
+(`--from-run CPU --from-run GPU`); two runs that made one key with different
+bytes fail, naming both. Only a run's
 files can be locked, so every locked file can be published from main; a fit's
 reference frames stay on the machine that fitted. The exception is a seeded
 row (`seeded = true`), written by `bake.py lock --seed` from the files the tree

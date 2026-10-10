@@ -3,28 +3,28 @@
 #include <assert.h>
 #include <string.h>
 
-#include "util/build/build_variant.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
+#include "build/build_variant.h"
+#include "core/memory.h"
+#include "core/timing.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/raster_meshlets.h"
 #include "render/raster_motion.h"
 #include "render/raster_show.h"
 
-static const render_view_t views[] = {
+static const render_debug_view_t views[] = {
     {"depth", 0, raster_depth_view},
     {"tiles", 0, raster_depth_tiles_view},
     {"motion", sizeof(raster_motion_t), raster_motion_view},
     {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view},
 };
-_Static_assert(RENDER_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
+_Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
 
-const render_view_t*
-render_context_view(int view) {
+const render_debug_view_t*
+render_context_debug_view(int view) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    return view > RENDER_VIEW_SHADED && view <= RENDER_VIEW_COUNT ? &views[view - 1] : NULL;
+    return view > RENDER_DEBUG_VIEW_SHADED && view <= RENDER_DEBUG_VIEW_COUNT ? &views[view - 1] : NULL;
 #else
     (void)view;
     return NULL;
@@ -32,24 +32,24 @@ render_context_view(int view) {
 }
 
 int
-render_context_view_named(const char* name) {
+render_context_debug_view_named(const char* name) {
     if (strcmp(name, "shaded") == 0) {
-        return RENDER_VIEW_SHADED;
+        return RENDER_DEBUG_VIEW_SHADED;
     }
-    for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
-        const render_view_t* row = render_context_view(i);
+    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
+        const render_debug_view_t* row = render_context_debug_view(i);
         if (row != NULL && strcmp(name, row->name) == 0) {
             return i;
         }
     }
-    return RENDER_VIEW_UNKNOWN;
+    return RENDER_DEBUG_VIEW_UNKNOWN;
 }
 
 void
-render_context_print_views(FILE* out) {
+render_context_print_debug_views(FILE* out) {
     (void)fputs("shaded", out);
-    for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
-        const render_view_t* row = render_context_view(i);
+    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
+        const render_debug_view_t* row = render_context_debug_view(i);
         if (row != NULL) {
             (void)fprintf(out, ", %s", row->name);
         }
@@ -69,7 +69,7 @@ render_context_main(void) {
 void
 render_context_release(render_context_t* c) {
     memory_free(c->scratch);
-    memory_free(c->view_state);
+    memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
@@ -99,35 +99,35 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
 }
 
 void
-render_context_set_view(render_context_t* c, int view) {
+render_context_set_debug_view(render_context_t* c, int view) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    const render_view_t* row = render_context_view(view);
-    if (view != RENDER_VIEW_SHADED && row == NULL) {
+    const render_debug_view_t* row = render_context_debug_view(view);
+    if (view != RENDER_DEBUG_VIEW_SHADED && row == NULL) {
         return;
     }
-    if (c->view == view && (view == RENDER_VIEW_SHADED || c->raster.attachment_count != 0)) {
+    if (c->debug_view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
-    memory_free(c->view_state);
-    c->view_state = NULL;
-    c->view = RENDER_VIEW_SHADED;
+    memory_free(c->debug_view_state);
+    c->debug_view_state = NULL;
+    c->debug_view = RENDER_DEBUG_VIEW_SHADED;
     c->raster.attachment_count = 0;
     c->raster.attachments = NULL;
     if (row == NULL) {
         return;
     }
     if (row->state_bytes != 0) {
-        c->view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
-        if (c->view_state == NULL) {
+        c->debug_view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
+        if (c->debug_view_state == NULL) {
             return;
         }
-        memset(c->view_state, 0, row->state_bytes);
+        memset(c->debug_view_state, 0, row->state_bytes);
     }
-    c->view_attachment = row->attachment(c->view_state);
-    c->view_attached[0] = &c->view_attachment;
-    c->raster.attachments = c->view_attached;
+    c->debug_view_attachment = row->attachment(c->debug_view_state);
+    c->debug_view_attached[0] = &c->debug_view_attachment;
+    c->raster.attachments = c->debug_view_attached;
     c->raster.attachment_count = 1;
-    c->view = view;
+    c->debug_view = view;
 #else
     (void)c;
     (void)view;
@@ -164,19 +164,19 @@ fit_scratch(render_context_t* c) {
 }
 
 bool
-render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const camera_t* camera,
-                    uint16_t clear, int quarter, int width, int height) {
+render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
+                    uint16_t clear) {
     c->frame.predicted_us = 0;
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->instances = instances;
     r->instance_count = count;
-    r->width = step < 0 ? width * c->scale_percent / 100 : c->ladder.steps[step].width;
-    r->height = step < 0 ? height * c->scale_percent / 100 : c->ladder.steps[step].height;
+    r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
+    r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
-    r->destination_width = width;
-    r->destination_height = height;
+    r->destination_width = view->viewport.width;
+    r->destination_height = view->viewport.height;
     fit_scratch(c);
     if (c->scratch == NULL) {
         return false;
@@ -185,21 +185,21 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.height = r->height;
     if (c->policy == RENDER_FIXED) {
         /* Off: the plain draw, nothing timed or chosen. */
-        c->frame.stats = raster_draw(r, camera, quarter);
+        c->frame.stats = raster_draw(r, view);
     } else {
         const int64_t began_us = timing_now_us();
         if (c->policy == RENDER_PREDICTED) {
             /* Culled once: the census prices the frame and the draw reuses its list. */
-            c->frame.stats = raster_census(r, camera, quarter);
+            c->frame.stats = raster_census(r, view);
             const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
             c->frame.predicted_us = (int32_t)c->predict.chosen_us;
             r->width = c->ladder.steps[chosen].width;
             r->height = c->ladder.steps[chosen].height;
             c->frame.width = r->width;
             c->frame.height = r->height;
-            raster_draw_culled(r, camera, quarter);
+            raster_draw_culled(r, view);
         } else {
-            c->frame.stats = raster_draw(r, camera, quarter);
+            c->frame.stats = raster_draw(r, view);
         }
         c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     }

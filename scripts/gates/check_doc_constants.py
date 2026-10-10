@@ -10,17 +10,13 @@ import pathlib
 import re
 import sys
 
-from tracked import tracked_files
-from c_comments import balanced_end
+from c_constants import constants
+from c_comments import balanced_end, blank_comments
 
 from check_doc_citations import documentation
 
-DEFINE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)\b(.*)$")
-ENUM = re.compile(r"\benum\s*(?:[A-Za-z_]\w*\s*)?\{([^{}]*)\}", re.S)
-MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
 DECIMAL = re.compile(r"(?<![\w.])(0|[1-9]\d*)(?!\w)")
 HEX = re.compile(r"(?<!\w)0[xX][0-9A-Fa-f]+(?!\w)")
-LITERAL = re.compile(r"(?:0|[1-9]\d*)[uUlL]*$")
 HISTORICAL = re.compile(r"\b(?:was|used to be|before the retune|measured)\b", re.I)
 UNIT = re.compile(r"\s*(?:-\s*)?(us|microseconds?|ms|milliseconds?|ns|nanoseconds?|s|seconds?|px|pixels?|"
                   r"cell(?:s)?|byte(?:s)?|KiB|MiB|Hz|kHz|MHz)\b", re.I)
@@ -61,54 +57,6 @@ class Mismatch:
         self.defined = defined
 
 
-def uncomment(text):
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return re.sub(r"//.*", "", text)
-
-
-def add(definitions, name, value):
-    definitions.setdefault(name, []).append(value)
-
-
-def source_files(root):
-    """C sources under launcher/ that the repository tracks. Anything a build
-    or the component manager writes (managed_components/, build*/) is not
-    this project's definition of a constant, and reading it made the verdict
-    depend on whether the checkout had ever been built."""
-    root = pathlib.Path(root)
-    paths = (root / name for name in tracked_files(root, ("launcher",)))
-    for path in sorted(paths):
-        parts = path.relative_to(root).parts
-        if path.suffix not in {".c", ".h"} or not path.is_file():
-            continue
-        if "managed_components" in parts or any(part.startswith("build") for part in parts):
-            continue
-        yield path
-
-
-def constants(root):
-    """Return only names with one literal definition in the tracked launcher/ sources."""
-    definitions = {}
-    for path in source_files(root):
-        text = uncomment(path.read_text(encoding="utf-8", errors="replace"))
-        for line in text.splitlines():
-            match = DEFINE.match(line)
-            if not match:
-                continue
-            literal = match.group(2).strip()
-            add(definitions, match.group(1), int(re.sub(r"[uUlL]+$", "", literal)) if LITERAL.fullmatch(literal) else None)
-        for body in ENUM.findall(text):
-            for field in body.split(","):
-                match = MEMBER.match(field)
-                if match:
-                    literal = match.group(2).strip()
-                    add(definitions, match.group(1), int(re.sub(r"[uUlL]+$", "", literal)) if LITERAL.fullmatch(literal) else None)
-                elif field.strip():
-                    add(definitions, field.strip().split()[0], None)
-    return {name: values[0] for name, values in definitions.items()
-            if len(values) == 1 and values[0] is not None}
-
-
 def braced_body(text, start):
     """Return the next balanced braced initializer body, or None."""
     begin = text.find("{", start)
@@ -147,7 +95,7 @@ def table_values(root):
     path = pathlib.Path(root) / "launcher/main/apps/sand/material.c"
     if not path.exists():
         return {}
-    text = uncomment(path.read_text(encoding="utf-8", errors="replace"))
+    text = blank_comments(path.read_text(encoding="utf-8", errors="replace"))
     material_entries = {}
     for match in MATERIAL_ENTRY.finditer(text):
         body = braced_body(text, match.end())
@@ -356,7 +304,7 @@ def documents(root, ref=None):
 
 def check(root, verbose=False, docs_ref=None):
     root = pathlib.Path(root)
-    values = constants(root)
+    values = constants(root, literal_only=True)
     material_values = table_values(root)
     mismatches, skipped = [], []
     names = re.compile(r"\b(" + "|".join(map(re.escape, sorted(values, key=len, reverse=True))) + r")\b") if values else None

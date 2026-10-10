@@ -1,7 +1,7 @@
 # Board and Memory
 
 Part of the [platform notes](README.md). Hardware selection lives in
-`launcher/main/board/`; memory policy lives in `launcher/main/util/runtime/memory.h`
+`launcher/main/board/`; memory policy lives in `launcher/main/core/memory.h`
 and `launcher/sdkconfig.defaults`.
 
 ## The board

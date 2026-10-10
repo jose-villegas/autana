@@ -84,25 +84,15 @@ class MeshletSettingsTests(unittest.TestCase):
                 with self.assertRaisesRegex(SettingsError, "meshlet_triangles"):
                     load_import_settings(path)
 
-    def test_nondefault_meshlet_limit_changes_fit_recipe(self):
+    def test_meshlet_limit_is_part_of_the_bake_key(self):
         import copy
+        from bake.bake import mesh_recipe
         from r3d.import_settings import load_scene
-        from r3d.fitted_variant import recipe_digest
         scene = load_scene(TOOLS.parents[1] / "launcher/demo/sponza/sponza.scene.toml")
-        job = next(job for job in scene.renderers if job.renderer.fit)
+        job = scene.renderers[0]
         changed = copy.deepcopy(job)
-        changed.settings.meshlet_triangles = 16
-        self.assertNotEqual(recipe_digest(job, scene), recipe_digest(changed, scene))
-
-    def test_default_keeps_committed_fit_recipe_hashes(self):
-        from r3d.import_settings import load_scene
-        from r3d.fitted_variant import recipe_digest
-        for path in (TOOLS.parents[1] / "launcher/demo").glob("*/*.scene.toml"):
-            scene = load_scene(path)
-            for job in scene.renderers:
-                if job.renderer.fit:
-                    with self.subTest(mesh=job.asset_name):
-                        self.assertEqual(recipe_digest(job, scene), job.renderer.fit.recipe_sha256)
+        changed.settings.meshlet_triangles = job.settings.meshlet_triangles // 2
+        self.assertNotEqual(mesh_recipe(job, scene, {}), mesh_recipe(changed, scene, {}))
 
 class MeshletReportTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
@@ -117,7 +107,7 @@ class MeshletReportTests(unittest.TestCase):
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "util/runtime/tune.h"
+#include "services/tune.h"
 TUNE_OWNER(render);
 TUNE(render, cull, 0, 0, 1);
 static jmp_buf aborted;
@@ -155,7 +145,7 @@ int main(void) {
             binary = work / "probe.exe"
             main = TOOLS.parents[1] / "launcher/main"
             built = subprocess.run(["gcc", "-std=gnu11", "-I", str(main), "-I", str(TOOLS.parents[1] / "launcher/test/stubs"),
-                                    str(probe), str(main / "util/runtime/tune.c"), "-o", str(binary)], capture_output=True, text=True)
+                                    str(probe), str(main / "services/tune.c"), "-o", str(binary)], capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             ran = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(ran.returncode, 0, ran.stderr)

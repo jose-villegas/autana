@@ -218,8 +218,9 @@ source is `ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry;
 
 ## The offline tools
 
-A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, written
-beside its import file by
+A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, a
+bake product made into the bake cache
+([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)) by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
 [`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). Two kinds of file

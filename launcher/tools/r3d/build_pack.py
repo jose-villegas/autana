@@ -17,9 +17,12 @@ a scene (r3d/scene_asset.py) and a clip (anim/tracks_asset.py) are baked here
 from their files, each with its stem for id. Ids are unique within a pack,
 whatever their type. Each pack is written to DIR/<name>.apak; --image also
 writes the partition image, the pack directory and every pack.
---from-cache takes every mesh from the bake cache by launcher/bakes.lock
-(bake/bake.py) instead of the tree, downloading what the cache lacks unless
---offline; a bake that is not available fails, naming each.
+Every mesh comes from the bake cache by launcher/bakes.lock (bake/bake.py):
+the user cache, or --bake-cache DIR, or AUTANA_BAKE_CACHE when a process sets
+it. What the cache lacks is downloaded, so a cold cache needs the network once;
+--offline never downloads, and a bake that is not available fails, naming
+each. The lock is this repository's: a mesh of a scene outside it is the file
+beside it.
 --pack-of prints the pack that holds entry ID. Run from the repository
 root; standard library only, and no mesh is baked. Packs are build
 products, never committed.
@@ -136,27 +139,35 @@ def pack_jobs(paths):
 
 
 def pack_bytes(paths, replace=(), cache=None, offline=False):
-    """{pack name: its bytes}; each --replace NAME=FILE takes mesh NAME from FILE. With `cache`, every
-    mesh comes from the bake cache by its locked key (bake/bake.py), never from the tree."""
+    """{pack name: its bytes}. Every mesh comes from the bake cache by its locked key (bake/bake.py),
+    `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
+    mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
+    or import outside it (a test's or a scratch scene) is the file beside it."""
     packs, jobs = pack_jobs(paths)
-    if cache is not None:
-        from bake import bake
-
-        fetched = {found.tree.resolve(): path for found, path in
-                   bake.fetch_all(bake.bakes_in(packs, jobs), bake.read_lock(), cache, offline).items()}
-        unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
-                   if not source.name.endswith((SCENE, CLIP)) and source.resolve() not in fetched]
-        if unkeyed:
-            raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
-                                   "copy is never taken: " + ", ".join(unkeyed))
-        packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
-                 for name, entries in packs.items()}
+    replaced = {}
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
         if holder is None or holder[mesh].name.endswith((SCENE, CLIP)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
-        holder[mesh] = pathlib.Path(file)
+        replaced[mesh] = pathlib.Path(file)
+    from bake import bake
+
+    locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
+    wanted = [found for found in bake.bakes_in(packs, locked)
+              if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
+    fetched = {found.tree.resolve(): path for found, path in
+               bake.fetch_all(wanted, bake.read_lock(), cache or bake.default_cache(), offline).items()}
+    unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
+               if not source.name.endswith((SCENE, CLIP)) and entry not in replaced
+               and source.resolve() in locked and source.resolve() not in fetched]
+    if unkeyed:
+        raise bake.BakeMissing("no bake keys these meshes, so the cache cannot give them and the tree's "
+                               "copy is never taken: " + ", ".join(unkeyed))
+    packs = {name: {entry: fetched.get(source.resolve(), source) for entry, source in entries.items()}
+             for name, entries in packs.items()}
+    for name, entries in packs.items():
+        entries.update((mesh, file) for mesh, file in replaced.items() if mesh in entries)
     missing = [str(source) for sources in packs.values() for source in sources.values() if not source.is_file()]
     if missing:
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
@@ -208,9 +219,8 @@ def main(argv=None):
     parser.add_argument("--replace", action="append", default=[], metavar="NAME=FILE",
                         help="take mesh NAME from FILE: a scratch bake beside the committed ones")
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
-    parser.add_argument("--from-cache", nargs="?", const="", metavar="DIR",
-                        help="take every mesh from the bake cache (DIR, or the user cache) by launcher/bakes.lock")
-    parser.add_argument("--offline", action="store_true", help="with --from-cache: never download")
+    parser.add_argument("--bake-cache", metavar="DIR", help="the bake cache; the user cache when omitted")
+    parser.add_argument("--offline", action="store_true", help="never download a bake the cache lacks")
     args = parser.parse_args(argv)
     paths = args.paths or [DEFAULT_SEARCH]
     try:
@@ -222,11 +232,7 @@ def main(argv=None):
             return 0
         if not args.out:
             parser.error("-o DIR is required")
-        cache = None
-        if args.from_cache is not None:
-            from bake import bake
-
-            cache = pathlib.Path(args.from_cache) if args.from_cache else bake.default_cache()
+        cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
         packs = pack_bytes(paths, args.replace, cache, args.offline)
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
