@@ -184,26 +184,33 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, max_influences=skin
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
     result = {}
     for name, sources in sorted(packs.items()):
-        entry_rows = [pack_entry(key, source) for key, source in sorted(sources.items())]
+        entry_rows = [pack_entry(key, source, engine_frame=False) for key, source in sorted(sources.items())]
         mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
                      if kind == LIT_MESH and original_packs[name][key].resolve() in jobs]
         additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
         skin_pack.append(entry_rows, additions, dict(original_packs[name]))
-        result[name] = build_pack(sorted(entry_rows))
+        mirrored = []
+        for key, kind, data in entry_rows:
+            try:
+                mirrored.append((key, kind, to_engine(kind, data) if kind != image_asset.TYPE else data))
+            except ValueError as error:
+                raise SettingsError(f"entry {key!r}: {error}") from error
+        result[name] = build_pack(sorted(mirrored))
     return result
 
 
-def pack_entry(key, source):
-    """The pack entry `key`: a scene, clip or picture baked from its file,
-    else a mesh's bytes; a scene, clip or mesh in the engine frame."""
-    if source.name.endswith(IMAGE):
-        return key, image_asset.TYPE, image_asset.bake(source)
+def pack_entry(key, source, engine_frame=True):
+    """A scene, clip, picture or mesh entry; source bytes remain available for skin matching."""
     try:
         if source.name.endswith(SCENE):
-            return key, scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(source))
-        if source.name.endswith(CLIP):
-            return key, tracks_asset.TYPE, to_engine(tracks_asset.TYPE, tracks_asset.bake(source))
-        return key, LIT_MESH, to_engine(LIT_MESH, source.read_bytes())
+            kind, data = scene_asset.TYPE, scene_asset.bake(source)
+        elif source.name.endswith(CLIP):
+            kind, data = tracks_asset.TYPE, tracks_asset.bake(source)
+        elif source.name.endswith(IMAGE):
+            kind, data = image_asset.TYPE, image_asset.bake(source)
+        else:
+            kind, data = LIT_MESH, source.read_bytes()
+        return key, kind, to_engine(kind, data) if engine_frame and kind != image_asset.TYPE else data
     except ValueError as error:
         raise SettingsError(f"entry {key!r} ({source}): {error}") from error
 

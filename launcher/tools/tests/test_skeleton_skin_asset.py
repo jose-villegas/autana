@@ -7,7 +7,8 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from anim import skeleton_asset
-from r3d import skin_asset
+from r3d import skin_asset, mesh_asset
+from asset.engine_frame import to_engine, AXIS_SIGNS, ROTATION_SIGNS
 
 
 class Formats(unittest.TestCase):
@@ -29,6 +30,39 @@ class Formats(unittest.TestCase):
         vertices = [((0, 0), (255, 0), (0, 127, 0))]
         self.assertEqual(skin_asset.decode(skin_asset.encode([matrix], vertices, 2)),
                          ([matrix], vertices, 2))
+
+    def test_skeleton_mirror_round_trip_and_involution(self):
+        rest = (2, 3, -7, 0.5, 0.5, 0.5, 0.5, 2, 3, 4)
+        rows = [('joint', skeleton_asset.ROOT, rest), ('joint/child', 0, rest)]
+        raw = skeleton_asset.encode(rows)
+        mirrored = to_engine(skeleton_asset.TYPE, raw)
+        expected = (*[v * sign for v, sign in zip(rest[:3], AXIS_SIGNS)],
+                    *[v * sign for v, sign in zip(rest[3:7], ROTATION_SIGNS)], *rest[7:])
+        decoded = skeleton_asset.decode(mirrored)
+        self.assertEqual(decoded, [(path, parent, expected) for path, parent, _ in rows])
+        self.assertEqual(skeleton_asset.encode(decoded), mirrored)
+        self.assertEqual(to_engine(skeleton_asset.TYPE, mirrored), raw)
+
+    def test_skin_mirror_round_trip_and_involution(self):
+        matrix = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+        matrices = [matrix, tuple(reversed(matrix))]
+        vertices = [((0, 1), (128, 127), (30, -40, 110)), ((1, 0), (255, 0), (-20, 90, -70))]
+        signs = (*AXIS_SIGNS, 1)
+        expected_matrices = [tuple(v * signs[row] * signs[column]
+                                   for row in range(len(AXIS_SIGNS)) for column, v in
+                                   enumerate(m[row * len(signs):(row + 1) * len(signs)])) for m in matrices]
+        expected_vertices = [(j, w, tuple(v * sign for v, sign in zip(n, AXIS_SIGNS))) for j, w, n in vertices]
+        for influences in skin_asset.INFLUENCES:
+            rows = [(j + (0,) * (influences - len(j)), w + (0,) * (influences - len(w)), n)
+                    for j, w, n in vertices]
+            raw = skin_asset.encode(matrices, rows, influences)
+            mirrored = to_engine(skin_asset.TYPE, raw)
+            decoded = skin_asset.decode(mirrored)
+            self.assertEqual(decoded[0], expected_matrices)
+            self.assertEqual([n for _, _, n in decoded[1]], [n for _, _, n in expected_vertices])
+            self.assertEqual([(j, w) for j, w, _ in decoded[1]], [(j, w) for j, w, _ in rows])
+            self.assertEqual(skin_asset.encode(*decoded), mirrored)
+            self.assertEqual(to_engine(skin_asset.TYPE, mirrored), raw)
 
     def test_weight_ties_and_sum(self):
         self.assertEqual(skin_asset.quantize_weights((3, 2, 1, 0), (1, 1, 1, 1), 4),
@@ -82,11 +116,11 @@ class Matching(unittest.TestCase):
         reference = gltf_skin.SkinnedAsset(document, binary)
         measured = {}
         for influences in (2, 4):
-            entries = skin_probe.entries(influences)
+            entries = [(key, kind, to_engine(kind, data)) for key, kind, data in skin_probe.entries(influences)]
             skeleton = skeleton_asset.decode(entries[0][2])
             inverse, vertices, width = skin_asset.decode(entries[1][2])
             tracks, _ = tracks_asset.decode(entries[2][2])
-            positions, scale = skin_asset.mesh_positions(skin_probe.mesh_entry())
+            positions, scale = skin_asset.mesh_positions(to_engine(mesh_asset.TYPE, skin_probe.mesh_entry()))
             error = 0
             for frame in range(61):
                 seconds = frame / 60
@@ -106,8 +140,9 @@ class Matching(unittest.TestCase):
                     p = tuple(v / scale for v in pos)
                     got = [sum(gltf_skin.transform_point(matrices[j], p)[axis] * w / skin_asset.WEIGHT_SUM
                                for j, w in zip(joints, weights)) for axis in range(3)]
-                    source_index = skin_probe.POSITIONS.index(p)
-                    error = max(error, max(abs(a - b) for a, b in zip(got, want[source_index])))
+                    source_index = skin_probe.POSITIONS.index(tuple(v * sign for v, sign in zip(p, AXIS_SIGNS)))
+                    expected = [v * sign for v, sign in zip(want[source_index], AXIS_SIGNS)]
+                    error = max(error, max(abs(a - b) for a, b in zip(got, expected)))
             measured[influences] = error
         self.assertLessEqual(measured[4], 1e-6)
         self.assertGreater(measured[2], measured[4])
@@ -192,10 +227,16 @@ class PackStep(unittest.TestCase):
         document, binary = skin_probe.rig()
         # Write the probe with the shared glTF writer so its source is portable.
         nodes = document['nodes']
+        nodes[1]['translation'] = [2, 3, -7]
+        nodes[1]['rotation'] = [0.5, 0.5, 0.5, 0.5]
         primitive = dict(positions=skin_probe.POSITIONS, indices=[0, 1, 2], normals=skin_probe.NORMALS,
                          joints=skin_probe.JOINTS, weights=skin_probe.WEIGHTS)
         data = gltf_write.build_glb(nodes, [], meshes=[{'primitives': [primitive]}],
                 skins=[{'joints': [1, 2, 3, 4], 'inverse_binds': [skin_probe.IDENTITY] * 4}])
+        from gltf import gltf_read
+        source_document, source_binary = gltf_read.parse_glb(data)
+        _, source_skeleton, source_skin = skin_asset.bake(source_document, source_binary, 5,
+                                                        skin_probe.mesh_entry(), skin_asset.DEFAULT_INFLUENCES)
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory)
             (path / 'rig.glb').write_bytes(data)
@@ -212,6 +253,9 @@ class PackStep(unittest.TestCase):
                     decoded = parse_pack(build_pack.pack_bytes([path], offline=True)['room' if placed else 'rig'])
                     self.assertEqual(decoded['armature'][0], skeleton_asset.TYPE)
                     self.assertEqual(decoded[mesh_id + '.skin'][0], skin_asset.TYPE)
+                    self.assertEqual(decoded['armature'][1], to_engine(skeleton_asset.TYPE, source_skeleton))
+                    self.assertEqual(decoded[mesh_id + '.skin'][1], to_engine(skin_asset.TYPE, source_skin))
+                    self.assertEqual(decoded[mesh_id][1], to_engine(mesh_asset.TYPE, skin_probe.mesh_entry()))
                     self.assertNotIn('move', decoded)
 
     def test_ids_and_duplicate_sources(self):

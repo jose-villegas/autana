@@ -78,6 +78,12 @@ rounded. A zero or nonfinite mean fails naming the vertex.
 
 A model whose welded vertices disagree on weights fails this step.
 
+SKEL and SKIN entries use the [engine frame](Mesh-Import.md#the-offline-tools),
+like the mesh and joint-local clips in their pack. The pack boundary mirrors
+joint rest positions and rotations, inverse binds by `S M S`, and bind normals;
+rest scales stay unchanged. Skin matching reads the source-frame LMSH before
+that boundary.
+
 ## Pack step and ids
 
 `r3d/build_pack.py --max-influences 2|4` sets the skin step's parameter;

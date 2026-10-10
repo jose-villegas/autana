@@ -56,6 +56,7 @@ class EngineFrameTests(unittest.TestCase):
         self.assertEqual(mesh_asset.NODE.unpack_from(converted, header[9])[:6], (1, 2, 6, 4, 5, 7))
         self.assertEqual(converted[:mesh_asset.BLOB_HEADER.size], raw[:mesh_asset.BLOB_HEADER.size])
         self.assertEqual(source.read_bytes(), raw)
+        self.assertEqual(build_pack.to_engine(kind, converted), raw)
 
     def test_unrepresentable_mirror_is_rejected(self):
         source = self.root / "probe.mesh"

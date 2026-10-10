@@ -12,7 +12,7 @@ from r3d import skin_asset
 
 IDENTITY = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 POSITION_SCALE = 16
-POSITIONS = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+POSITIONS = [(0, 0, 0.5), (1, 0, -0.5), (0, 1, 1)]
 NORMALS = [(0, 0, 1)] * 3
 JOINTS = [(0, 1, 2, 3)] * 3
 WEIGHTS = [(128 / 255, 127 / 255, 0, 0), (64 / 255, 64 / 255, 64 / 255, 63 / 255),
@@ -24,7 +24,9 @@ def rig():
              {'name': 'child'}, {'name': 'b', 'children': [4]}, {'name': 'tip'},
              {'name': 'mesh', 'mesh': 0, 'skin': 0}]
     channels = [{'node': j, 'path': 'translation', 'times': [0, 1],
-                 'values': [(0, 0, 0), (j / 4, j / 8, 0)]} for j in range(1, 5)]
+                 'values': [(0, 0, 0), (j / 4, j / 8, j / 16)]} for j in range(1, 5)]
+    channels += [{'node': j, 'path': 'rotation', 'times': [0, 1],
+                  'values': [(0, 0, 0, 1), (0.5, 0.5, 0.5, 0.5)]} for j in range(1, 5)]
     primitive = dict(positions=POSITIONS, indices=[0, 1, 2], normals=NORMALS,
                      joints=JOINTS, weights=WEIGHTS)
     return gltf_read.parse_glb(gltf_write.build_glb(nodes, [{'name': 'move', 'channels': channels}],
