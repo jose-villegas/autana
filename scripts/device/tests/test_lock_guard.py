@@ -1187,6 +1187,7 @@ class SuiteFailureTests(Store):
                          idle_seconds=None, out=None, expect_build_id=None)
         with mock.patch.object(device, "build_image"), \
                 mock.patch.object(device, "write_image", return_value="abc"), \
+                mock.patch.object(device, "await_console"), \
                 mock.patch.object(device, "open_when_free",
                                   side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
