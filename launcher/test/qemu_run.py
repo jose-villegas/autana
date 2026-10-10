@@ -27,12 +27,18 @@ runs after the --suite and --touch options and before --screenshot:
 
     --do "tap 95 187" --do "wait 2500" --do "screenshot sponza.png"
     --do "tilt 0 -4096 0" --do "swipe 222 1 222 200"
+    --do "send open <app>" --do "send home"
 
 A tap or swipe takes pixels of that screenshot, as `autana tap` does, and
 goes in as TOUCH lines in the panel's own frame; a touch (and --touch) is
-sent as it is, in panel pixels. A tilt goes in as an IMU line. Leave
---icount off for this: emulated time then runs far slower than the host's,
-and how long a press lasts is counted in the emulated clock.
+sent as it is, in panel pixels. A tilt goes in as an IMU line, and a send
+writes its line to the console as typed, as `autana console` forwards one.
+Leave --icount off for this: emulated time then runs far slower than the
+host's, and how long a press lasts is counted in the emulated clock.
+
+After every step the image must answer BUILDID, and any run fails on a crash
+line (a panic, abort(), a failed assert) or a second boot banner: the same
+verdict the board's captures get from scripts/lib/device_capture.py.
 
 What a run can and cannot say. Pass and fail are real for anything that does
 not read a clock. A ceiling pegged on the board is reported and not enforced
@@ -67,10 +73,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "build"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "qemu"))
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
+from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
+                            crash_signs)  # (the board tool's own crash verdict)
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
+import patched_qemu  # noqa: E402  (path must be set up first)
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
@@ -168,9 +178,13 @@ class Console:
     def send(self, line):
         self.sock.sendall(line.encode() + b"\n")
 
-    def lines(self):
-        """Complete lines as they arrive, until QEMU exits or time runs out."""
-        while time.monotonic() < self.deadline and self.proc.poll() is None:
+    def lines(self, seconds=None):
+        """Complete lines as they arrive, until QEMU exits or time runs out:
+        the run's, or `seconds` from now when that comes first."""
+        deadline = self.deadline
+        if seconds is not None:
+            deadline = min(deadline, time.monotonic() + seconds)
+        while time.monotonic() < deadline and self.proc.poll() is None:
             try:
                 chunk = self.sock.recv(65536)
             except socket.timeout:
@@ -297,6 +311,10 @@ def run_action(console, action):
             console.send("IMU %d %d %d" % tuple(map(int, args)))
             time.sleep(TOUCH_SETTLE_S)
             return True
+        if verb == "send" and args:
+            console.send(action.split(None, 1)[1])
+            time.sleep(TOUCH_SETTLE_S)
+            return True
         if verb == "wait" and len(args) == 1:
             time.sleep(int(args[0]) / 1000.0)
             return True
@@ -304,6 +322,21 @@ def run_action(console, action):
         print("not an action: %r (%s)" % (action, error))
         return False
     print("not an action: %r" % action)
+    return False
+
+
+# After each step the image is asked for its build id: the console task
+# answering proves the firmware is still up. A reboot answers too, once the
+# new boot's console is listening, and is caught by its second boot banner.
+# Generous, because without --icount a heavy frame can starve the console.
+HEARTBEAT_S = 15
+
+
+def heartbeat(console):
+    console.send(BUILD_ID_REQUEST)
+    for line in console.lines(HEARTBEAT_S):
+        if BUILD_ID_RE.search(line):
+            return True
     return False
 
 
@@ -316,6 +349,10 @@ def drive_shell(console, actions):
     ok = True
     for action in actions:
         ok = run_action(console, action) and ok
+        if not heartbeat(console):
+            print("no heartbeat within %d s after %r - the firmware stopped "
+                  "answering; the rest of the steps are skipped" % (HEARTBEAT_S, action))
+            return False
     return ok
 
 
@@ -331,11 +368,15 @@ def summarise(log_path):
         print("  " + line)
     for name, why in failed:
         print("  FAIL %s: %s" % (name, why[:120]))
+    # A run starts from QEMU's own power-on.
+    crashes = crash_signs(text, BOOTS_FROM_RESET)
+    for sign in crashes:
+        print("  " + sign)
     sentinel = re.search(r"^%s .*$" % SENTINEL, text, flags=re.M)
     print("%d passed, %d failed, %d skipped%s" %
           (passed, len(failed), ignored,
            "; " + sentinel.group(0) if sentinel else ""))
-    return sentinel is not None, len(failed)
+    return sentinel is not None, len(failed) + len(crashes)
 
 
 def verdict(log_path, finished, actions):
@@ -364,10 +405,11 @@ def main(argv):
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
                         help="one step, in order (repeatable): 'suite NAME', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
-                             "X Y', 'tilt AX AY AZ', 'wait MS', 'screenshot "
-                             "PNG'. A tap or swipe takes pixels of the "
+                             "X Y', 'tilt AX AY AZ', 'send LINE', 'wait MS', "
+                             "'screenshot PNG'. A tap or swipe takes pixels of the "
                              "screenshot, a touch the panel's own; tilt is raw "
-                             "accelerometer counts, 4096 to the g")
+                             "accelerometer counts, 4096 to the g; send writes "
+                             "LINE to the console as typed, e.g. 'send home'")
     parser.add_argument("--screenshot", default=None, metavar="PNG",
                         help="capture the screen once the suites and touches "
                              "are done")
@@ -393,8 +435,14 @@ def main(argv):
     log_path = args.log or os.path.join(workdir, "qemu_serial.log")
 
     python = idf_python()
-    qemu = find_one(str(espressif_tools_root() / "tools" / "qemu-xtensa" / "*" / "qemu" / "bin" /
-                        "qemu-system-xtensa*"), "qemu-system-xtensa")
+    qemu = patched_qemu.installed(args.idf_path)
+    if qemu:
+        print("qemu_run: QEMU %s, with launcher/test/qemu/patches" % qemu)
+    else:
+        qemu = find_one(str(espressif_tools_root() / "tools" / "qemu-xtensa" / "*" / "qemu" / "bin" /
+                            "qemu-system-xtensa*"), "qemu-system-xtensa")
+        print("qemu_run: Espressif's prebuilt QEMU, without launcher/test/qemu/patches; "
+              "`patched_qemu.py build` adds them on Linux")
 
     merge_flash(args.build_dir, flash, python)
     with open(efuse, "wb") as fh:

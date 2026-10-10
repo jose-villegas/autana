@@ -141,7 +141,7 @@ add_scaled(v3 a, v3 d, float s) {
     return (v3){a.x + (d.x * s), a.y + (d.y * s), a.z + (d.z * s)};
 }
 
-/* Ericson, Real-Time Collision Detection 5.1.5. */
+/* Ericson, Real-Time Collision Detection 5.1.5 (docs/Citations.md#23). */
 static float
 point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
     const v3 ab = sub(b, a);
@@ -400,3 +400,4 @@ run_sponza_suite(void) {
 }
 
 SUITE_REGISTER(run_sponza_suite);
+SUITE_READS(run_sponza_suite, SPONZA_SCENE);
