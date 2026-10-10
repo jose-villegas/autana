@@ -9,7 +9,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d.cost_model import FEATURES, mesh_rows
-from perf.frame_cost import frame_cost_means, frame_cost_windows
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+import frame_cost
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import read_lit_mesh
 from r3d.poses import sample_camera_path
@@ -71,8 +72,8 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
                 raise ValueError(f"{path}: suite poses differ from the host camera samples")
             poses = times
             packs[row] = pack
-            means = dict(frame_cost_means(path, text=block))
-            if (any(not set(STAGES).issubset(dict(window)) for window in frame_cost_windows(path, block))
+            means = dict(frame_cost.frame_cost_means(path, text=block))
+            if (any(not set(STAGES).issubset(dict(window)) for window in frame_cost.frame_cost_windows(path, block))
                     or block.count("ms/frame avg/worst:") != len(frames)):
                 raise ValueError(f"{path}: missing per-pose frame stages")
             result[key] = [*(means[stage] for stage in STAGES), statistics.mean(int(us) for _, us in frames) / 1000]

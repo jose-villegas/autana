@@ -32,37 +32,37 @@ class PipelineFrameTableTests(unittest.TestCase):
     def test_views_add_their_difference_in_report_order(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            (root / "shipped.log").write_text("ms/frame avg/worst: r3d.draw 40/41 present.wait 0/0 frame.rest 1/1 | total 41\n")
+            (root / "shipped.log").write_text("ms/frame avg/worst: stage.a 40/41 stage.idle 0/0 stage.rest 1/1 | total 41\n")
             (root / "view-motion.log").write_text(
-                "ms/frame avg/worst: r3d.draw 42/43 r3d.resolve 15/15 present.wait 0/0 frame.rest 7/7 | total 64\n")
+                "ms/frame avg/worst: stage.a 42/43 view.only 15/15 stage.idle 0/0 stage.rest 7/7 | total 64\n")
             order, base, added = frame_stages.stage_costs(root / "shipped.log", str(root / "view-{view}.log"),
                                                     ["depth", "motion"])
-            self.assertEqual(order, ["r3d.draw", "r3d.resolve", "present.wait", "frame.rest"])
-            self.assertNotIn("r3d.resolve", base)
+            self.assertEqual(order, ["stage.a", "view.only", "stage.idle", "stage.rest"])
+            self.assertNotIn("view.only", base)
             self.assertEqual(list(added), ["motion"])
-            self.assertEqual(added["motion"], {"r3d.draw": 2, "r3d.resolve": 15, "present.wait": 0, "frame.rest": 6})
+            self.assertEqual(added["motion"], {"stage.a": 2, "view.only": 15, "stage.idle": 0, "stage.rest": 6})
             table = frame_stages.table(order, base, added, ["depth", "motion"], [1, 1], "chart.png")
-            self.assertIn("| r3d.resolve | not run | not run | +15.00 |", table)
+            self.assertIn("| view.only | not run | not run | +15.00 |", table)
             self.assertIn("| total | 41.00 | 100% | +23.00 |", table)
             self.assertIn("Not captured: depth.", table)
             self.assertIn("mean of 1 report windows", table)
             self.assertIn("mean of 1 to 3 report windows",
                           frame_stages.table(order, base, added, ["motion"], [3, 1], "chart.png"))
             (root / "view-motion.log").write_text(
-                "ms/frame avg/worst: r3d.draw 30/31 r3d.show 2/2 tail.shared 3/3 motion.tail 1/1 | total 36\n")
+                "ms/frame avg/worst: stage.a 30/31 view.shared 2/2 tail.shared 3/3 motion.tail 1/1 | total 36\n")
             (root / "view-tiles.log").write_text(
-                "ms/frame avg/worst: r3d.draw 40/41 r3d.show 1/1 tail.shared 2/2 tiles.tail 1/1 | total 44\n")
+                "ms/frame avg/worst: stage.a 40/41 view.shared 1/1 tail.shared 2/2 tiles.tail 1/1 | total 44\n")
             order, base, added = frame_stages.stage_costs(root / "shipped.log", str(root / "view-{view}.log"),
                                                         ["depth", "motion", "tiles"])
-            self.assertEqual(order, ["r3d.draw", "present.wait", "frame.rest", "r3d.show",
+            self.assertEqual(order, ["stage.a", "stage.idle", "stage.rest", "view.shared",
                                      "tail.shared", "motion.tail", "tiles.tail"])
             self.assertEqual(list(added), ["motion", "tiles"])
-            self.assertEqual(added["motion"]["r3d.draw"], -10)
-            self.assertEqual(added["motion"]["frame.rest"], -1)
+            self.assertEqual(added["motion"]["stage.a"], -10)
+            self.assertEqual(added["motion"]["stage.rest"], -1)
             table = frame_stages.table(order, base, added, ["depth", "motion", "tiles"], [1, 1, 1], "chart.png")
-            self.assertIn("| r3d.draw | 40.00 | 98% | -10.00 | +0.00 |", table)
-            self.assertIn("| frame.rest | 1.00 | 2% | -1.00 | -1.00 |", table)
-            self.assertIn("| r3d.show | not run | not run | +2.00 | +1.00 |", table)
+            self.assertIn("| stage.a | 40.00 | 98% | -10.00 | +0.00 |", table)
+            self.assertIn("| stage.rest | 1.00 | 2% | -1.00 | -1.00 |", table)
+            self.assertIn("| view.shared | not run | not run | +2.00 | +1.00 |", table)
             self.assertIn("| total | 41.00 | 100% | -5.00 | +3.00 |", table)
             with self.assertRaises(ValueError):
                 frame_stages.stage_costs(root / "missing.log", str(root / "view-{view}.log"), ["motion"])
@@ -71,10 +71,10 @@ class PipelineFrameTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             shipped = root / "frame.png"
-            order = ["r3d.draw", "r3d.show", "present.wait", "frame.rest"]
-            base = {"r3d.draw": 40, "present.wait": 0, "frame.rest": 1}
-            added = {"motion": {"r3d.draw": -10, "r3d.show": 2, "present.wait": 0, "frame.rest": -1},
-                     "tiles": {"r3d.draw": 1, "r3d.show": 3, "present.wait": 0, "frame.rest": 0}}
+            order = ["stage.a", "view.shared", "stage.idle", "stage.rest"]
+            base = {"stage.a": 40, "stage.idle": 0, "stage.rest": 1}
+            added = {"motion": {"stage.a": -10, "view.shared": 2, "stage.idle": 0, "stage.rest": -1},
+                     "tiles": {"stage.a": 1, "view.shared": 3, "stage.idle": 0, "stage.rest": 0}}
             names = ["depth", "motion", "tiles"]
             import matplotlib.pyplot as plt
             with patch("matplotlib.pyplot.close", wraps=plt.close) as close:
@@ -103,7 +103,7 @@ class PipelineFrameTableTests(unittest.TestCase):
             self.assertEqual([text.get_text() for text in axes[1].texts if " ms" in text.get_text()][:1], ["-9.0 ms (-22%)"])
             legends = [axis.figure.legends[0] for axis in axes]
             self.assertEqual([[text.get_text() for text in legend.texts] for legend in legends],
-                             [["r3d.draw 98%", "frame.rest 2%"], ["r3d.show +5%"], ["r3d.draw +2%", "r3d.show +7%"]])
+                             [["stage.a 98%", "stage.rest 2%"], ["view.shared +5%"], ["stage.a +2%", "view.shared +7%"]])
             from matplotlib.colors import to_rgba
             self.assertEqual(axes[0].patches[1].get_facecolor(), to_rgba(frame_stages.SLOTS[2]))
             self.assertEqual(axes[1].patches[0].get_facecolor()[:3], to_rgba(frame_stages.SLOTS[3])[:3])
@@ -127,50 +127,50 @@ class PipelineFrameTableTests(unittest.TestCase):
             self.assertIn("Not captured: depth.", table)
 
     def test_stage_shares_use_shipped_total_before_rounding(self):
-        base = {"r3d.draw": 7, "r3d.cull": 2, "frame.rest": 3}
+        base = {"stage.a": 7, "stage.b": 2, "stage.rest": 3}
         shipped = sum(base.values())
         shares = frame_stages.stage_shares(base, shipped)
         self.assertAlmostEqual(sum(shares.values()), frame_stages.PERCENT_SCALE)
-        self.assertAlmostEqual(shares["r3d.draw"], 7 * frame_stages.PERCENT_SCALE / shipped)
-        added = frame_stages.stage_shares({"r3d.draw": 3, "frame.rest": -1}, shipped)
-        self.assertEqual(added, {"r3d.draw": 25, "frame.rest": -frame_stages.PERCENT_SCALE / shipped})
-        self.assertEqual(frame_stages.share_text(added["r3d.draw"], signed=True), "+25%")
-        self.assertEqual(frame_stages.share_text(added["frame.rest"], signed=True), "-8%")
+        self.assertAlmostEqual(shares["stage.a"], 7 * frame_stages.PERCENT_SCALE / shipped)
+        added = frame_stages.stage_shares({"stage.a": 3, "stage.rest": -1}, shipped)
+        self.assertEqual(added, {"stage.a": 25, "stage.rest": -frame_stages.PERCENT_SCALE / shipped})
+        self.assertEqual(frame_stages.share_text(added["stage.a"], signed=True), "+25%")
+        self.assertEqual(frame_stages.share_text(added["stage.rest"], signed=True), "-8%")
 
     def test_segment_labels_and_thin_segment_legends_carry_shares(self):
-        base = {"r3d.draw": 49.5, "r3d.cull": 0.5}
-        added = {"depth": {"r3d.draw": 20, "r3d.cull": 0.5}}
+        base = {"stage.a": 49.5, "stage.b": 0.5}
+        added = {"depth": {"stage.a": 20, "stage.b": 0.5}}
         axes = self.chart_axes(base, added)
         self.assertIn("49.5 · 99%", [text.get_text() for text in axes[0].texts])
         self.assertIn("20.0 · +40%", [text.get_text() for text in axes[1].texts])
         self.assertIn("+20.5 ms (+41%)", [text.get_text() for text in axes[1].texts])
         self.assertEqual([[text.get_text() for text in axis.figure.legends[0].texts] for axis in axes],
-                         [["r3d.draw 99%", "r3d.cull 1%"], ["r3d.draw +40%", "r3d.cull +1%"]])
+                         [["stage.a 99%", "stage.b 1%"], ["stage.a +40%", "stage.b +1%"]])
         table = frame_stages.table(list(base), base, added, ["depth"], [1, 1], "chart.png")
         self.assertIn("| Stage | As shipped | Share | depth view adds |", table)
-        self.assertIn("| r3d.cull | 0.50 | 1% | +0.50 |", table)
+        self.assertIn("| stage.b | 0.50 | 1% | +0.50 |", table)
 
     def test_zero_rounded_shares_are_absent_from_bars_and_legends(self):
-        base = {"r3d.draw": 99.6, "r3d.cull": 0.4}
-        added = {"motion": {"r3d.draw": 20, "r3d.cull": 0.4}}
+        base = {"stage.a": 99.6, "stage.b": 0.4}
+        added = {"motion": {"stage.a": 20, "stage.b": 0.4}}
         axes = self.chart_axes(base, added)
-        for axis, value, label in zip(axes, [99.6, 20], ["r3d.draw 100%", "r3d.draw +20%"]):
+        for axis, value, label in zip(axes, [99.6, 20], ["stage.a 100%", "stage.a +20%"]):
             with self.subTest(chart=axis.get_title()):
                 self.assertEqual([bar.get_width() for bar in axis.patches], [value])
                 self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], [label])
         table = frame_stages.table(list(base), base, added, ["motion"], [1, 1], "chart.png")
-        self.assertIn("| r3d.cull | 0.40 | 0% | +0.40 |", table)
+        self.assertIn("| stage.b | 0.40 | 0% | +0.40 |", table)
 
     def test_negative_delta_is_absent_from_bars_and_legend(self):
-        base = {"r3d.draw": 90, "frame.rest": 10}
-        added = {"motion": {"r3d.draw": 20, "frame.rest": -5}}
+        base = {"stage.a": 90, "stage.rest": 10}
+        added = {"motion": {"stage.a": 20, "stage.rest": -5}}
         axis = self.chart_axes(base, added)[-1]
         self.assertEqual([bar.get_width() for bar in axis.patches], [20])
-        self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], ["r3d.draw +20%"])
+        self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], ["stage.a +20%"])
 
     def test_view_legend_handles_match_drawn_bar_styles(self):
-        base = {"r3d.draw": 90, "frame.rest": 10}
-        added = {"motion": {"r3d.draw": 20, "frame.rest": 5}}
+        base = {"stage.a": 90, "stage.rest": 10}
+        added = {"motion": {"stage.a": 20, "stage.rest": 5}}
         axes = self.chart_axes(base, added)
         for axis in axes:
             handles = axis.figure.legends[0].legend_handles

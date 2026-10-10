@@ -18,8 +18,8 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "launcher/tools"))
-from perf.frame_cost import frame_cost_means, frame_cost_windows
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+import frame_cost
 
 VIEW_TABLE = ROOT / "launcher/main/render/context/render_context.c"
 FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
@@ -60,12 +60,12 @@ def stage_order(shipped, views):
 
 
 def stage_costs(present, pattern, names):
-    shipped = frame_cost_means(present)
+    shipped = frame_cost.frame_cost_means(present)
     if shipped is None:
         raise ValueError(f"{present}: no capture of the scene as shipped")
     views = {}
     for name in names:
-        brackets = frame_cost_means(pattern.format(view=name))
+        brackets = frame_cost.frame_cost_means(pattern.format(view=name))
         if brackets is not None:
             views[name] = brackets
     order = stage_order(shipped, views)
@@ -210,7 +210,7 @@ def main():
     order, base, added = stage_costs(args.present, args.views, names)
     chart(order, base, added, args.chart)
     args.tables.mkdir(parents=True, exist_ok=True)
-    windows = [len(frame_cost_windows(path)) for path in
+    windows = [len(frame_cost.frame_cost_windows(path)) for path in
                [args.present, *(args.views.format(view=name) for name in added)]]
     body = table(order, base, added, names, windows, args.chart.name)
     (args.tables / f"{BLOCK}.md").write_text(body + "\n", encoding="utf-8")
