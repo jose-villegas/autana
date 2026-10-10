@@ -3,7 +3,7 @@
 
     python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h
 
-design/boot/ridge.png is the ridge of design/boot/boot.png drawn as a soft
+design/boot/ridge.png is the ridge of launcher/main/boot/boot.png drawn as a soft
 line on black, in the same 448x368 frame. The line is the authored source
 rather than the photograph because pale cloud sits behind a pale rock face:
 where the mountain ends there is a judgement, and the drawing records it.
@@ -69,7 +69,7 @@ def generate(image):
         " *     python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h",
         " *",
         " * Cerro Autana's ridge line, one height per column of the 448x368 frame",
-        " * design/boot/boot.png is drawn in, so a curve drawn from this table lies",
+        " * launcher/main/boot/boot.png is drawn in, so a curve drawn from this table lies",
         " * on the photograph's own ridge. y grows downward and carries",
         " * RIDGE_CURVE_Q_SHIFT fractional bits.",
         " */",
