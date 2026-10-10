@@ -306,7 +306,7 @@ int x = 1 << {shift};
             self.assertIn("(2 hits)", output.getvalue())
 
     def test_report_included_header_visibility(self):
-        header = "launcher/main/math/scalar/value.h"
+        header = "launcher/packages/math/include/math/scalar/value.h"
         for included, expected in ((True, 1), (False, 0)):
             with self.subTest(included=included):
                 include = '#include "math/scalar/value.h"\n' if included else ""

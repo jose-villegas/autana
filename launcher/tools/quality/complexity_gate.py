@@ -443,7 +443,7 @@ def build_idf_entries(toolchain_root, vendored=False):
         if vendored:
             if ("launcher/" + rel.as_posix()) not in VENDORED_REFERENCES:
                 continue
-        elif not parts or parts[0] not in ("main", "test"):
+        elif not parts or parts[0] not in ("main", "packages", "test"):
             continue
         elif is_vendored(str(rel)) or "tools" in parts:
             continue
@@ -573,12 +573,12 @@ def build_compile_db():
 
 
 def check_main_coverage(measured_files):
-    """Every .c file under launcher/main/, found by walking the
-    filesystem: independent of any build or database. A gap that is not
+    """Every .c file under launcher/main/ and launcher/packages/, found by
+    walking the filesystem: independent of any build or database. A gap that is not
     EXCLUDED_MAIN_FILES, with a reason, is a coverage regression and fails
     the gate by name rather than shrinking quietly."""
     measured = {str(Path(f).resolve()) for f in measured_files}
-    on_disk = sorted((LAUNCHER_DIR / "main").rglob("*.c"))
+    on_disk = sorted([*(LAUNCHER_DIR / "main").rglob("*.c"), *(LAUNCHER_DIR / "packages").rglob("*.c")])
     missing = []
     for path in on_disk:
         resolved = str(path.resolve())

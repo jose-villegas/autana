@@ -65,6 +65,7 @@ import zipfile
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
+from build import packages  # noqa: E402
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
 REPO = TOOLS.parents[1]
@@ -348,7 +349,7 @@ def native_inputs(files):
                     keyed[relative(holder(item))] = pinned[holder(item)]
                 elif item.suffix in C_SUFFIXES and item.is_file():
                     sources.append(item)
-    for item in c_includes(sources, (REPO / "launcher" / "main",)):
+    for item in c_includes(sources, packages.include_roots()):
         if holder(item) is not None:
             keyed[relative(holder(item))] = pinned[holder(item)]
         else:

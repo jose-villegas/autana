@@ -94,33 +94,32 @@ flowchart TB
     subgraph R13["board"]
         Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
-    subgraph R14["motion"]
-        Motion["math/motion/<br/><i>springs, orbiting a target</i>"]
-    end
-    subgraph R15["vectors"]
-        Linear["math/linear/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
-    end
-    subgraph R16["scalars and the build switch"]
-        Scalar["math/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
+    subgraph R14["the build switch"]
         Build["build/<br/><i>which build variant this is</i>"]
     end
+    subgraph R15["packages: launcher/packages/"]
+        Math["math/<br/><i>scalars per number type, vectors to transforms, motion</i>"]
+    end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
-- **core/, math/ and build/ are the base.** Every layer above `core/`
-  builds on it: `core/job.h` hands one copied job at a time to core 1, and
-  runs it inline when core 1 is busy or on a host; `core/memory.h` places
-  memory by kind; `core/timing.h` reads time. `math/` and `build/` are
-  shared headers under every other layer, `board/` included: they never
-  touch the chip and include nothing outside themselves but the build
-  config, so the firmware and the host tools both use them. `scalar/` is
-  per number type, `linear/` vectors to transforms over it, `motion/` over
-  both; `build/build_variant.h` says which build this is.
+- **core/, build/ and the packages are the base.** Every layer above
+  `core/` builds on it: `core/job.h` hands one copied job at a time to
+  core 1, and runs it inline when core 1 is busy or on a host;
+  `core/memory.h` places memory by kind; `core/timing.h` reads time.
+  `build/build_variant.h` says which build this is. Below every folder of
+  `main/`, `board/` included, sit the packages: first-party libraries in
+  `launcher/packages/<name>/`, each its own ESP-IDF component with an
+  `include/` root, `src/` and `tests/`. The first is
+  [math](../launcher/packages/math/README.md). A package includes nothing
+  outside itself but the toolchain and the build config (the style audit's
+  PACKAGE-INCLUDE rule), so the firmware, the host tests, the tools and the
+  editor all build it.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
