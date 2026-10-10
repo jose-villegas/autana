@@ -15,8 +15,8 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
-from asset.engine_frame import to_engine  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
+from asset.engine_frame import to_engine  # noqa: E402
 from test_engine_frame import mesh_entry  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
