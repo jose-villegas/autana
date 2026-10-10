@@ -1649,11 +1649,11 @@ def batch(args, store, board):
     summary across all runs. `args.flash` builds and flashes first, as the
     point of one lock is nobody else flashing between two captures of that
     image; without it, every suite runs against whatever is already on the
-    board. A capture that errors is recorded and the batch continues; only a
-    failed build or flash stops it. One suite run once collapses to exactly
-    what a standalone `run-suite` leaves behind: one capture under its own
-    name, no `batch` summary or manifest row, since there is nothing across
-    runs for either to tell apart."""
+    board. A capture that errors is recorded and the batch continues; a
+    failed build or flash stops it, and so does a BatchEnding. One suite run
+    once collapses to exactly what a standalone `run-suite` leaves behind:
+    one capture under its own name, no `batch` summary or manifest row, since
+    there is nothing across runs for either to tell apart."""
     extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
     patterns = test_patterns(getattr(args, "test_filter", None))
     if args.out and (len(args.suite) != 1 or args.runs != 1):
