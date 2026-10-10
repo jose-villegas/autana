@@ -9,7 +9,8 @@ folder, where flash snapshots are made, at temporary directories too. A
 project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
 non-zero if one was attempted, even where the code under test swallowed the
-error, or if a snapshot folder outlived the run.
+error, or if a snapshot folder outlived the run. pyserial's port open and USB
+listing are refused the same way, so no test reaches a real board.
 """
 
 import atexit
@@ -128,6 +129,58 @@ def refuse_real_roots(event, args):
         checking.active = False
 
 
+class RealPortTouched(BaseException):
+    """A test reached a real serial port. Not an OSError, which the loops
+    that wait out a busy or re-enumerating port catch and retry."""
+
+
+fake_ports = set()
+
+
+def refuse_real_ports():
+    """A test reaches a board only through a fake it hands the code under
+    test: a FakeConnection, a patched opener, a stand-in serial module, or a
+    pseudo-terminal of its own (fake_port)."""
+    try:
+        import serial
+        from serial.tools import list_ports
+    except ImportError:
+        return
+    real_open = serial.Serial.open
+
+    def refuse(what):
+        violations.append(what)
+        raise RealPortTouched("a test " + what + "; hand the code under test a fake")
+
+    def open_port(self):
+        if self.port not in fake_ports:
+            refuse("opened the real serial port " + str(self.port))
+        real_open(self)
+
+    def comports(*unused, **unused_keywords):
+        refuse("listed the real USB serial ports")
+
+    serial.Serial.open = open_port
+    list_ports.comports = comports
+
+
+@contextlib.contextmanager
+def fake_port():
+    """A pseudo-terminal: (the test's end as a file descriptor, the name the
+    code under test opens as its port). Nothing reads the test's end unless
+    the test does, as with a board that stopped reading its console."""
+    import pty
+    ours, theirs = pty.openpty()
+    name = os.ttyname(theirs)
+    fake_ports.add(name)
+    try:
+        yield ours, name
+    finally:
+        fake_ports.discard(name)
+        os.close(theirs)
+        os.close(ours)
+
+
 def leftover_snapshots():
     return sorted(path.name for path in IMAGES.glob("autana-image-*"))
 
@@ -141,11 +194,12 @@ def finish():
         sys.stderr.flush()
         os._exit(1)
     if violations:
-        sys.stderr.write("FAIL: the test run wrote into real device roots:\n  " +
+        sys.stderr.write("FAIL: the test run touched real device roots or ports:\n  " +
                          "\n  ".join(sorted(set(violations))) + "\n")
         sys.stderr.flush()
         os._exit(1)
 
 
 sys.addaudithook(refuse_real_roots)
+refuse_real_ports()
 atexit.register(finish)

@@ -114,6 +114,12 @@ class PortUnavailable(RuntimeError):
     """The board's port did not open within the wait it was given."""
 
 
+class BoardNotReading(RuntimeError):
+    """The board stopped taking console input: a write did not drain within
+    the port's write timeout. It ends the command, and a batch with it: the
+    same board would leave every later write waiting the same way."""
+
+
 Board = collections.namedtuple("Board", "serial port")
 
 
@@ -209,6 +215,9 @@ def wait_for_port(board=None, seconds=PORT_REAPPEAR_SECONDS, probe=probe_port,
             sleep(0.5)
 
 
+FLUSH_POLL_SECONDS = 0.05
+
+
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses a
     second open on its own; POSIX needs `exclusive` (an advisory flock, so it
@@ -220,15 +229,42 @@ def open_serial():
         import serial
     except ImportError as error:
         raise RuntimeError("pyserial is required; run this with the ESP-IDF Python") from error
-    connection = serial.Serial()
+
+    class BoardSerial(serial.Serial):
+        """Every wait to send is bounded by write_timeout. pyserial's own
+        flush has no limit (tcdrain on POSIX, a poll on Windows), and its
+        write timeout says only "Write timeout"."""
+
+        def not_reading(self):
+            return BoardNotReading(
+                f"the board stopped reading its console: a write did not drain within "
+                f"{self.write_timeout:g}s (a half-written image or a wedged app) - "
+                f"autana flash, or autana reset")
+
+        def write(self, data):
+            try:
+                return super().write(data)
+            except serial.SerialTimeoutException as error:
+                raise self.not_reading() from error
+
+        def flush(self):
+            deadline = time.monotonic() + self.write_timeout
+            while self.out_waiting:
+                if time.monotonic() >= deadline:
+                    raise self.not_reading()
+                time.sleep(FLUSH_POLL_SECONDS)
+
+    connection = BoardSerial()
     if os.name != "nt":
         connection.exclusive = True
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
     # A board that stops reading its console would otherwise block a write
-    # in the OS forever, holding the lock with it.
-    connection.write_timeout = 5.0
+    # in the OS forever, holding the lock with it. Every line sent fits the
+    # board's receive buffer, so a reading board takes it at once; the
+    # longest a healthy one goes without reading is its boot.
+    connection.write_timeout = BOOT_WAIT_SECONDS
     connection.dtr = False
     connection.rts = False
     connection.open()
@@ -1674,7 +1710,7 @@ def batch(args, store, board):
                 try:
                     failed = bool(run_suite(suite_args, store, board, held_lock=held,
                                             worktree=worktree, commit=commit))
-                except (TestFilterError, TuneRefused):
+                except (TestFilterError, TuneRefused, BoardNotReading):
                     # The same board would answer the same in every remaining run.
                     raise
                 except RuntimeError as caught:
