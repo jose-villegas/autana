@@ -26,7 +26,6 @@ static bool saved_hud;
 
 static void
 release_fixture(void) {
-    gfx_present_wait();
     app_render_lab.exit();
     scene_unload_all();
     render_lab_start_scene_key = saved_scene;
