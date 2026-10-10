@@ -31,8 +31,9 @@
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #                   --deps compiles nothing: it prints `flags` and the compile
-#                   flags, then every file the compiler reads (its -MM list),
-#                   which is what the build's output is made from.
+#                   flags, then the compiler's -MM list (sources and project
+#                   headers). System headers and compiler identity/version
+#                   are not counted.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
 #                   the scene reads as packs: build_pack.py writes them to

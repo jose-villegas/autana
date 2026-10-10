@@ -12,6 +12,12 @@ import subprocess
 import sys
 from typing import NamedTuple
 
+INPUTS_PYTHON_MINIMUM = (3, 12)
+INPUTS_PYTHON_ERROR = "--inputs requires Python 3.12 or later for stable code tokens"
+
+if "--inputs" in sys.argv and sys.version_info < INPUTS_PYTHON_MINIMUM:
+    sys.exit(INPUTS_PYTHON_ERROR)
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
@@ -97,8 +103,8 @@ def named_files(path, tracked):
 
 
 def host_inputs(scene_path):
-    """The host renderer's compile flags and every file the compiler reads, as its build reports them
-    (scene_viewer.sh --deps), with paths relative to the repository."""
+    """Compile flags and the compiler's -MM list (sources and project headers), repo-relative.
+    System headers and compiler identity/version are not counted."""
     def relative(token):
         if not token.startswith("/"):
             return token
@@ -136,9 +142,18 @@ def gpu_inputs(scene_path, object_name):
     def name(path):
         return path.resolve().relative_to(ROOT).as_posix()
 
+    from r3d.build_pack import pack_jobs
+    packs, jobs = pack_jobs([scene_path])
     lock = bake.read_lock()
     inputs = {"scene": f"{name(scene_path)} {content_checksum(scene_path).decode()}", "object": object_name,
               **{f"code {name(path)}": bake.digest(bake.code_tokens(path)) for path in code},
+              **{f"imports {name(path)}": bake.digest([
+                  (node.module if isinstance(node, ast.ImportFrom) else None,
+                   node.level if isinstance(node, ast.ImportFrom) else 0, alias.name, alias.asname)
+                  for node in ast.walk(bake.module_facts(path)[0])
+                  if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names]) for path in code},
+              **{f"pack {entry}": content_checksum(source).decode()
+                 for entries in packs.values() for entry, source in entries.items() if source.resolve() not in jobs},
               **{f"native {path}": value for path, value in bake.native_inputs(code).items()},
               **{f"requirement {file} {line}": line for file, line in bake.pinned_requirements(code)},
               **{f"file {name(path)}": content_checksum(path).decode() for path in sorted(named - set(code))},
@@ -147,10 +162,6 @@ def gpu_inputs(scene_path, object_name):
         row = lock.get(found.key)
         inputs[f"bake {found.output}"] = row["sha256"] if row else f"unlocked {found.key}"
     return inputs
-
-
-def fingerprint(inputs):
-    return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
 
 
 def validate_mode(smoke, check):
@@ -474,7 +485,8 @@ def _gpu(args, out, work, executor):
     if len({job.renderer.fit.held_out_every_ms for job in jobs}) != 1:
         raise ValueError("GPU comparisons require a common held-out pose interval")
     made_from = gpu_inputs(scene_path, args.object)
-    stamp = fingerprint(made_from)
+    from bake import bake
+    stamp = bake.digest(made_from)
     work = work / ("smoke-" if args.smoke else "full-") / stamp
     work.mkdir(parents=True, exist_ok=True)
     inputs = work / "references"
@@ -622,8 +634,9 @@ def _gpu(args, out, work, executor):
 
 
 def check_gpu(args, out):
+    from bake import bake
     manifest = out / "source.json"
-    if not manifest.exists() or json.loads(manifest.read_text())["source"] != fingerprint(gpu_inputs(args.scene, args.object)):
+    if not manifest.exists() or json.loads(manifest.read_text())["source"] != bake.digest(gpu_inputs(args.scene, args.object)):
         raise ValueError("GPU source changed or no full run exists; run --stage gpu without --check")
     for name, checksum in json.loads(manifest.read_text())["files"].items():
         path = out / name
@@ -679,7 +692,10 @@ def main(argv=None):
         work = RESULTS / "work" / args.stage
         out = RESULTS / "out" / (args.stage + "-smoke" if args.smoke else args.stage)
         if args.stage == "gpu" and args.inputs:
-            print(fingerprint(gpu_inputs(args.scene, args.object)))
+            if sys.version_info < INPUTS_PYTHON_MINIMUM:
+                raise ValueError(INPUTS_PYTHON_ERROR)
+            from bake import bake
+            print(bake.digest(gpu_inputs(args.scene, args.object)))
             return 0
         if args.stage == "gpu" and args.check:
             return check_gpu(args, out)

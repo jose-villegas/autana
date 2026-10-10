@@ -21,10 +21,10 @@ of assets anywhere.
 | `fitted_variant.recipe_digest()`: parsed recipe + camera clip + `source_digest()` | the recipe half of every bake key, for every mesh, not only fits |
 | `import_settings.content_checksum()`: an LFS pointer's oid stands for its content | how a source enters a key, so a clone without `git lfs pull --exclude=""` still computes it |
 | `[fit.hashes] sha256, recipe_sha256` in `sponza.scene.toml`, checked by `mesh_import.check_fitted()` | deleted: `bakes.lock` records key and bytes for every bake, written by the tool |
-| `fitted_variant.reference_digest()` (no tool code), `render_compare.sh` `reference_frames()` (raw `r3d/*.py` bytes, cache under `r3d/.cache/reference/`), `doc_stages.current_stamp()` (hashes tracked `.mesh` files, blind once they are untracked) | all three ask `bake.py` for keys; the fit's reference set is a bake of its own |
+| `fitted_variant.reference_digest()` (no tool code), `render_compare.sh` `reference_frames()` (raw `r3d/*.py` bytes, cache under `r3d/.cache/reference/`), `doc_stages.current_stamp()` (board stage only, hashes tracked files and import sources) | all three ask `bake.py` for keys; the fit's reference set is a bake of its own |
 | `build_pack.pack_files()`: a mesh entry is `<dir>/<id>.mesh` beside its file | a mesh entry is a `Bake`; `pack_entry()` reads it through `fetch`. `--replace` stays (`doc_images_demo.sh` needs it) |
 | `doc-images.yml`: LFS objects cached, r3d requirements on ubuntu | the CPU producer job, same steps |
-| `doc-images-gpu.yml` on the self-hosted GPU runner (the maintainer's machine; main pushes and a weekly run) | the GPU producer job, same environment (`run_doc_gpu.sh`) |
+| `doc-images-gpu.yml` on the self-hosted GPU runner (the maintainer's machine; every main push whose inputs changed, and nightly) | the GPU producer job, same environment (`run_doc_gpu.sh`) |
 | `gltf/blend_skin_to_glb.py` (runs inside Blender), run by hand per the render-lab tools README | the converter for a `.blend` source |
 
 ## 1. Keys, the lock and the store

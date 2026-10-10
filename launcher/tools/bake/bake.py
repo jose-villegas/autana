@@ -246,11 +246,9 @@ def imported_names(tree):
 
 
 def closure(entries, stop=(), consumers=False):
-    """Every file the entry scripts import, at any depth, found under TOOLS or in a directory a file
-    of the closure puts on sys.path, and the packages holding them. A file in `stop`, or one that
-    imports this tool (it consumes bakes, so it makes none) unless `consumers`, is neither counted nor
-    followed; this tool never is. An import of a tracked module that no root holds fails: its code
-    would be left out of the key."""
+    """The entries' import closure, including packages, under TOOLS or sys.path roots the code adds.
+    A file in `stop`, any file under bake/, and, unless `consumers`, a file that imports this tool
+    (it consumes bakes, so it makes none) are neither counted nor followed. Unplaced tracked imports fail."""
     roots = [TOOLS]
     while True:
         known = len(roots)

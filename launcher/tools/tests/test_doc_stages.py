@@ -14,6 +14,7 @@ PATH = Path(__file__).resolve().parents[1] / "render/doc_stages.py"
 spec = importlib.util.spec_from_file_location("doc_stages", PATH)
 stages = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stages)
+from bake import bake
 
 MEMINFO = Path("/proc/meminfo")
 POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
@@ -207,7 +208,7 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
             stages.capture_viewport(capture, (184, 224))
 
     def test_gpu_check_rejects_missing_saved_artifact(self):
-        (self.tmp / "source.json").write_text(json.dumps({"source": stages.fingerprint({}),
+        (self.tmp / "source.json").write_text(json.dumps({"source": bake.digest({}),
                                                           "files": {"tables/score.md": "0" * 64}}))
         with mock.patch.object(stages, "gpu_inputs", return_value={}):
             with self.assertRaisesRegex(ValueError, "missing or altered"):
@@ -396,7 +397,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
             out = root / 'out'
             (out / 'tables').mkdir(parents=True)
             (out / 'render/gpu').mkdir(parents=True)
-            work = root / 'work/full-' / stages.fingerprint({})
+            work = root / 'work/full-' / bake.digest({})
             resume = work / 'budget-4000-cost-0/result.json'
             resume.parent.mkdir(parents=True)
             resume.write_text(json.dumps({'budget': 4000, 'cost_weight': 0., 'triangles': 1,
@@ -484,8 +485,9 @@ sys.modules.update(numpy=None, PIL=None)
 spec = importlib.util.spec_from_file_location("doc_stages", sys.argv[1])
 stages = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stages)
+from bake import bake
 inputs = stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium")
-assert stages.fingerprint(inputs) == stages.fingerprint(
+assert bake.digest(inputs) == bake.digest(
     stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium"))
 print(json.dumps(inputs))
 """
