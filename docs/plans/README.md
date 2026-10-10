@@ -17,3 +17,4 @@ Designs written before or during the work they describe. Each plan's own
 | [Content-in-the-Pack-Design-Sketch.md](Content-in-the-Pack-Design-Sketch.md) | Animation tracks and scenes as asset-pack entries baked from their source files, one pack per root asset, and poses from the device's own sampler. |
 | [Cached-Bakes-Design-Sketch.md](Cached-Bakes-Design-Sketch.md) | Expensive bakes (lit meshes, GPU fits, Blender exports) as files named by a digest of their inputs, made by CI and fetched by every build instead of committed. |
 | [Image-Kernels-Plan.md](Image-Kernels-Plan.md) | Real-time blur and edge detection over the framebuffer: packed-RGB565 tricks, box blurs, SIMD, and ranked first experiments, every cost an estimate. |
+| [Animation-System-Design-Sketch.md](Animation-System-Design-Sketch.md) | Property and character animation: the whole shape, and milestone 1, a skinned model playing, blending and picking its clips. |
