@@ -45,11 +45,11 @@
  * not a hand-copy of boot_anim_draw_frame()'s own sequencing, means this
  * suite exercises the exact code a real frame runs. */
 extern void boot_anim_clear_frame(void);
-extern void draw_floor(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
+extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
-extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
+extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view);
-extern void draw_image(uint8_t ink, uint8_t reveal);
+extern void draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal);
 extern void draw_title(uint32_t now_ms, uint8_t ink);
 
 static const char* TAG = "boot_anim_perf";
@@ -162,17 +162,19 @@ typedef struct {
     uint32_t now_ms;
     uint8_t ink;
     uint8_t reveal;
+    const gfx_image_t* photo;
     bool draw_scene;
     bool draw_title;
     boot_anim_view_t view;
 } checkpoint_frame_t;
 
 static __attribute__((noinline)) void
-sample_checkpoint(const boot_anim_motion_t* motion, uint32_t now_ms, checkpoint_frame_t* f) {
+sample_checkpoint(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms, checkpoint_frame_t* f) {
     f->now_ms = now_ms;
     f->ink = boot_anim_ink(now_ms);
-    f->reveal = boot_anim_image_reveal(now_ms);
-    f->draw_scene = boot_anim_scene_reach(now_ms) > 0;
+    f->reveal = boot_anim_photo_reveal(now_ms);
+    f->photo = photo;
+    f->draw_scene = f->reveal < 255;
     f->draw_title = now_ms >= BOOT_ANIM_TITLE_START_MS;
     f->view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 }
@@ -191,7 +193,7 @@ time_frames(const checkpoint_frame_t* f) {
 
         if (f->draw_scene) {
             t0 = timing_now_us();
-            draw_floor(f->now_ms, f->ink, &f->view);
+            draw_floor(f->now_ms, f->ink, f->reveal, &f->view);
             t1 = timing_now_us();
             s->floor_us = (int32_t)(t1 - t0);
 
@@ -201,7 +203,7 @@ time_frames(const checkpoint_frame_t* f) {
             s->axes_us = (int32_t)(t1 - t0);
 
             t0 = timing_now_us();
-            const int32_t reached = draw_curve(f->now_ms, f->ink, &f->view);
+            const int32_t reached = draw_curve(f->now_ms, f->ink, f->reveal, &f->view);
             t1 = timing_now_us();
             s->curve_us = (int32_t)(t1 - t0);
 
@@ -217,7 +219,7 @@ time_frames(const checkpoint_frame_t* f) {
         }
 
         t0 = timing_now_us();
-        draw_image(f->ink, f->reveal);
+        draw_image(f->photo, f->ink, f->reveal);
         t1 = timing_now_us();
         s->image_us = (int32_t)(t1 - t0);
 
@@ -281,7 +283,7 @@ report_checkpoint(const checkpoint_t* cp) {
 }
 
 static void
-run_checkpoint(const boot_anim_motion_t* motion, const checkpoint_t* cp) {
+run_checkpoint(const boot_anim_motion_t* motion, const gfx_image_t* photo, const checkpoint_t* cp) {
     samples = malloc(sizeof(frame_sample_t) * SAMPLES_PER_CHECKPOINT);
     stat_scratch = malloc(sizeof(int32_t) * SAMPLES_PER_CHECKPOINT);
     if (samples == NULL || stat_scratch == NULL) {
@@ -295,7 +297,7 @@ run_checkpoint(const boot_anim_motion_t* motion, const checkpoint_t* cp) {
     }
 
     checkpoint_frame_t frame;
-    sample_checkpoint(motion, cp->now_ms, &frame);
+    sample_checkpoint(motion, photo, cp->now_ms, &frame);
     time_frames(&frame);
     report_checkpoint(cp);
 
@@ -322,9 +324,21 @@ test_boot_anim_performance_by_checkpoint(void) {
     if (!motion.from_pack) {
         TEST_FAIL_MESSAGE("the boot clip did not load: this would time the rest pose");
     }
-    for (int i = 0; i < 7; i++) {
-        run_checkpoint(&motion, &checkpoints[i]);
+    /* Boot mounts the photograph's pack inside the frame that first shows
+     * it, so that frame costs this on top of its drawing. */
+    boot_anim_photo_t photo;
+    const int64_t mount_start = timing_now_us();
+    boot_anim_photo_load(&photo);
+    const int64_t mount_us = timing_now_us() - mount_start;
+    if (!photo.from_pack) {
+        boot_anim_motion_release(&motion);
+        TEST_FAIL_MESSAGE("the boot picture did not load: this would time boot without the photograph");
     }
+    ESP_LOGI(TAG, "Photo mount: %lldus", (long long)mount_us);
+    for (int i = 0; i < 7; i++) {
+        run_checkpoint(&motion, &photo.image, &checkpoints[i]);
+    }
+    boot_anim_photo_release(&photo);
     boot_anim_motion_release(&motion);
 
     TEST_PASS();

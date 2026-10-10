@@ -17,8 +17,9 @@
  *     main/boot/boot_anim.c     (host-portable for the same reason)
  *     launcher_home_render_setup.sh (launcher sources and host setup)
  *
- * The camera and space it draws through are the boot clip's, loaded from its
- * pack as boot does (the rest pose when there is none), and the timing is
+ * The camera and space it draws through are the boot clip's and the
+ * photograph is the boot picture's, each loaded from its pack as boot does
+ * (the rest pose, and no photograph, when there is none), and the timing is
  * boot_anim_timeline.h.
  */
 
@@ -36,6 +37,7 @@
 
 static uint32_t now_ms;
 static boot_anim_motion_t motion;
+static boot_anim_photo_t photo;
 
 static bool
 options(int argc, char** argv) {
@@ -51,10 +53,11 @@ options(int argc, char** argv) {
     }
     launcher_home_render_register_rows();
     boot_anim_motion_load(&motion);
-    /* The rest pose only when asked for, by pointing AUTANA_ASSET_DIR at a
-     * folder without the clip: a renderer that lost its packs must fail. */
-    if (!motion.from_pack && getenv("AUTANA_ASSET_DIR") == NULL) {
-        fprintf(stderr, "no boot clip in the pack folder built into this renderer\n");
+    boot_anim_photo_load(&photo);
+    /* The fallbacks only when asked for, by pointing AUTANA_ASSET_DIR at a
+     * folder without the packs: a renderer that lost its packs must fail. */
+    if ((!motion.from_pack || !photo.from_pack) && getenv("AUTANA_ASSET_DIR") == NULL) {
+        fprintf(stderr, "no boot clip or picture in the pack folder built into this renderer\n");
         return false;
     }
     return true;
@@ -80,7 +83,7 @@ setup(int quarter) {
 static void
 draw(const render_frame_t* frame) {
     const uint32_t t_ms = now_ms + frame->elapsed_ms;
-    boot_anim_draw_frame(&motion, t_ms);
+    boot_anim_draw_frame(&motion, &photo.image, t_ms);
 }
 
 const render_scene_t render_scene = {
