@@ -1,28 +1,21 @@
 name: GPU Doc Images
 
+# The GPU stage holds the one GPU runner for hours, so it runs only when what it is made from changed.
+# A hosted job takes the stage's input fingerprint (render_doc_images.sh --stage gpu --inputs: the code
+# it runs, the host renderer's compile, the scene and its locked bakes) and stops there when a finished
+# run recorded the same one, as an artifact named RECORD_PREFIX<fingerprint>. Otherwise the run waits
+# for any GPU run ahead of it, looks again, and only then renders. A dispatch with force always renders.
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: Render even when a finished run recorded these inputs
+        type: boolean
+        default: false
   schedule:
-    - cron: '0 3 * * 0'
+    - cron: '0 3 * * *'
   push:
     branches: [main]
-    paths:
-      - 'launcher/tools/r3d/**'
-      - 'launcher/tools/render/**'
-      - 'launcher/tools/anim/**'
-      - 'launcher/tools/asset/**'
-      - 'launcher/tools/gltf/**'
-      - 'launcher/main/**/*.c'
-      - 'launcher/main/**/*.h'
-      - '!launcher/main/apps/**'
-      - 'launcher/packages/**'
-      - 'launcher/demo/**'
-      - 'launcher/components/microui/**'
-      - '.github/workflows/doc-images-gpu.yml'
-
-concurrency:
-  group: doc-images-gpu
-  cancel-in-progress: false
 
 permissions:
   actions: read
@@ -36,12 +29,66 @@ env:
   GH_TOKEN: ${{ github.token }}
   REFRESH_BRANCH: feature/refresh-doc-images-gpu
   MPLBACKEND: Agg
+  RECORD_PREFIX: doc-images-inputs-
+  FORCE: ${{ inputs.force }}
 
 jobs:
-  refresh:
+  fingerprint:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      fingerprint: ${{ steps.inputs.outputs.fingerprint }}
+      current: ${{ steps.inputs.outputs.current }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fingerprint the GPU stage's inputs
+        id: inputs
+        run: |
+          fingerprint=$(sh launcher/tools/render/render_doc_images.sh --stage gpu --inputs)
+          current=false
+          [ "$FORCE" = true ] || current=$(sh scripts/ci/inputs_recorded.sh "$RECORD_PREFIX$fingerprint")
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$current" = true ]; then
+            echo "doc images current: a finished run recorded inputs $fingerprint"
+          else
+            echo "inputs $fingerprint: no finished run recorded them${FORCE:+ (force: $FORCE)}"
+          fi
+
+  # Waits for a GPU run ahead of it to finish, then looks again: that run may have recorded these inputs.
+  queue:
+    needs: fingerprint
+    if: needs.fingerprint.outputs.current != 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: doc-images-gpu
+      cancel-in-progress: false
+    outputs:
+      current: ${{ steps.recorded.outputs.current }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+
+      - name: Look for the inputs again
+        id: recorded
+        env:
+          FINGERPRINT: ${{ needs.fingerprint.outputs.fingerprint }}
+        run: |
+          current=false
+          [ "$FORCE" = true ] || current=$(sh scripts/ci/inputs_recorded.sh "$RECORD_PREFIX$FINGERPRINT")
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$current" = true ]; then echo "doc images current: the run ahead recorded inputs $FINGERPRINT"; fi
+
+  refresh:
+    needs: [fingerprint, queue]
+    if: needs.queue.result == 'success' && needs.queue.outputs.current != 'true'
     runs-on: [self-hosted, linux, gpu]
     timeout-minutes: 1440
+    concurrency:
+      group: doc-images-gpu
+      cancel-in-progress: false
     defaults:
       run:
         shell: bash
@@ -126,3 +173,24 @@ jobs:
             sed 's/^/- /' "$RUNNER_TEMP/changed.txt"
           } > "$RUNNER_TEMP/body.md"
           "$HOME/gpu/env/bin/python" scripts/ci/refresh_pr.py sync 'docs: refresh GPU-rendered images' "$RUNNER_TEMP/body.md"
+
+      # Last, so only a run that published (or found nothing to publish) records its inputs. The stage
+      # fingerprints them itself; a mismatch with the hosted job's would make every later run render.
+      - name: Check the stage rendered the inputs the hosted job fingerprinted
+        env:
+          FINGERPRINT: ${{ needs.fingerprint.outputs.fingerprint }}
+        run: |
+          source=launcher/tools/results/doc_images/out/gpu/source.json
+          rendered=$("$HOME/gpu/env/bin/python" -c 'import json, sys; print(json.load(open(sys.argv[1]))["source"])' "$source")
+          if [ "$rendered" != "$FINGERPRINT" ]; then
+            echo "the stage rendered inputs $rendered but the hosted job fingerprinted $FINGERPRINT;" \
+              "the fingerprint differs between the two machines ($source lists each input)" >&2
+            exit 1
+          fi
+
+      - name: Record the inputs these images were made from
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RECORD_PREFIX }}${{ needs.fingerprint.outputs.fingerprint }}
+          path: launcher/tools/results/doc_images/out/gpu/source.json
+          retention-days: 90

@@ -7,6 +7,7 @@
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
+#   ./launcher/tools/render/render_doc_images.sh --stage gpu --inputs  # print its input fingerprint
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
@@ -50,12 +51,17 @@ DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
 
 if [ "${1:-}" = --stage ]; then
-    if [ "${2:-}" = gpu ]; then
+    if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
         shift 2
         exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
     fi
     . "$ROOT/scripts/lib/python.sh"
-    PYTHON=$(find_python numpy scipy) || exit 2
+    # The fingerprint reads the tree alone: any Python, no GPU toolchain.
+    if [ "${3:-}" = --inputs ]; then
+        PYTHON=$(find_python) || exit 2
+    else
+        PYTHON=$(find_python numpy scipy) || exit 2
+    fi
     exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
 fi
 

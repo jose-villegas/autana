@@ -198,7 +198,7 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
 
     def test_gpu_check_requires_saved_full_run(self):
         with self.assertRaisesRegex(ValueError, "no full run"):
-            stages.check_gpu(self.tmp)
+            stages.check_gpu(None, self.tmp)
 
     def test_board_rejects_a_different_render_size(self):
         capture = self.tmp / "capture.txt"
@@ -207,10 +207,11 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
             stages.capture_viewport(capture, (184, 224))
 
     def test_gpu_check_rejects_missing_saved_artifact(self):
-        (self.tmp / "source.json").write_text(json.dumps({"source": "stamp", "files": {"tables/score.md": "0" * 64}}))
-        with mock.patch.object(stages, "current_stamp", lambda: "stamp"):
+        (self.tmp / "source.json").write_text(json.dumps({"source": stages.fingerprint({}),
+                                                          "files": {"tables/score.md": "0" * 64}}))
+        with mock.patch.object(stages, "gpu_inputs", return_value={}):
             with self.assertRaisesRegex(ValueError, "missing or altered"):
-                stages.check_gpu(self.tmp)
+                stages.check_gpu(mock.Mock(), self.tmp)
 
     def guard_with(self, wsl_kib, host_bytes, error=None):
         """Run memory_guard with WSL's MemAvailable and the host's AvailableBytes faked."""
@@ -331,7 +332,7 @@ class SmokeAdmissionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(import_settings, 'load_scene', return_value=object()), \
                 mock.patch.object(fitted_variant, 'placed_variant', return_value=job), \
-                mock.patch.object(stages, 'current_stamp', return_value='smoke-stamp'):
+                mock.patch.object(stages, 'gpu_inputs', return_value={}):
             stages._gpu(SimpleNamespace(smoke=True, scene=Path("other.scene.toml"), object="hall"), Path(directory), Path(directory), executor)
         fit_call = executor.submit.call_args_list[1]
         self.assertIs(fit_call.args[0], fitted_variant.fit_point)
@@ -395,7 +396,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
             out = root / 'out'
             (out / 'tables').mkdir(parents=True)
             (out / 'render/gpu').mkdir(parents=True)
-            work = root / 'work/full-/stamp'
+            work = root / 'work/full-' / stages.fingerprint({})
             resume = work / 'budget-4000-cost-0/result.json'
             resume.parent.mkdir(parents=True)
             resume.write_text(json.dumps({'budget': 4000, 'cost_weight': 0., 'triangles': 1,
@@ -405,7 +406,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(fitted, 'placed_variant', side_effect=jobs) as placed, \
                     mock.patch.object(bake_fidelity, 'build_host', return_value='host') as build_host, \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
-                    mock.patch.object(stages, 'current_stamp', return_value='stamp'), \
+                    mock.patch.object(stages, 'gpu_inputs', return_value={}), \
                     mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
                     mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'):
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
@@ -469,6 +470,35 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual(sum(line.startswith('| ') for line in table), 4, "a header and exactly three rows")
             self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
                                 if owner in (stages.bake_worker, stages.measure_worker)))
+
+
+@unittest.skipUnless(sys.platform == "linux", "the GPU stage and its fingerprint run on Linux")
+class GpuInputsTests(unittest.TestCase):
+    def test_the_fingerprint_covers_what_the_stage_runs_without_numeric_dependencies(self):
+        """A hosted runner with no numpy or Pillow takes it; it names the scripts the stage starts, the
+        files its code names, what the host renderer compiles and the scene's locked bakes."""
+        code = """
+import importlib.util, json, sys
+from pathlib import Path
+sys.modules.update(numpy=None, PIL=None)
+spec = importlib.util.spec_from_file_location("doc_stages", sys.argv[1])
+stages = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(stages)
+inputs = stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium")
+assert stages.fingerprint(inputs) == stages.fingerprint(
+    stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium"))
+print(json.dumps(inputs))
+"""
+        result = subprocess.run([sys.executable, "-c", code, str(PATH)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        inputs = json.loads(result.stdout)
+        for name in ("code launcher/tools/render/doc_stages.py", "code launcher/tools/render/render_compare.py",
+                     "code launcher/tools/r3d/fitted_variant.py", "file launcher/tools/r3d/board_cost_weights.txt",
+                     "host launcher/main/render/raster.c", "host launcher/tools/render/scene_viewer.c",
+                     "bake sponza.atrium.mesh", "bake sponza.atrium_fitted.mesh"):
+            self.assertIn(name, inputs)
+        self.assertNotIn("code launcher/tools/bake/bake.py", inputs)
+        self.assertFalse([name for name in inputs if "/apps/" in name])
 
 
 if __name__ == "__main__":

@@ -113,7 +113,7 @@ SHAPE_TOKENS = {"NEWLINE", "INDENT", "DEDENT"}
 QUOTED_INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
 INCLUDE_LINE = re.compile(rb'^[ \t]*#[ \t]*include\b[^\n]*\n?', re.MULTILINE)
 # What a module-level constant may be built from when it is read without running the module.
-CONSTANT_NAMES = {"pathlib": pathlib, "os": os, "str": str, "sorted": sorted, "tuple": tuple, "list": list}
+CONSTANT_NAMES = {"pathlib": pathlib, "Path": pathlib.Path, "os": os, "str": str, "sorted": sorted, "tuple": tuple, "list": list}
 
 
 class BakeMissing(Exception):
@@ -245,11 +245,12 @@ def imported_names(tree):
             yield from (((node.module + "." if node.module else "") + alias.name, node.level) for alias in node.names)
 
 
-def closure(entries, stop=()):
+def closure(entries, stop=(), consumers=False):
     """Every file the entry scripts import, at any depth, found under TOOLS or in a directory a file
     of the closure puts on sys.path, and the packages holding them. A file in `stop`, or one that
-    imports this tool (it consumes bakes, so it makes none), is neither counted nor followed. An
-    import of a tracked module that no root holds fails: its code would be left out of the key."""
+    imports this tool (it consumes bakes, so it makes none) unless `consumers`, is neither counted nor
+    followed; this tool never is. An import of a tracked module that no root holds fails: its code
+    would be left out of the key."""
     roots = [TOOLS]
     while True:
         known = len(roots)
@@ -259,7 +260,7 @@ def closure(entries, stop=()):
             if path in found or path in stop:
                 continue
             tree, _, added = module_facts(path)
-            if path.is_relative_to(TOOLS / "bake") or (imports_bake(tree) and path not in ENTRIES):
+            if path.is_relative_to(TOOLS / "bake") or (not consumers and imports_bake(tree) and path not in ENTRIES):
                 continue
             found.add(path)
             roots += [directory for directory in added if directory not in roots]
@@ -382,10 +383,13 @@ def package_name(text):
 
 @functools.cache
 def requirement_pins(stage):
-    """(file, line) of every requirement a stage's key counts: each line of the requirements.txt
-    beside a stage file, and each line of any requirements*.txt under TOOLS naming a package a stage
-    file imports (the fit's GPU packages, for one)."""
-    paths = stage_files(stage)
+    """(file, line) of every requirement a stage's key counts (see pinned_requirements)."""
+    return pinned_requirements(stage_files(stage))
+
+
+def pinned_requirements(paths):
+    """(file, line) of each line of the requirements.txt beside one of `paths`, and of each line of any
+    requirements*.txt under TOOLS naming a package one of them imports (the fit's GPU packages, for one)."""
     imported = {package_name(name.split(".")[0]) for path in paths
                 for name, level in imported_names(module_facts(path)[0]) if level == 0 and name}
     pins = set()

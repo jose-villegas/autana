@@ -45,7 +45,9 @@ panel framebuffer, 368 by 448.
 `--quarter 0|1` selects portrait or landscape (default: landscape), and
 `--panel` writes the panel's native orientation. `-o FILE` saves the final
 frame as BMP; without it the BMP goes to stdout. `--video FILE.avi` also saves
-every frame through the shared harness's video writer.
+every frame through the shared harness's video writer. `--deps` compiles
+nothing and prints what the viewer is compiled from: a `flags` line, then the
+compiler's `-MM` list.
 
 ## Images in these docs
 
@@ -131,13 +133,34 @@ weights change. `--build-commit SHA` accepts a capture from that commit while
 the firmware sources still match.
 
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
-to its own `--check`. GPU `--check` verifies the saved full run and its source
-stamp without fitting again. `--smoke` writes only scratch data.
-The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
-runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
-It opens or updates "docs: refresh GPU-rendered images" on the separate
-`feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
-memory use. The stage-start guard checks WSL and Windows host available memory.
+to its own `--check`. GPU `--check` verifies the saved full run and its input
+fingerprint without fitting again. `--smoke` writes only scratch data.
+`--stage gpu --inputs` prints that fingerprint and runs nothing; it needs any
+Python 3.12, a C compiler and the tree, with no GPU, LFS objects or bakes.
+It is a SHA-256 over what the stage's output is made from, each found from the
+code rather than listed:
+
+| Input | Found by |
+|---|---|
+| Python the stage runs | `bake.py`'s import closure of `doc_stages.py` and of each script its code names by path |
+| Native code and requirement pins | `bake.py`'s rules for that closure |
+| Other files that code names | string paths resolving to tracked files, such as `board_cost_weights.txt` |
+| The host renderer | `scene_viewer.sh SCENE --deps`: its compile flags and every file the compiler reads |
+| The scene | the scene file, and the locked bytes of each of its bakes in `launcher/bakes.lock` |
+
+A comment or blank-line edit in the Python changes nothing; the stage's work
+folder and its saved `source.json` are named by the fingerprint, and
+`source.json` lists every input.
+
+The `doc-images-gpu` workflow runs on every main push, nightly and on manual
+dispatch. A hosted job takes the fingerprint; when a finished run recorded the
+same one, as the artifact `doc-images-inputs-FINGERPRINT` (kept 90 days), the
+workflow ends there. Otherwise it waits for any GPU run ahead of it, looks
+again, and runs the full stage on the self-hosted Linux GPU runner, which
+records the fingerprint once it has published. A dispatch with `force` renders
+regardless. A run opens or updates "docs: refresh GPU-rendered images" on the
+separate `feature/refresh-doc-images-gpu` branch. GPU runs are serialized and
+log GPU memory use. The stage-start guard checks WSL and Windows host available memory.
 [`process_budget.py`](../../launcher/tools/r3d/process_budget.py) owns the
 floors and worker estimates. Later admission projects each active worker's
 not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
