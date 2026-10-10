@@ -9,15 +9,18 @@
 # cannot see: a stub, a vendored component, an ESP-IDF header. Each header is
 # compiled on its own, so one that leans on whatever its includer happened to
 # include first fails too. Syntax only: nothing is linked and nothing runs.
+#
+# Usage: check_packages_alone.sh [<launcher dir>]
 
 set -eu
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-LAUNCHER_DIR=$(CDPATH= cd -- "$HERE/.." && pwd)
+# The launcher to check: this one unless another is named, as a test's fixture is.
+LAUNCHER_DIR=$(CDPATH= cd -- "${1:-$HERE/..}" && pwd)
 # shellcheck source=../tools/build/find_cc.sh
-. "$LAUNCHER_DIR/tools/build/find_cc.sh"
+. "$HERE/../tools/build/find_cc.sh"
 # shellcheck source=../tools/build/packages.sh
-. "$LAUNCHER_DIR/tools/build/packages.sh"
+. "$HERE/../tools/build/packages.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "check_packages_alone: no C compiler found" >&2

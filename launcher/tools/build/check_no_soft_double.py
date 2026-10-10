@@ -50,9 +50,9 @@ def find_objdump():
     sys.exit("check_no_soft_double.py: no xtensa-esp32s3-elf-objdump on PATH or under the ESP-IDF tools")
 
 
-def objects(build):
+def objects(build, launcher=packages.LAUNCHER):
     """The first-party objects: the main component's and each package's (packages.py)."""
-    components = ["main", *(include.parent.name for include in packages.include_dirs())]
+    components = ["main", *(include.parent.name for include in packages.include_dirs(launcher))]
     roots = [build / "esp-idf" / name / "CMakeFiles" / f"__idf_{name}.dir" for name in components]
     found = sorted(path for root in roots for path in [*root.rglob("*.obj"), *root.rglob("*.o")])
     if not found:
