@@ -211,30 +211,29 @@ the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
 ```sh
 micromamba create -y -p ~/gpu/env -c nvidia/label/cuda-12.8.1 -c conda-forge \
     python=3.12 cuda-nvcc cuda-cudart-dev cuda-cccl cuda-libraries-dev ninja "gxx_linux-64=13" "gcc_linux-64=13"
-E=~/gpu/env
-$E/bin/python -m ensurepip
-$E/bin/python -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
-$E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
+GPU_ENV=~/gpu/env
+"$GPU_ENV/bin/python3" -m ensurepip
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off ninja setuptools wheel
 TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 export TORCH_CUDA_ARCH_LIST
-CUDA_HOME=$E PATH=$E/bin:$PATH \
-    CPATH=$E/targets/x86_64-linux/include LIBRARY_PATH=$E/targets/x86_64-linux/lib:$E/lib \
-    CC=$E/bin/x86_64-conda-linux-gnu-gcc CXX=$E/bin/x86_64-conda-linux-gnu-g++ \
-    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
+. launcher/tools/r3d/gpu_env.sh
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
 ```
 
 That gives the PyTorch and nvdiffrast that [requirements-gpu.txt](requirements-gpu.txt) pins; a fit's
 cache key counts those pins, and `bake/bake.py` refuses to fit in an environment that differs.
-[gpu_python.sh](gpu_python.sh) runs a script in this environment. `TORCH_CUDA_ARCH_LIST`
+[gpu_env.sh](gpu_env.sh) exports the compiler, CUDA paths and libraries for `GPU_ENV`
+(`~/gpu/env` by default). [gpu_python.sh](gpu_python.sh) sources it and runs a Python script. `TORCH_CUDA_ARCH_LIST`
 names the target GPU's compute capability, queried above with `nvidia-smi`.
-Alternatively, `$E/bin/python -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
+Alternatively, `"$GPU_ENV/bin/python3" -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
 prints the capability of the default CUDA device. Select the device that will
 run the fit when the machine has several GPUs. With the reference images of
 the training poses:
 
 ```sh
-$E/bin/python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
+"$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
     --poses train.txt --reference reference_train --out fitted
 ```
 
@@ -255,7 +254,7 @@ in this environment, the second in the GPU one:
 
 ```sh
 $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prepare   # start, poses, references
-$E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
+"$GPU_ENV/bin/python3" launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
 ```
 
 `NAME` is the fitted scene object, or its variant when only one object fits that variant.
@@ -278,7 +277,7 @@ lock pins the bytes a fit made.
 triangle budgets and cost weights, one GPU fit at a time:
 
 ```sh
-$E/bin/python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
+"$GPU_ENV/bin/python3" launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
     --budgets 4000,6000,8672 --cost-weights 0,0.1 --out scratch/sweep
 ```
 
