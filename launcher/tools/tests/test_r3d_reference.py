@@ -308,6 +308,67 @@ class TraceDeviceTests(unittest.TestCase):
             self.assertEqual(render.call_args.kwargs["workers"], 1, "the probe may have opened CUDA: no forked workers")
             self.assertEqual(release.call_count, freed, variant)
 
+    def test_the_device_is_freed_with_the_bounced_light_cache_empty_even_when_a_pose_fails(self):
+        from unittest.mock import patch
+        from r3d import mesh_import, ray_query, reference_render
+        from r3d.fitted_variant import poses_text
+
+        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
+        seen = []
+        for failure in (None, RuntimeError("pose failed")):
+            mesh_import.PATH_LIGHTS["cached"] = object()
+            with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
+                poses = pathlib.Path(directory) / "poses.txt"
+                poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(patch.object(ray_query, "trace_variant", return_value=ray_query.GPU_VARIANT))
+                stack.enter_context(patch.object(reference_render, "lit_source", return_value=object()))
+                stack.enter_context(patch.object(reference_render, "render_poses", side_effect=failure,
+                                                 return_value=(0, 1)))
+                stack.enter_context(patch.object(ray_query, "release_gpu",
+                                                 side_effect=lambda: seen.append(dict(mesh_import.PATH_LIGHTS))))
+                sets = [(poses, pathlib.Path(directory) / "out")]
+                if failure is None:
+                    reference_render.render_sets(inputs, sets)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "pose failed"):
+                        reference_render.render_sets(inputs, sets)
+        self.assertEqual(seen, [{}, {}], "released after success and after a failure, the cache already empty")
+
+    def test_a_lit_source_traces_its_rays_and_its_bounced_light_on_one_variant(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
+        for given in (None, "cuda_ad_rgb"):
+            with patch.object(reference_render, "load_source", return_value=source),                     patch.object(reference_render, "RayQuery") as query,                     patch.object(reference_render, "path_light_for") as bounce:
+                reference_render.lit_source(job, None, variant=given)
+            self.assertEqual(query.call_args.args[2], given)
+            self.assertEqual(bounce.call_args.args[3], given)
+
+    def test_the_device_probe_answers_in_a_fresh_process_and_without_mitsuba(self):
+        from unittest.mock import patch
+        from r3d import ray_query
+
+        with patch.object(ray_query, "import_mitsuba", return_value=None):
+            self.assertEqual(ray_query.trace_variant(), ray_query.VARIANT)
+        mi = SimpleNamespace(now=None, variant=lambda: mi.now)
+
+        def set_variant(name):
+            if name is None:
+                raise TypeError("no variant to set")
+            mi.now = name
+        mi.set_variant = set_variant
+        with patch.object(ray_query, "import_mitsuba", return_value=mi),                 patch.object(ray_query, "default_variant", return_value=ray_query.GPU_VARIANT):
+            self.assertEqual(ray_query.trace_variant(), ray_query.GPU_VARIANT)
+
+    @needs_mitsuba
+    def test_releasing_the_device_runs_on_a_host_without_one(self):
+        from r3d import ray_query
+        ray_query.release_gpu()
+
 
 def have_cuda():
     """Whether Mitsuba's CUDA variant traces here; asked only when a test runs, so a CPU host never opens CUDA."""
