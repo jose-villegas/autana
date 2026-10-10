@@ -68,6 +68,25 @@ class TimelineGeneratorTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("camera_half_fov_short_tan must be greater than 0", result.stderr)
 
+    def test_invalid_lens_settings_fail_with_named_messages(self):
+        cases = (
+            (lambda config: config.update(camera_half_fov_short_tan=float("nan")),
+             "camera_half_fov_short_tan must be finite"),
+            (lambda config: config.pop("camera_half_fov_short_tan"),
+             "missing camera_half_fov_short_tan"),
+            (lambda config: config.update(camera_focal=1.0),
+             "unknown key: camera_focal"),
+        )
+        for change, message in cases:
+            with self.subTest(message=message):
+                result = self.generate(config_change=change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_small_positive_half_fov_short_tan_is_accepted(self):
+        result = self.generate(config_change=lambda config: config.update(camera_half_fov_short_tan=0.001))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_zero_scale_fails(self):
         result = self.generate(lambda timing: timing.update(title_scale=0))
         self.assertNotEqual(result.returncode, 0)

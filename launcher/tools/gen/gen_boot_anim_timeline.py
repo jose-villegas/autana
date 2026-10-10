@@ -41,6 +41,7 @@ what someone editing the timeline wants.
 """
 
 import json
+import math
 import pathlib
 import sys
 
@@ -365,6 +366,12 @@ def main():
 
     with open(sys.argv[1], "r", encoding="utf-8") as f:
         cfg = json.load(f)
+    if "camera_focal" in cfg:
+        fail("unknown key: camera_focal")
+    if "camera_half_fov_short_tan" not in cfg:
+        fail("missing camera_half_fov_short_tan")
+    if not math.isfinite(float(cfg["camera_half_fov_short_tan"])):
+        fail("camera_half_fov_short_tan must be finite")
     if float(cfg["camera_half_fov_short_tan"]) <= 0:
         fail("camera_half_fov_short_tan must be greater than 0")
     if "keyframes" in cfg:

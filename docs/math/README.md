@@ -50,13 +50,13 @@ V = R^{\mathsf T}\,T(-\text{position})
 ```
 
 ```math
-\text{pixel}_x = c_x + \mathrm{trunc}\!\left(\frac{x}{z}\, f\, s\right), \qquad
-\text{pixel}_y = c_y - \mathrm{trunc}\!\left(\frac{y}{z}\, f\, s\right)
+\text{pixel}_x = c_x + \mathrm{trunc}\!\left(\frac{x}{z}\, s\right), \qquad
+\text{pixel}_y = c_y - \mathrm{trunc}\!\left(\frac{y}{z}\, s\right)
 ```
 
-Here `f` is the focal length (0 is orthographic, no divide), `s` the pixels per
-projection-plane unit and `c` the screen centre; each offset is biased slightly
-away from zero and then truncated toward it (`render/r3d_project.h`).
+Here `s` is the view's pixels per unit (`render_view_t`) and `c` the screen
+centre; each offset is biased slightly
+away from zero and then truncated toward it (`render/r3d_project_common.h`).
 
 ## The transform cache
 

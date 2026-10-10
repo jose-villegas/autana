@@ -1735,6 +1735,18 @@ test_the_rest_pose_keeps_the_seeds_view_rules(void) {
 }
 #endif
 
+static void
+test_screen_chord_threshold_is_strict(void) {
+    const int threshold_px = 3;
+    const boot_anim_view_t view = identity_view();
+    const int32_t depth = view.pixels_per_unit * R3D_X_UNIT_ONE;
+    const vec3x_t a = {0, 0, depth};
+    const int32_t threshold = threshold_px * R3D_X_UNIT_ONE;
+    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold - 1, 0, depth}, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold, 0, depth}, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold + 1, 0, depth}, &view, threshold_px));
+}
+
 void
 run_boot_anim_suite(void) {
     seed = malloc(sizeof *seed);
@@ -1795,6 +1807,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project);
+    RUN_TEST(test_screen_chord_threshold_is_strict);
     RUN_TEST(test_screen_chord_shrinks_with_distance);
     RUN_TEST(test_lod_stride_tiers_by_extent);
 

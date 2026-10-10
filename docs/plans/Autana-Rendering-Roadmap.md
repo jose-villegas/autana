@@ -15,11 +15,11 @@ transfer. See [Firmware Architecture](../Firmware-Architecture.md) and
 [Gfx and Presentation](../Gfx-and-Presentation.md).
 
 The mesh runtime uses baked lighting, span rasterization, clipping and
-visibility data. Scene loading, camera clips, dynamic resolution and the
-context views share `render_view_t` with the line path. Lines use
-`render/r3d_project_x.h` for fixed-point projection; the float projection
-helpers in `render/r3d_project.h` provide its test reference and the
-camera-space model matrix.
+visibility data. The mesh raster and the line path project through one
+`render_view_t`, shared with scene loading, camera clips, dynamic resolution
+and the context views. Lines use `render/r3d_project_x.h` for the camera-space
+model matrix and fixed-point projection; the float projection helpers in
+`render/r3d_project.h` provide its test reference.
 
 Bulk memory comes from the [app arena](../Building-an-App.md#app-memory)
 at entry. Internal SRAM is the scarce resource for hot buffers; PSRAM can

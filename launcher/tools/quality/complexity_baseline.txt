@@ -1449,7 +1449,6 @@
 4	launcher/test/suites/suite_gfx_indexed.c:369	test_needs_repaint_matches_cell_changed_when_not_forced
 4	launcher/test/suites/suite_post_ui.c:462	assert_the_wrap_walk_matches_its_count
 4	launcher/test/suites/suite_post_ui.c:487	test_the_wrap_measure_and_walk_agree_at_every_width
-4	launcher/test/suites/suite_r3d_line_camera.c:111	check_up_point_moves_toward_the_quarters_own_edge
 4	launcher/test/suites/suite_r3d_lit.c:387	grid_lines
 4	launcher/test/suites/suite_r3d_lit.c:231	test_an_axis_aligned_square_fills_exactly_the_centres_inside_it
 4	launcher/test/suites/suite_ridge_motion.c:32	crest_column
@@ -2166,7 +2165,6 @@
 2	launcher/main/asset/asset_pack.c:43	asset_pack_total_size
 2	launcher/main/board/board_esp32s3.c:92	board_audio_amp_enable
 2	launcher/main/board/board_panel.c:139	board_panel_bring_up
-2	launcher/main/boot/boot_anim.c:154	grid_circle_point
 2	launcher/main/gfx/present/gfx_debug.c:79	mark_rect_border
 2	launcher/main/gfx/present/gfx_debug.c:110	restore_border
 2	launcher/main/gfx/present/gfx_debug.c:97	save_border
@@ -2285,7 +2283,6 @@
 2	launcher/test/suites/suite_icons_system.c:112	reference_icon_scale
 2	launcher/test/suites/suite_post_ui.c:258	assert_a_check_ending_on_the_last_row_costs_nothing
 2	launcher/test/suites/suite_post_ui.c:359	assert_a_check_that_does_not_fit_moves_whole
-2	launcher/test/suites/suite_r3d_line_camera.c:231	physical_for_upright_top_centre
 2	launcher/test/suites/suite_r3d_lit.c:592	canvas_draw
 2	launcher/test/suites/suite_r3d_lit.c:416	draw_counting
 2	launcher/test/suites/suite_r3d_lit.c:1378	draw_parts

@@ -104,9 +104,6 @@ lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
     return gfx_color_mix(COL_BG, whitened, alpha);
 }
 
-/* Points reject the near plane; lines clip a straddling segment.
- * Scale belongs to the space transform's SCALE channel. */
-
 /* A whole number of grid units, as a Q12 value. */
 static int32_t
 units(int n) {

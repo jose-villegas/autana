@@ -100,7 +100,7 @@ boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) 
     boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
-     * so render_view_make()'s shorter-axis fit is exactly half w; boot's
+     * so render_view_make() fits the lens to w; boot's
      * pixels must not move if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
     const render_view_t view =
@@ -284,7 +284,7 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
     }
     const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
     const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * R3D_X_UNIT_ONE * view->pixels_per_unit < (int64_t)px * zmin * R3D_X_UNIT_ONE;
+    return m * view->pixels_per_unit < (int64_t)px * zmin;
 }
 
 /* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses

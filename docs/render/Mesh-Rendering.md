@@ -15,7 +15,7 @@ them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
 ## What a scene uses
 
-A scene that draws a baked mesh or traces rays includes `render/r3d.h`;
+A scene that draws a baked mesh includes `render/r3d.h`;
 one that projects points and segments takes `render/r3d_project_x.h`.
 Both use `render_view_t` for the per-frame perspective fit and picture basis.
 
@@ -23,7 +23,7 @@ Both use `render_view_t` for the per-frame perspective fit and picture basis.
 |---|---|
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Mesh-Import.md](Mesh-Import.md#the-baked-mesh)) |
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
-| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras and `render_view_make()` take one |
+| `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
@@ -72,9 +72,9 @@ exactly.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
-| `render_view.h` | Per-frame pose basis, perspective fit and viewport shared by mesh and line projection |
-| `r3d_project.h` | Line camera-space matrix and float reference for near clipping and perspective projection |
-| `r3d_project_x.h` | Fixed-point near clipping and perspective projection of points and segments |
+| `r3d_project_common.h` | Line near plane and pixel offset contract |
+| `r3d_project.h` | Float reference for near clipping and perspective projection |
+| `r3d_project_x.h` | Camera-space model matrix, fixed-point near clipping and perspective projection of points and segments |
 
 Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
@@ -82,7 +82,7 @@ suite or host tool include them.
 
 ## The maths
 
-The line camera, the boot animation, the animation tracks and the raster all
+Line projection, the animation tracks and the raster all
 take their types from `math/linear/`, documented in
 [../math/README.md](../math/README.md): the raster's lens and motion maps are
 `mat4f_t`, composed with `mat4f_mul_affine()`, inverted with
