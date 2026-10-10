@@ -1433,7 +1433,7 @@ widen(int16_t lo[3], int16_t hi[3], const int16_t p[3]) {
     }
 }
 
-/* Source-space corners retain their authored winding; the mutable mesh holds engine coordinates. */
+/* A fan of n = 3 or 4 corners in engine coordinates. */
 static void
 parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3], bool double_sided) {
     r3d_lit_mesh_t* m = &p->mesh;

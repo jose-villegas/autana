@@ -25,6 +25,9 @@ typedef struct {
     const r3d_scene_path_t* path;     /* NULL for a camera that stays put */
 } r3d_scene_camera_t;
 
+/* The pose's rotation times scale as m, its position as position. */
+r3d_placement_t r3d_placement_from(const transformf_t* pose);
+
 /* The loop's length, or 0 for a camera that stays put. */
 uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);
 

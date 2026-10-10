@@ -2,6 +2,15 @@
 
 #include <stddef.h>
 
+r3d_placement_t
+r3d_placement_from(const transformf_t* pose) {
+    const mat4f_t matrix = transformf_compute_matrix(pose);
+    return (r3d_placement_t){{{matrix.m[0][0], matrix.m[0][1], matrix.m[0][2]},
+                              {matrix.m[1][0], matrix.m[1][1], matrix.m[1][2]},
+                              {matrix.m[2][0], matrix.m[2][1], matrix.m[2][2]}},
+                             pose->position};
+}
+
 uint32_t
 r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera) {
     return camera->path == NULL ? 0 : camera->path->clip.duration_ms;

@@ -96,14 +96,11 @@ path = { animation = "fly.anim.toml", node = "camera" }
         frames = self.root / "measured"
         frames.mkdir(exist_ok=True)
         report = TOOLS / "r3d/report_triangle_sizes.sh"
-        compile_script = report.read_text().split("# shellcheck source=../../../scripts/lib/python.sh")[0]
-        compile_script = compile_script.replace('BUILD_DIR="$SCRIPT_DIR/build"', 'BUILD_DIR="$R3D_TEST_BUILD"')
         measured_build = self.root / "triangle-sizes"
-        build_env = dict(os.environ, R3D_TEST_BUILD=str(measured_build))
-        built = subprocess.run([shutil.which("sh"), "-c", compile_script, str(report),
-                                "--mesh", "card", str(poses)], capture_output=True, text=True, timeout=120, env=build_env)
+        built = subprocess.run([shutil.which("sh"), str(report), "--build-only", "-o", str(measured_build)],
+                               capture_output=True, text=True, timeout=120)
         self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-        binary = measured_build / ("triangle_sizes.exe" if os.name == "nt" else "triangle_sizes")
+        binary = pathlib.Path(built.stdout.strip())
         measured = subprocess.run([str(binary), str(assets / "probe.apak"), "card", str(poses),
                                    "--write", str(frames)], capture_output=True, text=True, timeout=120)
         self.assertEqual(measured.returncode, 0, measured.stdout + measured.stderr)

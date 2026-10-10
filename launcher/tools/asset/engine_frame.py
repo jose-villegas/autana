@@ -1,4 +1,4 @@
-"""Mirror source-space entries into the engine frame at the asset-pack boundary.
+"""Mirror entries from the source frame into the engine frame at the asset-pack boundary.
 
 The frame split and conversion are defined in docs/render/Mesh-Import.md,
 under "The offline tools".

@@ -9,9 +9,9 @@ the app image does not grow with content.
 
 ```mermaid
 flowchart TB
-    Import["mesh_import.py"] -->|source space| Entry["name.mesh in bake cache"]
-    Entry -->|source space| Mirror["engine_frame.to_engine"]
-    Authored["scene / clip bake"] -->|source space| Mirror
+    Import["mesh_import.py"] -->|source frame| Entry["name.mesh in bake cache"]
+    Entry -->|source frame| Mirror["engine_frame.to_engine"]
+    Authored["scene / clip bake"] -->|source frame| Mirror
     Mirror -->|engine frame| Build["build_pack.py"]
     Build --> Files["DIR/name.apak"]
     Build --> Image["assets.bin"]

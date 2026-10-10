@@ -67,7 +67,7 @@ typedef struct {
     vec3f_t forward[R3D_SIZES_POSES_MAX];
 } r3d_sizes_poses_t;
 
-/* Reads source-space poses into the engine frame. False reports what is
+/* Reads poses from the source frame into the engine frame. False reports what is
  * wrong and on which line in `problem`. */
 bool r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out, char* problem, size_t problem_size);
 

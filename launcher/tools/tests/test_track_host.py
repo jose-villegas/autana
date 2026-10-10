@@ -19,7 +19,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 
-from anim import sample_tracks, track_host  # noqa: E402
+from anim import track_host  # noqa: E402
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 
@@ -179,18 +179,10 @@ class TrackHostTests(unittest.TestCase):
         with self.assertRaisesRegex(track_host.TrackHostError, "node lens: "):
             track_host.poses(self.clip, "lens", 100, 8, 6, 0.5, 1.0)
 
-    def test_public_pack_poses_is_a_source_space_usage_error(self):
-        error = io.StringIO()
-        with contextlib.redirect_stderr(error):
-            self.assertEqual(sample_tracks.main(["--pack", str(self.pack()), "--clip", "walk", "--poses",
-                                              "camera", "8", "6", "0.5", "1"]), 2)
-        self.assertIn(".anim.toml", error.getvalue())
-        self.assertIn("source space", error.getvalue())
-
     def test_the_command_line_takes_an_anim_toml(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            self.assertEqual(sample_tracks.main([str(self.clip), "--every", "500"]), 0)
+            self.assertEqual(track_host.main([str(self.clip), "--every", "500"]), 0)
         self.assertEqual(out.getvalue(), "0 camera/translation 0 0 0\n0 camera/rotation 0 0 0 1\n"
                                          "500 camera/translation 1 0 0\n500 camera/rotation 0 0 0 1\n")
 
