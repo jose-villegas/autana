@@ -32,6 +32,17 @@ anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* compo
     return ANIM_BIND_ERR_COMPONENT;
 }
 
+/* The target named `name`, or NULL. */
+static const anim_target_t*
+find_target(const anim_target_t* targets, int count, const char* name) {
+    for (int t = 0; t < count; t++) {
+        if (strcmp(targets[t].name, name) == 0) {
+            return &targets[t];
+        }
+    }
+    return NULL;
+}
+
 anim_bind_status_t
 anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_count, anim_bound_t* out, int out_count,
           int* failed) {
@@ -47,13 +58,7 @@ anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_co
     for (int i = 0; i < clip->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(clip, i, &binding);
-        const anim_target_t* target = NULL;
-        for (int t = 0; t < target_count; t++) {
-            if (strcmp(targets[t].name, binding.path) == 0) {
-                target = &targets[t];
-                break;
-            }
-        }
+        const anim_target_t* target = find_target(targets, target_count, binding.path);
         const anim_bind_status_t status = target == NULL
                                               ? ANIM_BIND_ERR_PATH
                                               : anim_bind_field(&binding, target->components, target->component_count,
@@ -64,9 +69,6 @@ anim_bind(const anim_tracks_t* clip, const anim_target_t* targets, int target_co
             }
             return status;
         }
-    }
-    if (failed != NULL) {
-        *failed = -1;
     }
     return ANIM_BIND_OK;
 }
