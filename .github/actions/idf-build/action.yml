@@ -34,12 +34,20 @@ runs:
     # its timestamps honest. MAXSIZE is about four times one variant's fresh
     # cache: each save carries forward all it restored, and every variant and
     # commit shares the repository's 10 GB of Actions cache.
+    # The packs' meshes come from the bake cache (bake/bake.py). They are fetched here, where the workflow's
+    # GH_TOKEN can read a run that made them before main publishes them, into a cache the container mounts.
+    - name: Fetch the bakes launcher/bakes.lock names
+      shell: bash
+      run: python3 launcher/tools/bake/bake.py fetch --cache "${{ runner.temp }}/bakes"
+
     - uses: espressif/esp-idf-ci-action@v1
       with:
         esp_idf_version: release-v5.5
         target: esp32s3
         path: launcher
         extra_docker_args: >-
+          -v ${{ runner.temp }}/bakes:/bakes
+          -e AUTANA_BAKE_CACHE=/bakes
           -v ${{ runner.temp }}/ccache:/ccache
           -e CCACHE_DIR=/ccache
           -e CCACHE_MAXSIZE=150M

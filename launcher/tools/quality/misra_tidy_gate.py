@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 import complexity_gate as complexity
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from build.packages import FIRST_PARTY, package_part  # noqa: E402
 
 CHECKS = (
     "readability-math-missing-parentheses",
@@ -25,6 +27,13 @@ DIAGNOSTIC = re.compile(
 )
 
 
+def first_party(path):
+    """Under launcher/main/ or launcher/packages/: the code the baseline holds.
+    A package's tests/ is left out."""
+    rel = path.relative_to(complexity.REPO_ROOT).as_posix() if path.is_relative_to(complexity.REPO_ROOT) else ""
+    return rel.startswith(FIRST_PARTY) and (package_part(rel) or ("", ""))[1] != "tests"
+
+
 def count_diagnostics(output):
     counts = Counter()
     locations = {}
@@ -33,11 +42,9 @@ def count_diagnostics(output):
         if not match:
             continue
         path = Path(match.group("file")).resolve()
-        try:
-            rel = path.relative_to(complexity.LAUNCHER_DIR / "main")
-        except ValueError:
+        if not first_party(path):
             continue
-        name = "main/" + rel.as_posix()
+        name = path.relative_to(complexity.LAUNCHER_DIR).as_posix()
         for check in match.group("check").split(","):
             if check not in CHECKS:
                 continue
@@ -79,8 +86,7 @@ def main():
     _, missing = complexity.check_main_coverage(sources)
     if missing:
         sys.exit("unmeasured main files: " + ", ".join(missing))
-    files = [name for name in sources if Path(name).resolve().is_relative_to(
-        complexity.LAUNCHER_DIR / "main")]
+    files = [name for name in sources if first_party(Path(name).resolve())]
     checks = (args.fix,) if args.fix else CHECKS
     command = complexity.clang_tidy_cmd(clang_tidy, db_path)
     command += ["--checks=-*," + ",".join(checks)]

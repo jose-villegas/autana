@@ -9,6 +9,11 @@
 #include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
+#include "services/tune.h"
+
+TUNE_OWNER(render);
+/* The generated meshlet-size table measures both culling settings. */
+TUNE(render, cull, 1, 0, 1);
 
 #define JOB_WAIT_MS 1000
 
@@ -226,7 +231,15 @@ static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    const int visible = r3d_pipeline_cull(mesh, lens, out, work);
+    int visible;
+    if (cull) {
+        visible = r3d_pipeline_cull(mesh, lens, out, work);
+    } else {
+        visible = mesh->cluster_count;
+        for (int i = 0; i < visible; i++) {
+            out[i] = (uint16_t)i;
+        }
+    }
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
         stats->triangles += mesh->clusters[out[i]].triangle_count;

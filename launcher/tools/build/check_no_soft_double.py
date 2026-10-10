@@ -29,6 +29,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import packages  # noqa: E402
 
 SOFT_DOUBLE = re.compile(r"^__\w*df\w*$")
 LOGGING = re.compile(r"^(esp_log|esp_log_write|esp_log_writev|printf|snprintf|vsnprintf|sprintf|esp_rom_printf|"
@@ -49,11 +50,13 @@ def find_objdump():
     sys.exit("check_no_soft_double.py: no xtensa-esp32s3-elf-objdump on PATH or under the ESP-IDF tools")
 
 
-def objects(build):
-    root = build / "esp-idf" / "main" / "CMakeFiles" / "__idf_main.dir"
-    found = sorted(list(root.rglob("*.obj")) + list(root.rglob("*.o")))
+def objects(build, launcher=packages.LAUNCHER):
+    """The first-party objects: the main component's and each package's (packages.py)."""
+    components = ["main", *(include.parent.name for include in packages.include_dirs(launcher))]
+    roots = [build / "esp-idf" / name / "CMakeFiles" / f"__idf_{name}.dir" for name in components]
+    found = sorted(path for root in roots for path in [*root.rglob("*.obj"), *root.rglob("*.o")])
     if not found:
-        sys.exit("check_no_soft_double.py: no objects under %s - build the firmware first" % root)
+        sys.exit("check_no_soft_double.py: no objects under %s - build the firmware first" % roots[0])
     return found
 
 

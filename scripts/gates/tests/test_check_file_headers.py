@@ -64,6 +64,26 @@ class ProblemsTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual([line.split(":")[0] for line in self.problems({path: "int x;\n"})], [path])
 
+    def test_a_package_module_is_its_include_header_and_its_source(self):
+        header, source = "launcher/packages/p/include/p/x.h", "launcher/packages/p/src/x.c"
+        lonely = "launcher/packages/p/src/y.c"
+        cases = (
+            ({header: HEADER, source: "int x;\n"}, []),
+            ({header: "#pragma once\n", source: HEADER + "int x;\n"}, []),
+            ({header: "#pragma once\n", source: "int x;\n"}, [source]),
+            ({header: "#pragma once\n"}, [header]),
+            ({header: HEADER, lonely: "int y;\n"}, [lonely]),
+        )
+        for files, expected in cases:
+            with self.subTest(files=sorted(files)):
+                found = self.problems(files)
+                self.assertEqual([line.split(":")[0] for line in found], expected)
+
+    def test_a_header_under_another_include_folder_does_not_pair_with_the_source(self):
+        source = "launcher/packages/p/src/x.c"
+        found = self.problems({"launcher/packages/p/include/other/x.h": HEADER, source: "int x;\n"})
+        self.assertEqual([source], [line.split(":")[0] for line in found])
+
 
 if __name__ == "__main__":
     unittest.main()

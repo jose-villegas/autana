@@ -1,4 +1,6 @@
 """The catalogue selects shared owner files and keeps source-owned descriptions."""
+import contextlib
+import io
 import pathlib
 import shlex
 import sys
@@ -8,7 +10,7 @@ from unittest import mock
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "launcher/tools/gen"))
-from shared_helpers import CHECK, catalogue, update
+from shared_helpers import CHECK, catalogue, package_headers, update
 from c_comments import EXCLUDED
 from check_doc_generated import run_check
 from check_generated_files import generated_files
@@ -134,6 +136,39 @@ class SharedHelpers(unittest.TestCase):
         before = page.read_bytes()
         self.assertIsNotNone(run_check(REPO, command))
         self.assertEqual(before, page.read_bytes())
+
+    def package(self, readme="# p\n<!-- generated: package-headers -->\n<!-- /generated: package-headers -->\n"):
+        write(self.root, "launcher/packages/p/README.md", readme)
+        write(self.root, "launcher/packages/p/include/p/a/x.h", "/* The x header. */\nint x(void);\n")
+        write(self.root, "launcher/packages/p/include/p/y.h", "/* The y header. */\nint y(void);\n")
+        write(self.root, "launcher/packages/p/tests/helper.h", "/* A test helper. */\n")
+        write(self.root, "launcher/packages/p/src/z.h", "/* A private header. */\n")
+        return self.root / "launcher/packages/p/README.md"
+
+    def test_a_package_readme_lists_every_include_header_and_only_those(self):
+        readme = self.package()
+        rows = package_headers(self.root)
+        self.assertEqual(["launcher/packages/p/README.md"], list(rows))
+        self.assertEqual(["include/p/a/x.h", "include/p/y.h"], [row[0] for row in rows["launcher/packages/p/README.md"]])
+        self.assertEqual(0, update(self.root))
+        text = readme.read_text(encoding="utf-8")
+        self.assertIn("[include/p/a/x.h](include/p/a/x.h) | The x header.", text)
+        self.assertIn("[include/p/y.h](include/p/y.h) | The y header.", text)
+        self.assertNotIn("helper.h", text)
+        self.assertNotIn("z.h", text)
+
+    def test_a_stale_package_readme_is_named_and_left_unwritten(self):
+        readme = self.package()
+        before = readme.read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(1, update(self.root, check=True))
+        self.assertIn("launcher/packages/p/README.md", out.getvalue())
+        self.assertEqual(before, readme.read_bytes())
+
+    def test_a_package_readme_without_the_block_fails_loudly(self):
+        self.package("# p\nno block here\n")
+        with self.assertRaises(ValueError):
+            update(self.root)
 
 
 if __name__ == "__main__":

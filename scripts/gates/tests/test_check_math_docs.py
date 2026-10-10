@@ -15,7 +15,7 @@ FUNCTION = "    static inline int P##_add(int a) { return a; } \\\n"
 
 def make_tree(root, page_extra="", template_extra="", header_extra="", skip_section=None, empty_template=None):
     """A minimal tree that agrees with itself; each argument breaks one rule."""
-    math = root / "launcher/main/math/linear"
+    math = root / "launcher/packages/math/include/math/linear"
     math.mkdir(parents=True)
     (root / "docs/math").mkdir(parents=True)
     for family in check_math_docs.FAMILIES:
@@ -62,7 +62,7 @@ class CheckMathDocs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
             make_tree(root)
-            (root / "launcher/main/math/linear/vec2q.h").write_text("MATH_DEFINE_VEC2(vec2q, float)\n")
+            (root / "launcher/packages/math/include/math/linear/vec2q.h").write_text("MATH_DEFINE_VEC2(vec2q, float)\n")
             self.assertTrue(any("vec2q" in p for p in check_math_docs.check(d)))
 
     def test_a_missing_family_section_fails(self):
@@ -96,7 +96,7 @@ def swizzle_problems(sections=None, page_extra="", vec2_n=2):
     with tempfile.TemporaryDirectory() as d:
         root = pathlib.Path(d)
         make_tree(root)
-        math = root / "launcher/main/math/linear"
+        math = root / "launcher/packages/math/include/math/linear"
         (math / "vec_swizzle_template.h").write_text(SWIZZLE_TEMPLATE)
         for family, fields, call in (
             ("vec2", "x, y", "    MATH_DEFINE_SWIZZLE2(P, P, %d)\n" % vec2_n),
