@@ -1,6 +1,9 @@
 accel/tcg: the MMIO slow path keeps the attrs it copied before taking the BQL
 
-https://github.com/espressif/qemu/issues/174
+Upstream: https://github.com/espressif/qemu/issues/174
+Applies to: esp-develop-9.2.2-20260417 (accel/tcg/cputlb.c as in upstream v9.2.2)
+Remove: delete this file once the QEMU version ESP-IDF's tools.json
+recommends has the fix.
 
 do_ld_mmio_beN() / do_st_mmio_leN() and their 16-byte forms copy
 full->attrs, take the BQL, then re-read full->attrs after it. Waiting for
@@ -10,8 +13,7 @@ access is rejected, and the guest takes LoadStorePIFAddrError on an
 ordinary mapped register. On esp32s3 every flash-MMU write flushes the
 TLBs, so a firmware mapping flash on one core while the other touches a
 peripheral hits it: core 1's FreeRTOS tick faulting on SYSTIMER registers
-while core 0 maps a pack. The fix passes the pre-lock copy down. Delete
-this file once the QEMU version ESP-IDF installs has the fix.
+while core 0 maps a pack. The fix passes the pre-lock copy down.
 
 diff --git a/accel/tcg/cputlb.c b/accel/tcg/cputlb.c
 index b76a4ea..b17e585 100644
