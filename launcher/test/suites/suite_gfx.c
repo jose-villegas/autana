@@ -27,6 +27,7 @@
 
 #include "unity.h"
 
+#include "esp_cache.h"
 #include "esp_log.h"
 
 #include "board/board.h"
@@ -883,15 +884,31 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
- * many times per counter, in two settings: right after a full band, as
- * test_a_narrow_change_costs_less_than_a_full_band measures it, and
- * repeated, where only the bus is left. The mean is steady enough to show
- * a few microseconds; the counters say where this core's cycles went. */
+ * many times per counter, in three settings: right after a full band, as
+ * test_a_narrow_change_costs_less_than_a_full_band measures it; repeated,
+ * where only the bus is left; and cold, with all of flash code dropped from
+ * the instruction cache first, which is what code layout can cost it. The
+ * mean is steady enough to show a few microseconds; the counters say where
+ * this core's cycles went. */
 #define NARROW_PRESENTS 32
 static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti", "d_stall_all"};
 
+typedef enum { NARROW_AFTER_BAND, NARROW_REPEATED, NARROW_COLD } narrow_setting_t;
+
+extern char _instruction_reserved_start[];
+extern char _instruction_reserved_end[];
+
 static void
-count_narrow_presents(const char* scene, bool after_band) {
+drop_flash_code_from_cache(void) {
+    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
+    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
+    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
+    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
+                                              ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_INST));
+}
+
+static void
+count_narrow_presents(const char* scene, narrow_setting_t setting) {
     const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
     int64_t total_us = 0;
     (void)present_reference_band(gfx_rgb(0x204060));
@@ -901,10 +918,13 @@ count_narrow_presents(const char* scene, bool after_band) {
         uint64_t value_sum = 0;
         bool counted = true;
         for (int i = 0; i < NARROW_PRESENTS; i++) {
-            if (after_band) {
+            if (setting == NARROW_AFTER_BAND) {
                 (void)present_reference_band(gfx_rgb(0x204060));
             }
             write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
+            if (setting == NARROW_COLD) {
+                drop_flash_code_from_cache();
+            }
             TEST_ASSERT_TRUE(frame_cost_count_begin(event));
             total_us += time_present();
             uint32_t cycles = 0;
@@ -925,8 +945,9 @@ test_narrow_present_counters(void) {
 #if !FRAME_COST_ENABLED
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #else
-    count_narrow_presents("narrow_after_band", true);
-    count_narrow_presents("narrow_repeated", false);
+    count_narrow_presents("narrow_after_band", NARROW_AFTER_BAND);
+    count_narrow_presents("narrow_repeated", NARROW_REPEATED);
+    count_narrow_presents("narrow_cold", NARROW_COLD);
     TEST_PASS();
 #endif
 }
