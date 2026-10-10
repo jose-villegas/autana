@@ -283,7 +283,7 @@ starts included, always trace on `llvm_ad_rgb`, so their bytes never depend on a
 | Bytes | differ from LLVM's by float rounding; `test_r3d_reference.py` bounds the difference where both run | differ between CPU vendors by an ulp ([isa.py](isa.py)) |
 
 The reference key names the light model, not the device, so a set made on either serves the same fits; the set's
-`traced_on.txt` records which one made it. Under WSL 2 the Windows driver ships no OptiX for Linux: Dr.Jit loads it
+`traced_on.txt` records which one made it. Under WSL 2 the Windows driver ships only an OptiX loader stub: Dr.Jit loads OptiX
 from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
 `libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
 profile:
@@ -300,7 +300,7 @@ Differentiable Rendering*, ACM Transactions on Graphics 41(4), SIGGRAPH 2022,
 doi:[10.1145/3528223.3530099](https://doi.org/10.1145/3528223.3530099)), whose CUDA and LLVM backends the two
 variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
 repository); what changed is where the files go: that page copies them into Windows' own WSL driver folder, a system
-change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's `src/optix_api.cpp`)
+change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's core library, drjit-core)
 points at.
 
 ### Budget sweep

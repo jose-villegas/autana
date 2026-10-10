@@ -22,7 +22,7 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_mitsuba  # noqa: E402
-from tests.test_r3d_path_bake import have_llvm  # noqa: E402
+from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
 def plane_source(corners):
@@ -270,11 +270,9 @@ class BounceReferenceTests(unittest.TestCase):
 class TraceDeviceTests(unittest.TestCase):
     """Where a reference set traces: CUDA when it loads a scene, else the mesh bake's variant; mesh bakes never ask."""
 
-    def test_only_a_gpu_trace_asks_for_cuda_and_falls_back_to_the_bake_variant(self):
+    def test_a_reference_traces_on_cuda_when_it_loads_and_on_the_bake_variant_otherwise(self):
         from unittest.mock import patch
         from r3d import ray_query
-        with patch.object(ray_query, "default_variant", side_effect=AssertionError("asked for a device")):
-            self.assertEqual(ray_query.trace_variant(False), ray_query.VARIANT)
         for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
                             (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
             mi = SimpleNamespace(now="scalar_rgb", variant=lambda: mi.now)
@@ -285,7 +283,7 @@ class TraceDeviceTests(unittest.TestCase):
                 return found
 
             with patch.object(ray_query, "import_mitsuba", return_value=mi),                     patch.object(ray_query, "default_variant", side_effect=probe):
-                self.assertEqual(ray_query.trace_variant(True), want, found)
+                self.assertEqual(ray_query.trace_variant(), want, found)
             self.assertEqual(mi.now, "scalar_rgb", "the probe leaves Mitsuba on the variant it was on")
 
     def test_a_set_on_the_gpu_renders_in_this_process_and_frees_the_device_after(self):
@@ -294,22 +292,27 @@ class TraceDeviceTests(unittest.TestCase):
         from r3d.fitted_variant import poses_text
 
         inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
-        for variant, workers, freed in ((ray_query.GPU_VARIANT, 1, 1), ("llvm_ad_rgb", None, 0)):
+        for variant, freed in ((ray_query.GPU_VARIANT, 1), ("llvm_ad_rgb", 0)):
             with tempfile.TemporaryDirectory() as directory:
                 poses = pathlib.Path(directory) / "poses.txt"
                 poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
-                with contextlib.redirect_stdout(io.StringIO()),                         patch.object(ray_query, "trace_variant", return_value=variant),                         patch.object(reference_render, "lit_source", return_value=object()) as lit,                         patch.object(reference_render, "render_poses", return_value=(0, 1)) as render,                         patch.object(ray_query, "release_gpu") as release:
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    stack.enter_context(patch.object(ray_query, "trace_variant", return_value=variant))
+                    lit = stack.enter_context(patch.object(reference_render, "lit_source", return_value=object()))
+                    render = stack.enter_context(patch.object(reference_render, "render_poses", return_value=(0, 1)))
+                    release = stack.enter_context(patch.object(ray_query, "release_gpu"))
                     self.assertEqual(reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")]),
                                      variant)
             self.assertEqual(lit.call_args.kwargs["variant"], variant)
-            self.assertEqual(render.call_args.kwargs["workers"], workers, variant)
+            self.assertEqual(render.call_args.kwargs["workers"], 1, "the probe may have opened CUDA: no forked workers")
             self.assertEqual(release.call_count, freed, variant)
 
 
 def have_cuda():
     """Whether Mitsuba's CUDA variant traces here; asked only when a test runs, so a CPU host never opens CUDA."""
     from r3d import ray_query
-    return ray_query.trace_variant(True) == ray_query.GPU_VARIANT
+    return ray_query.trace_variant() == ray_query.GPU_VARIANT
 
 
 @needs_mitsuba
@@ -318,8 +321,8 @@ class CudaParityTests(unittest.TestCase):
     """The reference on CUDA against the reference on LLVM, both with bounced light, on a sunlit corridor seen from a
     few poses. The same sampler seeds draw the same paths, so the two differ only in float rounding."""
 
-    # Largest per-pixel difference over the mean pixel, from a first measurement on the GPU runner [measured
-    # 2026-10-10: see autana-i3mi]; well under a 565 step.
+    # Largest per-pixel difference over the mean pixel; a placeholder until a first measurement on the GPU runner
+    # sets it. Well under a 565 step.
     RELATIVE_BOUND = 1e-3
 
     def setUp(self):
@@ -345,9 +348,8 @@ class CudaParityTests(unittest.TestCase):
         poses = ([30.0, 20.0, 0.0, -0.3, -0.4, 0.0], [60.0, 5.0, 20.0, -1.0, -0.1, -0.3], [5.0, 40.0, -30.0, 0.2, -1.0, 0.4])
         return np.stack([render_linear(source, job, scene, np.array(pose), 16, 12, 0.6, 2) for pose in poses])
 
+    @needs_llvm
     def test_cuda_and_llvm_references_agree(self):
-        if not have_llvm():
-            self.skipTest("the LLVM variant needs libLLVM")
         llvm = self.render("llvm_ad_rgb")
         cuda = self.render("cuda_ad_rgb")
         self.assertGreater(llvm.mean(), 0.0, "the poses see lit surfaces")
