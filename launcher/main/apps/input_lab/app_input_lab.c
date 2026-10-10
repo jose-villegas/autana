@@ -23,14 +23,14 @@
 
 #include "app/app.h"
 #include "apps/input_lab/touch_probe.h"
+#include "core/timing.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "services/tune.h"
 #include "ui/ui.h"
 #include "ui/ui_style.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
-#include "util/runtime/timing.h"
-#include "util/runtime/tune.h"
 
 static const char* TAG = "input_lab";
 

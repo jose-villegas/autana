@@ -59,12 +59,8 @@ current_target(void) {
     return (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
 }
 
-/* gfx_present.c: partial clear's boxes, which gfx_clear() reads and every
- * present rotates, and the heal queue band mode resets. */
-extern bool partial_clear_on;
+/* Presentation state and the heal queue band mode resets. */
 extern bool interlace_on;
-extern gfx_box_t prev_bbox;
-extern gfx_box_t drawn_bbox;
 extern gfx_heal_t heal;
 
 #ifdef ESP_PLATFORM

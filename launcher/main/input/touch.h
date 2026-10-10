@@ -9,13 +9,13 @@
  */
 #pragma once
 
-#include "util/math/vec2i.h"
+#include "math/linear/vec2i.h"
 
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "input/input.h"
 #include "input/touch_gesture.h"
-#include "util/build/build_variant.h"
 
 /* Fast enough that a brief tap is sampled several times, cheap enough to be
  * irrelevant next to rendering (one small I2C read per poll, and only when

@@ -55,7 +55,7 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
     "$SAND_DIR/tests/suite_sand_common.c" \
     "$LAUNCHER_DIR/test/framework/unity.c" \
     "$LAUNCHER_DIR/test/suites.c" \
-    "$MAIN_DIR/util/runtime/job.c" \
+    "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \
     "$SAND_DIR/sand_chunk_sched.c" \
     "$SAND_DIR/sand_impulse.c" \

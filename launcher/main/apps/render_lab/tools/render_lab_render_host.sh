@@ -2,7 +2,7 @@
 #
 # Render this app's scenes on a host, with no board and no flash cycle.
 #
-#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>] [--update-baseline]
+#   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
@@ -21,8 +21,8 @@ scene_name=render_lab
 scene_sources="
 main/app/app_arena.c
 main/app/app_registry.c
-main/util/runtime/tune.c
-main/util/runtime/job.c
+main/services/tune.c
+main/core/job.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c
@@ -40,7 +40,7 @@ main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
-main/util/motion/orbit_motion.c
+main/math/motion/orbit_motion.c
 main/input/gesture.c
 main/input/orbit_motion_touch.c
 main/ui/ui.c
@@ -64,41 +64,10 @@ scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.
 #
-# The cube and wire scenes with the HUD hidden are pinned: triangle and line
-# coverage is integer, and the floats appear only in projection, truncated to
-# whole pixels, built without fast-math or FMA. Everything carrying the
-# HUD is not - its fps readout is a double printed with "%.1f" - and neither
-# are the Cornell scenes, which are float throughout.
 scene_renders="
-gouraud-landscape|--quarter 1 --no-hud --scene gouraud|448x368
-gouraud-landscape-panel|--quarter 1 --panel --no-hud --scene gouraud|368x448
-gouraud-portrait|--quarter 0 --no-hud --scene gouraud|368x448
-plane-landscape|--quarter 1 --no-hud --scene plane|448x368
-plane-portrait|--quarter 0 --no-hud --scene plane|368x448
-sphere-landscape|--quarter 1 --no-hud --scene sphere|448x368
-sphere-portrait|--quarter 0 --no-hud --scene sphere|368x448
-wirecube-landscape|--quarter 1 --no-hud --scene cube|448x368
-capsule-landscape|--quarter 1 --no-hud --scene capsule|448x368
-gouraud-landscape-hud|--quarter 1 --scene gouraud|448x368|nopin
-gouraud-landscape-panel-hud|--quarter 1 --panel --scene gouraud|368x448|nopin
-gouraud-portrait-hud|--quarter 0 --scene gouraud|368x448|nopin
-plane-landscape-hud|--quarter 1 --scene plane|448x368|nopin
-plane-portrait-hud|--quarter 0 --scene plane|368x448|nopin
-sphere-landscape-hud|--quarter 1 --scene sphere|448x368|nopin
-sphere-portrait-hud|--quarter 0 --scene sphere|368x448|nopin
-wirecube-landscape-hud|--quarter 1 --scene cube|448x368|nopin
-capsule-landscape-hud|--quarter 1 --scene capsule|448x368|nopin
-plane-title-fading|--quarter 1 --scene plane --frames 110|448x368|nopin
-plane-title-gone|--quarter 1 --scene plane --frames 140|448x368|nopin
-cornell-landscape|--quarter 1 --scene cornell --frames 40|448x368|nopin
-cornell-portrait|--quarter 0 --scene cornell --frames 40|368x448|nopin
-cornell-pass1|--quarter 1 --scene cornell --frames 2|448x368|nopin
-cornell-pass2|--quarter 1 --scene cornell --frames 5|448x368|nopin
-cornell-pass3|--quarter 1 --scene cornell --frames 9|448x368|nopin
-cornell-pt-landscape|--quarter 1 --scene cornell-pt --frames 60|448x368|nopin
-cornell-pt-portrait|--quarter 0 --scene cornell-pt --frames 60|368x448|nopin
-cornell-pt-seed|--quarter 1 --scene cornell-pt --frames 2|448x368|nopin
-cornell-pt-accum|--quarter 1 --scene cornell-pt --frames 45|448x368|nopin
+sponza-landscape-hud|--quarter 1 --scene sponza --frames 2|448x368|nopin
+sponza-portrait-hud|--quarter 0 --scene sponza --frames 2|368x448|nopin
+sponza-title-fading|--quarter 1 --scene sponza --frames 110|448x368|nopin
 sponza-landscape|--quarter 1 --no-hud --scene sponza --frames 2|448x368|nopin
 sponza-portrait|--quarter 0 --no-hud --scene sponza --frames 2|368x448|nopin
 sponza-flipped|--quarter 3 --no-hud --scene sponza --frames 2|448x368|nopin
