@@ -40,27 +40,37 @@ WELD_PER_TICK = 2
 def weld_quantised(q, rgb, tris, double, face=None):
     """(q, rgb, tris, double, face): one vertex per position and colour, in
     order of position then colour, the triangles that collapsed dropped and the
-    vertices nothing uses gone. A seam, two vertices at one position with
-    different colours, stays a seam. Without vertex colours (`rgb` None, a flat
-    mesh) only the position counts; `face`, a colour per triangle, keeps the
-    rows of the triangles that stayed."""
+    vertices nothing uses gone. A triangle collapses when two of its corners
+    weld, or when it welds onto another one's vertices in the same winding and
+    sidedness: the first of those stays. A seam, two vertices at one position
+    with different colours, stays a seam. Without vertex colours (`rgb` None, a
+    flat mesh) only the position counts; `face`, a colour per triangle, keeps
+    the rows of the triangles that stayed."""
     key = q if rgb is None else np.concatenate([q, rgb], axis=1)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     t = inverse.reshape(-1)[tris]
-    keep = (t[:, 0] != t[:, 1]) & (t[:, 1] != t[:, 2]) & (t[:, 0] != t[:, 2])
-    t, double = t[keep], np.asarray(double)[keep]
+    double = np.asarray(double)
+    keep = np.flatnonzero((t[:, 0] != t[:, 1]) & (t[:, 1] != t[:, 2]) & (t[:, 0] != t[:, 2]))
+    _, once = np.unique(np.column_stack([turned(t[keep]), double[keep]]), axis=0, return_index=True)
+    keep = keep[np.sort(once)]
+    t, double = t[keep], double[keep]
     used, local = np.unique(t, return_inverse=True)
     return (q[first][used], None if rgb is None else rgb[first][used], local.reshape(-1, 3), double,
             None if face is None else np.asarray(face)[keep])
+
+
+def turned(tris):
+    """Each triangle turned to start at its smallest vertex, which keeps its winding."""
+    start = np.argmin(tris, axis=1)
+    rows = np.arange(len(tris))
+    return np.stack([tris[rows, (start + k) % 3] for k in range(3)], axis=1).reshape(-1, 3)
 
 
 def canonical_order(tris, double, face=None):
     """(tris, double, face): the triangles each turned to start at its
     smallest vertex, which keeps its winding, and sorted, so the order says
     nothing of where they came from. `face` follows its triangles."""
-    start = np.argmin(tris, axis=1)
-    rows = np.arange(len(tris))
-    tris = np.stack([tris[rows, (start + k) % 3] for k in range(3)], axis=1)
+    tris = turned(tris)
     order = np.lexsort((tris[:, 2], tris[:, 1], tris[:, 0]))
     return tris[order], np.asarray(double)[order], None if face is None else np.asarray(face)[order]
 
