@@ -90,9 +90,9 @@ bench_close(bench_t* b) {
 
 static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
-    const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
+    const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){render_width(), render_height(), 0});
     r3d_lens_t lens;
-    r3d_lens_init(&lens, &camera, mesh->position_scale, (viewport_t){render_width(), render_height(), 0});
+    r3d_lens_init(&lens, &view, mesh->position_scale);
     return lens;
 }
 
@@ -176,11 +176,12 @@ open_the_meshes(void) {
 void
 test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
-    bench_t b;
+    bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
-    bench_open(&b, &atrium, NULL);
+    bench_open(b, &atrium, NULL);
     const r3d_lens_t lens = view_at(atrium.mesh, 0);
-    const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b.raster);
+    const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b->raster);
     const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1, parts.work[0]);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, &lens, parts.culled + 1, visible, parts.cs, parts.rows);
@@ -190,21 +191,24 @@ test_sponza_draw_stage_breakdown(void) {
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
         start = timing_now_us();
-        clear_and_draw(&b.raster, &lens, visible);
+        clear_and_draw(&b->raster, &lens, visible);
         ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", names[stop], (long long)(timing_now_us() - start));
     }
     r3d_span_stop_after = 0;
-    report_core_contention(&b.raster, &lens, visible);
+    report_core_contention(&b->raster, &lens, visible);
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
-    const camera_t empty = {{0.0F, 20000.0F, 0.0F}, {0.0F, 1.0F, 0.01F}, 1.0F, 1.0F};
+    const transformf_t sky_pose =
+        transformf_looking((vec3f_t){0.0F, 20000.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.01F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     start = timing_now_us();
-    const raster_stats_t none = raster_draw(&b.raster, &empty, 0);
-    raster_upscale(&b.raster, b.panel, GFX_WIDTH, GFX_HEIGHT);
+    const render_view_t frame_view = render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    const raster_stats_t none = raster_draw(&b->raster, &frame_view);
+    raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame", (long long)(timing_now_us() - start),
              none.clusters);
 
-    bench_close(&b);
+    bench_close(b);
+    memory_free(b);
     TEST_PASS();
 }
 
@@ -224,12 +228,12 @@ report_frame_cost(const char* label, const r3d_instance_t* instance, const raste
     int64_t worst = 0;
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
-        const camera_t camera = r3d_scene_camera_at(flythrough, t_ms);
+        const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         if (moving != NULL) {
             moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
         }
         const int64_t start = timing_now_us();
-        const raster_stats_t stats = raster_draw(&b->raster, &camera, 0);
+        const raster_stats_t stats = raster_draw(&b->raster, &view);
         raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),

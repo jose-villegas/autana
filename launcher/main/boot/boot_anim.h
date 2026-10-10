@@ -28,6 +28,7 @@
 
 #include "anim/anim_track.h"
 #include "anim/anim_transform.h"
+#include "anim/tween.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
 #include "gfx/draw/gfx_color.h"
@@ -35,7 +36,6 @@
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
-#include "math/motion/tween.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
 #include "render/r3d_line_camera.h"

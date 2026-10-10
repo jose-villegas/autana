@@ -31,7 +31,7 @@
 #include <stdio.h>
 
 #include "app/app.h"
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"

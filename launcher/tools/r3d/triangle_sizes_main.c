@@ -201,9 +201,11 @@ main(int argc, char** argv) {
     r3d_sizes_t total = {0};
     for (int pose = 0; pose < poses->count; pose++) {
         r3d_lens_t lens;
-        r3d_lens_init(&lens,
-                      &(camera_t){poses->eye[pose], poses->forward[pose], poses->half_fov_short_tan, poses->near_z},
-                      mesh->position_scale, (viewport_t){size.width, size.height, 0});
+        const transformf_t camera_pose =
+            transformf_looking(poses->eye[pose], poses->forward[pose], (vec3f_t){0.0F, 1.0F, 0.0F});
+        const render_view_t view = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z,
+                                                    (viewport_t){size.width, size.height, 0});
+        r3d_lens_init(&lens, &view, mesh->position_scale);
         const int count = r3d_pipeline_cull(mesh, &lens, b.visible, b.work);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &lens, b.visible, count, &s);

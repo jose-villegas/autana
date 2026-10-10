@@ -25,7 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 #define TUNE_ENABLED 1
@@ -75,15 +75,24 @@ const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name)
  *                        twice, then TUNE_END count=<n> */
 bool tune_registry_handle_line(tune_registry_t* registry, const char* line, tune_reply_fn reply);
 
+#define TUNE_CONSTANT(owner, what, initial_value, low_value, high_value)                                               \
+    _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
+                   #owner "." #what " starts outside its own range");                                                  \
+    enum { what = (initial_value) }
+
+#ifndef TUNE_HOT_LIVE
+#define TUNE_HOT_LIVE 0
+#endif
+
 #if TUNE_ENABLED
 
 /* The one TUNE() entries join, and the console answers from. */
 tune_registry_t* tune_shared(void);
 bool tune_handle_line(const char* line, tune_reply_fn reply);
 
-#define TUNE_OWNER(owner) static tune_owner_t owner##_tunables
+#define TUNE_OWNER(owner) static tune_owner_t owner##_tunables __attribute__((unused))
 
-#define TUNE(owner, what, initial_value, low_value, high_value)                                                        \
+#define TUNE_LIVE(owner, what, initial_value, low_value, high_value)                                                   \
     _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
                    #owner "." #what " starts outside its own range");                                                  \
     _Static_assert(sizeof(#owner "." #what) - 1 <= TUNE_NAME_MAX, #owner "." #what " is too long a name to SET");      \
@@ -95,17 +104,23 @@ bool tune_handle_line(const char* line, tune_reply_fn reply);
     static tune_entry_t what##_tunable = {#owner "." #what,  &what, (initial_value), (low_value), (high_value),        \
                                           &owner##_tunables, NULL}
 
+#define TUNE                   TUNE_LIVE
 #define TUNE_GENERATION(owner) (owner##_tunables.generation)
 
 #else
 
-#define TUNE_OWNER(owner) struct owner##_tunables_are_constants
+#define TUNE_OWNER(owner)      struct owner##_tunables_are_constants
 
-#define TUNE(owner, what, initial_value, low_value, high_value)                                                        \
-    _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
-                   #owner "." #what " starts outside its own range");                                                  \
-    enum { what = (initial_value) }
-
+#define TUNE                   TUNE_CONSTANT
 #define TUNE_GENERATION(owner) 0u
 
+#endif
+
+/* Pinned code needs constants unless the build explicitly permits live
+ * loads; a host build is the default image's code too, and links without
+ * the registry. */
+#if TUNE_HOT_LIVE
+#define TUNE_HOT TUNE
+#else
+#define TUNE_HOT TUNE_CONSTANT
 #endif

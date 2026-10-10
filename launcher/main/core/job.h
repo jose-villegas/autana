@@ -8,6 +8,10 @@
 
 typedef void (*job_fn_t)(void* ctx);
 
+/* Called with the core-1 worker's task once it exists: now, when it already
+ * does. One at a time; a later call replaces it. Never called on a host. */
+void job_on_worker_started(void (*fn)(void* task));
+
 /* Runs a valid job on core 1 when its worker is idle; otherwise runs it
  * inline. The context is copied before either path calls fn. False means
  * ctx_size exceeded JOB_CTX_MAX and fn was not called. */

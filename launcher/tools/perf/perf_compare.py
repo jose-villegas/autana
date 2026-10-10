@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, FilterOverlap
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
+DEFAULT_THRESHOLD = 1.0
+DEFAULT_ALPHA = 0.05
 MAX_RUNS = 16
 
 
@@ -316,8 +318,8 @@ def main(argv=None):
     parser.add_argument("--label-a", default="A")
     parser.add_argument("--label-b", default="B")
     parser.add_argument("--suite", nargs=3, action="append", metavar=("NAME", "TESTS", "TABLE"))
-    parser.add_argument("--threshold", type=float, default=1.0)
-    parser.add_argument("--alpha", type=float, default=0.05)
+    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
+    parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--max-seeds", type=int, default=32)
     parser.add_argument("--rng-seed", type=int, help="replay a recorded random plan; default: fresh draw")
     parser.add_argument("--timeout", type=int, default=1800)

@@ -12,8 +12,8 @@
 #include "console/device_state.h"
 #include "console/json_splice.h"
 #include "console/screenshot.h"
-#include "core/frame_watch.h"
 #include "core/memory.h"
+#include "profile/frame_watch.h"
 
 #include "esp_log.h"
 

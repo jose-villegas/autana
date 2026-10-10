@@ -32,8 +32,9 @@ the first lights of `LIGHTS` in the benchmark.
 
 ## Results
 
-The mesh is the hand-rigged capybara's glTF export at
-`launcher/demo/capybara/capybara.glb`, passed to `report_skin_light.sh`:
+The mesh is the hand-rigged capybara's glTF export, the cached bake
+`python launcher/tools/bake/bake.py path capybara.glb` prints, passed to
+`report_skin_light.sh`:
 four influences per vertex, every frame of every clip. `mul`, `add`,
 `div` and `sqrt` count float operations per vertex, read off each kernel in
 [skin_light_bench.c](../../launcher/tools/r3d/skin_light/skin_light_bench.c),

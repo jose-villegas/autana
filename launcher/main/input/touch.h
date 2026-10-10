@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "input/input.h"
 #include "input/touch_gesture.h"
 

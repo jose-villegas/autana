@@ -137,7 +137,6 @@ FIT_GROUPS = {
     "prune": ("budget", "coverage_every_ms"),
     "poses": ("train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight"),
-    "hashes": ("sha256", "recipe_sha256"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
@@ -145,9 +144,11 @@ FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 def load_fit(value, variant, where):
     """The grouped recipe of a variant the appearance fit makes offline from
     the mesh the import bakes at `triangles`: `prune` names the budget and
-    coverage poses, `poses` names training and held-out camera-path poses,
-    `optimise` holds settings, and `hashes` records the mesh and recipe
-    SHA-256s (fitted_variant.recipe_digest)."""
+    coverage poses, `poses` names training and held-out camera-path poses and
+    `optimise` holds settings. What a fit made is recorded in launcher/bakes.lock
+    (bake/bake.py), not here."""
+    if "hashes" in value:
+        raise SettingsError(f"{where}.hashes is gone: launcher/bakes.lock records what a fit made")
     for group, keys in FIT_GROUPS.items():
         for key in keys:
             if key in value:
@@ -165,8 +166,6 @@ def load_fit(value, variant, where):
         setattr(fit, key, count(values[key], f"{where}.{key}"))
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
-    fit.sha256 = text(values["sha256"], f"{where}.sha256")
-    fit.recipe_sha256 = text(values["recipe_sha256"], f"{where}.recipe_sha256")
     if fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
     return fit
@@ -285,8 +284,10 @@ def load_import_settings(path):
             raise SettingsError("source.clips names the actions a .blend exports; this source is not one")
         source["clips"] = strings(source["clips"], "source.clips")
     output = values["output"]
-    check_keys(output, ("directory",), "output", optional=("name", "position_scale"))
-    directory = text(output["directory"], "output.directory")
+    if "directory" in output:
+        raise SettingsError("output.directory is gone: a mesh is a bake product, made into the bake cache "
+                            "(bake/bake.py), never beside its import")
+    check_keys(output, (), "output", optional=("name", "position_scale"))
     materials = values.get("materials", {})
     check_keys(materials, (), "materials", optional=("double_sided",))
     steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None)
@@ -312,7 +313,7 @@ def load_import_settings(path):
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
     return SimpleNamespace(
-        path=path, source=source, out_dir=(path.parent / directory).resolve(), mesh_dir=path.parent,
+        path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),

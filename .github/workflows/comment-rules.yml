@@ -134,6 +134,9 @@ jobs:
       - name: No new token clone pairs
         run: python3 scripts/gates/check_clones.py --base "origin/${{ github.base_ref || 'main' }}"
 
+      - name: No new magic numbers or protocol strings
+        run: python3 scripts/gates/check_magic_numbers.py --base "origin/${{ github.base_ref || 'main' }}"
+
       - name: Simulation skip facts are read through the forced-work gate
         run: python3 scripts/gates/check_skip_facts.py
 

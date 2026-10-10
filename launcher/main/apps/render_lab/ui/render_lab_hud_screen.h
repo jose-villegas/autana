@@ -15,12 +15,10 @@ typedef struct {
     const char* scene_title;
     uint8_t scene_title_alpha; /* dithered coverage of the title's ink; 0 draws no title at all */
 
-    /* A second line under the fps reading - a scene's vertex/edge counts,
+    /* A second line under the fps reading - a scene's mesh details,
      * say. NULL for none. */
     const char* status;
 
-    /* -1 uses the corner inset. */
-    int fps_box_x_override;
 } render_lab_hud_screen_state_t;
 
 /* Caller brackets drawing with the appropriate ui_begin()/ui_end() pair. */

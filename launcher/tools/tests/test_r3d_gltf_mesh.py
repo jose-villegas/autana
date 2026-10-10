@@ -130,7 +130,7 @@ class GltfMeshReadTests(unittest.TestCase):
 class GltfImportSettingsTests(unittest.TestCase):
     def settings(self, directory, source):
         path = pathlib.Path(directory) / "m.import.toml"
-        path.write_text(f'[source]\npath = "{source}"\ncredit = "c"\n[output]\ndirectory = "."\nname = "m"\n')
+        path.write_text(f'[source]\npath = "{source}"\ncredit = "c"\n[output]\nname = "m"\n')
         return load_import_settings(path)
 
     def test_a_glb_source_is_accepted(self):
@@ -157,7 +157,7 @@ class GltfImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write_glb(directory, [{"mesh": 0}], meshes)
             path = pathlib.Path(directory) / "m.import.toml"
-            path.write_text('[source]\npath = "m.glb"\ncredit = "c"\n[output]\ndirectory = "."\nname = "m"\n')
+            path.write_text('[source]\npath = "m.glb"\ncredit = "c"\n[output]\nname = "m"\n')
             self.assertEqual(mesh_import.main([str(path)]), 0)
             mesh = read_lit_mesh(pathlib.Path(directory) / "m.mesh")
         self.assertEqual(len(mesh.tris), 4)
@@ -169,7 +169,7 @@ class GltfImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             shutil.copy(FBX_PROBE, pathlib.Path(directory) / "m.fbx")
             path = pathlib.Path(directory) / "m.import.toml"
-            path.write_text('[source]\npath = "m.fbx"\ncredit = "c"\n[output]\ndirectory = "."\nname = "m"\n')
+            path.write_text('[source]\npath = "m.fbx"\ncredit = "c"\n[output]\nname = "m"\n')
             self.assertEqual(mesh_import.main([str(path)]), 0)
             mesh = read_lit_mesh(pathlib.Path(directory) / "m.mesh")
         self.assertGreater(len(mesh.tris), 0)

@@ -1,6 +1,6 @@
 #include "services/build_id.h"
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 
 #include "esp_app_desc.h"
 

@@ -31,7 +31,7 @@ class SceneViewer(unittest.TestCase):
         write_lit_mesh(cls.root, "card", positions, np.array([[255, 40, 20]] * 3),
                        np.array([[0, 1, 2]]), np.array([True]))
         (cls.root / "card.import.toml").write_text(
-            '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\ndirectory = "."\nname = "card"\n')
+            '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\nname = "card"\n')
         (cls.root / "card.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
         write_camera_clip(cls.root, reach=2.0)
         cls.scene.write_text('''[[objects]]
@@ -81,7 +81,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(run.returncode, 0)
         names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
         header = (TOOLS.parent / "main/render/context/render_context.h").read_text()
-        count = int(re.search(r"#define RENDER_VIEW_COUNT\s+(\d+)", header)[1])
+        count = int(re.search(r"#define RENDER_DEBUG_VIEW_COUNT\s+(\d+)", header)[1])
         self.assertEqual(len(names), count + 1)
         self.assertEqual(names[0], "shaded")
         for name in names:

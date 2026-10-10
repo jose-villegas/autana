@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "ui/ui.h"
 

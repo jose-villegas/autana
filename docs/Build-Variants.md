@@ -133,6 +133,10 @@ A perf-scoped build is **not a gate**: it drops behaviour coverage on purpose.
 Never take a merge decision from one, and never diff its numbers against an
 unscoped capture's: different scope, different layout.
 
+`--hot-tunables` (dev/diag) enables live `TUNE_HOT` values for sweeps; default
+device images keep them constant. Like `--layout-seed`, it selects the image
+built and requires `--flash` when running suites.
+
 ## Float maths is single precision, and the build holds it there
 
 The S3's FPU has no double: every `double` operation is a libgcc call, about
@@ -200,7 +204,7 @@ severity, project-wide, with no per-call-site `#if` needed; this project
 just doesn't split that ceiling per build variant yet. See
 [Log-Level-Plan.md](plans/Log-Level-Plan.md).
 
-A FRAME_COST bracket ([`core/frame_cost.h`](tools/Frame-Cost.md)) names a stage of the frame:
+A FRAME_COST bracket ([`profile/frame_cost.h`](tools/Frame-Cost.md)) names a stage of the frame:
 something the shell or a screen does once per frame, and stays in the
 source, compiled out of release the same as everything else in this section.
 A bracket put inside a stage to answer one question is scaffolding instead:

@@ -54,7 +54,7 @@ sand_skip_sites_report(void) {
 #include <stdlib.h>
 #include <string.h>
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "sand_limits.h"

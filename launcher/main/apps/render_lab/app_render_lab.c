@@ -1,28 +1,15 @@
-/*
- * app_render_lab: the software-rendering testbed launcher app.
- *
- * Draws into the shared framebuffer when the shell calls frame(), and
- * returns; it owns no frame loop, framebuffer or panel access of its own.
- *
- * Owns gfx_mode_enter()/exit(), the layout switch, BOOT handling, the menu,
- * the scene picker and the fps counter. A scene
- * (render_lab_scene.h) owns only its own geometry, pose, clear colour and
- * coverage/dirty marking.
- */
-
+/* app_render_lab: mesh scenes behind a shared HUD and scene picker. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "app/app.h"
-#include "app/app_arena.h"
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "render_lab.h"
-#include "render_lab_mode_switch.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
@@ -31,13 +18,6 @@
 #include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
 
-extern const render_lab_scene_t scene_cube;
-extern const render_lab_scene_t scene_wire_plane;
-extern const render_lab_scene_t scene_wire_cube;
-extern const render_lab_scene_t scene_wire_sphere;
-extern const render_lab_scene_t scene_wire_capsule;
-extern const render_lab_scene_t scene_raytrace;
-extern const render_lab_scene_t scene_pathtrace;
 extern const render_lab_scene_t scene_sponza;
 extern const render_lab_scene_t scene_capybara;
 extern const render_lab_scene_t scene_sponza_lite;
@@ -45,34 +25,15 @@ extern const render_lab_scene_t scene_sponza_flat;
 extern const render_lab_scene_t scene_sponza_fitted;
 extern const render_lab_scene_t scene_sponza_fitted_full;
 extern const render_lab_scene_t scene_sponza_flat_fitted;
-bool render_lab_partial_updates = true;
 
 static const render_lab_scene_t* const scenes[] = {
-    &scene_cube,
-    &scene_wire_plane,
-    &scene_wire_cube,
-    &scene_wire_sphere,
-    &scene_wire_capsule,
-    &scene_raytrace,
-    &scene_pathtrace,
-    &scene_sponza,
-    &scene_sponza_lite,
-    &scene_sponza_flat,
-    &scene_sponza_fitted,
-    &scene_sponza_fitted_full,
-    &scene_sponza_flat_fitted,
+    &scene_sponza,        &scene_sponza_lite,        &scene_sponza_flat,
+    &scene_sponza_fitted, &scene_sponza_fitted_full, &scene_sponza_flat_fitted,
     &scene_capybara,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
-/* Where the running scene's arena memory starts: a scene switch and exit
- * rewind to it, so each scene takes from the same spot. */
-static size_t scene_arena_mark;
-
-/* current_scene_index's own re-entry seed, a scene's key, NULL (the cube)
- * by default. Read only at enter(), the same contract render_lab_band_mode
- * below documents. */
 const char* render_lab_start_scene_key;
 const char* render_lab_start_camera;
 
@@ -94,24 +55,18 @@ current_scene(void) {
     return scenes[current_scene_index];
 }
 
-/* Requests gfx's internal-SRAM band ring (GFX_LAYOUT_BANDS, gfx_mode.h) instead
- * of the PSRAM framebuffer. On by default; runtime override for
- * suite_cube_band_perf.c. Read only at enter(), so flipping it mid-visit
- * needs a re-entry to take hold. */
-bool render_lab_band_mode = true;
-
 /* Hides the fps/title overlay draw_fps() builds, on by default. A render
  * host pin needs it off: the fps line is a double formatted with "%.1f",
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
 
 TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RENDER_VIEW_SHADED, RENDER_VIEW_SHADED, RENDER_VIEW_COUNT);
+TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
 TUNE(render_lab, scale, 200, 100, 800);
 TUNE(render_lab, budget, 0, 0, 200);
 
 int
-render_lab_view(void) {
+render_lab_debug_view(void) {
     return (int)view;
 }
 
@@ -124,18 +79,6 @@ int
 render_lab_budget_ms(void) {
     return budget;
 }
-
-bool
-render_lab_scene_shows_views(void) {
-    return current_scene()->shows_view_modes;
-}
-
-/* -1 (default) leaves the fps box at its corner inset. Any other value pins
- * the box's own logical x there instead, a test-only hook
- * (suite_cube_band_perf.c) for measuring the UI cost of a box whose PANEL
- * row extent (a 90-degree turn maps logical x onto panel rows) starts on a
- * band boundary rather than wherever the inset lands it. */
-int render_lab_fps_box_x_override = -1;
 
 /* How long a scene's name stays on screen after the scene is entered. The
  * BOOT menu shows the name at any time, so the HUD does not keep it. */
@@ -155,23 +98,12 @@ scene_title_alpha(void) {
  * the normal view renders only the scene and the fps counter, everything
  * else lives behind BOOT. */
 static bool menu_open;
-static render_lab_mode_switch_t mode_switch;
 
-/* A scene change can change the layout, and the menu that asks for one runs
- * mid-frame, with a band frame possibly about to begin, so it is taken at
- * the top of the next frame, as the layout toggle is. */
 static bool scene_switch_pending;
 
 /* A scene the console asked for by key, switched to at the next frame like
  * a menu tap; -1 for none. */
 static int scene_requested = -1;
-
-/* What gfx actually granted at enter(), not simply render_lab_band_mode,
- * which is only the request: gfx falls back to GFX_LAYOUT_FULL_FB if the
- * band ring fails to allocate, and render_lab_frame() has to follow the
- * grant rather than call gfx_band_*() against buffers that were never
- * allocated. */
-static bool band_mode_active;
 
 /* On-screen framerate, since the shell's report_fps() reaches only the
  * serial console. Windowed on the dt_ms render_lab_frame() is handed. */
@@ -180,27 +112,19 @@ static uint32_t fps_frame_count;
 static uint32_t fps_window_elapsed_ms;
 static float fps_value;
 
-/* Last ui_layout_generation() seen, so render_lab_frame() can tell a shell
- * orientation change happened since last frame; see its own comment for
- * why that forces a full clear rather than a partial one. */
+/* Orientation changes invalidate the HUD layout. */
 static uint32_t last_layout_generation;
 
-/* current_scene_index must already name the scene about to run: a scene
- * with needs_full_framebuffer set (render_lab_scene.h) overrides
- * render_lab_band_mode, so the request depends on which scene this is. */
 static void
 enter_layout(void) {
-    const bool bands = render_lab_band_mode && !current_scene()->needs_full_framebuffer;
     const gfx_mode_request_t mode_request = {
-        .layout = bands ? GFX_LAYOUT_BANDS : GFX_LAYOUT_FULL_FB,
+        .layout = GFX_LAYOUT_FULL_FB,
 
         .interlace_x = false,
         .interlace_y = false,
     };
-    band_mode_active = gfx_mode_enter(&mode_request)->layout == GFX_LAYOUT_BANDS;
-    /* The framebuffer is whatever the previous app or layout left in it;
-     * the first frame after entering, in either mode, has to clear in full.
-     * gfx_invalidate() ensures the partial clear cache starts fresh. */
+    (void)gfx_mode_enter(&mode_request);
+
     gfx_invalidate();
 }
 
@@ -208,7 +132,6 @@ void
 render_lab_enter(void) {
     current_scene_index = scene_index_for_key(render_lab_start_scene_key);
     enter_layout();
-    scene_arena_mark = app_arena_mark();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
@@ -217,32 +140,22 @@ render_lab_enter(void) {
     fps_value = 0.0F;
 
     /* Always re-enter on the scene view, menu closed (never left open from a
-     * previous visit, the same reason app_diagnostics.c resets `page` to 0
-     * here), and with a fresh orientation baseline so a rotation that
+     * previous visit), and with a fresh orientation baseline so a rotation that
      * happened while some OTHER app was showing does not read as "changed
      * since last frame" on the very first frame back here. */
     menu_open = false;
-    mode_switch.pending = false;
     scene_switch_pending = false;
     scene_requested = -1;
     last_layout_generation = ui_layout_generation();
 }
 
 static void
-switch_layout(void) {
-    gfx_set_partial_clear(false);
-    gfx_mode_exit();
-    enter_layout();
-    ui_invalidate();
-}
-
-static void
 switch_to_scene(int index) {
     current_scene()->exit();
-    app_arena_rewind(scene_arena_mark);
     current_scene_index = index;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
-    switch_layout(); /* the new scene's needs_full_framebuffer may differ from the old one's */
+    gfx_invalidate();
+    ui_invalidate();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 }
@@ -252,94 +165,41 @@ switch_to_next_scene(void) {
     switch_to_scene((current_scene_index + 1) % SCENE_COUNT);
 }
 
-/* The persistent HUD: the scene and, over it, the fps line; nothing else
- * renders while the menu is closed (see render_lab_frame()). Exposed for
- * performance testing (suite_cube_perf.c), timed as its own phase there.
- * `for_bands` builds the same commands either way; only the finishing
- * call differs; see ui_end_for_bands()'s own comment (ui.h). */
-void
-draw_fps(const input_t* input, bool for_bands) {
+static void
+draw_fps(const input_t* input) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
 
     const render_lab_hud_screen_state_t state = {
         .fps_value = fps_value,
-        .fps_box_x_override = render_lab_fps_box_x_override,
         .scene_title = current_scene()->name,
         .scene_title_alpha = scene_title_alpha(),
         .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
     };
     render_lab_hud_screen_draw(ctx, &state);
 
-    /* UI_NO_BACKGROUND is what lets the spinning scene show through
-     * everywhere this window doesn't itself paint; see app_sand.c's
-     * draw_palette() for the precedent. Unlike that panel's frozen sand,
-     * the scene keeps moving underneath every frame, which is exactly the
-     * case ui_end()'s own comment calls out: it repaints whenever
-     * "something else has already dirtied the screen", so the fps line
-     * stays correctly composited over a background that never stops
-     * changing, with no special handling needed here. */
-    if (for_bands) {
-        ui_end_for_bands(UI_NO_BACKGROUND);
-    } else {
-        ui_end(UI_NO_BACKGROUND);
-    }
+    /* The scene changes underneath the HUD every frame, so the overlay
+     * must composite over the current scene without an opaque window. */
+    ui_end(UI_NO_BACKGROUND);
 }
 
-/* The BOOT-opened menu holds the runtime rendering options and the scene
- * picker as centered bezel buttons, the place any future option belongs,
- * rather than growing the persistent HUD in draw_fps(). See menu_open's
- * own comment for why BOOT opens this instead of flipping a toggle
- * directly. */
 static void
-draw_menu(const input_t* input, bool for_bands, uint32_t dt_ms) {
+draw_menu(const input_t* input, uint32_t dt_ms) {
     mu_Context* ctx = ui_context();
     ui_begin(input);
 
     const render_lab_menu_screen_state_t state = {
-        .partial_updates_on = render_lab_partial_updates,
-        .band_mode_on = render_lab_band_mode,
         .scene_name = current_scene()->name,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
 
-    if (result.partial_updates_clicked) {
-        render_lab_partial_updates = !render_lab_partial_updates;
-
-        /* Same reason render_lab_frame()'s BOOT handling forces this on
-         * every open/close of this menu: flipping the toggle mid-visit
-         * resets the partial clear cache. */
-        gfx_invalidate();
-    }
-    /* A scene with needs_full_framebuffer set overrides the request either
-     * way, so toggling it here would only cost a layout re-entry with
-     * nothing for the user to see; the button simply does nothing. */
-    if (result.band_mode_clicked && !current_scene()->needs_full_framebuffer) {
-        render_lab_band_mode = !render_lab_band_mode;
-        render_lab_mode_switch_request(&mode_switch);
-    }
     if (result.next_scene_clicked) {
         scene_switch_pending = true;
     }
 
-    /* Modeled on app_sand.c's own draw_menu(): one full-screen OPAQUE
-     * window (RENDER_LAB_BACKGROUND_RGB, not UI_NO_BACKGROUND), because
-     * render_lab_frame() does not draw the scene at all while menu_open is
-     * true. In band mode render_lab_clear_band() already filled the whole
-     * band with this same colour, so the finishing call there passes
-     * UI_NO_BACKGROUND instead of paying for that fill twice. */
-    if (for_bands) {
-        ui_end_for_bands(UI_NO_BACKGROUND);
-    } else {
-        ui_end(RENDER_LAB_BACKGROUND_RGB);
-    }
+    ui_end(RENDER_LAB_BACKGROUND_RGB);
 }
 
-/* fps_value changes only when a window closes, so it reads as a settled
- * average, as report_fps() in shell/shell.c does. Shared by both render
- * paths. */
-/* No scene erases the title's box, so the frame it expires on is redrawn in
- * full. */
 static void
 update_scene_title(uint32_t dt_ms) {
     if (scene_title_remaining_ms == 0) {
@@ -348,7 +208,6 @@ update_scene_title(uint32_t dt_ms) {
     scene_title_remaining_ms = scene_title_remaining_ms > dt_ms ? scene_title_remaining_ms - dt_ms : 0;
     if (scene_title_remaining_ms == 0) {
         gfx_invalidate();
-        current_scene()->invalidate();
     }
 }
 
@@ -364,59 +223,8 @@ update_fps_counter(uint32_t dt_ms) {
     }
 }
 
-/* Two pixels per store, the same trick gfx_clear() uses. */
-void
-render_lab_clear_band(gfx_color_t* buf, int height) {
-    const gfx_color_t color = gfx_rgb(RENDER_LAB_BACKGROUND_RGB);
-    const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)buf;
-    const int count = (GFX_WIDTH * height) / 2;
-
-    for (int i = 0; i < count; i++) {
-        words[i] = pair;
-    }
-}
-
-void
-render_lab_coverage_mark(render_lab_coverage_t* last, gfx_box_t box) {
-    if (!gfx_box_is_empty(last->box)) {
-        gfx_mark_dirty(last->box.x0, last->box.y0, last->box.x1 - last->box.x0, last->box.y1 - last->box.y0);
-    }
-    if (!gfx_box_is_empty(box)) {
-        gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-    }
-    last->box = box;
-}
-
-/* The band-mode frame builds one UI command list; the shell replays it over
- * each dirty band after draw_band supplies the scene rows. */
-static void
-render_lab_frame_band(uint32_t dt_ms, const input_t* input) {
-    if (!menu_open) {
-        update_fps_counter(dt_ms);
-        current_scene()->frame(dt_ms, true);
-    }
-
-    if (menu_open) {
-        draw_menu(input, true, dt_ms);
-    } else if (render_lab_show_hud) {
-        draw_fps(input, true);
-    }
-}
-
-static void
-render_lab_draw_band(int row0, int row1, gfx_color_t* buf) {
-    render_lab_clear_band(buf, row1 - row0);
-    if (!menu_open) {
-        current_scene()->frame_band(buf, row0, row1);
-    }
-}
-
 static void
 render_lab_frame(uint32_t dt_ms, const input_t* input) {
-    if (render_lab_mode_switch_take(&mode_switch)) {
-        switch_layout();
-    }
     if (scene_switch_pending) {
         scene_switch_pending = false;
         switch_to_next_scene();
@@ -428,10 +236,6 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
         scene_requested = -1;
     }
 
-    /* BOOT opens/closes the menu, rather than flipping a toggle directly.
-     * Invalidation on open and close resets partial clear tracking: opening
-     * replaces the framebuffer with the menu's opaque screen, and closing
-     * repaints the scene from scratch. */
     if (input->boot.pressed) {
         menu_open = !menu_open;
         scene_set_paused(menu_open);
@@ -442,49 +246,32 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
         }
     }
 
-    /* A shell orientation change moves draw_fps()'s overlay to a different
-     * physical region; gfx_invalidate() ensures the next frame performs a
-     * full screen wipe rather than a partial one. */
     const uint32_t layout_generation = ui_layout_generation();
     if (layout_generation != last_layout_generation) {
         last_layout_generation = layout_generation;
         gfx_invalidate();
     }
 
-    if (band_mode_active) {
-        render_lab_frame_band(dt_ms, input);
-        return;
-    }
-
     /* Everything below is the scene view: the fps counter measures ITS
      * throughput specifically, so counting a frame that only ever drew the
      * menu would blend two unrelated numbers into one misleading reading. */
     if (menu_open) {
-        draw_menu(input, false, dt_ms);
+        draw_menu(input, dt_ms);
         return;
     }
 
     update_fps_counter(dt_ms);
-    current_scene()->frame(dt_ms, false);
+    current_scene()->frame(dt_ms);
     if (render_lab_show_hud) {
-        draw_fps(input, false);
+        draw_fps(input);
     }
 }
 
 void
 render_lab_exit(void) {
     current_scene()->exit();
-    app_arena_rewind(scene_arena_mark);
-    gfx_set_partial_clear(false);
     gfx_invalidate();
     gfx_mode_exit();
-}
-
-/* gfx_request_full_redraw()'s app half (app.h): delegates to the current
- * scene, which owns the band-mode coverage union gfx cannot see. */
-static void
-render_lab_invalidate(void) {
-    current_scene()->invalidate();
 }
 
 /* The scene's own steer() and update(), where it has them, overlapped with
@@ -506,8 +293,7 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
 
 /* "render scenes" lists every scene's key and name and which one shows;
  * "render scene <key>" switches to the scene with exactly that key, at the
- * next frame; "render partial on|off" sets partial updates, as the menu's
- * toggle does. Replies are "RENDER ..." lines then "RENDER_END", or
+ * next frame. Replies are "RENDER ..." lines then "RENDER_END", or
  * "RENDER_ERR <why>", so a script can measure one scene alike on any build. */
 static bool
 render_lab_console(const char* args) {
@@ -533,14 +319,6 @@ render_lab_console(const char* args) {
         (void)fflush(stdout);
         return true;
     }
-    const bool on = strcmp(args, "partial on") == 0;
-    if (on || strcmp(args, "partial off") == 0) {
-        render_lab_partial_updates = on;
-        gfx_invalidate();
-        (void)printf("RENDER partial=%s\nRENDER_END\n", on ? "on" : "off");
-        (void)fflush(stdout);
-        return true;
-    }
     return false;
 }
 
@@ -550,9 +328,8 @@ APP_CONSOLE("render", render_lab_console);
 /* What a screenshot needs to say two captures measured the same thing. */
 static void
 render_lab_diagnostic_json(char* out, size_t len) {
-    if (snprintf(out, len, "{\"scene\":\"%s\",\"menu\":%s,\"bands\":%s,\"partial\":%s,\"scale\":%d}",
-                 current_scene()->key, menu_open ? "true" : "false", band_mode_active ? "true" : "false",
-                 render_lab_partial_updates ? "true" : "false", render_lab_scale())
+    if (snprintf(out, len, "{\"scene\":\"%s\",\"menu\":%s,\"scale\":%d}", current_scene()->key,
+                 menu_open ? "true" : "false", render_lab_scale())
         < 0) {
         out[0] = '\0';
     }
@@ -561,27 +338,16 @@ render_lab_diagnostic_json(char* out, size_t len) {
 
 app_t app_render_lab = {
     .name = "Render Lab",
-    .summary = "Software rendering experiments",
+    .summary = "Baked mesh flythroughs",
     .enter = render_lab_enter,
     .frame = render_lab_frame,
-    .draw_band = render_lab_draw_band,
     .update = render_lab_update,
     .exit = render_lab_exit,
-    .invalidate = render_lab_invalidate,
     .home_gesture = true,
 #if CONFIG_LAUNCHER_DEVELOPMENT
     .diagnostic_json = render_lab_diagnostic_json,
 #endif
     .console = APP_CONSOLE_PTR(render_lab_console),
 };
-
-#if CONFIG_LAUNCHER_SELFTEST
-/* A device suite's scene switch, the same exit, rewind and enter a menu tap
- * runs. */
-void
-render_lab_test_next_scene(void) {
-    switch_to_next_scene();
-}
-#endif
 
 APP_REGISTER(app_render_lab);

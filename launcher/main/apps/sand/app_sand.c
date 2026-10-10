@@ -44,8 +44,7 @@
 
 #include "app/app.h"
 #include "apps/sand/app_sand_test.h"
-#include "core/build_variant.h"
-#include "core/frame_cost.h"
+#include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "display/display.h"
@@ -62,6 +61,7 @@
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
 #include "palette.h"
+#include "profile/frame_cost.h"
 #include "row_runs.h"
 #include "sand.h"
 #include "sand_brushes.h"

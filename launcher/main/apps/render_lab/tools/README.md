@@ -6,14 +6,6 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
-## Generated files
-
-<!-- generated: generated-files-render-lab check: python scripts/gates/check_generated_files.py --check-table -->
-| Output | Generator | Run in | Command |
-|---|---|---|---|
-| [wire_primitives_generated.h](../wire_primitives_generated.h) | [gen_wire_primitives.py](gen_wire_primitives.py) | `launcher/` | `python main/apps/render_lab/tools/gen_wire_primitives.py > main/apps/render_lab/wire_primitives_generated.h` |
-<!-- /generated: generated-files-render-lab -->
-
 ## Host renders
 
 ```sh
@@ -21,12 +13,11 @@ Before a source bake or reference render, pull the
 ```
 
 Writes every declared scene under `tools/results/render/render_lab/`:
-`gouraud-landscape.bmp` is the shaded cube, `cornell-landscape.bmp` the
-software ray-traced room. The integer scenes are pinned with the HUD hidden;
-the HUD renders are `|nopin`, since its fps readout is a `double` printed
-with `"%.1f"`, and so are the Cornell scenes, which are float throughout.
+`sponza-landscape.bmp` is the atrium flythrough. These renders are
+`|nopin`: their floating-point camera paths can reach different pixels
+across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
-capture. The Gouraud scene rotates when stepped over several frames.
+capture.
 
 ### Debug views
 
@@ -44,11 +35,10 @@ They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to
 the panel's orientation and the size the script declares. The picture is the
 renderer's resolution, half the panel's each way, upscaled like the shaded
-one. They are `|nopin`, like the shaded Sponza renders: the camera path is
-float, so which pixels a triangle reaches can differ by compiler.
+one. They are `|nopin` too.
 `--view` sets the tunable `render_lab.view`, so on a development build
 `autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
-values follow the render_view_t table order in render/context/render_context.c. `--view` on a
+values follow the render_debug_view_t table order in render/context/render_context.c. `--view` on a
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
@@ -82,12 +72,11 @@ its scene by name rather than through the menu:
 |---|---|
 | `autana render scenes` | every scene's key and name, and which one is showing |
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
-| `autana render partial on\|off` | partial updates, as the menu's toggle sets them |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
 
 A screenshot's state carries an `app` object naming the scene, whether the
-menu is open, the layout, partial updates and the scale, so two captures can
+menu is open and the scale, so two captures can
 be checked to have measured the same thing.
 
 ## Images in the docs
@@ -98,9 +87,8 @@ be checked to have measured the same thing.
 
 | Image | Shows |
 |---|---|
-| `render-lab-cube.png`, `render-lab-cube.gif` | the Gouraud cube; the GIF plays the rotation forward and back |
-| `render-lab-cornell.png` | the ray-traced Cornell box, fully resolved, no HUD |
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
+| `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
@@ -137,23 +125,24 @@ with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
 `gallop` and `half_bound`. It is the source asset for skinned-mesh import;
 nothing in the build reads it.
 
-`launcher/demo/capybara/capybara.glb` is its glTF export: deform bones only,
+Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
 every loop as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
-measurement. The export is a cached bake: `capybara.import.toml` names the
+measurement; `bake.py path capybara.glb` prints where it is.
+`capybara.import.toml` names the
 `.blend` and the loops to export (the file also holds the rig's own
 `capyrigAction`), and `launcher/tools/bake/bake.py` runs the model-agnostic
 exporter in Blender. By hand, it is:
 
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
-    launcher/demo/capybara/capybara.blend launcher/demo/capybara/capybara.glb \
+    launcher/demo/capybara/capybara.blend capybara.glb \
     --clips idle,walk,walk_fast,gallop,half_bound
 ```
 
 and measure the lighting again:
 
 ```sh
-launcher/tools/r3d/skin_light/report_skin_light.sh launcher/demo/capybara/capybara.glb gallop
+launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake/bake.py path capybara.glb)" gallop
 ```

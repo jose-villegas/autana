@@ -10,11 +10,14 @@
 #include "ui_budget.h"
 #include "unity.h"
 
+#include <string.h>
+
 #include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 
@@ -29,15 +32,14 @@ static void
 test_hud_screen_command_list_fits_budget(void) {
     fixture();
 
-    /* Worst case: all three boxes at once, with the longest scene name and
-     * the widest status a wire scene reports (wire_primitives_generated.h's
-     * own 1024/2048 mesh-wide caps). */
+    char status[RENDER_LAB_STATUS_LEN];
+    memset(status, 'x', sizeof status - 1);
+    status[sizeof status - 1] = '\0';
     const render_lab_hud_screen_state_t state = {
         .fps_value = 999.9F,
-        .fps_box_x_override = -1,
-        .scene_title = "Wire Capsule",
+        .scene_title = "Sponza Fitted Full",
         .scene_title_alpha = 255,
-        .status = "1024v 2048e",
+        .status = status,
     };
 
     const input_t input = {0};
@@ -51,9 +53,7 @@ test_menu_screen_command_list_fits_budget(void) {
     fixture();
 
     const render_lab_menu_screen_state_t state = {
-        .partial_updates_on = true,
-        .band_mode_on = true,
-        .scene_name = "Gouraud Cube",
+        .scene_name = "Sponza Fitted Full",
     };
 
     const input_t input = {0};

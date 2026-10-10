@@ -70,29 +70,14 @@ gfx_clear_clip(void) {
 
 /* Primitives */
 
-/* Ignores clip rect; clears the whole target (a bounding box in full-fb
- * mode's partial-clear path, or the whole target buffer otherwise) and
- * marks it dirty: dirty tracking is meaningless while a band is the
- * target, since band mode resends every band every frame regardless, so
- * that half is skipped entirely there. */
+/* Ignores clip rect; clears the whole target. Band mode resends every
+ * band every frame, so dirty tracking applies only to the framebuffer. */
 void
 gfx_clear(gfx_color_t color) {
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    if (!band_render_active && partial_clear_on && !gfx_box_is_empty(prev_bbox)) {
-        for (int y = prev_bbox.y0; y < prev_bbox.y1; y++) {
-            gfx_color_t* dst = fb + (size_t)y * GFX_WIDTH + prev_bbox.x0;
-            for (int x = prev_bbox.x0; x < prev_bbox.x1; x++) {
-                *dst++ = color;
-            }
-        }
-        dirty_mark(prev_bbox.x0, prev_bbox.y0, prev_bbox.x1 - prev_bbox.x0, prev_bbox.y1 - prev_bbox.y0);
-        drawn_bbox = GFX_BOX_EMPTY;
-        return;
-    }
-
     const gfx_target_t target = current_target();
     const uint32_t pair = ((uint32_t)color << 16) | color;
     uint32_t* words = (uint32_t*)target.buf;

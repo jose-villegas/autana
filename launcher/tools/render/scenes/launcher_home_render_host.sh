@@ -17,24 +17,10 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=launcher_home
-scene_sources="
-main/app/app_registry.c
-main/ui/ui.c
-main/ui/ui_bridge.c
-main/ui/ui_build.c
-main/ui/ui_canvas_marks.c
-main/ui/ui_widgets.c
-main/ui/ui_launcher.c
-main/ui/ui_launcher_draw.c
-main/ui/ui_pointer.c
-main/ui/ui_snap.c
-main/ui/ui_ridge.c
-main/ui/ui_scroll.c
-main/services/tune.c
-components/microui/src/microui.c
-tools/render/scenes/launcher_home_render_host.c
-"
-scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
+. "$SCRIPT_DIR/launcher_home_render_setup.sh"
+scene_sources="$launcher_home_sources
+ tools/render/scenes/launcher_home_render_host.c"
+scene_defines="$launcher_home_defines"
 scene_renders="
 landscape|--quarter 1|448x368
 landscape-panel|--quarter 1 --panel|368x448

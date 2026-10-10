@@ -10,11 +10,7 @@
 #define HUD_INSET_PX    16
 #define HUD_LINE_GAP_PX 4
 
-/* mu_text() draws only its own ink. Under render_lab_partial_updates a scene only
- * erases its OWN last bounding box, never this one, so old text the
- * repainted line doesn't overdraw would stay on screen without this opaque
- * backing - painted through the same mu command list already hashed, at
- * no cost on frames where nothing changed. */
+/* Opaque backing keeps HUD text legible over the scene. */
 static mu_Rect
 draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
     const mu_Rect box = mu_rect(x, y, gfx_text_width(text, -1) + 8, gfx_text_height() + 4);
@@ -25,9 +21,8 @@ draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
 }
 
 /* Centred on the highest HUD row whose corner box it clears: `row_right[i]`
- * is where row i's box ends, 0 for an empty row. The box stays opaque while
- * the ink fades: a dithered box would leave the pixels it no longer covers
- * showing last frame's title wherever no scene erases them. */
+ * is where row i's box ends, 0 for an empty row. The backing stays opaque
+ * to keep fading text legible over the scene. */
 #define HUD_CORNER_ROWS 2
 
 static void
@@ -53,17 +48,14 @@ draw_scene_title(mu_Context* ctx, const char* title, uint8_t alpha, const int ro
 
 void
 render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t* state) {
-    /* UI_TEXT_OUTLINED is app_sand.c's palette-label fix: a label with no
-     * halo would wash out against whichever shifting colour sits behind
-     * it. Kept even with the box's opaque backing - a UI_NO_BACKGROUND window
-     * is one BOOT tap away - since the halo costs nothing extra there. */
+    /* An outline keeps text readable over a changing scene. */
     ui_set_text_style(UI_TEXT_OUTLINED);
 
     if (ui_begin_screen(ctx, "Render Lab HUD", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         char fps_line[16];
         snprintf(fps_line, sizeof fps_line, "%5.1f fps", (double)state->fps_value);
 
-        const int x = state->fps_box_x_override >= 0 ? state->fps_box_x_override : HUD_INSET_PX;
+        const int x = HUD_INSET_PX;
         const mu_Rect fps_box = draw_text_box(ctx, fps_line, x, HUD_INSET_PX);
         /* The fps row is reserved at its widest reading, so the title does
          * not change rows as the number gains a digit. */

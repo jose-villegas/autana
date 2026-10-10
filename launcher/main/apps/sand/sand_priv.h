@@ -13,8 +13,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "core/frame_cost.h"
 #include "core/job.h"
+#include "profile/frame_cost.h"
 #include "sand.h"
 #include "sand_chunk_sched.h"
 

@@ -7,7 +7,7 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "core/memory.h"
 #include "display/panel_clock.h"
 #include "esp_log.h"

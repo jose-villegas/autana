@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
 
@@ -44,6 +45,9 @@
 /* spring_line_apply() writes pixels with this many fractional bits. */
 #define SPRING_LINE_OUT_SHIFT     4
 #define SPRING_LINE_OUT_ONE       (1 << SPRING_LINE_OUT_SHIFT)
+
+_Static_assert(SPRING_LINE_MAX_OFFSET <= INT32_MAX - (MATHX_ONE / SPRING_LINE_OUT_ONE) / 2,
+               "spring offsets leave int32 headroom for rounding");
 
 typedef struct {
     int32_t* offset;
@@ -225,9 +229,8 @@ spring_line_apply(const spring_line_t* line, const int16_t* rest, int16_t* out, 
     int furthest = 0;
     *changed_lo = line->count;
     *changed_hi = 0;
-    const int32_t step = MATHX_ONE / SPRING_LINE_OUT_ONE;
     for (int x = 0; x < line->count; x++) {
-        const int32_t rounded = (line->offset[x] + (line->offset[x] < 0 ? -step / 2 : step / 2)) / step;
+        const int32_t rounded = fx_round_shift32(line->offset[x], MATHX_SHIFT - SPRING_LINE_OUT_SHIFT);
         const int16_t height = (int16_t)(rest[x] + rounded);
         if (height == out[x]) {
             continue;

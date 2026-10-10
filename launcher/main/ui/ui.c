@@ -33,7 +33,7 @@
 
 #include "esp_log.h"
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_target.h"
 #include "gfx/draw/icons_system.h"

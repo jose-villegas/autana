@@ -35,6 +35,7 @@ idf_variant_build() {
     IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_DEVELOPMENT CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_QEMU"
     perf_scope=0
     layout_seed=0
+    hot_tunables=0
 
     case "$variant" in
         release) IDF_VARIANT_REQUIRED=CONFIG_LAUNCHER_RELEASE ;;
@@ -74,6 +75,10 @@ idf_variant_build() {
                 IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.qemu"
                 IDF_VARIANT_REQUIRED="$IDF_VARIANT_REQUIRED CONFIG_LAUNCHER_QEMU"
                 IDF_VARIANT_FORBIDDEN=$(printf '%s\n' "$IDF_VARIANT_FORBIDDEN" | sed 's/CONFIG_LAUNCHER_QEMU//')
+                ;;
+            --hot-tunables)
+                [ "$variant" != release ] || { echo "--hot-tunables needs dev or diag" >&2; return 2; }
+                hot_tunables=1
                 ;;
             --layout-seed)
                 [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; return 2; }
@@ -129,7 +134,7 @@ idf_variant_build() {
     # config in its build directory while SDKCONFIG_DEFAULTS selects its seed.
     # The layout seed is always passed: the CMake cache would otherwise keep
     # the last seed a build directory was given.
-    idf -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS"         -D LAUNCHER_LAYOUT_SEED="$layout_seed" \
+    idf -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS"         -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
         -D SDKCONFIG="$build_dir/sdkconfig" build || return $?
 
     disagreement="$(idf_variant_disagreement "$config")" || disagreement=""

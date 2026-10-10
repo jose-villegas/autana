@@ -15,17 +15,17 @@ change as little of the screen as possible per frame.
 
 | Fact | Value | Source |
 |---|---|---|
-| Full-frame present | 9.6 ms at 80 MHz, 17.6 ms at 40 MHz | device present tests in `launcher/test/suites/suite_gfx.c` |
+| Full-frame present | under the `full-frame present` ceiling in `launcher/test/suites/suite_gfx.c` (80 MHz) | device present tests |
 | Fixed cost per panel transaction | about 118 us | device tests in `launcher/test/suites/suite_gfx.c` |
 | Small moving partial regions at 80 MHz | corrupt pixels; a full-frame send heals them | `docs/notes/Display-and-Rendering.md` |
-| PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | `docs/plans/Autana-Rendering-Roadmap.md` |
+| PSRAM read / PSRAM-to-PSRAM copy | 33-58 MB/s / about 22 MB/s | [Board and Memory](../notes/Board-and-Memory.md#psram-throughput) |
 | Dirty cells | a 7 x 4 grid of boxes with no preferred axis: a send covers the changed boxes, in either orientation | `docs/Gfx-and-Presentation.md` |
 | Launcher frame today | about 24.5 ms, presented synchronously (*est* 14 ms draw + 10 ms send) | measured with injected taps |
-| Band ring | frame time becomes the larger of render and send | `docs/plans/Autana-Rendering-Roadmap.md` |
+| Band ring | frame time becomes the larger of render and send | [Gfx and Presentation](../Gfx-and-Presentation.md#the-band-ring) |
 
 What already exists:
 
-- `math/motion/tween.h`: progress is a byte (0-255). Over 448 px that is about
+- `anim/tween.h`: progress is a byte (0-255). Over 448 px that is about
   1.75 px per step, so an eased end visibly stair-steps. Spatial motion
   needs Q16 progress.
 - `math/motion/spring_line.h`: integer springs on a fixed 4 ms tick that come to
