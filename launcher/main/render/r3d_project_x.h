@@ -1,8 +1,9 @@
 /*
  * r3d_project_x: fixed-point line projection with a 32-bit per-point divide.
  * Owns the camera-space model matrix, built per frame from render_view_t
- * and a model. Matrix entries and camera points carry R3D_X_UNIT_ONE per meter. Q16.16 model points need no further
- * shift after mat4x_apply(). Header-only and ESP-IDF-free.
+ * and a model. Matrix entries and camera points carry R3D_X_UNIT_ONE per
+ * meter. Q16.16 model points need no further shift after mat4x_apply().
+ * Header-only and ESP-IDF-free.
  */
 #pragma once
 
@@ -12,7 +13,6 @@
 #include "math/linear/mat4x.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathx.h"
-#include "render/r3d_project_common.h"
 #include "render/render_view.h"
 
 /* Camera space is +y up; the camera pose's scale has no effect. */
@@ -32,12 +32,25 @@ r3d_line_matrix(const render_view_t* view, const transformf_t* model) {
 /* One meter in camera space. */
 #define R3D_X_UNIT_ONE          512
 
+/* The line view's near plane in world units, which this header's camera
+ * space reads as meters; a caller may pick its own. */
+#define R3D_LINE_NEAR_Z         0.1F
+
 /* The shift of the narrow transform's sum: entries carry 12 more bits. */
 #define R3D_X_INPUT_SHIFT       12
 
+/* Entry bound times input bound, three terms plus translation, fits the
+ * 32-bit sum. Entry and translation bounds are exclusive. */
 #define R3D_X_ENTRY_XZ_LIMIT    (1 << 12)
 #define R3D_X_ENTRY_Y_LIMIT     (1 << 14)
 #define R3D_X_TRANSLATION_LIMIT (1 << 27)
+#define R3D_X_INPUT_XZ_LIMIT    (1 << 17)
+#define R3D_X_INPUT_Y_LIMIT     (1 << 15)
+
+_Static_assert(2LL * (R3D_X_ENTRY_XZ_LIMIT - 1) * R3D_X_INPUT_XZ_LIMIT
+                       + (int64_t)(R3D_X_ENTRY_Y_LIMIT - 1) * R3D_X_INPUT_Y_LIMIT + (R3D_X_TRANSLATION_LIMIT - 1)
+                   <= INT32_MAX,
+               "narrow transform sum must fit int32_t");
 
 typedef struct {
     int32_t units[3][4]; /* the matrix scaled for whole-unit inputs, see below */
@@ -49,12 +62,9 @@ typedef struct {
     int pixels_per_unit; /* pixels per projection-plane unit, both axes */
 } r3d_line_view_x_t;
 
-/* Fills the narrow form: entry [r][c] is the matrix entry times the meters
- * one raw unit of input c is worth, in 1/512 m with 12 more bits, so
- * r3d_to_camera_space_units() is three 32-bit products and a shift. `units_ok`
- * says no entry is too big (scale up to about 8, camera within 64 m) for inputs
- * inside +-2^17 on axes 0 and 2 and +-2^15 on axis 1 to overflow; the caller
- * checks the inputs, else uses mat4x_apply(). */
+/* units_ok guarantees a 32-bit sum for raw input magnitudes bounded by
+ * R3D_X_INPUT_XZ_LIMIT on axes 0 and 2 and R3D_X_INPUT_Y_LIMIT on axis 1.
+ * The caller checks those inputs, else uses mat4x_apply(). */
 static inline r3d_line_view_x_t
 r3d_line_view_x_make(const render_view_t* view, const transformf_t* model, const float meters_per_unit[3]) {
     const mat4f_t matrix = r3d_line_matrix(view, model);

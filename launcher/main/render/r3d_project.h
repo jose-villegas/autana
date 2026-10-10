@@ -1,7 +1,7 @@
 /*
  * r3d_project: camera-space near-plane clip and perspective projection.
- * Float reference the fixed-point line path is tested against, with no subpixel snap
- * or guard band. Header-only and ESP-IDF-free.
+ * Float reference for the fixed-point line path, with no subpixel snap or
+ * guard band. Header-only and ESP-IDF-free.
  */
 #pragma once
 
@@ -10,8 +10,32 @@
 
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf.h"
-#include "render/r3d_project_common.h"
+#include "render/r3d_project_x.h"
 #include "render/render_view.h"
+
+/* Past this a projected offset is off any panel; clamping first keeps the
+ * float to int conversion defined for a point at the camera, whose
+ * reciprocal of a zero depth is an infinity or a NaN: a defined pixel, on
+ * no particular side. */
+#define R3D_PIXEL_LIMIT 1000000.0F
+
+/* Above mathf_recip()'s error out to a 1000 pixel offset, far below a pixel. */
+#define R3D_PIXEL_BIAS  0.02F
+
+/* A pixel offset truncated toward zero, so it is symmetric about the centre.
+ * A small bias first, so a reciprocal an ulp short of an exact quotient
+ * still lands on its pixel.
+ * A NaN fails both comparisons and lands on the limit. */
+static inline int
+r3d_pixel_offset(float offset) {
+    if (!(offset < R3D_PIXEL_LIMIT)) {
+        return (int)R3D_PIXEL_LIMIT;
+    }
+    if (!(offset > -R3D_PIXEL_LIMIT)) {
+        return -(int)R3D_PIXEL_LIMIT;
+    }
+    return (int)(offset + (offset < 0.0F ? -R3D_PIXEL_BIAS : R3D_PIXEL_BIAS));
+}
 
 static inline void
 r3d_project_screen(vec3f_t p, const render_view_t* view, int* screen_x, int* screen_y) {

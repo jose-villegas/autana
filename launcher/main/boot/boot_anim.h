@@ -100,8 +100,8 @@ boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) 
     boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
-     * so render_view_make() fits the lens to w; boot's
-     * pixels must not move if that inequality ever changes. */
+     * so render_view_make() fits the lens to w; boot's pixels must not move
+     * if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
     const render_view_t view =
         render_view_make(&st.camera, BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN, R3D_LINE_NEAR_Z, viewport);
@@ -118,8 +118,9 @@ static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
     /* Inside +-2^17 (32 m) on the floor's axes and +-2^15 on t the transform is
      * three 32-bit products; the long axes and a wild view take the 64-bit one. */
-    const bool near = (uint32_t)(re_q12 + (1 << 17)) < (1u << 18) && (uint32_t)(im_q12 + (1 << 17)) < (1u << 18)
-                      && (uint32_t)(t_q8 + (1 << 15)) < (1u << 16);
+    const bool near = (uint32_t)(re_q12 + R3D_X_INPUT_XZ_LIMIT) < 2u * R3D_X_INPUT_XZ_LIMIT
+                      && (uint32_t)(im_q12 + R3D_X_INPUT_XZ_LIMIT) < 2u * R3D_X_INPUT_XZ_LIMIT
+                      && (uint32_t)(t_q8 + R3D_X_INPUT_Y_LIMIT) < 2u * R3D_X_INPUT_Y_LIMIT;
     if (near && view->units_ok) {
         return r3d_to_camera_space_units(view, re_q12, t_q8, im_q12);
     }

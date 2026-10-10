@@ -55,8 +55,9 @@ V = R^{\mathsf T}\,T(-\text{position})
 ```
 
 Here `s` is the view's pixels per unit (`render_view_t`) and `c` the screen
-centre; each offset is biased slightly
-away from zero and then truncated toward it (`render/r3d_project_common.h`).
+centre. The fixed-point path (`render/r3d_project_x.h`) truncates each
+quotient toward zero. Its float reference (`render/r3d_project.h`) first
+biases each offset slightly away from zero, then truncates toward it.
 
 ## The transform cache
 

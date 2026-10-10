@@ -72,7 +72,6 @@ exactly.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
-| `r3d_project_common.h` | Line near plane and pixel offset contract |
 | `r3d_project.h` | Float reference for near clipping and perspective projection |
 | `r3d_project_x.h` | Camera-space model matrix, fixed-point near clipping and perspective projection of points and segments |
 

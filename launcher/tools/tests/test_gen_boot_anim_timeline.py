@@ -70,6 +70,10 @@ class TimelineGeneratorTests(unittest.TestCase):
 
     def test_invalid_lens_settings_fail_with_named_messages(self):
         cases = (
+            (lambda config: config.update(camera_half_fov_short_tan=float("inf")),
+             "camera_half_fov_short_tan must be finite"),
+            (lambda config: config.update(camera_half_fov_short_tan=float("-inf")),
+             "camera_half_fov_short_tan must be finite"),
             (lambda config: config.update(camera_half_fov_short_tan=float("nan")),
              "camera_half_fov_short_tan must be finite"),
             (lambda config: config.pop("camera_half_fov_short_tan"),

@@ -264,40 +264,45 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
     const int edge_steps = 8;
     const transformf_t model = TRANSFORMF_IDENTITY;
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
-    for (int quarter = 0; quarter < 4; quarter++) {
-        transformf_t pose = TRANSFORMF_IDENTITY;
-        transformf_set_position(&pose, (vec3f_t){1.0F, -2.0F, 3.0F});
-        const render_view_t view =
-            render_view_make(&pose, half_fov_short_tan, R3D_LINE_NEAR_Z, (viewport_t){368, 448, quarter});
-        const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
-        TEST_ASSERT_EQUAL_INT(mathf_round_i32(view.pixels_per_unit), fixed.pixels_per_unit);
-        const mat4f_t matrix = r3d_line_matrix(&view, &model);
-        r3d_lens_t lens;
-        r3d_lens_init(&lens, &view, 1);
-        for (int ix = -edge_steps; ix <= edge_steps; ix++) {
-            for (int iy = -edge_steps; iy <= edge_steps; iy++) {
-                const float dx = view.center_x * (float)ix / (float)edge_steps;
-                const float dy = view.center_y * (float)iy / (float)edge_steps;
-                const vec3f_t relative =
-                    vec3f_add(vec3f_scale(view.forward, depth),
-                              vec3f_add(vec3f_scale(view.screen_x, dx * depth / view.pixels_per_unit),
-                                        vec3f_scale(view.screen_y, dy * depth / view.pixels_per_unit)));
-                const vec3f_t point = vec3f_add(view.position, relative);
-                const vec3f_t delta = vec3f_sub(point, view.position);
-                const float z = vec3f_dot(view.forward, delta);
-                const float expected_x = view.center_x + view.pixels_per_unit * vec3f_dot(view.screen_x, delta) / z;
-                const float expected_y = view.center_y + view.pixels_per_unit * vec3f_dot(view.screen_y, delta) / z;
-                int fx, fy, qx, qy;
-                TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(&matrix, point), &view, &fx, &fy));
-                const vec3x_t camera = mat4x_apply(&fixed.matrix, vec3x_from_vec3f(point));
-                TEST_ASSERT_TRUE(r3d_project_point_cs_x(camera, &fixed, &qx, &qy));
-                TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_x, (float)fx);
-                TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_y, (float)fy);
-                TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
-                TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
-                const vec3f_t lp = mat4f_apply(&lens.m, point);
-                TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_x, lens.center_x + lp.x / lp.z);
-                TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_y, lens.center_y + lp.y / lp.z);
+    for (int pose_index = 0; pose_index < 2; pose_index++) {
+        for (int quarter = 0; quarter < 4; quarter++) {
+            transformf_t pose = TRANSFORMF_IDENTITY;
+            transformf_set_position(&pose, (vec3f_t){1.0F, -2.0F, 3.0F});
+            if (pose_index != 0) {
+                transformf_set_rotation(&pose, quatf_from_euler((vec3f_t){MATH_TAU / 8.0F, MATH_TAU / 8.0F, 0.0F}));
+            }
+            const render_view_t view =
+                render_view_make(&pose, half_fov_short_tan, R3D_LINE_NEAR_Z, (viewport_t){368, 448, quarter});
+            const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
+            TEST_ASSERT_EQUAL_INT(mathf_round_i32(view.pixels_per_unit), fixed.pixels_per_unit);
+            const mat4f_t matrix = r3d_line_matrix(&view, &model);
+            r3d_lens_t lens;
+            r3d_lens_init(&lens, &view, 1);
+            for (int ix = -edge_steps; ix <= edge_steps; ix++) {
+                for (int iy = -edge_steps; iy <= edge_steps; iy++) {
+                    const float dx = view.center_x * (float)ix / (float)edge_steps;
+                    const float dy = view.center_y * (float)iy / (float)edge_steps;
+                    const vec3f_t relative =
+                        vec3f_add(vec3f_scale(view.forward, depth),
+                                  vec3f_add(vec3f_scale(view.screen_x, dx * depth / view.pixels_per_unit),
+                                            vec3f_scale(view.screen_y, dy * depth / view.pixels_per_unit)));
+                    const vec3f_t point = vec3f_add(view.position, relative);
+                    const vec3f_t delta = vec3f_sub(point, view.position);
+                    const float z = vec3f_dot(view.forward, delta);
+                    const float expected_x = view.center_x + view.pixels_per_unit * vec3f_dot(view.screen_x, delta) / z;
+                    const float expected_y = view.center_y + view.pixels_per_unit * vec3f_dot(view.screen_y, delta) / z;
+                    int fx, fy, qx, qy;
+                    TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(&matrix, point), &view, &fx, &fy));
+                    const vec3x_t camera = mat4x_apply(&fixed.matrix, vec3x_from_vec3f(point));
+                    TEST_ASSERT_TRUE(r3d_project_point_cs_x(camera, &fixed, &qx, &qy));
+                    TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_x, (float)fx);
+                    TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_y, (float)fy);
+                    TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
+                    TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
+                    const vec3f_t lp = mat4f_apply(&lens.m, point);
+                    TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_x, lens.center_x + lp.x / lp.z);
+                    TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_y, lens.center_y + lp.y / lp.z);
+                }
             }
         }
     }
@@ -310,7 +315,7 @@ test_narrow_matrix_rejects_entries_and_translation_at_the_limits(void) {
     for (int axis = 0; axis < 3; axis++) {
         const int limit = axis == 1 ? R3D_X_ENTRY_Y_LIMIT : R3D_X_ENTRY_XZ_LIMIT;
         for (int sign = -1; sign <= 1; sign += 2) {
-            for (int side = -1; side <= 1; side += 2) {
+            for (int side = -1; side <= 1; side++) {
                 float meters_per_unit[] = {0.0F, 0.0F, 0.0F};
                 meters_per_unit[axis] = (float)(sign * (limit + side)) / narrow_scale;
                 const transformf_t model = TRANSFORMF_IDENTITY;
@@ -321,12 +326,14 @@ test_narrow_matrix_rejects_entries_and_translation_at_the_limits(void) {
     }
     const float meters_per_unit[] = {0.0F, 0.0F, 0.0F};
     for (int sign = -1; sign <= 1; sign += 2) {
-        for (int side = -1; side <= 1; side += 2) {
+        for (int side = -1; side <= 1; side++) {
             transformf_t model = TRANSFORMF_IDENTITY;
-            transformf_set_position(&model, (vec3f_t){(float)sign
-                                                          * nextafterf((float)R3D_X_TRANSLATION_LIMIT / narrow_scale,
-                                                                       side < 0 ? 0.0F : INFINITY),
-                                                      0.0F, 0.0F});
+            transformf_set_position(
+                &model, (vec3f_t){(float)sign
+                                      * (side == 0 ? (float)R3D_X_TRANSLATION_LIMIT / narrow_scale
+                                                   : nextafterf((float)R3D_X_TRANSLATION_LIMIT / narrow_scale,
+                                                                side < 0 ? 0.0F : INFINITY)),
+                                  0.0F, 0.0F});
             const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
             TEST_ASSERT_EQUAL(side < 0, fixed.units_ok);
         }

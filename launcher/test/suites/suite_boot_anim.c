@@ -1745,6 +1745,13 @@ test_screen_chord_threshold_is_strict(void) {
     TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold - 1, 0, depth}, &view, threshold_px));
     TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold, 0, depth}, &view, threshold_px));
     TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold + 1, 0, depth}, &view, threshold_px));
+    const vec3x_t farther_x = {threshold, 0, depth * 2};
+    const vec3x_t farther_y = {0, threshold, depth * 2};
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_x, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_x, a, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_y, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_y, a, &view, threshold_px));
+    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){0, threshold - 1, depth * 2}, &view, threshold_px));
 }
 
 void
