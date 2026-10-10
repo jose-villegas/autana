@@ -1,12 +1,12 @@
 /*
- * Portable suite: icons_sand - structural facts about the brush, title
- * and options screens' baked artwork.
+ * Portable suite: the brush, title and options screens' icons, read from
+ * the app's pack.
  *
- * Same reasoning as test/suites/suite_icons_system.c and the generated-sources
- * convention in launcher/tools/gen/README.md: the expected rows below are transcribed by
- * hand from the artwork this app shipped before it was baked (not read back
- * from icons_sand.h itself), so a match here proves gen_icons.py reproduced
- * known-good pixels rather than merely round-tripping its own packer. Once
+ * Same reasoning as test/suites/suite_system_icons.c: the expected rows
+ * below are transcribed by hand from the artwork this app shipped before it
+ * was baked (not read back from the pack), so a match here proves
+ * icons_asset.py reproduced known-good pixels rather than merely
+ * round-tripping its own packer. Once
  * that is established, the rest of this file checks facts a scan can pin
  * down - non-empty, in-bounds, small enough to draw, symmetric where the
  * artwork is meant to be.
@@ -20,29 +20,38 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "apps/sand/icons_sand.h"
+#include "apps/sand/ui/sand_icons.h"
 #include "gfx/draw/icon.h"
+
+/* Icon `id`, which the app pack the suites run with must hold. */
+static const gfx_image_t*
+app_icon(sand_icon_id_t id) {
+    (void)ui_icon_set_load(&sand_icon_set);
+    const gfx_image_t* icon = sand_icon(id);
+    TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no icon: the suites run with the packs build_pack.py writes");
+    return icon;
+}
 
 typedef struct {
     const char* name;
-    icon_sand_id_t id;
+    sand_icon_id_t id;
 } named_icon_t;
 
 static const named_icon_t ICONS[] = {
-    {"pour", ICON_SAND_POUR},       {"erase", ICON_SAND_ERASE}, {"boom", ICON_SAND_BOOM},
-    {"info", ICON_SAND_INFO},       {"start", ICON_SAND_START}, {"load", ICON_SAND_LOAD},
-    {"options", ICON_SAND_OPTIONS}, {"guide", ICON_SAND_GUIDE}, {"exit", ICON_SAND_EXIT},
+    {"pour", SAND_ICON_POUR},       {"erase", SAND_ICON_ERASE}, {"boom", SAND_ICON_BOOM},
+    {"info", SAND_ICON_INFO},       {"start", SAND_ICON_START}, {"load", SAND_ICON_LOAD},
+    {"options", SAND_ICON_OPTIONS}, {"guide", SAND_ICON_GUIDE}, {"exit", SAND_ICON_EXIT},
 };
 #define ICON_COUNT (sizeof(ICONS) / sizeof(ICONS[0]))
 
 static void
 test_every_icon_is_non_empty(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
-        const icon_t* icon = &icon_sand_table[ICONS[i].id];
+        const gfx_image_t* icon = app_icon(ICONS[i].id);
         bool set = false;
-        for (int y = 0; y < icon->h && !set; y++) {
-            for (int x = 0; x < icon->w; x++) {
-                if (icon_test_bit(icon_sand_rows, icon, x, y)) {
+        for (int y = 0; y < icon->height && !set; y++) {
+            for (int x = 0; x < icon->width; x++) {
+                if (icon_test_bit(icon, x, y)) {
                     set = true;
                     break;
                 }
@@ -62,16 +71,15 @@ test_every_icon_is_non_empty(void) {
 static void
 test_every_icon_content_bbox_is_inside_16x16(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
-        const icon_t* icon = &icon_sand_table[ICONS[i].id];
+        const gfx_image_t* icon = app_icon(ICONS[i].id);
         icon_rect_t blocks[SAND_ICON_TEST_MAX_BLOCKS];
         icon_test_collect_t cc = {.blocks = blocks, .count = 0, .cap = SAND_ICON_TEST_MAX_BLOCKS};
-        icon_walk_blocks(icon_sand_rows + icon->offset, icon->w, icon->h, icon->stride, icon->w, icon->h,
-                         icon_test_collect, &cc);
+        icon_walk_blocks(icon, icon->width, icon->height, icon_test_collect, &cc);
 
         TEST_ASSERT_TRUE_MESSAGE(cc.count > 0, ICONS[i].name);
         for (int b = 0; b < cc.count; b++) {
-            TEST_ASSERT_TRUE_MESSAGE(blocks[b].x >= 0 && blocks[b].y >= 0 && blocks[b].x + blocks[b].w <= icon->w
-                                         && blocks[b].y + blocks[b].h <= icon->h,
+            TEST_ASSERT_TRUE_MESSAGE(blocks[b].x >= 0 && blocks[b].y >= 0 && blocks[b].x + blocks[b].w <= icon->width
+                                         && blocks[b].y + blocks[b].h <= icon->height,
                                      ICONS[i].name);
         }
     }
@@ -109,28 +117,28 @@ static const char* const info_expected_rows[16] = {
 };
 
 typedef struct {
-    icon_sand_id_t id;
+    sand_icon_id_t id;
     const char* const* rows;
 } expected_icon_t;
 
 static const expected_icon_t EXPECTED[] = {
-    {ICON_SAND_POUR, pour_expected_rows},
-    {ICON_SAND_ERASE, erase_expected_rows},
-    {ICON_SAND_BOOM, boom_expected_rows},
-    {ICON_SAND_INFO, info_expected_rows},
+    {SAND_ICON_POUR, pour_expected_rows},
+    {SAND_ICON_ERASE, erase_expected_rows},
+    {SAND_ICON_BOOM, boom_expected_rows},
+    {SAND_ICON_INFO, info_expected_rows},
 };
 
 static void
 test_every_icon_matches_the_artwork_it_replaced(void) {
     for (size_t i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); i++) {
-        const icon_t* icon = &icon_sand_table[EXPECTED[i].id];
-        TEST_ASSERT_EQUAL_INT(16, icon->w);
-        TEST_ASSERT_EQUAL_INT(16, icon->h);
+        const gfx_image_t* icon = app_icon(EXPECTED[i].id);
+        TEST_ASSERT_EQUAL_INT(16, icon->width);
+        TEST_ASSERT_EQUAL_INT(16, icon->height);
         for (int y = 0; y < 16; y++) {
             const char* row = EXPECTED[i].rows[y];
             for (int x = 0; x < 16; x++) {
                 const bool want = row[x] == 'X';
-                const bool got = icon_test_bit(icon_sand_rows, icon, x, y);
+                const bool got = icon_test_bit(icon, x, y);
                 TEST_ASSERT_EQUAL_INT_MESSAGE(want, got,
                                               "a baked icon diverges from the bitmap it replaced - see "
                                               "the message above for which row/col TEST_ASSERT_EQUAL_INT "
@@ -140,26 +148,14 @@ test_every_icon_matches_the_artwork_it_replaced(void) {
     }
 }
 
-/* A run-length walk of the UNPACKED rows, independent of gen_icons.py's
- * count_runs(), proves each baked `blocks` against the actual bytes, not
- * the generator's own tally. */
-static void
-test_every_icon_blocks_matches_actual_run_length(void) {
-    for (size_t i = 0; i < ICON_COUNT; i++) {
-        const icon_t* icon = &icon_sand_table[ICONS[i].id];
-        const int total = icon_test_runs(icon_sand_rows, icon);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(icon->blocks, total, ICONS[i].name);
-    }
-}
-
 /* Row `y` mirrors itself across the icon's own width: column i and column
  * (w - 1 - i) agree for every i. True for an icon symmetric left-right,
  * independent of any other row. */
 static bool
-icon_is_left_right_symmetric(const icon_t* icon) {
-    for (int y = 0; y < icon->h; y++) {
-        for (int x = 0; x < icon->w / 2; x++) {
-            if (icon_test_bit(icon_sand_rows, icon, x, y) != icon_test_bit(icon_sand_rows, icon, icon->w - 1 - x, y)) {
+icon_is_left_right_symmetric(const gfx_image_t* icon) {
+    for (int y = 0; y < icon->height; y++) {
+        for (int x = 0; x < icon->width / 2; x++) {
+            if (icon_test_bit(icon, x, y) != icon_test_bit(icon, icon->width - 1 - x, y)) {
                 return false;
             }
         }
@@ -168,10 +164,10 @@ icon_is_left_right_symmetric(const icon_t* icon) {
 }
 
 static bool
-icon_is_top_bottom_symmetric(const icon_t* icon) {
-    for (int y = 0; y < icon->h / 2; y++) {
-        for (int x = 0; x < icon->w; x++) {
-            if (icon_test_bit(icon_sand_rows, icon, x, y) != icon_test_bit(icon_sand_rows, icon, x, icon->h - 1 - y)) {
+icon_is_top_bottom_symmetric(const gfx_image_t* icon) {
+    for (int y = 0; y < icon->height / 2; y++) {
+        for (int x = 0; x < icon->width; x++) {
+            if (icon_test_bit(icon, x, y) != icon_test_bit(icon, x, icon->height - 1 - y)) {
                 return false;
             }
         }
@@ -184,14 +180,14 @@ icon_is_top_bottom_symmetric(const icon_t* icon) {
  * still look plausible by eye but fail here. */
 static void
 test_erase_is_symmetric_both_axes(void) {
-    const icon_t* icon = &icon_sand_table[ICON_SAND_ERASE];
+    const gfx_image_t* icon = app_icon(SAND_ICON_ERASE);
     TEST_ASSERT_TRUE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(icon));
 }
 
 static void
 test_boom_is_symmetric_both_axes(void) {
-    const icon_t* icon = &icon_sand_table[ICON_SAND_BOOM];
+    const gfx_image_t* icon = app_icon(SAND_ICON_BOOM);
     TEST_ASSERT_TRUE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(icon));
 }
@@ -201,7 +197,7 @@ test_boom_is_symmetric_both_axes(void) {
  * reading as a letter. */
 static void
 test_info_is_left_right_symmetric_but_not_top_bottom(void) {
-    const icon_t* icon = &icon_sand_table[ICON_SAND_INFO];
+    const gfx_image_t* icon = app_icon(SAND_ICON_INFO);
     TEST_ASSERT_TRUE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(icon));
 }
@@ -211,7 +207,7 @@ test_info_is_left_right_symmetric_but_not_top_bottom(void) {
  * is what reads as motion rather than a static tail. */
 static void
 test_pour_is_not_symmetric(void) {
-    const icon_t* icon = &icon_sand_table[ICON_SAND_POUR];
+    const gfx_image_t* icon = app_icon(SAND_ICON_POUR);
     TEST_ASSERT_FALSE(icon_is_left_right_symmetric(icon));
     TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(icon));
 }
@@ -220,12 +216,21 @@ test_pour_is_not_symmetric(void) {
  * left-right, since each has a top and a bottom. */
 static void
 test_the_menu_icons_keep_their_drawn_symmetry(void) {
-    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(&icon_sand_table[ICON_SAND_OPTIONS]));
-    TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(&icon_sand_table[ICON_SAND_OPTIONS]));
-    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(&icon_sand_table[ICON_SAND_EXIT]));
-    TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(&icon_sand_table[ICON_SAND_EXIT]));
-    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(&icon_sand_table[ICON_SAND_GUIDE]));
-    TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(&icon_sand_table[ICON_SAND_GUIDE]));
+    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(app_icon(SAND_ICON_OPTIONS)));
+    TEST_ASSERT_TRUE(icon_is_top_bottom_symmetric(app_icon(SAND_ICON_OPTIONS)));
+    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(app_icon(SAND_ICON_EXIT)));
+    TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(app_icon(SAND_ICON_EXIT)));
+    TEST_ASSERT_TRUE(icon_is_left_right_symmetric(app_icon(SAND_ICON_GUIDE)));
+    TEST_ASSERT_FALSE(icon_is_top_bottom_symmetric(app_icon(SAND_ICON_GUIDE)));
+}
+
+/* After the app exits, nothing points into a pack it no longer holds. */
+static void
+test_released_icons_are_null(void) {
+    app_icon(SAND_ICON_POUR);
+    ui_icon_set_release(&sand_icon_set);
+    TEST_ASSERT_NULL(sand_icon(SAND_ICON_POUR));
+    TEST_ASSERT_NULL(sand_dither_icon(GFX_DITHER_NONE));
 }
 
 void
@@ -233,12 +238,13 @@ run_sand_icons_suite(void) {
     RUN_TEST(test_every_icon_is_non_empty);
     RUN_TEST(test_every_icon_content_bbox_is_inside_16x16);
     RUN_TEST(test_every_icon_matches_the_artwork_it_replaced);
-    RUN_TEST(test_every_icon_blocks_matches_actual_run_length);
     RUN_TEST(test_erase_is_symmetric_both_axes);
     RUN_TEST(test_boom_is_symmetric_both_axes);
     RUN_TEST(test_info_is_left_right_symmetric_but_not_top_bottom);
     RUN_TEST(test_pour_is_not_symmetric);
     RUN_TEST(test_the_menu_icons_keep_their_drawn_symmetry);
+    RUN_TEST(test_released_icons_are_null);
 }
 
 SUITE_REGISTER(run_sand_icons_suite);
+SUITE_READS(run_sand_icons_suite, SAND_PACK);

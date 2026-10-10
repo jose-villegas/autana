@@ -8,9 +8,9 @@
 #include "ui/ui.h"
 #include "ui/ui_style.h"
 
-#include "apps/sand/icons_sand.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand_swatch.h"
+#include "apps/sand/ui/sand_icons.h"
 
 /* Space between the three stacked panels - and between a panel's own
  * caption row and the control below it, which reuses the same value so the
@@ -189,10 +189,10 @@ brush_screen_size_caption(brush_screen_segment_t seg) {
 
 #define BRUSH_INFO_ICON_PAD 12
 
-static const icon_t* const brush_seg_icons[BRUSH_SCREEN_SEGMENT_COUNT] = {
-    [BRUSH_SCREEN_SEG_POUR] = &icon_sand_table[ICON_SAND_POUR],
-    [BRUSH_SCREEN_SEG_ERASE] = &icon_sand_table[ICON_SAND_ERASE],
-    [BRUSH_SCREEN_SEG_BOOM] = &icon_sand_table[ICON_SAND_BOOM],
+static const sand_icon_id_t SEGMENT_ICONS[BRUSH_SCREEN_SEGMENT_COUNT] = {
+    [BRUSH_SCREEN_SEG_POUR] = SAND_ICON_POUR,
+    [BRUSH_SCREEN_SEG_ERASE] = SAND_ICON_ERASE,
+    [BRUSH_SCREEN_SEG_BOOM] = SAND_ICON_BOOM,
 };
 
 static void
@@ -260,15 +260,14 @@ draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* l
         lay->info_button.w - 2 * BRUSH_INFO_ICON_PAD,
         lay->info_button.h - 2 * BRUSH_INFO_ICON_PAD,
     };
-    ui_draw_icon(ctx, icon_r, &icon_sand_table[ICON_SAND_INFO], icon_sand_rows, sand_ui_theme.text);
+    ui_icon_set_draw(ctx, icon_r, &sand_icon_set, SAND_ICON_INFO, sand_ui_theme.text);
 }
 
 static void
 draw_brush_mode_segment(mu_Context* ctx, sand_ui_t* ui, mu_Rect r, int i) {
     const char* seg_name = brush_screen_segment_label((brush_screen_segment_t)i);
     const ui_widget_button_t segment = {
-        .icon = brush_seg_icons[i],
-        .icon_rows = icon_sand_rows,
+        .icon = sand_icon(SEGMENT_ICONS[i]),
         .label = seg_name,
         .enabled = true,
         .selected = (sand_mode_t)i == ui->mode,

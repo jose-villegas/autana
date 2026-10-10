@@ -2,8 +2,8 @@
  * boot_anim_photo: the photograph the startup animation crossfades to, read
  * from the boot picture's own pack, one IMAG entry baked from boot.png.
  *
- * It is drawn as one full-panel copy, so a picture of any other size is
- * refused like a missing one: the animation then draws on without it.
+ * It is drawn as one full-panel copy, so a picture of any other size or
+ * format is refused like a missing one: the animation then draws on without it.
  */
 
 #include "boot/boot_anim.h"
@@ -28,7 +28,8 @@ boot_anim_photo_load(gfx_image_t* out) {
     if (status == ASSET_OK) {
         status = gfx_image_open(entry, &image);
     }
-    if (status == ASSET_OK && (image.width != GFX_WIDTH || image.height != GFX_HEIGHT)) {
+    if (status == ASSET_OK
+        && (image.format != GFX_IMAGE_RGB565 || image.width != GFX_WIDTH || image.height != GFX_HEIGHT)) {
         status = ASSET_ERR_FORMAT;
     }
     if (status != ASSET_OK) {

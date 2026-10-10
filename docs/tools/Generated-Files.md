@@ -20,7 +20,7 @@ push a change to a generator or to one of its inputs:
 
 ```sh
 python scripts/gates/check_generated_files.py
-python scripts/gates/check_generated_files.py launcher/main/gfx/draw/icons_system.h
+python scripts/gates/check_generated_files.py launcher/main/ui/ridge_curve_generated.h
 ```
 
 It prints `ok` or `FAIL` per file, and for a file that differs, the first

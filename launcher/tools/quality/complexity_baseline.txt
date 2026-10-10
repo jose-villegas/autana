@@ -233,7 +233,6 @@
 11	launcher/test/suites.c:87	parse_patterns
 11	launcher/test/suites.c:134	suites_run_request
 11	launcher/test/suites/suite_boot_anim.c:76	test_the_curve_meets_the_axis_at_every_known_zero
-11	launcher/test/suites/suite_icons_system.c:41	test_all_icons_blocks_match_actual_run_length
 11	launcher/test/suites/suite_ui_widgets.c:1111	test_ui_swatch_grid_tiles_the_rect_exactly
 11	launcher/tools/gen/gfx_palette_gen.c:224	gfx_palette_gen_build_dither_cell
 11	launcher/tools/gen/gfx_palette_gen.c:252	gfx_palette_gen_build_dither_checker2
@@ -331,7 +330,7 @@
 10	launcher/test/suites/suite_gfx.c:424	test_blit_dither_matches_per_pixel_covers_reference
 10	launcher/test/suites/suite_gfx_color.c:274	test_coverage_is_monotonic_in_alpha_at_every_cell
 10	launcher/test/suites/suite_gfx_target.c:128	test_the_union_of_all_bands_equals_the_full_target_render
-10	launcher/test/suites/suite_icons_system.c:147	reference_blocks
+10	launcher/test/suites/suite_system_icons.c:147	reference_blocks
 10	launcher/test/suites/suite_post_ui.c:199	place_report
 10	launcher/test/suites/suite_r3d_lit.c:641	assert_the_bound_is_exact
 10	launcher/test/suites/suite_r3d_lit.c:434	test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once
@@ -967,8 +966,8 @@
 6	launcher/test/suites/suite_gfx_indexed.c:60	test_cell_size_upscale_correct_for_every_grid_quality
 6	launcher/test/suites/suite_gfx_indexed.c:570	test_checker2_every_output_pixel_reads_its_own_phase_entry
 6	launcher/test/suites/suite_icons.c:189	popcount_of
-6	launcher/test/suites/suite_icons_system.c:127	reference_icon_bbox
-6	launcher/test/suites/suite_icons_system.c:208	test_streaming_walker_matches_reference_extraction
+6	launcher/test/suites/suite_system_icons.c:127	reference_icon_bbox
+6	launcher/test/suites/suite_system_icons.c:208	test_streaming_walker_matches_reference_extraction
 6	launcher/test/suites/suite_post_ui.c:700	assert_every_placed_line_ends_inside_the_body
 6	launcher/test/suites/suite_post_ui.c:612	walk_report
 6	launcher/test/suites/suite_r3d_lit.c:402	jittered_grid
@@ -1906,7 +1905,7 @@
 3	launcher/test/suites/suite_gfx_present_guard.c:107	drain_like_a_present
 3	launcher/test/suites/suite_gfx_target.c:35	test_a_rect_entirely_inside_the_target_is_untouched_by_clipping
 3	launcher/test/suites/suite_icons.c:171	test_check_matches_the_artwork_it_replaced
-3	launcher/test/suites/suite_icons_system.c:91	test_chevron_left_matches_source_svg_rectangles
+3	launcher/test/suites/suite_system_icons.c:91	test_chevron_left_matches_source_svg_rectangles
 3	launcher/packages/math/tests/suite_math.c:26	assert_mat4
 3	launcher/packages/math/tests/suite_math_numbers.c:384	test_fixed_matrix_apply_matches_float
 3	launcher/test/suites/suite_post_ui.c:94	assert_no_two_lines_overlap
@@ -2284,7 +2283,7 @@
 2	launcher/test/suites/suite_gfx_indexed.c:155	test_dither_expansion_is_deterministic_at_the_same_panel_coordinates
 2	launcher/test/suites/suite_gfx_indexed.c:514	test_repaint_class_kind_matches_cell_changed
 2	launcher/test/suites/suite_gfx_present_guard.c:36	fixture
-2	launcher/test/suites/suite_icons_system.c:112	reference_icon_scale
+2	launcher/test/suites/suite_system_icons.c:112	reference_icon_scale
 2	launcher/test/suites/suite_post_ui.c:258	assert_a_check_ending_on_the_last_row_costs_nothing
 2	launcher/test/suites/suite_post_ui.c:359	assert_a_check_that_does_not_fit_moves_whole
 2	launcher/test/suites/suite_r3d_lit.c:592	canvas_draw

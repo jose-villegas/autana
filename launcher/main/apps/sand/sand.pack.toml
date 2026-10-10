@@ -1,0 +1,2 @@
+# The sand app's pack: every entry root under this folder is an entry of
+# pack "sand", mounted while the app runs.

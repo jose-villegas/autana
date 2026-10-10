@@ -1,13 +1,12 @@
 /*
- * Portable suite: gfx/draw/icons_system.h's ICON_SYSTEM_CHECK, the artwork
- * MU_ICON_CHECK renders from the baked atlas (see ui.c's draw_command()).
+ * Portable suite: the system check icon, the artwork MU_ICON_CHECK
+ * renders (see ui.c's draw_command()), read from the engine pack.
  *
- * check_expected_rows below is transcribed BY HAND from icons.h's own icon_check_bitmap picture, not
- * read back from icons_system.h, so a match proves gen_icons.py reproduced
- * known-good pixels rather than merely round-tripping its own packer. This
- * is the independent witness the generated-sources convention in
- * launcher/tools/gen/README.md asks for; suite_icons_system.c checks facts
- * a scan can pin down instead.
+ * check_expected_rows below is transcribed BY HAND from the bitmap the
+ * check was first drawn as, not read back from the pack, so a match proves
+ * icons_asset.py reproduced known-good pixels rather than merely
+ * round-tripping its own packer; suite_system_icons.c checks facts a scan
+ * can pin down instead.
  *
  * The two sizes exercised throughout are the module's two real callers:
  *   - 18px, a per-tile palette badge's icon size (scale 1; see
@@ -30,18 +29,26 @@
 #include "unity.h"
 
 #include "gfx/draw/icon.h"
-#include "gfx/draw/icons_system.h"
+#include "ui/ui_icons.h"
 
-/* check's own baked run count (icon_system_table[ICON_SYSTEM_CHECK].blocks),
- * big enough buffer for it at any box size, since a run's count is
- * scale-invariant (icon_walk_blocks' own comment). */
+/* System icon `id`, which the engine pack the suites run with must hold. */
+static const gfx_image_t*
+system_icon(ui_icon_id_t id) {
+    ui_icons_init();
+    const gfx_image_t* icon = ui_icon(id);
+    TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
+    return icon;
+}
+
+/* check's own run count: enough at any box size, since a run's count does
+ * not change with scale. */
 #define CHECK_TEST_MAX_BLOCKS 16
 
 static int
 blocks_at(int w, int h, icon_rect_t* out) {
-    const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
+    const gfx_image_t* icon = system_icon(UI_ICON_CHECK);
     icon_test_collect_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
-    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, w, h, icon_test_collect, &cc);
+    icon_walk_blocks(icon, w, h, icon_test_collect, &cc);
     return cc.count;
 }
 
@@ -126,9 +133,8 @@ test_centred_at_32px(void) {
     assert_centred_within_a_pixel(32, 32);
 }
 
-/* Transcribed from icons.h's icon_check_bitmap; see this file's own top
- * comment for why the comparison is against a hand copy, not the generated
- * header. A short limb descends left-to-right to a vertex, then a long limb
+/* A hand copy, not the pack's bytes; see this file's own top comment. A
+ * short limb descends left-to-right to a vertex, then a long limb
  * rises past it about a third again as far. */
 static const char* const check_expected_rows[16] = {
     "................",                                                                                 /* row 0 */
@@ -139,14 +145,14 @@ static const char* const check_expected_rows[16] = {
 
 static void
 test_check_matches_the_artwork_it_replaced(void) {
-    const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
-    TEST_ASSERT_EQUAL_INT(16, icon->w);
-    TEST_ASSERT_EQUAL_INT(16, icon->h);
+    const gfx_image_t* icon = system_icon(UI_ICON_CHECK);
+    TEST_ASSERT_EQUAL_INT(16, icon->width);
+    TEST_ASSERT_EQUAL_INT(16, icon->height);
     for (int y = 0; y < 16; y++) {
         const char* row = check_expected_rows[y];
         for (int x = 0; x < 16; x++) {
             const bool want = row[x] == 'X';
-            const bool got = icon_test_bit(icon_system_rows, icon, x, y);
+            const bool got = icon_test_bit(icon, x, y);
             TEST_ASSERT_EQUAL_INT_MESSAGE(want, got,
                                           "the baked check mark diverges from the bitmap it replaced - "
                                           "see the message above for which row/col "

@@ -128,7 +128,7 @@ test_an_unknown_version_is_refused(void) {
 static void
 test_an_unread_format_or_an_empty_image_is_a_format_error(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_FORMAT, 0));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_FORMAT, GFX_IMAGE_RGB565 + 1));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_FORMAT, GFX_IMAGE_MONO1 + 1));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_WIDTH, 0));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, with_u16(AT_HEIGHT, 0));
 }
@@ -148,6 +148,56 @@ static void
 test_a_stride_that_wraps_round_is_out_of_bounds(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, with_u32(AT_STRIDE, UINT32_MAX));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, with_u32(AT_PIXELS, UINT32_MAX - 3U));
+}
+
+/* A 9 x 2 one-bit image, rows of 16 bits from the byte after the header:
+ * one bit a pixel needs no alignment, and its last bit ends the entry. */
+enum {
+    MONO_WIDTH = 9,
+    MONO_STRIDE = 16,
+    MONO_BITS = HEADER + 1,
+    MONO_BYTES = MONO_BITS + (MONO_STRIDE + MONO_WIDTH + 7) / 8,
+};
+
+/* Opens the one-bit fixture; `in_place` says whether its bits point at the
+ * entry's own bytes, judged before the buffer is freed. */
+static asset_status_t
+open_mono(uint32_t stride, uint32_t size, gfx_image_t* out, bool* in_place) {
+    fixture_t f = fixture();
+    test_pack_put16(f.entry + AT_FORMAT, GFX_IMAGE_MONO1);
+    test_pack_put16(f.entry + AT_WIDTH, MONO_WIDTH);
+    test_pack_put32(f.entry + AT_STRIDE, stride);
+    test_pack_put32(f.entry + AT_PIXELS, MONO_BITS);
+    const asset_status_t status = open_fixture(&f, size, out);
+    *in_place = out->bits == f.entry + MONO_BITS;
+    test_free_aligned(f.raw);
+    return status;
+}
+
+static void
+test_a_one_bit_image_opens_unaligned_with_its_bits_in_place(void) {
+    gfx_image_t image;
+    bool in_place = false;
+    const asset_status_t status = open_mono(MONO_STRIDE, MONO_BYTES, &image, &in_place);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, status);
+    TEST_ASSERT_EQUAL_INT(GFX_IMAGE_MONO1, image.format);
+    TEST_ASSERT_TRUE_MESSAGE(in_place, "the bits were not the entry's own bytes");
+    TEST_ASSERT_EQUAL_UINT16(MONO_WIDTH, image.width);
+    TEST_ASSERT_EQUAL_UINT32(MONO_STRIDE, image.stride);
+}
+
+static void
+test_a_one_bit_stride_of_part_of_a_byte_is_a_format_error(void) {
+    gfx_image_t image;
+    bool in_place = false;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_mono(MONO_STRIDE - 4, MONO_BYTES, &image, &in_place));
+}
+
+static void
+test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds(void) {
+    gfx_image_t image;
+    bool in_place = false;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, open_mono(MONO_STRIDE, MONO_BYTES - 1, &image, &in_place));
 }
 
 static void
@@ -177,6 +227,9 @@ suite_gfx_image(void) {
     RUN_TEST(test_a_stride_short_of_a_row_or_rows_over_the_header_are_a_format_error);
     RUN_TEST(test_misaligned_rows_are_out_of_bounds);
     RUN_TEST(test_a_stride_that_wraps_round_is_out_of_bounds);
+    RUN_TEST(test_a_one_bit_image_opens_unaligned_with_its_bits_in_place);
+    RUN_TEST(test_a_one_bit_stride_of_part_of_a_byte_is_a_format_error);
+    RUN_TEST(test_one_bit_rows_one_byte_past_the_entry_are_out_of_bounds);
     RUN_TEST(test_the_boot_picture_s_pack_opens_as_one_panel);
 }
 
