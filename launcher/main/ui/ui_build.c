@@ -455,8 +455,8 @@ ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text
         icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
     } else if (text != NULL) {
         const mu_Font font = c->style->font;
-        const int x = r.x + (r.w - c->text_width(font, text, -1)) / 2;
-        mu_draw_text(c, font, text, -1, mu_vec2(x, r.y + (r.h - c->text_height(font)) / 2), color);
+        const int x = r.x + ((r.w - c->text_width(font, text, -1)) / 2);
+        mu_draw_text(c, font, text, -1, mu_vec2(x, r.y + ((r.h - c->text_height(font)) / 2)), color);
     }
 }
 
