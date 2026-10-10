@@ -31,7 +31,7 @@ class SceneViewer(unittest.TestCase):
         write_lit_mesh(cls.root, "card", positions, np.array([[255, 40, 20]] * 3),
                        np.array([[0, 1, 2]]), np.array([True]))
         (cls.root / "card.import.toml").write_text(
-            '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\ndirectory = "."\nname = "card"\n')
+            '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\nname = "card"\n')
         (cls.root / "card.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
         write_camera_clip(cls.root, reach=2.0)
         cls.scene.write_text('''[[objects]]

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -56,7 +57,7 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL};
 }
 
-static const camera_t CAMERA = {{0.0F, 0.0F, 10.0F}, {0.0F, 0.0F, -1.0F}, 1.0F, 1.0F};
+static const fixture_camera_t CAMERA = {{0.0F, 0.0F, 10.0F}, {0.0F, 0.0F, -1.0F}, 1.0F, 1.0F};
 
 /* Draws the instances; the caller frees the scratch. */
 static uint16_t*
@@ -65,7 +66,8 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
     *scratch = malloc(raster_scratch_bytes(&raster));
     TEST_ASSERT_NOT_NULL(*scratch);
     raster.scratch = *scratch;
-    raster_draw(&raster, &CAMERA, 0);
+    const render_view_t frame_view = render_view_fixture(&CAMERA, &raster, 0);
+    raster_draw(&raster, &frame_view);
     return raster_color(&raster);
 }
 
@@ -158,7 +160,8 @@ test_every_lens_operation_keeps_the_affine_bottom_row(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
         r3d_lens_t lens;
         memset(&lens, 0x5a, sizeof lens);
-        r3d_lens_init(&lens, &CAMERA, 8, (viewport_t){SIZE, SIZE, quarter});
+        const render_view_t frame_view = render_view_fixture_at(&CAMERA, (viewport_t){SIZE, SIZE, quarter});
+        r3d_lens_init(&lens, &frame_view, 8);
         for (int operation = 0; operation < 3; operation++) {
             if (operation == 1) {
                 r3d_lens_fit(&lens, SIZE / 2, SIZE);

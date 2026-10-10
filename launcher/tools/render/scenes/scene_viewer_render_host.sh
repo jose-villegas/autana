@@ -6,6 +6,7 @@ scene_name=scene_viewer
 scene_sources="
 main/services/tune.c
 main/core/job.c
+main/render/render_view.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c

@@ -38,7 +38,7 @@ renderer's resolution, half the panel's each way, upscaled like the shaded
 one. They are `|nopin` too.
 `--view` sets the tunable `render_lab.view`, so on a development build
 `autana tune render_lab.view N` selects view N: zero is shaded, and the remaining
-values follow the render_view_t table order in render/context/render_context.c. `--view` on a
+values follow the render_debug_view_t table order in render/context/render_context.c. `--view` on a
 scene with no lit mesh, an unknown name or no value fails the run.
 `tests/test_render_views.py` checks the views against the shaded render.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
@@ -125,23 +125,24 @@ with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
 `gallop` and `half_bound`. It is the source asset for skinned-mesh import;
 nothing in the build reads it.
 
-`launcher/demo/capybara/capybara.glb` is its glTF export: deform bones only,
+Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
 every loop as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
-measurement. The export is a cached bake: `capybara.import.toml` names the
+measurement; `bake.py path capybara.glb` prints where it is.
+`capybara.import.toml` names the
 `.blend` and the loops to export (the file also holds the rig's own
 `capyrigAction`), and `launcher/tools/bake/bake.py` runs the model-agnostic
 exporter in Blender. By hand, it is:
 
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
-    launcher/demo/capybara/capybara.blend launcher/demo/capybara/capybara.glb \
+    launcher/demo/capybara/capybara.blend capybara.glb \
     --clips idle,walk,walk_fast,gallop,half_bound
 ```
 
 and measure the lighting again:
 
 ```sh
-launcher/tools/r3d/skin_light/report_skin_light.sh launcher/demo/capybara/capybara.glb gallop
+launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake/bake.py path capybara.glb)" gallop
 ```
