@@ -72,3 +72,7 @@ CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
 CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=y
 CONFIG_BOOTLOADER_FLASH_DC_AWARE=y
 CONFIG_SPI_FLASH_HPM_ENA=y
+
+# The SPI queue every present goes through runs from IRAM, as the rest of a
+# present's own code does (main/linker.lf).
+CONFIG_SPI_MASTER_IN_IRAM=y
