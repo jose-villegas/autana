@@ -471,10 +471,17 @@ button has no stand-in, so such an app cannot be left.
 
 **A crash fails the run.** After every step the image must answer `BUILDID`
 within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
-Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a failed `assert`) or a
-second boot banner, whatever its tests reported. The board's captures
-(`autana suite`, `selftest`, `monitor`) give the same verdict, from
-`scripts/lib/device_capture.py`'s `crash_signs()`.
+Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a
+failed `assert`) or a second boot banner, whatever its tests reported. The
+board's captures (`autana suite`, `selftest`, `monitor`) give the same
+verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
+
+A driven tour reaches the shell's lifecycle the way the board does, null
+panel and all. A change whose in-app scene switch broke the gfx mode's
+framebuffer contract, resetting the board on every switch, asserts and
+reboots on its first switch here too; its parent takes every ordered pair
+of its fourteen switch targets, 182 switches, on one boot. A lifecycle
+regression of that kind needs no board to catch.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the
