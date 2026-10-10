@@ -35,6 +35,17 @@ TYPE_WIDTHS = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 NORMALIZED_DIVISORS = {5120: 127.0, 5121: 255.0, 5122: 32767.0, 5123: 65535.0}
 
 
+def camera_half_fov_short_tan(yfov, aspect_ratio=1.0):
+    """glTF vertical FOV in radians to the renderer's short-axis half-angle tangent."""
+    return math.tan(yfov / 2.0) * min(aspect_ratio, 1.0)
+
+
+def camera_half_fov_short_tan_derivative(yfov, aspect_ratio=1.0):
+    """Scale a yfov tangent into short-axis half-angle tangent units."""
+    tangent = math.tan(yfov / 2.0)
+    return min(aspect_ratio, 1.0) * (1.0 + tangent * tangent) / 2.0
+
+
 def load_glb(path):
     """Return (document, binary chunk) of a .glb file."""
     with open(path, "rb") as handle:

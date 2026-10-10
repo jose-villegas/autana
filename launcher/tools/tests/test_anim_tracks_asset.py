@@ -43,6 +43,17 @@ def row_at(index):
 
 
 class RoundTripTests(unittest.TestCase):
+    def test_version_two_bindings_have_scene_root_and_string_table(self):
+        self.assertEqual(tracks_asset.VERSION, 2)
+        entry = probe_entry()
+        version, count, duration, strings, size, root = HEADER.unpack_from(entry)
+        self.assertEqual(root, tracks_asset.ROOT_SCENE)
+        self.assertGreaterEqual(strings, HEADER.size + count * ROW.size)
+        self.assertLessEqual(strings + size, len(entry))
+        tracks, _ = tracks_asset.decode(entry)
+        self.assertEqual(tracks[0]["component"], tracks_asset.TRANSFORM)
+        self.assertEqual(tracks[0]["field"], "position")
+
     def test_every_track_reads_back_as_baked_in_single_precision(self):
         tracks, duration_ms = probe_tracks()
         decoded, decoded_ms = tracks_asset.decode(tracks_asset.encode(tracks, duration_ms))
@@ -59,36 +70,34 @@ class RoundTripTests(unittest.TestCase):
 
     def test_the_rows_name_4_aligned_arrays_after_the_table(self):
         entry = probe_entry()
-        version, count, duration_ms = HEADER.unpack_from(entry)
+        version, count, duration_ms, strings, size, root = HEADER.unpack_from(entry)
         self.assertEqual((version, count, duration_ms), (tracks_asset.VERSION, 8, 3000))
         for index in range(count):
-            _, times_at, values_at, _, _, _, _ = ROW.unpack_from(entry, row_at(index))
+            _, _, _, times_at, values_at, _, _, _ = ROW.unpack_from(entry, row_at(index))
             for offset in (times_at, values_at):
                 self.assertEqual(offset % 4, 0)
                 self.assertGreaterEqual(offset, row_at(count))
 
     def test_a_channel_that_never_changes_is_one_key(self):
         tracks, _ = probe_tracks()
-        held = next(t for t in tracks if t["name"] == "hand/translation")
+        held = next(t for t in tracks if t["name"] == "hand:TRNS.position")
         self.assertEqual(held["times"], [0.0])
 
     def test_a_name_holding_a_nul_is_refused(self):
         tracks, duration_ms = probe_tracks()
-        tracks[0] = dict(tracks[0], name="a\0b/translation")
+        tracks[0] = dict(tracks[0], path="a\0b")
         with self.assertRaises(TracksError):
             tracks_asset.encode(tracks, duration_ms)
 
-    def test_a_name_of_31_bytes_bakes_and_one_of_32_fails_naming_the_track(self):
+    def test_names_up_to_255_utf8_bytes_and_overflow_names_clip(self):
         def baked(node):
             glb = gltf_write.build_glb([{"name": node}], [{"name": "clip", "channels": [
                 channel(0, "translation", [0.0, 1.0], [(0, 0, 0), (1, 1, 1)])]}])
             document, binary = gltf_read.parse_glb(glb)
             return tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
-
-        fits = "n" * 19  # with "/translation", 31 bytes
-        self.assertEqual(tracks_asset.decode(baked(fits))[0][0]["name"], fits + "/translation")
-        with self.assertRaisesRegex(TracksError, "n" * 20 + "/translation"):
-            baked("n" * 20)
+        self.assertEqual(tracks_asset.decode(baked("n" * 255))[0][0]["path"], "n" * 255)
+        with self.assertRaisesRegex(TracksError, "n" * 256):
+            baked("n" * 256)
 
 
 class RefusalTests(unittest.TestCase):
@@ -104,29 +113,32 @@ class RefusalTests(unittest.TestCase):
     def test_an_unknown_version_is_refused(self):
         self.assert_refused(edited(probe_entry(), 0, "<H", tracks_asset.VERSION + 1))
 
-    def test_an_array_past_the_end_or_misaligned_or_in_the_table_is_refused(self):
+    def test_arrays_strings_types_root_component_padding_and_finite_keys(self):
         entry = probe_entry()
-        self.assert_refused(edited(entry, row_at(0) + 36, "<I", len(entry) - 4))
-        self.assert_refused(edited(entry, row_at(0) + 32, "<I", ROW.unpack_from(entry, row_at(0))[1] + 2))
-        self.assert_refused(edited(entry, row_at(0) + 32, "<I", 4))
-
-    def test_a_bad_width_interpolation_flag_or_pad_is_refused(self):
-        entry = probe_entry()
-        for offset, value in ((42, 0), (42, 5), (43, 3), (44, 2), (45, 1)):
-            self.assert_refused(edited(entry, row_at(0) + offset, "<B", value))
-
-    def test_a_quaternion_that_is_not_four_wide_is_refused(self):
-        self.assert_refused(edited(probe_entry(), row_at(0) + 44, "<B", 1))  # lamp/translation is 3 wide
-
-    def test_an_unterminated_name_is_refused(self):
-        self.assert_refused(edited(probe_entry(), row_at(0), "<32s", b"x" * 32))
-
-
-    def test_zero_keys_and_each_padding_byte_are_refused(self):
-        entry = probe_entry()
-        self.assert_refused(edited(entry, row_at(0) + 40, "<H", 0))
-        for offset in (45, 46, 47):
-            self.assert_refused(edited(entry, row_at(0) + offset, "<B", 1))
+        for offset, fmt, value in (
+            (tracks_asset.AT_ROOT, "<B", 2),
+            (row_at(0) + tracks_asset.ROW_VALUES, "<I", len(entry)),
+            (row_at(0) + tracks_asset.ROW_TIMES, "<I", 1),
+            (row_at(0) + tracks_asset.ROW_TYPE, "<B", len(tracks_asset.WIDTHS)),
+            (row_at(0) + tracks_asset.ROW_INTERP, "<B", len(tracks_asset.INTERPOLATIONS)),
+            (row_at(0) + tracks_asset.ROW_COMPONENT, "<I", 0),
+            (row_at(0) + tracks_asset.ROW_KEYS, "<H", 0),
+            (row_at(0) + tracks_asset.ROW_PATH, "<H", tracks_asset.STRINGS_MAX),
+            (row_at(0) + tracks_asset.ROW_FIELD, "<H", tracks_asset.STRINGS_MAX),
+            (tracks_asset.AT_VERSION, "<H", 1),
+        ):
+            self.assert_refused(edited(entry, offset, fmt, value))
+        for offset in (*range(tracks_asset.AT_PAD, HEADER.size),
+                       *range(row_at(0) + tracks_asset.ROW_PAD, row_at(1))):
+            self.assert_refused(edited(entry, offset, "<B", 1))
+        _, _, _, strings, size, _ = HEADER.unpack_from(entry)
+        unterminated = bytearray(entry)
+        unterminated[strings:strings + size] = b"x" * size
+        self.assert_refused(bytes(unterminated))
+        _, _, _, times, values, _, _, _ = ROW.unpack_from(entry, row_at(0))
+        for offset in (times, values):
+            self.assert_refused(edited(entry, offset, "<f", float("nan")))
+        self.assert_refused(edited(entry, times + struct.calcsize("<f"), "<f", 0))
 
 
 class CheckTests(unittest.TestCase):
@@ -148,7 +160,7 @@ class CheckTests(unittest.TestCase):
 
     def test_two_tracks_with_one_name_are_refused(self):
         tracks, duration_ms = probe_tracks()
-        with self.assertRaisesRegex(TracksError, "lamp/translation"):
+        with self.assertRaisesRegex(TracksError, "lamp:TRNS.position"):
             tracks_asset.encode(tracks + [tracks[0]], duration_ms)
 
     def test_a_held_cubic_channel_with_no_slope_is_one_key_with_its_three_runs(self):
@@ -161,6 +173,57 @@ class CheckTests(unittest.TestCase):
         sloped = channel(0, "translation", [0.0, 1.0], [(0, 0, 0), (5, 5, 5), (1, 0, 0)] + [(0, 0, 0), (5, 5, 5), (0, 0, 0)],
                          "CUBICSPLINE")
         self.assertEqual(tracks_asset.collapse_constant(sloped)["times"], [0.0, 1.0])
+
+
+class BindingMappingTests(unittest.TestCase):
+    def tracks(self, nodes, channels, **kwargs):
+        document, binary = gltf_read.parse_glb(gltf_write.build_glb(nodes, [{"name": "named_clip", "channels": channels}], **kwargs))
+        return tracks_asset.clip_tracks(document, binary, document["animations"][0])[0]
+
+    def test_unsupported_pointer_and_weights_name_channel_and_clip(self):
+        for c, label in ((channel(0, "weights", [0], [(1,)]), "weights"),
+                         (channel(None, "pointer", [0], [(1,)], pointer="/nodes/0/rotation"), "/nodes/0/rotation"),
+                         (channel(None, "pointer", [0], [(1,)], pointer="/lights/0/intensity"), "/lights/0/intensity")):
+            with self.assertRaises(TracksError) as error:
+                self.tracks([{"name": "n"}], [c])
+            self.assertIn("named_clip", str(error.exception))
+            self.assertIn(label, str(error.exception))
+
+    def test_name_limit_failure_from_bake_names_clip(self):
+        with self.assertRaisesRegex(TracksError, "named_clip"):
+            self.tracks([{"name": "n" * (tracks_asset.STRING_MAX + 1)}],
+                        [channel(0, "translation", [0], [(1, 2, 3)])])
+
+    def test_string_table_interns_repeated_path_and_field(self):
+        tracks, duration = probe_tracks()
+        entry = tracks_asset.encode(tracks, duration)
+        _, count, _, strings, size, _ = HEADER.unpack_from(entry)
+        names = entry[strings:strings + size].split(b"\0")[:-1]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual(count, len(tracks))
+
+    def test_skeleton_paths_include_topmost_joint_and_scene_for_mixed_clip(self):
+        identity = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+        nodes = [{"name": "root", "children": [1]}, {"name": "child"}, {"name": "camera"}]
+        skin = [{"joints": [0, 1], "inverse_binds": [identity, identity]}]
+        channels = [channel(0, "translation", [0], [(1, 2, 3)]), channel(1, "scale", [0], [(1, 1, 1)])]
+        skeleton = self.tracks(nodes, channels, skins=skin)
+        self.assertEqual([t["path"] for t in skeleton], ["root", "root/child"])
+        self.assertTrue(all(t["root"] == tracks_asset.ROOT_SKELETON for t in skeleton))
+        mixed = self.tracks(nodes, channels + [channel(2, "translation", [0], [(1, 2, 3)])], skins=skin)
+        self.assertEqual([t["path"] for t in mixed], ["root", "child", "camera"])
+        self.assertTrue(all(t["root"] == tracks_asset.ROOT_SCENE for t in mixed))
+
+    def test_every_value_type_and_interpolation_round_trips(self):
+        tracks, _ = probe_tracks()
+        for value_type, width in enumerate(tracks_asset.WIDTHS):
+            for interp in tracks_asset.INTERPOLATIONS:
+                runs = tracks_asset.CUBIC_RUNS if interp == "CUBICSPLINE" else 1
+                track = dict(tracks[0], type=value_type, quaternion=value_type == tracks_asset.VALUE_QUAT,
+                             interpolation=interp, times=[0.0, 1.0], values=[tuple(range(width))] * (2 * runs))
+                decoded, _ = tracks_asset.decode(tracks_asset.encode([track], 1000))
+                self.assertEqual(decoded[0]["type"], value_type)
+                self.assertEqual(decoded[0]["values"], track["values"])
 
 
 class SamplerTests(unittest.TestCase):

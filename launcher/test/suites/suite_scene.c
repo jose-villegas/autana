@@ -115,7 +115,12 @@ static const struct {
 
 /* A clip of the camera node flying 5 units along x in a second, facing down
  * -z. Both tracks share the times; each array starts where the last ends. */
-enum { FLIGHT_TIMES = 104, FLIGHT_POSITIONS = 112, FLIGHT_TURNS = 136, FLIGHT_BYTES = 168 };
+enum {
+    FLIGHT_TIMES = TEST_TRACKS_HEADER_SIZE + (2 * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT)),
+    FLIGHT_POSITIONS = FLIGHT_TIMES + (2 * sizeof(float)),
+    FLIGHT_TURNS = FLIGHT_POSITIONS + (6 * sizeof(float)),
+    FLIGHT_BYTES = FLIGHT_TURNS + (8 * sizeof(float))
+};
 
 /* "flight" is the clip as a scene reads it; "skewed" has a translation 2 wide
  * and "unturned" no rotation, which a scene must refuse. */
@@ -139,14 +144,16 @@ make_clip_entry(uint8_t* entry, int translation_width, int track_count) {
                                    .keys = 2,
                                    .width = translation_width,
                                    .interp = ANIM_LINEAR});
-    test_track_row(entry, 1,
-                   &(test_track_t){.name = "camera/rotation",
-                                   .times = FLIGHT_TIMES,
-                                   .values = FLIGHT_TURNS,
-                                   .keys = 2,
-                                   .width = 4,
-                                   .interp = ANIM_LINEAR,
-                                   .quaternion = true});
+    if (track_count > 1) {
+        test_track_row(entry, 1,
+                       &(test_track_t){.name = "camera/rotation",
+                                       .times = FLIGHT_TIMES,
+                                       .values = FLIGHT_TURNS,
+                                       .keys = 2,
+                                       .width = 4,
+                                       .interp = ANIM_LINEAR,
+                                       .quaternion = true});
+    }
     test_pack_put_floats(entry + FLIGHT_TIMES, times, 2);
     test_pack_put_floats(entry + FLIGHT_POSITIONS, positions, 6);
     test_pack_put_floats(entry + FLIGHT_TURNS, turns, 8);

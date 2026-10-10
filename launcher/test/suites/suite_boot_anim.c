@@ -1598,7 +1598,8 @@ static void
 write_clip(const test_track_t* rows, int count) {
     enum { BYTES = 1024 };
 
-    const uint32_t times_at = TEST_TRACKS_HEADER_SIZE + (uint32_t)(count * TEST_TRACK_ROW_SIZE);
+    const uint32_t times_at =
+        TEST_TRACKS_HEADER_SIZE + (uint32_t)(count * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT));
     const uint32_t values_at = times_at + 16U;
     uint8_t* bytes = malloc(BYTES);
     TEST_ASSERT_NOT_NULL(bytes);
@@ -1717,6 +1718,7 @@ test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted(void) 
     test_track_t rows[FALLBACK_TRACKS];
     six_tracks(rows);
     rows[4].quaternion = false;
+    rows[4].width = 3;
     write_clip(rows, FALLBACK_TRACKS);
     expect_the_rest_pose(".");
     (void)remove(FALLBACK_PACK);

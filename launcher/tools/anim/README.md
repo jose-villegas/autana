@@ -19,7 +19,7 @@ because +Y up cannot define their roll.
 
 | File | What it does |
 |---|---|
-| [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes a track per channel, node TRS or `KHR_animation_pointer`, keys and interpolation as authored, with the checks every bake makes. `r3d/build_pack.py` calls it. |
+| [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes TRCK version 2 bindings for node TRS and camera yfov, with string-table paths, component codes, field names, value types and a scene or skeleton root. Camera values and cubic tangents use engine short-axis FOV units. `r3d/build_pack.py` calls it. |
 | [camera_keys.py](camera_keys.py) | Builds a camera `.keys.toml` into glTF bytes; `gltf/gltf_read.py`'s `load_asset` calls it. |
 | [track_host.py](track_host.py), [track_host.c](track_host.c) | Prints every track of a clip's `TRCK` entry every N ms, or a camera node as a poses file, through `main/anim/`'s reader and sampler. A `.anim.toml` is first baked into a scratch pack of just that clip. `r3d/poses.py` gets a scene camera's poses from it. |
 
@@ -34,3 +34,10 @@ runtime to it through `track_host`, `tests/test_track_host.py` holds
 `track_host`'s build and poses, and `tests/anim_probe.py` writes the clip that
 `suite_anim_tracks.c` holds to it on the host. `tests/test_anim_tracks_asset.py`
 holds `tracks_asset.py`'s writer and reader to each other.
+
+`gltf/gltf_read.py` owns the camera yfov conversion, including the static
+aspect ratio (1 when absent). `test_anim_bake.py` checks square, landscape
+and portrait conversions and cubic tangents. Joint-only clips under one
+skin root use skeleton paths including the joint root and excluding
+non-joint parents; scene clips use node names. The C sampler accepts both
+roots, while `anim_bind()` resolves scene clips.

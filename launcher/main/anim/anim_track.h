@@ -16,6 +16,14 @@
 #define ANIM_WIDTH_MAX 4
 
 typedef enum {
+    ANIM_VALUE_FLOAT,
+    ANIM_VALUE_VEC2,
+    ANIM_VALUE_VEC3,
+    ANIM_VALUE_QUAT,
+    ANIM_VALUE_COLOUR,
+} anim_value_t;
+
+typedef enum {
     ANIM_STEP,   /* holds a key's value until the next key */
     ANIM_LINEAR, /* lerp, or slerp for a quaternion track */
     ANIM_CUBIC,  /* glTF CUBICSPLINE: an in-tangent, value and out-tangent per key */

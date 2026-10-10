@@ -7,7 +7,7 @@
  *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
  *   track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR
  *
- * By default one line per track per sample time: `<t_ms> <name> <value...>`,
+ * By default one line per track per sample time: `<t_ms> <path:CCCC.field> <value...>`,
  * from --from (0) to --until (the clip's duration). With --poses it prints the
  * poses file r3d's triangle_sizes reads, for the camera node NODE: its
  * translation as the eye, the way its rotation turns glTF's -Z as the
@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "anim/anim_binding.h"
 #include "anim/anim_track.h"
 #include "anim/anim_tracks.h"
 #include "asset/asset_file.h"
@@ -66,17 +67,21 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
     return 0;
 }
 
+enum { BINDING_DESCRIPTION_BYTES = 1024 };
+
 static int
 print_tracks(const anim_tracks_t* tracks, const sampling_t* at) {
     for (uint64_t t = at->from_ms; t < at->until_ms; t += at->every_ms) {
         const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, at->wrap);
         for (int i = 0; i < tracks->count; i++) {
-            const char* name;
-            anim_track_t track;
-            (void)anim_tracks_at(tracks, i, &name, &track);
+            anim_binding_t binding;
+            (void)anim_tracks_binding_at(tracks, i, &binding);
+            const anim_track_t track = binding.curve;
             float v[ANIM_WIDTH_MAX];
             anim_track_sample(&track, seconds, v);
-            printf("%" PRIu64 " %s", t, name);
+            char description[BINDING_DESCRIPTION_BYTES];
+            (void)anim_binding_describe(&binding, description, sizeof description);
+            printf("%" PRIu64 " %s", t, description);
             for (int k = 0; k < track.width; k++) {
                 printf(" %.9g", (double)v[k]);
             }

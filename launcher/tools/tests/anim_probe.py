@@ -80,9 +80,8 @@ def probe_channels(index):
                            [(0.2, 0, 0, 0), (0, 0.3, 0, 0), (0, 0, 0.1, 0)]), "CUBICSPLINE"),
         channel(None, "pointer", [0.0, 0.8, 2.0], [(0.6,), (1.2,), (0.9,)],
                 pointer="/cameras/0/perspective/yfov"),
-        # A pointer to a rotation is a quaternion too.
-        channel(None, "pointer", [0.0, 2.0], [turn((0, 0, 1), 0), turn((0, 0, 1), 200)],
-                pointer="/nodes/%d/rotation" % hand),
+        # A second joint rotation shares the quaternion sampler.
+        channel(hand, "rotation", [0.0, 2.0], [turn((0, 0, 1), 0), turn((0, 0, 1), 200)]),
         # A channel that never changes bakes to one key.
         channel(hand, "translation", [0.0, 3.0], [(7, 7, 7), (7, 7, 7)]),
     ]
@@ -94,8 +93,22 @@ def probe_glb(reordered=False):
         order.reverse()
     index = {name: order.index(name) for name in NODES}
     cameras = [{"name": "lens", "type": "perspective", "perspective": {"yfov": 0.6, "znear": 0.1}}]
-    return gltf_write.build_glb([{"name": n} for n in order],
+    return gltf_write.build_glb([dict(name=n, **({"camera": 0} if n == "lamp" else {})) for n in order],
                                 [{"name": "clip", "channels": probe_channels(index)}], cameras=cameras)
+
+
+def skeleton_glb():
+    """A skinned triangle and joint curves, with a non-joint parent."""
+    identity = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+    nodes = [{"name": "armature", "children": [1]}, {"name": "butt", "children": [2]},
+             {"name": "spine"}, {"name": "mesh", "mesh": 0, "skin": 0}]
+    channels = [channel(1, "translation", [0, 1], [(0, 0, 0), (1, 2, 3)]),
+                channel(2, "rotation", [0, 1], [turn((0, 1, 0), 0), turn((0, 1, 0), 90)])]
+    primitive = {"positions": [(0, 0, 0), (1, 0, 0), (0, 1, 0)], "indices": [0, 1, 2],
+                 "joints": [(0, 1, 0, 0)] * 3, "weights": [(0.5, 0.5, 0, 0)] * 3}
+    return gltf_write.build_glb(nodes, [{"name": "clip", "channels": channels}],
+                                skins=[{"joints": [1, 2], "inverse_binds": [identity, identity]}],
+                                meshes=[{"name": "triangle", "primitives": [primitive]}])
 
 
 def has_compiler():
@@ -161,7 +174,10 @@ def reference_entry(entry):
 
 def probe_pack():
     entry = probe_entry()
-    return build_pack([("probe", tracks_asset.TYPE, entry), ("probe_ref", REFERENCE, reference_entry(entry))])
+    document, binary = gltf_read.parse_glb(skeleton_glb())
+    skeleton = tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
+    return build_pack([("probe", tracks_asset.TYPE, entry), ("probe_ref", REFERENCE, reference_entry(entry)),
+                       ("skeleton", tracks_asset.TYPE, skeleton), ("skeleton_ref", REFERENCE, reference_entry(skeleton))])
 
 
 def main(argv=None):

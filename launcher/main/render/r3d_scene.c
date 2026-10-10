@@ -46,3 +46,13 @@ r3d_scene_camera_placement(const transformf_t* pose) {
     return (r3d_placement_t){{{-right.x, up.x, -forward.x}, {-right.y, up.y, -forward.y}, {-right.z, up.z, -forward.z}},
                              pose->position};
 }
+
+static const anim_field_t CAMERA_FIELDS[] = {
+    {"half_fov_short_tan", ANIM_VALUE_FLOAT, offsetof(r3d_scene_camera_t, half_fov_short_tan)},
+    {"near_z", ANIM_VALUE_FLOAT, offsetof(r3d_scene_camera_t, near_z)},
+};
+const anim_component_fields_t R3D_SCENE_CAMERA_FIELDS = {
+    ANIM_COMPONENT_CAMERA,
+    CAMERA_FIELDS,
+    sizeof CAMERA_FIELDS / sizeof CAMERA_FIELDS[0],
+};

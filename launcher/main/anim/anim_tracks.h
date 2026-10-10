@@ -1,48 +1,68 @@
 /*
- * anim_tracks: the tracks of one glTF animation as an asset-pack entry
- * (TRCK), written by launcher/tools/anim/tracks_asset.py.
- * Opening it checks every row once; a track found by name then points into
- * the entry, so nothing is copied. The layout is in docs/Animation-Tracks.md.
- *
- * No allocation and no ESP-IDF.
+ * anim_tracks: validated bindings and curves in a TRCK pack entry.
+ * Views point into the entry, which must outlive them. No allocation.
  */
 #pragma once
 
 #include <stdint.h>
-
 #include "anim/anim_track.h"
 #include "asset/asset_pack.h"
 
-#define ANIM_TRACKS_ASSET   ASSET_TYPE('T', 'R', 'C', 'K')
-#define ANIM_TRACKS_VERSION 1U
-#define ANIM_TRACK_NAME_MAX 32U /* including the NUL */
+#define ANIM_TRACKS_ASSET        ASSET_TYPE('T', 'R', 'C', 'K')
+#define ANIM_TRACKS_VERSION      2U
+#define ANIM_COMPONENT_TRANSFORM ASSET_TYPE('T', 'R', 'N', 'S')
+#define ANIM_COMPONENT_CAMERA    ASSET_TYPE('C', 'A', 'M', 'R')
 
-/* An opened entry. Holds no copy: the pack must outlive it. */
+enum {
+    ANIM_ROOT_SCENE,
+    ANIM_ROOT_SKELETON,
+};
+
+enum {
+    ANIM_TRACKS_HEADER_SIZE = 20,
+    ANIM_TRACKS_AT_VERSION = 0,
+    ANIM_TRACKS_AT_COUNT = 2,
+    ANIM_TRACKS_AT_DURATION = 4,
+    ANIM_TRACKS_AT_STRINGS = 8,
+    ANIM_TRACKS_AT_STRINGS_SIZE = 12,
+    ANIM_TRACKS_AT_ROOT = 16,
+    ANIM_TRACKS_AT_PAD = 17,
+    ANIM_TRACKS_HEADER_PAD_SIZE = 3,
+    ANIM_TRACKS_ROW_SIZE = 24,
+    ANIM_TRACKS_ROW_PATH = 0,
+    ANIM_TRACKS_ROW_FIELD = 2,
+    ANIM_TRACKS_ROW_COMPONENT = 4,
+    ANIM_TRACKS_ROW_TIMES = 8,
+    ANIM_TRACKS_ROW_VALUES = 12,
+    ANIM_TRACKS_ROW_KEYS = 16,
+    ANIM_TRACKS_ROW_TYPE = 18,
+    ANIM_TRACKS_ROW_INTERP = 19,
+    ANIM_TRACKS_ROW_PAD = 20,
+    ANIM_TRACKS_ROW_PAD_SIZE = 4,
+    ANIM_TRACKS_ALIGNMENT = 4,
+    ANIM_TRACKS_CUBIC_RUNS = 3,
+};
+
 typedef struct {
     const uint8_t* base;
     uint32_t size;
     uint16_t count;
+    uint8_t root;
     anim_clip_t clip;
 } anim_tracks_t;
 
-/* Checks the entry once, as docs/Animation-Tracks.md lists, and returns the
- * first failure: ASSET_ERR_VERSION, ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT.
- * Else fills `out`. */
+typedef struct {
+    const char* path;
+    const char* field;
+    uint32_t component;
+    anim_value_t type;
+    anim_track_t curve;
+} anim_binding_t;
+
 asset_status_t anim_tracks_open(asset_view_t entry, anim_tracks_t* out);
-
-/* The TRCK entry `id` of `pack`, opened. */
 asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out);
-
-/* The track named `name` (its glTF binding, e.g. "camera/translation"),
- * pointing into the entry; ASSET_ERR_NOT_FOUND when the clip has none. */
-asset_status_t anim_tracks_find(const anim_tracks_t* tracks, const char* name, anim_track_t* out);
-
-/* The tracks of node `node` ("<node>/translation", "/rotation", "/scale"),
- * pointing into the entry. Translation and rotation must be there; a node the
- * clip does not scale keeps unit scale. ASSET_ERR_FORMAT when a track is not
- * the width it drives, or the rotation is not a quaternion. */
+asset_status_t anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* out);
+asset_status_t anim_tracks_find(const anim_tracks_t* tracks, const char* path, uint32_t component, const char* field,
+                                anim_track_t* out);
+/* Translation and rotation are required; absent scale is unit scale. */
 asset_status_t anim_tracks_find_node(const anim_tracks_t* tracks, const char* node, anim_node_tracks_t* out);
-
-/* Track `index` of the entry's table and its name, both pointing into the
- * entry; ASSET_ERR_NOT_FOUND when `index` is outside [0, count). */
-asset_status_t anim_tracks_at(const anim_tracks_t* tracks, int index, const char** name, anim_track_t* out);

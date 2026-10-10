@@ -6,10 +6,8 @@ A NAME.anim.toml names its source, a .glb, .fbx or camera .keys.toml in its
 own folder, and the animation in it; the pack id is NAME. The keys and the
 entry's layout are in docs/Animation-Tracks.md, "The pack entry".
 
-A track is named by its glTF binding: `node/translation`, or a
-KHR_animation_pointer path with the object's index replaced by its name
-(`lens/perspective/yfov`). Keys are copied as authored, except that a channel
-that never changes is one key. Standard library only.
+Bindings name an object path, component and field. Curves are copied in the
+field's units, and constant channels collapse to one key. Standard library only.
 """
 
 import math
@@ -24,11 +22,29 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from gltf import gltf_read  # noqa: E402
 
 TYPE = b"TRCK"
-VERSION = 1
+VERSION = 2
 SUFFIX = ".anim.toml"
-HEADER = struct.Struct("<HHI")
-NAME_BYTES = 32  # a track name's field, as ANIM_TRACK_NAME_MAX
-ROW = struct.Struct(f"<{NAME_BYTES}sIIHBBB3x")
+HEADER = struct.Struct("<HHIIIB3x")
+ROW = struct.Struct("<HHIIIHBB4x")
+HEADER_SIZE = 20
+ROW_SIZE = 24
+AT_VERSION, AT_COUNT, AT_DURATION = 0, 2, 4
+AT_STRINGS, AT_STRINGS_SIZE, AT_ROOT, AT_PAD = 8, 12, 16, 17
+HEADER_PAD_SIZE = 3
+ROW_PATH, ROW_FIELD, ROW_COMPONENT = 0, 2, 4
+ROW_TIMES, ROW_VALUES, ROW_KEYS = 8, 12, 16
+ROW_TYPE, ROW_INTERP, ROW_PAD = 18, 19, 20
+ROW_PAD_SIZE = 4
+ALIGNMENT, CUBIC_RUNS = 4, 3
+STRING_MAX, STRINGS_MAX, COUNT_MAX, DURATION_MAX = 255, 65535, 65535, 0xFFFFFFFF
+ROOT_SCENE, ROOT_SKELETON = 0, 1
+VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR = range(5)
+WIDTHS = (1, 2, 3, 4, 3)
+TRANSFORM, CAMERA = (int.from_bytes(tag, "little") for tag in (b"TRNS", b"CAMR"))
+FIELDS = {"translation": ("position", VALUE_VEC3), "rotation": ("rotation", VALUE_QUAT),
+          "scale": ("scale", VALUE_VEC3)}
+assert HEADER.size == HEADER_SIZE == AT_PAD + HEADER_PAD_SIZE
+assert ROW.size == ROW_SIZE == ROW_PAD + ROW_PAD_SIZE
 WIDTH_MAX = 4
 # glTF's interpolation names, in anim_interp_t's order.
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
@@ -49,18 +65,56 @@ def object_name(document, collection, index):
     return items[index].get("name") or "%s%d" % (collection, index)
 
 
-def channel_name(document, channel):
-    """The name a channel has in the file: 'node/path', or its pointer with
-    the object's index replaced by its name."""
-    if channel["pointer"]:
-        match = POINTER.match(channel["pointer"])
+def channel_binding(document, channel, joint_paths=None):
+    pointer = channel["pointer"]
+    if pointer:
+        match = re.fullmatch(r"/cameras/(\d+)/perspective/yfov", pointer)
         if not match:
-            raise TracksError("pointer %s is not /collection/index/property" % channel["pointer"])
-        collection, index, rest = match.group(1), int(match.group(2)), match.group(3)
-        return "%s/%s" % (object_name(document, collection, index), rest)
-    if channel["path"] not in PATHS or channel["node"] is None:
-        raise TracksError("a channel targets %r without a node or a KHR_animation_pointer" % channel["path"])
-    return "%s/%s" % (object_name(document, "nodes", channel["node"]), channel["path"])
+            raise TracksError("channel %s: unsupported animation pointer" % pointer)
+        camera = int(match.group(1))
+        holders = [i for i, node in enumerate(document.get("nodes", [])) if node.get("camera") == camera]
+        if camera >= len(document.get("cameras", [])) or len(holders) != 1:
+            raise TracksError("channel %s: needs one node holding the camera" % pointer)
+        return object_name(document, "nodes", holders[0]), CAMERA, "half_fov_short_tan", VALUE_FLOAT
+    node, path = channel["node"], channel["path"]
+    if path not in FIELDS or node is None:
+        raise TracksError("channel node %s/%s: unsupported target" % (node, path))
+    field, value_type = FIELDS[path]
+    return (joint_paths[node] if joint_paths else object_name(document, "nodes", node)), TRANSFORM, field, value_type
+
+
+def channel_name(document, channel):
+    path, component, field, _ = channel_binding(document, channel)
+    return "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("ascii"), field)
+
+
+def skeleton_paths(document, channels):
+    driven = {c["node"] for c in channels}
+    if None in driven:
+        return None
+    for skin in document.get("skins", []):
+        joints = set(skin["joints"])
+        if not driven <= joints:
+            continue
+        parents = {child: i for i, node in enumerate(document.get("nodes", []))
+                   for child in node.get("children", [])}
+        paths = {}
+        roots = set()
+        for joint in driven:
+            chain, seen, node = [], set(), joint
+            while True:
+                if node in seen:
+                    raise TracksError("joint hierarchy contains a cycle")
+                seen.add(node)
+                chain.append(object_name(document, "nodes", node))
+                if parents.get(node) not in joints:
+                    roots.add(node)
+                    break
+                node = parents[node]
+            paths[joint] = "/".join(reversed(chain))
+        if len(roots) == 1:
+            return paths
+    return None
 
 
 def check(name, channel):
@@ -75,6 +129,8 @@ def check(name, channel):
         raise TracksError("%s: key times are not strictly increasing" % name)
     if not 1 <= len(values[0]) <= WIDTH_MAX:
         raise TracksError("%s: a value of %d components; tracks hold 1 to %d" % (name, len(values[0]), WIDTH_MAX))
+    if any(len(v) != len(values[0]) for v in values):
+        raise TracksError("%s: inconsistent value widths" % name)
     if gltf_read.is_rotation(channel) and len(values[0]) != 4:
         raise TracksError("%s: a rotation is a quaternion" % name)
     if not all(math.isfinite(x) for x in times + [x for row in values for x in row]):
@@ -97,21 +153,46 @@ def collapse_constant(channel):
 
 
 def clip_tracks(document, binary, animation):
-    """(tracks, duration_ms) of one animation dict, checked and with constant
-    channels collapsed. Each track is a dict: `name`, `times`, `values` (one
-    tuple per key, three per key when cubic), `interpolation` (glTF's name)
-    and `quaternion`."""
-    channels = gltf_read.read_animation(document, binary, animation)
-    if not channels:
-        raise TracksError("animation %r has no channels" % animation.get("name", ""))
-    tracks = []
-    for channel in channels:
-        name = channel_name(document, channel)
-        check(name, channel)
-        channel = collapse_constant(channel)
-        tracks.append({"name": name, "times": list(channel["times"]), "values": list(channel["values"]),
-                       "interpolation": channel["interpolation"], "quaternion": gltf_read.is_rotation(channel)})
-    return tracks, round(gltf_read.animation_duration(channels) * 1000)
+    """Bindings and duration of a glTF clip, in each target field's units."""
+    try:
+        channels = gltf_read.read_animation(document, binary, animation)
+        if not channels:
+            raise TracksError("no channels")
+        joint_paths = skeleton_paths(document, channels)
+        tracks = []
+        for channel in channels:
+            path, component, field, value_type = channel_binding(document, channel, joint_paths)
+            name = "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("ascii"), field)
+            for label in (path, field):
+                raw = label.encode("utf-8")
+                if not raw or len(raw) > STRING_MAX or b"\0" in raw:
+                    raise TracksError("channel %s: invalid name %r" % (name, label))
+            check(name, channel)
+            if len(channel["values"][0]) != WIDTHS[value_type]:
+                raise TracksError("%s: values do not match binding type" % name)
+            if component == CAMERA:
+                camera = int(POINTER.match(channel["pointer"]).group(2))
+                aspect = document["cameras"][camera]["perspective"].get("aspectRatio", 1.0)
+                values = channel["values"]
+                if channel["interpolation"] == "CUBICSPLINE":
+                    converted = []
+                    for i in range(0, len(values), CUBIC_RUNS):
+                        angle = values[i + 1][0]
+                        slope = gltf_read.camera_half_fov_short_tan_derivative(angle, aspect)
+                        converted.extend(((values[i][0] * slope,),
+                                          (gltf_read.camera_half_fov_short_tan(angle, aspect),),
+                                          (values[i + 2][0] * slope,)))
+                else:
+                    converted = [(gltf_read.camera_half_fov_short_tan(v[0], aspect),) for v in values]
+                channel = dict(channel, values=converted)
+            channel = collapse_constant(channel)
+            tracks.append({"path": path, "component": component, "field": field, "type": value_type,
+                           "root": ROOT_SKELETON if joint_paths else ROOT_SCENE,
+                           "name": name, "times": list(channel["times"]), "values": list(channel["values"]),
+                           "interpolation": channel["interpolation"], "quaternion": value_type == VALUE_QUAT})
+        return tracks, round(gltf_read.animation_duration(channels) * 1000)
+    except (ValueError, OverflowError) as error:
+        raise TracksError("clip %r: %s" % (animation.get("name", ""), error)) from error
 
 
 def find_animation(document, name, where):
@@ -122,61 +203,98 @@ def find_animation(document, name, where):
 
 
 def encode(tracks, duration_ms):
-    """The entry's bytes for `tracks` as clip_tracks() returns them."""
-    names = set()
+    """TRCK v2 bytes for bindings from clip_tracks()."""
+    strings, offsets, bindings = bytearray(), {}, set()
     for track in tracks:
-        raw = track["name"].encode("utf-8")
-        if not raw or len(raw) >= NAME_BYTES or b"\0" in raw:
-            raise TracksError("track %r: a name is 1 to %d bytes, none of them NUL" % (track["name"], NAME_BYTES - 1))
-        if track["name"] in names:
-            raise TracksError("two tracks are named %r" % track["name"])
-        names.add(track["name"])
-    if len(tracks) > 0xFFFF or not 0 <= duration_ms <= 0xFFFFFFFF:
-        raise TracksError("%d tracks over %d ms do not fit the entry" % (len(tracks), duration_ms))
+        binding = (track["path"], track["component"], track["field"])
+        if binding in bindings:
+            raise TracksError("two bindings are named %r" % track["name"])
+        bindings.add(binding)
+        for name in (track["path"], track["field"]):
+            raw = name.encode("utf-8")
+            if not raw or len(raw) > STRING_MAX or b"\0" in raw:
+                raise TracksError("binding %r: name %r exceeds %d bytes or contains NUL" % (track["name"], name, STRING_MAX))
+            if name not in offsets:
+                offsets[name] = len(strings)
+                strings += raw + b"\0"
+    if len(strings) > STRINGS_MAX:
+        raise TracksError("string table exceeds %d bytes" % STRINGS_MAX)
+    if len(tracks) > COUNT_MAX or not 0 <= duration_ms <= DURATION_MAX:
+        raise TracksError("%d bindings over %d ms do not fit the entry" % (len(tracks), duration_ms))
+    roots = {t["root"] for t in tracks}
+    root = next(iter(roots), ROOT_SCENE)
+    if len(roots) > 1 or root not in (ROOT_SCENE, ROOT_SKELETON):
+        raise TracksError("bindings have inconsistent roots")
+    strings_off = HEADER.size + ROW.size * len(tracks)
+    padding = bytes(-(strings_off + len(strings)) % ALIGNMENT)
+    offset = strings_off + len(strings) + len(padding)
     rows, data = [], bytearray()
-    offset = HEADER.size + ROW.size * len(tracks)
     for track in tracks:
+        check(track["name"], dict(track, node=0, path="rotation" if track["quaternion"] else "translation", pointer=None))
+        if track["component"] not in (TRANSFORM, CAMERA) or track["type"] not in range(len(WIDTHS)):
+            raise TracksError("%s: unknown component or type" % track["name"])
+        if any(len(v) != WIDTHS[track["type"]] for v in track["values"]):
+            raise TracksError("%s: values do not match binding type" % track["name"])
         times = struct.pack("<%df" % len(track["times"]), *track["times"])
         flat = [x for row in track["values"] for x in row]
         values = struct.pack("<%df" % len(flat), *flat)
-        rows.append(ROW.pack(track["name"].encode("utf-8"), offset, offset + len(times), len(track["times"]),
-                             len(track["values"][0]), INTERPOLATIONS.index(track["interpolation"]),
-                             1 if track["quaternion"] else 0))
+        rows.append(ROW.pack(offsets[track["path"]], offsets[track["field"]], track["component"],
+                             offset, offset + len(times), len(track["times"]), track["type"],
+                             INTERPOLATIONS.index(track["interpolation"])))
         data += times + values
         offset += len(times) + len(values)
-    return HEADER.pack(VERSION, len(tracks), duration_ms) + b"".join(rows) + bytes(data)
+    entry = HEADER.pack(VERSION, len(tracks), duration_ms, strings_off, len(strings), root) + b"".join(rows) + strings + padding + data
+    decode(entry)
+    return bytes(entry)
 
 
 def floats_at(entry, offset, count, table_end):
-    if offset % 4 or offset < table_end or offset + 4 * count > len(entry):
+    if offset % ALIGNMENT or offset < table_end or offset + struct.calcsize("<f") * count > len(entry):
         raise TracksError("an array at %d of %d floats leaves the entry or is misaligned" % (offset, count))
     return list(struct.unpack_from("<%df" % count, entry, offset))
 
 
 def decode(entry):
-    """(tracks, duration_ms) of an entry's bytes, after the checks
-    anim_tracks_open() makes; the tracks as clip_tracks() returns them."""
-    if len(entry) < HEADER.size:
-        raise TracksError("shorter than a header")
-    version, count, duration_ms = HEADER.unpack_from(entry)
+    """Validated bindings and duration of a TRCK v2 entry."""
+    if len(entry) < struct.calcsize("<H"):
+        raise TracksError("shorter than a version")
+    version = struct.unpack_from("<H", entry, AT_VERSION)[0]
     if version != VERSION:
         raise TracksError("version %d, this reads %d" % (version, VERSION))
+    if len(entry) < HEADER.size:
+        raise TracksError("shorter than a header")
+    _, count, duration_ms, strings_off, strings_size, root = HEADER.unpack_from(entry)
     table_end = HEADER.size + ROW.size * count
-    if table_end > len(entry):
-        raise TracksError("the track table leaves the entry")
+    strings_end = strings_off + strings_size
+    if table_end > len(entry) or strings_off < table_end or strings_off % ALIGNMENT or strings_end > len(entry):
+        raise TracksError("table leaves the entry or is misaligned")
+    if root not in (ROOT_SCENE, ROOT_SKELETON) or any(entry[AT_PAD:HEADER_SIZE]):
+        raise TracksError("unknown root or nonzero header padding")
+    def string_at(offset):
+        if offset >= strings_size:
+            raise TracksError("string offset outside the table")
+        end = entry.find(b"\0", strings_off + offset, strings_end)
+        if end < 0:
+            raise TracksError("unterminated string")
+        return entry[strings_off + offset:end].decode("utf-8")
     tracks = []
     for index in range(count):
-        raw, times_at, values_at, keys, width, interp, quaternion = ROW.unpack_from(entry, HEADER.size + ROW.size * index)
-        pad = entry[HEADER.size + ROW.size * (index + 1) - 3:HEADER.size + ROW.size * (index + 1)]
-        if b"\0" not in raw or keys == 0 or not 1 <= width <= WIDTH_MAX or interp >= len(INTERPOLATIONS) \
-                or quaternion > 1 or (quaternion and width != 4) or any(pad):
-            raise TracksError("track %d: a field holds a value the entry does not allow" % index)
-        per_key = 3 if INTERPOLATIONS[interp] == "CUBICSPLINE" else 1
-        values = floats_at(entry, values_at, per_key * keys * width, table_end)
-        tracks.append({"name": raw.split(b"\0", 1)[0].decode("utf-8"),
-                       "times": floats_at(entry, times_at, keys, table_end),
-                       "values": [tuple(values[i:i + width]) for i in range(0, len(values), width)],
-                       "interpolation": INTERPOLATIONS[interp], "quaternion": bool(quaternion)})
+        row_off = HEADER.size + ROW.size * index
+        path_off, field_off, component, times_at, values_at, keys, value_type, interp = ROW.unpack_from(entry, row_off)
+        path, field = string_at(path_off), string_at(field_off)
+        if keys == 0 or value_type >= len(WIDTHS) or interp >= len(INTERPOLATIONS) \
+                or component not in (TRANSFORM, CAMERA) or any(entry[row_off + ROW_PAD:row_off + ROW_SIZE]):
+            raise TracksError("binding %d: unknown field value or padding" % index)
+        width = WIDTHS[value_type]
+        per_key = CUBIC_RUNS if INTERPOLATIONS[interp] == "CUBICSPLINE" else 1
+        times = floats_at(entry, times_at, keys, strings_end)
+        values = floats_at(entry, values_at, per_key * keys * width, strings_end)
+        if not all(math.isfinite(x) for x in times + values) or any(b <= a for a, b in zip(times, times[1:])):
+            raise TracksError("binding %d: non-finite keys or times not increasing" % index)
+        tracks.append({"path": path, "field": field, "component": component, "type": value_type, "root": root,
+                       "name": "%s:%s.%s" % (path, component.to_bytes(4, "little").decode("ascii"), field),
+                       "times": times, "values": [tuple(values[i:i + width]) for i in range(0, len(values), width)],
+                       "interpolation": INTERPOLATIONS[interp], "quaternion": value_type == VALUE_QUAT})
     return tracks, duration_ms
 
 
@@ -215,4 +333,7 @@ def bake(path):
     except (OSError, ValueError) as error:
         raise TracksError("%s: source %s: %s" % (path, source, error)) from error
     tracks, duration_ms = clip_tracks(document, binary, find_animation(document, animation, source))
-    return encode(tracks, duration_ms)
+    try:
+        return encode(tracks, duration_ms)
+    except (ValueError, OverflowError) as error:
+        raise TracksError("clip %r: %s" % (animation, error)) from error

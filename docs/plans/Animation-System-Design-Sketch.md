@@ -114,7 +114,7 @@ reader checks everything once on open and refuses an unknown version
 | Part | Layout |
 |---|---|
 | header, 20 bytes | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size`, `u8 root` (0 scene, 1 skeleton), 3 zero bytes |
-| row per binding, 24 bytes, at 20 | `u16 path`, `u16 field` (string offsets), `u32 component` (four characters: `TRNS`, `CAMR`), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type` (`anim_value_t`), `u8 interp`, 2 zero bytes |
+| row per binding, 24 bytes, at 20 | `u16 path`, `u16 field` (string offsets), `u32 component` (four characters: `TRNS`, `CAMR`), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type` (`anim_value_t`), `u8 interp`, 4 zero bytes |
 | strings | at `strings_off` |
 | data | `f32` times, then `f32` values (cubic: in-tangent, value, out-tangent) |
 
