@@ -1,7 +1,9 @@
 import math
 import pathlib
 import struct
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -12,6 +14,28 @@ from asset.engine_frame import to_engine, AXIS_SIGNS, ROTATION_SIGNS
 
 
 class Formats(unittest.TestCase):
+    def test_probe_without_numpy(self):
+        code = """
+import builtins
+import runpy
+import sys
+original_import = builtins.__import__
+def without_numpy(name, *args, **kwargs):
+    if name == 'numpy' or name.startswith('numpy.'):
+        raise ImportError('numpy hidden for host probe')
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = without_numpy
+sys.argv = [sys.argv[1], '-o', sys.argv[2]]
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            output = pathlib.Path(directory) / 'probe.bin'
+            probe = pathlib.Path(__file__).with_name('skin_probe.py')
+            result = subprocess.run([sys.executable, '-c', code, str(probe), str(output)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(output.is_file())
+
     def test_two_roots_round_trip(self):
         rows = [('a', 255, (0, 0, 0, 0, 0, 0, 1, 1, 1, 1)),
                 ('b', 255, (0, 0, 0, 0, 0, 0, 1, 1, 1, 1))]
@@ -88,7 +112,10 @@ class Matching(unittest.TestCase):
         import skin_probe
         positions, scale = skin_asset.mesh_positions(skin_probe.mesh_entry())
         self.assertEqual(set(positions), {skin_asset.quantize_position(p, scale) for p in skin_probe.POSITIONS})
-        from r3d.lit_mesh import bake_lit_mesh
+        try:
+            from r3d.lit_mesh import bake_lit_mesh
+        except ImportError as error:
+            self.skipTest(str(error))
         source = [(-0.1875, 0, 0), (1.03125, 0, 0), (0, 1.09375, 0)]
         mesh = bake_lit_mesh(source, [(255, 255, 255)] * 3, [(0, 1, 2)], [0], position_scale=16)
         self.assertEqual({tuple(map(int, p)) for p in mesh.pos},

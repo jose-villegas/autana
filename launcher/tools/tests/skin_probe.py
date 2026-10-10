@@ -8,7 +8,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from anim import tracks_asset
 from asset.asset_pack import build_pack
 from gltf import gltf_read, gltf_write
-from r3d import skin_asset
+from r3d import mesh_asset, skin_asset
 
 IDENTITY = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 POSITION_SCALE = 16
@@ -35,9 +35,12 @@ def rig():
 
 
 def mesh_entry():
-    from r3d.lit_mesh import bake_lit_mesh, mesh_blob
-    return mesh_blob(bake_lit_mesh(POSITIONS, [(255, 255, 255)] * 3, [(0, 1, 2)], [0],
-                                   position_scale=POSITION_SCALE))
+    positions = b''.join(skin_asset.MESH_POSITION.pack(*skin_asset.quantize_position(p, POSITION_SCALE))
+                         for p in POSITIONS)
+    # Skin matching reads positions only; the probe pack contains no LMSH entry.
+    header = mesh_asset.BLOB_HEADER.pack(len(POSITIONS), 0, 0, 0, POSITION_SCALE,
+                                         mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0)
+    return header + positions
 
 
 def entries(influences=4):
