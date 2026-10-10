@@ -1576,7 +1576,7 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
  * so the store mounts what the case leaves.
  */
 
-#define FALLBACK_PACK   "./boot_anim_motion.apak"
+#define FALLBACK_PACK   "./" BOOT_CLIP ".apak"
 #define NO_PACKS        "./suite_boot_anim_no_such_folder"
 #define FALLBACK_TRACKS 6
 
@@ -1592,7 +1592,7 @@ six_tracks(test_track_t rows[FALLBACK_TRACKS]) {
     }
 }
 
-/* Writes pack "boot_anim_motion" in "." holding a TRCK of `rows`, one key
+/* Writes pack BOOT_CLIP in "." holding a TRCK of `rows`, one key
  * each, row i holding i * 10 + 1, + 2, ... so each track can be told apart. */
 static void
 write_clip(const test_track_t* rows, int count) {
@@ -1603,7 +1603,7 @@ write_clip(const test_track_t* rows, int count) {
     uint8_t* bytes = malloc(BYTES);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, BYTES, 1);
-    uint8_t* entry = test_pack_add(&pack, "boot_anim_motion", ANIM_TRACKS_ASSET, values_at + (16U * (uint32_t)count));
+    uint8_t* entry = test_pack_add(&pack, BOOT_CLIP, ANIM_TRACKS_ASSET, values_at + (16U * (uint32_t)count));
     test_tracks_header(entry, count, 1000);
     const float at_start[] = {0.0F};
     test_pack_put_floats(entry + times_at, at_start, 1);
@@ -1870,3 +1870,4 @@ run_boot_anim_suite(void) {
 }
 
 SUITE_REGISTER(run_boot_anim_suite);
+SUITE_READS(run_boot_anim_suite, BOOT_CLIP);

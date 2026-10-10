@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "heap_arena.h"
+#include "pack_reads.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -78,6 +79,7 @@ main(int argc, char** argv) {
 #ifdef SIGBUS
     (void)signal(SIGBUS, name_the_test_that_died);
 #endif
+    pack_reads_begin();
     UNITY_BEGIN();
 
     if (argc > 1) {
@@ -94,5 +96,10 @@ main(int argc, char** argv) {
         printf("FAIL: %d suite(s) dropped; raise SUITE_MAX in suites.h\n", suites_dropped());
         failures += suites_dropped();
     }
+    /* A pack not built waits on the bake lock: its suites did not run, and
+     * the run says which; CI's lock check is what goes red for it. A read no
+     * SUITE_READS names fails the run, so that skip cannot miss a suite. */
+    suites_print_waiting();
+    failures += pack_reads_undeclared();
     return failures;
 }
