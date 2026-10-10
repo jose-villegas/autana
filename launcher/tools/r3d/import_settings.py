@@ -16,6 +16,8 @@ from anim import tracks_asset
 from asset.asset_pack import NAME_BYTES
 from gltf.gltf_read import ASSET_SUFFIXES
 
+MESHLET_TRIANGLES = 32
+
 RESERVED_LIGHTS = ("point", "spot")
 
 # The mesh sources an import reads: an OBJ with its MTL and textures, a binary glTF, or an FBX; or a
@@ -239,7 +241,10 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles"))
+    steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
+    if not 4 <= steps.meshlet_triangles <= 256:
+        raise SettingsError("geometry.meshlet_triangles must be between 4 and 256")
     if "alpha_mask" in table:
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
@@ -317,6 +322,7 @@ def load_import_settings(path):
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
+        meshlet_triangles=steps.meshlet_triangles,
         variants=variants)
 
 

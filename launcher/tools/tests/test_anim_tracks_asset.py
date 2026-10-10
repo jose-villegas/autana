@@ -43,6 +43,11 @@ def row_at(index):
     return HEADER.size + ROW.size * index
 
 
+
+IDENTITY = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+
+
+
 class RoundTripTests(unittest.TestCase):
     def test_version_two_bindings_have_scene_root_and_string_table(self):
         self.assertEqual(tracks_asset.VERSION, 2)
@@ -181,6 +186,11 @@ class BindingMappingTests(unittest.TestCase):
         document, binary = gltf_read.parse_glb(gltf_write.build_glb(nodes, [{"name": "named_clip", "channels": channels}], **kwargs))
         return tracks_asset.clip_tracks(document, binary, document["animations"][0])
 
+    def skinned(self, nodes, joints):
+        """The tracks of a skin of `joints`, each translated once at time zero."""
+        channels = [channel(n, "translation", [0], [(1, 2, 3)]) for n in joints]
+        return self.tracks(nodes, channels, skins=[{"joints": list(joints), "inverse_binds": [IDENTITY] * len(joints)}])
+
     def test_unsupported_pointer_and_weights_name_channel_and_clip(self):
         for c, label in ((channel(0, "weights", [0], [(1,)]), "weights"),
                          (channel(None, "pointer", [0], [(1,)], pointer="/nodes/0/rotation"), "/nodes/0/rotation"),
@@ -204,33 +214,28 @@ class BindingMappingTests(unittest.TestCase):
         self.assertEqual(count, len(tracks))
 
     def test_skeleton_paths_include_topmost_joint_and_scene_for_mixed_clip(self):
+        identity = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
         nodes = [{"name": "root", "children": [1]}, {"name": "child"}, {"name": "camera"}]
+        skin = [{"joints": [0, 1], "inverse_binds": [identity, identity]}]
         channels = [channel(0, "translation", [0], [(1, 2, 3)]), channel(1, "scale", [0], [(1, 1, 1)])]
-        skeleton, _, root = self.root_tracks(nodes, [0, 1], channels)
+        skeleton, _, root = self.tracks(nodes, channels, skins=skin)
         self.assertEqual([t["path"] for t in skeleton], ["root", "root/child"])
         self.assertEqual(root, tracks_asset.ROOT_SKELETON)
-        mixed, _, root = self.root_tracks(nodes, [0, 1], channels + [channel(2, "translation", [0], [(1, 2, 3)])])
+        mixed, _, root = self.tracks(nodes, channels + [channel(2, "translation", [0], [(1, 2, 3)])], skins=skin)
         self.assertEqual([t["path"] for t in mixed], ["root", "child", "camera"])
         self.assertEqual(root, tracks_asset.ROOT_SCENE)
-
-    def root_tracks(self, nodes, joints, channels=None):
-        identity = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
-        skins = [{"joints": joints, "inverse_binds": [identity] * len(joints)}]
-        if channels is None:
-            channels = [channel(n, "translation", [0], [(1, 2, 3)]) for n in joints]
-        return self.tracks(nodes, channels, skins=skins)
 
     def test_a_skin_with_two_root_joints_bakes_a_skeleton_clip(self):
         nodes = [{"name": "rig", "children": [1, 2]}, {"name": "hips", "children": [3]}, {"name": "spine"},
                  {"name": "leg"}]
-        tracks, _, root = self.root_tracks(nodes, [1, 2, 3])
+        tracks, _, root = self.skinned(nodes, [1, 2, 3])
         self.assertEqual([t["path"] for t in tracks], ["hips", "spine", "hips/leg"])
         self.assertEqual(root, tracks_asset.ROOT_SKELETON)
 
     def test_two_joints_with_one_path_fail_the_bake(self):
         nodes = [{"name": "rig", "children": [1, 2]}, {"name": "bone"}, {"name": "bone"}]
         with self.assertRaisesRegex(tracks_asset.TracksError, "same path"):
-            self.root_tracks(nodes, [1, 2])
+            self.skinned(nodes, [1, 2])
 
     def test_every_value_type_and_interpolation_round_trips(self):
         tracks, _, _ = probe_tracks()

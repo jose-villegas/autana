@@ -15,7 +15,7 @@ file counted twice:
 
 - **The diagnostics build's own database**,
   `launcher/build.diag/compile_commands.json`: real esp32s3 flags,
-  restricted to `launcher/main/` and `launcher/test/`. This is what
+  restricted to `launcher/main/`, `launcher/packages/` and `launcher/test/`. This is what
   reaches every hardware-facing file the diagnostics build compiles: every
   `app_*.c`/`scene_*.c`, the shell and boot sources, `board/`, `console/`,
   `input/`, and every on-device test suite. esp-clang does not recognise
@@ -38,8 +38,9 @@ file counted twice:
   sibling headers, since each compiles on a host.
 
 **Coverage is a checked rule, not a description.** Every `.c` file under
-`launcher/main/` is walked directly from the filesystem, independent of
-either database, and compared against what was actually measured. A file
+`launcher/main/` and `launcher/packages/` is walked directly from the
+filesystem, independent of either database, and compared against what was
+actually measured. A file
 neither source reaches, and that is not excluded, fails the gate by name.
 `EXCLUDED_MAIN_FILES` in `complexity_gate.py` is that exclusion list: each
 entry carries the reason a reader can check.
@@ -47,7 +48,7 @@ entry carries the reason a reader can check.
 Unmodified vendored code (`launcher/components/`, `managed_components/`,
 `test/framework/`) is out of scope: a ratchet on this project's own
 functions has nothing to say about code it did not write, and it is never
-a source of a coverage gap since it sits outside `launcher/main/`. A
+a source of a coverage gap since it sits outside both. A
 vendored function this project changed is measured; see the end of this
 page. A `static inline` helper defined only in a
 shared header (for example `gfx/present/gfx_band.h`'s `gfx_band_ring_advance()`) is
@@ -56,8 +57,8 @@ actually being compiled, not headers it pulls in.
 
 The gate fails loudly rather than passing quietly past a measurement gap:
 a scan that finds zero functions, one that finds fewer than half the
-baseline's function count, an unexcluded gap under `launcher/main/`, or
-any `clang-diagnostic-error` (a partial parse can hide functions) all
+baseline's function count, an unexcluded gap under `launcher/main/` or
+`launcher/packages/`, or any `clang-diagnostic-error` (a partial parse can hide functions) all
 fail the run immediately instead of being reported as clean. `--changed`
 leaves out a changed file that defines no function, such as a generated
 data table, before it scans, so a change touching only data is clean

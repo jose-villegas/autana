@@ -171,7 +171,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     owner = {source.resolve(): name for name, entries in packs.items() for source in entries.values()}
     wanted = {}
     for found in bake.bakes_in(packs, locked):
-        if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced:
+        if found.packed and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced:
             wanted.setdefault(owner[found.tree.resolve()], []).append(found)
     lock, cache = bake.read_lock(), cache or bake.default_cache()
     fetched, errors = {}, []

@@ -205,7 +205,7 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/core/memorize.c", HEAP_CALL, heap),
             ("launcher/main/core/timings.c", CLOCK_READ, clock),
             ("launcher/main/gfx/timing.c", CLOCK_READ, clock),
-            ("launcher/main/math/linear/timing.c", CLOCK_READ, clock),
+            ("launcher/packages/math/src/timing.c", CLOCK_READ, clock),
             ("launcher/main/core/memory/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/timing.h", CLOCK_READ, clock),

@@ -449,7 +449,8 @@ described by [fit.prune](Scene-Files.md#fitprune) and
 
 ## Meshlets
 
-The clusters are **meshlets**: compact runs of at most 32 triangles from
+The clusters are **meshlets**: compact runs bounded by `geometry.meshlet_triangles`
+(4 through 256, default 32), from
 meshoptimizer's clusterizer<sup>[[11]](../Citations.md#11)</sup>, each of one sidedness and owning the vertices its
 triangles use. The octree above them is built over the meshlets' centres, and
 its leaves hold a few hundred triangles' worth.
@@ -457,7 +458,8 @@ its leaves hold a few hundred triangles' worth.
 Meshlets share more vertices than clusters cut as leaves of an octree of the
 triangles, so a frame transforms fewer. Bigger ones span looser boxes and
 submit more triangles for the same view, and smaller ones cost more clusters
-to walk. The size trades these: 64 lost on the board and 32 won.
+to walk. The [measured size table](Render-Pipeline.md#meshlets) shows this trade.
+Import and `rebake.py --import PATH` read the same meshlet size setting.
 
 Meshlets also change the draw order of the finest level. Where two triangles
 reach the same depth the first drawn wins, so a redrawn frame differs from the

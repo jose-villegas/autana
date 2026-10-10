@@ -140,7 +140,7 @@ built and requires `--flash` when running suites.
 ## Float maths is single precision, and the build holds it there
 
 The S3's FPU has no double: every `double` operation is a libgcc call, about
-ten times a float's cost. The `main` component compiles with
+ten times a float's cost. The `main` component and each package compile with
 `-Werror=double-promotion` and `-Werror=float-conversion`, so a float widened
 to a double, or a double constant in float maths, does not compile; code that
 needs one on purpose casts it explicitly, in the function that logs it. The host test

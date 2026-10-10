@@ -18,6 +18,8 @@ BUILD_DIR="$SCRIPT_DIR/build"
 
 # shellcheck source=../../../../tools/build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
+# shellcheck source=../../../../tools/build/packages.sh
+. "$LAUNCHER_DIR/tools/build/packages.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -32,7 +34,7 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/colour_lever1_counters"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     "$SCRIPT_DIR/colour_lever1_counters.c" \
     "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \

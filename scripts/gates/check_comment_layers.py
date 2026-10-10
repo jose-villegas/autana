@@ -37,10 +37,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 from check_doc_citations import CITATIONS, CITATION_ROW  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.packages import FIRST_PARTY  # noqa: E402
 
-# Below the apps: all of launcher/main/ except apps/, and the test tree. A
-# new folder is checked from the day it exists.
-ENGINE = ("launcher/main/", "launcher/test/")
+# Below the apps: all of launcher/main/ except apps/, the packages and the
+# test tree. A new folder is checked from the day it exists.
+ENGINE = (*FIRST_PARTY, "launcher/test/")
 APPS = "launcher/main/apps"
 
 
