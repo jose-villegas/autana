@@ -188,6 +188,15 @@ class ClosureTests(unittest.TestCase):
                            'import consumer\n')
         self.assertEqual(bake.closure([entry]), [entry])
 
+    def test_consumers_are_followed_when_asked_and_a_from_pathlib_root_is_read(self):
+        (self.root / "helpers" / "consumer.py").write_text("from bake import bake\nimport packing\n")
+        entry = self.entry('from pathlib import Path\nimport sys\n'
+                           'sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))\n'
+                           'import consumer\n')
+        helpers = self.root / "helpers"
+        self.assertEqual(bake.closure([entry], consumers=True),
+                         sorted([entry, helpers / "consumer.py", helpers / "packing.py"]))
+
 
 class StageTests(unittest.TestCase):
     def names(self, stage):
