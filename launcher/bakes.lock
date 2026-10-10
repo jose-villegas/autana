@@ -36,12 +36,30 @@ run = 38062931735
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "b58c6fe0a7c47369006b3ddaf4691edce4404b8df130988e0d3a3b6620ab37c5"
+sha256 = "5bb8c67c30034e8cd2a5971de313a10f266776a740099e28f6a720aff9102b57"
+size = 143768
+run = 38065210608
+host = "Linux x86_64"
+
+[[bake]]
 output = "sponza.atrium_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "955f89039fb0b9661f4127fccbfe56257d06f23a73c500b938d8c43f3075bb91"
 sha256 = "d41c3138102796c8b32209b4c4a5cd3a700decfdc89215bfff448e0077c3c133"
 size = 160408
 run = 38062931735
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_fitted_full.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "088334aa9a7253a5487e6d89a6f1f99eecf3c75e2627ca64711b7acc2c51478f"
+sha256 = "55f4806a9a6b3b7906a2e1edc8abbd5798b751e33ab65230f53991cb15e2d2c8"
+size = 278360
+run = 38065210608
 host = "Linux x86_64"
 
 [[bake]]
@@ -60,6 +78,15 @@ key = "5fd999cabc9611f961b2bd7ffb9aae131a8ccf0bc34a9613b8145c4f2808545d"
 sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
 size = 243452
 run = 38062931735
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_flat_fitted.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "fa18b44d5af1bad8f2fe9bd72b27e83a27b1fb2da1c894133619d2be5fb99ac3"
+sha256 = "d84665e9f76e14b3887e14c0fa2705c39111ac07a70a088fd8b11826c0f019e0"
+size = 250864
+run = 38065210608
 host = "Linux x86_64"
 
 [[bake]]
