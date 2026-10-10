@@ -48,8 +48,8 @@ r3d_scene_camera_placement(const transformf_t* pose) {
 }
 
 static const anim_field_t CAMERA_FIELDS[] = {
-    {"half_fov_short_tan", ANIM_VALUE_FLOAT, offsetof(r3d_scene_camera_t, half_fov_short_tan)},
-    {"near_z", ANIM_VALUE_FLOAT, offsetof(r3d_scene_camera_t, near_z)},
+    ANIM_FIELD(r3d_scene_camera_t, half_fov_short_tan, ANIM_VALUE_FLOAT),
+    ANIM_FIELD(r3d_scene_camera_t, near_z, ANIM_VALUE_FLOAT),
 };
 const anim_component_fields_t R3D_SCENE_CAMERA_FIELDS = {
     ANIM_COMPONENT_CAMERA,

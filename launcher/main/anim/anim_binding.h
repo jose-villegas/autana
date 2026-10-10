@@ -12,6 +12,10 @@ typedef struct {
     uint16_t offset;
 } anim_field_t;
 
+/* One declared field of struct `type`: its name is the member's own, so the
+ * two cannot drift. */
+#define ANIM_FIELD(type, member, value_type) {#member, (value_type), offsetof(type, member)}
+
 typedef struct {
     uint32_t component;
     const anim_field_t* fields;
