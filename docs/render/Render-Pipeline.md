@@ -249,9 +249,11 @@ Reference: [the asset packs](../assets/README.md#packs).
 ## Every frame, on the board
 
 Separate charts show the shipped frame and each debug view. The shipped
-chart has one solid segment per stage; each view chart shows only its hatched
-additions, with an arrow pointing into the bar to mark work added after the
-base frame. Each axis fits its own data, and view ticks show added milliseconds.
+chart uses solid segments; each view chart shows hatched additions, with an
+label and elbow leader marking the base frame at the bar's start. A segment
+is drawn only when its share rounds above zero percent. Legends match the
+drawn segments; the table retains every stage in milliseconds. Each axis fits
+its own data, and view ticks show added milliseconds.
 The shipped label gives the total; view labels give the signed net addition
 and its share of the shipped total. Segment labels and legends give each
 stage's share of the shipped total, signed for view additions. Dotted lines

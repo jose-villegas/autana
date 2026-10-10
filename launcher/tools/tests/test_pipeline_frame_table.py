@@ -12,6 +12,12 @@ import frame_stages
 from generated_blocks import apply_tables
 
 class PipelineFrameTableTests(unittest.TestCase):
+    def chart_axes(self, base, added):
+        import matplotlib.pyplot as plt
+        with tempfile.TemporaryDirectory() as directory, patch("matplotlib.pyplot.close", wraps=plt.close) as close:
+            frame_stages.chart(list(base), base, added, pathlib.Path(directory) / "chart.png")
+        return [call.args[0].axes[0] for call in close.call_args_list if hasattr(call.args[0], "axes")]
+
     def test_stage_headers_and_cells_share_resolve_column(self):
         base = {'mean': 1000, 'p50': 1000, 'max': 1000, 'r3d.draw': 2.0, 'r3d.upscale': 3.0}
         spans = dict(setup=100, rows=100, span_setup=100, fill=100)
@@ -80,15 +86,19 @@ class PipelineFrameTableTests(unittest.TestCase):
             self.assertEqual(axes[0].get_xlim(), (0, max(sum(base.values()),
                              max(frame_stages.MS_PER_SECOND / rate for rate in frame_stages.FRAME_RATES))
                              * (1 + frame_stages.AXIS_HEADROOM)))
-            self.assertEqual([axis.get_xlim()[0] for axis in axes[1:]], [sum(base.values())] * 2)
             self.assertNotEqual(axes[1].get_xlim(), axes[2].get_xlim())
             for axis in axes[1:]:
                 self.assertTrue(all(text.get_text().startswith("+") and text.get_text() != "+0"
                                     for text in axis.get_xticklabels()))
                 arrows = [text for text in axis.texts if getattr(text, "arrow_patch", None) is not None]
                 self.assertEqual(len(arrows), 1)
-                self.assertEqual(arrows[0].xy, (frame_stages.ADDED_ARROW_LENGTH, frame_stages.ADDED_ARROW_Y))
-                self.assertEqual(arrows[0].get_position(), (-frame_stages.ADDED_ARROW_LENGTH, frame_stages.ADDED_ARROW_Y))
+                start = sum(base.values())
+                self.assertEqual(axis.get_xlim()[0], start)
+                self.assertEqual(arrows[0].xy, (start, -frame_stages.BAR_HEIGHT / 2))
+                self.assertEqual(arrows[0].get_text(), frame_stages.ADDED_BASE_LABEL)
+                self.assertGreater(arrows[0].get_position()[0], start)
+                self.assertEqual(arrows[0].get_position()[1], -frame_stages.BAR_HEIGHT)
+                self.assertEqual(arrows[0].get_fontsize(), frame_stages.BUDGET_LABEL_SIZE)
                 self.assertFalse(any("41.0" in text.get_text() for text in axis.texts))
             self.assertEqual([text.get_text() for text in axes[1].texts if " ms" in text.get_text()][:1], ["-9.0 ms (-22%)"])
             legends = [axis.figure.legends[0] for axis in axes]
@@ -130,10 +140,7 @@ class PipelineFrameTableTests(unittest.TestCase):
     def test_segment_labels_and_thin_segment_legends_carry_shares(self):
         base = {"r3d.draw": 49.5, "r3d.cull": 0.5}
         added = {"depth": {"r3d.draw": 20, "r3d.cull": 0.5}}
-        import matplotlib.pyplot as plt
-        with tempfile.TemporaryDirectory() as directory, patch("matplotlib.pyplot.close", wraps=plt.close) as close:
-            frame_stages.chart(list(base), base, added, pathlib.Path(directory) / "chart.png")
-        axes = [call.args[0].axes[0] for call in close.call_args_list if hasattr(call.args[0], "axes")]
+        axes = self.chart_axes(base, added)
         self.assertIn("49.5 · 99%", [text.get_text() for text in axes[0].texts])
         self.assertIn("20.0 · +40%", [text.get_text() for text in axes[1].texts])
         self.assertIn("+20.5 ms (+41%)", [text.get_text() for text in axes[1].texts])
@@ -142,6 +149,37 @@ class PipelineFrameTableTests(unittest.TestCase):
         table = frame_stages.table(list(base), base, added, ["depth"], [1, 1], "chart.png")
         self.assertIn("| Stage | As shipped | Share | depth view adds |", table)
         self.assertIn("| r3d.cull | 0.50 | 1% | +0.50 |", table)
+
+    def test_zero_rounded_shares_are_absent_from_bars_and_legends(self):
+        base = {"r3d.draw": 99.6, "r3d.cull": 0.4}
+        added = {"motion": {"r3d.draw": 20, "r3d.cull": 0.4}}
+        axes = self.chart_axes(base, added)
+        for axis, value, label in zip(axes, [99.6, 20], ["r3d.draw 100%", "r3d.draw +20%"]):
+            with self.subTest(chart=axis.get_title()):
+                self.assertEqual([bar.get_width() for bar in axis.patches], [value])
+                self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], [label])
+        table = frame_stages.table(list(base), base, added, ["motion"], [1, 1], "chart.png")
+        self.assertIn("| r3d.cull | 0.40 | 0% | +0.40 |", table)
+
+    def test_negative_delta_is_absent_from_bars_and_legend(self):
+        base = {"r3d.draw": 90, "frame.rest": 10}
+        added = {"motion": {"r3d.draw": 20, "frame.rest": -5}}
+        axis = self.chart_axes(base, added)[-1]
+        self.assertEqual([bar.get_width() for bar in axis.patches], [20])
+        self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], ["r3d.draw +20%"])
+
+    def test_view_legend_handles_match_drawn_bar_styles(self):
+        base = {"r3d.draw": 90, "frame.rest": 10}
+        added = {"motion": {"r3d.draw": 20, "frame.rest": 5}}
+        axes = self.chart_axes(base, added)
+        for axis in axes:
+            handles = axis.figure.legends[0].legend_handles
+            self.assertEqual(len(handles), len(axis.patches))
+            for handle, bar in zip(handles, axis.patches):
+                with self.subTest(chart=axis.get_title(), colour=bar.get_facecolor()):
+                    self.assertEqual(handle.get_hatch(), bar.get_hatch())
+                    self.assertEqual(handle.get_facecolor(), bar.get_facecolor())
+                    self.assertEqual(handle.get_alpha(), bar.get_alpha())
 
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()

@@ -33,8 +33,8 @@ FIGURE_SIZE = (10, 2.4)
 BAR_HEIGHT = 0.6
 AXIS_HEADROOM = 0.2
 AXIS_TICKS = 5
-ADDED_ARROW_LENGTH = 0.025
-ADDED_ARROW_Y = -BAR_HEIGHT / 4
+ADDED_BASE_LABEL = "frame budget base"
+BUDGET_LABEL_SIZE = 8
 # One colour per bracket, in report order.
 SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
 
@@ -84,8 +84,12 @@ def stage_shares(costs, shipped):
     return {stage: value * PERCENT_SCALE / shipped for stage, value in costs.items()}
 
 
+def share_percent(value):
+    return float(format(value, ".0f"))
+
+
 def share_text(value, signed=False):
-    return format(value, "+.0f" if signed else ".0f") + "%"
+    return format(share_percent(value), "+.0f" if signed else ".0f") + "%"
 
 
 def table(order, base, added, names, windows, chart_name):
@@ -117,7 +121,6 @@ def chart(order, base, added, path):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Patch
     from matplotlib.ticker import MaxNLocator
 
     if len(order) > len(SLOTS):
@@ -130,8 +133,11 @@ def chart(order, base, added, path):
     slowest_budget = max(MS_PER_SECOND / rate for rate in FRAME_RATES)
 
     def segment(stage, value, left, **style):
-        drawn.append(stage)
-        axis.barh(0, value, left=left, color=colour[stage], height=BAR_HEIGHT, **style)
+        if share_percent(shares.get(stage, 0)) <= 0:
+            return left
+        bars = axis.barh(0, value, left=left, color=colour[stage], height=BAR_HEIGHT, **style)
+        bars[0].set_label(f"{stage} {share_text(shares[stage], signed=delta is not None)}")
+        drawn.append(bars[0])
         if value >= LABEL_SHARE * extent:
             label = f"{value:.1f}{LABEL_SEPARATOR}{share_text(shares[stage], signed=delta is not None)}"
             axis.text(left + value / 2, 0, label, ha="center", va="center", fontsize=8, color=INK)
@@ -146,8 +152,7 @@ def chart(order, base, added, path):
             start = 0.0
             left = start
             for stage in order:
-                if base.get(stage, 0) > 0:
-                    left = segment(stage, base[stage], left, edgecolor="white", linewidth=1.5)
+                left = segment(stage, base.get(stage, 0), left, edgecolor="white", linewidth=1.5)
             label = f"{shipped:.1f} ms"
             title = "As shipped"
             output = pathlib.Path(path)
@@ -157,9 +162,8 @@ def chart(order, base, added, path):
             start = shipped
             left = start
             for stage in order:
-                if delta.get(stage, 0.0) > 0:
-                    left = segment(stage, delta[stage], left, alpha=0.45, hatch="///", edgecolor=colour[stage],
-                                   linewidth=1)
+                left = segment(stage, delta.get(stage, 0), left, alpha=0.45, hatch="///", edgecolor=colour[stage],
+                               linewidth=1)
             label = f"{net:+.1f} ms ({share_text(sum(shares.values()), signed=True)})"
             title = f"With the {name} view"
             output = chart_path(path, name)
@@ -170,16 +174,18 @@ def chart(order, base, added, path):
             offsets = MaxNLocator(nbins=AXIS_TICKS).tick_values(0, end - start)
             offsets = [offset for offset in offsets if 0 < offset <= end - start]
             axis.set_xticks([start + offset for offset in offsets], [f"+{offset:g}" for offset in offsets])
-            axis.annotate("", (ADDED_ARROW_LENGTH, ADDED_ARROW_Y), xytext=(-ADDED_ARROW_LENGTH, ADDED_ARROW_Y),
-                          xycoords=("axes fraction", "data"), arrowprops=dict(arrowstyle="->", color=MUTED),
-                          annotation_clip=False)
+            axis.annotate(ADDED_BASE_LABEL, (start, -BAR_HEIGHT / 2),
+                          xytext=(start + extent * AXIS_HEADROOM, -BAR_HEIGHT),
+                          fontsize=BUDGET_LABEL_SIZE, color=MUTED, ha="left", va="center",
+                          arrowprops=dict(arrowstyle="->", color=MUTED,
+                                          connectionstyle="angle,angleA=180,angleB=90,rad=0"))
         for rate in FRAME_RATES:
             budget = MS_PER_SECOND / rate
             if not start <= budget <= end:
                 continue
             axis.axvline(budget, color=MUTED, linestyle=":", linewidth=1)
             axis.annotate(f"{rate} fps, {budget:.1f} ms", (budget, -BAR_HEIGHT * 0.75), xytext=(3, 0),
-                          textcoords="offset points", fontsize=8, color=MUTED, va="bottom")
+                          textcoords="offset points", fontsize=BUDGET_LABEL_SIZE, color=MUTED, va="bottom")
         axis.set_title(title)
         axis.set_yticks([])
         axis.set_ylim(BAR_HEIGHT * 5 / 6, -BAR_HEIGHT * 1.5)
@@ -187,9 +193,7 @@ def chart(order, base, added, path):
         for side in ("top", "right", "left"):
             axis.spines[side].set_visible(False)
         axis.tick_params(axis="y", length=0)
-        handles = [Patch(color=colour[stage], label=f"{stage} {share_text(shares[stage], signed=delta is not None)}")
-                   for stage in drawn]
-        figure.legend(handles=handles, loc="outside lower center", ncol=max(1, len(drawn)), frameon=False, fontsize=8)
+        figure.legend(handles=drawn, loc="outside lower center", ncol=max(1, len(drawn)), frameon=False, fontsize=8)
         output.parent.mkdir(parents=True, exist_ok=True)
         figure.savefig(output, dpi=110)
         plt.close(figure)
