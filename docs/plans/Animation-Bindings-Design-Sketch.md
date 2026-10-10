@@ -25,8 +25,8 @@ Paths resolve **at the scene level** (maintainer): a path names objects in
 the scene by their scene names, since the engine has no prefabs or instances
 yet. The glTF channel `camera/translation` becomes the binding (`camera`,
 `transform`, `position`), resolved against the scene object named `camera`.
-The path is stored relative to a root that is, for now, always the scene
-itself; when prefabs or instancing arrive, the same path can be resolved
+A scene binding's path is stored relative to the scene itself; when prefabs
+or instancing arrive, the same path can be resolved
 under an instance's root instead, with no format change. Designed and tested
 against scenes now.
 
