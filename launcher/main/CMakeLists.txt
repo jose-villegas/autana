@@ -45,6 +45,7 @@ set(app_srcs
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
+    "render/render_view.c"
     "render/raster.c"
     "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"

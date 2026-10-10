@@ -37,7 +37,7 @@ all authored renderers. An unknown renderer reports the available names.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
 30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
 context's view, with shaded as the default. The names match the declared
-`render_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+`render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
 `--size WxH` fixes the internal render resolution through a one-step ladder;
 the output still has the panel's dimensions. Each render axis must fit the
 panel framebuffer, 368 by 448.

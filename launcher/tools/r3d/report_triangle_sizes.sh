@@ -65,6 +65,7 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
     "$SCRIPT_DIR/triangle_sizes.c" \
     "$MAIN_DIR/asset/asset_pack.c" \
     "$MAIN_DIR/asset/asset_file.c" \
+    "$MAIN_DIR/render/render_view.c" \
     "$MAIN_DIR/render/r3d_lit_mesh.c" \
     "$BUILD_DIR/r3d_pipeline_counted.o" \
     "$MAIN_DIR/render/r3d_span.c" \

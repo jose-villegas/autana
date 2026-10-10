@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "raster_rig.h"
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -28,7 +29,7 @@
 /* The rig's wall, then a card 80 square in front of it, also facing +z. */
 static const int16_t card[][3] = {{-40, -40, 100}, {40, -40, 100}, {40, 40, 100}, {-40, 40, 100}};
 static const int16_t (*const wall_and_card[])[3] = {raster_rig_wall, card};
-static const camera_t camera = {{0.0F, 0.0F, 300.0F}, {0.0F, 0.0F, -1.0F}, 0.5F, 1.0F};
+static const fixture_camera_t camera = {{0.0F, 0.0F, 300.0F}, {0.0F, 0.0F, -1.0F}, 0.5F, 1.0F};
 
 static void
 id_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
@@ -60,10 +61,9 @@ typedef struct {
 } hooks_t;
 
 static void
-hooks_begin(const raster_attachment_t* self, const raster_t* raster, const camera_t* camera, int quarter) {
+hooks_begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     (void)raster;
-    (void)camera;
-    (void)quarter;
+    (void)view;
     ((hooks_t*)self->state)->begins++;
 }
 
@@ -85,7 +85,8 @@ rig_open(const raster_attachment_t* const* attachments, int count) {
 
 static void
 draw(raster_rig_t* r) {
-    raster_draw(&r->raster, &camera, 0);
+    const render_view_t frame_view = render_view_fixture(&camera, &r->raster, 0);
+    raster_draw(&r->raster, &frame_view);
 }
 
 static void
@@ -218,11 +219,11 @@ test_cluster_values_and_constant_writers(void) {
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
     const r3d_span_target_t target = {buffers.picture, writers, 2};
-    r3d_lens_t lens;
-    raster_lens(&r->raster, &camera, 1, 0, &lens);
+    r->view = render_view_fixture(&camera, &r->raster, 0);
+    raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
-    r3d_pipeline_transform(&r->quad[0].mesh, &lens, &visible, 1, buffers.cs, buffers.rows);
-    r3d_pipeline_draw(&r->quad[0].mesh, &lens, &visible, 1, buffers.cs, buffers.rows, &target, buffers.work[0]);
+    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);
+    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, &target, buffers.work[0]);
     int drawn = 0;
     for (int p = 0; p < W * H; p++) {
         const bool won = raster_depth(&r->raster)[p] != 0;
@@ -332,7 +333,8 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
         TEST_ASSERT_EQUAL_size_t(blocks, after_blocks);
         TEST_ASSERT_EQUAL_size_t(bytes, after_bytes);
 #endif
-        TEST_ASSERT_TRUE(render_context_draw(a, r->instance, 2, &camera, 0, 0, W, H));
+        const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+        TEST_ASSERT_TRUE(render_context_draw(a, r->instance, 2, &frame_view, 0));
         TEST_ASSERT_TRUE(state->has_previous);
         TEST_ASSERT_FALSE(((raster_motion_t*)b->view_state)->has_previous);
     }
@@ -350,13 +352,14 @@ test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     render_context_set_view(&c, RENDER_VIEW_SHADED);
     TEST_ASSERT_EQUAL_INT(0, c.view);
     render_context_set_scale(&c, 100);
-    TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &camera, 0, 0, W, H));
+    const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
     TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(shaded);
     memcpy(shaded, raster_color(&c.raster), sizeof(uint16_t) * W * H);
     render_context_set_view(&c, render_context_view_named("meshlets"));
-    TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &camera, 0, 0, W, H));
+    TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
     TEST_ASSERT_TRUE(memcmp(shaded, raster_color(&c.raster), sizeof(uint16_t) * W * H) != 0);
     free(shaded);
     render_context_release(&c);
@@ -393,7 +396,7 @@ test_view_table_and_context_ownership(void) {
     TEST_ASSERT_NULL(render_context_view(RENDER_VIEW_SHADED));
     TEST_ASSERT_NULL(render_context_view(RENDER_VIEW_COUNT + 1));
     for (int i = 1; i <= RENDER_VIEW_COUNT; i++) {
-        const render_view_t* row = render_context_view(i);
+        const render_debug_view_t* row = render_context_view(i);
         TEST_ASSERT_NOT_NULL(row);
         TEST_ASSERT_EQUAL_STRING(names[i - 1], row->name);
         TEST_ASSERT_EQUAL_INT(i, render_context_view_named(row->name));
@@ -464,7 +467,8 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
     const raster_t raster = {.instances = instances, .instance_count = 2};
     raster_meshlets_t state = {0};
     const raster_attachment_t view = raster_meshlets_view(&state);
-    view.begin(&view, &raster, &camera, 0);
+    const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    view.begin(&view, &raster, &frame_view);
     r3d_span_writer_t out = {0};
     TEST_ASSERT_TRUE(view.writer(&view, 0, &out));
     TEST_ASSERT_EQUAL_UINT32(1, out.value);
