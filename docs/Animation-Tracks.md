@@ -33,7 +33,7 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation: unit samples: linear keys slerp<sup>[[19]](Citations.md#19)</sup>, copied and cubic keys are normalised |
+| `quaternion` | The value is an xyzw rotation, sampled unit: linear keys slerp<sup>[[19]](Citations.md#19)</sup>, copied and cubic keys are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
 second, exactly as glTF stores them, and samples as the specification's cubic
@@ -48,7 +48,7 @@ onto engine fields:
 | node `translation` | `TRNS` | `position` | `VEC3` |
 | node `rotation` | `TRNS` | `rotation` | `QUAT` |
 | node `scale` | `TRNS` | `scale` | `VEC3` |
-| `/cameras/N/perspective/yfov` pointer<sup>[[18]](Citations.md#18)</sup> | `CAMR` | `half_fov_short_tan` | `FLOAT` |
+| `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](Citations.md#18)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
 
 The camera pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
