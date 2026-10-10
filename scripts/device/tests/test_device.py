@@ -2191,6 +2191,57 @@ class ListenLifecycleTests(unittest.TestCase):
         store.release.assert_called_once()
 
 
+class CoredumpTests(unittest.TestCase):
+    """The dump is read under the lock, against the ELF of the build the
+    board says it runs; with no such ELF here nothing is read."""
+
+    def run_coredump(self, erase=False, elf=None, found_elf=Path("wt/launcher/build.dev/launcher.elf")):
+        args = Namespace(owner="agent", purpose="autana coredump", wait=0, erase=erase, elf=elf)
+        store = mock_store()
+        with mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
+             mock.patch.object(device, "exchange", return_value=(["BUILD_ID=abc123-dev"], True)) as asked, \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder, \
+             mock.patch.object(device, "locked_port", return_value="COM9"), \
+             mock.patch.object(device, "toolchain_tool", return_value=None), \
+             mock.patch.object(device, "idf_path", return_value="idf"), \
+             mock.patch.object(device.subprocess, "run") as run, \
+             mock.patch.object(device.subprocess, "call", return_value=0) as call, \
+             mock.patch("builtins.print"):
+            code = device.coredump(args, store, BOARD)
+        store.release.assert_called_once()
+        return code, asked, finder, run, call
+
+    def test_decodes_against_the_running_builds_elf(self):
+        code, asked, finder, _, call = self.run_coredump()
+        self.assertEqual(code, 0)
+        self.assertEqual(asked.call_args[0][1], device.BUILD_ID_REQUEST)
+        self.assertEqual(finder.call_args[0][1], "abc123-dev")
+        command = call.call_args[0][0]
+        self.assertEqual(command[command.index("--port") + 1], "COM9")
+        self.assertEqual(command[-2:], ["info_corefile", str(Path("wt/launcher/build.dev/launcher.elf"))])
+
+    def test_no_matching_elf_reads_nothing(self):
+        code, _, _, run, call = self.run_coredump(found_elf=None)
+        self.assertEqual(code, 1)
+        call.assert_not_called()
+        run.assert_not_called()
+
+    def test_an_elf_given_skips_the_question(self):
+        code, asked, _, _, call = self.run_coredump(elf="other.elf")
+        self.assertEqual(code, 0)
+        asked.assert_not_called()
+        self.assertEqual(call.call_args[0][0][-1], "other.elf")
+
+    def test_erase_clears_only_the_coredump_partition(self):
+        code, asked, _, run, call = self.run_coredump(erase=True)
+        self.assertEqual(code, 0)
+        asked.assert_not_called()
+        call.assert_not_called()
+        command = run.call_args[0][0]
+        self.assertIn("erase_partition", command)
+        self.assertIn("--partition-name=" + device.COREDUMP_PARTITION, command)
+
+
 class WaiterNoticeTests(unittest.TestCase):
     def test_holder_reports_each_waiter_once(self):
         store = mock_store()

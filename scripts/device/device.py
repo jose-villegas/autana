@@ -24,7 +24,8 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from device_capture import BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, crash_signs
+from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
+                            crash_signs)
 
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
@@ -32,7 +33,7 @@ BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
-from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
+from espressif import espressif_tools_root, idf_path, idf_python  # noqa: E402  (path must be set up first)
 
 
 COMMAND_ENV = autana_config.COMMAND_ENV
@@ -875,18 +876,21 @@ def reset_device(args, store, board):
 CRASH_ADDRESS_RE = re.compile(rb"0x4[0-9a-fA-F]{7}")
 
 
-def toolchain_addr2line():
-    """The xtensa-esp32s3-elf-addr2line beside ESP-IDF's own toolchain,
-    found under espressif_tools_root(), or None when it is not installed. Sorted
-    reverse-alphabetically so the newest of several installed toolchain
-    versions wins."""
-    root = espressif_tools_root() / "tools" / "xtensa-esp-elf"
+def toolchain_tool(package, tool):
+    """`tool` from the ESP-IDF tools `package` that ships it, found under
+    espressif_tools_root(), or None when it is not installed. Sorted
+    reverse-alphabetically so the newest of several installed versions wins."""
+    root = espressif_tools_root() / "tools" / package
     for bin_dir in sorted(root.glob("*/*/bin"), reverse=True):
-        for name in ("xtensa-esp32s3-elf-addr2line.exe", "xtensa-esp32s3-elf-addr2line"):
+        for name in (tool + ".exe", tool):
             candidate = bin_dir / name
             if candidate.is_file():
                 return candidate
     return None
+
+
+def toolchain_addr2line():
+    return toolchain_tool("xtensa-esp-elf", "xtensa-esp32s3-elf-addr2line")
 
 
 def decode_crash_addresses(data, elf):
@@ -1495,6 +1499,41 @@ def listen(args, store, board):
     return 1 if crashed else 0
 
 
+COREDUMP_PARTITION = "coredump"
+COREDUMP_BUILD_ID_SECONDS = 5
+
+
+def coredump(args, store, board):
+    """The last panic's core dump, read from the board's coredump partition
+    under the lock and decoded against the ELF of the build the board runs
+    (or --elf); --erase clears the partition, so the next crash's dump is
+    told from this one. Either way esptool resets the board."""
+    with HeldLock(store, board, args.owner, "coredump", args.wait):
+        elf = Path(args.elf) if args.elf else None
+        if elf is None and not args.erase:
+            with open_when_free() as connection:
+                replies, _ = exchange(connection, BUILD_ID_REQUEST, "BUILD_ID=", ("BUILD_ID=",),
+                                      COREDUMP_BUILD_ID_SECONDS)
+            build_id = latest_build_id_from_bytes(" ".join(replies).encode())
+            elf = find_elf_for_build_id(Path.cwd(), build_id)
+            if elf is None:
+                print(f"no launcher.elf under this worktree matches BUILD_ID={build_id}; pass --elf",
+                      file=sys.stderr)
+                return 1
+        port = locked_port()
+        if args.erase:
+            parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
+            subprocess.run([idf_python(), str(parttool), "--port", port, "erase_partition",
+                            "--partition-name=" + COREDUMP_PARTITION], check=True)
+            print("coredump partition erased")
+            return 0
+        command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "--port", port, "info_corefile"]
+        gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
+        if gdb:
+            command += ["--gdb", str(gdb)]
+        return subprocess.call(command + [str(elf)])
+
+
 def replies_to(data, reply, until):
     """The device's replies found in console bytes, and whether the last of
     them has arrived.
@@ -1865,6 +1904,10 @@ def main(argv=None):
     listen_parser.add_argument("--out")
     listen_parser.add_argument("--elf",
                                help="decode any crash addresses seen against this .elf's symbols")
+    coredump_parser = subparsers.add_parser(
+        "coredump", help="decode the last panic's core dump from flash, or erase it")
+    coredump_parser.add_argument("--erase", action="store_true")
+    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the running build's")
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
@@ -1994,22 +2037,15 @@ def main(argv=None):
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built:
                 write_image(built, store, board)
-        elif args.command == "run-suite":
-            return run_suite(args, store, board)
-        elif args.command == "selftest":
-            return selftest(args, store, board)
-        elif args.command == "reset":
-            return reset_device(args, store, board)
-        elif args.command == "batch":
-            return batch(args, store, board)
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
             return send(args, store, board)
-        elif args.command == "screenshot":
-            return screenshot(args, store, board)
         else:
-            return listen(args, store, board)
+            # Looked up per call, so a test's patch of one of them is the one run.
+            board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
+                              "reset": reset_device, "batch": batch, "screenshot": screenshot}
+            return board_commands.get(args.command, listen)(args, store, board)
         return 0
     except LockBusy as error:
         print("device: " + str(error), file=sys.stderr)
