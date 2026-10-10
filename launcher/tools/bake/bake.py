@@ -19,11 +19,17 @@ byte-reproducible even on one machine, and a mesh bake only on hosts of one
 CPU vendor: r3d/isa.py pins the ray tracer to AVX2, whose reciprocal estimates
 AMD and Intel each define their own way. The locked meshes are AMD's.
 
+A fit's start is a mesh bake of its own (`<entry>.start.mesh`, locked and published, held by no pack).
+The fit's key names the start's locked bytes, so it is unknown until the start is locked: `list` says the
+fit waits for its start, and the Bakes GPU run fits only once the start's row is committed. A fit's
+references are keyed on what they read (fitted_variant.ReferenceInputs), not on the start.
+
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies what it made
 there, the folder a CI run uploads; `--only` limits it to the named outputs and
 `--again` re-makes them even when locked, to compare a new make with the lock
-(the lock keeps its row). `lock` drops the rows nothing needs;
+(the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
+without one (a fit whose start this lock adds is keyed once it is written);
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
 way a new row is written; it repeats, so the meshes of a Bakes run and the
 fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`

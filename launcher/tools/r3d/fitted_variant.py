@@ -13,8 +13,9 @@ scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
 prunes the start to the recipe's budget, fits it with the recipe's settings
-and writes the renderer's mesh into DIR. bake/bake.py runs both into the bake
-cache, keyed, and its lock records what the fit made.
+and writes the renderer's mesh into DIR. bake/bake.py bakes the start as a mesh
+of its own and the references once per ReferenceInputs into the bake cache,
+keyed, and its lock records what the start and the fit made.
 """
 
 import argparse
