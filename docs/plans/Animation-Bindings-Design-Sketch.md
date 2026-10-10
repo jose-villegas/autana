@@ -35,6 +35,12 @@ itself; when prefabs or instancing arrive, the same path can be resolved
 under an instance's root instead, with no format change. Designed and tested
 against scenes now.
 
+A **skeleton clip** (maintainer) resolves relative to the
+skeleton it plays on instead: its paths are joint paths from the skeleton's
+root (`butt/spine/chest`), so one clip plays on any entity with that rig. The
+entry's header says which root a clip's paths start from
+(`Animation-System-Design-Sketch.md`, section 3).
+
 ## 2. The pack entry, TRCK version 2
 
 Little-endian, offsets from the entry's first byte. Names move to a string
@@ -42,7 +48,7 @@ table, so a path is not limited to 31 bytes and a repeated name is stored once:
 
 | Part | Layout |
 |---|---|
-| header | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size` |
+| header | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size`, `u8 root` (0 scene, 1 skeleton), 3 zero bytes |
 | row per binding, 24 bytes | `u16 path` (string offset), `u16 field` (string offset), `u32 component` (four characters, as a pack entry type is), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type`, `u8 interp`, 2 zero bytes |
 | strings | NUL-terminated, each name once |
 | data | `f32` times, then `f32` values, as today, 4-byte aligned |
@@ -64,8 +70,8 @@ units, so the device never converts:
 | a pointer to anything no component exposes | the bake fails, naming the channel |
 
 A node's path is its glTF name, which must be the name of the scene object
-it drives, or for a node inside a rigged model, the model's scene object name
-followed by the joint names down to it [A].
+it drives. A clip whose channels all drive a skin's joints is a skeleton
+clip: each path is the joint names from the skeleton's root down.
 
 ## 3. What a component lets be animated
 
@@ -170,8 +176,8 @@ assumes it [A], and the placement is built from it when the entity is dirty.
    table (section 2).
 3. The baker converts to the field's units, e.g. glTF `yfov` to
    `half_fov_short_tan`, so the device never converts (section 2).
-4. Paths resolve at the scene level, by scene object name (maintainer,
-   confirmed); the stored path can be resolved under an instance root later
+4. Property clips resolve at the scene level, by scene object name; skeleton
+   clips resolve relative to their skeleton, by joint path (maintainer,). The stored path can be resolved under an instance root later
    with no format change (section 1).
 5. A binding that does not resolve fails the scene load and is never skipped
    (section 3).
