@@ -7,17 +7,15 @@
 typedef struct {
     vec3f_t eye, forward;
     float half_fov_short_tan, near_z;
-} camera_t;
+} fixture_camera_t;
 
 static inline render_view_t
-render_view_fixture_at(const camera_t* camera, viewport_t viewport) {
+render_view_fixture_at(const fixture_camera_t* camera, viewport_t viewport) {
     const transformf_t pose = transformf_looking(camera->eye, camera->forward, (vec3f_t){0.0F, 1.0F, 0.0F});
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
 }
 
 static inline render_view_t
-render_view_fixture(const camera_t* camera, const raster_t* raster, int quarter) {
-    const viewport_t viewport = {raster->upscaled ? raster->destination_width : raster->width,
-                                 raster->upscaled ? raster->destination_height : raster->height, quarter};
-    return render_view_fixture_at(camera, viewport);
+render_view_fixture(const fixture_camera_t* camera, const raster_t* raster, int quarter) {
+    return render_view_fixture_at(camera, raster_viewport(raster, quarter));
 }

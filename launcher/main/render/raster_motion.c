@@ -87,7 +87,7 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
     m->first_moved = -1;
     memset(m->moved, 0, sizeof(m->moved));
     if (m->known) {
-        render_view_refit(&m->previous, (viewport_t){view->width, view->height, view->quarter});
+        render_view_refit(&m->previous, view->viewport);
         r3d_lens_t before;
         lens_map(&m->previous, raster, NULL, &before);
         m->map[0] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));

@@ -387,11 +387,14 @@ test_a_turned_non_square_scene_places_the_coloured_instance(void) {
     fixture();
     show("test_pair", NULL);
     fx.target.height = PICTURE_HEIGHT;
-    scene_render(0, 1, fx.target.width, fx.target.height);
-    scene_compose(0, 1, &fx.target);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00),
-                            fx.pixels[(((PICTURE_HEIGHT / 2) + GREEN_PIXEL_OFFSET) * SIZE) + CENTER]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
+    for (int quarter = 1; quarter <= 3; quarter += 2) {
+        scene_render(0, quarter, fx.target.width, fx.target.height);
+        scene_compose(0, quarter, &fx.target);
+        const int offset = quarter == 1 ? GREEN_PIXEL_OFFSET : -GREEN_PIXEL_OFFSET;
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), fx.pixels[(((PICTURE_HEIGHT / 2) + offset) * SIZE) + CENTER]);
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB),
+                                fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
+    }
 }
 
 static void

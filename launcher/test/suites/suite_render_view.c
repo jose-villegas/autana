@@ -80,8 +80,8 @@ test_lens_fits_the_shorter_side(void) {
             TEST_ASSERT_EQUAL_FLOAT((float)viewport.width * 0.5F, view.center_x);
             TEST_ASSERT_EQUAL_FLOAT((float)viewport.height * 0.5F, view.center_y);
             TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, view.near_z);
-            TEST_ASSERT_EQUAL_INT(viewport.width, view.width);
-            TEST_ASSERT_EQUAL_INT(viewport.height, view.height);
+            TEST_ASSERT_EQUAL_INT(viewport.width, view.viewport.width);
+            TEST_ASSERT_EQUAL_INT(viewport.height, view.viewport.height);
         }
     }
 }

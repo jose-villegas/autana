@@ -296,8 +296,9 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
 static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
-    assert(view->width == (raster->upscaled ? raster->destination_width : raster->width));
-    assert(view->height == (raster->upscaled ? raster->destination_height : raster->height));
+    const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
+    assert(view->viewport.width == picture.width);
+    assert(view->viewport.height == picture.height);
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -350,8 +351,9 @@ raster_culled_length(const raster_t* raster) {
 raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
-    assert(view->width == (raster->upscaled ? raster->destination_width : raster->width));
-    assert(view->height == (raster->upscaled ? raster->destination_height : raster->height));
+    const viewport_t picture = raster_viewport(raster, view->viewport.quarter);
+    assert(view->viewport.width == picture.width);
+    assert(view->viewport.height == picture.height);
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);

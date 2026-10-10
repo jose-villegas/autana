@@ -33,8 +33,8 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     lens->near_subpixels = view->near_z / (float)R3D_SUBPIXEL;
     lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
-    lens->width = view->width;
-    lens->height = view->height;
+    lens->width = view->viewport.width;
+    lens->height = view->viewport.height;
 }
 
 void

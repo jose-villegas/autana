@@ -56,7 +56,7 @@ int main(void) {
 }
 ''')
             binary = work / "probe.exe"
-            sources = ["render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
+            sources = ["render/render_view.c", "render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
                        "render/r3d_lit_mesh.c", "render/upscale.c", "util/runtime/job.c", "asset/asset_pack.c"]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), "-I", str(ROOT / "launcher/main"),

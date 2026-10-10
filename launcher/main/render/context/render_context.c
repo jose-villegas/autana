@@ -171,12 +171,12 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     raster_t* r = &c->raster;
     r->instances = instances;
     r->instance_count = count;
-    r->width = step < 0 ? view->width * c->scale_percent / 100 : c->ladder.steps[step].width;
-    r->height = step < 0 ? view->height * c->scale_percent / 100 : c->ladder.steps[step].height;
+    r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
+    r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
-    r->destination_width = view->width;
-    r->destination_height = view->height;
+    r->destination_width = view->viewport.width;
+    r->destination_height = view->viewport.height;
     fit_scratch(c);
     if (c->scratch == NULL) {
         return false;

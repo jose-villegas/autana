@@ -48,10 +48,11 @@ orbit_at(float yaw, float pitch) {
     return orbit;
 }
 
-static camera_t
+static fixture_camera_t
 camera_of(const orbit_motion_t* orbit) {
     const transformf_t pose = orbit_motion_pose(orbit);
-    return (camera_t){pose.position, quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}), LENS_TAN, NEAR_Z};
+    return (fixture_camera_t){pose.position, quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}), LENS_TAN,
+                              NEAR_Z};
 }
 
 /* The i-th of n points spread evenly over the unit sphere (a Fibonacci spiral). */
@@ -66,7 +67,7 @@ sphere_point(int i, int n) {
 /* The furthest any point of the sphere lands from the picture's centre, in
  * pixels along each axis. */
 static void
-sphere_reach(const camera_t* camera, viewport_t viewport, float* reach_x, float* reach_y) {
+sphere_reach(const fixture_camera_t* camera, viewport_t viewport, float* reach_x, float* reach_y) {
     r3d_lens_t lens;
     const render_view_t frame_view = render_view_fixture_at(camera, viewport);
     r3d_lens_init(&lens, &frame_view, 1);
@@ -93,7 +94,7 @@ check_fit_in(viewport_t viewport) {
             const float pitch =
                 -ORBIT_MOTION_PITCH_LIMIT + (2.0F * ORBIT_MOTION_PITCH_LIMIT * (float)ip / (float)(PITCH_STEPS - 1));
             const orbit_motion_t orbit = orbit_at(yaw, pitch);
-            const camera_t camera = camera_of(&orbit);
+            const fixture_camera_t camera = camera_of(&orbit);
             float reach_x, reach_y;
             sphere_reach(&camera, viewport, &reach_x, &reach_y);
             TEST_ASSERT_LESS_OR_EQUAL_FLOAT(clear * half_w + PIXEL_SLACK, reach_x);

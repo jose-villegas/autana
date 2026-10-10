@@ -23,6 +23,7 @@ main/app/app_arena.c
 main/app/app_registry.c
 main/util/runtime/tune.c
 main/util/runtime/job.c
+main/render/render_view.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c

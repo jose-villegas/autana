@@ -85,20 +85,26 @@
         return view;                                                                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    /* f = normalize(target - position), r = normalize(up x f), u = f x r, */                                          \
-    /* rotation = from_basis(r, u, f). `up` must not be parallel to the line to */                                     \
-    /* `target`, and `target` must not be the position. */                                                             \
-    static inline void P##_look_at(P##_t* t, V##_t target, V##_t up) {                                                 \
-        const V##_t forward = V##_normalize(V##_sub(target, t->position));                                             \
+    /* f = normalize(direction), r = normalize(up x f), u = f x r, */                                                  \
+    /* rotation = from_basis(r, u, f). `up` must not be parallel to `direction`, */                                    \
+    /* and `direction` must be nonzero. */                                                                             \
+    static inline void P##_look_along(P##_t* t, V##_t direction, V##_t up) {                                           \
+        const V##_t forward = V##_normalize(direction);                                                                \
         const V##_t right = V##_normalize(V##_cross(up, forward));                                                     \
         const V##_t above = V##_cross(forward, right);                                                                 \
         P##_set_rotation(t, Q##_from_basis(right, above, forward));                                                    \
     }                                                                                                                  \
                                                                                                                        \
+    /* Faces target - position, with the same constraints as look_along. */                                            \
+    static inline void P##_look_at(P##_t* t, V##_t target, V##_t up) {                                                 \
+        P##_look_along(t, V##_sub(target, t->position), up);                                                           \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* Unit scale at position, facing forward; forward must be nonzero and not parallel to up. */                      \
     static inline P##_t P##_looking(V##_t position, V##_t forward, V##_t up) {                                         \
         P##_t pose = {0};                                                                                              \
         pose.position = position;                                                                                      \
         pose.scale = (V##_t){OPS##_one(), OPS##_one(), OPS##_one()};                                                   \
-        P##_look_at(&pose, V##_add(position, forward), up);                                                            \
+        P##_look_along(&pose, forward, up);                                                                            \
         return pose;                                                                                                   \
     }

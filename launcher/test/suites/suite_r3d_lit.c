@@ -1224,7 +1224,7 @@ draw_quad_with(const uint16_t (*triangles)[3], bool double_sided, const uint16_t
     const r3d_lit_mesh_t mesh = quad_mesh(triangles, double_sided, face_colors, &cluster);
     r3d_lens_t lens;
     const render_view_t frame_view =
-        render_view_fixture_at(&(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
+        render_view_fixture_at(&(fixture_camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     const r3d_span_target_t t = fixture();
     (void)draw_quad_mesh(&mesh, &lens, &t);
@@ -1256,7 +1256,7 @@ test_a_lens_fitted_to_half_the_width_keeps_the_view(void) {
     const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, NULL, &cluster);
     r3d_lens_t lens;
     const render_view_t frame_view =
-        render_view_fixture_at(&(camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
+        render_view_fixture_at(&(fixture_camera_t){{0, 0, 400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     r3d_lens_fit(&lens, W / 2, H);
     (void)fixture();
@@ -1282,7 +1282,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
     const r3d_lit_mesh_t mesh = quad_mesh(quad_front, false, NULL, &cluster);
     r3d_lens_t lens;
     const render_view_t frame_view =
-        render_view_fixture_at(&(camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
+        render_view_fixture_at(&(fixture_camera_t){{0, 0, 400}, {0, 0, 1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     uint16_t visible[1];
     TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
@@ -1300,7 +1300,7 @@ draw_floor(const uint16_t* face_colors) {
 
     r3d_lens_t lens;
     const render_view_t frame_view =
-        render_view_fixture_at(&(camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
+        render_view_fixture_at(&(fixture_camera_t){{0, 50, 0}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     const r3d_span_target_t t = fixture();
     TEST_ASSERT_EQUAL_INT(1, draw_quad_mesh(&mesh, &lens, &t));
@@ -1371,7 +1371,7 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
         const viewport_t viewport = {W, H, quarter};
         r3d_lens_t lens;
         const render_view_t frame_view =
-            render_view_fixture_at(&(camera_t){{0, 0, 0}, {0, 0, -1}, 0.5f, 1.0f}, viewport);
+            render_view_fixture_at(&(fixture_camera_t){{0, 0, 0}, {0, 0, -1}, 0.5f, 1.0f}, viewport);
         r3d_lens_init(&lens, &frame_view, 1);
         const vec3f_t p = mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, -100.0F});
         int ux, uy;
@@ -1480,16 +1480,16 @@ parts_add_rect(parts_t* p, int x0, int y0, int x1, int y1, int z, uint8_t shade)
     parts_add(p, corners, 4, rgb, false);
 }
 
-static camera_t
+static fixture_camera_t
 camera_down_minus_z(float eye_y, float eye_z, float near_z) {
-    return (camera_t){{0, eye_y, eye_z}, {0, 0, -1}, 0.5f, near_z};
+    return (fixture_camera_t){{0, eye_y, eye_z}, {0, 0, -1}, 0.5f, near_z};
 }
 
 /* The lens raster_draw() makes of camera_down_minus_z() for a W by H
  * raster of a mesh at position scale 1. */
 static r3d_lens_t
 look_down_minus_z(float eye_y, float eye_z, float near_z) {
-    const camera_t camera = camera_down_minus_z(eye_y, eye_z, near_z);
+    const fixture_camera_t camera = camera_down_minus_z(eye_y, eye_z, near_z);
     r3d_lens_t lens;
     const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
@@ -1766,7 +1766,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        const fixture_camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
         const r3d_lens_t lens = look_down_minus_z(eye_heights[e], 400, 1.0f);
         for (int i = 0; i < W * H; i++) {
             raster_color(&raster)[i] = 0xBEEF;
@@ -1781,7 +1781,7 @@ test_the_two_core_frame_matches_one_full_draw(void) {
 
     /* With nothing to upscale into, the raster clears its own colour target. */
     raster.upscaled = false;
-    const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
+    const fixture_camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
     const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
     raster_draw(&raster, &frame_view);
@@ -1830,7 +1830,7 @@ census_raster(const r3d_instance_t* instances, int count) {
 /* The raster at size `z` of `sizes`, drawn directly and then from a census
  * taken at the next size: the same picture, depth and survivors. */
 static void
-expect_census_draw_matches(raster_t* raster, const camera_t* camera, const int sizes[][2], int z) {
+expect_census_draw_matches(raster_t* raster, const fixture_camera_t* camera, const int sizes[][2], int z) {
     uint16_t* want = frame_held.want;
     raster->width = sizes[z][0];
     raster->height = sizes[z][1];
@@ -1863,7 +1863,7 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
     static const int sizes[][2] = {{W, H}, {W / 2, H}, {W, H / 2 + 3}};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        const fixture_camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
         for (int z = 0; z < 3; z++) {
             expect_census_draw_matches(raster, &camera, sizes, z);
         }
@@ -1919,7 +1919,7 @@ test_a_destination_of_the_same_size_is_a_copy(void) {
                        .destination_height = H};
     raster.scratch = scratch;
 
-    const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
+    const fixture_camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const r3d_lens_t lens = look_down_minus_z(150.0f, 400, 1.0f);
     const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
     raster_draw(&raster, &frame_view);
@@ -1959,7 +1959,7 @@ test_a_fractional_destination_upscales_a_drawn_frame(void) {
     TEST_ASSERT_NOT_NULL(drawn_depth);
     TEST_ASSERT_NOT_NULL(raster.scratch);
 
-    const camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
+    const fixture_camera_t camera = camera_down_minus_z(150.0f, 400, 1.0f);
     const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
     raster_draw(&raster, &frame_view);
     memcpy(drawn, raster_color(&raster), sizeof(*drawn) * W * H);
@@ -2259,7 +2259,7 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
     static const float eye_heights[] = {-100.0f, 150.0f, 300.0f};
     uint16_t first_depth_sum = 0;
     for (int e = 0; e < 3; e++) {
-        const camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
+        const fixture_camera_t camera = camera_down_minus_z(eye_heights[e], 400, 1.0f);
         const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
         raster_draw(&raster, &frame_view);
         memcpy(depth_before, raster_depth(&raster), sizeof(uint16_t) * W * H);

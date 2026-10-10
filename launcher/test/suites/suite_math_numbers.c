@@ -43,6 +43,22 @@ static const vec3f_t A = {3.0F, -2.0F, 5.0F};
 static const vec3f_t B = {1.0F, 4.0F, -6.0F};
 
 static void
+test_looking_keeps_forward_at_large_positions(void) {
+    const vec3f_t forward = {1.0F, 0.0F, 0.0F};
+    const vec3f_t up = {0.0F, 1.0F, 0.0F};
+    const vec3f_t far = {1e9F, 1e9F, 1e9F};
+    const transformf_t pose = transformf_looking(far, forward, up);
+    const vec3f_t got = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.x, got.x);
+    TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.y, got.y);
+    TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.z, got.z);
+    TEST_ASSERT_EQUAL_FLOAT(far.x, pose.position.x);
+    const transformx_t fixed =
+        transformx_looking(to_x(30000.0F, 0.0F, 0.0F), to_x(1.0F, 0.0F, 0.0F), to_x(0.0F, 1.0F, 0.0F));
+    assert_x_near_f(forward, quatx_rotate(fixed.rotation, to_x(0.0F, 0.0F, 1.0F)), FIXED_SLACK);
+}
+
+static void
 test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type(void) {
     const vec3f_t sum = vec3f_add(A, B);
     const vec3f_t cross = vec3f_cross(A, B);
@@ -537,6 +553,7 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
 
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);

@@ -57,7 +57,7 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL};
 }
 
-static const camera_t CAMERA = {{0.0F, 0.0F, 10.0F}, {0.0F, 0.0F, -1.0F}, 1.0F, 1.0F};
+static const fixture_camera_t CAMERA = {{0.0F, 0.0F, 10.0F}, {0.0F, 0.0F, -1.0F}, 1.0F, 1.0F};
 
 /* Draws the instances; the caller frees the scratch. */
 static uint16_t*

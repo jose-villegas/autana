@@ -39,6 +39,13 @@ struct raster {
     int attachment_count;
 };
 
+/* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
+static inline viewport_t
+raster_viewport(const raster_t* raster, int quarter) {
+    return (viewport_t){raster->upscaled ? raster->destination_width : raster->width,
+                        raster->upscaled ? raster->destination_height : raster->height, quarter};
+}
+
 typedef struct {
     int clusters, triangles; /* what survived culling */
 } raster_stats_t;
