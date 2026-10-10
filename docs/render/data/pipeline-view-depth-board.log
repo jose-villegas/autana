@@ -1,0 +1,38 @@
+I (67684) shell: 16.3 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (67685) shell: ms/frame avg/worst: r3d.cull 0.78/0.9  r3d.transform 4.64/4.8  r3d.draw 43.97/45.5  present.wait 0.00/0.0  r3d.upscale 2.97/3.0  frame.rest 7.74/8.3 | total 60.12
+I (69183) shell: 17.3 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (69184) shell: ms/frame avg/worst: r3d.cull 0.71/0.8  r3d.transform 3.99/4.4  r3d.draw 41.27/43.2  present.wait 0.00/0.0  r3d.upscale 2.96/3.0  frame.rest 7.76/8.3 | total 56.72
+I (70698) shell: 18.4 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (70699) shell: ms/frame avg/worst: r3d.cull 0.65/0.7  r3d.transform 3.43/3.6  r3d.draw 38.35/40.9  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.79/8.3 | total 53.19
+I (72221) shell: 22.2 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (72222) shell: ms/frame avg/worst: r3d.cull 0.61/0.7  r3d.transform 2.66/3.3  r3d.draw 30.04/35.3  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.72/8.4 | total 44.00
+I (73791) shell: 20.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (73792) shell: ms/frame avg/worst: r3d.cull 0.69/0.8  r3d.transform 3.23/4.3  r3d.draw 35.01/41.5  present.wait 0.00/0.0  r3d.upscale 2.96/3.0  frame.rest 7.83/8.4 | total 49.75
+I (75339) shell: 16.8 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (75340) shell: ms/frame avg/worst: r3d.cull 0.81/0.9  r3d.transform 4.60/4.8  r3d.draw 42.33/43.1  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.81/8.5 | total 58.53
+I (76869) shell: 16.4 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (76870) shell: ms/frame avg/worst: r3d.cull 0.84/1.0  r3d.transform 5.20/5.6  r3d.draw 43.35/43.9  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.81/8.5 | total 60.19
+I (78396) shell: 15.7 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (78397) shell: ms/frame avg/worst: r3d.cull 0.83/0.8  r3d.transform 5.79/5.9  r3d.draw 45.21/46.5  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.80/8.4 | total 62.61
+I (79963) shell: 14.7 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (79965) shell: ms/frame avg/worst: r3d.cull 0.88/1.0  r3d.transform 6.89/7.9  r3d.draw 48.65/50.3  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.75/8.4 | total 67.14
+I (81467) shell: 14.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (81468) shell: ms/frame avg/worst: r3d.cull 0.90/1.0  r3d.transform 8.07/8.2  r3d.draw 50.93/52.0  present.wait 0.00/0.0  r3d.upscale 2.93/2.9  frame.rest 7.72/8.4 | total 70.59
+I (82982) shell: 13.9 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (82983) shell: ms/frame avg/worst: r3d.cull 0.90/0.9  r3d.transform 8.13/8.2  r3d.draw 51.40/52.8  present.wait 0.00/0.0  r3d.upscale 2.93/2.9  frame.rest 7.73/8.4 | total 71.12
+I (84542) shell: 14.1 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (84543) shell: ms/frame avg/worst: r3d.cull 0.92/1.0  r3d.transform 7.86/8.0  r3d.draw 50.47/51.8  present.wait 0.00/0.0  r3d.upscale 2.94/3.0  frame.rest 7.75/8.3 | total 69.96
+I (86074) shell: 15.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (86075) shell: ms/frame avg/worst: r3d.cull 0.88/1.0  r3d.transform 6.07/7.4  r3d.draw 48.02/49.1  present.wait 0.00/0.0  r3d.upscale 2.94/3.0  frame.rest 7.77/8.4 | total 65.70
+I (87628) shell: 16.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (87629) shell: ms/frame avg/worst: r3d.cull 0.83/1.0  r3d.transform 5.43/5.8  r3d.draw 44.28/46.5  present.wait 0.00/0.0  r3d.upscale 2.94/2.9  frame.rest 7.74/8.3 | total 61.23
+I (89170) shell: 16.8 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (89171) shell: ms/frame avg/worst: r3d.cull 0.78/0.8  r3d.transform 4.78/4.8  r3d.draw 42.05/43.1  present.wait 0.00/0.0  r3d.upscale 2.95/3.0  frame.rest 7.80/8.4 | total 58.39
+I (90668) shell: 17.3 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (90669) shell: ms/frame avg/worst: r3d.cull 0.73/0.7  r3d.transform 4.50/4.6  r3d.draw 40.64/41.7  present.wait 0.00/0.0  r3d.upscale 2.95/2.9  frame.rest 7.82/8.4 | total 56.66
+I (92184) shell: 18.4 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (92185) shell: ms/frame avg/worst: r3d.cull 0.69/0.7  r3d.transform 3.90/4.4  r3d.draw 37.82/39.6  present.wait 0.00/0.0  r3d.upscale 2.96/3.0  frame.rest 7.84/8.5 | total 53.22
+I (93709) shell: 19.6 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (93710) shell: ms/frame avg/worst: r3d.cull 0.65/0.8  r3d.transform 3.40/3.5  r3d.draw 35.20/36.4  present.wait 0.00/0.0  r3d.upscale 2.96/3.0  frame.rest 7.80/8.4 | total 50.03
+I (95226) shell: 21.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (95227) shell: ms/frame avg/worst: r3d.cull 0.63/0.7  r3d.transform 2.91/3.2  r3d.draw 32.46/34.1  present.wait 0.00/0.0  r3d.upscale 2.93/3.0  frame.rest 7.59/8.3 | total 46.54
