@@ -32,8 +32,9 @@ the frame loop's own with ` +N foreign`. On a host and in release the
 brackets compile to nothing.
 
 The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
-`r3d.draw`, `r3d.resolve` and `r3d.upscale`. Clip and span fill are inside
+`r3d.draw`, `r3d.resolve`, `r3d.show` and `r3d.upscale`. Clip and span fill are inside
 `r3d.draw`; `r3d.resolve` runs only when an attachment has a resolve hook.
+`r3d.show` paints the selected debug view before upscale.
 The shell brackets presentation as `present`; when the frame loop overlaps the send
 with the next update, the bracket is `present.wait`, the time the frame waits
 for that send to finish.

@@ -41,7 +41,7 @@ flowchart TB
         Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size</i>"]
         subgraph Update["Update while the last frame is sent: render/raster, both cores"]
             direction LR
-            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
+            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve<br/><i>only if an attachment resolves</i>"] --> View["View<br/>modes"]
         end
         subgraph After["After the send"]
             direction LR
@@ -248,20 +248,41 @@ Reference: [the asset packs](../assets/README.md#packs).
 
 ## Every frame, on the board
 
-Each stage of the scene as shipped:
+Separate charts show the shipped frame and each debug view. The shipped
+chart uses solid segments; each view chart shows hatched additions, with an
+label and elbow leader marking the base frame at the bar's start. A segment
+is drawn only when its share rounds above zero percent. Legends match the
+drawn segments; the table retains every stage in milliseconds. Each axis fits
+its own data, and view ticks show added milliseconds.
+The shipped label gives the total; view labels give the signed net addition
+and its share of the shipped total. Segment labels and legends give each
+stage's share of the shipped total, signed for view additions. Dotted lines
+mark the frame-rate budgets when they fall inside the chart.
 
-<!-- generated: pipeline-frame-stages sha256=866982c25d43099be4e7a5d0afac643e454c551f6de1930496a3590a742e50c3 -->
-| Stage | Board ms/frame |
-|---|---|
-| r3d.cull | 0.72 |
-| r3d.transform | 6.61 |
-| r3d.draw | 40.79 |
-| r3d.resolve, with motion vectors attached | 14.84 |
-| present.wait | 0.00 |
-| r3d.upscale | 2.88 |
-| frame.rest | 1.13 |
+<!-- generated: pipeline-frame-stages sha256=4ca11d90dd2b848aa4842035ac3193109d3428e9c6ec73ccb768b6904f650410 -->
+![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
-Source: the scene as shipped, mean of 20 windows; the resolve row is from the scene with the motion attachment shown.
+![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
+
+![Frame stages with the tiles view](../images/render/pipeline-frame-stages.tiles.png)
+
+![Frame stages with the motion view](../images/render/pipeline-frame-stages.motion.png)
+
+![Frame stages with the meshlets view](../images/render/pipeline-frame-stages.meshlets.png)
+
+| Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
+|---|---|---|---|---|---|---|
+| r3d.cull | 0.76 | 1% | +0.01 | +0.00 | +0.02 | +0.01 |
+| r3d.transform | 4.87 | 10% | +0.10 | +0.02 | +0.22 | +0.02 |
+| r3d.draw | 41.94 | 82% | +0.25 | +0.20 | +1.85 | +23.89 |
+| r3d.resolve | not run | not run | +0.00 | +0.00 | +14.29 | +0.00 |
+| r3d.show | not run | not run | +6.89 | +4.60 | +9.05 | +10.21 |
+| present.wait | 0.00 | 0% | +0.00 | +0.00 | +0.00 | +0.00 |
+| r3d.upscale | 2.59 | 5% | +0.16 | +0.17 | +0.16 | +0.16 |
+| frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.11 | +0.12 |
+| total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
+
+Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
 <!-- /generated: pipeline-frame-stages -->
 
 ### Scene and camera
@@ -274,7 +295,7 @@ view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 |---|---|---|
 | the scene's pack: meshes, placements, the camera clip | the frame's instances and view | the active camera, which renderers are enabled |
 
-Cost: part of `frame.rest` in the frame-stages table.
+Cost: part of `frame.rest` in the frame-stages chart.
 
 ![The demo scene along its flythrough](../images/render/sponza-full.gif)
 
@@ -290,7 +311,7 @@ cost or, predicted, from what the census kept.
 |---|---|---|
 | recent frames' cost, or the census's triangles | the render width and height | the scale, or the budget, ladder and policy |
 
-Cost: part of `frame.rest` in the frame-stages table.
+Cost: part of `frame.rest` in the frame-stages chart.
 
 ![The size chosen along the path](../images/render/dynamic-resolution-flight.png)
 
@@ -312,7 +333,7 @@ list, and the draw reuses it.
 |---|---|---|
 | node and cluster bounds, the camera | the kept clusters | none |
 
-Cost: `r3d.cull` in the frame-stages table; a predicted size is charged to
+Cost: `r3d.cull` in the frame-stages chart; a predicted size is charged to
 `r3d.census` instead.
 
 Picture: none yet.
@@ -328,7 +349,7 @@ halves of the vertex work; each cluster also records the screen rows it spans.
 |---|---|---|
 | the kept clusters, positions, the lens fitted to the render size | screen vertices, each cluster's rows | none |
 
-Cost: `r3d.transform` in the frame-stages table.
+Cost: `r3d.transform` in the frame-stages chart.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#on-both-cores).
 
@@ -342,7 +363,7 @@ the draw's.
 |---|---|---|
 | screen vertices | clipped triangles | none |
 
-Cost: part of `r3d.draw` in the frame-stages table.
+Cost: part of `r3d.draw` in the frame-stages chart.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
@@ -356,7 +377,7 @@ triangle won. The two cores split the rows where the estimated cost halves.
 |---|---|---|
 | triangles and their colours | colour, depth, each attachment's pixels | the attachments listed |
 
-Cost: `r3d.draw` in the frame-stages table.
+Cost: `r3d.draw` in the frame-stages chart.
 
 ![The depth the fill writes](../images/render/sponza-depth.gif)
 
@@ -364,14 +385,15 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
 #### Resolve
 
-Once every instance is drawn, each attachment turns what was written into its
-final map, the two cores on disjoint rows.
+Once every instance is drawn, each attachment that resolves turns what was
+written into its final map, the two cores on disjoint rows.
 
 | Reads | Writes | Settings |
 |---|---|---|
 | depth, the attachment's pixels | the attachment's map | none |
 
-Cost: `r3d.resolve, with motion vectors attached` in the frame-stages table.
+Cost: `r3d.resolve` in the frame-stages chart, only when a view's attachment
+resolves; the scene as shipped has none.
 
 ![Motion vectors, an attachment resolved from depth](../images/render/sponza-motion-vectors.gif)
 
@@ -387,7 +409,7 @@ attachment paints colour from the renderer's maps.
 |---|---|---|
 | depth, an attachment | colour | the debug view |
 
-Cost: part of `frame.rest` in the frame-stages table when enabled.
+Cost: `r3d.show` in each view's chart.
 
 Pictures: [depth](../images/render/sponza-depth.gif),
 [tiles](../images/render/sponza-tiles.gif),
@@ -411,21 +433,21 @@ is copied into a half picture instead, and the present doubles it as it sends.
 |---|---|---|
 | the picture | the framebuffer, or a half picture | the render size against the panel |
 
-Cost: `r3d.upscale` in the frame-stages table.
+Cost: `r3d.upscale` in the frame-stages chart.
 
 Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#expanded-frames).
 
 #### Present
 
 The framebuffer's dirty rows, or a half picture doubled on the way, go to the
-panel over QSPI while the next frame is prepared; the frame-stages table shows
+panel over QSPI while the next frame is prepared; the frame-stages chart shows
 what the frame waits for it.
 
 | Reads | Writes | Settings |
 |---|---|---|
 | the framebuffer or half picture, its dirty rows | the panel | the framebuffer layout (`gfx_mode.h`) |
 
-Cost: `present.wait` in the frame-stages table.
+Cost: `present.wait` in the frame-stages chart.
 
 Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-gets-sent).
 
@@ -434,20 +456,26 @@ Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-get
 The docs generator, `launcher/tools/render/render_doc_images.sh`, refreshes
 this page's measured blocks from the committed captures and GPU stage.
 
-The generator writes the `pipeline-frame-stages` table from frame-cost
-report windows: every bracket of the scene as shipped, plus the resolve row
-from a capture with motion vectors attached. Capture both from the same build:
+The generator writes the `pipeline-frame-stages` chart and table from
+frame-cost report windows: every bracket of the scene as shipped, and for each
+debug view in the view table of `render/context/render_context.c`, what its
+capture adds to each bracket. Capture them all from one development build
+running the demo scene, the first with the scene as shipped, then one per view.
+Two minutes spans several passes of the camera path, so where along the path a
+capture starts barely moves its means:
 
 ```sh
-autana monitor 30 --out docs/render/data/pipeline-present-board.log
-autana monitor 30 --out docs/render/data/pipeline-resolve-board.log
+autana monitor 120 --out docs/render/data/pipeline-present-board.log
+autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
 ```
 
-The first runs with the scene as shipped; the second with the scene's debug
-view set to the motion attachment (a development-build tunable; `autana tune`
-lists it). Check `autana status` and `autana buildid` before and after each
-capture. A missing capture leaves its row `not in capture`; a capture without
-report windows fails the run.
+The debug view is a development-build tunable (`autana tune view` lists it):
+0 (`RENDER_DEBUG_VIEW_SHADED` in `render/context/render_context.h`) is the
+scene as shipped, and each view is its place in the view table,
+counted from 1. Each view's capture is `pipeline-view-<name>-board.log`, and a
+view without one is listed as not captured. Check `autana status` and `autana buildid`
+before and after each capture. A missing capture of the scene as shipped, or a
+capture without report windows, fails the run.
 
 The `meshlet-sizes` table is generated from each size's own suite capture and
 regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)

@@ -205,9 +205,13 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
     set -- "$@" --quality "$camera=$csv"
 done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    "$@" --present docs/render/data/pipeline-present-board.log \
-    --resolve docs/render/data/pipeline-resolve-board.log --tables "$OUT/tables" \
-    --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+
+# The frame stages as shipped and what each debug view adds, from the
+# pipeline captures beside the page.
+run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
+    --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
+    --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 
 table_status=0
 if [ "$CHECK" = 1 ]; then
