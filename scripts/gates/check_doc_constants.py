@@ -72,16 +72,16 @@ def add(definitions, name, value):
 
 def source_files(root):
     """C sources under launcher/ that the repository tracks. Anything a build
-    or the component manager writes (managed_components/, build*/) is not
-    this project's definition of a constant, and reading it made the verdict
-    depend on whether the checkout had ever been built."""
+    or the component manager writes (managed_components/, launcher/build*/) is
+    not this project's definition of a constant, and reading it made the
+    verdict depend on whether the checkout had ever been built."""
     root = pathlib.Path(root)
     paths = (root / name for name in tracked_files(root, ("launcher",)))
     for path in sorted(paths):
         parts = path.relative_to(root).parts
         if path.suffix not in {".c", ".h"} or not path.is_file():
             continue
-        if "managed_components" in parts or any(part.startswith("build") for part in parts):
+        if "managed_components" in parts or parts[1].startswith("build"):
             continue
         yield path
 

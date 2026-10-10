@@ -5,7 +5,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "util/runtime/job.h"
+#include "core/job.h"
 
 #ifdef DEVICE_BUILD
 #include "freertos/FreeRTOS.h"

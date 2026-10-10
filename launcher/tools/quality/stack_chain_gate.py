@@ -267,7 +267,7 @@ def main(argv):
     stack_bytes = device_profile.require(profile, "DP_MAIN_TASK_STACK_BYTES", int)
 
     specs = sorted(str(p) for p in Path(LAUNCHER).rglob("stack_chain.txt")
-                   if not any(part.startswith("build") for part in p.parts))
+                   if not p.relative_to(LAUNCHER).parts[0].startswith("build"))
     if not specs:
         raise SpecError("no launcher/**/stack_chain.txt declares a chain")
 

@@ -597,18 +597,25 @@ def check(found, lock):
     return problems
 
 
-def seed(found, cache, stale=()):
-    """Rows for keys LOCK lacks, each marked seeded: the bytes are carried over, not made by the code
-    their key names. They come from a `stale` row for the same output when there is one (a re-key
-    keeps what a run made, its file fetched as any locked file), else from the tree's own file. A run
-    that makes the key again writes a row without the mark."""
+def seed(found, cache, lock=None):
+    """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
+    that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
+    it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
+    under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
+    Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
+    lock = lock or {}
+    needed = {bake.key for bake in found}
+    previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, missing = [], []
-    previous = {row["output"]: row for row in stale}
     for bake in found:
-        if bake.output in previous:
-            old = previous[bake.output]
-            fetch_all([bake], {bake.key: old}, cache)
-            rows.append({**{name: old[name] for name in ("output", "source", "sha256", "size")},
+        held = lock.get(bake.key)
+        if held is not None and not held.get("seeded"):
+            rows.append({name: held[name] for name in ROW_FIELDS if name in held})
+            continue
+        carried = previous.get(bake.output) if held is None else (None if bake.tree.is_file() else held)
+        if carried is not None:
+            fetch_all([bake], {bake.key: carried}, cache)
+            rows.append({**{name: carried[name] for name in ("output", "source", "sha256", "size")},
                          "key": bake.key, "seeded": True})
             continue
         if not bake.tree.is_file():
@@ -797,10 +804,7 @@ def main(argv=None):
                 produce.export(rows, cache, pathlib.Path(args.out))
         elif args.command == "lock":
             if args.seed:
-                held = [bake for bake in found if bake.key in lock]
-                needed = {bake.key for bake in found}
-                stale = [row for key, row in lock.items() if key not in needed]
-                rows = lock_rows(held, lock) + seed([bake for bake in found if bake.key not in lock], cache, stale)
+                rows = seed(found, cache, lock)
             elif args.from_run is not None:
                 from bake import produce
 

@@ -31,8 +31,8 @@
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
 #include "bbox_extend.h"
-#include "util/scalar/fixed.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/fixed.h"
+#include "math/scalar/mathi.h"
 
 /* BLAST SCENES - a settled dune and a detonation at its centre.
  *

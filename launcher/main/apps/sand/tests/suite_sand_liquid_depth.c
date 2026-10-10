@@ -29,7 +29,7 @@
 #include "apps/sand/sand_paint_clock.h"
 #include "apps/sand/sand_priv.h"
 #include "apps/sand/tests/suite_sand_common.h"
-#include "util/scalar/mathi.h"
+#include "math/scalar/mathi.h"
 
 static void
 test_a_liquid_body_paints_flat_inside(void) {

@@ -94,7 +94,7 @@ for MODE in normal forced; do
     # shellcheck disable=SC2086
     "$CC_BIN" $CFLAGS $FORCE_FLAG -I "$MAIN_DIR" -I "$SAND_DIR" \
         "$SCRIPT_DIR/grid_fingerprint.c" \
-        "$MAIN_DIR/util/runtime/job.c" \
+        "$MAIN_DIR/core/job.c" \
         "$SAND_DIR/sand.c" \
         "$SAND_DIR/sand_chunk_sched.c" \
         "$SAND_DIR/sand_impulse.c" \

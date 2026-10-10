@@ -1,19 +1,19 @@
 /*
  * console_screenshot (SCREENSHOT): prints the frame gfx holds as base64
  * between markers tools/device/screenshot.py reads from the console. The verb
- * only sets a latch, since this task may not draw (console.c); the shell
+ * only posts a frame request, since this task may not draw (console.c); the shell
  * frame loop streams it with console_screenshot_dump(). Development only.
  */
 #include "console/console_screenshot.h"
 #include "console/console.h"
-#include "console/console_latch.h"
+#include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
 #include "console/device_state.h"
-#include "util/encode/json_splice.h"
-#include "util/encode/screenshot.h"
-#include "util/runtime/frame_watch.h"
-#include "util/runtime/memory.h"
+#include "console/json_splice.h"
+#include "console/screenshot.h"
+#include "core/memory.h"
+#include "profile/frame_watch.h"
 
 #include "esp_log.h"
 
@@ -26,23 +26,17 @@
 
 static const char* TAG = "screenshot";
 
-static console_latch_t screenshot_latch;
+static const console_frame_request_t screenshot_request = {.kinds = CONSOLE_FRAME_SCREENSHOT};
 
 static void
 console_verb_screenshot(const char* args, console_reply_fn reply) {
     (void)args;
     (void)reply;
     ESP_LOGI(TAG, "trigger received");
-    console_latch_set(&screenshot_latch, "");
+    (void)console_frame_post(console_frame_mailbox(), &screenshot_request);
 }
 
 CONSOLE_VERB(screenshot, 0, console_verb_screenshot)
-
-bool
-console_screenshot_take_request(void) {
-    char unused[1];
-    return console_latch_take(&screenshot_latch, unused, sizeof unused);
-}
 
 /* Not stack-local: console_screenshot_dump() runs on the shell task
  * (3584-byte stack), and a 736-byte pixel row, its 1104-byte BMP row and
@@ -127,7 +121,7 @@ readback_ready(void) {
         refuse("band mode, and the app drew no complete frame to copy");
         return false;
     }
-    console_latch_set(&screenshot_latch, "");
+    (void)console_frame_post(console_frame_mailbox(), &screenshot_request);
     return false;
 }
 

@@ -80,13 +80,21 @@ def symbols(nm, elf, functions=FUNCTIONS):
     return found
 
 
-def instructions(objdump, elf, function):
+def decode(objdump, elf, *arguments):
     found = []
-    for line in run(objdump, "-d", "--disassemble=%s" % function, str(elf)).splitlines():
+    for line in run(objdump, "-d", *arguments, str(elf)).splitlines():
         match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
         if match:
             found.append((int(match[1], 16), len(match[2]) // 2, match[3], match[4]))
     return found
+
+
+def instructions(objdump, elf, function, end):
+    """The function's instructions, and how to decode its code again from
+    one address on, where the linear sweep fell out of step."""
+    return decode(objdump, elf, "--disassemble=%s" % function), lambda start: decode(
+        objdump, elf, "--start-address=0x%x" % start, "--stop-address=0x%x" % end
+    )
 
 
 def target_of(operands):
@@ -101,10 +109,12 @@ def target_of(operands):
 POOL_JUMP_MAX = 32
 
 
-def skip_pools(found):
+def skip_pools(found, decode_from=None):
     """The instructions outside any span a short forward j jumps over that
     nothing outside it branches into: code skipped that way, an else block,
-    is always entered by a branch, and a pool never is."""
+    is always entered by a branch, and a pool never is. A span entered past
+    its start holds a pool and then code the sweep read out of step, so the
+    pool is dropped and the code decoded again from where it is entered."""
     spans = []
     for address, size, mnemonic, operands in found:
         target = target_of(operands)
@@ -114,16 +124,28 @@ def skip_pools(found):
     def inside(address, span):
         return span[0] <= address < span[1]
 
-    pools = [
-        span
-        for span in spans
-        if not any(
-            inside(target_of(operands), span)
+    def entries(span):
+        return sorted(
+            target_of(operands)
             for address, _, _, operands in found
-            if target_of(operands) is not None and not inside(address, span)
+            if target_of(operands) is not None and not inside(address, span) and inside(target_of(operands), span)
         )
-    ]
-    return [ins for ins in found if not any(inside(ins[0], pool) for pool in pools)]
+
+    starts = {ins[0] for ins in found}
+    kept = list(found)
+    for span in spans:
+        entered = entries(span)
+        if not entered:
+            kept = [ins for ins in kept if not inside(ins[0], span)]
+        elif entered[0] not in starts and decode_from is not None:
+            again = []
+            for ins in decode_from(entered[0]):
+                if ins[0] in starts:
+                    break
+                again.append(ins)
+            resume = again[-1][0] + again[-1][1] if again else entered[0]
+            kept = [ins for ins in kept if ins[0] < span[0]] + again + [ins for ins in kept if ins[0] >= resume]
+    return kept
 
 
 def line_span(start, end, line_size):
@@ -139,7 +161,7 @@ def layout_entries(elf, nm, objdump, line_size, functions=FUNCTIONS):
     for function in functions:
         address, size = located[function]
         entries.append(LayoutEntry(function, "function", address, size, line_span(address, address + size, line_size)))
-        for instruction_address, size, mnemonic, operands in skip_pools(instructions(objdump, elf, function)):
+        for instruction_address, size, mnemonic, operands in skip_pools(*instructions(objdump, elf, function, address + size)):
             target = target_of(operands)
             if mnemonic in ("loop", "loopnez", "loopgtz") and target is not None:
                 start = instruction_address + size

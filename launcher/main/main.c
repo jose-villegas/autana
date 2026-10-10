@@ -9,6 +9,9 @@
 #include <stdio.h>
 
 #include "boot/boot_anim.h"
+#include "build/build_variant.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "display/display.h"
 #include "display/display_shell.h"
 #include "gfx/gfx.h"
@@ -17,13 +20,10 @@
 #include "selftest/post.h"
 #include "selftest/post_layout.h"
 #include "selftest/post_ui.h"
+#include "services/build_id.h"
 #include "shell/shell.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
-#include "util/build/build_variant.h"
-#include "util/runtime/build_id.h"
-#include "util/runtime/memory.h"
-#include "util/runtime/timing.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"

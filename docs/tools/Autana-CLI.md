@@ -56,9 +56,9 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N]` | Build this project, no board and no lock; `dev` when omitted. `--layout-seed N`: pad the layout by seed N ([Layout-Noise.md](Layout-Noise.md)); 0, the default, is the plain build. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
+| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build this project, no board and no lock; `dev` when omitted. `--hot-tunables` (dev/diag): build with live hot-path knobs; `suite` needs `--flash`. `--layout-seed N`: pad the layout by seed N ([Layout-Noise.md](Layout-Noise.md)); 0, the default, is the plain build. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
-| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
+| `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
@@ -83,8 +83,9 @@ suite this project registers, for a full pre-merge pass.
 
 | Command | What it does |
 |---|---|
-| `autana suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 s when omitted; a board that goes silent for 300 s ends one sooner). Without `--flash`: against the image already on the board; `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures; `--layout-seed N` picks the layout it is built with. |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]` | Run one or more registered suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 s when omitted; a board that goes silent for 300 s ends one sooner). Without `--flash`: against the image already on the board; `autana suite <name>` against a non-diagnostics image says so plainly and names the fix (`autana flash diag`). With `--flash`: build and flash the diagnostics image first, so nobody else can flash between two captures; `--layout-seed N` picks the layout it is built with. |
 | `autana suite <name> --test PATTERN[,PATTERN]` | Only the tests of that suite whose name contains a pattern; `--test` repeats. |
+| `autana suite <name> --set NAME=VALUE` | Set a tunable ([Live-Tuning.md](Live-Tuning.md)) under each capture's own lock, just before it runs; `--set` repeats. A value the board refuses or does not echo stops the batch. |
 | `autana suite list [text] [--json]` | The suites this project registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
