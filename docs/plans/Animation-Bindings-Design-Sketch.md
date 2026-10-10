@@ -49,7 +49,7 @@ table, so a path is not limited to 31 bytes and a repeated name is stored once:
 | Part | Layout |
 |---|---|
 | header | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size`, `u8 root` (0 scene, 1 skeleton), 3 zero bytes |
-| row per binding, 24 bytes | `u16 path` (string offset), `u16 field` (string offset), `u32 component` (four characters, as a pack entry type is), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type`, `u8 interp`, 2 zero bytes |
+| row per binding, 24 bytes | `u16 path` (string offset), `u16 field` (string offset), `u32 component` (four characters, as a pack entry type is), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type`, `u8 interp`, 4 zero bytes |
 | strings | NUL-terminated, each name once |
 | data | `f32` times, then `f32` values, as today, 4-byte aligned |
 

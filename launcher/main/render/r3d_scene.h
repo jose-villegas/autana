@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#include "anim/anim_binding.h"
 #include "anim/anim_track.h"
 #include "math/linear/transformf.h"
 #include "render/r3d_instance.h"
@@ -24,6 +25,8 @@ typedef struct {
     const r3d_placement_t* placement; /* where it stands without a path; NULL: the origin, looking down -Z */
     const r3d_scene_path_t* path;     /* NULL for a camera that stays put */
 } r3d_scene_camera_t;
+
+extern const anim_component_fields_t R3D_SCENE_CAMERA_FIELDS;
 
 /* The loop's length, or 0 for a camera that stays put. */
 uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);
