@@ -515,6 +515,26 @@ read, so `run_qemu_tests.sh --build-only` builds the image once for a
 driver that then launches several against it. How many to run at once is a
 question about whose desktop this is, not about the runner.
 
+**Linux can run a QEMU with its bugs patched.** Espressif's prebuilt QEMU has
+races that fail a run of a correct image: the guest takes
+`LoadStorePIFAddrError` on an ordinary register access
+([espressif/qemu#174](https://github.com/espressif/qemu/issues/174)). Each
+fix is a file in `launcher/test/qemu/patches/`, naming its upstream issue,
+and `patched_qemu.py` beside them rebuilds the QEMU version ESP-IDF installs
+with them, into `launcher/build.qemu-xtensa/`. `qemu_run.py` runs that build
+when it exists and prints which QEMU it started. CI builds it once per QEMU
+version and patch set and caches it.
+
+| host | QEMU a run uses |
+|---|---|
+| CI, and Linux after `patched_qemu.py build` | patched |
+| Linux before that, and Windows | Espressif's prebuilt, unpatched: a crash there can be QEMU's |
+
+```sh
+sudo apt-get install $(python3 launcher/test/qemu/patched_qemu.py deps)   # once
+python3 launcher/test/qemu/patched_qemu.py build                          # minutes, once per QEMU version
+```
+
 ---
 
 ## The host render harness: real drawing code, real pixels, no board
