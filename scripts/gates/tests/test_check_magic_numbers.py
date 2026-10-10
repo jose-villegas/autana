@@ -109,6 +109,16 @@ int x = 1 << {shift};
                                PY_PATH: 'x = "FRAME_READY"'})
         self.assertFalse(hits)
 
+    def test_a_package_source_is_protocol_source_like_main(self):
+        for path in ("launcher/packages/math/src/a.c", "launcher/packages/math/include/math/a.h",
+                     "launcher/main/a.c"):
+            with self.subTest(path=path):
+                self.assertTrue(gate.protocol_source(path, "int x;"))
+        for path in ("launcher/test/suites/suite_a.c", "launcher/components/microui/a.c",
+                     "launcher/packages/math/README.md", "editor/src/a.c"):
+            with self.subTest(path=path):
+                self.assertFalse(gate.protocol_source(path, "int x;"))
+
     def check_change(self, before, after, expected, rename=False, changed=None):
         final = before | after
         renames = {}
