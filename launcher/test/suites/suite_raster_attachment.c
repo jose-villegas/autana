@@ -318,15 +318,15 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
     const int view = render_context_debug_view_named("motion");
     render_context_set_debug_view(a, view);
     render_context_set_debug_view(b, view);
-    raster_motion_t* state = a->view_state;
-    TEST_ASSERT_TRUE(a->view_state != b->view_state);
+    raster_motion_t* state = a->debug_view_state;
+    TEST_ASSERT_TRUE(a->debug_view_state != b->debug_view_state);
     for (int frame = 0; frame < 3; frame++) {
 #ifdef HOST_HEAP_ARENA
         size_t blocks, bytes, after_blocks, after_bytes;
         heap_arena_snapshot(&blocks, &bytes);
 #endif
         render_context_set_debug_view(a, view);
-        TEST_ASSERT_EQUAL_PTR(state, a->view_state);
+        TEST_ASSERT_EQUAL_PTR(state, a->debug_view_state);
         TEST_ASSERT_EQUAL_INT(frame > 0, state->has_previous);
 #ifdef HOST_HEAP_ARENA
         heap_arena_snapshot(&after_blocks, &after_bytes);
@@ -336,10 +336,10 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
         const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
         TEST_ASSERT_TRUE(render_context_draw(a, r->instance, 2, &frame_view, 0));
         TEST_ASSERT_TRUE(state->has_previous);
-        TEST_ASSERT_FALSE(((raster_motion_t*)b->view_state)->has_previous);
+        TEST_ASSERT_FALSE(((raster_motion_t*)b->debug_view_state)->has_previous);
     }
     render_context_release(a);
-    TEST_ASSERT_NOT_NULL(b->view_state);
+    TEST_ASSERT_NOT_NULL(b->debug_view_state);
     render_context_release(b);
     free(contexts);
 }
@@ -348,9 +348,9 @@ static void
 test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     raster_rig_t* r = rig_open(NULL, 0);
     render_context_t c = {0};
-    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c.view);
+    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c.debug_view);
     render_context_set_debug_view(&c, RENDER_DEBUG_VIEW_SHADED);
-    TEST_ASSERT_EQUAL_INT(0, c.view);
+    TEST_ASSERT_EQUAL_INT(0, c.debug_view);
     render_context_set_scale(&c, 100);
     const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
     TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
@@ -374,8 +374,8 @@ test_failed_view_allocation_leaves_shaded(void) {
     TEST_ASSERT_NOT_NULL(occupied);
     render_context_set_debug_view(&c, render_context_debug_view_named("motion"));
     memory_free(occupied);
-    TEST_ASSERT_EQUAL_INT(0, c.view);
-    TEST_ASSERT_NULL(c.view_state);
+    TEST_ASSERT_EQUAL_INT(0, c.debug_view);
+    TEST_ASSERT_NULL(c.debug_view_state);
     TEST_ASSERT_NULL(c.raster.attachments);
     TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
     render_context_release(&c);
@@ -404,17 +404,17 @@ test_view_table_and_context_ownership(void) {
             TEST_ASSERT_TRUE(strcmp(row->name, render_context_debug_view(j)->name) != 0);
         }
         render_context_set_debug_view(&c, i);
-        TEST_ASSERT_EQUAL_INT(i, c.view);
+        TEST_ASSERT_EQUAL_INT(i, c.debug_view);
         TEST_ASSERT_EQUAL_INT(1, c.raster.attachment_count);
-        TEST_ASSERT_EQUAL_PTR(&c.view_attachment, c.raster.attachments[0]);
-        const raster_attachment_t expected = row->attachment(c.view_state);
-        TEST_ASSERT_TRUE(c.view_attachment.show == expected.show);
-        TEST_ASSERT_EQUAL_INT(expected.bytes_per_pixel, c.view_attachment.bytes_per_pixel);
-        TEST_ASSERT_EQUAL_PTR(c.view_state, c.view_attachment.state);
+        TEST_ASSERT_EQUAL_PTR(&c.debug_view_attachment, c.raster.attachments[0]);
+        const raster_attachment_t expected = row->attachment(c.debug_view_state);
+        TEST_ASSERT_TRUE(c.debug_view_attachment.show == expected.show);
+        TEST_ASSERT_EQUAL_INT(expected.bytes_per_pixel, c.debug_view_attachment.bytes_per_pixel);
+        TEST_ASSERT_EQUAL_PTR(c.debug_view_state, c.debug_view_attachment.state);
         if (row->state_bytes > 0) {
-            TEST_ASSERT_NOT_NULL(c.view_state);
+            TEST_ASSERT_NOT_NULL(c.debug_view_state);
             for (size_t k = 0; k < row->state_bytes; k++) {
-                TEST_ASSERT_EQUAL_UINT8(0, ((const uint8_t*)c.view_state)[k]);
+                TEST_ASSERT_EQUAL_UINT8(0, ((const uint8_t*)c.debug_view_state)[k]);
             }
         }
 #ifdef HOST_HEAP_ARENA
@@ -423,7 +423,7 @@ test_view_table_and_context_ownership(void) {
 #endif
     }
     render_context_set_debug_view(&c, RENDER_DEBUG_VIEW_SHADED);
-    TEST_ASSERT_NULL(c.view_state);
+    TEST_ASSERT_NULL(c.debug_view_state);
     TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
 #ifdef HOST_HEAP_ARENA
     heap_arena_snapshot(&blocks, &bytes);
@@ -432,8 +432,8 @@ test_view_table_and_context_ownership(void) {
 #endif
     render_context_set_debug_view(&c, RENDER_DEBUG_VIEW_COUNT);
     render_context_release(&c);
-    TEST_ASSERT_NULL(c.view_state);
-    TEST_ASSERT_EQUAL_INT(0, c.view);
+    TEST_ASSERT_NULL(c.debug_view_state);
+    TEST_ASSERT_EQUAL_INT(0, c.debug_view);
 #ifdef HOST_HEAP_ARENA
     heap_arena_snapshot(&blocks, &bytes);
     TEST_ASSERT_EQUAL_size_t(before_blocks, blocks);

@@ -58,10 +58,10 @@ typedef struct {
     resolution_config_t ladder; /* the steps and thresholds both policies read */
     resolution_control_t control;
     resolution_predict_t predict;
-    int view; /* zero is shaded; table rows start at one */
-    void* view_state;
-    raster_attachment_t view_attachment;
-    const raster_attachment_t* view_attached[1];
+    int debug_view; /* zero is shaded; table rows start at one */
+    void* debug_view_state;
+    raster_attachment_t debug_view_attachment;
+    const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
 } render_context_t;
 
@@ -81,12 +81,12 @@ void render_context_set_scale(render_context_t* context, int percent);
 void render_context_set_dynamic_resolution(render_context_t* context, const resolution_config_t* config,
                                            const resolution_model_t* model, int first_step);
 
-/* Development views, or RENDER_DEBUG_VIEW_SHADED to detach the view. */
+/* Development views, or RENDER_DEBUG_VIEW_SHADED to detach the debug view. */
 void render_context_set_debug_view(render_context_t* context, int view);
 /* The declared row, or NULL for shaded, an unknown index or a release build. */
 const render_debug_view_t* render_context_debug_view(int view);
 
-/* A view number, RENDER_DEBUG_VIEW_SHADED, or RENDER_DEBUG_VIEW_UNKNOWN for an unknown name. */
+/* A debug view number, RENDER_DEBUG_VIEW_SHADED, or RENDER_DEBUG_VIEW_UNKNOWN for an unknown name. */
 int render_context_debug_view_named(const char* name);
 
 /* Comma-separated names, shaded first, followed by the table order. */

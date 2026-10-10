@@ -186,10 +186,11 @@ sequenceDiagram
 
 Development builds select one row from the `render_debug_view_t` table in
 `render/context/render_context.c`: depth, tiles, motion or meshlets.
-`render_context_set_debug_view()` attaches that row and owns its zeroed PSRAM state.
+`render_context_set_debug_view()` attaches that row and owns its zeroed PSRAM
+state.
 Switching frees the previous state; `RENDER_DEBUG_VIEW_SHADED` detaches it, and
-`render_context_release()` frees it. `render_context_debug_view()` exposes the row's
-name and constructor to tools.
+`render_context_release()` frees it. `render_context_debug_view()` exposes the
+row's name and constructor to tools.
 
 `raster_show()` runs the attached view's `show` hook after drawing and before
 `raster_upscale()`. It repaints colour while leaving depth intact.

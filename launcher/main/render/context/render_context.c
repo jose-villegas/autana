@@ -69,7 +69,7 @@ render_context_main(void) {
 void
 render_context_release(render_context_t* c) {
     memory_free(c->scratch);
-    memory_free(c->view_state);
+    memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
@@ -105,29 +105,29 @@ render_context_set_debug_view(render_context_t* c, int view) {
     if (view != RENDER_DEBUG_VIEW_SHADED && row == NULL) {
         return;
     }
-    if (c->view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
+    if (c->debug_view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
-    memory_free(c->view_state);
-    c->view_state = NULL;
-    c->view = RENDER_DEBUG_VIEW_SHADED;
+    memory_free(c->debug_view_state);
+    c->debug_view_state = NULL;
+    c->debug_view = RENDER_DEBUG_VIEW_SHADED;
     c->raster.attachment_count = 0;
     c->raster.attachments = NULL;
     if (row == NULL) {
         return;
     }
     if (row->state_bytes != 0) {
-        c->view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
-        if (c->view_state == NULL) {
+        c->debug_view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
+        if (c->debug_view_state == NULL) {
             return;
         }
-        memset(c->view_state, 0, row->state_bytes);
+        memset(c->debug_view_state, 0, row->state_bytes);
     }
-    c->view_attachment = row->attachment(c->view_state);
-    c->view_attached[0] = &c->view_attachment;
-    c->raster.attachments = c->view_attached;
+    c->debug_view_attachment = row->attachment(c->debug_view_state);
+    c->debug_view_attached[0] = &c->debug_view_attachment;
+    c->raster.attachments = c->debug_view_attached;
     c->raster.attachment_count = 1;
-    c->view = view;
+    c->debug_view = view;
 #else
     (void)c;
     (void)view;

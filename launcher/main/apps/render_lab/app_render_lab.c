@@ -66,7 +66,7 @@ TUNE(render_lab, scale, 200, 100, 800);
 TUNE(render_lab, budget, 0, 0, 200);
 
 int
-render_lab_view(void) {
+render_lab_debug_view(void) {
     return (int)view;
 }
 
