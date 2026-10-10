@@ -81,7 +81,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(run.returncode, 0)
         names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
         header = (TOOLS.parent / "main/render/context/render_context.h").read_text()
-        count = int(re.search(r"#define RENDER_VIEW_COUNT\s+(\d+)", header)[1])
+        count = int(re.search(r"#define RENDER_DEBUG_VIEW_COUNT\s+(\d+)", header)[1])
         self.assertEqual(len(names), count + 1)
         self.assertEqual(names[0], "shaded")
         for name in names:

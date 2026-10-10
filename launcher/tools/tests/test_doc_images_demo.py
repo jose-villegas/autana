@@ -153,7 +153,7 @@ class DocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             tools = root / "launcher/tools/r3d"
             tools.mkdir(parents=True)
-            (tools / "mesh_import.py").write_text("exit 0\n")
+            (tools / "mesh_import.py").write_text('printf "%s\n" "$@" > import.argv\n')
             (tools / "build_pack.py").write_text('printf "%s\n" "$@" > pack.argv\n')
             host = root / "host.sh"
             host.write_text('printf "%s\n" "$@" > render.argv\nprintf "%s\n" "$AUTANA_ASSET_DIR" > assets.env\n')
@@ -166,6 +166,10 @@ class DocImageFailureTest(unittest.TestCase):
                 function + 'bake_and_render scratch gallery.paint painting\n'
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
+            # The scratch folder sits inside the repository, where the importer
+            # writes only into a folder it is given.
+            imported = (root / "import.argv").read_text().splitlines()
+            self.assertEqual(imported[imported.index("--out") + 1], "scratch")
             self.assertEqual((root / "pack.argv").read_text().splitlines(),
                              ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.mesh"])
             args = (root / "render.argv").read_text().splitlines()
