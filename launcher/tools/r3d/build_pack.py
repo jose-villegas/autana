@@ -155,7 +155,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False):
 
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
     wanted = [found for found in bake.bakes_in(packs, locked)
-              if found.kind != "blend" and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
+              if found.packed and found.output.removesuffix(bake.MESH_SUFFIX) not in replaced]
     fetched = {found.tree.resolve(): path for found, path in
                bake.fetch_all(wanted, bake.read_lock(), cache or bake.default_cache(), offline).items()}
     unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
