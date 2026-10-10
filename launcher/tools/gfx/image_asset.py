@@ -6,7 +6,8 @@ A NAME.image.toml names its source, a PNG in its own folder, and how many
 quarter turns clockwise take the source to the stored pixels; the pack id is
 NAME. The layout is in docs/assets/README.md, "The image entry". Pixels are
 stored as the panel takes them (gfx_color.h's byte-swapped RGB565), so drawing
-one is a copy. Standard library only: the firmware build runs this under
+one is a copy. An icon is the same entry with one bit a pixel
+(encode_mono()), which gfx/icons_asset.py writes. Standard library only: the firmware build runs this under
 ESP-IDF's python, which has no Pillow.
 """
 
@@ -25,9 +26,12 @@ from render_diff import read_png  # noqa: E402
 TYPE = b"IMAG"
 VERSION = 1
 SUFFIX = ".image.toml"
-# gfx_image_format_t: gfx_color_t pixels, byte-swapped RGB565.
+# gfx_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
+# pixel, the most significant leftmost, 1 ink, a row a whole number of bytes.
 FORMAT_RGB565 = 1
-FORMATS = {FORMAT_RGB565: 2}  # bytes per pixel
+FORMAT_MONO1 = 2
+FORMATS = {FORMAT_RGB565: 16, FORMAT_MONO1: 1}  # bits per pixel
+MONO1_STRIDE_STEP = 8  # a MONO1 stride is whole bytes
 HEADER = struct.Struct("<HHHHII")
 PIXEL_ALIGN = 4
 SIDE_MAX = 0xFFFF
@@ -48,22 +52,41 @@ def encode(width, height, pixels):
     return header + struct.pack("<%dH" % len(pixels), *pixels)
 
 
+def encode_mono(rows):
+    """The MONO1 entry's bytes for `rows`, rows of bools (True ink), top row
+    first; the stride is the width rounded up to whole bytes."""
+    height, width = len(rows), len(rows[0]) if rows else 0
+    if not (1 <= width <= SIDE_MAX and 1 <= height <= SIDE_MAX) or any(len(row) != width for row in rows):
+        raise ImageError("rows of %d are not a %d x %d image" % (width, width, height))
+    stride = -(-width // MONO1_STRIDE_STEP) * MONO1_STRIDE_STEP
+    bits = bytearray(stride // 8 * height)
+    for y, row in enumerate(rows):
+        for x, ink in enumerate(row):
+            if ink:
+                bits[y * stride // 8 + x // 8] |= 0x80 >> (x % 8)
+    return HEADER.pack(VERSION, FORMAT_MONO1, width, height, stride, HEADER.size) + bytes(bits)
+
+
 def decode(entry):
     """(width, height, pixels) of an entry's bytes, after the checks
-    gfx_image_open() makes; pixels as encode() takes them."""
+    gfx_image_open() makes; pixels as encode() or encode_mono() takes them."""
     if len(entry) < HEADER.size:
         raise ImageError("shorter than a header")
     version, fmt, width, height, stride, offset = HEADER.unpack_from(entry)
     if version != VERSION:
         raise ImageError("version %d, this reads %d" % (version, VERSION))
-    if fmt not in FORMATS or width == 0 or height == 0 or stride < width or offset < HEADER.size:
+    if fmt not in FORMATS or width == 0 or height == 0 or stride < width or offset < HEADER.size \
+            or (fmt == FORMAT_MONO1 and stride % MONO1_STRIDE_STEP):
         raise ImageError("a header field holds a value the entry does not allow")
-    size = FORMATS[fmt]
-    if offset % PIXEL_ALIGN or offset + size * (stride * (height - 1) + width) > len(entry):
+    bits = FORMATS[fmt]
+    if offset % PIXEL_ALIGN or offset + (bits * (stride * (height - 1) + width) + 7) // 8 > len(entry):
         raise ImageError("the rows leave the entry or are misaligned")
+    if fmt == FORMAT_MONO1:
+        return width, height, [[bool(entry[offset + y * stride // 8 + x // 8] & (0x80 >> (x % 8)))
+                                for x in range(width)] for y in range(height)]
     pixels = []
     for y in range(height):
-        pixels += struct.unpack_from("<%dH" % width, entry, offset + size * stride * y)
+        pixels += struct.unpack_from("<%dH" % width, entry, offset + 2 * stride * y)
     return width, height, pixels
 
 

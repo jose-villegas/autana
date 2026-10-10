@@ -32,7 +32,7 @@ internal heap budget with framebuffer in PSRAM	docs/notes/Board-and-Memory.md	Me
 partial screen updates only sending changed bands	docs/notes/Display-and-Rendering.md	Dirty-region costs
 cognitive complexity ratchet failing the build	docs/tools/Complexity-Gate.md	A ratchet with a fail line
 generating and validating a mermaid diagram before commit	docs/tools/Mermaid-Diagrams.md	Pre-commit
-icon baker generator rejects bad input	docs/tools/Icon-Baker.md	What the generator rejects before emitting
+what does the icon baker refuse in an atlas or svg	docs/tools/Icon-Baker.md	The source
 proposal for a compile-time log level per build variant	docs/plans/Log-Level-Plan.md	Plan: a compile-time log-level ceiling per build variant, not a logging class
 plan for splitting diagnostics into a settings app	docs/plans/Settings-App-Plan.md	Plan: split Diagnostics into a Settings app, then unify SELFTEST/diagnostics naming
 UI editor plan, native app rendering in-process with Dear ImGui	docs/plans/UI-Editor-Plan.md	The shell: SDL2 + Dear ImGui

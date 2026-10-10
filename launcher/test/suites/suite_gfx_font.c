@@ -4,10 +4,9 @@
  *
  * gfx_font.h splits a font into pure metrics (gfx_font_advance(),
  * gfx_font_text_width(), gfx_font_height(), `static inline` in the header,
- * same reason icon_walk_blocks() is in gfx/draw/icon.h: it links on a host with no
- * gfx.h, no BSP, no drivers) and drawing (gfx_text_font() in gfx_draw.c, which
- * calls gfx_fill_rect() and so cannot). This suite exercises the metrics and
- * the geometry, the same split suite_icons.c makes for gfx/draw/icons_system.h:
+ * so it links on a host with no gfx.h, no BSP, no drivers) and drawing
+ * (gfx_text_font() in gfx_draw.c, which calls gfx_fill_rect() and so
+ * cannot). This suite exercises the metrics and the geometry:
  * gfx_font_row_run_rect() computes where a rect goes, gfx_draw.c only calls it.
  *
  * Everything is derived from gfx_font_8x8's own fields (cell_w, cell_h)

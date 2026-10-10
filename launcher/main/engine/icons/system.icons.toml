@@ -1,0 +1,93 @@
+# The system icons: vocabulary every screen means the same way. Cells of
+# system.png, and pixelarticons (MIT, LICENSE-pixelarticons) imported as SVG
+# at the commit each names.
+atlas = "system.png"
+cell_size = [16, 16]
+
+[[icon]]
+name = "check"
+at = [0, 0]
+
+[[icon]]
+name = "close"
+svg = "system/close.svg"
+upstream = "close"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "info"
+svg = "system/info-box.svg"
+upstream = "info-box"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "alert"
+svg = "system/square-alert.svg"
+upstream = "square-alert"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "chevron_left"
+svg = "system/chevron-left.svg"
+upstream = "chevron-left"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "chevron_right"
+svg = "system/chevron-right.svg"
+upstream = "chevron-right"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "chevron_up"
+svg = "system/chevron-up.svg"
+upstream = "chevron-up"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "chevron_down"
+svg = "system/chevron-down.svg"
+upstream = "chevron-down"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "arrow_left"
+svg = "system/arrow-bar-left.svg"
+upstream = "arrow-bar-left"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "checkbox_on"
+svg = "system/checkbox-on.svg"
+upstream = "checkbox-on"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "home"
+svg = "system/home.svg"
+upstream = "home"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "wifi"
+svg = "system/wifi.svg"
+upstream = "wifi"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "gamepad"
+svg = "system/gamepad.svg"
+upstream = "gamepad"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "monitor"
+svg = "system/monitor.svg"
+upstream = "monitor"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
+
+[[icon]]
+name = "plus"
+svg = "system/plus.svg"
+upstream = "plus"
+commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"

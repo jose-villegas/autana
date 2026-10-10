@@ -239,13 +239,16 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 | `ui_header_bar()` | a full-width bar with an edge along its bottom and a centred title |
 | `ui_text_in()` | a string clipped to a rect, centred vertically, aligned `UI_ALIGN_LEFT`, `UI_ALIGN_CENTRE` or `UI_ALIGN_RIGHT` |
 | `ui_swatch_grid()` | colours as a `cols` x `rows` grid of equal cells filling a rect |
-| `ui_draw_icon()` | a baked `icon_t` filling a rect, in one colour |
+| `ui_draw_icon()` | an icon (a one-bit `gfx_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
 
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
 through `icon_walk_blocks()` (`gfx/draw/icon.h`), so an icon costs no new
-`MU_ICON_*` id and no patch to microui. The shell's own icons are in
-`gfx/draw/icons_system.h`. An app's icons live in the app's own folder, baked by
-the same generator, so deleting the app deletes them.
+`MU_ICON_*` id and no patch to microui. The system icons come from the
+engine pack through `ui_icon()` (`ui/ui_icons.h`), loaded by `ui_init()`;
+an app's icons are a `ui_icon_set_t` in the app's own pack, which the app
+loads with `ui_icon_set_load()` and releases with `ui_icon_set_release()`, so
+deleting the app deletes them. Without a pack a control shows its label alone, and an
+icon-only control its short text ([icons](tools/Icon-Baker.md)).
 
 ## Layout
 

@@ -1,0 +1,39 @@
+# The sand app's brush and title icons: cells of sand.png.
+atlas = "sand.png"
+cell_size = [16, 16]
+
+[[icon]]
+name = "pour"
+at = [0, 0]
+
+[[icon]]
+name = "erase"
+at = [1, 0]
+
+[[icon]]
+name = "boom"
+at = [2, 0]
+
+[[icon]]
+name = "brush_info"
+at = [3, 0]
+
+[[icon]]
+name = "start"
+at = [0, 1]
+
+[[icon]]
+name = "load"
+at = [1, 1]
+
+[[icon]]
+name = "options"
+at = [2, 1]
+
+[[icon]]
+name = "guide"
+at = [3, 1]
+
+[[icon]]
+name = "exit"
+at = [0, 2]

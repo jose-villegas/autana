@@ -34,6 +34,14 @@ searching, so no list is kept:
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
+| `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
+
+A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
+folder puts its entries there instead of making a pack of its own, each with
+its stem for id. Folder packs do not nest, and the file holds no settings yet.
+The engine's own artwork, which any app may draw, is the folder pack
+`engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
+names, mounted while it runs.
 
 The default search is `launcher/main/`. An app's `demo_assets.toml` adds
 each folder it names in `demo = ["name", ...]` from `launcher/demo/`.
@@ -87,17 +95,18 @@ byte.
 | Offset | Size | Holds |
 |---|---|---|
 | 0 | 2 | version, 1 |
-| 2 | 2 | format: 1 is `gfx_color_t`, byte-swapped RGB565 as the panel takes it; 2 to 15 are kept for icons |
+| 2 | 2 | format: 1 is `gfx_color_t`, byte-swapped RGB565 as the panel takes it; 2 is one bit a pixel, the most significant bit leftmost and 1 ink, for [icons](../tools/Icon-Baker.md) |
 | 4 | 2 | width |
 | 6 | 2 | height |
-| 8 | 4 | stride: pixels from one row's start to the next, at least the width |
-| 12 | 4 | where the rows start, 4-aligned and after the header |
+| 8 | 4 | stride: pixels from one row's start to the next, at least the width; a whole number of bytes for one bit a pixel |
+| 12 | 4 | where the rows start, after the header; 4-aligned for RGB565 |
 | rows | stride x (height - 1) + width pixels | the pixels, top row first |
 
 `gfx_image_open()` returns `ASSET_ERR_VERSION` for another version,
 `ASSET_ERR_FORMAT` for a format it does not read, an empty picture, a stride
-shorter than a row or rows over the header, and `ASSET_ERR_BOUNDS` for rows
-that leave the entry or are misaligned. The pixels it returns point into the
+shorter than a row or, one bit a pixel, not whole bytes, or rows over the
+header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
+that are misaligned. The pixels it returns point into the
 entry.
 
 ## The pack directory
@@ -146,7 +155,9 @@ A buffer may be larger than the pack, as a mapping is.
 `asset_store_pack(name)` mounts pack `name` and checks it on its first
 use, then counts uses; `asset_store_release(name)` drops one, and at none the
 pack is unmapped or freed. A missing or bad pack is `NULL` and one log
-line saying why. `scene_load(id)` mounts pack `id` and opens its scene
+line saying why. At most `ASSET_STORE_MOUNTS_MAX` packs are mounted at once,
+and the engine pack, mounted when the first system icon is drawn, keeps its
+slot for the run; `asset_store_mounted()` counts them. `scene_load(id)` mounts pack `id` and opens its scene
 entry `id`, every mesh it names and its camera's clip from it, failing on the
 first missing or malformed one with the id and the status; `scene_unload()`
 releases it. A scene that fails to load is not drawn; showing that is up to

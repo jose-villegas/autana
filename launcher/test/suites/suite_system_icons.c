@@ -1,15 +1,14 @@
 /*
- * Portable suite: gfx/draw/icons_system.h, the baked system icon atlas.
+ * Portable suite: the system icons, read from the engine pack.
  *
  * The check mark's own artwork is pinned independently in suite_icons.c
- * (hand-transcribed expected rows, not read back from this generated
- * header); this file checks facts a scan can pin down across the whole
- * atlas instead: run counts, struct self-consistency, one SVG import traced
- * by hand against its source.
+ * (hand-transcribed expected rows, not read back from the pack); this file
+ * checks facts a scan can pin down across the whole set instead: run
+ * counts, stride, one SVG import traced by hand against its source.
  *
  * Everything here works over EVERY baked icon by index, never assuming a
  * 16-wide/2-byte-stride shape: the atlas mixes the 16x16 PNG-sourced check
- * mark with 24x24 SVG-sourced imports, and icon_t's own w/h/stride fields
+ * mark with 24x24 SVG-sourced imports, and gfx_image_t's own w/h/stride fields
  * are what make that mixing safe.
  */
 
@@ -25,38 +24,28 @@
 
 #include "bbox_extend.h"
 #include "gfx/draw/icon.h"
-#include "gfx/draw/icons_system.h"
+#include "ui/ui_icons.h"
 
-/* A run-length walk of the UNPACKED rows, independent of count_runs() in
- * gen_icons.py, proving every baked `blocks` field against what the bytes
- * actually contain, not against the generator's own count of what it
- * intended to write. Covers both the PNG-sourced check mark and every
- * SVG-sourced import, whatever their own w/h/stride happen to be. */
-static void
-test_all_icons_blocks_match_actual_run_length(void) {
-    for (int id = 0; id < ICON_SYSTEM_COUNT; id++) {
-        const icon_t* icon = &icon_system_table[id];
-        const int total = icon_test_runs(icon_system_rows, icon);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(icon->blocks, total,
-                                      "icon_t.blocks does not match an actual run-length walk of the "
-                                      "unpacked rows for some icon in icon_system_table - the baked "
-                                      "count and the real bytes disagree");
-    }
+/* System icon `id`, which the engine pack the suites run with must hold. */
+static const gfx_image_t*
+system_icon(ui_icon_id_t id) {
+    ui_icons_init();
+    const gfx_image_t* icon = ui_icon(id);
+    TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
+    return icon;
 }
 
 static void
-test_all_icons_struct_fields_are_self_consistent(void) {
-    for (int id = 0; id < ICON_SYSTEM_COUNT; id++) {
-        const icon_t* icon = &icon_system_table[id];
-        TEST_ASSERT_EQUAL_INT_MESSAGE((icon->w + 7) / 8, icon->stride,
-                                      "stride is not (w + 7) / 8 for some icon in icon_system_table");
-        TEST_ASSERT_TRUE_MESSAGE((size_t)icon->offset + (size_t)icon->stride * icon->h <= sizeof(icon_system_rows),
-                                 "an icon's rows run past the end of icon_system_rows[]");
+test_every_icon_is_one_bit_rows_of_whole_bytes(void) {
+    for (int id = 0; id < UI_ICON_COUNT; id++) {
+        const gfx_image_t* icon = system_icon((ui_icon_id_t)id);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_IMAGE_MONO1, icon->format, "a system icon is not one bit a pixel");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, icon->stride % GFX_IMAGE_MONO1_STRIDE_STEP, "a row is not whole bytes");
     }
 }
 
-/* design/icons/system/chevron-left.svg's 7 rectangles, traced BY HAND from
- * its path data rather than by calling gen_icons.py's SVG reader: a green
+/* main/engine/icons/system/chevron-left.svg's 7 rectangles, traced BY HAND
+ * from its path data rather than by calling icons_asset.py's SVG reader: a green
  * result proves the baked bytes against the source file, not the parser's
  * own idea of what it read. */
 static const char* const chevron_left_expected_rows[24] = {
@@ -74,16 +63,16 @@ static const char* const chevron_left_expected_rows[24] = {
 
 static void
 test_chevron_left_matches_source_svg_rectangles(void) {
-    const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHEVRON_LEFT];
-    TEST_ASSERT_EQUAL_INT(24, icon->w);
-    TEST_ASSERT_EQUAL_INT(24, icon->h);
+    const gfx_image_t* icon = system_icon(UI_ICON_CHEVRON_LEFT);
+    TEST_ASSERT_EQUAL_INT(24, icon->width);
+    TEST_ASSERT_EQUAL_INT(24, icon->height);
 
     for (int y = 0; y < 24; y++) {
         const char* row = chevron_left_expected_rows[y];
         TEST_ASSERT_EQUAL_INT_MESSAGE(24, (int)strlen(row), "a hand-transcribed expected row is not 24 characters");
         for (int x = 0; x < 24; x++) {
             const bool want = row[x] == 'X';
-            const bool got = icon_test_bit(icon_system_rows, icon, x, y);
+            const bool got = icon_test_bit(icon, x, y);
             TEST_ASSERT_EQUAL_INT_MESSAGE(want, got,
                                           "baked chevron_left diverges from chevron-left.svg's own "
                                           "rectangles - see the message above for row/col");
@@ -109,25 +98,25 @@ reference_icon_scale(int iw, int ih, int box_w, int box_h) {
 /* Bounding box of the icon's own drawn ink: min/max x and y over every
  * set bit. */
 static void
-reference_icon_bbox(const icon_t* icon, int iw, int ih, int* min_x, int* max_x, int* min_y, int* max_y) {
+reference_icon_bbox(const gfx_image_t* icon, int iw, int ih, int* min_x, int* max_x, int* min_y, int* max_y) {
     *min_x = iw;
     *max_x = -1;
     *min_y = ih;
     *max_y = -1;
     for (int y = 0; y < ih; y++) {
         for (int x = 0; x < iw; x++) {
-            if (icon_test_bit(icon_system_rows, icon, x, y)) {
+            if (icon_test_bit(icon, x, y)) {
                 bbox_extend_inclusive(x, y, min_x, max_x, min_y, max_y);
             }
         }
     }
 }
 
-/* Independent geometry from icon_test_bit()/icon_system_table lookups must agree
+/* Independent geometry from icon_test_bit() lookups must agree
  * with icon_walk_blocks(), without depending on the streaming walker. */
 static int
-reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
-    const int iw = icon->w, ih = icon->h;
+reference_blocks(const gfx_image_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
+    const int iw = icon->width, ih = icon->height;
     const int scale = reference_icon_scale(iw, ih, box_w, box_h);
 
     int min_x, max_x, min_y, max_y;
@@ -143,12 +132,12 @@ reference_blocks(const icon_t* icon, int box_w, int box_h, icon_rect_t* out, int
     for (int y = 0; y < ih; y++) {
         int x = 0;
         while (x < iw) {
-            if (!icon_test_bit(icon_system_rows, icon, x, y)) {
+            if (!icon_test_bit(icon, x, y)) {
                 x++;
                 continue;
             }
             const int start = x;
-            while (x < iw && icon_test_bit(icon_system_rows, icon, x, y)) {
+            while (x < iw && icon_test_bit(icon, x, y)) {
                 x++;
             }
             TEST_ASSERT_TRUE_MESSAGE(n < max, "reference extraction overflowed the test's own buffer");
@@ -178,19 +167,18 @@ test_streaming_walker_matches_reference_extraction(void) {
     TEST_ASSERT_NOT_NULL(cc_buf);
     TEST_ASSERT_NOT_NULL(ref);
 
-    for (int id = 0; id < ICON_SYSTEM_COUNT; id++) {
-        const icon_t* icon = &icon_system_table[id];
+    for (int id = 0; id < UI_ICON_COUNT; id++) {
+        const gfx_image_t* icon = system_icon((ui_icon_id_t)id);
         const int box_sizes[][2] = {
-            {icon->w, icon->h},
-            {icon->w * 2, icon->h * 2},
-            {icon->w * 3 + 5, icon->h * 2},
+            {icon->width, icon->height},
+            {icon->width * 2, icon->height * 2},
+            {icon->width * 3 + 5, icon->height * 2},
         };
         for (size_t s = 0; s < sizeof(box_sizes) / sizeof(box_sizes[0]); s++) {
             const int box_w = box_sizes[s][0], box_h = box_sizes[s][1];
 
             icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
-            icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, box_w, box_h,
-                             icon_test_collect, &cc);
+            icon_walk_blocks(icon, box_w, box_h, icon_test_collect, &cc);
 
             const int ref_n = reference_blocks(icon, box_w, box_h, ref, TEST_MAX_BLOCKS);
 
@@ -218,12 +206,12 @@ test_streaming_walker_matches_reference_extraction(void) {
  * hand-derived from the centring formula. */
 static void
 test_content_bbox_centring_uses_a_specific_expected_origin(void) {
-    const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
+    const gfx_image_t* icon = system_icon(UI_ICON_CHECK);
 
     icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
     icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
-    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, 32, 32, icon_test_collect, &cc);
+    icon_walk_blocks(icon, 32, 32, icon_test_collect, &cc);
 
     TEST_ASSERT_TRUE_MESSAGE(cc.count > 0, "check emitted no runs");
     TEST_ASSERT_EQUAL_INT_MESSAGE(26, cc_buf[0].x, "first run x");
@@ -233,31 +221,28 @@ test_content_bbox_centring_uses_a_specific_expected_origin(void) {
     free(cc_buf);
 }
 
-/* home.svg was excluded by RUN_COUNT_CAP (gen_icons.py) while it still
- * tracked ui_draw_icon()'s 48-slot stack buffer. Baking and walking it at
- * 50 runs is the case that cap made impossible. */
+/* home, the set's most detailed icon, streams all 50 of its runs: no
+ * fixed buffer bounds an icon's detail. */
 static void
 test_home_bakes_and_walks_at_fifty_runs(void) {
-    const icon_t* icon = &icon_system_table[ICON_SYSTEM_HOME];
-    TEST_ASSERT_EQUAL_INT_MESSAGE(50, icon->blocks, "home was expected to bake at 50 runs");
+    const gfx_image_t* icon = system_icon(UI_ICON_HOME);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(50, icon_test_runs(icon), "home was expected to bake at 50 runs");
 
     icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
     icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
-    icon_walk_blocks(icon_system_rows + icon->offset, icon->w, icon->h, icon->stride, icon->w, icon->h,
-                     icon_test_collect, &cc);
+    icon_walk_blocks(icon, icon->width, icon->height, icon_test_collect, &cc);
     TEST_ASSERT_EQUAL_INT_MESSAGE(50, cc.count, "icon_walk_blocks did not emit 50 runs for home at its native size");
     free(cc_buf);
 }
 
 void
-run_icons_system_suite(void) {
-    RUN_TEST(test_all_icons_blocks_match_actual_run_length);
-    RUN_TEST(test_all_icons_struct_fields_are_self_consistent);
+run_system_icons_suite(void) {
+    RUN_TEST(test_every_icon_is_one_bit_rows_of_whole_bytes);
     RUN_TEST(test_chevron_left_matches_source_svg_rectangles);
     RUN_TEST(test_streaming_walker_matches_reference_extraction);
     RUN_TEST(test_content_bbox_centring_uses_a_specific_expected_origin);
     RUN_TEST(test_home_bakes_and_walks_at_fifty_runs);
 }
 
-SUITE_REGISTER(run_icons_system_suite);
+SUITE_REGISTER(run_system_icons_suite);

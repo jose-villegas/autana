@@ -32,6 +32,7 @@ static const char* TAG = "ui";
 #include "gfx/gfx.h"
 #include "services/tune.h"
 #include "ui/ui_bridge.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
@@ -302,6 +303,8 @@ ui_init(void) {
     ui_text_style = UI_TEXT_PLAIN;
     transform = ui_transform_identity();
     transform_valid = true;
+    /* Before an app can hold store slots: the engine pack keeps one. */
+    ui_icons_init();
     ui_pointer_state = (ui_pointer_t){0};
     snap_rect_count = 0;
     snap_rect_overflow = false;
@@ -446,9 +449,15 @@ ui_draw_icon_emit(void* ctx_, int x, int y, int w, int h) {
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color) {
-    ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
-    icon_walk_blocks(rows + icon->offset, icon->w, icon->h, icon->stride, r.w, r.h, ui_draw_icon_emit, &dc);
+ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color) {
+    if (icon != NULL) {
+        ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
+        icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
+    } else if (text != NULL) {
+        const mu_Font font = c->style->font;
+        const int x = r.x + ((r.w - c->text_width(font, text, -1)) / 2);
+        mu_draw_text(c, font, text, -1, mu_vec2(x, r.y + ((r.h - c->text_height(font)) / 2)), color);
+    }
 }
 
 /* See ui.h. `value`'s own address (not what it points to, same idiom

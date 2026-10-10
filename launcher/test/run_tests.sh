@@ -171,6 +171,7 @@ $MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
+$MAIN_DIR/ui/ui_icons.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/ui/ui_ridge.c

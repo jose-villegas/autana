@@ -36,12 +36,12 @@
 #include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_target.h"
-#include "gfx/draw/icons_system.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "math/scalar/mathi.h"
 #include "ui/ui_bridge.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_internal.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -176,19 +176,17 @@ draw_command(const mu_Command* cmd) {
 
         case MU_COMMAND_ICON: {
             /* microui's icons are close/check/collapsed/expanded. MU_ICON_CHECK
-         * is real artwork (gfx/draw/icons_system.h's baked ICON_SYSTEM_CHECK)
-         * because two callers need it: a checkbox toggle, and a per-tile
-         * spawn-selection badge. The other three stay a small
-         * centred-square placeholder: a deliberate gap, not
-         * an oversight, because nothing in this shell closes a window or
-         * collapses a tree yet to ask for them. */
+             * is the system check icon because two callers need it: a
+             * checkbox toggle, and a per-tile selection badge. The other
+             * three, and the check without the engine pack, are a small
+             * centred square: nothing in this shell closes a window or
+             * collapses a tree yet to ask for them. */
             const mu_Color c = cmd->icon.color;
             const gfx_color_t color = mu_color_to_gfx(c);
-            if (cmd->icon.id == MU_ICON_CHECK) {
-                const icon_t* icon = &icon_system_table[ICON_SYSTEM_CHECK];
+            const gfx_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon(UI_ICON_CHECK) : NULL;
+            if (check != NULL) {
                 icon_fill_ctx_t fc = {.color = color};
-                ui_transform_icon_blocks(t, icon_system_rows + icon->offset, icon->w, icon->h, icon->stride,
-                                         cmd->icon.rect, icon_fill_emit, &fc);
+                ui_transform_icon_blocks(t, check, cmd->icon.rect, icon_fill_emit, &fc);
             } else {
                 const mu_Rect r = ui_transform_rect(t, cmd->icon.rect);
                 gfx_fill_rect(r.x + r.w / 3, r.y + r.h / 3, r.w / 3, r.h / 3, color);

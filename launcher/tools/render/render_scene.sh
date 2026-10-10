@@ -17,8 +17,10 @@
 #                   which every scene gets, space or newline separated,
 #                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
-#                   with an optional fourth field, |nopin, for a render
-#                   whose pixels are not integer-exact (see scene_pin).
+#                   with optional flags after it: |nopin for a render
+#                   whose pixels are not integer-exact (see scene_pin), and
+#                   |nopacks for one run with no asset pack, which shows
+#                   what the scene draws when a pack is missing.
 #                   The declared size is checked against what the binary
 #                   says it wrote, so a renderer that has quietly stopped
 #                   working fails the run rather than leaving a picture
@@ -241,13 +243,21 @@ render_scene_render() {
             _rs_tail=${_rs_tail#*|}
             _rs_want=${_rs_tail%%|*}
             _rs_pin_this="$scene_pin"
-            case "$_rs_tail" in
-                *"|nopin") _rs_pin_this=0 ;;
-                *"|"*)
-                    echo "FAIL $scene_name/$_rs_label: unknown render flag '${_rs_tail#*|}'" >&2
-                    exit 1
-                    ;;
-            esac
+            _rs_no_packs=""
+            _rs_flags=${_rs_tail#"$_rs_want"}
+            while [ -n "$_rs_flags" ]; do
+                _rs_flags=${_rs_flags#|}
+                _rs_flag=${_rs_flags%%|*}
+                _rs_flags=${_rs_flags#"$_rs_flag"}
+                case "$_rs_flag" in
+                    nopin) _rs_pin_this=0 ;;
+                    nopacks) _rs_no_packs="$scene_out_dir/no-packs" && mkdir -p "$_rs_no_packs" ;;
+                    *)
+                        echo "FAIL $scene_name/$_rs_label: unknown render flag '$_rs_flag'" >&2
+                        exit 1
+                        ;;
+                esac
+            done
             _rs_path="$scene_out_dir/$_rs_label.bmp"
             _rs_video_args=""
             if [ "$_rs_video" = 1 ]; then
@@ -255,7 +265,10 @@ render_scene_render() {
             fi
 
             # shellcheck disable=SC2086
-            if ! "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args 2> "$_rs_log"; then
+            if ! (
+                [ -z "$_rs_no_packs" ] || export AUTANA_ASSET_DIR="$_rs_no_packs"
+                exec "$_rs_bin" $_rs_args -o "$_rs_path" $_rs_video_args
+            ) 2> "$_rs_log"; then
                 cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1
