@@ -11,7 +11,7 @@ when it loads its icons.
 flowchart LR
     Source["NAME.icons.toml<br/><i>atlas cells and SVGs</i>"] --> Bake["icons_asset.py<br/><i>at pack build</i>"]
     Bake --> Entry["an IMAG entry per icon<br/><i>in its folder's pack</i>"]
-    Entry --> Load["ui_icons_load()<br/><i>names to icons, once</i>"]
+    Entry --> Load["ui_icon_set_load()<br/><i>names to icons, once</i>"]
     Load -->|found| Draw["ui_draw_icon()<br/><i>runs from icon_walk_blocks()</i>"]
     Load -->|"no pack"| Text["the label alone,<br/>or a short text"]
 ```
@@ -20,7 +20,7 @@ flowchart LR
 
 | Set | Lives in | Pack | Loaded |
 |---|---|---|---|
-| The system icons: check, close, chevrons, info, back and the like, meaning the same on every screen | `launcher/main/engine/icons/system.icons.toml` | `engine` | by `ui_icon()` on first use, kept |
+| The system icons: check, close, chevrons, info, back and the like, meaning the same on every screen | `launcher/main/engine/icons/system.icons.toml` | `engine` | by `ui_init()`, before an app holds store slots, and kept |
 | An app's own artwork | that app's folder, under its own `NAME.pack.toml` | the one the app names | when the app enters, released when it exits |
 
 No pack depends on another: an app draws the system icons from `engine` and
@@ -74,12 +74,13 @@ finds an entry of another format treats the icon as missing.
 `icon_walk_blocks()` fits an icon's ink to a box at the largest whole scale,
 centred, and emits each horizontal run; `ui_draw_icon()` (`ui/ui.h`) turns
 the runs into rectangles. Without the pack, or with an icon missing,
-the loader logs one line and every icon it loads is `NULL`:
+`ui_icon_set_load()` logs one line (the store logs a missing pack) and every
+icon of the set is `NULL`:
 
 - a control with a label beside its icon shows the label alone;
-- an icon-only control draws its short text in the icon's box: a chevron is
-  `v`, `^` or `>`, an info button `i` (`ui_icon_text()` holds the system
-  set's).
+- an icon-only control draws its icon's short text in the icon's box
+  (`ui_icon_set_draw()`, `ui_draw_system_icon()`): a chevron is `v`, `^` or
+  `>`, an info button `i`. Each set's names table holds the texts.
 
 No control is drawn blank. A render with no packs (`|nopacks` in a scene's
 render list, see `tools/render/render_scene.sh`) shows each screen's fallback.

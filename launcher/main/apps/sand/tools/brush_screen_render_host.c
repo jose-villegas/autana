@@ -222,7 +222,7 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
         if (sand_icon(SAND_ICON_INFO) != NULL) {
             draw_icon(t, icon_r, sand_icon(SAND_ICON_INFO), SAND_THEME_TEXT_COLOR);
         } else {
-            draw_text(t, icon_r, "i", SAND_THEME_TEXT_COLOR, scale, 0);
+            draw_text(t, icon_r, sand_icon_set.names[SAND_ICON_INFO].text, SAND_THEME_TEXT_COLOR, scale, 0);
         }
     }
 
@@ -286,7 +286,7 @@ display_quarter_now(void) {
 static bool
 setup(int quarter) {
     transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
-    sand_icons_load();
+    (void)ui_icon_set_load(&sand_icon_set);
     screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
     screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
     return true;

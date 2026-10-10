@@ -26,7 +26,7 @@
 /* Icon `id`, which the app pack the suites run with must hold. */
 static const gfx_image_t*
 app_icon(sand_icon_id_t id) {
-    sand_icons_load();
+    (void)ui_icon_set_load(&sand_icon_set);
     const gfx_image_t* icon = sand_icon(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no icon: the suites run with the packs build_pack.py writes");
     return icon;
@@ -228,7 +228,7 @@ test_the_menu_icons_keep_their_drawn_symmetry(void) {
 static void
 test_released_icons_are_null(void) {
     app_icon(SAND_ICON_POUR);
-    sand_icons_release();
+    ui_icon_set_release(&sand_icon_set);
     TEST_ASSERT_NULL(sand_icon(SAND_ICON_POUR));
     TEST_ASSERT_NULL(sand_dither_icon(GFX_DITHER_NONE));
 }

@@ -416,7 +416,7 @@ sand_enter(void) {
      * no indexed draw path and would touch a framebuffer that does not
      * exist. Idempotent: a plain FULL entry asks for nothing. */
     apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
-    sand_icons_load();
+    (void)ui_icon_set_load(&sand_icon_set);
     ui.screen = SAND_UI_MENU;
     sand_menu_init(&menu);
 
@@ -700,7 +700,7 @@ sand_exit(void) {
     apply_gfx_action(sand_colour_on_exit_app(&colour_state));
 
     free_sim_buffers();
-    sand_icons_release();
+    ui_icon_set_release(&sand_icon_set);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (frames > 0) {
         ESP_LOGI(TAG,

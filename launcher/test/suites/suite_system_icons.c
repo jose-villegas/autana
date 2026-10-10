@@ -29,6 +29,7 @@
 /* System icon `id`, which the engine pack the suites run with must hold. */
 static const gfx_image_t*
 system_icon(ui_icon_id_t id) {
+    ui_icons_init();
     const gfx_image_t* icon = ui_icon(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;

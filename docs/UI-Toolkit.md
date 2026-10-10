@@ -244,9 +244,10 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
 through `icon_walk_blocks()` (`gfx/draw/icon.h`), so an icon costs no new
 `MU_ICON_*` id and no patch to microui. The system icons come from the
-engine pack through `ui_icon()` (`ui/ui_icons.h`); an app's icons are a set
-in the app's own pack, loaded with `ui_icons_load()`, so deleting the app
-deletes them. Without a pack a control shows its label alone, and an
+engine pack through `ui_icon()` (`ui/ui_icons.h`), loaded by `ui_init()`;
+an app's icons are a `ui_icon_set_t` in the app's own pack, which the app
+loads with `ui_icon_set_load()` and releases with `ui_icon_set_release()`, so
+deleting the app deletes them. Without a pack a control shows its label alone, and an
 icon-only control its short text ([icons](tools/Icon-Baker.md)).
 
 ## Layout

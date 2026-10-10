@@ -17,7 +17,7 @@
 /* Swatch `mode`, which the app pack the suites run with must hold. */
 static const gfx_image_t*
 swatch(gfx_dither_mode_t mode) {
-    sand_icons_load();
+    (void)ui_icon_set_load(&sand_icon_set);
     const gfx_image_t* icon = sand_dither_icon(mode);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no swatch: the suites run with the packs build_pack.py writes");
     return icon;
@@ -67,7 +67,7 @@ void
 run_sand_dither_icons_suite(void) {
     RUN_TEST(test_every_swatch_is_its_modes_own_pattern);
     RUN_TEST(test_a_cell_swatch_is_the_pixel_swatch_at_twice_the_grain);
-    sand_icons_release();
+    ui_icon_set_release(&sand_icon_set);
 }
 
 SUITE_REGISTER(run_sand_dither_icons_suite);

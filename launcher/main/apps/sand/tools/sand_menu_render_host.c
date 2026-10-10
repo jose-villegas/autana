@@ -74,7 +74,7 @@ setup(int quarter) {
     sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
                        mode_swatches);
     ui_init();
-    sand_icons_load();
+    (void)ui_icon_set_load(&sand_icon_set);
     transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
     ui_set_transform(transform);
     committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};

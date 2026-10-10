@@ -260,7 +260,7 @@ draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* l
         lay->info_button.w - 2 * BRUSH_INFO_ICON_PAD,
         lay->info_button.h - 2 * BRUSH_INFO_ICON_PAD,
     };
-    ui_draw_icon(ctx, icon_r, sand_icon(SAND_ICON_INFO), "i", sand_ui_theme.text);
+    ui_icon_set_draw(ctx, icon_r, &sand_icon_set, SAND_ICON_INFO, sand_ui_theme.text);
 }
 
 static void

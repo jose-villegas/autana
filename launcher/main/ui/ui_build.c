@@ -32,6 +32,7 @@ static const char* TAG = "ui";
 #include "gfx/gfx.h"
 #include "services/tune.h"
 #include "ui/ui_bridge.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
@@ -302,6 +303,8 @@ ui_init(void) {
     ui_text_style = UI_TEXT_PLAIN;
     transform = ui_transform_identity();
     transform_valid = true;
+    /* Before an app can hold store slots: the engine pack keeps one. */
+    ui_icons_init();
     ui_pointer_state = (ui_pointer_t){0};
     snap_rect_count = 0;
     snap_rect_overflow = false;
