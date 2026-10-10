@@ -297,6 +297,7 @@ def main(argv):
 
     shared_jobs = app_jobs(db)
     shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "test"))
+    shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "packages"))
     selected = {source for _cmd, _cwd, source in shared_jobs}
     shared_jobs += [job for job in app_jobs(db, functions={"main_task", "UnityDefaultTestRun", "vPortTaskWrapper"})
                     if job[2] not in selected]

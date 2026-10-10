@@ -104,7 +104,7 @@ class StyleAuditTest(unittest.TestCase):
         # reference at all, however many other folders happen to have a
         # file with the same basename.
         findings = self.audit("INCLUDE-LAYER", {
-            "launcher/main/math/scalar/fixed.h": "#pragma once\n",
+            "launcher/main/gfx/fixed.h": "#pragma once\n",
             "launcher/main/apps/foo/fixed.h": "#pragma once\n",
             "launcher/main/apps/foo/app_foo.c": '#include "fixed.h"\n',
         })
@@ -252,39 +252,58 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(sorted((f.path, f.line) for f in findings),
                          [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
 
-    MATH = ("motion", "linear", "scalar")
+    PACKAGE = "launcher/packages/math"
 
-    def base_tree(self, root):
-        self.layer_tree(root)
-        gate_tree.write(root, "launcher/main/core/core.h", "#pragma once\n")
-        for sub in self.MATH:
-            gate_tree.write(root, f"launcher/main/math/{sub}/{sub}.h", "#pragma once\n")
+    def test_a_package_including_anything_outside_itself_is_flagged(self):
+        # The firmware's layers, another package, and a relative climb out of
+        # the package all count, quoted or angled.
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/main/core/core.h": "#pragma once\n",
+            "launcher/packages/other/include/other/other.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/fixed.h": '#include "core/core.h"\n#include <core/core.h>\n',
+            f"{self.PACKAGE}/src/motion/orbit.c": '#include "../../../../main/core/core.h"\n',
+            f"{self.PACKAGE}/tests/suite_fixed.c": '#include "other/other.h"\n',
+        })
+        self.assertEqual(sorted((f.path, f.line) for f in findings),
+                         [(f"{self.PACKAGE}/include/math/scalar/fixed.h", 1),
+                          (f"{self.PACKAGE}/include/math/scalar/fixed.h", 2),
+                          (f"{self.PACKAGE}/src/motion/orbit.c", 1),
+                          (f"{self.PACKAGE}/tests/suite_fixed.c", 1)])
 
-    def test_no_math_folder_may_include_core(self):
+    def test_a_package_may_include_itself_the_toolchain_the_build_config_and_the_test_harness(self):
+        findings = self.audit("PACKAGE-INCLUDE", {
+            "launcher/test/suites.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": '#include <math.h>\n#include "sdkconfig.h"\n',
+            f"{self.PACKAGE}/include/math/linear/vec3f.h": '#include "math/scalar/mathf.h"\n',
+            f"{self.PACKAGE}/src/motion/orbit.c": '#include "math/linear/vec3f.h"\n',
+            f"{self.PACKAGE}/tests/suite_vec3.c": '#include "suites.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
+        })
+        self.assertEqual(findings, [])
+
+    def test_a_package_header_is_spelled_from_its_include_root_inside_the_package_too(self):
+        findings = self.audit("INCLUDE-LAYER", {
+            f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
+            f"{self.PACKAGE}/include/math/scalar/fixed.h": '#include "mathf.h"\n',
+            f"{self.PACKAGE}/src/fixed.c": '#include "../include/math/scalar/mathf.h"\n',
+        })
+        self.assertEqual(sorted((f.path, f.message) for f in findings),
+                         [(f"{self.PACKAGE}/include/math/scalar/fixed.h",
+                           '"mathf.h" is not layer-qualified - use "math/scalar/mathf.h"'),
+                          (f"{self.PACKAGE}/src/fixed.c",
+                           '"../include/math/scalar/mathf.h" is not layer-qualified - use "math/scalar/mathf.h"')])
+
+    def test_every_layer_may_include_a_package(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.base_tree(root)
-            for sub in self.MATH:
-                gate_tree.write(root, f"launcher/main/math/{sub}/{sub}.c", '#include "core/core.h"\n')
+            self.layer_tree(root)
+            gate_tree.write(root, f"{self.PACKAGE}/include/math/scalar/fixed.h", "#pragma once\n")
+            for layer in check_style_audit.LAYER_DIRS:
+                gate_tree.write(root, f"launcher/main/{layer}/probe.c", '#include "math/scalar/fixed.h"\n')
             gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual(sorted(f.path for f in findings),
-                         sorted(f"launcher/main/math/{sub}/{sub}.c" for sub in self.MATH))
+            self.assertEqual(self.rule_hits(root, "INCLUDE-DIRECTION"), [])
+            self.assertEqual(self.rule_hits(root, "INCLUDE-LAYER"), [])
 
-    def test_core_may_include_every_math_folder_and_scalar_sits_under_linear(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.base_tree(root)
-            gate_tree.write(root, "launcher/main/core/job.c",
-                            "".join(f'#include "math/{sub}/{sub}.h"\n' for sub in self.MATH))
-            gate_tree.write(root, "launcher/main/math/linear/vec3x.h", '#include "math/scalar/scalar.h"\n')
-            gate_tree.write(root, "launcher/main/math/scalar/fixed.h", '#include "math/linear/linear.h"\n')
-            gate_tree.commit(root, "launcher")
-            findings = self.rule_hits(root, "INCLUDE-DIRECTION")
-        self.assertEqual([f.path for f in findings], ["launcher/main/math/scalar/fixed.h"])
-
-    BASE_ROWS = (("services",), ("profile",), ("core",), ("board",), ("math/motion",), ("math/linear",),
-                 ("math/scalar", "build"))
+    BASE_ROWS = (("services",), ("profile",), ("core",), ("board",), ("build",))
 
     def test_each_base_layer_includes_only_the_rows_below_it(self):
         # One header per layer, and from each layer one file including every other; only
@@ -293,11 +312,11 @@ class StyleAuditTest(unittest.TestCase):
         row_of = {layer: i for i, row in enumerate(self.BASE_ROWS) for layer in row}
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            self.base_tree(root)
+            self.layer_tree(root)
             for layer in layers:
-                gate_tree.write(root, f"launcher/main/{layer}/{layer.split('/')[-1]}.h", "#pragma once\n")
+                gate_tree.write(root, f"launcher/main/{layer}/{layer}.h", "#pragma once\n")
             for layer in layers:
-                others = "".join(f'#include "{other}/{other.split("/")[-1]}.h"\n' for other in layers if other != layer)
+                others = "".join(f'#include "{other}/{other}.h"\n' for other in layers if other != layer)
                 gate_tree.write(root, f"launcher/main/{layer}/probe.c", others)
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
@@ -307,29 +326,6 @@ class StyleAuditTest(unittest.TestCase):
             expected += [(f"launcher/main/{layer}/probe.c", line)
                          for line, other in enumerate(others, 1) if row_of[other] <= row_of[layer]]
         self.assertEqual(sorted((f.path, f.line) for f in findings), sorted(expected))
-
-    def test_a_file_loose_in_a_split_folder_fails_loudly_but_its_description_header_does_not(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.base_tree(root)
-            gate_tree.write(root, "launcher/main/math/math.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
-            gate_tree.commit(root, "launcher")
-            self.assertEqual(self.rule_hits(root, "INCLUDE-DIRECTION"), [])
-            gate_tree.write(root, "launcher/main/math/perf_region.c", "int x;\n")
-            gate_tree.commit(root, "launcher")
-            with self.assertRaisesRegex(ValueError, "math/perf_region.c"):
-                self.rule_hits(root, "INCLUDE-DIRECTION")
-
-    def test_a_subfolder_of_a_split_folder_this_table_does_not_know_about_fails_loudly(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", "int x;\n")
-            gate_tree.write(root, "launcher/main/math/newkind/thing.h", "#pragma once\n")
-            gate_tree.commit(root, "launcher")
-            with self.assertRaisesRegex(ValueError, "math/newkind"):
-                self.rule_hits(root, "INCLUDE-DIRECTION")
 
     def test_a_folder_this_table_does_not_know_about_fails_loudly(self):
         with tempfile.TemporaryDirectory() as temp:
