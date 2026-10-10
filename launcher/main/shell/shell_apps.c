@@ -10,8 +10,6 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
-#include "core/frame_cost.h"
-#include "core/frame_watch.h"
 #include "core/memory.h"
 #include "display/display.h"
 #include "gfx/draw/gfx_draw.h"
@@ -23,6 +21,8 @@
 #include "input/imu_rotation.h"
 #include "input/input.h"
 #include "input/tilt.h"
+#include "profile/frame_cost.h"
+#include "profile/frame_watch.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"

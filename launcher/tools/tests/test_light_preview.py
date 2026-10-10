@@ -13,9 +13,11 @@ try:
     import numpy as np
 
     from r3d.import_settings import load_light
-    from r3d.light_preview import path_poses, save_rotation, toward
+    from r3d.light_preview import aim_sun, path_poses, save_rotation, toward
 except ImportError:
     np = None
+
+from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 SCENE = """# two lights
 [[objects]]
@@ -116,6 +118,35 @@ class PathPoses(unittest.TestCase):
             (folder / "walk.anim.toml").write_text(ANIM)
             with self.assertRaises(ValueError):
                 path_poses(folder / "walk.anim.toml", "other", [0.0])
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+@needs_mitsuba
+class AimSun(unittest.TestCase):
+    def test_a_turned_sun_shines_as_one_built_at_that_rotation(self):
+        """A floor lit by a sun turned in place matches a floor built with the sun there: what --live relies on."""
+        from types import SimpleNamespace
+
+        from r3d import mitsuba_reference
+        from r3d.geometry import corner_normals
+
+        p = np.array([[-50.0, 0.0, -50.0], [50.0, 0.0, -50.0], [50.0, 0.0, 50.0], [-50.0, 0.0, 50.0]])
+        source = SimpleNamespace(p=p, tri_v=np.array([[0, 2, 1], [0, 3, 2]]), tri_t=np.zeros((2, 3), np.int64),
+                                 tri_m=np.zeros(2, np.int64), uv=np.zeros((1, 2)), names=["m"], materials={},
+                                 textures=[None], colors=None)
+        source.corner_normals = corner_normals(source.p, source.tri_v)
+
+        def tracer(direction):
+            light = {"type": "directional", "direction": list(direction), "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+            return mitsuba_reference.prepare(source, [light], [], keep_textures=True)
+
+        pose = np.array([0.0, 60.0, 80.0, 0.0, -0.6, -0.8])
+        turned_to = toward([40.0, -70.0, 0.0])
+        turned = tracer(toward([10.0, 30.0, 0.0]))
+        aim_sun(turned, 0, turned_to)
+        expected = tracer(turned_to).trace(pose, 16, 16, 0.6, 1.0, 16, 0, 2)[0]
+        np.testing.assert_allclose(turned.trace(pose, 16, 16, 0.6, 1.0, 16, 0, 2)[0], expected, rtol=1e-3, atol=1e-4)
+        self.assertGreater(expected.mean(), 0.0)
 
 
 if __name__ == "__main__":

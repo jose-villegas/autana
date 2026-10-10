@@ -11,8 +11,6 @@
 #include <stdlib.h>
 
 #include "app/app.h"
-#include "core/frame_cost.h"
-#include "core/frame_watch.h"
 #include "core/timing.h"
 #include "display/display.h"
 #include "display/display_shell.h"
@@ -26,6 +24,8 @@
 #include "input/input.h"
 #include "input/input_shell.h"
 #include "input/touch.h"
+#include "profile/frame_cost.h"
+#include "profile/frame_watch.h"
 #include "services/build_id.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"

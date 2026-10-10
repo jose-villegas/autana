@@ -184,10 +184,6 @@ steps = 2000
 batch = 8
 laplacian = 10.0
 normal_weight = 1.0
-
-[objects.mesh_renderer.fit.hashes]
-sha256 = "..."
-recipe_sha256 = "..."
 ```
 
 | Option | Keys | What it does | Default | Option link |
@@ -201,7 +197,6 @@ recipe_sha256 = "..."
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes visible geometry to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
 | `fit.poses` | `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
 | `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
-| `fit.hashes` | `sha256`, `recipe_sha256` | Records the fitted mesh and effective recipe hashes. | Required in `fit`. | [fit.hashes](#fithashes) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
@@ -462,11 +457,6 @@ flowchart LR
 
 [Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
 with its flat fit.
-
-#### fit.hashes
-
-`sha256` records the fitted mesh, and `recipe_sha256` records its effective
-recipe. A bake checks the recorded mesh.
 
 #### indirect: off
 

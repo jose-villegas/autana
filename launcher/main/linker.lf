@@ -12,3 +12,35 @@ entries:
 archive: libmain.a
 entries:
     * (patchable_entries_default)
+
+# A present's own code, from gfx down to the SPI queue, in IRAM: from flash
+# its cost moved with whatever else the image linked, and a narrow strip
+# went from ~236 us to ~398 us with the cache cold (suite_gfx
+# test_narrow_present_counters). Only what every present runs; setup, the
+# other present modes and the SPI driver's own queue (SPI_MASTER_IN_IRAM)
+# stay where they are.
+[mapping:present_gfx]
+archive: libmain.a
+entries:
+    gfx_present:gfx_present (noflash)
+    gfx_present:gfx_present_begin (noflash)
+    gfx_present:gfx_present_wait (noflash)
+    gfx_present:run_present_normal (noflash)
+    gfx_present:gather_and_send (noflash)
+    gfx_present:send_fb_rows (noflash)
+    gfx_present:present_task_fn (noflash)
+
+[mapping:present_lcd]
+archive: libesp_lcd.a
+entries:
+    esp_lcd_panel_ops:esp_lcd_panel_draw_bitmap (noflash)
+    esp_lcd_panel_io:esp_lcd_panel_io_tx_param (noflash)
+    esp_lcd_panel_io:esp_lcd_panel_io_tx_color (noflash)
+    esp_lcd_panel_io_spi:panel_io_spi_tx_param (noflash)
+    esp_lcd_panel_io_spi:panel_io_spi_tx_color (noflash)
+    esp_lcd_panel_io_spi:lcd_spi_post_trans_color_cb (noflash)
+
+[mapping:present_sh8601]
+archive: libwaveshare__esp_lcd_sh8601.a
+entries:
+    esp_lcd_sh8601:panel_sh8601_draw_bitmap (noflash)

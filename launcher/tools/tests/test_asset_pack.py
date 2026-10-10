@@ -180,12 +180,12 @@ def write(path, text):
 
 
 def import_file(directory, name, mesh):
-    return write(pathlib.Path(directory) / name, SOURCE + f'[output]\ndirectory = "."\nname = "{mesh}"\n')
+    return write(pathlib.Path(directory) / name, SOURCE + f'[output]\nname = "{mesh}"\n')
 
 
 def variants_file(directory, name, *variants):
     rows = "".join(f'[[variants]]\nname = "{variant}"\n' for variant in variants)
-    return write(pathlib.Path(directory) / name, SOURCE + '[output]\ndirectory = "."\n' + rows)
+    return write(pathlib.Path(directory) / name, SOURCE + '[output]\n' + rows)
 
 
 def scene_file(directory, name, *placed):

@@ -21,6 +21,7 @@ class EngineDocImageFailureTest(unittest.TestCase):
             helper = root / "scripts/lib/run.sh"
             helper.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
+            shutil.copyfile(ROOT / "launcher/tools/render/gif_from_avi.sh", script.parent / "gif_from_avi.sh")
             setup = SCRIPT.read_text(encoding="utf-8").split("# The one orphan report:")[0]
             script.write_text(setup + command, encoding="utf-8")
             return subprocess.run(["sh", script.as_posix()], capture_output=True, text=True)
@@ -39,6 +40,17 @@ class EngineDocImageFailureTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("missing_meshoptimizer", result.stderr)
         self.assertIn("app/variant/bake.log", result.stderr)
+
+    def test_only_the_failed_steps_log_is_printed(self):
+        result = self.run_failure(
+            'mkdir -p "$WORK/app"\n'
+            'run sh -c "echo healthy_render_line >&2" 2> "$WORK/app/still.log"\n'
+            'run sh -c "echo broken_bake_line >&2; exit 7" 2> "$WORK/app/bake.log"\n'
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("broken_bake_line", result.stderr)
+        self.assertNotIn("healthy_render_line", result.stderr)
+        self.assertNotIn("app/still.log", result.stderr)
 
 
 if __name__ == "__main__":

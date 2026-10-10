@@ -24,7 +24,7 @@
 #define SAND_FACT
 #define SAND_FACT_WRITER
 
-#include "core/build_variant.h"
+#include "build/build_variant.h"
 #include "material.h"
 #include "math/scalar/rng.h"
 #include "sand_impulse.h"

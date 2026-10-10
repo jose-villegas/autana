@@ -8,13 +8,13 @@
 #include <string.h>
 
 #include "raster_rig.h"
+#include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
 
 #include "render/r3d.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster_motion.h"
-#include "render/ray.h"
 
 #define W     96
 #define H     64
@@ -66,10 +66,10 @@ typedef struct {
     vec3f_t right, down, forward;
 } basis_t;
 
-/* The picture's axes as a camera_t sets them: right of forward on the
+/* The picture's axes as a fixture_camera_t sets them: right of forward on the
  * level, down under both. */
 static basis_t
-basis(const camera_t* c) {
+basis(const fixture_camera_t* c) {
     const vec3f_t f = vec3f_normalize(c->forward);
     const vec3f_t right = vec3f_normalize(vec3f_cross(f, (vec3f_t){0.0F, 1.0F, 0.0F}));
     return (basis_t){right, vec3f_cross(f, right), f};
@@ -77,7 +77,7 @@ basis(const camera_t* c) {
 
 /* Where `world` lands in a w x h picture of camera `c`, false behind it. */
 static bool
-project(const camera_t* c, int w, int h, vec3f_t world, float* x, float* y) {
+project(const fixture_camera_t* c, int w, int h, vec3f_t world, float* x, float* y) {
     const basis_t b = basis(c);
     const vec3f_t d = vec3f_sub(world, c->eye);
     const float z = vec3f_dot(d, b.forward);
@@ -110,7 +110,7 @@ hit_quad(const r3d_placement_t* p, float half, vec3f_t origin, vec3f_t dir) {
 }
 
 typedef struct {
-    camera_t camera;
+    fixture_camera_t camera;
     const r3d_placement_t* box; /* NULL: no box */
 } pose_t;
 
@@ -119,10 +119,11 @@ typedef struct {
 static int
 truth(const pose_t* now, const pose_t* before, int w, int h, int px, int py, float* mx, float* my) {
     const basis_t b = basis(&now->camera);
-    ray_camera_t ray;
-    ray_camera_init(&ray, now->camera.eye, b.forward, b.right, vec3f_scale(b.down, -1.0F),
-                    now->camera.half_fov_short_tan, (viewport_t){w, h, 0});
-    const vec3f_t dir = ray_direction(&ray, px, py);
+    const float k = (float)(w < h ? w : h) / (2.0F * now->camera.half_fov_short_tan);
+    const float ray_x = ((float)px + 0.5F - ((float)w * 0.5F)) / k;
+    const float ray_y = ((float)py + 0.5F - ((float)h * 0.5F)) / k;
+    const vec3f_t dir =
+        vec3f_normalize(vec3f_add(b.forward, vec3f_add(vec3f_scale(b.right, ray_x), vec3f_scale(b.down, ray_y))));
     const r3d_placement_t still = turned(0.0F, (vec3f_t){0.0F, 0.0F, 0.0F});
     const float t_wall = hit_quad(&still, 400.0F, now->camera.eye, dir);
     const float t_box = now->box == NULL ? -1.0F : hit_quad(now->box, 40.0F, now->camera.eye, dir);
@@ -169,13 +170,19 @@ rig_open(bool with_box, bool detached) {
 }
 
 static void
-draw(raster_rig_t* r, const pose_t* pose, int w, int h) {
+draw_at(raster_rig_t* r, const pose_t* pose, int w, int h, int quarter) {
     if (pose->box != NULL) {
         r->placement[1] = *pose->box;
     }
     r->raster.width = w;
     r->raster.height = h;
-    raster_draw(&r->raster, &pose->camera, 0);
+    const render_view_t frame_view = render_view_fixture(&pose->camera, &r->raster, quarter);
+    raster_draw(&r->raster, &frame_view);
+}
+
+static void
+draw(raster_rig_t* r, const pose_t* pose, int w, int h) {
+    draw_at(r, pose, w, h, 0);
 }
 
 static const raster_motion_px_t*
@@ -183,10 +190,10 @@ motion_of(const raster_rig_t* r) {
     return raster_rig_attachment(r, 0);
 }
 
-static camera_t
+static fixture_camera_t
 camera_at(vec3f_t eye, float yaw_degrees) {
     const float a = yaw_degrees * 3.14159265F / 180.0F;
-    return (camera_t){eye, {sinf(a), 0.0F, -cosf(a)}, 0.5F, 1.0F};
+    return (fixture_camera_t){eye, {sinf(a), 0.0F, -cosf(a)}, 0.5F, 1.0F};
 }
 
 /* Whether pixel (x, y) and its 3x3 neighbourhood show surface `what`, and
@@ -337,6 +344,75 @@ test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
     check_change(&c, true, W / 2, H / 2, &p);
 }
 
+static void
+test_shape_and_quarter_changes_reproject_in_the_current_picture(void) {
+    static const change_t c = {12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, -10.0F}, 1.5F};
+    raster_rig_t* r = rig_open(true, false);
+    posed_t p;
+    pose_change(&c, true, &p);
+    for (int reverse = 0; reverse < 2; reverse++) {
+        const int before_width = reverse ? W : W / 2;
+        const int now_width = reverse ? W / 2 : W;
+        raster_motion_forget(&own_of(r)->motion);
+        draw_at(r, &p.before, before_width, H, reverse ? 3 : 1);
+        draw(r, &p.now, now_width, H);
+        TEST_ASSERT_GREATER_THAN_INT(now_width * H / 2, assert_motion_is_true(r, &p.now, &p.before, now_width, H));
+    }
+}
+
+static bool
+check_quarter_pixel(const pose_t* now, const pose_t* before, int quarter, int x, int y, raster_motion_px_t got) {
+    const int ux = quarter == 1 ? y : H - 1 - y;
+    const int uy = quarter == 1 ? H - 1 - x : x;
+    float mx;
+    float my;
+    if (!well_inside(now, before, H, H, ux, uy, &mx, &my)) {
+        return false;
+    }
+    TEST_ASSERT_NOT_EQUAL(RASTER_MOTION_UNKNOWN, got.dx);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, quarter == 1 ? -my : my, (float)got.dx * 0.5F);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, quarter == 1 ? mx : -mx, (float)got.dy * 0.5F);
+    if (now == before) {
+        TEST_ASSERT_EQUAL_INT8(0, got.dx);
+        TEST_ASSERT_EQUAL_INT8(0, got.dy);
+    }
+    return true;
+}
+
+static void
+check_quarter_picture(raster_rig_t* r, const pose_t* now, const pose_t* before, int quarter) {
+    raster_motion_forget(&own_of(r)->motion);
+    draw_at(r, before, H, H, quarter);
+    draw_at(r, now, H, H, quarter);
+    const raster_motion_px_t* motion = motion_of(r);
+    int checked = 0;
+    int nonzero = 0;
+    for (int y = 1; y < H - 1; y++) {
+        for (int x = 1; x < H - 1; x++) {
+            const raster_motion_px_t got = motion[(y * H) + x];
+            if (check_quarter_pixel(now, before, quarter, x, y, got)) {
+                nonzero += got.dx != 0 || got.dy != 0;
+                checked++;
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(H * H / 2, checked);
+    if (now != before) {
+        TEST_ASSERT_GREATER_THAN_INT(0, nonzero);
+    }
+}
+
+static void
+test_a_steady_quarter_preserves_moving_and_still_motion(void) {
+    raster_rig_t* r = rig_open(false, false);
+    const pose_t before = {camera_at((vec3f_t){0.0F, 0.0F, 300.0F}, 0.0F), NULL};
+    const pose_t moving = {camera_at((vec3f_t){8.0F, 0.0F, 290.0F}, 1.5F), NULL};
+    for (int quarter = 1; quarter <= 3; quarter += 2) {
+        check_quarter_picture(r, &moving, &before, quarter);
+        check_quarter_picture(r, &before, &before, quarter);
+    }
+}
+
 /* Attaching motion changes no colour and no depth. */
 static void
 test_motion_leaves_colour_and_depth_as_they_are(void) {
@@ -375,6 +451,8 @@ run_raster_motion_suite(void) {
     RUN_TEST(test_a_moving_instance_moves_by_its_previous_placement);
     RUN_TEST(test_camera_and_instance_motion_add_up);
     RUN_TEST(test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels);
+    RUN_TEST(test_shape_and_quarter_changes_reproject_in_the_current_picture);
+    RUN_TEST(test_a_steady_quarter_preserves_moving_and_still_motion);
     RUN_TEST(test_motion_leaves_colour_and_depth_as_they_are);
     RUN_TEST(test_forgetting_makes_the_next_picture_first);
 }

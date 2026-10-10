@@ -77,7 +77,7 @@ flowchart TB
         Gfx["gfx/<br/><i>the one framebuffer, draw/ into it, present/ it</i>"]:::hw
     end
     subgraph R8["animation"]
-        Anim["anim/<br/><i>keyed tracks sampled over time</i>"]
+        Anim["anim/<br/><i>keyed tracks sampled over time, tweens and easing</i>"]
     end
     subgraph R9["content"]
         Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
@@ -85,37 +85,42 @@ flowchart TB
     subgraph R10["device services"]
         Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
     end
-    subgraph R11["the platform core"]
-        Core["core/<br/><i>two-core jobs, memory placement, time, frame cost and watch, build variant</i>"]:::hw
+    subgraph R11["frame measurement"]
+        Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
     end
-    subgraph R12["board"]
+    subgraph R12["the platform core"]
+        Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
+    end
+    subgraph R13["board"]
         Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
-    subgraph R13["motion"]
-        Motion["math/motion/<br/><i>tween, easing, springs, orbiting a target</i>"]
+    subgraph R14["motion"]
+        Motion["math/motion/<br/><i>springs, orbiting a target</i>"]
     end
-    subgraph R14["vectors"]
+    subgraph R15["vectors"]
         Linear["math/linear/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
     end
-    subgraph R15["scalars"]
+    subgraph R16["scalars and the build switch"]
         Scalar["math/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
+        Build["build/<br/><i>which build variant this is</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
-- **core/ and math/ are the base.** Every layer above `core/` builds on
-  it: `core/job.h` hands one copied job at a time to core 1, and runs it
-  inline when core 1 is busy or on a host; `core/memory.h` places memory
-  by kind; time, frame cost, the frame watch and the build variant sit
-  beside them. `math/` is shared headers under every other layer, `board/`
-  included: it never touches the chip and includes nothing outside itself,
-  so the firmware and the host tools both use it. `scalar/` is per number
-  type, `linear/` vectors to transforms over it, `motion/` over both.
+- **core/, math/ and build/ are the base.** Every layer above `core/`
+  builds on it: `core/job.h` hands one copied job at a time to core 1, and
+  runs it inline when core 1 is busy or on a host; `core/memory.h` places
+  memory by kind; `core/timing.h` reads time. `math/` and `build/` are
+  shared headers under every other layer, `board/` included: they never
+  touch the chip and include nothing outside themselves but the build
+  config, so the firmware and the host tools both use them. `scalar/` is
+  per number type, `linear/` vectors to transforms over it, `motion/` over
+  both; `build/build_variant.h` says which build this is.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
@@ -162,12 +167,11 @@ flowchart TB
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`MEMORY_PSRAM` in `core/memory.h`), so it does not count against the
 internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
-is room in PSRAM for a second one and no time for it: a per-frame catch-up
-copy between two PSRAM buffers measured 6-15 ms, a large share of a frame,
-and a full frame over QSPI is bus-bound, not CPU-bound
-([Display-and-Rendering.md](notes/Display-and-Rendering.md), "The blit is
-bus-bound"). The decision and its measurements are decision B in
-[plans/Autana-Rendering-Roadmap.md](plans/Autana-Rendering-Roadmap.md).
+is room in PSRAM for a second one; the
+[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
+explains the copy cost that keeps presentation on one retained framebuffer.
+See [transfer payload](notes/Display-and-Rendering.md#transfer-payload) for
+the QSPI bus budget.
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an
@@ -358,13 +362,13 @@ pass. The app's side is in
 
 A frame that allocates, frees or logs every time it runs pays for it every
 frame. A development build watches for that at runtime
-(`core/frame_watch.h`); release compiles none of it.
+(`profile/frame_watch.h`); release compiles none of it.
 
 | | |
 |---|---|
 | The frame | From one `gfx_present_begin()` to the next: the shell presents once per pass, so a frame is the shell's pass, the app's `frame()` and `update()`, and the present. A pass that presents nothing (a frozen device, which still answers the console) joins the next frame. Work counts on the loop's task, the panel's sender and the core-1 job worker. |
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
-| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`core/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
+| Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`profile/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
 | Counts | `autana debug framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 

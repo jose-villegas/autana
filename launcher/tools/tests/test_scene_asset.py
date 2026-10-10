@@ -42,7 +42,7 @@ class SceneFiles(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.temp.name)
         for mesh in ("a", "b"):
-            write_import(self.root, f"{mesh}.import.toml", output=f'[output]\ndirectory = "."\nname = "{mesh}"\n')
+            write_import(self.root, f"{mesh}.import.toml", output=f'[output]\nname = "{mesh}"\n')
             (self.root / f"{mesh}.mesh").write_bytes(mesh.encode())
         (self.root / "clips").mkdir()
         (self.root / "clips" / "probe.glb").write_bytes(probe_glb())

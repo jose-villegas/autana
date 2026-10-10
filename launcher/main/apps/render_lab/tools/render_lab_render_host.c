@@ -31,12 +31,6 @@
 #include "ui/ui.h"
 #include "ui/ui_transform.h"
 
-/* The band ring keeps no retained frame for render_host.c to read back, so
- * setup() asks for the full-framebuffer layout. */
-extern bool render_lab_band_mode;
-extern bool render_lab_show_hud;
-extern const char* render_lab_start_scene_key;
-
 static int shell_quarter;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
@@ -85,12 +79,12 @@ set_tunable(const char* name, int value) {
 
 static bool
 view_from_name(const char* name) {
-    const int view = render_context_view_named(name);
-    if (view != RENDER_VIEW_UNKNOWN) {
+    const int view = render_context_debug_view_named(name);
+    if (view != RENDER_DEBUG_VIEW_UNKNOWN) {
         return set_tunable("view", view);
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
-    render_context_print_views(stderr);
+    render_context_print_debug_views(stderr);
     (void)fprintf(stderr, ", not %s\n", name);
     return false;
 }
@@ -151,7 +145,6 @@ setup(int quarter) {
         fprintf(stderr, "no app registered itself\n");
         return false;
     }
-    render_lab_band_mode = false;
     shell_quarter = quarter;
     ui_init();
     gfx_set_frame_overlay(ui_replay_band);
@@ -165,10 +158,6 @@ setup(int quarter) {
         const resolution_step_t size = {size_width, size_height};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
-    }
-    if (render_lab_view() != RENDER_VIEW_SHADED && !render_lab_scene_shows_views()) {
-        (void)fprintf(stderr, "--view: the scene %s has no depth to show\n", render_lab_start_scene_key);
-        return false;
     }
     return true;
 }

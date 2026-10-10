@@ -530,7 +530,7 @@ a scene, frames and synthetic touch, the pins, the QEMU backend, and
 
 The frame watch ([Firmware-Architecture.md](Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state))
 warns on the board; two places turn it into a failure, both by the rule in
-`core/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
+`profile/frame_watch.h` (`FRAME_WATCH_REPEATS` of the last
 `FRAME_WATCH_WINDOW` frames, after `FRAME_WATCH_WARMUP`). Either also fails
 when the watch ran out of room for an event, since a finding could hide
 there.
@@ -753,15 +753,9 @@ and `suite_gfx_band.c` (portable) cover the mode-grant arithmetic and the
 band-ring state machine the same way, including `gfx_mode.h`/`gfx_band.h`
 directly.
 `suite_gfx_band_run.c` drives `gfx_band_run()` over host malloc'd band
-buffers. Only the DMA send and strip-bounce aliasing need the device, so an
-app's device-only perf suite times a full-redraw renderer's band-mode path
-against its full-framebuffer path on the same scene.
+buffers. Only the DMA send and strip-bounce aliasing need the device.
 
-Still untested by an assertion: the cube's per-pixel Gouraud shading:
-verified by running the firmware and looking at the screen, since an
-animated 3D scene never settles into the fixed picture a render-harness
-pixel diff needs (`docs/tools/Render-Harness.md`). `ui_launcher.c`'s microui
-integration is driven by `suite_ui_launcher.c`.
+`ui_launcher.c`'s microui integration is driven by `suite_ui_launcher.c`.
 
 The framework is Unity, the ThrowTheSwitch C library, no relation to the game
 engine. The host runner uses a vendored copy; the device uses the one ESP-IDF

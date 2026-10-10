@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Bake an albedo import or a scene renderer's mesh.
 
-An import writes its named mesh beside the import file. A scene writes each
-baked renderer as <scene>.<object>.mesh beside the scene file; build_pack.py
-puts both kinds of mesh in the pack.
+An import writes its named mesh, and a scene each baked renderer as
+<scene>.<object>.mesh, into --out DIR, or beside the file when it is outside
+this repository (a scratch copy). Inside it a mesh is a bake product: made by
+bake/bake.py into the bake cache and locked, so without --out the bake refuses.
 
-    python launcher/tools/r3d/mesh_import.py PATH [--mesh NAME]
+    python launcher/tools/r3d/mesh_import.py PATH [--mesh NAME] [--out DIR]
 
 PATH is an .import.toml, which imports albedo geometry alone, or a
 .scene.toml, which writes each placed renderer; renderers marked `bake = true`
@@ -260,26 +261,6 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
                         ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, **knobs)
 
 
-def check_fitted(job, scene):
-    """A fitted variant is made offline by fitted_variant.py on a GPU; the bake
-    only checks that the recipe and the committed mesh are the ones the fit
-    recorded."""
-    import hashlib
-
-    from r3d.fitted_variant import recipe_digest
-
-    renderer, target = job.renderer, job.asset_path
-    again = "rerun fitted_variant.py prepare|fit and record the hashes it prints"
-    if recipe_digest(job, scene) != renderer.fit.recipe_sha256:
-        raise SystemExit(f"{renderer.variant.name}: recipe changed since the fit; {again}")
-    if not target.exists():
-        raise SystemExit(f"{target.name} is missing; {again} (it needs a CUDA GPU)")
-    digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    if digest != renderer.fit.sha256:
-        raise SystemExit(f"{target.name} has SHA-256 {digest}, not the {renderer.fit.sha256} the fit recorded; {again}")
-    log(f"{target.name} matches its fit recipe")
-
-
 def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
     is and smooth otherwise, from `geometry` when bake_geometry already made it.
@@ -295,12 +276,13 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
                           geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, **geometry.scale)
 
 
-def bake(job, scene):
-    """Bakes one mesh. `scene` is None for a bare import."""
+def bake(job, scene, out_dir):
+    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted variant is made by
+    fitted_variant.py on a CUDA GPU, which bake/bake.py runs."""
     if job.renderer.fit:
-        check_fitted(job, scene)
+        log(f"{job.asset_name}: a fit, made by fitted_variant.py on a CUDA GPU (bake/bake.py bake --kind fit)")
         return
-    mesh = write_baked(job, scene, job.asset_path.parent, job.asset_name)
+    mesh = write_baked(job, scene, out_dir, job.asset_name)
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 
@@ -308,8 +290,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("path", help="an .import.toml or a .scene.toml file")
     parser.add_argument("--mesh", help="bake only the mesh with this name")
+    parser.add_argument("--out", help="the folder to write into; beside PATH when it is outside the repository")
     args = parser.parse_args(argv)
     path = pathlib.Path(args.path).resolve()
+    if args.out is None and path.is_relative_to(REPO):
+        parser.error(f"{path.name} is in the repository, where a mesh is a bake product: bake it with "
+                     "launcher/tools/bake/bake.py bake, or pass --out DIR for a scratch bake")
+    out_dir = pathlib.Path(args.out) if args.out else path.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
     scene = None
     try:
         if path.name.endswith(".scene.toml"):
@@ -326,7 +314,7 @@ def main(argv=None):
         parser.error(str(error))
     for job in jobs:
         log(f"mesh {job.asset_name}")
-        bake(job, scene)
+        bake(job, scene, out_dir)
     return 0
 
 

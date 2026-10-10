@@ -37,7 +37,7 @@ all authored renderers. An unknown renderer reports the available names.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
 30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
 context's view, with shaded as the default. The names match the declared
-`render_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+`render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
 `--size WxH` fixes the internal render resolution through a one-step ladder;
 the output still has the panel's dimensions. Each render axis must fit the
 panel framebuffer, 368 by 448.
@@ -96,6 +96,7 @@ requests".
 |---|---|
 | `overview/launcher-home.png` | the launcher listing the release build's apps, read from the app folders |
 | `overview/launcher-home.gif` | the same, rocking the board either way |
+| `overview/boot-anim.gif` | the boot animation in landscape orientation |
 | `ui/*.png` | the UI toolkit's gallery views, portrait and landscape (`ui_widgets_render_host.sh`) |
 
 Measured CPU tables are refreshed with the images. `doc_images_demo.sh` and
@@ -295,12 +296,8 @@ passes, so a new scene is not blocked on one.
 a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
-switched off at a zero time constant, so it is linked but never called. The
-wire and cube scenes project in float (`math/linear/`) and are pinned too:
-their pixels are whole-pixel truncations of single-precision sums, built
-without fast-math or FMA, and their rotations call `sinf` and `cosf`, whose
-last bit differs between libms and moves a pixel only at a truncation
-boundary. The boot animation's tracks also call `acosf` for the slerp and
+switched off at a zero time constant, so it is linked but never called.
+The boot animation's tracks call `acosf` for the slerp and
 are `|nopin`. A render that is not integer-exact ends its line
 with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display

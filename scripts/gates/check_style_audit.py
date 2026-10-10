@@ -25,6 +25,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
 from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
@@ -231,17 +232,10 @@ INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
 
 
 def resolve_include(root, path, inc):
-    """Where the compiler actually finds a quoted include from `path`: next
-    to the including file first (the real search order for
-    `#include "..."`), then relative to launcher/main (its registered "."
-    INCLUDE_DIRS root). None if neither has it, a real compile error, and
-    not this rule's business."""
-    main_dir = pathlib.Path(root) / "launcher/main"
-    same_dir = (path.parent / inc).resolve()
-    if same_dir.is_file():
-        return same_dir
-    from_root = (main_dir / inc).resolve()
-    return from_root if from_root.is_file() else None
+    resolved = resolve_quoted_include(path.resolve().as_posix(), inc,
+                                      ((pathlib.Path(root) / "launcher/main").resolve().as_posix(),),
+                                      lambda candidate: pathlib.Path(candidate).is_file())
+    return pathlib.Path(resolved) if resolved else None
 
 
 def _layer_root_files(root):
@@ -299,16 +293,15 @@ def _fix_include_layer(root, path, text):
 
 
 # RULE: a folder may include only a strictly lower tier of
-# docs/Firmware-Architecture.md's "Layers" (LAYER_TIER below;
-# two folders can share a tier). A "<folder>/<sub>" key tiers that subfolder
+# docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
+# row, top first; the folders in a row share a tier). A "<folder>/<sub>" key tiers that subfolder
 # on its own; once one subfolder of a folder is keyed, every subfolder must
 # be, and the folder itself holds only its <folder>.h. A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer.
 
-LAYER_TIER = {"apps": 0, "shell": 1, "boot": 2, "selftest": 2, "ui": 3, "console": 3, "scene": 3, "app": 4,
-             "display": 5, "input": 5, "render": 6, "gfx": 7, "anim": 8, "asset": 9,
-             "services": 10, "core": 11, "board": 12,
-             "math": 13, "math/motion": 13, "math/linear": 14, "math/scalar": 15}
+LAYER_ROWS = ("apps", "shell", "boot selftest", "ui console scene", "app", "display input", "render", "gfx", "anim",
+              "asset", "services", "profile", "core", "board", "math math/motion", "math/linear", "math/scalar build")
+LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps" and "/" not in layer)
 
 

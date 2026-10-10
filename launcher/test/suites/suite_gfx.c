@@ -27,6 +27,7 @@
 
 #include "unity.h"
 
+#include "esp_cache.h"
 #include "esp_log.h"
 
 #include "board/board.h"
@@ -45,6 +46,7 @@
 #include "input/touch.h"
 #include "input/touch_fsm.h"
 #include "panel_clock_pin.h"
+#include "profile/frame_cost.h"
 
 static const char* TAG = "device_tests";
 
@@ -62,7 +64,6 @@ static void
 fixture(void) {
     panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     gfx_clear_clip();
-    gfx_set_partial_clear(false);
     gfx_invalidate();
 }
 
@@ -191,65 +192,6 @@ test_clear_touches_every_pixel(void) {
     const gfx_color_t c = gfx_rgb(0x123456);
     clear_fixture(c);
     TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(c));
-}
-
-void
-test_partial_clear_erases_only_previous_drawn_region(void) {
-    fixture();
-    const gfx_color_t bg = gfx_rgb(0x000000);
-    const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_set_partial_clear(true);
-
-    /* Frame 1: first clear is full because partial tracking has no prior frame. */
-    gfx_clear(bg);
-    TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(bg));
-
-    /* Draw a 20x20 rect at (50, 50) and mark it dirty. */
-    gfx_fill_rect(50, 50, 20, 20, fg);
-    gfx_mark_dirty(50, 50, 20, 20);
-    TEST_ASSERT_EQUAL_INT(400, count_pixels(fg));
-
-    gfx_present();
-
-    /* Frame 2: clear should erase only the 20x20 box at (50, 50). */
-    gfx_clear(bg);
-    TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(bg));
-
-    /* Draw a new 10x10 rect at (100, 100) and mark it dirty. */
-    gfx_fill_rect(100, 100, 10, 10, fg);
-    gfx_mark_dirty(100, 100, 10, 10);
-    TEST_ASSERT_EQUAL_INT(100, count_pixels(fg));
-
-    gfx_present();
-
-    /* Frame 3: clear should erase only the (100, 100) 10x10 box. */
-    gfx_clear(bg);
-    TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(bg));
-}
-
-void
-test_gfx_invalidate_forces_full_clear_in_partial_mode(void) {
-    fixture();
-    const gfx_color_t bg = gfx_rgb(0x000000);
-    const gfx_color_t fg = gfx_rgb(0xFF00FF);
-
-    gfx_set_partial_clear(true);
-    gfx_clear(bg);
-
-    gfx_fill_rect(50, 50, 20, 20, fg);
-    gfx_mark_dirty(50, 50, 20, 20);
-    gfx_present();
-
-    /* Place rogue pixels elsewhere without marking dirty. */
-    gfx_color_t* fb = gfx_framebuffer();
-    fb[200 * GFX_WIDTH + 200] = fg;
-
-    /* Invalidation forces next clear to wipe entire screen in full. */
-    gfx_invalidate();
-    gfx_clear(bg);
-
-    TEST_ASSERT_EQUAL_INT(GFX_WIDTH * GFX_HEIGHT, count_pixels(bg));
 }
 
 void
@@ -907,6 +849,10 @@ present_reference_band(gfx_color_t colour) {
  * sanity-checking one figure against the other by multiplying is not
  * valid. */
 
+/* The narrow strip: a fraction of a band's width, a band's rows. */
+#define NARROW_STRIP_WIDTH 20
+#define NARROW_STRIP_ROWS  64
+
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
  * through gfx_fill_rect(), which always claims the whole band via
@@ -917,8 +863,8 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
 
     /* A narrow strip within a band, written directly and marked with its
      * real bounds: a caller repainting a narrow changed strip. */
-    const int w = 20;
-    write_dirty_rectangle(0, 0, w, 64, gfx_rgb(0x204060));
+    const int w = NARROW_STRIP_WIDTH;
+    write_dirty_rectangle(0, 0, w, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
     const int64_t narrow = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, w,
@@ -929,12 +875,87 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                "for itself",
                narrow, full_band);
 
-    /* Wider spread than the full-band reference because this path does a
-     * memcpy into gather_buf on top of the same DMA wait, and that copy is
-     * what varies. */
+    /* Its spread used to be whether the present's code was still in the
+     * instruction cache; that code runs from IRAM now (main/linker.lf), and
+     * a strip that costs more again likely runs from flash once more. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
-               "gather-copy path may have regressed",
-               narrow, 256);
+               "gather-copy path may have regressed, or a present's code left IRAM",
+               narrow, 241);
+}
+
+/* An instrument, not a gate: the narrow strip's present, counted alone,
+ * many times per counter, in three settings: right after a full band, as
+ * test_a_narrow_change_costs_less_than_a_full_band measures it; repeated,
+ * where only the bus is left; and cold, with all of flash code dropped from
+ * the instruction cache first, which is what code layout can cost it, the
+ * last also sent from this core. The mean is steady enough to show a few
+ * microseconds; the counters say where this core's cycles went. */
+#define NARROW_PRESENTS 32
+static const char* const narrow_present_events[] = {"i_stall_busy", "bubbles_cti", "d_stall_all"};
+
+typedef enum { NARROW_AFTER_BAND, NARROW_REPEATED, NARROW_COLD } narrow_setting_t;
+
+extern char _instruction_reserved_start[];
+extern char _instruction_reserved_end[];
+
+static void
+drop_flash_code_from_cache(void) {
+    const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
+    const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
+    const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);
+    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)start, end - start,
+                                              ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_INST));
+}
+
+static void
+count_narrow_presents(const char* scene, narrow_setting_t setting) {
+    const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
+    int64_t total_us = 0;
+    (void)present_reference_band(gfx_rgb(0x204060));
+    for (int e = 0; e < events; e++) {
+        const int event = frame_cost_event_index(narrow_present_events[e]);
+        uint64_t cycles_sum = 0;
+        uint64_t value_sum = 0;
+        bool counted = true;
+        for (int i = 0; i < NARROW_PRESENTS; i++) {
+            if (setting == NARROW_AFTER_BAND) {
+                (void)present_reference_band(gfx_rgb(0x204060));
+            }
+            write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, gfx_rgb(0x204060));
+            if (setting == NARROW_COLD) {
+                drop_flash_code_from_cache();
+            }
+            TEST_ASSERT_TRUE(frame_cost_count_begin(event));
+            total_us += time_present();
+            uint32_t cycles = 0;
+            uint32_t value = 0;
+            counted = frame_cost_count_end(&cycles, &value) && counted;
+            cycles_sum += cycles;
+            value_sum += value;
+        }
+        ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s", scene,
+                 narrow_present_events[e], (unsigned)(cycles_sum / NARROW_PRESENTS),
+                 (unsigned)(value_sum / NARROW_PRESENTS), NARROW_PRESENTS, counted ? "" : " overflow=counters");
+    }
+    ESP_LOGI(TAG, "%s both cores: mean %lldus", scene, (long long)(total_us / (NARROW_PRESENTS * events)));
+}
+
+static void
+test_narrow_present_counters(void) {
+#if !FRAME_COST_ENABLED
+    TEST_IGNORE_MESSAGE("frame_cost is a development build's");
+#else
+    count_narrow_presents("narrow_after_band", NARROW_AFTER_BAND);
+    count_narrow_presents("narrow_repeated", NARROW_REPEATED);
+    count_narrow_presents("narrow_cold", NARROW_COLD);
+    /* The present task runs on the other core, where these counters cannot
+     * see it; sent from this core, its stalls are this core's. */
+    const bool async = gfx_present_async_enabled();
+    gfx_set_present_async(false);
+    count_narrow_presents("narrow_cold_here", NARROW_COLD);
+    gfx_set_present_async(async);
+    TEST_PASS();
+#endif
 }
 
 /* The box is bounded by area, not width alone, specifically so a
@@ -1477,8 +1498,6 @@ run_gfx_suite(void) {
     RUN_TEST(test_colour_packing_matches_the_panel_format);
 
     RUN_TEST(test_clear_touches_every_pixel);
-    RUN_TEST(test_partial_clear_erases_only_previous_drawn_region);
-    RUN_TEST(test_gfx_invalidate_forces_full_clear_in_partial_mode);
     RUN_TEST(test_fill_rect_writes_exactly_its_own_area);
     RUN_TEST(test_dither_at_alpha_zero_draws_nothing);
     RUN_TEST(test_dither_at_alpha_255_matches_a_solid_fill_exactly);
@@ -1512,6 +1531,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_full_present_cost_splits_into_bus_time_and_overhead);
     RUN_TEST(test_a_partial_change_costs_less_than_a_full_frame);
     RUN_TEST(test_a_narrow_change_costs_less_than_a_full_band);
+    RUN_TEST(test_narrow_present_counters);
     RUN_TEST(test_a_short_wide_change_costs_less_than_a_full_band);
     RUN_TEST(test_a_full_width_partial_height_change_costs_less_than_a_band);
     RUN_TEST(test_two_far_corners_cost_less_than_a_full_band);
