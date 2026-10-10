@@ -24,6 +24,8 @@ PASSING = (
 FAILING = "/src/suite_gfx.c:61:test_clip:FAIL: Expected 3 Was 4\n"
 IGNORED = "/src/suite_sand_perf.c:1953:test_counters:IGNORE: no PMU\n"
 COMPLETE = "SELFTEST_COMPLETE tests=4 failures=1\n"
+BOOT = "ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
+ABORT = "abort() was called at PC 0x40376f2b on core 0\n"
 
 
 class VerdictTest(unittest.TestCase):
@@ -49,6 +51,13 @@ class VerdictTest(unittest.TestCase):
     def test_a_driven_run_needs_no_sentinel(self):
         self.assertEqual(0, self.verdict(PASSING, actions=[("suite", "x")]))
 
+    def test_a_crash_fails_a_run_whose_tests_all_passed(self):
+        self.assertEqual(1, self.verdict(BOOT + PASSING + ABORT + COMPLETE))
+
+    def test_a_reboot_fails_a_driven_run(self):
+        self.assertEqual(0, self.verdict(BOOT + PASSING, actions=["tap 1 1"]))
+        self.assertEqual(1, self.verdict(BOOT + PASSING + BOOT, actions=["tap 1 1"]))
+
 
 class FakeConsole:
     def __init__(self, lines):
@@ -57,8 +66,42 @@ class FakeConsole:
     def send(self, line):
         self.sent.append(line)
 
-    def lines(self):
+    def lines(self, seconds=None):
         return iter(self._lines)
+
+
+class LiveConsole(FakeConsole):
+    """Answers BUILDID for the first `answers` heartbeats, then never again."""
+
+    def __init__(self, answers):
+        super().__init__([])
+        self.answers = answers
+
+    def wait_for(self, needle):
+        return needle == qemu_run.LISTENING
+
+    def send(self, line):
+        super().send(line)
+        if line == qemu_run.HEARTBEAT:
+            self._lines = ["BUILD_ID=abc"] if self.answers else []
+            self.answers -= 1
+
+
+class HeartbeatTest(unittest.TestCase):
+    def drive(self, console, steps):
+        with unittest.mock.patch.object(qemu_run.time, "sleep"), \
+                unittest.mock.patch("builtins.print"):
+            return qemu_run.drive_shell(console, steps)
+
+    def test_a_tour_that_answers_after_every_step_passes(self):
+        console = LiveConsole(answers=2)
+        self.assertTrue(self.drive(console, ["wait 1", "tilt 0 0 4096"]))
+        self.assertEqual(console.sent.count(qemu_run.HEARTBEAT), 2)
+
+    def test_a_step_with_no_heartbeat_after_it_ends_the_tour(self):
+        console = LiveConsole(answers=1)
+        self.assertFalse(self.drive(console, ["wait 1", "tilt 0 0 4096", "wait 1"]))
+        self.assertEqual(console.sent.count(qemu_run.HEARTBEAT), 2)
 
 
 class RunSuiteTest(unittest.TestCase):
@@ -114,6 +157,11 @@ class DriveFrameTest(unittest.TestCase):
         ok, sent = self.run_action("touch down 10 20")
         self.assertTrue(ok)
         self.assertEqual(sent, ["TOUCH down 10 20"])
+
+    def test_a_send_writes_the_rest_of_the_step_as_typed(self):
+        ok, sent = self.run_action("send render scene  sponza-lite")
+        self.assertTrue(ok)
+        self.assertEqual(sent, ["render scene  sponza-lite"])
 
     def test_a_tap_outside_the_screenshot_is_not_an_action(self):
         with unittest.mock.patch("builtins.print"):

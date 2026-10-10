@@ -450,7 +450,9 @@ ESP-IDF's driver waits forever on a sensor QEMU does not have.
 accelerometer counts, 4096 to the g). `qemu_run.py --do` strings them into
 what a user does, one ordered step at a time. Its `screenshot` is the default
 `autana screenshot` view, and its `tap` and `swipe` take that view's pixels,
-as `autana tap` does; `touch` and `--touch` stay in panel pixels:
+as `autana tap` does; `touch` and `--touch` stay in panel pixels. `send`
+writes a console line as typed (`send open <app>`, or an app's own console
+line):
 
 ```sh
 python launcher/test/qemu_run.py launcher/build.qemu.shell \
@@ -466,6 +468,13 @@ suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
 `home_gesture` ignores the swipe here as it does on the board, and the PWR
 button has no stand-in, so such an app cannot be left.
+
+**A crash fails the run.** After every step the image must answer `BUILDID`
+within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
+Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a failed `assert`) or a
+second boot banner, whatever its tests reported. The board's captures
+(`autana suite`, `selftest`, `monitor`) give the same verdict, from
+`scripts/lib/device_capture.py`'s `crash_signs()`.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the

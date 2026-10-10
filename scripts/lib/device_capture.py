@@ -1,4 +1,4 @@
-"""Unity result lines shared by device capture tools."""
+"""Unity result lines and crash signs shared by device capture tools."""
 import re
 
 # A line matching this is a Unity test result. Used both as proof that any
@@ -13,6 +13,32 @@ PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) 
 # device wedged, serial dropped). A capture of ONE suite triggered by
 # RUNSUITE never prints it at all, which is what --no-complete is for.
 SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elapsed_ms=(\d+))?")
+
+# Each is a line the firmware prints as it dies: ESP-IDF's panic banner (the
+# exception in brackets after "panic'ed"), abort()'s own line, and a failed
+# assert(), which aborts after it. Searched, not anchored: a capture can carry
+# a log prefix or colour codes in front.
+CRASH_LINE_RE = re.compile(r"Guru Meditation|panic'ed|abort\(\) was called|assert failed:")
+# The ROM's first two lines, once per boot: "ESP-ROM:esp32s3-20210327", then
+# the reset cause, "rst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)".
+# Either can be lost in a USB reset gap, so a boot is counted by whichever
+# shows more often.
+BOOT_BANNER = "ESP-ROM:esp32s3"
+RESET_LINE_RE = re.compile(r"^rst:0x[0-9a-fA-F]+ \(\w+\).*$", re.M)
+
+
+def crash_signs(text, boots_allowed):
+    """Why a capture shows the firmware dying, one line per sign: every crash
+    line, and a boot beyond the `boots_allowed` the capture began with (one
+    for a run that starts from a reset, none for a capture opened on a running
+    board). Empty when it shows none."""
+    signs = ["crash: " + line.strip() for line in text.splitlines() if CRASH_LINE_RE.search(line)]
+    resets = RESET_LINE_RE.findall(text)
+    boots = max(text.count(BOOT_BANNER), len(resets))
+    if boots > boots_allowed:
+        signs.append("rebooted: %d boots, expected at most %d%s" % (
+            boots, boots_allowed, " (last %s)" % resets[-1].strip() if resets else ""))
+    return signs
 
 
 def results(text, *, ignored=False):
