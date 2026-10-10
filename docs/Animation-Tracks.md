@@ -59,6 +59,9 @@ so no list is kept. A
 clip no scene names is a [pack](assets/README.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_pack("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
+The [asset-pack boundary](render/Mesh-Import.md#the-offline-tools) mirrors
+translation and rotation tracks, cubic tangents included, into the engine
+frame; other tracks, key times and interpolation stay as authored.
 
 ```toml
 source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
@@ -163,16 +166,18 @@ translation, rotation and scale tracks into a `math/linear/transformf.h`
 
 `launcher/tools/anim/track_host.py` prints every track of a clip every N
 milliseconds, read from the clip's `TRCK` entry by the same
-`anim_tracks_from_pack()` and `anim_track_sample()` the firmware runs. Given a
-`NAME.anim.toml`, it bakes the clip into a scratch pack of its own first; given
-`--pack PACK --clip ID`, it reads that pack. With `--poses NODE W H TAN NEAR`
-it prints a camera node as the poses file
+`anim_tracks_from_pack()` and `anim_track_sample()` the firmware runs. Given
+`NAME.anim.toml`, it bakes the clip into a scratch pack in the source frame;
+given `--pack PACK --clip ID`, it reads the built pack in the engine frame.
+With `--poses NODE W H TAN NEAR`, it prints a camera node as the poses file
 [`report_triangle_sizes.sh`](../launcher/tools/r3d/README.md#triangle-sizes)
-reads, so the poses are always the animation's own.
+reads. A poses file is in the source frame, so `--poses` takes a `.anim.toml`:
+a built pack's tracks are in the engine frame and give wrong poses
+([Mesh-Import.md](render/Mesh-Import.md#the-offline-tools)).
 
 ```sh
 python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 250
-python launcher/tools/anim/track_host.py --pack PACK --clip ID --every 5000 --poses camera 184 224 0.62 6
+python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 5000 --poses camera 184 224 0.62 6
 ```
 
 The program, `track_host.c`, is one for every clip: it is compiled once into

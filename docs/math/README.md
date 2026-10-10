@@ -33,7 +33,7 @@ Fixed-point angles are **turns**, `MATHX_ONE` to a turn, so an eighth of a turn 
 
 | | |
 |---|---|
-| Axes | local +x right, +y up, +z forward; a camera looks down +z. glTF cameras look down -Z; `render/r3d_scene.c` turns that to +z |
+| Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z; source assets are right-handed and mirrored at the pack ([Mesh-Import.md](../render/Mesh-Import.md#the-offline-tools)) |
 | Rotation sense | left-handed, +y up: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
 | Euler | `from_euler` applies Z, then X, then Y about the fixed axes |
@@ -101,7 +101,7 @@ modified through a pointer except the transform's own `t`.
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
-| `P_cross(a, b)` | cross product, right-handed | $`a \times b = (a_y b_z - a_z b_y,\ a_z b_x - a_x b_z,\ a_x b_y - a_y b_x)`$ |
+| `P_cross(a, b)` | cross product; x × y = z | $`a \times b = (a_y b_z - a_z b_y,\ a_z b_x - a_x b_z,\ a_x b_y - a_y b_x)`$ |
 | `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 | `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |
