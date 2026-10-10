@@ -31,7 +31,7 @@ uint32_t r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera);
 /* The eye and look direction t_ms into the path, which wraps at its period. */
 void r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t* eye, vec3f_t* forward);
 
-/* The camera t_ms into its path. */
+/* The view through `camera` t_ms into its path, framed for `viewport`. */
 render_view_t r3d_scene_view_at(const r3d_scene_camera_t* camera, uint32_t t_ms, viewport_t viewport);
 
 /* The placement that stands a camera without a path at `pose`, looking down

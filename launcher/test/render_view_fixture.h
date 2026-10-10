@@ -1,13 +1,23 @@
-/* render_view_fixture: upright poses for legacy eye-and-forward test fixtures. */
+/* render_view_fixture: a render_view_t from an eye-and-forward camera, upright, for suites. */
 #pragma once
 
-#include "render/camera.h"
+#include "render/raster.h"
 #include "render/render_view.h"
 
+typedef struct {
+    vec3f_t eye, forward;
+    float half_fov_short_tan, near_z;
+} camera_t;
+
 static inline render_view_t
-render_view_fixture(const camera_t* camera, viewport_t viewport) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
-    pose.position = camera->eye;
-    transformf_look_at(&pose, vec3f_add(pose.position, camera->forward), (vec3f_t){0.0F, 1.0F, 0.0F});
+render_view_fixture_at(const camera_t* camera, viewport_t viewport) {
+    const transformf_t pose = transformf_looking(camera->eye, camera->forward, (vec3f_t){0.0F, 1.0F, 0.0F});
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
+}
+
+static inline render_view_t
+render_view_fixture(const camera_t* camera, const raster_t* raster, int quarter) {
+    const viewport_t viewport = {raster->upscaled ? raster->destination_width : raster->width,
+                                 raster->upscaled ? raster->destination_height : raster->height, quarter};
+    return render_view_fixture_at(camera, viewport);
 }

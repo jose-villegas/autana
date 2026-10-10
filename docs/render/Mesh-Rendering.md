@@ -38,11 +38,13 @@ carries a colour per face and the raster draws what the mesh carries.
 
 A camera that moves is an [animation track](../Animation-Tracks.md), sampled
 into a look-at pose; `r3d_scene_view_at()` builds its frame view with
-`render_view_make()`. Poses use +x right, +y up, +z forward in a left-handed
-frame. Baked scenes use a right-handed frame: picture right is pose -x,
-picture down is pose -y, and depth is pose +z. The view folds in the panel
-quarter turn and fits its lens to the shorter picture side; pose scale is
-ignored and pose rotation carries roll.
+`render_view_make()`, which folds in the panel's quarter turn, fits its lens
+to the shorter picture side, ignores the pose's scale and keeps its roll.
+Poses are in util/math's frame
+([math/README.md](../math/README.md#conventions)) but for one exception:
+before the quarter turn, `render_view_make()` puts the pose's −x at picture
+right and its −y at picture down, the right-handed frame baked scenes are
+authored in.
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
@@ -60,7 +62,6 @@ exactly.
 |---|---|
 | `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
 | `render_view.h` | The frame view and its pose-and-lens builder |
-| `camera.h` | Eye-and-forward camera fixtures |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
@@ -76,8 +77,7 @@ exactly.
 | `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
 | `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
 
-The line camera's `transformf_t` pose composes with a model transform and
-carries roll. Only
+Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
 
@@ -100,6 +100,7 @@ flowchart TB
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
     end
     Census --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
+    View --> Draw
     Size["the render size"] --> Draw
     List --> Draw
     subgraph Draw["raster_draw_culled()"]

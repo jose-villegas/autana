@@ -26,8 +26,10 @@ struct raster {
     int instance_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
-    /* With upscaling, colour is not cleared: raster_upscale() supplies the clear
-     * colour wherever depth says nothing was drawn. */
+    /* The view frames the picture at its own size: the destination's when
+     * upscaled, otherwise the size drawn at. With upscaling, colour is not
+     * cleared: raster_upscale() supplies the clear colour wherever depth says
+     * nothing was drawn. */
     bool upscaled;
     int destination_width, destination_height;
     upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */

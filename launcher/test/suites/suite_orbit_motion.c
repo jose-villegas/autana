@@ -10,7 +10,6 @@
 #include <math.h>
 
 #include "gfx/gfx.h"
-#include "render/camera.h"
 #include "render/r3d_pipeline.h"
 #include "render_view_fixture.h"
 #include "suites.h"
@@ -69,7 +68,7 @@ sphere_point(int i, int n) {
 static void
 sphere_reach(const camera_t* camera, viewport_t viewport, float* reach_x, float* reach_y) {
     r3d_lens_t lens;
-    const render_view_t frame_view = render_view_fixture(camera, viewport);
+    const render_view_t frame_view = render_view_fixture_at(camera, viewport);
     r3d_lens_init(&lens, &frame_view, 1);
     *reach_x = 0.0F;
     *reach_y = 0.0F;

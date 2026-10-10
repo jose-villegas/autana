@@ -9,7 +9,7 @@
  * to hold a budget, and what the draw and upscale cost is fed back.
  *
  * The engine draws its frames through one context, render_context_main(),
- * released when an app exits. The view stays perspective only.
+ * released when an app exits. A view is perspective only.
  */
 #pragma once
 

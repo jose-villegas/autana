@@ -106,7 +106,7 @@ grid_close(grid_mesh_t* g) {
 static r3d_sizes_t
 sizes_at(const grid_mesh_t* g, float distance) {
     r3d_lens_t lens;
-    const render_view_t frame_view = render_view_fixture(
+    const render_view_t frame_view = render_view_fixture_at(
         &(camera_t){{0.0f, 0.0f, distance}, {0.0f, 0.001f, -1.0f}, 0.5f, 1.0f}, (viewport_t){64, 48, 0});
     r3d_lens_init(&lens, &frame_view, g->mesh.position_scale);
     r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());

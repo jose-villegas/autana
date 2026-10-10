@@ -198,8 +198,8 @@ raster_scratch_bytes(const raster_t* raster) {
     return mathi_size_ceil(prefix, R3D_PIPELINE_WORK_ALIGNMENT) + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t);
 }
 
-/* The shape the view frames: the destination's when upscaled, so a render
- * scaled more in one axis than the other still shows the same view. */
+/* The view's lens fitted to the size drawn at, so a render scaled more
+ * in one axis than the other still shows the same view. */
 void
 raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens) {
     r3d_lens_init(lens, view, position_scale);
@@ -296,6 +296,8 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
 static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
+    assert(view->width == (raster->upscaled ? raster->destination_width : raster->width));
+    assert(view->height == (raster->upscaled ? raster->destination_height : raster->height));
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -348,6 +350,8 @@ raster_culled_length(const raster_t* raster) {
 raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
+    assert(view->width == (raster->upscaled ? raster->destination_width : raster->width));
+    assert(view->height == (raster->upscaled ? raster->destination_height : raster->height));
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);

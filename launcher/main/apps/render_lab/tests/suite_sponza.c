@@ -99,9 +99,9 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
-        const render_view_t camera = r3d_scene_view_at(flythrough, t, viewport);
+        const render_view_t view = r3d_scene_view_at(flythrough, t, viewport);
         r3d_lens_t lens;
-        r3d_lens_init(&lens, &camera, mesh->position_scale);
+        r3d_lens_init(&lens, &view, mesh->position_scale);
 
         memset(kept, 0, (size_t)mesh->cluster_count);
         const int count = r3d_pipeline_cull(mesh, &lens, walked, work);
@@ -324,8 +324,8 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
-    const render_view_t camera = r3d_scene_view_at(flythrough, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
-    raster_draw(raster, &camera);
+    const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){raster->width, raster->height, 0});
+    raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = raster_depth(raster);
     int covered = 0;

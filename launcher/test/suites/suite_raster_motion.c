@@ -170,16 +170,19 @@ rig_open(bool with_box, bool detached) {
 }
 
 static void
-draw(raster_rig_t* r, const pose_t* pose, int w, int h) {
+draw_at(raster_rig_t* r, const pose_t* pose, int w, int h, int quarter) {
     if (pose->box != NULL) {
         r->placement[1] = *pose->box;
     }
     r->raster.width = w;
     r->raster.height = h;
-    const render_view_t frame_view = render_view_fixture(
-        &pose->camera, (viewport_t){r->raster.upscaled ? r->raster.destination_width : r->raster.width,
-                                    r->raster.upscaled ? r->raster.destination_height : r->raster.height, 0});
+    const render_view_t frame_view = render_view_fixture(&pose->camera, &r->raster, quarter);
     raster_draw(&r->raster, &frame_view);
+}
+
+static void
+draw(raster_rig_t* r, const pose_t* pose, int w, int h) {
+    draw_at(r, pose, w, h, 0);
 }
 
 static const raster_motion_px_t*
@@ -341,6 +344,22 @@ test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels(void) {
     check_change(&c, true, W / 2, H / 2, &p);
 }
 
+static void
+test_shape_and_quarter_changes_reproject_in_the_current_picture(void) {
+    static const change_t c = {12.0F, {5.0F, 0.0F, 0.0F}, {8.0F, 0.0F, -10.0F}, 1.5F};
+    raster_rig_t* r = rig_open(true, false);
+    posed_t p;
+    pose_change(&c, true, &p);
+    for (int reverse = 0; reverse < 2; reverse++) {
+        const int before_width = reverse ? W : W / 2;
+        const int now_width = reverse ? W / 2 : W;
+        raster_motion_forget(&own_of(r)->motion);
+        draw_at(r, &p.before, before_width, H, reverse ? 3 : 1);
+        draw(r, &p.now, now_width, H);
+        TEST_ASSERT_GREATER_THAN_INT(now_width * H / 2, assert_motion_is_true(r, &p.now, &p.before, now_width, H));
+    }
+}
+
 /* Attaching motion changes no colour and no depth. */
 static void
 test_motion_leaves_colour_and_depth_as_they_are(void) {
@@ -379,6 +398,7 @@ run_raster_motion_suite(void) {
     RUN_TEST(test_a_moving_instance_moves_by_its_previous_placement);
     RUN_TEST(test_camera_and_instance_motion_add_up);
     RUN_TEST(test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels);
+    RUN_TEST(test_shape_and_quarter_changes_reproject_in_the_current_picture);
     RUN_TEST(test_motion_leaves_colour_and_depth_as_they_are);
     RUN_TEST(test_forgetting_makes_the_next_picture_first);
 }

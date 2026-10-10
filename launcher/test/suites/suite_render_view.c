@@ -6,12 +6,15 @@
 #include "render/render_view.h"
 #include "util/scalar/mathf.h"
 
-#define WIDTH        80
-#define HEIGHT       60
-#define HALF_FOV_TAN 0.5F
-#define NEAR_Z       1.0F
-#define EPSILON      0.00001F
-#define AHEAD_Z      10.0F
+#define WIDTH          80
+#define HEIGHT         60
+#define HALF_FOV_TAN   0.75F
+#define NEAR_Z         2.5F
+#define EPSILON        0.00001F
+#define AHEAD_Z        10.0F
+#define POSITION_SCALE 8
+#define OFFSET_X       2.0F
+#define OFFSET_Y       1.0F
 
 static transformf_t
 fixture(void) {
@@ -38,12 +41,12 @@ static void
 test_basis_is_orthonormal_and_picture_axes_are_right_handed(void) {
     const transformf_t pose = fixture();
     const render_view_t view = view_of(&pose, 0);
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 1.0F, vec3f_dot(view.screen_x, view.screen_x));
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 1.0F, vec3f_dot(view.screen_y, view.screen_y));
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 1.0F, vec3f_dot(view.forward, view.forward));
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 0.0F, vec3f_dot(view.screen_x, view.screen_y));
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 0.0F, vec3f_dot(view.screen_x, view.forward));
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, 0.0F, vec3f_dot(view.screen_y, view.forward));
+    expect_vector((vec3f_t){1.0F, 1.0F, 1.0F},
+                  (vec3f_t){vec3f_dot(view.screen_x, view.screen_x), vec3f_dot(view.screen_y, view.screen_y),
+                            vec3f_dot(view.forward, view.forward)});
+    expect_vector((vec3f_t){0.0F, 0.0F, 0.0F},
+                  (vec3f_t){vec3f_dot(view.screen_x, view.screen_y), vec3f_dot(view.screen_x, view.forward),
+                            vec3f_dot(view.screen_y, view.forward)});
     expect_vector(view.forward, vec3f_cross(view.screen_x, view.screen_y));
     expect_vector(quatf_rotate(pose.rotation, (vec3f_t){-1.0F, 0.0F, 0.0F}), view.screen_x);
     expect_vector(pose.position, view.position);
@@ -97,6 +100,37 @@ test_point_straight_ahead_projects_to_center(void) {
 }
 
 static void
+test_off_axis_lens_projection_and_anisotropic_fit(void) {
+    static const float offsets[4][2] = {
+        {-OFFSET_X, -OFFSET_Y}, {OFFSET_Y, -OFFSET_X}, {OFFSET_X, OFFSET_Y}, {-OFFSET_Y, OFFSET_X}};
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    pose.position = (vec3f_t){3.0F, 4.0F, 5.0F};
+    const vec3f_t ticks = vec3f_scale(vec3f_add(pose.position, (vec3f_t){OFFSET_X, OFFSET_Y, AHEAD_Z}), POSITION_SCALE);
+    for (int swapped = 0; swapped < 2; swapped++) {
+        const int width = swapped ? HEIGHT : WIDTH;
+        const int height = swapped ? WIDTH : HEIGHT;
+        for (int quarter = 0; quarter < 4; quarter++) {
+            const render_view_t view =
+                render_view_make(&pose, HALF_FOV_TAN, NEAR_Z, (viewport_t){width, height, quarter});
+            r3d_lens_t lens;
+            r3d_lens_init(&lens, &view, POSITION_SCALE);
+            const float focal = (float)HEIGHT / (2.0F * HALF_FOV_TAN);
+            const float x = (float)width * 0.5F + focal * offsets[quarter][0] / AHEAD_Z;
+            const float y = (float)height * 0.5F + focal * offsets[quarter][1] / AHEAD_Z;
+            vec3f_t p = mat4f_apply(&lens.m, ticks);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x, lens.center_x + p.x / p.z);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y, lens.center_y + p.y / p.z);
+            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, lens.near_z);
+            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z / (float)R3D_SUBPIXEL, lens.near_subpixels);
+            r3d_lens_fit(&lens, width / 2, height / 4);
+            p = mat4f_apply(&lens.m, ticks);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x * 0.5F, lens.center_x + p.x / p.z);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y * 0.25F, lens.center_y + p.y / p.z);
+        }
+    }
+}
+
+static void
 test_pose_roll_rotates_the_picture(void) {
     transformf_t pose = TRANSFORMF_IDENTITY;
     const render_view_t upright = view_of(&pose, 0);
@@ -113,6 +147,7 @@ run_render_view_suite(void) {
     RUN_TEST(test_quarter_turns_follow_viewport_axes);
     RUN_TEST(test_lens_fits_the_shorter_side);
     RUN_TEST(test_point_straight_ahead_projects_to_center);
+    RUN_TEST(test_off_axis_lens_projection_and_anisotropic_fit);
     RUN_TEST(test_pose_roll_rotates_the_picture);
 }
 

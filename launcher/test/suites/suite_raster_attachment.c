@@ -85,9 +85,7 @@ rig_open(const raster_attachment_t* const* attachments, int count) {
 
 static void
 draw(raster_rig_t* r) {
-    const render_view_t frame_view = render_view_fixture(
-        &camera, (viewport_t){r->raster.upscaled ? r->raster.destination_width : r->raster.width,
-                              r->raster.upscaled ? r->raster.destination_height : r->raster.height, 0});
+    const render_view_t frame_view = render_view_fixture(&camera, &r->raster, 0);
     raster_draw(&r->raster, &frame_view);
 }
 
@@ -221,9 +219,7 @@ test_cluster_values_and_constant_writers(void) {
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
     const r3d_span_target_t target = {buffers.picture, writers, 2};
-    r->view = render_view_fixture(
-        &camera, (viewport_t){r->raster.upscaled ? r->raster.destination_width : r->raster.width,
-                              r->raster.upscaled ? r->raster.destination_height : r->raster.height, 0});
+    r->view = render_view_fixture(&camera, &r->raster, 0);
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
     r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);
@@ -337,7 +333,7 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
         TEST_ASSERT_EQUAL_size_t(blocks, after_blocks);
         TEST_ASSERT_EQUAL_size_t(bytes, after_bytes);
 #endif
-        const render_view_t frame_view = render_view_fixture(&camera, (viewport_t){W, H, 0});
+        const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
         TEST_ASSERT_TRUE(render_context_draw(a, r->instance, 2, &frame_view, 0));
         TEST_ASSERT_TRUE(state->has_previous);
         TEST_ASSERT_FALSE(((raster_motion_t*)b->view_state)->has_previous);
@@ -356,7 +352,7 @@ test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     render_context_set_view(&c, RENDER_VIEW_SHADED);
     TEST_ASSERT_EQUAL_INT(0, c.view);
     render_context_set_scale(&c, 100);
-    const render_view_t frame_view = render_view_fixture(&camera, (viewport_t){W, H, 0});
+    const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
     TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
     TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
@@ -471,7 +467,7 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
     const raster_t raster = {.instances = instances, .instance_count = 2};
     raster_meshlets_t state = {0};
     const raster_attachment_t view = raster_meshlets_view(&state);
-    const render_view_t frame_view = render_view_fixture(&camera, (viewport_t){W, H, 0});
+    const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
     view.begin(&view, &raster, &frame_view);
     r3d_span_writer_t out = {0};
     TEST_ASSERT_TRUE(view.writer(&view, 0, &out));

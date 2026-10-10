@@ -36,9 +36,7 @@ int main(void) {
     r3d_quad_init(&quad, positions);
     r3d_instance_t instance = {.mesh = &quad.mesh};
     raster_t r = {.width = 8, .height = 8, .instances = &instance, .instance_count = 1};
-    transformf_t pose = TRANSFORMF_IDENTITY;
-    pose.position = (vec3f_t){0, 0, 100};
-    transformf_look_at(&pose, (vec3f_t){0, 0, 0}, (vec3f_t){0, 1, 0});
+    const transformf_t pose = transformf_looking((vec3f_t){0, 0, 100}, (vec3f_t){0, 0, -100}, (vec3f_t){0, 1, 0});
     const render_view_t view = render_view_make(&pose, .5f, 1, (viewport_t){r.width, r.height, 0});
     raster_attachment_t a = {.bytes_per_pixel = 2, .clear = clear, .resolve = resolve};
     const raster_attachment_t* attachments[] = {&a};

@@ -93,4 +93,12 @@
         const V##_t right = V##_normalize(V##_cross(up, forward));                                                     \
         const V##_t above = V##_cross(forward, right);                                                                 \
         P##_set_rotation(t, Q##_from_basis(right, above, forward));                                                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    static inline P##_t P##_looking(V##_t position, V##_t forward, V##_t up) {                                         \
+        P##_t pose = {0};                                                                                              \
+        pose.position = position;                                                                                      \
+        pose.scale = (V##_t){OPS##_one(), OPS##_one(), OPS##_one()};                                                   \
+        P##_look_at(&pose, V##_add(position, forward), up);                                                            \
+        return pose;                                                                                                   \
     }
