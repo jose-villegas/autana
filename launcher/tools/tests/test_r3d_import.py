@@ -107,7 +107,7 @@ def fit_key(job, scene):
     """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides."""
     from bake import bake
 
-    return bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["fit"]
+    return bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES}, "5" * 64)["fit"]
 
 
 class ImportTests(unittest.TestCase):

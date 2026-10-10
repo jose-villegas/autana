@@ -19,6 +19,7 @@ cache, keyed, and its lock records what the fit made.
 
 import argparse
 import csv
+import dataclasses
 import hashlib
 import json
 import math
@@ -99,27 +100,77 @@ def camera_clip(scene):
     return tracks_asset.bake(scene.camera.component.path.animation)
 
 
-def prepare(scene_path, scene, job, work, recorder=None):
-    from r3d.mesh_import import camera_path_poses, write_baked
-    from r3d.reference_render import main as reference_main
+@dataclasses.dataclass(frozen=True)
+class ReferenceInputs:
+    """Everything a fit's reference set reads, and so everything its bake key counts (bake/bake.py): the
+    import, the scene's bake light, tone map and camera, and the size and spacing of the poses. Nothing of
+    the start or its renderer, so fits that differ only there share one set. The set is rendered from
+    these fields alone (`job()`, `scene()`): one the render reads and this lacks fails there."""
+    settings: SimpleNamespace     # the import
+    bake: SimpleNamespace         # the renderer's [bake]: ray offset, occlusion, bounced light
+    lights: list
+    indirect: SimpleNamespace
+    tonemap_white: float
+    camera: SimpleNamespace       # the scene camera: lens, background and path
+    size: tuple                   # the camera-path visibility size the poses are sampled at
+    poses: dict                   # train_every_ms, held_out_every_ms, coverage_every_ms
 
+    def job(self):
+        return SimpleNamespace(settings=self.settings, bake=self.bake)
+
+    def scene(self):
+        return SimpleNamespace(lights=self.lights, indirect=self.indirect, tonemap_white=self.tonemap_white,
+                               camera=SimpleNamespace(component=self.camera))
+
+
+POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
+
+
+def reference_inputs(job, scene):
+    """The ReferenceInputs of a fitted renderer; its size is None without camera_path visibility, which
+    prepare_references refuses."""
     renderer = job.renderer
-    variant, fit, visibility = renderer.variant, renderer.fit, renderer.visibility
-    if visibility is None or visibility.source != "camera_path":
-        raise SettingsError(f"{variant.name} needs camera_path visibility: its poses come from the path")
+    visibility = renderer.visibility
+    size = tuple(visibility.size) if visibility is not None and visibility.source == "camera_path" else None
+    return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
+                           tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
+                           poses={name: getattr(renderer.fit, name) for name in POSE_SPACING})
+
+
+def prepare_references(inputs, work):
+    """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
+    camera path, and the training and held-out references with their normals."""
+    from r3d.mesh_import import camera_path_poses
+    from r3d.reference_render import render_sets
+
+    if inputs.size is None:
+        raise SettingsError("a fit needs camera_path visibility: its poses come from the path")
+    scene, spacing = inputs.scene(), SimpleNamespace(**inputs.poses)
+    visibility = SimpleNamespace(size=inputs.size, every_ms=None)
     work.mkdir(parents=True, exist_ok=True)
-    start = write_baked(job, scene, work, variant.name, recorder=recorder)
-    w, h, lens, near, poses = camera_path_poses(scene, visibility, fit.train_every_ms, either_way_up=False)
-    training, held_out = split_poses(fit, poses)
+    w, h, lens, near, poses = camera_path_poses(scene, visibility, spacing.train_every_ms, either_way_up=False)
+    training, held_out = split_poses(spacing, poses)
     (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
     (work / "held_out.txt").write_text(poses_text(w, h, lens, near, held_out))
     (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
-    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(scene, visibility, fit.coverage_every_ms)))
-    for poses, reference in (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"),
-                             ("held_out.txt", "reference_held_out")):
-        reference_main([str(scene_path), "--object", job.object.name, "--poses",
-                        str(work / poses), "--out", str(work / reference), "--normals"])
-    log(f"prepared {variant.name}: start of {len(start.tris)} triangles, {len(training)} training poses")
+    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(scene, visibility, spacing.coverage_every_ms)))
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in
+                         (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"),
+                          ("held_out.txt", "reference_held_out"))])
+    return len(training)
+
+
+def prepare(scene_path, scene, job, work, recorder=None):
+    """The start and the reference set in one folder, as a sweep and the command line use them."""
+    from r3d.mesh_import import write_baked
+
+    inputs = reference_inputs(job, scene)
+    if inputs.size is None:
+        raise SettingsError(f"{job.renderer.variant.name} needs camera_path visibility: its poses come from the path")
+    work.mkdir(parents=True, exist_ok=True)
+    start = write_baked(job, scene, work, job.renderer.variant.name, recorder=recorder)
+    training = prepare_references(inputs, work)
+    log(f"prepared {job.renderer.variant.name}: start of {len(start.tris)} triangles, {training} training poses")
 
 
 def reference_digest(job, scene):
@@ -140,13 +191,14 @@ def sweep_references(scene_path, scene, job, work):
     marker.write_text(json.dumps({"digest": digest}, sort_keys=True) + "\n")
 
 
-def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None):
+def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
+        start=None):
     from r3d.appearance_simplify import main as fit_main
 
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
-    start = inputs / f"{variant.name}.mesh"
+    start = inputs / f"{variant.name}.mesh" if start is None else pathlib.Path(start)
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     command = ["--scene", str(scene_path), "--start", str(start), "--poses", str(inputs / "train.txt"), "--reference",
@@ -159,7 +211,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     fit_main(command)
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.mesh"
-    shutil.copyfile(out / f"{variant.name}.mesh", target)
+    shutil.copyfile(out / start.name, target)
     log(f"wrote {target}")
     return target
 

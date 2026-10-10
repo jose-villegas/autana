@@ -4,6 +4,7 @@ for byte. build_pack.py's tree path has its own suite, test_asset_pack.py."""
 
 import contextlib
 import copy
+import dataclasses
 import hashlib
 import io
 import json
@@ -27,6 +28,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from test_r3d_import import write_import  # noqa: E402
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
+START_SHA256 = "5" * 64
 
 
 def fitted_job():
@@ -190,19 +192,59 @@ class StageTests(unittest.TestCase):
             self.assertFalse(any(name.startswith("bake/") for name in self.names(stage)), stage)
             self.assertNotIn("r3d/build_pack.py", self.names(stage), stage)
 
-    def test_a_fit_edit_rekeys_the_fit_alone_and_a_mesh_edit_every_stage(self):
+    def test_a_fit_edit_rekeys_the_fit_alone(self):
         job, scene = fitted_job()
-        keys = bake.stage_keys(job, scene, TOOL_KEYS)
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, START_SHA256)
         fit = copy.deepcopy(job)
         fit.renderer.fit.steps += 1
-        refit = bake.stage_keys(fit, scene, TOOL_KEYS)
-        self.assertEqual(keys["reference"], refit["reference"])
+        refit = bake.stage_keys(fit, scene, TOOL_KEYS, START_SHA256)
+        self.assertEqual((keys["start"], keys["reference"]), (refit["start"], refit["reference"]))
         self.assertNotEqual(keys["fit"], refit["fit"])
-        retool = bake.stage_keys(job, scene, {**TOOL_KEYS, "fit": "changed"})
+        retool = bake.stage_keys(job, scene, {**TOOL_KEYS, "fit": "changed"}, START_SHA256)
         self.assertEqual((keys["start"], keys["reference"]), (retool["start"], retool["reference"]))
         self.assertNotEqual(keys["fit"], retool["fit"])
-        rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"})
-        self.assertTrue(all(keys[stage] != rebaked[stage] for stage in keys))
+
+    def test_the_references_do_not_read_the_start(self):
+        """Fits that differ only in their start, its budget or its shading, share one reference set."""
+        job, scene = fitted_job()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, START_SHA256)
+        other = copy.deepcopy(job)
+        other.renderer.variant.triangles += 1
+        other.renderer.shading = "changed"
+        moved = bake.stage_keys(other, scene, TOOL_KEYS, START_SHA256)
+        self.assertNotEqual(keys["start"], moved["start"])
+        self.assertEqual(keys["reference"], moved["reference"])
+        rebaked = bake.stage_keys(job, scene, {**TOOL_KEYS, "mesh": "changed"}, START_SHA256)
+        self.assertNotEqual(keys["start"], rebaked["start"])
+        self.assertEqual((keys["reference"], keys["fit"]), (rebaked["reference"], rebaked["fit"]))
+
+    def test_the_fit_is_keyed_on_its_starts_bytes_and_unknown_without_them(self):
+        job, scene = fitted_job()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, START_SHA256)
+        self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, "f" * 64)["fit"])
+        self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS)["fit"])
+
+    def test_the_reference_key_counts_every_field_its_render_reads(self):
+        from r3d.fitted_variant import ReferenceInputs, reference_inputs
+
+        job, scene = fitted_job()
+        inputs = reference_inputs(job, scene)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS)
+        fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
+        self.assertEqual(set(recipe) - {"sources"}, fields)
+        brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
+        self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS)))
+
+    def test_a_fit_brings_its_start_as_a_mesh_bake_no_pack_holds(self):
+        found = bake.bakes([build_pack.DEFAULT_SEARCH])
+        fits = [item for item in found if item.kind == "fit"]
+        if not fits:
+            self.skipTest("no fitted renderer in the tree")
+        starts = {item.key: item for item in found if not item.packed and item.kind == "mesh"}
+        for fit in fits:
+            self.assertIn(fit.stages["start"], starts)
+            self.assertTrue(starts[fit.stages["start"]].output.endswith(bake.START_SUFFIX))
+
 
 class LockTests(unittest.TestCase):
     def setUp(self):
@@ -585,7 +627,7 @@ class BlendTests(unittest.TestCase):
 def filled_cache(directory):
     """Every mesh the tree's lock names, in the cache `directory`: copied from the user cache, fetched
     there first when it lacks one. Returns the mesh bakes and the lock."""
-    found = [item for item in bake.bakes([build_pack.DEFAULT_SEARCH]) if item.kind != "blend"]
+    found = [item for item in bake.bakes([build_pack.DEFAULT_SEARCH]) if item.packed]
     lock = bake.read_lock()
     for path in bake.fetch_all(found, lock, bake.default_cache()).values():
         shutil.copyfile(path, pathlib.Path(directory) / path.name)
@@ -641,7 +683,7 @@ class TreeTests(unittest.TestCase):
         self.assertEqual(packs, build_pack.pack_bytes([build_pack.DEFAULT_SEARCH]))
 
     def test_every_key_is_unique(self):
-        keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH])]
+        keys = [found.key for found in bake.bakes([build_pack.DEFAULT_SEARCH]) if found.key is not None]
         self.assertEqual(len(keys), len(set(keys)))
 
     def test_a_cold_build_fails_naming_each_bake(self):
@@ -650,7 +692,7 @@ class TreeTests(unittest.TestCase):
                                     "--offline"])
         self.assertEqual(code, 2)
         for found in bake.bakes([build_pack.DEFAULT_SEARCH]):
-            if found.kind != "blend":  # a pack holds no export
+            if found.packed:  # a pack holds no export and no fit's start
                 self.assertIn(found.output, err.getvalue())
 
 
