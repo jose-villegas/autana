@@ -58,7 +58,6 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "math/motion/orbit_motion.c"
     "input/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
@@ -188,7 +187,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
@@ -208,7 +207,8 @@ set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              perfmon unity esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
-    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The

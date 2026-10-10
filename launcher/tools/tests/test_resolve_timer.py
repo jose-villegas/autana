@@ -2,10 +2,14 @@
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+
+from build import packages  # noqa: E402
 
 
 @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
@@ -59,7 +63,7 @@ int main(void) {
             sources = ["render/render_view.c", "render/raster.c", "render/r3d_pipeline.c", "render/r3d_span.c",
                        "render/r3d_lit_mesh.c", "render/upscale.c", "core/job.c", "services/tune.c", "asset/asset_pack.c"]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
-                       "-I", str(work), "-I", str(ROOT / "launcher/main"),
+                       "-I", str(work), *(arg for root in packages.include_roots() for arg in ("-I", str(root))),
                        "-I", str(ROOT / "launcher/test/stubs"), str(source),
                        "-I", str(ROOT / "launcher/test"),
                        *(str(ROOT / "launcher/main" / name) for name in sources),
