@@ -33,12 +33,13 @@
 #ifdef DEVICE_BUILD
 #include <stdatomic.h>
 
-#include "esp_freertos_hooks.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "test_harness.h"
 #include "unity.h"
+
+#include "esp_freertos_hooks.h" /* after FreeRTOS.h, which it needs */
 #endif
 
 /* Not pulled from unity.h: that header only declares this when RUN_TEST is
