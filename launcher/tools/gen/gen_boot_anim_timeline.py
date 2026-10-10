@@ -14,10 +14,10 @@ any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
 
-`camera_focal`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
-`wave_period_ms` are single settings: `camera_focal` is a lens setting (0 is
-an orthographic projection (r3d_line_view_x_t's `focal`, render/r3d_project_x.h),
-not a second code path); `grid_step_m` is the spacing between floor rings,
+`camera_half_fov_short_tan`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
+`wave_period_ms` are single settings: `camera_half_fov_short_tan` is the
+positive tangent of the shorter-axis half field of view passed to
+render_view_make(); `grid_step_m` is the spacing between floor rings,
 authored in meters and converted at bake time; `wave_height_m`/
 `wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
 its crest-to-crest distance, and how long one full cycle takes to pass a
@@ -41,6 +41,7 @@ what someone editing the timeline wants.
 """
 
 import json
+import math
 import pathlib
 import sys
 
@@ -365,6 +366,14 @@ def main():
 
     with open(sys.argv[1], "r", encoding="utf-8") as f:
         cfg = json.load(f)
+    if "camera_focal" in cfg:
+        fail("unknown key: camera_focal")
+    if "camera_half_fov_short_tan" not in cfg:
+        fail("missing camera_half_fov_short_tan")
+    if not math.isfinite(float(cfg["camera_half_fov_short_tan"])):
+        fail("camera_half_fov_short_tan must be finite")
+    if float(cfg["camera_half_fov_short_tan"]) <= 0:
+        fail("camera_half_fov_short_tan must be greater than 0")
     if "keyframes" in cfg:
         fail("keyframes no longer live in the timeline: the camera and space "
              "move by main/boot/boot_anim_motion.glb")
@@ -489,13 +498,8 @@ def main():
         w("#define %s %d\n" % (name, timing[key]))
         w("\n" if note else "")
 
-    w("/* The camera's focal length - 0 is an orthographic projection\n")
-    w(" * (r3d_line_view_x_t's `focal`, render/r3d_project_x.h), not a second\n")
-    w(" * code path; any other value a perspective one; 1.0 is the \"normal\" lens\n")
-    w(" * default.\n")
-    w(" * Authored directly as a float - it is a lens property, not a\n")
-    w(" * position or angle, so meters/degrees do not apply. */\n")
-    w("#define BOOT_ANIM_CAMERA_FOCAL %sF\n\n" % repr(float(cfg["camera_focal"])))
+    w("/* Positive tangent of the camera's shorter-axis half field of view. */\n")
+    w("#define BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN %sF\n\n" % repr(float(cfg["camera_half_fov_short_tan"])))
 
     w("/* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment\n")
     w(" * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like\n")

@@ -159,9 +159,9 @@ The target is a 32-bit Xtensa core. A general signed 64-bit divide uses the
 software helper `__divdi3`; constant divisors can be optimized differently.
 Check widening inside fixed-point helpers, prove operand bounds before
 narrowing, and inspect disassembly rather than assigning a source-level
-divide a fixed cycle cost. `r3d_camera_to_screen_x()` in
+divide a fixed cycle cost. `r3d_project_point_cs_x()` in
 `launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
-and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
+and widens only the pixels-per-unit multiply. Near-plane clipping uses a 64-bit divide.
 
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
 falls short. Float division (`__divsf3`) is the FPU's exact

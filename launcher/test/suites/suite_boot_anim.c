@@ -206,25 +206,18 @@ test_the_quarter_points_are_exact(void) {
  * the finale starts (2700ms): the view at full progress. */
 #define CURVE_DONE_MS 2600
 
-/* A plain identity matrix (mat4f_identity()) and an orthographic focal length:
- * 0 is an orthographic projection (r3d_line_view_x_t's `focal`,
- * render/r3d_project_x.h), not a second code path. The simplest
- * boot_anim_view_t there is, built
- * directly rather than through boot_anim_view()/the motion tracks, so
- * these tests can check boot_anim_project()'s own arithmetic in isolation
- * from whatever the CURRENT seed motion happens to say. */
+/* The identity transform isolates projection from motion tracks. */
 static boot_anim_view_t
-identity_view(float focal) {
+identity_view(void) {
     boot_anim_view_t v;
     v.matrix = mat4x_identity();
     for (int i = 0; i < 4; i++) {
         v.matrix.m[i][i] = R3D_X_UNIT_ONE;
     }
-    v.focal = (int32_t)(focal * (float)R3D_X_UNIT_ONE);
     v.near_z = mathf_round_i32(R3D_LINE_NEAR_Z * (float)R3D_X_UNIT_ONE);
     v.center_x = PANEL_W / 2;
     v.center_y = PANEL_H / 2;
-    v.scale = PANEL_W / 2;
+    v.pixels_per_unit = PANEL_W / 2;
     v.units_ok = false;
     return v;
 }
@@ -232,43 +225,37 @@ identity_view(float focal) {
 /* Meters, as a camera-space point in 1/512 m. */
 static vec3x_t
 vx(float x, float y, float z) {
-    return (vec3x_t){mathf_round_i32(x * 512.0F), mathf_round_i32(y * 512.0F), mathf_round_i32(z * 512.0F)};
+    return (vec3x_t){mathf_round_i32(x * (float)R3D_X_UNIT_ONE), mathf_round_i32(y * (float)R3D_X_UNIT_ONE),
+                     mathf_round_i32(z * (float)R3D_X_UNIT_ONE)};
 }
 
-/* The space's own local origin (0,0,0) has to land at the screen's centre
- * under an identity transform and an orthographic projection: no camera
- * offset, no rotation, no depth-dependent scale to reason about, just
- * the projection centring a (0,0) point.
- * The most basic thing boot_anim_project() has to get right. */
+/* An on-axis point in front of the camera lands on the screen centre. */
 static void
-test_identity_transform_leaves_the_origin_at_screen_centre(void) {
-    const boot_anim_view_t view = identity_view(0);
+test_identity_transform_leaves_an_on_axis_point_at_screen_centre(void) {
+    const boot_anim_view_t view = identity_view();
     int x, y;
-    boot_anim_project(0, 0, 0, &view, &x, &y);
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, BOOT_ANIM_ONE, 0, &view, &x, &y));
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(PANEL_W / 2, x,
-                                  "the origin should land exactly on screen centre under an "
+                                  "the on-axis point should land exactly on screen centre under an "
                                   "identity transform");
     TEST_ASSERT_EQUAL_INT_MESSAGE(PANEL_H / 2, y,
-                                  "the origin should land exactly on screen centre under an "
+                                  "the on-axis point should land exactly on screen centre under an "
                                   "identity transform");
 }
 
-/* The property that distinguishes a real perspective projection: a point
- * further from the camera must project SMALLER (closer to screen centre)
- * than the same point nearer the camera, for a real focal length. re/im
- * map to X/Z (see boot_anim_project()'s axis-mapping comment); im is
- * depth, re is the offset compared at two depths. */
+/* A farther point projects closer to the centre. re/im map to X/Z:
+ * im is depth and re is the offset compared at two depths. */
 static void
 test_a_point_further_from_the_camera_projects_smaller(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const int32_t re = 2 * BOOT_ANIM_ONE;
     const int32_t near_im = 1 * BOOT_ANIM_ONE;
     const int32_t far_im = 4 * BOOT_ANIM_ONE;
     int x_near, y_near, x_far, y_far;
 
-    boot_anim_project(re, near_im, 0, &view, &x_near, &y_near);
-    boot_anim_project(re, far_im, 0, &view, &x_far, &y_far);
+    TEST_ASSERT_TRUE(boot_anim_project_point(re, near_im, 0, &view, &x_near, &y_near));
+    TEST_ASSERT_TRUE(boot_anim_project_point(re, far_im, 0, &view, &x_far, &y_far));
 
     const int centre = PANEL_W / 2;
     const int near_offset = (x_near > centre) ? x_near - centre : centre - x_near;
@@ -279,15 +266,11 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
                              "centre than the same point nearer the camera");
 }
 
-/* boot_anim_project_point()'s entire reason to exist over plain
- * boot_anim_project() is refusing to write anything for a point at or
- * behind the near plane, rather than projecting it to an ordinary-looking
- * but geometrically nonsense screen position. `im_q12 = 512` is 0.125 m,
- * which the view's near plane is set to, so this exercises the `<=`, which
- * a `<` typo would still pass anywhere further back. */
+/* A point at the near plane must leave the output untouched; the equality
+ * exercises the clip boundary independently of any point further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
-    boot_anim_view_t view = identity_view(1.0F);
+    boot_anim_view_t view = identity_view();
     view.near_z = 64; /* 0.125 m */
     int x = -1, y = -1;
 
@@ -306,7 +289,7 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
  * outright rather than clip against itself. */
 static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t p0 = {100, 200, 0};
     const vec3x_t p1 = {-100, -200, view.near_z};
     int ax, ay, bx, by;
@@ -323,7 +306,7 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
  * not the function under test. */
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t p0 = vx(-3.1F, 2.5F, R3D_LINE_NEAR_Z - 0.168F);
     const vec3x_t p1 = vx(4.0F, -1.8F, R3D_LINE_NEAR_Z + 0.801F);
 
@@ -483,7 +466,7 @@ expect_the_curve_near_the_panel_throughout(const boot_anim_motion_t* motion) {
         }
         const boot_anim_pt_t p = boot_anim_sample(last);
         int x, y;
-        boot_anim_project(p.re, p.im, p.t, &view, &x, &y);
+        TEST_ASSERT_TRUE(boot_anim_project_point(p.re, p.im, p.t, &view, &x, &y));
 
         TEST_ASSERT_TRUE_MESSAGE(x > -PANEL_W * BOOT_ANIM_TEST_MAX_PANEL_MULTIPLE
                                      && x < PANEL_W * (BOOT_ANIM_TEST_MAX_PANEL_MULTIPLE + 1),
@@ -514,10 +497,10 @@ expect_three_distinct_axes(const boot_anim_motion_t* motion) {
     const int32_t one = BOOT_ANIM_ONE;
     int ox, oy, rx, ry, ix, iy, tx, ty;
 
-    boot_anim_project(0, 0, 0, &view, &ox, &oy);
-    boot_anim_project(one, 0, 0, &view, &rx, &ry);
-    boot_anim_project(0, one, 0, &view, &ix, &iy);
-    boot_anim_project(0, 0, 1 << BOOT_ANIM_TQ, &view, &tx, &ty);
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, 0, 0, &view, &ox, &oy));
+    TEST_ASSERT_TRUE(boot_anim_project_point(one, 0, 0, &view, &rx, &ry));
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, one, 0, &view, &ix, &iy));
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, 0, 1 << BOOT_ANIM_TQ, &view, &tx, &ty));
 
     TEST_ASSERT_FALSE_MESSAGE(rx == ix && ry == iy, "the real and imaginary axes should not project to the same point");
     TEST_ASSERT_FALSE_MESSAGE(rx == tx && ry == ty, "the real and t axes should not project to the same point");
@@ -911,6 +894,34 @@ expect_the_narrow_transform_across_the_motion(const boot_anim_motion_t* motion) 
 }
 
 static void
+test_camera_transform_selects_the_narrow_path_at_negative_input_limits(void) {
+    const boot_anim_view_t original = boot_anim_view(seed, PANEL_W, PANEL_H, 0);
+    TEST_ASSERT_TRUE(original.units_ok);
+    for (int axis = 0; axis < 3; axis++) {
+        const int32_t limit = axis == 1 ? R3D_X_INPUT_Y_LIMIT : R3D_X_INPUT_XZ_LIMIT;
+        for (int sign = -1; sign <= 1; sign += 2) {
+            int32_t raw[3] = {0};
+            raw[axis] = sign * limit;
+            boot_anim_view_t view = original;
+            const vec3x_t point = {raw[0] * (MATHX_ONE / BOOT_ANIM_ONE), raw[1] * (BOOT_ANIM_SPIRAL_Q9 / 2),
+                                   raw[2] * (MATHX_ONE / BOOT_ANIM_ONE)};
+            const vec3x_t wide = mat4x_apply(&view.matrix, point);
+            const vec3x_t narrow = r3d_to_camera_space_units(&view, raw[0], raw[1], raw[2]);
+            const vec3x_t got = boot_anim_to_camera_space(raw[0], raw[2], raw[1], &view);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.x, got.x);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.y, got.y);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.z, got.z);
+            /* A distinct narrow translation makes path selection observable. */
+            view.units[0][3] += 1 << R3D_X_INPUT_SHIFT;
+            const vec3x_t selected = boot_anim_to_camera_space(raw[0], raw[2], raw[1], &view);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.x + 1 : wide.x, selected.x);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.y : wide.y, selected.y);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.z : wide.z, selected.z);
+        }
+    }
+}
+
+static void
 test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion(void) {
     expect_the_narrow_transform_across_the_motion(seed);
 }
@@ -929,13 +940,10 @@ test_the_curve_table_stays_inside_the_narrow_range(void) {
 
 /* Basic level of detail */
 
-/* Two points far enough apart on screen that boot_anim_curve_lod_steps()
- * must not shortcut: an identity, orthographic view (focal 0) so the
- * points' own x/y ARE their screen offset from centre, no projection math
- * to work back through by hand. */
+/* A wide perspective chord keeps the full spline detail. */
 static void
 test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
-    const boot_anim_view_t view = identity_view(0);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t a = vx(-0.2F, 0.0F, 5.0F);
     const vec3x_t c = vx(0.2F, 0.0F, 5.0F);
 
@@ -951,7 +959,7 @@ test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
  * this without looking at anything in between. */
 static void
 test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
-    const boot_anim_view_t view = identity_view(0);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t a = vx(0.08F, 0.08F, 5.0F);
     const vec3x_t c = vx(0.082F, 0.08F, 5.0F);
 
@@ -960,16 +968,11 @@ test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
                                   "to a single straight step");
 }
 
-/* boot_anim_screen_chord_lt()'s whole point over projecting the points for
- * real: the perspective cross-multiplication has to agree with what the
- * projection would say; the SAME camera-space pair reads as a wide chord
- * near the camera and a tiny one far from it, because apparent size falls
- * off with z. dx=0.2 with focal 1: at z of one meter it spans ~37 screen px
- * (well over the 3px bar); pushed a hundred meters out it spans well
- * under one. */
+/* Perspective chord bounds agree with projection: the same pair is wide
+ * near the camera and below one pixel far away. */
 static void
 test_screen_chord_shrinks_with_distance(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t near_a = vx(0.0F, 0.0F, 1.0F);
     const vec3x_t near_c = vx(0.2F, 0.0F, 1.0F);
     const vec3x_t far_a = vx(0.0F, 0.0F, 100.0F);
@@ -1004,7 +1007,7 @@ test_lod_stride_tiers_by_extent(void) {
  * guess low. */
 static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t a = vx(0.08F, 0.08F, 0.0F);
     const vec3x_t c = vx(0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F);
 
@@ -1900,6 +1903,25 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
 }
 #endif
 
+static void
+test_screen_chord_threshold_is_strict(void) {
+    const int threshold_px = 3;
+    const boot_anim_view_t view = identity_view();
+    const int32_t depth = view.pixels_per_unit * R3D_X_UNIT_ONE;
+    const vec3x_t a = {0, 0, depth};
+    const int32_t threshold = threshold_px * R3D_X_UNIT_ONE;
+    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold - 1, 0, depth}, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold, 0, depth}, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold + 1, 0, depth}, &view, threshold_px));
+    const vec3x_t farther_x = {threshold, 0, depth * 2};
+    const vec3x_t farther_y = {0, threshold, depth * 2};
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_x, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_x, a, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_y, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_y, a, &view, threshold_px));
+    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){0, threshold - 1, depth * 2}, &view, threshold_px));
+}
+
 void
 run_boot_anim_suite(void) {
     seed = malloc(sizeof *seed);
@@ -1920,7 +1942,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_quarter_wave_rises_all_the_way);
     RUN_TEST(test_sin_squared_plus_cos_squared_is_one);
     RUN_TEST(test_the_quarter_points_are_exact);
-    RUN_TEST(test_identity_transform_leaves_the_origin_at_screen_centre);
+    RUN_TEST(test_identity_transform_leaves_an_on_axis_point_at_screen_centre);
     RUN_TEST(test_a_point_further_from_the_camera_projects_smaller);
     RUN_TEST(test_project_point_rejects_a_point_at_the_near_plane);
     RUN_TEST(test_project_segment_cs_rejects_a_segment_entirely_behind);
@@ -1956,10 +1978,12 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_spline_cs_matches_transforming_the_world_space_spline);
     RUN_TEST(test_plane_points_match_the_full_camera_space_transform);
     RUN_TEST(test_the_curve_table_stays_inside_the_narrow_range);
+    RUN_TEST(test_camera_transform_selects_the_narrow_path_at_negative_input_limits);
     RUN_TEST(test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project);
+    RUN_TEST(test_screen_chord_threshold_is_strict);
     RUN_TEST(test_screen_chord_shrinks_with_distance);
     RUN_TEST(test_lod_stride_tiers_by_extent);
 
