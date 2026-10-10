@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
-from device_capture import PERF_SEGMENT  # noqa: E402
+from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
 
 EXIT_BUSY = autana_config.EXIT_BUSY
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
@@ -355,7 +355,7 @@ def buildid(args):
     a build directory: the point of the question is whether the two agree."""
     reject_unknown("buildid", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana buildid [--json]")
-    code, replies = send("BUILDID", reply="BUILD_ID")
+    code, replies = send(BUILD_ID_REQUEST, reply="BUILD_ID")
     if code != 0 or not replies:
         return code or 1
     if json_output:

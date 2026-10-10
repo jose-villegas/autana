@@ -366,7 +366,7 @@ class DeviceTests(unittest.TestCase):
                 b"".join(f"file.c:{line}:bad_{line}:FAIL: wrong {line}\n".encode()
                          for line in range(1, 13)))
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("suite results: 1 PASS, 12 FAIL", lines)
         self.assertIn("bad_1: wrong 1", lines)
@@ -380,7 +380,7 @@ class DeviceTests(unittest.TestCase):
             [f"C:\\w\\suite_gfx.c:{n}:b_{n}:FAIL: y\n".encode() for n in range(3)] +
             [b"/p/suite_gfx.c:99:ok:PASS\n"])
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         lines = [call.args[0] for call in printed.call_args_list]
         by_suite = lines[lines.index("2 more in the capture; by suite:") + 1:][:2]
         self.assertEqual(by_suite, ["  suite_sand_scenes: 9 FAIL", "  suite_gfx: 3 FAIL"])
@@ -388,13 +388,28 @@ class DeviceTests(unittest.TestCase):
     def test_under_the_cap_there_is_no_per_suite_block(self):
         data = b"/p/suite_gfx.c:1:b:FAIL: y\n"
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         self.assertFalse(any("by suite" in call.args[0] for call in printed.call_args_list))
+
+    def test_a_run_that_crashed_fails_with_every_test_passed(self):
+        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\n"
+        with mock.patch("builtins.print") as printed:
+            failed = device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
+        self.assertTrue(failed)
+        printed.assert_any_call("crash: abort() was called at PC 0x40376f2b on core 0")
+
+    def test_a_selftest_may_hold_its_own_boot_and_no_second(self):
+        boot = b"ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
+        with mock.patch("builtins.print"):
+            self.assertFalse(device.print_suite_output(
+                boot + b":1:good:PASS\n", "record.log", "selftest", "complete", False, 1))
+            self.assertTrue(device.print_suite_output(
+                boot + b":1:good:PASS\n" + boot, "record.log", "selftest", "complete", False, 1))
 
     def test_a_passing_run_still_names_its_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("suite capture: record.log", lines)
         self.assertNotIn("boot detail", "\n".join(lines))
@@ -402,7 +417,7 @@ class DeviceTests(unittest.TestCase):
     def test_suite_output_pass_and_verbose_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "selftest", "complete", True)
+            device.print_suite_output(data, "record.log", "selftest", "complete", True, 1)
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("boot detail\n:1:good:PASS\n", lines)
         self.assertIn("selftest results: 1 PASS, 0 FAIL", lines)
@@ -2065,6 +2080,12 @@ class ListenLifecycleTests(unittest.TestCase):
                 self.assertIn("listen capture: " + entry["capture_path"], output)
                 self.assertIn("listen capture ended: stopped", output)
                 store.release.assert_called_once()
+
+    def test_a_board_that_reboots_while_listened_to_fails_the_listen(self):
+        connection = FakeConnection([b"BUILD_ID=abc123\nrst:0xc (RTC_SW_CPU_RST),boot:0x8\n"])
+        code, output, _, _, _ = self.run_listen(connection, ["--seconds", "0.1"])
+        self.assertEqual(code, 1)
+        self.assertIn("rebooted: 1 boots, expected at most 0", output)
 
     def test_listen_requires_exactly_one_duration_mode(self):
         for flags in ([], ["--seconds", "1", "--follow"]):

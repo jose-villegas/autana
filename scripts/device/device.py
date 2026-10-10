@@ -24,7 +24,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from device_capture import BUILD_ID_BYTES_RE as BUILD_ID
+from device_capture import BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, crash_signs
 
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
@@ -447,7 +447,17 @@ def failures_by_suite(text):
     return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
 
 
-def print_suite_output(data, record_path, command, reason, verbose):
+def print_crash_signs(data, boots_allowed):
+    """Every capture command's crash verdict: each sign on its own line, and
+    how many there were."""
+    signs = crash_signs(data.decode("utf-8", errors="replace"), boots_allowed)
+    for sign in signs:
+        print(sign)
+    return len(signs)
+
+
+def print_suite_output(data, record_path, command, reason, verbose, boots_allowed):
+    """How many failures and crash signs the capture holds, after printing them."""
     text = data.decode("utf-8", errors="replace")
     if verbose and text:
         print(text, end="" if text.endswith("\n") else "\n")
@@ -460,9 +470,10 @@ def print_suite_output(data, record_path, command, reason, verbose):
         print(f"{len(failures) - MAX_PRINTED_FAILURES} more in the capture; by suite:")
         for suite_name, count in failures_by_suite(text):
             print(f"  {suite_name}: {count} FAIL")
+    crashed = print_crash_signs(data, boots_allowed)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
-    return failed
+    return failed + crashed
 
 
 def print_reset_output(data, verbose):
@@ -1353,7 +1364,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
                   file=sys.stderr)
     if patterns:
         check_test_filter(data, args.suite, patterns, reason)
-    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False))
+    failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
     return 1 if failed else 0
 
 
@@ -1405,7 +1416,7 @@ def selftest(args, store, board):
             except Exception as report_error:  # a report is a convenience, never fails the capture
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
-        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False))
+        failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
         return 1 if failed else 0
 
 
@@ -1469,6 +1480,7 @@ def listen(args, store, board):
         sink.finish()
     elif data and not data.endswith(b"\n"):
         print()
+    crashed = print_crash_signs(data, BOOTS_ON_RUNNING)
     print("listen capture: " + str(final_path))
     print("listen capture ended: " + reason)
     elf = Path(args.elf) if args.elf else find_elf_for_build_id(
@@ -1480,6 +1492,7 @@ def listen(args, store, board):
                 print("\n" + label + " decoded against " + str(elf) + ":")
                 for line in decoded:
                     print("  " + line)
+    return 1 if crashed else 0
 
 
 def replies_to(data, reply, until):
@@ -1996,7 +2009,7 @@ def main(argv=None):
         elif args.command == "screenshot":
             return screenshot(args, store, board)
         else:
-            listen(args, store, board)
+            return listen(args, store, board)
         return 0
     except LockBusy as error:
         print("device: " + str(error), file=sys.stderr)

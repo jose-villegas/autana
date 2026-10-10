@@ -151,3 +151,34 @@ class CaptureTests(unittest.TestCase):
         for line, groups in [('I SELFTEST_COMPLETE failures=2 elapsed_ms=30', ('2', '30')),
                              ('SELFTEST_COMPLETE', (None, None))]:
             self.assertEqual(capture.SELFTEST_COMPLETE_RE.search(line).groups(), groups)
+
+
+# The shape of q9kf's reboot, shortened: the assert, abort()'s line, then the
+# ROM's banner of the boot that followed.
+CRASH = ('assert failed: gfx_present gfx.c:120 (fb != NULL)\n'
+         'abort() was called at PC 0x40376f2b on core 0\n')
+BOOT = 'ESP-ROM:esp32s3-20210327\nrst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)\n'
+
+
+class CrashSignTests(unittest.TestCase):
+    def test_a_clean_boot_shows_none(self):
+        self.assertEqual(capture.crash_signs(BOOT + ':1:one:PASS\n', 1), [])
+
+    def test_each_crash_line_is_a_sign(self):
+        panic = "\x1b[0;31mGuru Meditation Error: Core  0 panic'ed (LoadProhibited).\n"
+        signs = capture.crash_signs(BOOT + CRASH + panic, 1)
+        self.assertEqual(len(signs), 3)
+        self.assertTrue(all(sign.startswith('crash: ') for sign in signs))
+
+    def test_a_boot_beyond_the_allowed_is_a_reboot(self):
+        self.assertEqual(capture.crash_signs(BOOT + BOOT, 1),
+                         ['rebooted: 2 boots, expected at most 1 '
+                          '(last rst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT))'])
+        self.assertEqual(len(capture.crash_signs(BOOT, 0)), 1)
+
+    def test_either_banner_line_counts_a_boot(self):
+        self.assertEqual(len(capture.crash_signs('ESP-ROM:esp32s3-20210327\n', 0)), 1)
+        self.assertEqual(len(capture.crash_signs('rst:0x1 (POWERON),boot:0x8\n', 0)), 1)
+
+    def test_a_log_line_naming_abort_is_not_a_crash(self):
+        self.assertEqual(capture.crash_signs('I (5) app: abort requested by the user\n', 0), [])
