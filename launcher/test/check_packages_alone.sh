@@ -4,7 +4,7 @@
 # path but the package's own include/ root (tools/build/packages.sh).
 #
 # A package sits under every layer of the firmware, so it may include only
-# itself and the C library. The style audit's PACKAGE-INCLUDE rule names a
+# itself, the C library and the build config. The style audit's PACKAGE-INCLUDE rule names a
 # reach into the firmware's own folders; this catches the reaches a resolver
 # cannot see: a stub, a vendored component, an ESP-IDF header. Each header is
 # compiled on its own, so one that leans on whatever its includer happened to
@@ -48,8 +48,7 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     package_dir=$(dirname "$include_dir")
     # A header goes in through a one-line unit, spelled as its includers spell it.
     for header in $(cd "$include_dir" && find . -name '*.h' | sed 's|^\./||' | sort); do
-        printf '#include "%s"
-' "$header" >"$UNIT_DIR/unit.c"
+        printf '#include "%s"\n' "$header" >"$UNIT_DIR/unit.c"
         # shellcheck disable=SC2086
         check "$package_dir" "$header" "$CC_BIN" $CFLAGS -I "$include_dir" "$UNIT_DIR/unit.c"
     done

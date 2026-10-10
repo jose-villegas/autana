@@ -9,6 +9,13 @@ LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
 FIRST_PARTY = ("launcher/main/", "launcher/packages/")
 
 
+def package_part(rel):
+    """(name, part) for a repository path inside launcher/packages/<name>/<part>/, part
+    being include, src, tests or another top folder of the package; None elsewhere."""
+    parts = pathlib.PurePosixPath(rel).parts
+    return (parts[2], parts[3]) if parts[:2] == ("launcher", "packages") and len(parts) > 4 else None
+
+
 def include_dirs(launcher=LAUNCHER):
     """Every package's include root, sorted."""
     return sorted(path for path in (pathlib.Path(launcher) / "packages").glob("*/include") if path.is_dir())

@@ -6,9 +6,8 @@ readability-function-cognitive-complexity check, not a fixed threshold.
 Measures every first-party .c file under launcher/main/ and
 launcher/packages/ (the ESP-IDF diagnostics build's own compile database,
 esp-clang targeting Xtensa) and every portable file the host test runner
-compiles, merged into one set with no double counting. A .c file under
-either that neither
-source measures, and that is not on EXCLUDED_MAIN_FILES below with a
+compiles, merged into one set with no double counting. A first-party .c
+file that neither source measures, and that is not on EXCLUDED_MAIN_FILES below with a
 reason, fails the gate by name: coverage cannot silently shrink.
 
 The gate FAILS when a function scores above FAIL_THRESHOLD and either
@@ -71,8 +70,7 @@ FAIL_THRESHOLD = 15
 # a number that different from history.
 MIN_COVERAGE_RATIO = 0.5
 
-# A .c file under launcher/main/ that no source below can give real flags
-# to. Reviewed by hand, not grown casually; each entry needs a reason a
+# A first-party .c file that no source below can give real flags to. Reviewed by hand, not grown casually; each entry needs a reason a
 # reader can check.
 EXCLUDED_MAIN_FILES = {
     "main/apps/sand/tools/crossflow_bench.c":
@@ -420,7 +418,7 @@ def inline_response_file(cmd):
 
 def build_idf_entries(toolchain_root, vendored=False):
     """launcher/build.diag/compile_commands.json, restricted to this
-    project's own main/ and test/ trees (excluding vendored code and
+    project's own main/, packages/ and test/ trees (excluding vendored code and
     apps/*/tools/, which the firmware never links), or, with `vendored`,
     to only the vendored .c files in VENDORED_REFERENCES, with the flags esp-idf
     generated for xtensa-esp32s3-elf-gcc adjusted for esp-clang: the three
