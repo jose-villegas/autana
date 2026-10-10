@@ -33,6 +33,8 @@ static int leaks;
 static suite_test_verdict_t verdict;
 static volatile bool escaped;
 static atomic_bool spinning;
+/* The task count with the spinner and without the ended task. */
+static UBaseType_t spin_tasks;
 
 static void
 fixture(void) {
@@ -85,12 +87,13 @@ end_a_task(void) {
     (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 }
 
-/* Keeps the other core's idle task from running, and so from freeing the
- * ended task before the audit looks. */
+/* Keeps the other core's idle task from running until this core's has freed
+ * the ended task, so only the audit's own wait can let that happen. */
 static void
 spin(void* unused) {
     (void)unused;
-    while (atomic_load(&spinning)) {}
+    while (atomic_load(&spinning) && uxTaskGetNumberOfTasks() <= spin_tasks) {}
+    while (atomic_load(&spinning) && uxTaskGetNumberOfTasks() > spin_tasks) {}
     vTaskDelete(NULL);
 }
 
@@ -129,12 +132,14 @@ test_a_repeat_in_a_test_that_ends_in_test_pass_is_caught(void) {
 }
 
 /* With both idle tasks held off, only the audit's own wait lets the ended
- * task be freed: without it, its stack reads as leaked every time. */
+ * task be freed: without it, its stack reads as leaked every time. Once it
+ * is freed, the spinner ends too, and the audit sees both idle tasks pass. */
 static void
 test_a_task_the_test_ended_is_not_a_leak(void) {
     fixture();
     atomic_store(&spinning, true);
 #if portNUM_PROCESSORS > 1
+    spin_tasks = uxTaskGetNumberOfTasks() + 1;
     TEST_ASSERT_EQUAL(pdPASS, xTaskCreatePinnedToCore(spin, "spin", TASK_STACK_BYTES, NULL, uxTaskPriorityGet(NULL),
                                                       NULL, !xPortGetCoreID()));
 #endif
