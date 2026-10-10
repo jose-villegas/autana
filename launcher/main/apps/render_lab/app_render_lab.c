@@ -154,7 +154,9 @@ switch_to_scene(int index) {
     current_scene()->exit();
     current_scene_index = index;
     render_lab_start_scene_key = current_scene()->key; /* keeps a later re-entry on this same scene */
-    gfx_invalidate();
+    /* The new scene clears the full framebuffer, so discard the composed half picture first. */
+    gfx_mode_exit();
+    enter_layout();
     ui_invalidate();
     current_scene()->enter();
     scene_title_remaining_ms = SCENE_TITLE_MS;
