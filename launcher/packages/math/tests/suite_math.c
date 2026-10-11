@@ -1,5 +1,3 @@
-#include "math/linear/mat3f.h"
-#include "math/scalar/rng.h"
 /*
  * Portable suite: math/linear/'s float types. The quaternion's axes, slerp,
  * the matrix built from a TRS, the transform's matrix cache, the camera's
@@ -13,7 +11,9 @@
 #include "transform_cache.h"
 #include "unity.h"
 
+#include "math/linear/mat3f.h"
 #include "math/linear/transformf.h"
+#include "math/scalar/rng.h"
 
 #define HALF_PI 1.57079632679F
 #define SLACK   1e-5F
@@ -384,8 +384,20 @@ test_cofactor_random_matrices_and_reflection(void) {
     assert_cofactor_identity(reflection);
 }
 
+static void
+test_mat3_from_nonsymmetric_mat4_preserves_rows(void) {
+    const mat4f_t source = {{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}}};
+    const mat3f_t result = mat3f_from_mat4(source);
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int col = 0; col < MAT3F_AXES; col++) {
+            TEST_ASSERT_EQUAL_FLOAT(source.m[row][col], result.m[row][col]);
+        }
+    }
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
     RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);
     RUN_TEST(test_affine_product_and_inverse_match_full_matrices);

@@ -32,8 +32,7 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     for (int e = 0; e < entities; e++) {
         anim_component_ref_t* fields = out.components + (e * 2);
         fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
-        out.targets[e] = (anim_target_t){scene->asset.names[e], fields, 1, &scene->flags[e],
-                                         SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY};
+        out.targets[e] = (anim_target_t){scene->asset.names[e], fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
     }
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;
@@ -225,38 +224,42 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (status != ASSET_OK) {
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
     }
+    if (scene->light_count > 0 && next.bind.colors == NULL) {
+        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO));
+    }
     const size_t size = r3d_skin_output_bytes(&next.bind);
     size_t end = size;
 
     struct {
-        size_t model, palette, colors, normals;
+        size_t model, palette;
     } layout;
 
     SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, next.skin.joint_count);
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, next.skin.joint_count);
-    SCENE_STORAGE_RESERVE(layout, end, colors, uint8_t, next.bind.vertex_count* R3D_SKIN_LIGHT_CHANNELS);
-    SCENE_STORAGE_RESERVE(layout, end, normals, mat3f_t, next.skin.joint_count);
     next.internal_storage = memory_alloc(end, MEMORY_INTERNAL);
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
+    if (scene->light_count > 0 && !scene_skin_light_allocate(&next)) {
+        memory_free(next.internal_storage);
+        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+    }
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
-    next.colors = (uint8_t(*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)next.internal_storage + layout.colors);
-    next.normal_palette = (mat3f_t*)(void*)((uint8_t*)next.internal_storage + layout.normals);
     next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
     next.palette = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.palette);
     anim_pose_model(&animator->skeleton, &animator->layer.shown, next.model);
     r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
     r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
+    memory_free(scene->skinned_renderers[entity].light_storage);
     memory_free(scene->skinned_renderers[entity].internal_storage);
     scene->skinned_renderers[entity] = next;
     scene->renderers[renderer].mesh = next.output.mesh;
-    if (scene->light_count > 0 && (scene->flags[entity] & SCENE_FLAG_ENABLED)) {
+    if (scene->light_count > 0) {
         scene->skinned_renderers[entity].output.mesh.colors = next.colors;
         scene->renderers[renderer].mesh.colors = next.colors;
-        scene->lights_dirty = true;
     }
+    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, id));
 }
 
@@ -325,6 +328,7 @@ void
 scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
         memory_free(scene->animators[e].storage);
+        memory_free(scene->skinned_renderers[e].light_storage);
         memory_free(scene->skinned_renderers[e].internal_storage);
         scene->animators[e] = (scene_animator_t){0};
         scene->skinned_renderers[e] = (scene_skinned_renderer_t){0};
@@ -392,7 +396,7 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int clusters = skin->bind.cluster_count;
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
-        if (scene->light_count > 0) {
+        if (scene->light_count > 0 && skin->lighting_valid) {
             r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
                                   skin->normal_palette, &scene->world_lights, skin->colors);
         } else {
@@ -441,7 +445,10 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
 static bool
 skin_lights_changed(const scene_t* scene) {
     const int entities = scene->asset.entity_count;
-    bool lights_dirty = scene->lights_dirty || scene->transfer_white != scene->tonemap_white;
+    if (scene->light_count == 0) {
+        return false;
+    }
+    bool lights_dirty = false;
     for (int e = 0; e < entities; e++) {
         lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE && (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
     }
@@ -464,22 +471,19 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
         scene_animator_t* animator = &scene->animators[e];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         if (!(scene->flags[e] & SCENE_FLAG_ENABLED)) {
-            animator->posed = false;
             continue;
         }
         if (skin->internal_storage != NULL && scene->light_count > 0) {
             animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
         }
         if (skin->internal_storage != NULL && animator->posed) {
-            r3d_skin_normal_palette(skin->palette, skin->skin.joint_count, transformf_compute_matrix(&scene->locals[e]),
-                                    skin->normal_palette);
+            scene_skin_light_prepare(scene, (scene_entity_t)e);
             clusters += skin->bind.cluster_count;
         }
     }
     for (int e = 0; e < entities; e++) {
         scene->flags[e] &= (uint8_t)~SCENE_FLAG_SKIN_DIRTY;
     }
-    scene->lights_dirty = false;
     return clusters;
 }
 

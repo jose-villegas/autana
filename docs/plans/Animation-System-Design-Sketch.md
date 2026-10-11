@@ -95,8 +95,8 @@ bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 | header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient_colour[3]` (linear RGB), `f32 ambient_intensity`, `f32 tonemap_white` |
 
 The lights, ambient and tone map are read by one runtime system: the skinned
-renderers' lighting (`r3d_skin_lights_t`, built per skinned renderer from the
-scene's lights in its object space), so a skinned mesh is lit by the same
+renderers' lighting (`r3d_skin_lights_t`, one world-space set per scene that every lit
+skinned renderer reads), so a skinned mesh is lit by the same
 numbers the static bake used. Direct N.L is selected by the
 [board measurement](../render/Skinned-Lighting.md#board-measurement), with
 normal renormalisation and bake-matched albedo decode, tone map and gamma.

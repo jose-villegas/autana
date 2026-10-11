@@ -50,11 +50,27 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
     return true;
 }
 
-void
+bool
 r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f_t* normals) {
     for (int joint = 0; joint < joints; joint++) {
-        normals[joint] = mat3f_cofactor(mat3f_from_mat4(mat4f_mul(world, palette[joint])));
+        const mat3f_t matrix = mat3f_from_mat4(mat4f_mul(world, palette[joint]));
+        const mat3f_t cofactor = mat3f_cofactor(matrix);
+        const float det =
+            matrix.m[0][0] * cofactor.m[0][0] + matrix.m[0][1] * cofactor.m[0][1] + matrix.m[0][2] * cofactor.m[0][2];
+        if (det == 0.0F || !isfinite(det)) {
+            return false;
+        }
+        for (int row = 0; row < MAT3F_AXES; row++) {
+            for (int col = 0; col < MAT3F_AXES; col++) {
+                const float value = cofactor.m[row][col] / det;
+                if (!isfinite(value)) {
+                    return false;
+                }
+                normals[joint].m[row][col] = value;
+            }
+        }
     }
+    return true;
 }
 
 enum { POSITION_AXES = 3, MATRIX_COLUMNS = 4 };

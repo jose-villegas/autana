@@ -80,7 +80,7 @@ instantiate(const scene_asset_t* asset) {
     scene->ambient_intensity = SCENE_AMBIENT_INTENSITY_NONE;
     scene->tonemap_white = SCENE_TONEMAP_WHITE_NONE;
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY, asset->entity_count);
+    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
@@ -352,7 +352,7 @@ void
 scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
     scene->locals[entity] = *transform;
-    scene->flags[entity] |= SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY;
+    scene->flags[entity] |= SCENE_FLAG_CHANGED;
 }
 
 bool
@@ -366,122 +366,10 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
     assert(entity < scene->asset.entity_count);
     scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
                                    : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
-    scene->flags[entity] |= SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY;
-    scene->lights_dirty |= scene->lights[entity].kind != SCENE_LIGHT_NONE;
-    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
-    if (skin->internal_storage != NULL && scene->light_count > 0) {
-        const int renderer = scene_renderer_index(scene, entity);
-        skin->output.mesh.colors = enabled ? (const uint8_t(*)[3])skin->colors : skin->bind.colors;
-        scene->renderers[renderer].mesh.colors = skin->output.mesh.colors;
-    }
+    scene->flags[entity] |= SCENE_FLAG_CHANGED;
 }
 
 bool
 scene_transform_is_identity(const scene_placement_t* transform) {
     return memcmp(transform, &IDENTITY, sizeof IDENTITY) == 0;
-}
-
-static scene_light_t*
-light_attach(scene_t* scene, scene_entity_t entity) {
-    if (scene == NULL || entity >= scene->asset.entity_count) {
-        return NULL;
-    }
-    scene_light_t* light = &scene->lights[entity];
-    if (light->kind != SCENE_LIGHT_NONE) {
-        return light;
-    }
-    if (scene->light_count == R3D_SKIN_LIGHT_MAX) {
-        return NULL;
-    }
-    if (scene->light_transfer == NULL) {
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        if (scene_fail_next_allocation) {
-            scene_fail_next_allocation = false;
-            return NULL;
-        }
-#endif
-        scene->light_transfer = memory_alloc(sizeof *scene->light_transfer, MEMORY_INTERNAL);
-        if (scene->light_transfer == NULL) {
-            return NULL;
-        }
-        r3d_skin_light_transfer_build(scene->tonemap_white, scene->light_transfer);
-        scene->transfer_white = scene->tonemap_white;
-    }
-    *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
-    scene->light_count++;
-    for (int r = 0; r < scene->asset.renderer_count; r++) {
-        scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
-        if (skin->internal_storage != NULL && (scene->flags[scene->renderers[r].entity] & SCENE_FLAG_ENABLED)) {
-            skin->output.mesh.colors = skin->colors;
-            scene->renderers[r].mesh.colors = skin->colors;
-        }
-    }
-    return light;
-}
-
-bool
-scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb) {
-    if (!isfinite(linear_rgb.x) || !isfinite(linear_rgb.y) || !isfinite(linear_rgb.z) || linear_rgb.x < 0.0F
-        || linear_rgb.x > 1.0F || linear_rgb.y < 0.0F || linear_rgb.y > 1.0F || linear_rgb.z < 0.0F
-        || linear_rgb.z > 1.0F) {
-        return false;
-    }
-    scene_light_t* light = light_attach(scene, entity);
-    if (light == NULL) {
-        return false;
-    }
-    light->color = linear_rgb;
-    scene->lights_dirty = true;
-    return true;
-}
-
-bool
-scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float intensity) {
-    if (!isfinite(intensity) || intensity < 0.0F) {
-        return false;
-    }
-    scene_light_t* light = light_attach(scene, entity);
-    if (light == NULL) {
-        return false;
-    }
-    light->intensity = intensity;
-    scene->lights_dirty = true;
-    return true;
-}
-
-vec3f_t
-scene_light_color(const scene_t* scene, scene_entity_t entity) {
-    return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
-               ? (vec3f_t){0}
-               : scene->lights[entity].color;
-}
-
-float
-scene_light_intensity(const scene_t* scene, scene_entity_t entity) {
-    return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
-               ? 0.0F
-               : scene->lights[entity].intensity;
-}
-
-void
-scene_lights_prepare(scene_t* scene) {
-    if (scene->light_count == 0) {
-        return;
-    }
-    if (scene->transfer_white != scene->tonemap_white) {
-        r3d_skin_light_transfer_build(scene->tonemap_white, scene->light_transfer);
-        scene->transfer_white = scene->tonemap_white;
-    }
-    r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
-                               .transfer = scene->light_transfer};
-    for (int l = 0; l < scene->asset.entity_count; l++) {
-        const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ENABLED)) {
-            continue;
-        }
-        const int at = world.count++;
-        world.direction[at] = quatf_rotate(scene->locals[l].rotation, SCENE_LIGHT_AXIS);
-        world.color[at] = vec3f_scale(light->color, light->intensity);
-    }
-    scene->world_lights = world;
 }

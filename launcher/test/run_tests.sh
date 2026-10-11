@@ -168,6 +168,7 @@ $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
 $MAIN_DIR/scene/scene_animation.c
+$MAIN_DIR/scene/scene_light.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
