@@ -176,6 +176,16 @@ class ContentKeyTests(unittest.TestCase):
             with self.subTest(source=plain):
                 self.assertNotEqual(self.content(plain), self.content(edited))
 
+    def test_c_spliced_literal_comment_bytes_change_key(self):
+        plain = b'"p\\\n/* p */";\n/* r */\n'
+        edited = plain.replace(b"/* p */", b"/* q */")
+        self.assertNotEqual(self.content(plain), self.content(edited))
+
+    def test_c_literal_at_line_start_retains_newline(self):
+        plain = b'#define M \\\n"a"\nint x;\n'
+        joined = b'#define M \\\n"a" int x;\n'
+        self.assertNotEqual(self.content(plain), self.content(joined))
+
     def test_c_char_quotes_do_not_hide_comments_or_next_line_code(self):
         for literal in (b"'\"'", br"'\''", b"'/'", b"'*'"):
             with self.subTest(literal=literal):

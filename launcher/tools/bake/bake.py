@@ -69,15 +69,14 @@ import urllib.request
 import zipfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
+REPO = TOOLS.parents[1]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
-
-from c_lexer import c_code
+sys.path.insert(0, str(REPO / "scripts/gates"))
 
 from build import packages  # noqa: E402
+from c_lexer import c_code  # noqa: E402
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
-REPO = TOOLS.parents[1]
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
 RELEASE_URL = f"https://github.com/jose-villegas/autana/releases/download/{RELEASE_TAG}/"
