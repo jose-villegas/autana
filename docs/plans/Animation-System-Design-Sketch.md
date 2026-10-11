@@ -1,8 +1,8 @@
 # Animation system: design sketch
 
-**Status:** decisions approved (below); TRCK, SKEL and SKIN are implemented.
-The remaining runtime and SCNE v2 are proposed. `[A]` marks a proposal of
-this sketch that nobody asked for.
+**Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning and the scene
+animator and skinned-renderer components are implemented; lighting, SCNE v2 and
+the clip picker are proposed. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
 
@@ -13,35 +13,33 @@ Two systems share one sampler and one binding resolver:
   blended, and the pose skinning a mesh every frame. Later: a state machine
   with transitions, blend trees, layers and masks, events, root motion, IK.
 
-Milestone 1 builds only what a skinned model playing its clips needs: bake
-skeleton, skin and clips; sample; a transition blend between clips; skin on the CPU; light; a clip
-picker. Every later piece below names where it plugs in, so M1 is not redone.
-
 ## 1. The frame
 
 ```mermaid
-flowchart LR
-    Params["parameters<br/>(M1: the picker)"] --> Graph["animator graph<br/>M1: one layer, two slots"]
-    Graph -->|"weighted clip samples"| Pose["local pose<br/>joint TRS"]
-    Pose --> Post["post-pose<br/>later: IK, root motion"]
-    Post --> Model["model-space joints"]
-    Model --> Palette["skin palette<br/>joint x inverse bind"]
-    Palette --> Skin["skin positions<br/>and normals"]
-    Skin --> Light["light bytes<br/>per vertex"]
+flowchart TB
+    Params["clip controls"] --> Graph["one layer, two slots"]
+    Graph --> Pose["local joint TRS"]
+    Pose --> Model["model-space joints"]
+    Model --> Palette["joint × inverse bind"]
+    Palette --> Skin["skin positions"]
     Skin --> Bounds["cluster and node bounds"]
-    Light --> Raster["raster: unchanged"]
-    Bounds --> Raster
+    Bounds --> Raster["raster"]
+    Graph --> Property["property clips on core 0"]
+    Property --> Placement["dirty entity placements"]
+    Placement --> Raster
+    Pose -.-> Post["proposed post-pose<br/>IK and root motion"]
+    Skin -.-> Light["proposed lighting"]
+    Light -.-> Raster
 ```
 
 It runs in the scene's advance (`scene_render()`, after the clocks, before the
-draw), so an app never skins. The raster reads an `r3d_lit_mesh_t` view as
-today; a skinned renderer's view points `positions`, `colors`, `clusters` and
-`nodes` at its own buffers instead of the entry [A]. No raster change.
+draw), so an app never skins. The raster reads an `r3d_lit_mesh_t` view. A skinned renderer's view points `positions`, `clusters` and `nodes` at its
+mutable buffers, retaining the bind mesh's colours.
 
 ## 2. Two cores
 
 The animation frame is batches with no shared writes, so it splits the way
-the raster already does (`raster.c` `run_split()`): half the batch goes to
+the raster does through `job_run_split()` (`core/job.h`): half the batch goes to
 core 1 through `job_try_core1()`, core 0 runs the other half, and
 `job_wait()` is the sync point before the next stage reads.
 
@@ -54,17 +52,18 @@ sequenceDiagram
     C0->>C1: animators, second half
     C0->>C0: animators, first half
     C1-->>C0: job_wait()
+    C0->>C0: apply property clips and rebuild dirty placements
     C0->>C1: skin, second half of clusters
     C0->>C0: skin, first half of clusters
     C1-->>C0: job_wait()
     C0->>C0: node bounds refit
-    C0->>C1: raster stages, split as today
+    C0->>C1: raster stages
 ```
 
 | Stage | Batch split by | Each core writes | Read after the sync by |
 |---|---|---|---|
-| animators | entity (half the animators each) | its animators' pose and palette (per animator, in the scene block) | skin |
-| skin | cluster (half the clusters each) | its clusters' vertex range of `positions`, `colors`, and its clusters' bounds | node refit, raster |
+| animators | entity (half the animators each) | its animators' poses and skin palettes | skin |
+| skin | cluster (half the clusters each) | its clusters' vertex range of `positions` and its clusters' bounds | node refit, raster |
 | node refit | none: one pass, under a few dozen nodes | `nodes` | raster |
 
 - **Why clusters, not vertices:** a cluster owns a contiguous vertex range,
@@ -74,7 +73,7 @@ sequenceDiagram
   draw starts, which `scene_render()` already orders. A double buffer is only
   needed if skinning frame N+1 overlaps the raster of frame N; the view
   points at the buffers, so that is one pointer swap per frame and no
-  layout change [A]. Not built in M1.
+  layout change [A].
 - **Present on core 1:** the present task sends the last frame's strips from
   IRAM while `scene_render()` runs, at a higher priority than the job
   worker. When the worker is busy `job_try_core1()` returns false and core 0
@@ -82,10 +81,10 @@ sequenceDiagram
   buffers sit in internal RAM, so the job does not contend with
   present for PSRAM; the bind data is read through the flash cache.
 - **The job context** (`JOB_CTX_MAX`, 128 bytes) holds a range and pointers:
-  `{skin, mesh, palette, buffers, first cluster, cluster count}`.
-- **M1 dispatches both cores** through the shared job helper; the second
+  `{scene, first, count, dt_ms}`.
+- **Both range stages dispatch through the shared helper** through the shared job helper; the second
   range runs inline when core 1 is unavailable. Every kernel takes a range
-  (`first`, `count`). Board measurements compare both dispatch modes.
+  (`first`, `count`).
 
 ## 3. Pack entries
 
@@ -114,11 +113,11 @@ bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 The lights, ambient and tone map are read by one runtime system: the skinned
 renderers' lighting (`r3d_skin_light_t`, built per skinned renderer from the
 scene's lights in its object space), so a skinned mesh is lit by the same
-numbers the static bake used. SCNE v1 remains the current scene format. The proposed version adds authored
+numbers the static bake used. SCNE v1 is the scene format. The proposed version adds authored
 animator and lighting rows; runtime attachment uses asset ids without these
 rows. TRCK v1 is refused (`ASSET_ERR_VERSION`).
 
-## 4. Types and functions, M1
+## 4. Runtime types and functions
 
 The implemented internal types and signatures live in
 [`anim/pose/anim_pose.h`](../../launcher/main/anim/pose/anim_pose.h),
@@ -126,25 +125,25 @@ The implemented internal types and signatures live in
 [`anim/playback/anim_playhead.h`](../../launcher/main/anim/playback/anim_playhead.h),
 and [`render/skin/r3d_skinning.h`](../../launcher/main/render/skin/r3d_skinning.h).
 Pose sampling preserves unkeyed rest channels. Pose blending uses hemisphere
-corrected nlerp [55](../Citations.md#55) and linear position and scale. Interrupted transition
+corrected nlerp <sup>[[55]](../Citations.md#55)</sup> and linear position and
+scale. This uses only the paper's sign-corrected normalized quaternion sum,
+applied per joint between two poses; no dual quaternions. Interrupted transition
 blends preserve the shown pose in a frozen source buffer. CPU skinning uses
-linear blend skinning [56](../Citations.md#56), separate influence-count kernels and cluster ranges.
+linear blend skinning <sup>[[56]](../Citations.md#56)</sup>, separate influence-count kernels and cluster ranges.
 
 Scene components own these buffers and clocks. The two-stage frame system in
 `scene/scene_animation.c` advances entity ranges, synchronizes, skins cluster
-ranges, synchronizes and refits node bounds. Property samples use animator-local
-values until the first synchronization; committing their destination fields
-updates component dirty flags and transform matrices.
+ranges, synchronizes and refits node bounds. Property clips apply directly to
+their targets on core 0 after the first synchronization. A dirty-entity pass
+rebuilds placements. Unchanged poses skip skinning and node refit.
 
-Lighting reuses the skinned-lighting kernels (`skin_light_bench.c` moves to
-`render/`): a 16x16 bilinear table rebuilt only when the lights or the
-entity's rotation change, or direct N.L, whichever the lighting board check
-picks. Same light, ambient and tonemap as the static bake, so the model sits
-in its baked meadow.
+Proposed lighting uses a 16×16 bilinear table rebuilt when lights or entity
+rotation change, or direct N.L, selected by device measurements. Its lights,
+ambient and tone map match the static bake.
 
-**Scene side** [A]: a `skinned_renderer` component (mesh, skin, skeleton) and
+**Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id attachment configures skeleton animators and skin components.
-SCNE camera rows create property animators. Authored animator rows remain
+SCNE camera rows create property animators. Authored animator rows are
 planned. Public playback controls are declared in `scene/scene.h`; apps hold
 entity handles and clip indices. The playback query API includes:
 
@@ -159,10 +158,10 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 
 ## 5. Where the later pieces plug in
 
-| Later piece | Plugs into | M1 already has |
+| Later piece | Plugs into | Runtime provides |
 |---|---|---|
 | Property timelines on any field | `anim_bind` against scene fields (bindings sketch) | the same TRCK v2 rows and sampler |
-| State machine and transitions | replaces `anim_layer_play` with parameter-driven transitions; a transition is the layer's transition blend | the transition blend, slots keeping time |
+| State machine and transitions | parameter-driven transitions select clips through the layer; a transition is the layer's transition blend | the transition blend, slots keeping time |
 | Blend trees (1D, 2D) | a state's output becomes N weighted samples; `anim_pose_blend` becomes an accumulate over N | weighted sample into a pose |
 | Sync groups | slot time as normalized phase | `t_ms` per slot |
 | Layers and masks | several `anim_layer_t`, each with a per-joint weight mask, override or additive | the pose as the one currency |
@@ -171,43 +170,16 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 | IK | the post-pose step, in model space, before the palette | `anim_pose_model` |
 | Other skinning (dual quaternion, a GPU) | another `r3d_skin_clusters` | the palette |
 
-## 6. Milestones
-
-| | Builds | Proves it |
-|---|---|---|
-| M1a | TRCK v2, `anim_bind` (bindings sketch step 1) | host tests per the bindings sketch |
-| M1b | `SKEL` and `SKIN` bake from any rigged glb; readers | host: skinned positions match `gltf_skin.py` for every frame of a probe rig |
-| M1c | pose sample, transition blend with frozen interruption, model, palette, skin, bounds, scene animator and skinned-renderer components | host render of a frame beside the reference; host test of a transition blend's endpoints and midpoint |
-| M1d | lighting kernel moved in; scene carries the bake's lights | the lighting board check; host render |
-| M1e | clip picker and board performance | board: µs per vertex (budget 1), frame time, one core against two, free internal RAM and its largest block before and after; `autana status` and `buildid` around each |
-
-## Bake keys
-
-`TRCK` v2 re-keys every clip (boot and camera: CPU bakes). The skinned
-mesh's LMSH stops being light-baked, so its lighting bake goes away; the
-glTF export and the static meshes keep their keys. No GPU refit.
-
 ## Decided (maintainer)
 
-1. M1 builds TRCK v2 and `anim_bind` itself (M1a), kept in step with the
-   bindings sketch; every entry format is reviewed before it is built.
+1. TRCK v2 and `anim_bind` implement the shared sampler and binding resolver;
+   their formats are defined in the animation and skeleton references.
 2. A character clip resolves relative to its skeleton, reusable on any
    entity with that rig; a property clip resolves at scene level by object
    name.
-3. Skinning and animators live in scene/ from M1. Runtime attachment is
+3. Skinning and animators live in scene/. Runtime attachment is
    implemented; authored animator, directional-light and ambient SCNE rows
-   remain planned.
+   are planned.
 4. Influences per vertex: an import setting, default 2, 4 allowed; the
    entry records it and the runtime skins either.
-5. Designed for two cores from the start (section 2); M1 may run single-core.
-
-## Implementation status
-
-The runtime pose, layer and playhead modules are engine-private. Scene entity
-APIs own playback and configuration by asset id. SCNE camera rows create
-property animators; explicit skeleton and skin attachment uses runtime ids
-without changing SCNE. Property clips play immediately; skeleton clips use
-transition blends with frozen-pose interruption. Scene systems split animator
-entities and skin clusters through the shared core job helper. Skin kernels
-retain bind colours. Lighting, authored animator rows and the clip picker
-remain separate work.
+5. The range stages use two cores (section 2) with an inline fallback.

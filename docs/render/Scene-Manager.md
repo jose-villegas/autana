@@ -10,15 +10,15 @@ shows an app using it.
 
 A scene holds packed component arrays indexed by a small integer entity id
 (`scene_entity_t`). Animator configuration allocates its clip bindings, local
-poses, model matrices and palette in PSRAM. A skinned renderer allocates its
-mutable mesh output in internal RAM.
+poses in PSRAM. A skinned renderer allocates its model matrices, palette and
+mutable mesh output together in internal RAM.
 
 | Array | One per | Holds |
 |---|---|---|
 | `transforms[]` | entity | where it stands: a 3x3 and a position, what the raster reads |
 | `locals[]` | entity | canonical local position, quaternion rotation and scale; loaded placements must decompose without shear or reflection |
 | `animators[]` | entity | optional clip configuration, layer, independent slot clocks and pose buffers |
-| `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions, colours and bounds |
+| `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions and bounds; bind-colour pointers |
 | `flags[]` | entity | enabled, and moved since the last draw |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
 | `cameras[]` | camera | lens, entity TRS pose, clear colour, its entity id |
@@ -40,7 +40,11 @@ to that camera row. Binding resolves every clip row before playback.
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
 | `scene_camera_lens(scene, camera)` | a camera's lens and current entity pose (NULL: the first), to sample without drawing |
-| `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
+| `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value, hide or show a renderer |
+| `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
+| `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
+| `scene_animator_play()` / `_set_speed()` / `_set_paused()` / `_seek()` | control playback slots on an entity |
+| `scene_animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | query the attached clips |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
 | `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)) |
@@ -80,7 +84,9 @@ scratch but there is nothing to upscale it into.
 `scene_render()` advances the animator slots of every loaded scene, computes
 skeleton poses and palettes by entity range, then skins cluster ranges and
 refits node bounds. Both range stages synchronize before the next. Property
-clips commit their sampled fields after the first synchronization. Camera
+clips apply directly to their targets on core 0 after the first synchronization.
+A single dirty-entity pass rebuilds placements. Unchanged poses skip skinning
+and node refit. Camera
 forward is the entity quaternion rotating +Z for static and animated cameras.
 The system then rebuilds the
 placement of each renderer whose entity moved, fills `instances[]` from the
@@ -107,18 +113,12 @@ pack outlives the scene, which reads its entry, meshes and clip in place.
 ## Beneath it
 
 Host tools and tests pass a `const render_view_t*` to `raster_draw()`
-and compose its picture with `raster_upscale()`. `r3d_scene_view_at()` samples
-a camera's path and builds its frame view,
-for the active camera or any loaded scene's through `scene_camera_lens()`.
+and compose its picture with `raster_upscale()`. `r3d_scene_view_at()` builds a
+frame view from a camera's path when it has one, otherwise from its pose; a
+scene camera's pose is its entity's, which a property animator moves.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.
 The shell does not call it by name: `shell/scene_system.c` registers it as the
 engine system `scene`, at `SHELL_ORDER_SCENE`
 ([Firmware-Architecture.md](../Firmware-Architecture.md#engine-systems)).
-
-Playback and runtime asset-id attachment use `scene/scene.h`: clip queries,
-play, speed, pause and seek operate on entity components. Every slot loops.
-Property clips require an immediate play; skeleton clips support transition
-blends with frozen-pose interruption. Manual transform setters require the
-same decomposable TRS as scene loading.

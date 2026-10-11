@@ -128,12 +128,16 @@ int16 ticks, ties away from zero, and saturates at the int16 limits. Cluster
 bounds enclose these output ticks. A reverse node pass unions child bounds.
 The raster reads the output's `r3d_lit_mesh_t` view.
 
-One caller-owned buffer block holds positions, colours, cluster bounds and
+One caller-owned buffer block holds positions, cluster bounds and
 node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
-`r3d_skin_output_init()` carves it. The scene allocates it in internal RAM.
+`r3d_skin_output_init()` carves it. The scene allocates it together with model
+matrices and the palette in internal RAM. The mesh retains its bind-colour
+pointers; no colours are copied per frame.
 Bind colours and face colours pass through; dynamic lighting is separate.
 Pose blending uses nlerp with quaternion hemisphere correction
-<sup>[[55]](../Citations.md#55)</sup>.
+<sup>[[55]](../Citations.md#55)</sup>. This uses only the paper's
+sign-corrected normalized quaternion sum, applied per joint between two
+poses; no dual quaternions.
 
 ```mermaid
 sequenceDiagram
@@ -143,7 +147,7 @@ sequenceDiagram
     S->>C1: animate second entity range
     S->>C0: animate first entity range
     C1-->>S: job_wait
-    S->>S: apply property fields
+    S->>C0: apply property fields and rebuild dirty placements
     S->>C1: skin second cluster range
     S->>C0: skin first cluster range
     C1-->>S: job_wait
@@ -154,8 +158,10 @@ sequenceDiagram
 `core/job.h` owns `job_run_split()`, shared with the raster. Core 1 takes the
 second range when available; the fallback runs that range inline before core
 0's first range. Each stage waits before the next consumes its outputs.
-Animator jobs write their own poses, palettes and property sample buffers.
-Property destinations are updated on one core after synchronization. Skin jobs
+Animator jobs write their own poses and palettes.
+Property clips use `anim_apply()` directly on core 0 after synchronization,
+then one dirty-entity pass rebuilds placements. Unchanged poses skip skinning
+and node refit. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
@@ -166,11 +172,13 @@ through scene APIs, and renders its output positions with the existing preview
 rasterizer beside `gltf_skin.py`. It checks the C result against a reference
 with the packed weights and quantized bind positions; separate sheets compare
 influence limits and crop every requested source vertex. Commands and
-model-specific images belong alongside the scene's tools.
+model-specific images belong alongside the scene's tools. Its options are
+in [the tool's README](../../launcher/tools/r3d/skin/README.md).
+The committed rig in `launcher/test/suites/suite_scene.c` gates both kernels
+through scene attachment, animation, split ranges, bounds and drawing.
 
 ## Current limits
 
-Scene playback slots loop. Property clips play immediately; transition blends
-apply to skeleton clips. Runtime attachment configures animators and skin
-components by asset id; authored SCNE animator rows and dynamic skin lighting
-are planned. Skin kernels preserve bind colours.
+Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
+authored SCNE animator rows and dynamic skin lighting are planned; skin kernels
+pass bind colours through.

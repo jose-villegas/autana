@@ -1,19 +1,8 @@
 /*
- * vec_convert: moving a vector between number types, always by an explicit
- * call named for its destination and source (vec3f_from_vec3x,
- * vec3s_from_vec3f, ...), never an implicit cast.
- *
- *   float <-> int32   exact one way, rounded to nearest and saturated back
- *   float <-> int16   through a `scale`: one int16 step is `scale` units, so
- *                     the int16 range is +-32767 * scale; a value outside it
- *                     saturates
- *   float <-> Q16.16  scaled by 65536; a float outside +-32768 saturates
- *   int32 <-> int16   widens exactly; narrowing saturates
- *
- * A round trip returns the original exactly where the destination can hold
- * it (int <-> float, int16 <-> int32 inside its range, Q16.16 values from a
- * float multiple of 1/65536), and the nearest representable value otherwise.
- * Header-only and static inline.
+ * vec_convert: explicit vector conversions between float, int32, int16 and
+ * Q16.16. Narrowing saturates; float-to-integer conversions round to nearest,
+ * ties away from zero. Int16 conversions use a scale: one integer step is
+ * scale units. Header-only and static inline.
  */
 #pragma once
 

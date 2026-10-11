@@ -1,21 +1,9 @@
 /*
- * scene: the engine's scene manager. An app loads scenes by name and
- * activates one camera; the shell advances every loaded scene and draws
- * through the active camera each frame, so an app never calls draw.
- *
+ * scene:
  * Storage is data-oriented: packed component arrays indexed by a small
  * entity id: a transform per entity, and a renderer, camera (lens, entity
  * pose), animator or skinned renderer only for the entities that have one.
  * Animator and skin buffers are allocated when they are attached.
- * Lights are baked offline and are not carried.
- *
- * Exactly one camera is active engine-wide, and it draws the enabled
- * renderers of its own scene. Scenes belong to the app running when they were
- * loaded: the shell unloads whatever is left when it exits.
- *
- * A scene is loaded from its pack entry (SCNE), baked from its scene file,
- * and keeps a view of it: the pack must outlive the scene.
- * docs/render/Scene-Manager.md says how a frame goes.
  */
 #pragma once
 
