@@ -503,6 +503,17 @@ test_quatf_slerp_threshold_branches(void) {
 }
 
 static void
+test_vector_float_repeat_preserves_decimal_remainders(void) {
+    const float len = 0.001F, large = 20561.0F, tiny = -0.0000001F;
+    const float positive = fmodf(large, len), negative = len - positive;
+    const vec2f_t r2 = vec2f_repeat((vec2f_t){large, -large}, (vec2f_t){len, len});
+    const vec3f_t r3 = vec3f_repeat((vec3f_t){-large, large, tiny}, (vec3f_t){len, len, len});
+    TEST_ASSERT_TRUE(r3.z == tiny + len);
+    TEST_ASSERT_TRUE(r2.x == positive && r2.y == negative);
+    TEST_ASSERT_TRUE(r3.x == negative && r3.y == positive);
+}
+
+static void
 test_vector_float_ranges_with_decimal_lengths(void) {
     const float len = 1.1F, lo = 0, hi = len;
     const vec2f_t r2 = vec2f_repeat((vec2f_t){3.3F, -3.3F}, (vec2f_t){len, len});
@@ -534,6 +545,7 @@ test_vector_ratio_lerp_uses_its_denominator(void) {
 void
 suite_math(void) {
     RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
+    RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
     RUN_TEST(test_quatf_slerp_preserves_rotation_behaviour);
     RUN_TEST(test_quatf_slerp_threshold_branches);

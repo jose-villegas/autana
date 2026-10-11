@@ -109,9 +109,8 @@ def instantiations(root):
             return
         params, body = macros[name]
         bind = dict(zip(params, args))
-        owner = family_of.get(bind.get("P"), family)
         for parameter, literal in BOUND_FUNCTION.findall(body):
-            functions[owner].add(bind.get(parameter, parameter) if parameter else literal)
+            functions[family].add(bind.get(parameter, parameter) if parameter else literal)
         for length, _, source, count in SWIZZLE_CALL.findall(body):
             prefix = bind.get(source, source)
             source_family = family_of.get(prefix)
@@ -128,15 +127,11 @@ def instantiations(root):
             names.update(prefix + "_" + "".join(t) for t in itertools.product(letters, repeat=int(length)))
         for callee, arguments in MACRO_CALL.findall(body):
             bound = [bind.get(arg, arg) for arg in split_args(arguments)]
-            visit(callee, bound, owner, active | {name})
+            visit(callee, bound, family, active | {name})
 
     for name, args in calls:
         if args[0] in family_of:
             visit(name, args, family_of[args[0]], set())
-    for family in FAMILIES:
-        text = read(root / MATH / (family + "_template.h"))
-        for name, params, _ in TEMPLATE_MACRO.findall(text):
-            visit(name, split_args(params), family, set())
     return family_of, functions, patterns, names, problems
 
 
