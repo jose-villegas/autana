@@ -5,7 +5,7 @@ project(autana_editor LANGUAGES C CXX)
 
 include(CTest)
 
-find_package(Python3 COMPONENTS Interpreter)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -57,6 +57,7 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/app/app_registry.c
     ${LAUNCHER_DIR}/main/asset/asset_file.c
     ${LAUNCHER_DIR}/main/asset/asset_pack.c
+    ${LAUNCHER_DIR}/main/asset/asset_table.c
     ${LAUNCHER_DIR}/main/asset/asset_store.c
     ${LAUNCHER_DIR}/main/asset/asset_store_file.c
     ${LAUNCHER_DIR}/main/input/gesture.c
@@ -86,8 +87,18 @@ target_link_libraries(editor_runtime PUBLIC ${launcher_packages})
 if(NOT WIN32)
     target_link_libraries(editor_runtime PUBLIC m)
 endif()
+set(engine_assets "${CMAKE_BINARY_DIR}/assets")
+add_custom_target(editor_engine_assets ALL
+    COMMAND ${Python3_EXECUTABLE} "${LAUNCHER_DIR}/tools/r3d/build_pack.py"
+        -o "${engine_assets}" "${LAUNCHER_DIR}/main/engine"
+    BYPRODUCTS "${engine_assets}/engine.apak"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    VERBATIM
+)
+add_dependencies(editor_runtime editor_engine_assets)
 target_compile_definitions(editor_runtime PRIVATE
     CONFIG_LAUNCHER_DEVELOPMENT=0
+    ASSET_DIR_DEFAULT_PATH="${engine_assets}"
 )
 
 if(MSVC)

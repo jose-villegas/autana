@@ -8,7 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_store.h"
+#include "asset/asset_table.h"
 #include "core/memory.h"
+#include "esp_log.h"
 #include "gfx/draw/gfx_dither.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
@@ -19,7 +22,6 @@
 #include "math/scalar/mathx.h"
 #include "profile/frame_cost.h"
 #include "services/tune.h"
-#include "ui/ridge_curve_generated.h"
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
@@ -28,10 +30,9 @@
 #define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)
 #define RIDGE_DEPTH2_ONE     (1 << RIDGE_DEPTH2_SHIFT)
 
-/* Ridge positions in sub-pixels: the generated curve's, which the spring line writes. */
-#define RIDGE_SUBPIXEL_SHIFT RIDGE_CURVE_Q_SHIFT
+/* Ridge positions in sub-pixels; the spring line writes them, and ui_ridge_load() refuses a curve baked with another shift. */
+#define RIDGE_SUBPIXEL_SHIFT SPRING_LINE_OUT_SHIFT
 #define RIDGE_SUBPIXEL_ONE   (1 << RIDGE_SUBPIXEL_SHIFT)
-_Static_assert(SPRING_LINE_OUT_SHIFT == RIDGE_SUBPIXEL_SHIFT, "the spring line writes ridge sub-pixels");
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
@@ -147,8 +148,53 @@ typedef struct {
     bool by_column, axis_on_screen, ambient, painted, scanline_dither;
 } ridge_t;
 
+#define RIDGE_ENTRY        "ridge"
+#define RIDGE_ROW          "y"
+/* A level fallback crosses the middle of the landscape frame. */
+#define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
+
+#define TAG                "ui_ridge"
+static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
+static const int16_t* curve;
 static ridge_t* ridge;
 static bool allocation_tried;
+static bool load_tried;
+
+void
+ui_ridge_load(void) {
+    if (load_tried) {
+        return;
+    }
+    load_tried = true;
+    const asset_pack_t* pack = asset_store_pack(ASSET_ENGINE_PACK);
+    asset_status_t status = ASSET_ERR_NO_PACK;
+    if (pack != NULL) {
+        asset_view_t entry;
+        asset_table_t table;
+        status = asset_pack_find(pack, RIDGE_ENTRY, ASSET_TABLE_ASSET, &entry);
+        if (status == ASSET_OK) {
+            status = asset_table_open(entry, &table);
+        }
+        if (status == ASSET_OK && table.frac_bits != RIDGE_SUBPIXEL_SHIFT) {
+            status = ASSET_ERR_FORMAT;
+        }
+        if (status == ASSET_OK) {
+            status = asset_table_row(&table, RIDGE_ROW, RIDGE_CURVE_POINTS, &curve);
+        }
+    }
+    if (status != ASSET_OK) {
+        if (pack != NULL) {
+            asset_store_release(ASSET_ENGINE_PACK);
+        }
+        ESP_LOGW(TAG, "no ridge curve in pack %s (%s): the ridge is level", ASSET_ENGINE_PACK,
+                 asset_status_text(status));
+    }
+}
+
+const int16_t*
+ui_ridge_curve(void) {
+    return curve;
+}
 
 static uint32_t
 rgb_mix(uint32_t a, uint32_t b, int amount) {
@@ -1123,6 +1169,7 @@ bake_what_is_tuned(void) {
 
 static void
 allocate_once(void) {
+    ui_ridge_load();
     if (allocation_tried) {
         return;
     }
@@ -1134,7 +1181,13 @@ allocate_once(void) {
     memset(ridge, 0, sizeof *ridge);
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS, spring_tension, spring_stiffness,
                      spring_damping);
-    ridge_motion_extend(ridge_curve_y, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
+    if (curve != NULL) {
+        ridge_motion_extend(curve, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
+    } else {
+        for (int i = 0; i < RIDGE_COLUMNS; i++) {
+            ridge->rigid[i] = level_height;
+        }
+    }
     memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
     apply_theme();
     bake_what_is_tuned();
