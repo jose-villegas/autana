@@ -6,6 +6,7 @@
  * headers say it does.
  */
 
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -551,8 +552,40 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     }
 }
 
+static void
+test_scalar_rounding_preserves_large_integers_and_half_away_ties(void) {
+    static const float values[] = {0, 0.49F, -0.49F, 0.5F, -0.5F, 1.5F, -1.5F};
+    static const int32_t rounded[] = {0, 0, 0, 1, -1, 2, -2};
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        TEST_ASSERT_EQUAL_INT32(rounded[i], mathf_round_i32(values[i]));
+    }
+    const int32_t odd = (1U << (FLT_MANT_DIG - 1)) + 1;
+    TEST_ASSERT_EQUAL_INT32(odd, mathf_round_i32((float)odd));
+    TEST_ASSERT_EQUAL_INT32(-odd, mathf_round_i32((float)-odd));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathf_round_i32(MATH_FLOAT_INT_LIMIT));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathf_round_i32(-MATH_FLOAT_INT_LIMIT));
+}
+
+static void
+test_transform_matrix_refusals_and_shear_tolerance_boundary(void) {
+    mat4f_t matrix = mat4f_identity();
+    transformf_t pose;
+    matrix.m[0][3] = INFINITY;
+    TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
+    matrix = mat4f_identity();
+    matrix.m[3][3] = 2;
+    TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
+    matrix = mat4f_identity();
+    matrix.m[0][1] = TRANSFORMF_MATRIX_TOLERANCE;
+    TEST_ASSERT_TRUE(transformf_from_mat(matrix, &pose));
+    matrix.m[0][1] = nextafterf(TRANSFORMF_MATRIX_TOLERANCE, INFINITY);
+    TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
+    RUN_TEST(test_transform_matrix_refusals_and_shear_tolerance_boundary);
     RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);

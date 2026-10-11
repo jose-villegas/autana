@@ -1,7 +1,7 @@
 /*
- * scene_internal: the one scene allocation's layout, shared by scene.c (load,
- * entities) and scene_draw.c (the active camera and the draw), and the scene
- * entry (SCNE) it is loaded from, read by scene_asset.c. Not for apps.
+ * scene_internal: the scene's layout and components, shared by scene.c
+ * (load, entities), scene_animation.c (animators, skinning) and scene_draw.c
+ * (the active camera and the draw), and the SCNE entry scene_asset.c reads.
  */
 #pragma once
 
@@ -11,8 +11,10 @@
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 
-#define SCENE_FLAG_ENABLED  1U
-#define SCENE_FLAG_DIRTY    2U
+#define SCENE_FLAG_ENABLED 1U
+#define SCENE_FLAG_DIRTY   2U
+
+typedef r3d_placement_t scene_placement_t;
 
 /* The scene pack entry, written by tools/r3d/scene_asset.py; the layout is
  * in docs/render/Scene-Files.md. Its rows are read in place, so they are the
@@ -37,7 +39,7 @@ typedef struct {
 typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     const char (*names)[ASSET_NAME_MAX];
-    const scene_transform_t* transforms;
+    const scene_placement_t* transforms;
     const scene_asset_renderer_t* renderers;
     const scene_asset_camera_t* cameras;
 } scene_asset_t;
@@ -92,7 +94,7 @@ struct scene {
     char id[ASSET_NAME_MAX];
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     uint32_t elapsed_ms;
-    scene_transform_t* transforms; /* one per entity */
+    scene_placement_t* transforms; /* one per entity */
     uint8_t* flags;                /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -121,7 +123,7 @@ void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
 
 /* True when drawing the mesh as it is gives the same picture. */
-bool scene_transform_is_identity(const scene_transform_t* transform);
+bool scene_transform_is_identity(const scene_placement_t* transform);
 
 size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \

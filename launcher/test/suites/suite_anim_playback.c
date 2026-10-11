@@ -104,8 +104,20 @@ test_transition_blend_interruption_is_continuous(void) {
     release(&l);
 }
 
+static void
+test_speed_accepts_uint16_max_and_refuses_larger_or_infinite(void) {
+    anim_layer_t l = fixture();
+    anim_playhead_t* p = &l.current.playhead;
+    TEST_ASSERT_TRUE(anim_playhead_set_speed(p, (float)UINT16_MAX));
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX * ANIM_PLAYHEAD_SPEED_ONE, p->speed_q16);
+    TEST_ASSERT_FALSE(anim_playhead_set_speed(p, nextafterf((float)UINT16_MAX, INFINITY)));
+    TEST_ASSERT_FALSE(anim_playhead_set_speed(p, INFINITY));
+    release(&l);
+}
+
 void
 suite_anim_playback(void) {
+    RUN_TEST(test_speed_accepts_uint16_max_and_refuses_larger_or_infinite);
     RUN_TEST(test_playhead_long_loop_clamp_pause_and_fractional_speed);
     RUN_TEST(test_transition_blend_weights_and_both_slot_times);
     RUN_TEST(test_transition_blend_interruption_is_continuous);

@@ -24,7 +24,7 @@ typedef struct {
 typedef struct {
     float half_fov_short_tan, near_z;
     const transformf_t* pose;     /* entity TRS; NULL: the origin, looking down +z */
-    const r3d_scene_path_t* path; /* NULL for a camera that stays put */
+    const r3d_scene_path_t* path; /* NULL: the camera stands at pose */
 } r3d_scene_camera_t;
 
 #define ANIM_COMPONENT_CAMERA ASSET_TYPE('C', 'A', 'M', 'R')

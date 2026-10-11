@@ -40,12 +40,14 @@ layout_for(const scene_asset_t* asset) {
     size_t end = sizeof(scene_t);
     SCENE_STORAGE_RESERVE(l, end, renderers, scene_renderer_t, asset->renderer_count);
     SCENE_STORAGE_RESERVE(l, end, cameras, scene_camera_t, asset->camera_count);
-    SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, asset->renderer_count);
-    SCENE_STORAGE_RESERVE(l, end, transforms, scene_transform_t, asset->entity_count);
-    SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, asset->entity_count);
-    SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, asset->entity_count);
-    SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, asset->entity_count);
-    SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, asset->entity_count);
+    const int entities = asset->entity_count;
+    SCENE_STORAGE_RESERVE(l, end, transforms, scene_placement_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, entities);
+    const int renderers = asset->renderer_count;
+    SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
+    SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, entities);
     l.total = end;
     return l;
 }
@@ -69,12 +71,12 @@ instantiate(const scene_asset_t* asset) {
     scene->renderers = (scene_renderer_t*)(void*)(block + l.renderers);
     scene->cameras = (scene_camera_t*)(void*)(block + l.cameras);
     scene->instances = (r3d_instance_t*)(void*)(block + l.instances);
-    scene->transforms = (scene_transform_t*)(void*)(block + l.transforms);
+    scene->transforms = (scene_placement_t*)(void*)(block + l.transforms);
     scene->flags = block + l.flags;
     scene->locals = (transformf_t*)(void*)(block + l.locals);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memcpy(scene->transforms, asset->transforms, sizeof(scene_transform_t) * asset->entity_count);
+    memcpy(scene->transforms, asset->transforms, sizeof(scene_placement_t) * asset->entity_count);
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
@@ -150,7 +152,7 @@ open_paths(scene_t* scene) {
 }
 
 static bool
-local_from_placement(const scene_transform_t* placement, transformf_t* out) {
+local_from_placement(const scene_placement_t* placement, transformf_t* out) {
     mat4f_t matrix = mat4f_identity();
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 3; c++) {
@@ -349,17 +351,14 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
 const scene_transform_t*
 scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return &scene->transforms[entity];
+    return &scene->locals[entity];
 }
 
 void
-scene_entity_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
+scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
-    const bool valid = local_from_placement(transform, &scene->locals[entity]);
-    if (!valid) {
-        return;
-    }
-    scene->transforms[entity] = *transform;
+    scene->locals[entity] = *transform;
+    scene->transforms[entity] = r3d_placement_from(transform);
     scene->flags[entity] |= SCENE_FLAG_DIRTY;
 }
 
@@ -377,7 +376,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
 }
 
 bool
-scene_transform_is_identity(const scene_transform_t* transform) {
+scene_transform_is_identity(const scene_placement_t* transform) {
     return memcmp(transform, &IDENTITY, sizeof IDENTITY) == 0;
 }
 

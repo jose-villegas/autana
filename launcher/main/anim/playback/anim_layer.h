@@ -18,7 +18,7 @@ typedef struct {
     bool frozen_previous;
 } anim_layer_t;
 
-/* frozen.local is distinct PSRAM storage; both poses have the skeleton joint count. */
+/* frozen.local must not alias shown.local; both poses have the skeleton's joint count. Zero joints need no storage. */
 void anim_layer_init(anim_layer_t* layer, const anim_clip_t* clips, int count, anim_pose_t shown, anim_pose_t frozen);
 /* An interrupted transition blend freezes the last displayed pose; a first play starts immediately. */
 void anim_layer_play(anim_layer_t* layer, uint8_t clip, uint32_t blend_ms);

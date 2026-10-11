@@ -110,8 +110,46 @@ test_skin_ranges_two_and_four_influences_and_refit(void) {
     }
 }
 
+static void
+test_rotated_nonuniform_palette_transforms_off_axis_vertices(void) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+        fixture_t f = fixture(influences);
+        for (int j = 0; j < JOINTS; j++) {
+            f.palette[j] = mat4f_identity();
+            f.palette[j].m[0][0] = 0;
+            f.palette[j].m[0][1] = -3;
+            f.palette[j].m[1][0] = 2;
+            f.palette[j].m[1][1] = 0;
+            f.palette[j].m[2][2] = 4;
+        }
+        r3d_skin_clusters(&f.skin, &f.bind, f.palette, 0, CLUSTERS, &f.out);
+        TEST_ASSERT_EQUAL_INT16(-3 * POSITION_SCALE, f.out.positions[3][0]);
+        TEST_ASSERT_EQUAL_INT16(2 * POSITION_SCALE, f.out.positions[3][1]);
+        release(&f);
+    }
+}
+
+static void
+test_output_storage_refuses_null_or_short_and_retains_colourless_bind(void) {
+    fixture_t f = fixture(R3D_SKIN_INFLUENCES_MIN);
+    const size_t bytes = r3d_skin_output_bytes(&f.bind);
+    r3d_skin_output_t out;
+    TEST_ASSERT_FALSE(r3d_skin_output_init(&f.bind, NULL, bytes, &out));
+    TEST_ASSERT_NULL(out.mesh.positions);
+    TEST_ASSERT_FALSE(r3d_skin_output_init(&f.bind, f.block, bytes - 1, &out));
+    TEST_ASSERT_NULL(out.mesh.positions);
+    TEST_ASSERT_TRUE(r3d_skin_output_init(&f.bind, f.block, bytes, &out));
+    TEST_ASSERT_EQUAL_PTR(f.bind.colors, out.mesh.colors);
+    f.bind.colors = NULL;
+    TEST_ASSERT_TRUE(r3d_skin_output_init(&f.bind, f.block, bytes, &out));
+    TEST_ASSERT_NULL(out.mesh.colors);
+    release(&f);
+}
+
 void
 suite_skinning(void) {
+    RUN_TEST(test_rotated_nonuniform_palette_transforms_off_axis_vertices);
+    RUN_TEST(test_output_storage_refuses_null_or_short_and_retains_colourless_bind);
     RUN_TEST(test_palette_inverse_bind_and_position_ticks);
     RUN_TEST(test_skin_ranges_two_and_four_influences_and_refit);
 }
