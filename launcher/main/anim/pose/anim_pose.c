@@ -37,7 +37,8 @@ anim_pose_blend(const anim_pose_t* a, const anim_pose_t* b, float weight, anim_p
     const float to = mathf_clamp(weight, 0.0F, 1.0F);
     const float from = 1.0F - to;
     for (int j = 0; j < out->joint_count; j++) {
-        const transformf_t av = a->local[j], bv = b->local[j];
+        const transformf_t av = a->local[j];
+        const transformf_t bv = b->local[j];
         transformf_set_position(&out->local[j],
                                 vec3f_add(vec3f_scale(av.position, from), vec3f_scale(bv.position, to)));
         transformf_set_scale(&out->local[j], vec3f_add(vec3f_scale(av.scale, from), vec3f_scale(bv.scale, to)));

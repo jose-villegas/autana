@@ -380,8 +380,8 @@ scene_skin_range(scene_t* scene, int first, int count) {
             continue;
         }
         const int clusters = skin->bind.cluster_count;
-        const int start = mathi_clamp(first - offset, 0, clusters),
-                  end = mathi_clamp(first + count - offset, 0, clusters);
+        const int start = mathi_clamp(first - offset, 0, clusters);
+        const int end = mathi_clamp(first + count - offset, 0, clusters);
         r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         offset += clusters;
     }
@@ -389,7 +389,8 @@ scene_skin_range(scene_t* scene, int first, int count) {
 
 typedef struct {
     scene_t* scene;
-    int first, count;
+    int first;
+    int count;
     uint32_t dt_ms;
 } range_t;
 
@@ -410,8 +411,10 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
     if (scene->skeleton_animator_count == 0) {
         return;
     }
-    const int entities = scene->asset.entity_count, half = entities / 2;
-    range_t a = {scene, 0, half, dt_ms}, b = {scene, half, entities - half, dt_ms};
+    const int entities = scene->asset.entity_count;
+    const int half = entities / 2;
+    range_t a = {scene, 0, half, dt_ms};
+    range_t b = {scene, half, entities - half, dt_ms};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
     if (half == 0) {
         animate_slice(&b);
@@ -441,7 +444,8 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (clusters == 0) {
         return;
     }
-    range_t a = {scene, 0, clusters / 2, 0}, b = {scene, clusters / 2, clusters - (clusters / 2), 0};
+    range_t a = {scene, 0, clusters / 2, 0};
+    range_t b = {scene, clusters / 2, clusters - (clusters / 2), 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
     if (a.count == 0) {
         skin_slice(&b);

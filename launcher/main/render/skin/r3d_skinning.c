@@ -69,8 +69,8 @@ static void
 grow_bounds(int16_t lo[POSITION_AXES], int16_t hi[POSITION_AXES], const int16_t from_lo[POSITION_AXES],
             const int16_t from_hi[POSITION_AXES]) {
     for (int a = 0; a < POSITION_AXES; a++) {
-        lo[a] = from_lo[a] < lo[a] ? from_lo[a] : lo[a];
-        hi[a] = from_hi[a] > hi[a] ? from_hi[a] : hi[a];
+        lo[a] = (int16_t)(from_lo[a] < lo[a] ? from_lo[a] : lo[a]);
+        hi[a] = (int16_t)(from_hi[a] > hi[a] ? from_hi[a] : hi[a]);
     }
 }
 
@@ -83,8 +83,8 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
         const mat4f_t* joint = &palette[record[i]];
         const float weight = (float)record[influences + i] * weight_scale;
         for (int axis = 0; axis < POSITION_AXES; axis++) {
-            const float position = (joint->m[axis][0] * bind[0]) + (joint->m[axis][1] * bind[1])
-                                   + (joint->m[axis][2] * bind[2]) + joint->m[axis][POSITION_AXES];
+            const float position = (joint->m[axis][0] * (float)bind[0]) + (joint->m[axis][1] * (float)bind[1])
+                                   + (joint->m[axis][2] * (float)bind[2]) + joint->m[axis][POSITION_AXES];
             posed[axis] += position * weight;
         }
     }
