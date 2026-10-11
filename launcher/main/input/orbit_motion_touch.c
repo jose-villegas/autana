@@ -58,9 +58,7 @@ orbit_motion_touch_step(orbit_motion_touch_t* touch, const input_t* input, uint3
     if (input->pressed) {
         const int x = input->press_x;
         const int y = input->press_y;
-        touch->steering =
-            !gesture_in_edge_zone(x, y, home_edge, viewport.width, viewport.height)
-            && !gesture_in_edge_zone(x, y, gesture_opposite_edge(home_edge), viewport.width, viewport.height);
+        touch->steering = !gesture_in_edge_zone(x, y, home_edge, viewport.width, viewport.height);
         touch->zooming = touch->steering && touch->tapped;
         touch->last_x = input->press_x;
         touch->last_y = input->press_y;

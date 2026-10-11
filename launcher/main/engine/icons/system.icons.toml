@@ -33,12 +33,6 @@ upstream = "chevron-left"
 commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
 
 [[icon]]
-name = "chevron_right"
-svg = "system/chevron-right.svg"
-upstream = "chevron-right"
-commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
-
-[[icon]]
 name = "chevron_up"
 svg = "system/chevron-up.svg"
 upstream = "chevron-up"
@@ -84,10 +78,4 @@ commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
 name = "monitor"
 svg = "system/monitor.svg"
 upstream = "monitor"
-commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"
-
-[[icon]]
-name = "plus"
-svg = "system/plus.svg"
-upstream = "plus"
 commit = "8275e0af7c16aa40c54ea2b90b7af83b1fe4eb4c"

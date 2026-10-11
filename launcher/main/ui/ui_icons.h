@@ -49,7 +49,6 @@ typedef enum {
     UI_ICON_INFO,
     UI_ICON_ALERT,
     UI_ICON_CHEVRON_LEFT,
-    UI_ICON_CHEVRON_RIGHT,
     UI_ICON_CHEVRON_UP,
     UI_ICON_CHEVRON_DOWN,
     UI_ICON_ARROW_LEFT,
@@ -58,7 +57,6 @@ typedef enum {
     UI_ICON_WIFI,
     UI_ICON_GAMEPAD,
     UI_ICON_MONITOR,
-    UI_ICON_PLUS,
     UI_ICON_COUNT
 } ui_icon_id_t;
 

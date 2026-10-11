@@ -12,7 +12,7 @@ Designs written before or during the work they describe. Each plan's own
 | [Log-Level-Plan.md](Log-Level-Plan.md) | A compile-time log-level ceiling per build variant. |
 | [Cluster-LOD.md](Cluster-LOD.md) | Levels of detail over the baked meshlets: the pick rule, what it saved, and the branch that holds the tooling. |
 | [Qemu-Target-Plan.md](Qemu-Target-Plan.md) | Driving an emulated image from autana, and what it cannot answer. |
-| [Motion-Design-Plan.md](Motion-Design-Plan.md) | Motion for the launcher: springs and easing, a sliding Control Center, a cached blurred backdrop, app open and close, orientation morphs. |
+| [Motion-Design-Plan.md](Motion-Design-Plan.md) | Motion for the launcher: springs and easing, a cached blurred backdrop, app open and close, orientation morphs. |
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |
 | [Animation-Bindings-Design-Sketch.md](Animation-Bindings-Design-Sketch.md) | Animation clips as bindings (object path, component, field) resolved once at load, so a clip drives any animatable field. |
 | [Content-in-the-Pack-Design-Sketch.md](Content-in-the-Pack-Design-Sketch.md) | Animation tracks and scenes as asset-pack entries baked from their source files, one pack per root asset, and poses from the device's own sampler. |

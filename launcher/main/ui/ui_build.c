@@ -46,11 +46,8 @@ bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
 
-/* Whether the frame in progress only repaints (see ui_begin()) and the
- * interaction state it must hand back as it found it. */
+/* Repaint-only boot frames have no input to feed or pointer state to report. */
 static bool paint_only;
-static mu_Id held_focus;
-static mu_Container* held_next_hover_root;
 uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 ui_canvas_marks_t ui_canvas_marks;
 
@@ -381,10 +378,6 @@ ui_begin(const input_t* input) {
     paint_only = input == NULL;
     if (!paint_only) {
         feed_input(input);
-    } else {
-        held_focus = ui_ctx.focus;
-        held_next_hover_root = ui_ctx.next_hover_root;
-        ui_ctx.updated_focus = 1;
     }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
@@ -394,10 +387,7 @@ void
 ui_end_pointer_frame(void) {
     if (!paint_only) {
         ui_bridge_end(&ui_ctx, &ui_pointer_state);
-        return;
     }
-    ui_ctx.focus = held_focus;
-    ui_ctx.next_hover_root = held_next_hover_root;
 }
 
 /* See ui.h: the physical viewport mapped through the inverse transform. Both
