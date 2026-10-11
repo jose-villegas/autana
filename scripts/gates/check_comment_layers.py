@@ -13,7 +13,7 @@ The engine's documents sit at the same layer as its code, so every line of
 them is held to the same rule: every Markdown file under docs/ except an app's
 own folder (docs/<app>/) and docs/plans/, whose designs span layers and name
 the apps they plan for, plus any Markdown file inside a lower layer. The
-"Cited by" line of a docs/Citations.md entry lists the files citing a source,
+"Cited by" part of a docs/Citations.md entry lists the files citing a source,
 wherever they live, so its paths are not read.
 
 App names come from the folders themselves, so adding an app extends the check.
@@ -87,7 +87,7 @@ def documents(root, names):
 
 def blank_cited_by(line):
     """`line` with a reference entry's citing paths blanked."""
-    return " " * len(line) if CITED_BY.match(line) else line
+    return CITED_BY.sub(lambda m: " " * len(m.group()), line)
 
 
 def problems(root=".", context=False, files=None):

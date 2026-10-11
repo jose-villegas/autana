@@ -44,10 +44,10 @@ class ProblemsTest(unittest.TestCase):
 
     def test_a_citation_rows_cited_by_paths_may_name_an_app(self):
         found = self.problems({"docs/Citations.md":
-                               '<a id="1"></a>**[1]** Sand piles<br>\nCited by: [s.md](sand/s.md)\n\n'
+                               '| <a id="1"></a>[1] | Sand piles<br>Cited by: [s.md](sand/s.md) |\n'
                                "Sand prose.\n"})
         self.assertEqual(found, ["docs/Citations.md:1: document names sand",
-                                 "docs/Citations.md:4: document names sand"])
+                                 "docs/Citations.md:2: document names sand"])
 
     def test_prose_spellings_of_an_underscored_name_all_match(self):
         found = self.problems({"docs/Gfx.md": "Render Lab\nrender-lab.png\n`render_lab`\nrenderlab\n"})
