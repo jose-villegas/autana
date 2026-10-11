@@ -342,8 +342,17 @@ test_distinct_joint_determinants_preserve_weights(void) {
     assert_scaled_lighting(true, false, true);
 }
 
+static void
+test_normal_palette_refuses_nonfinite_inverse(void) {
+    const transformf_t transform = {.rotation = {0, 0, 0, 1}, .scale = {1e-39F, 1e19F, 1e19F}};
+    const mat4f_t palette = transformf_compute_matrix(&transform);
+    mat3f_t normal;
+    TEST_ASSERT_FALSE(r3d_skin_normal_palette(&palette, 1, mat4f_identity(), &normal));
+}
+
 void
 suite_skin_light(void) {
+    RUN_TEST(test_normal_palette_refuses_nonfinite_inverse);
     RUN_TEST(test_distinct_joint_determinants_preserve_weights);
     RUN_TEST(test_joint_nonuniform_scale);
     RUN_TEST(test_entity_nonuniform_scale);

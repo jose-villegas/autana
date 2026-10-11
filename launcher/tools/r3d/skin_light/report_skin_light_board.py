@@ -2,13 +2,14 @@
 import argparse
 import pathlib
 import re
+import statistics
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 from generated_blocks import replace_block
 
 
-def rows(text):
+def samples(text):
     build = label = ""
     vertices = 0
     pending = None
@@ -37,6 +38,22 @@ def rows(text):
             pending[-2:] = match.groups()
     if pending:
         yield pending
+
+
+def rows(text):
+    grouped = {}
+    for row in samples(text):
+        grouped.setdefault((row[0], row[1], row[3]), []).append(row)
+    for runs in grouped.values():
+        row = runs[0].copy()
+        for column in (2, 4):
+            if row[column] != "—":
+                row[column] = f"{statistics.median(float(run[column]) for run in runs):.3f}"
+        quality = [run for run in runs if run[-2] != "—"]
+        if quality:
+            row[-2] = str(max(int(run[-2]) for run in quality))
+            row[-1] = max(quality, key=lambda run: float(run[-1]))[-1]
+        yield row
 
 
 def main():

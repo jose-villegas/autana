@@ -43,6 +43,18 @@ COST cycles_per_vertex=8
             ["second-diag", "last", "8.000", "vertex", "—"],
         ])
 
+    def test_repeated_runs_use_median_per_build_and_kernel(self):
+        text = "BUILD_ID first-diag\n"
+        for cost in (50, 10, 30, 20, 40):
+            text += (f"POSE vertices=2\nskin_light_perf: test_build med={cost}cycles\n"
+                     f"COST cycles_per_build={cost}\nQUALITY max={cost} mean={cost / 100}\n")
+        text += "BUILD_ID second-diag\nskin_light_perf: test_build med=8cycles\nCOST cycles_per_build=8\n"
+        result = list(rows(text))
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0][:5], ["first-diag", "build", "30.000", "build", "15.000"])
+        self.assertEqual(result[0][-2:], ["50", "0.5"])
+        self.assertEqual(result[1][:3], ["second-diag", "build", "8.000"])
+
     def test_comment_lines_are_ignored(self):
         self.assertEqual(list(rows("# Capture comments\n")), [])
 

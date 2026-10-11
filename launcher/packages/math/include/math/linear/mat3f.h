@@ -20,6 +20,17 @@ mat3f_from_mat4(mat4f_t matrix) {
 }
 
 static inline mat3f_t
+mat3f_mul(mat3f_t a, mat3f_t b) {
+    mat3f_t out;
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int col = 0; col < MAT3F_AXES; col++) {
+            out.m[row][col] = a.m[row][0] * b.m[0][col] + a.m[row][1] * b.m[1][col] + a.m[row][2] * b.m[2][col];
+        }
+    }
+    return out;
+}
+
+static inline mat3f_t
 mat3f_cofactor(mat3f_t matrix) {
     mat3f_t out;
     for (int row = 0; row < MAT3F_AXES; row++) {

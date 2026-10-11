@@ -49,7 +49,7 @@ alias belongs to that camera row. Binding resolves every clip row before playbac
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
 | `scene_animator_play()` / `_set_speed()` / `_set_paused()` / `_seek()` | control playback slots on an entity |
 | `scene_animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | query the attached clips |
-| `scene_light_set_color()` / `_set_intensity()` | attach or update one directional light on an entity; color must be finite linear RGB in [0,1], intensity finite and nonnegative; invalid entities or a full light array fail without mutation |
+| `scene_light_set_color()` / `_set_intensity()` | attach or update one directional light on an entity; color must be finite linear RGB in [0,1], intensity finite and nonnegative; invalid entities, a full light array or a skin without vertex colors fail without mutation |
 | `scene_light_color()` / `_intensity()` | read a light field, or zero when none is attached |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
@@ -60,7 +60,7 @@ entity's rotated +Y axis; moving its rotation changes skin shading next frame,
 including while the pose is paused. Scene ambient and tone map are private;
 SCNE v1 uses zero ambient contribution and an identity tone map.
 All lit skins share world-space lights. Their normal palettes include entity
-and joint scale through a inverse-transpose transform. Skin dirty bits are
+and joint scale through an inverse-transpose transform. Skin dirty bits are
 consumed by the skin stage even when another scene is active. The shared
 decode and encode transfer tables are allocated in internal RAM at the first light.
 

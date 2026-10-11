@@ -1,4 +1,4 @@
-/* Per-vertex albedo lighting in the world space. */
+/* Per-vertex albedo lighting in world space. */
 #pragma once
 #include <float.h>
 #include "math/linear/mat3f.h"

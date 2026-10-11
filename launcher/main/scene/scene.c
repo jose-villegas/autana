@@ -15,7 +15,7 @@
 #define LOADED_MAX 8
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-bool scene_fail_next_allocation;
+int scene_fail_allocation_after = -1;
 #endif
 static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
@@ -53,16 +53,24 @@ layout_for(const scene_asset_t* asset) {
     return l;
 }
 
+void*
+scene_allocate(size_t bytes, memory_kind_t kind) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    if (scene_fail_allocation_after == 0) {
+        scene_fail_allocation_after = -1;
+        return NULL;
+    }
+    if (scene_fail_allocation_after > 0) {
+        scene_fail_allocation_after--;
+    }
+#endif
+    return memory_alloc(bytes, kind);
+}
+
 static scene_t*
 instantiate(const scene_asset_t* asset) {
     const layout_t l = layout_for(asset);
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    if (scene_fail_next_allocation) {
-        scene_fail_next_allocation = false;
-        return NULL;
-    }
-#endif
-    uint8_t* block = memory_alloc(l.total, MEMORY_PSRAM);
+    uint8_t* block = scene_allocate(l.total, MEMORY_PSRAM);
     if (block == NULL) {
         return NULL;
     }
