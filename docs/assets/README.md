@@ -255,6 +255,20 @@ names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
 
+The lock also holds `[[poses]]` rows for camera-path samplings. Each row's
+`key` names the baked clip bytes, node, interval, size, lens, near plane and
+sampler code; `poses` is the digest of the exact parsed pose rows, and
+`count` is their number. `clip` and `source` name the animation file and scene
+for readers of the lock diff. Meshes with camera-path visibility and fit
+references key on that poses digest, so sampler changes that preserve the
+rows preserve those bake keys.
+
+Only `bake.py lock` writes poses rows, in every lock mode, and drops samplings
+nothing needs. Only `bake.py check` re-samples and verifies them: a missing,
+unneeded or differing row fails, with no tolerance. A lock hit computes keys
+without building or running the sampler and needs no host C compiler. A miss
+needs the host sampling tools; run `bake.py lock` with them available.
+
 ### Flashing
 
 The firmware build writes the packs to `assets/` in its build directory and
