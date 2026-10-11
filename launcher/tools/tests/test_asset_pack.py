@@ -1,4 +1,4 @@
-"""The asset pack and pack directory writer (asset/asset_pack.py), the
+"""The asset pack writer (asset/asset_pack.py), the
 pack builder and the meshes in the tree: what the firmware's asset_pack.c
 and asset_directory.c read. The C side has its own suite, suite_asset_pack.c;
 this one proves what the tools write is what that reads."""
