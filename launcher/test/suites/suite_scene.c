@@ -2258,6 +2258,7 @@ static void
 test_runtime_scale_and_reflection_match_float_reference(void) {
     scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red"), light = scene_find(scene, "camera");
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, entity, SCENE_SKIN_LIGHT_RENORMALISED));
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
     TEST_ASSERT_TRUE(scene_light_set_intensity(scene, light, 1));
@@ -2427,8 +2428,73 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
     }
 }
 
+static void
+test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights(void) {
+    const size_t before = memory_free_bytes(MEMORY_INTERNAL);
+    scene_t* scene = rig_fixture("rig.skin2", "rig.quad");
+    const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green"),
+                         lamp = scene_find(scene, "camera");
+    scene_skinned_renderer_t* a = &scene->skinned_renderers[red];
+    scene_skinned_renderer_t* b = &scene->skinned_renderers[green];
+    TEST_ASSERT_EQUAL_INT(SCENE_SKIN_LIGHT_DIRECT, a->light_mode);
+    TEST_ASSERT_EQUAL_PTR(r3d_skin_clusters_lit, a->light_kernel);
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, lamp, 1));
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_NULL(scene->light_table);
+    const size_t lit_free = memory_free_bytes(MEMORY_INTERNAL);
+    const void* tail = a->light_storage;
+    scene_fail_allocation_after = 0;
+    TEST_ASSERT_FALSE(scene_skin_light_set_mode(scene, red, SCENE_SKIN_LIGHT_TABLE));
+    TEST_ASSERT_EQUAL_INT(SCENE_SKIN_LIGHT_DIRECT, a->light_mode);
+    TEST_ASSERT_NULL(scene->light_table);
+    TEST_ASSERT_EQUAL_UINT(lit_free, memory_free_bytes(MEMORY_INTERNAL));
+    scene_fail_allocation_after = -1;
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, red, SCENE_SKIN_LIGHT_RENORMALISED));
+    TEST_ASSERT_EQUAL_PTR(tail, a->light_storage);
+    TEST_ASSERT_EQUAL_UINT(lit_free, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, red, SCENE_SKIN_LIGHT_TABLE));
+    TEST_ASSERT_LESS_OR_EQUAL_UINT(lit_free - sizeof *scene->light_table, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_PTR(r3d_skin_clusters_table, a->light_kernel);
+    TEST_ASSERT_EQUAL_PTR(r3d_skin_clusters_lit, b->light_kernel);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_FALSE(scene->light_table_dirty);
+    const uint32_t cell = scene->light_table->cells[0];
+    scene->light_table->cells[0] ^= 1U;
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_UINT32(cell ^ 1U, scene->light_table->cells[0]);
+    scene_transform_t pose = *scene_entity_transform(scene, red);
+    pose.rotation = quatf_from_euler((vec3f_t){0, 0, MATH_PI / 2});
+    scene_set_transform(scene, red, &pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_UINT32(cell ^ 1U, scene->light_table->cells[0]);
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, lamp, 1));
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_UINT32(cell, scene->light_table->cells[0]);
+    scene->light_table->cells[0] ^= 1U;
+    pose = *scene_entity_transform(scene, lamp);
+    pose.rotation = quatf_from_euler((vec3f_t){0, 0, MATH_PI / 2});
+    scene_set_transform(scene, lamp, &pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_FALSE(scene->light_table_dirty);
+    TEST_ASSERT_NOT_EQUAL(cell ^ 1U, scene->light_table->cells[0]);
+    const void* shared = scene->light_table;
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, green, SCENE_SKIN_LIGHT_TABLE));
+    TEST_ASSERT_EQUAL_PTR(shared, scene->light_table);
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, red, SCENE_SKIN_LIGHT_DIRECT));
+    TEST_ASSERT_EQUAL_PTR(shared, scene->light_table);
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, green, SCENE_SKIN_LIGHT_RENORMALISED));
+    TEST_ASSERT_NULL(scene->light_table);
+    TEST_ASSERT_EQUAL_UINT(lit_free, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_TRUE(scene_skin_light_set_mode(scene, green, SCENE_SKIN_LIGHT_TABLE));
+    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, green, "rig.quad", NULL));
+    TEST_ASSERT_NULL(scene->light_table);
+    release_fixture();
+    TEST_ASSERT_EQUAL_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
+}
+
 void
 run_scene_suite(void) {
+    RUN_TEST(test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights);
     RUN_TEST(test_invalid_normal_transform_skips_lighting_and_recovers);
     RUN_TEST(test_lit_load_unload_releases_internal_storage);
     RUN_TEST(test_first_light_storage_rollback_and_lit_skin_allocation_failure);

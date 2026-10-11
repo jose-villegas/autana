@@ -240,6 +240,7 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
+    next.light_kernel = r3d_skin_clusters_lit;
     if (scene->light_count > 0 && !scene_skin_light_allocate(&next)) {
         memory_free(next.internal_storage);
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
@@ -251,6 +252,7 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
     r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
+    scene_skin_light_detach(scene, entity);
     memory_free(scene->skinned_renderers[entity].light_storage);
     memory_free(scene->skinned_renderers[entity].internal_storage);
     scene->skinned_renderers[entity] = next;
@@ -328,6 +330,7 @@ void
 scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
         memory_free(scene->animators[e].storage);
+        scene_skin_light_detach(scene, (scene_entity_t)e);
         memory_free(scene->skinned_renderers[e].light_storage);
         memory_free(scene->skinned_renderers[e].internal_storage);
         scene->animators[e] = (scene_animator_t){0};
@@ -397,8 +400,8 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
         if (scene->light_count > 0 && skin->lighting_valid) {
-            r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
-                                  skin->normal_palette, &scene->world_lights, skin->colors);
+            skin->light_kernel(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
+                               skin->normal_palette, &scene->world_lights, skin->colors);
         } else {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
@@ -467,6 +470,7 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
         }
     }
     const bool lights_dirty = skin_lights_changed(scene);
+    scene->light_table_dirty |= lights_dirty;
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];

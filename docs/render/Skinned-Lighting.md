@@ -1,19 +1,20 @@
 # Skinned-Mesh Lighting
 
-The runtime shader lights skinned normals with direct N.L and the bake's
+The runtime shader offers three lighting modes and the bake's
 albedo, tone map and gamma. This page holds its board measurements and the
 host comparison with a normal-indexed illumination table<sup>[[58]](../Citations.md#58)</sup>.
 
 ```mermaid
 flowchart TB
-    Skin["skin positions and normals"] --> Runtime["runtime: renormalise and N.L"]
-    Runtime --> Transfer["decode albedo, tone map, encode"]
+    Skin["skin positions and world normals"] --> Direct["direct N.L: default"]
+    Skin --> Renormalised["renormalise then N.L"]
+    Skin --> Table["bilinear irradiance lookup"]
+    Lights["changed world lights"] --> Build["shared scene table"]
+    Build --> Table
+    Direct --> Transfer["albedo x irradiance, tone map, encode"]
+    Renormalised --> Transfer
+    Table --> Transfer
     Transfer --> Mesh["lit mesh colors"]
-    Skin --> Direct["host comparison: direct N.L"]
-    Skin --> Oct["host comparison: octahedral lookup"]
-    Build["per-object illumination table"] --> Oct
-    Direct --> Out["comparison light bytes"]
-    Oct --> Out
 ```
 
 | Variant | Per vertex |
@@ -32,7 +33,7 @@ the first lights of `LIGHTS` in the benchmark.
 
 ## Runtime lighting
 
-`render/skin/r3d_skin_light.h` owns the fused direct N.L shader.
+`render/skin/r3d_skin_light.h` owns the fused lighting kernels.
 `r3d_skin_clusters_lit()` shares packed weights between position and normal
 palettes, grows cluster bounds, and shades each vertex. The normal palette
 holds the inverse-transpose of `entity_world * joint_palette` for each joint:
@@ -41,11 +42,11 @@ and runtime reflections set through `scene_set_transform()` are lit correctly.
 A zero or non-finite determinant, or a non-finite inverse-transpose, logs
 `skin normal transform invalid` and skips lighting for that skin; its lit
 colors are black while positions and bounds continue to update.
-The skinned normal is always renormalised. `mathf_rsqrt()` uses the
+The renormalised mode normalises the blended skinned normal. `mathf_rsqrt()` uses the
 S3's reciprocal-square-root seed and one Newton correction; host and QEMU
 use exact square root. The device tests require relative reciprocal error
 at most `MATHF_RSQRT_RELATIVE_LIMIT` over the dense normal sweep and
-at most one light-byte error against exact square root over the measured mesh.
+the light-byte error limit in `suite_skin_light.c` against exact square root.
 These limits require device validation; host fallback results do not establish
 the instruction's accuracy.
 
@@ -96,13 +97,63 @@ and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
 SCNE v1 has no writers for the private ambient and tone-map fields.
 `test_skin_light_transfer.py` checks the runtime tables against `light.py`.
 
+## Lighting modes
+
+Lighting mode is private to each skinned renderer. **Direct is the default**,
+chosen for cost: it evaluates N.L on the blended, unrenormalised world-space
+normal. Pick it when joint darkening is acceptable. Renormalised evaluates
+N.L after `mathf_rsqrt` normalisation and removes that darkening; pick it when
+normal length must not affect light intensity. Table evaluates bilinear
+irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>;
+its lookup cost is flat in light count. Pick it when that fixed lookup cost
+is preferable to evaluating each light. These modes are an import choice;
+the scene-format work fills each renderer's mode from its skin pack entry.
+Runtime tests and device suites select the mode through `scene_internal.h`.
+
+Normal palettes carry inverse-transpose correctness in every mode. A scene
+allocates its shared irradiance table<sup>[[58]](../Citations.md#58)</sup> in
+internal RAM only while at least one renderer uses table mode. Cells store
+packed fixed-point RGB with a per-table scale in scene metadata. The scale
+covers ambient plus every directional light's color and intensity, preserving
+irradiance above one. Bilinear lookup blends those fixed-point channels before
+albedo multiplication, tone mapping and encoding, using multiplication by the
+shared scale. `vec3f_octahedral()` pays a reciprocal division; interpolation
+adds no divides. The host angular sweep in `suite_skin_light.c` checks this
+format against direct lighting and an independent float reference. The cell
+budget and encoding are defined by `R3D_SKIN_LIGHT_TABLE_*`.
+
+A mode change keeps the shared color and normal-palette tail and changes the
+renderer kernel outside the vertex loop. Allocation failure preserves the
+mode, kernel, pointers and free bytes. The last table renderer releases the
+table. Light setters and a light entity's `SCENE_FLAG_SKIN_DIRTY` rebuild it;
+posing or rotating a skin does not. All table renderers read the same world
+lights and scene table.
+
+The generated table reports fused cycles per vertex at each light count,
+worst and mean light-byte error against independently evaluated float
+lighting, table-build cycles and internal-RAM costs. Scene bytes are shared
+across renderers. Its generator reads the board capture, without substituting
+host timings.
+
+<!-- generated: skin-light-modes sha256=2af35b7f951bc7c99ab0e269eb6c39b158d27882d1ac2b1f48c351c923210e75 -->
+Board capture for the three runtime modes is pending.
+
+| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles | Renderer internal bytes | Scene internal bytes |
+|---|---:|---:|---:|---:|---:|---:|---:|
+<!-- /generated: skin-light-modes -->
+
+The comparison sheet shows normal-length darkening and the octahedral
+approximation across the recorded host variants. Its encoded-light table
+experiment is separate from the runtime irradiance format.
+
+![Lighting variants and error against the float reference](images/skin-light-sheet.png)
+
 ## Board measurement
 
 The committed [capture lines](data/skin-light-board.txt) hold the
 build ids, timing, quality, checksums and heap measurements. The generated
 table takes the median timing per build and kernel and the worst quality
-errors across captured runs. Build
-`8651de3988fb-diag` is the kernel comparison that selects direct over the table. The table measurements use
+errors across captured runs. The `table_lookup` comparison measurements use
 rounded linear-light bytes and belong to the comparison, not the runtime
 albedo/tone-map shader. Their error is measured against exact normalisation
 of packed bind normals. The [comparison sheet](images/skin-light-sheet.png)
@@ -142,17 +193,13 @@ shows source-normal benchmark error; those inputs differ from packed normals.
 | 5df9ac860fde-diag | exact_separate_4 | 1055.140 | vertex | — | 0 | 0.000000 |
 <!-- /generated: skin-light-board -->
 
-The device suite reports normal-palette cycles per build, renderer color
-and normal-palette bytes, light-copy bytes, scene transfer and world-light
-bytes, and heap availability. It measures skin-only, fused N.L writing
-light bytes,
-fused N.L with `mathf_rsqrt`, and the shipped fused albedo-transfer kernel,
-at each requested light count. Diagnostic stage kernels compile the same
-vertex transform and bounds loop; their stage selector adds a small per-vertex
-branch. A separate exact-square-root pass checks reciprocal accuracy. The separate pass
-has different row-sharing cost, so its difference from fused timing is not
-an isolated reciprocal-square-root cost. It reports internal free space and
-largest block before allocation, after allocation and after release.
+The device suite measures skin-only, normal-palette build, the exact-separate
+float reference, and each runtime mode under the requested light counts.
+Table builds are timed separately. Each mode reports renderer and scene
+internal-RAM bytes, quality and heap availability before allocation, after
+allocation and after release. The exact-separate reference blends packed
+normals and uses square root, float albedo decode and gamma independently
+of the runtime transfer tables.
 
 ```sh
 autana --wait 3600 suite suite_skin_light_perf --flash
@@ -162,8 +209,8 @@ python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data
 ```
 
 The host benchmark keeps its linear-light direct and octahedral comparisons
-in `launcher/tools/r3d/skin_light/skin_light_baseline.*`. The engine has no
-normal-indexed lighting table.
+in `launcher/tools/r3d/skin_light/skin_light_baseline.*`. The runtime table stores irradiance before albedo and tone mapping; the host
+comparison tables store encoded light bytes and use a different transfer.
 
 ## Results
 
@@ -273,15 +320,10 @@ with the reference's:
 
 ## Decision
 
-The kernel comparison selects direct N.L. Separate direct lighting is cheaper
-than table lookup at the measured light counts, before adding the per-object
-table build. The generated board table holds the fused direct timings and
-exact renormalisation comparison.
-
-Runtime uses the fused direct kernel with renormalised int8 bind normals.
-The normal-indexed table remains a host comparison only. Runtime transfer
-lookup tables serve albedo decode, tone mapping and gamma; they do not
-replace per-light N.L evaluation.
+Modes are an import choice, defaulting to direct for cost. Renormalised
+removes joint darkening; table has fixed lookup cost in light count. The
+[lighting modes](#lighting-modes) section contains the generated runtime
+quality and cost table and the comparison sheet.
 
 ## Reproduce
 

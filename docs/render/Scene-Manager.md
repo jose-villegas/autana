@@ -132,3 +132,16 @@ The shell's half of the API (the two frame halves and the unload on exit) is
 The shell does not call it by name: `shell/scene_system.c` registers it as the
 engine system `scene`, at `SHELL_ORDER_SCENE`
 ([Firmware-Architecture.md](../Firmware-Architecture.md#engine-systems)).
+
+## Per-renderer lighting mode
+
+Each skinned renderer owns a private mode and a selected kernel: direct
+(the default), renormalised or table. The scene-format work fills it from
+the skin pack entry. Tests use `scene_skin_light_set_mode()` through
+`scene_internal.h`; no public mode setter or import option is exposed.
+Normal palettes and the lit color tail are shared across all modes. Only
+scenes with a table-mode renderer allocate the shared irradiance table in
+internal RAM, releasing it with the last user or the scene. Mode changes
+allocate transactionally; failure leaves state unchanged. A changed light
+rebuilds the table, while skin poses and entity rotations only change the
+lookup normal. See [Lighting modes](Skinned-Lighting.md#lighting-modes).

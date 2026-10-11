@@ -37,11 +37,24 @@ typedef struct {
     uint8_t encode[R3D_SKIN_LIGHT_RADIANCE_SIZE];
 } r3d_skin_light_transfer_t;
 
+#define R3D_SKIN_LIGHT_TABLE_SIDE           16
+#define R3D_SKIN_LIGHT_TABLE_CELLS          (R3D_SKIN_LIGHT_TABLE_SIDE * R3D_SKIN_LIGHT_TABLE_SIDE)
+#define R3D_SKIN_LIGHT_TABLE_ERROR_BOUND    43
+#define R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND 2
+#define R3D_SKIN_LIGHT_TABLE_BITS           10
+#define R3D_SKIN_LIGHT_TABLE_MASK           ((1U << R3D_SKIN_LIGHT_TABLE_BITS) - 1U)
+
+typedef struct {
+    uint32_t cells[R3D_SKIN_LIGHT_TABLE_CELLS];
+} r3d_skin_light_table_t;
+
 typedef struct {
     int count;
     vec3f_t direction[R3D_SKIN_LIGHT_MAX];
     vec3f_t color[R3D_SKIN_LIGHT_MAX];
     vec3f_t ambient;
+    const r3d_skin_light_table_t* table;
+    float table_scale;
     const r3d_skin_light_transfer_t* transfer;
 } r3d_skin_lights_t;
 
@@ -51,3 +64,14 @@ void r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_
 void r3d_skin_clusters_lit(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
                            int count, r3d_skin_output_t* posed, const mat3f_t* normals, const r3d_skin_lights_t* lights,
                            uint8_t (*out)[3]);
+
+float r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table_t* out);
+vec3f_t r3d_skin_light_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights);
+typedef void (*r3d_skin_light_kernel_t)(const r3d_skin_t*, const r3d_lit_mesh_t*, const mat4f_t*, int, int,
+                                        r3d_skin_output_t*, const mat3f_t*, const r3d_skin_lights_t*, uint8_t (*)[3]);
+void r3d_skin_clusters_renormalised(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette,
+                                    int first, int count, r3d_skin_output_t* out, const mat3f_t* normals,
+                                    const r3d_skin_lights_t* lights, uint8_t (*light)[3]);
+void r3d_skin_clusters_table(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
+                             int count, r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,
+                             uint8_t (*light)[3]);
