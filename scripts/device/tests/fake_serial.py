@@ -43,8 +43,8 @@ class Replies(FakeConnection):
 
 
 class FakeUsbBoard:
-    """One board on a fake USB bus, at pyserial's boundary, timed as the real
-    one: a reset takes its port off the bus `leaves` seconds later and lists
+    """One board on a fake USB bus, at pyserial's boundary, in the real one's
+    order: a reset takes its port off the bus `leaves` seconds later and lists
     it again `returns` seconds after the reset, under the next of `names`. A
     handle opened before the port left dies with it. An open with DTR or RTS
     raised, pyserial's default, resets the board, as on USB Serial/JTAG.
@@ -52,11 +52,14 @@ class FakeUsbBoard:
 
     boot_line = b""
 
-    def __init__(self, serial_number, names, leaves=0.05, returns=0.3):
+    def __init__(self, serial_number, names, leaves=0.22, returns=1.02, opens=1.10, busy_at=0.16):
         self.serial_number = serial_number
         self.names = list(names)
         self.port = self.names.pop(0)
         self.leaves, self.returns = leaves, returns
+        self.opens, self.busy_at = opens, busy_at
+        self.open_at = 0
+        self.blocked_at = None
         self.boot = 0
         self.reset_at = None
         self.resets = 0
@@ -76,12 +79,15 @@ class FakeUsbBoard:
         self.settle(now)
         if self.reset_at is None:
             self.reset_at = now
+            self.open_at = now + self.opens
+            self.blocked_at = now + self.busy_at
             self.resets += 1
 
     def open(self, port, dtr, rts, now):
         """The boot a new handle belongs to; FileNotFoundError when `port` is
         not on the bus, as pyserial reports a port that left."""
-        if not self.listed(now) or port != self.port:
+        if (not self.listed(now) or port != self.port
+                or (self.blocked_at is not None and self.blocked_at <= now < self.open_at)):
             raise FileNotFoundError(2, "could not open port " + str(port))
         boot = self.boot
         if dtr or rts:
@@ -91,7 +97,7 @@ class FakeUsbBoard:
     def alive(self, boot, now):
         return self.listed(now) and self.reset_at is None and boot == self.boot
 
-    def serial_module(self, clock):
+    def serial_module(self, clock, sleep=lambda seconds: None):
         """A stand-in for the `serial` module, every port on this board."""
         board = self
 
@@ -107,6 +113,7 @@ class FakeUsbBoard:
                 self.unread = board.boot_line
 
             def read(self, unused_size):
+                sleep(self.timeout)
                 if not board.alive(self.boot, clock()):
                     raise OSError(22, "ClearCommError failed")
                 data, self.unread = self.unread, b""

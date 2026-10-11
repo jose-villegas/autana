@@ -63,7 +63,8 @@ sequenceDiagram
     Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
     Dev->>Snap: remove, whether the write succeeded or not
     opt suite --flash and selftest, still under the same lock
-        Dev->>Board: open the returned port and read the boot
+        Dev->>Board: selftest resets again, waits for USB, then captures
+        Dev->>Board: suite --flash opens the returned port and reads the boot
         Dev->>Board: suite --flash: once its console is up, send RUNSUITE
         Dev->>Board: capture until the suites end
         Note over Dev,Board: the capture fails on any other BUILD_ID
@@ -87,9 +88,8 @@ writes one summary across all runs.
 
 Between the flash and the first request it waits, still under the lock, for
 the new image to boot to its console: a request sent before then is lost.
-That boot is
-kept as a `boot-diag` capture; a board with no console within 30 s is
-reported, and the first run goes ahead to show what it does instead.
+That boot is kept as a `boot-diag` capture; a board with no console within
+30 s is reported, and the first run goes ahead to show what it does instead.
 
 ```sh
 autana suite run_boot_anim_perf_suite run_gfx_suite --runs 3 --flash
@@ -117,9 +117,11 @@ Every reset (`autana reset`, the end of a flash, `selftest`, `coredump`)
 power-cycles the board, so its port leaves USB and returns, possibly under
 another name. The command waits for the board's serial number to leave the
 port list and come back, then opens the port; opening sooner gets the dying
-handle. A capture whose board reboots again mid-capture reconnects the same
-way and reads on. A board silent for 2 s after a reset is taken for a chip
-in download mode and restarted through the watchdog.
+handle. Only `reset --capture` and `selftest` captures reconnect after a
+mid-capture reboot and read on; a suite capture ends as `port lost`. For
+`reset --capture` and `selftest`, a board silent after the RTS reset for
+`RESET_FIRST_BYTE_SECONDS` in [device.py](../../scripts/device/device.py) is
+taken for a chip in download mode and restarted once through the watchdog.
 
 ## Talking to a running device
 

@@ -187,8 +187,9 @@ def board_for_lock(store, named=None, remembered=False):
 
 
 # A reset power-cycles the board, and its USB Serial/JTAG port leaves the bus
-# about 0.2 s after esptool returns and is back about 1 s later, possibly under
-# another name. A reset that keeps the port up waits out this bound.
+# about 0.2 s after esptool returns and is listed about 1 s after esptool returns.
+# The reappear bound covers a slow host and still fails fast. A reset that
+# keeps the port up costs only RESET_LEAVE_SECONDS.
 RESET_LEAVE_SECONDS = 2
 USB_POLL_SECONDS = 0.05
 PORT_REAPPEAR_SECONDS = 20
@@ -202,36 +203,33 @@ def reconnect_after_reset(seconds=PORT_REAPPEAR_SECONDS, sleep=time.sleep, now=t
     capture that follows loses as little of the boot as it can. Raises
     PortUnavailable at `seconds`."""
     board = ACTIVE_LOCK.held.board
-    leave_by = now() + RESET_LEAVE_SECONDS
     deadline = now() + seconds
+    leave_by = min(now() + RESET_LEAVE_SECONDS, deadline)
 
     def listed():
         require_live_lock()
         return any(found.serial == board for found in plugged_boards())
 
     while now() < leave_by and listed():
-        sleep(USB_POLL_SECONDS)
+        sleep(min(USB_POLL_SECONDS, max(0, leave_by - now())))
     while not listed():
         if now() >= deadline:
             raise PortUnavailable(f"board {board} did not come back on USB within "
                                   f"{seconds:g}s of its reset")
-        sleep(USB_POLL_SECONDS)
-    with open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
-                        sleep=sleep, now=now):
-        pass
+        sleep(min(USB_POLL_SECONDS, max(0, deadline - now())))
+    return open_when_free(max(0, deadline - now()), reason="re-enumerating after reset",
+                          sleep=sleep, now=now)
 
 
 FLUSH_POLL_SECONDS = 0.05
 
 
 def open_serial():
-    """Opens the locked board's port for this process alone. Windows refuses a
-    second open on its own; POSIX needs `exclusive` (an advisory flock, so it
-    excludes our readers and esptool but not screen or ModemManager), else a
-    leftover holder and this reader silently split the byte stream. The
-    refusal is an OSError, which open_when_free treats as busy. DTR and RTS
-    stay low through the open: pyserial's default raises them, and on USB
-    Serial/JTAG that resets the chip, which drops the port."""
+    """Open the locked board exclusively. POSIX uses an advisory flock, which
+    excludes our readers and esptool but not screen or ModemManager. Busy
+    opens raise OSError for open_when_free. POSIX opens with DTR and RTS raised,
+    then lowers RTS before DTR to avoid the USB Serial/JTAG reset state.
+    Windows applies both low together in its DCB."""
     port = locked_port()
     try:
         import serial
@@ -272,9 +270,12 @@ def open_serial():
     # in the OS forever, holding the lock with it. A reading board drains a
     # line at once; the longest a healthy one goes without reading is its boot.
     connection.write_timeout = BOOT_WAIT_SECONDS
-    connection.dtr = False
-    connection.rts = False
+    if os.name == "nt":
+        connection.dtr = connection.rts = False
     connection.open()
+    if os.name != "nt":
+        connection.rts = False
+        connection.dtr = False
     return connection
 
 
@@ -408,14 +409,15 @@ def open_when_free(seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
             return connection
         except (OSError, NoBoard) as error:
             require_live_lock()
-            if now() >= deadline:
+            remaining = deadline - now()
+            if remaining <= 0:
                 raise PortUnavailable("board port still " + reason + " when the "
                                       + str(int(seconds)) + "s wait ran out: "
                                       + str(error) + previous_holder_note()) from error
             if not waited:
                 print("waiting for the board port, " + reason, file=sys.stderr)
                 waited = True
-            sleep(min(pause, deadline - now()))
+            sleep(min(pause, remaining))
             pause = min(2 * pause, OPEN_MAX_PAUSE_SECONDS)
 
 
@@ -705,15 +707,25 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
+def run_resetting(command, check=False):
+    """Run a command that resets the board, returning its status and live port.
+    A nonzero exit still waits for USB before reporting the command failure."""
+    result = subprocess.run(command, check=False)
+    connection = reconnect_after_reset()
+    if check and result.returncode:
+        connection.close()
+        result.check_returncode()
+    return result.returncode, connection
+
+
 def reset(after="hard_reset"):
-    """Restarts the locked board through esptool and returns once its port is
-    back. hard_reset pulses RTS; it cannot restart a chip in download mode,
-    which watchdog_reset can."""
+    """Restart through esptool and return the new boot's open port. RTS cannot
+    restart a chip in download mode, which watchdog_reset can."""
     with open_when_free():
         pass
-    subprocess.run([python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3",
-                    "-p", locked_port(), "--after", after, "chip_id"], check=True)
-    reconnect_after_reset()
+    _, connection = run_resetting([python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3",
+                                   "-p", locked_port(), "--after", after, "chip_id"], check=True)
+    return connection
 
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
@@ -721,23 +733,21 @@ def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
     """A board that says nothing at all after the RTS reset is taken for a chip
     in download mode, the one case RTS cannot start, and gets the watchdog. One
     that spoke, even without a BUILD_ID, is left alone."""
-    reset()
     data, reason = capture_after_reset(output, seconds, idle_seconds, expected_build_id,
-                                       complete)
+                                       complete, connection=reset())
     if reason != "silent":
         return data, reason
     print("board silent after an RTS reset, as from download mode; "
           "restarting it through the watchdog", file=sys.stderr)
-    reset(after="watchdog_reset")
     return capture_after_reset(output, seconds, idle_seconds, expected_build_id,
-                               complete)
+                               complete, connection=reset(after="watchdog_reset"))
 
 
 RESET_FIRST_BYTE_SECONDS = 2
 
 
 def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
-                        complete=tests_done):
+                        complete=tests_done, connection=None):
     """The console after a reset whose port reconnect_after_reset saw come
     back. A board that says nothing within RESET_FIRST_BYTE_SECONDS ends as
     "silent". One that reboots again mid-capture drops the port, which is
@@ -749,11 +759,9 @@ def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
     def ended(reason):
         return bytes(data), reason if data else "silent"
 
+    connection = connection or open_when_free(seconds, reason="re-enumerating after reset")
     while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return ended("timeout")
-        with open_when_free(remaining, reason="re-enumerating after reset") as connection:
+        with connection:
             part, reason = capture(connection, output, deadline - time.monotonic(),
                                    idle_seconds, expected_build_id, append=append,
                                    complete=complete, first_byte_seconds=None if append
@@ -764,7 +772,7 @@ def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
             return ended(reason)
         print("reset capture lost the port; reconnecting", file=sys.stderr)
         try:
-            reconnect_after_reset(max(0, deadline - time.monotonic()))
+            connection = reconnect_after_reset(max(0, deadline - time.monotonic()))
         except PortUnavailable:
             return ended("port lost")
 
@@ -783,8 +791,8 @@ def console_up(build_id):
 
 def await_console(args, board, build_id, acquired_at):
     """Waits under the caller's lock, after the flash's own reset, for
-    `build_id` to boot to its console: a request sent before then lands in
-    the bootloader. A board that never gets there is reported, not refused,
+    `build_id` to boot to its console: a request sent before then is lost.
+    A board that never gets there is reported, not refused,
     since the capture that follows says what it did instead."""
     started_at = now()
     output, managed = resolve_capture_path(None, "boot-" + args.variant, args.owner, started_at)
@@ -812,7 +820,7 @@ def reset_device(args, store, board):
     console output as a capture record."""
     if not args.capture:
         with HeldLock(store, board, args.owner, "reset", args.wait):
-            reset()
+            reset().close()
         print("board reset; USB serial port is back")
         return 0
 
@@ -1216,7 +1224,7 @@ def write_image(built, store, board, held_lock=None):
                 pass
             built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
                       "ab")
-            reconnect_after_reset()
+            reconnect_after_reset().close()
             build_id = built.build_id
             print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
@@ -1488,17 +1496,18 @@ def coredump(args, store, board):
         port = locked_port()
         if args.erase:
             parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-            subprocess.run([idf_python(), str(parttool), "--port", port, "erase_partition",
-                            "--partition-name=" + COREDUMP_PARTITION], check=True)
-            reconnect_after_reset()
+            _, connection = run_resetting([idf_python(), str(parttool), "--port", port,
+                                           "erase_partition", "--partition-name=" + COREDUMP_PARTITION],
+                                          check=True)
+            connection.close()
             print("coredump partition erased")
             return 0
         command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "--port", port, "info_corefile"]
         gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
         if gdb:
             command += ["--gdb", str(gdb)]
-        status = subprocess.call(command + [str(elf)])
-        reconnect_after_reset()
+        status, connection = run_resetting(command + [str(elf)])
+        connection.close()
         return status
 
 

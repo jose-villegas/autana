@@ -114,7 +114,9 @@ class PrimitiveGuardTests(Store):
                  or (any(isinstance(arg, ast.Constant) and arg.value == "esptool"
                          for arg in ast.walk(node))
                      and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                             and call.func.attr == "run" for call in ast.walk(node))))
+                             and call.func.attr == "run"
+                             or isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                             and call.func.id == "run_resetting" for call in ast.walk(node))))
         }
         self.assertEqual(primitives, {"open_serial", "reset"})
         for name in primitives:
@@ -278,7 +280,8 @@ class PortFollowingTests(Store):
 
     def test_open_and_reset_use_the_port_the_board_has_now(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM6")) as ports, \
-                mock.patch.object(device.subprocess, "run") as run, \
+                mock.patch.object(device.subprocess, "run",
+                                  return_value=subprocess.CompletedProcess([], 0)) as run, \
                 mock.patch.object(device, "python_with_pyserial", return_value="python"), \
                 mock.patch.object(device, "reconnect_after_reset"), \
                 device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
@@ -425,7 +428,7 @@ class FlashTests(Store):
     def scripts(self, **fakes):
         with mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
                 mock.patch.object(device, "reconnect_after_reset",
-                                  side_effect=device.require_live_lock), \
+                                  side_effect=lambda: (device.require_live_lock(), FakeConnection())[1]), \
                 mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts(**fakes)), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
@@ -1184,7 +1187,7 @@ class SuiteFailureTests(Store):
         replies = Replies(b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1\n")
         with mock.patch.object(device, "build_image"), \
                 mock.patch.object(device, "write_image", return_value="abc"), \
-                mock.patch.object(device, "reset"), \
+                mock.patch.object(device, "reset", return_value=replies), \
                 mock.patch.object(device, "open_when_free", return_value=replies), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()):
