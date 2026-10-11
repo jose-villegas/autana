@@ -3,8 +3,6 @@
 
 import pathlib
 
-import numpy as np
-
 
 def read_poses(path):
     """Read a track sampler pose file as (width, height, lens, near, poses)."""
@@ -13,6 +11,14 @@ def read_poses(path):
 
 def parse_poses(text):
     """read_poses for the file's text."""
+    import numpy as np
+
+    width, height, lens, near, rows = parse_pose_rows(text)
+    return width, height, lens, near, [np.array(row, dtype=float) for row in rows]
+
+
+def parse_pose_rows(text):
+    """Parse poses text as (width, height, lens, near, six-float tuples), without NumPy."""
     width = height = None
     lens = near = None
     poses = []
@@ -25,7 +31,7 @@ def parse_poses(text):
         elif fields[0] == "lens" and len(fields) == 3:
             lens, near = map(float, fields[1:])
         elif fields[0] == "pose" and len(fields) == 7:
-            poses.append(np.array([float(value) for value in fields[1:]], dtype=float))
+            poses.append(tuple(float(value) for value in fields[1:]))
         else:
             raise ValueError("invalid pose line: " + line)
     if width is None or lens is None or not poses:
@@ -36,6 +42,8 @@ def parse_poses(text):
 def camera_basis(forward):
     """(right, up, forward) unit vectors of a camera looking along `forward`
     with world +y up: the frame reference_render.py casts its rays in."""
+    import numpy as np
+
     forward = np.asarray(forward, dtype=float)
     forward = forward / np.linalg.norm(forward)
     right = np.cross(forward, [0.0, 1.0, 0.0])
@@ -46,6 +54,8 @@ def camera_basis(forward):
 def camera_rays(width, height, lens, eye, forward, samples, margin=0):
     """One pinhole ray per subpixel, ordered in pixel-sized groups; `margin`
     widens the view by that many pixels on each side."""
+    import numpy as np
+
     right, up, forward = camera_basis(forward)
     x, y = np.meshgrid(np.arange(-margin, width + margin), np.arange(-margin, height + margin))
     offsets = (np.arange(samples) + 0.5) / samples
@@ -73,6 +83,14 @@ def sample_camera_path(animation, node, every_ms, width, height, lens, near):
     every `every_ms` over the clip, as read_poses returns them; sampled by
     tools/anim/track_host.py, which runs the device's sampler over the clip's
     TRCK entry."""
+    import numpy as np
+
+    width, height, lens, near, rows = sample_camera_rows(animation, node, every_ms, width, height, lens, near)
+    return width, height, lens, near, [np.array(row, dtype=float) for row in rows]
+
+
+def sample_camera_rows(animation, node, every_ms, width, height, lens, near):
+    """Sample a camera path as parse_pose_rows returns it, without NumPy."""
     from anim import track_host
 
-    return parse_poses(track_host.poses(animation, node, every_ms, width, height, lens, near))
+    return parse_pose_rows(track_host.poses(animation, node, every_ms, width, height, lens, near))
