@@ -327,7 +327,7 @@ class FittedBakeCase(unittest.TestCase):
             return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (lock, {}) if kw.get("table", "bake") is None else lock), \
+        with mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch.object(bake, "runs_made", return_value=made or {}), \
                 mock.patch.object(produce, "produce", side_effect=stub), \
@@ -579,7 +579,7 @@ class PosesTests(FittedBakeCase):
         bake.write_lock(list(locked.values()), path, poses=[*[{**row, "poses": "forged"} for row in rows.used.values()],
                         {**next(iter(rows.used.values())), "key": "unneeded"}])
         with mock.patch.object(bake, "LOCK", path), \
-                mock.patch.object(bake, "read_lock", return_value=(locked, bake.read_lock(path, table="poses"))):
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": locked, "poses": bake.read_lock(path, table="poses")}):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(bake.main(["lock", str(self.root)]), 0)
@@ -609,7 +609,7 @@ class PosesTests(FittedBakeCase):
                         track_host.TrackHostError("no sh"), FileNotFoundError("compiler unavailable")):
             with self.subTest(failure=str(failure)), \
                     mock.patch.object(track_host, "program", side_effect=failure), \
-                    mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (lock, {}) if kw.get("table", "bake") is None else lock):
+                    mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}):
                 missing = bake.bakes_in(packs, jobs)
                 self.assertTrue(all(item.key is None for item in missing if item.scene is not None))
                 with self.assertRaises(bake.BakeUnlocked) as raised:
@@ -787,7 +787,7 @@ class LockTests(unittest.TestCase):
         found = [bake_of("k" * 64, self.tree), bake_of("n" * 64, other)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value=({"k" * 64: {**self.row, "run": 5}}, {})), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {"k" * 64: {**self.row, "run": 5}}, "poses": {}}), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
@@ -852,7 +852,7 @@ class LockTests(unittest.TestCase):
         found = [bake_of("k" * 64, self.tree)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value=({"o" * 64: stale}, {})), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {"o" * 64: stale}, "poses": {}}), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch("urllib.request.urlopen") as network, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
@@ -863,7 +863,7 @@ class LockTests(unittest.TestCase):
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value=({"k" * 64: {**self.row, "seeded": True}}, {})), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {"k" * 64: {**self.row, "seeded": True}}, "poses": {}}), \
                 contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(bake.main(["check"]), 0)
         self.assertIn("1 of 1 rows are seeded", out.getvalue())
