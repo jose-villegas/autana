@@ -1,7 +1,7 @@
 # Engine layer: design sketch
 
-**Status:** in review. Section 1 and the `r3d_project` destination are
-approved; sections 2 to 4 are being walked. Nothing has moved. `[M]` marks
+**Status:** in review. Sections 1 and 2 and the `r3d_project` destination
+are approved; sections 3 and 4 are being walked. Nothing has moved. `[M]` marks
 the maintainer's decision or constraint, `[A]` a proposal of this sketch not
 yet approved.
 
@@ -104,13 +104,14 @@ the engine, the app contract and the platform's face, never `shell/`,
 `[M]` Apps and games talk to the game loop in ECS: each engine system's
 public face is scene components plus calls on entities; its per-frame work
 runs as systems over packed component arrays; its internals stay private.
+Every item in this section is approved.
 
 ### Today and the rule, per system
 
 | System | Public face today | As the rule wants it | Gap |
 |---|---|---|---|
 | scene | `scene_load(id)`, `scene_find(name)`, `scene_entity_set_transform/enabled`, `scene_activate(scene, "camera name")`; storage already packed per scene (`transforms[]`, `flags[]`, `renderers[]`, `cameras[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string; `scene_transform_t` is a render type (`r3d_placement_t`); `scene_camera_lens()` returns a render struct |
-| render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[A]` | a bench app's tests drive the raster directly: they move to render's own tests |
+| render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the sampler and bindings (`anim_tracks_*`, `anim_bind`, `anim_apply`) are the API; boot calls them directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | the camera path is still render's `r3d_scene_path_t`; boot's animation is not a scene |
 | asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
 
@@ -118,7 +119,7 @@ runs as systems over packed component arrays; its internals stay private.
 
 | Include in an app | Call | Moves to |
 |---|---|---|
-| `gfx/present/gfx_mode.h` | `gfx_mode_enter()`, `gfx_mode_exit()` | the platform's gfx face; an app that runs in one mode declares it on `app_t` and the shell enters it `[A]` |
+| `gfx/present/gfx_mode.h` | `gfx_mode_enter()`, `gfx_mode_exit()` | the platform's gfx face; an app that runs in one mode declares it on `app_t` and the shell enters it `[M]` |
 | `gfx/present/gfx_present.h` | `gfx_request_full_redraw()` | the gfx face |
 | `gfx/present/gfx_present.h` | `gfx_present_begin()`, `gfx_present_wait()` in bench scenes | the scene system, which already overlaps the present |
 | `gfx/present/gfx_indexed.h` | `gfx_indexed_*` (index image mode) | the gfx face |
@@ -126,13 +127,13 @@ runs as systems over packed component arrays; its internals stay private.
 | `input/imu.h`, `imu_rotation.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's), `input_read_gravity()` and the frame's `input_t` |
 | `scene/scene_shell.h` ("Apps never include this") in a host tool | `scene_shell_render()`, `scene_shell_compose()` | one public host-frame call on the scene's face |
 | `render/r3d_pipeline.h` in perf suites | `r3d_pipeline_*` | render's own tests |
-| `selftest/*` in diagnostics | self-test results | diagnostics becomes a system app under `shell/apps/` `[A]` |
+| `selftest/*` in diagnostics | self-test results | diagnostics becomes a system app under `shell/apps/` `[M]` |
 
-Shape that enforces it `[A]`: each engine folder keeps a public `include/`
+Shape that enforces it `[M]`: each engine folder keeps a public `include/`
 and a private `src/`, as `launcher/packages/math` does; a header in `src/` is
 reachable only from its own folder. The gate then needs no list.
 
-### The face, as types and functions `[A]`
+### The face, as types and functions `[M]`
 
 A component that names content (a mesh, a skin, a clip) holds its asset id
 `[M]`. The engine resolves the id to the pack entry when the scene loads or
@@ -141,7 +142,7 @@ without touching what refers to it; animators already attach this way.
 
 ```c
 /* content is named by a stable asset id, never a path or a pointer [M];
- * the id is the hash of the entry's name [A] */
+ * the id is the hash of the entry's name [M] */
 typedef uint32_t asset_id_t;
 
 /* components: one value type each */
@@ -156,17 +157,17 @@ void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_tran
 bool scene_camera_activate(scene_t* scene, scene_entity_t camera);
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 
-/* systems: engine-private, a fixed order over the packed arrays */
-typedef void (*scene_system_run_t)(scene_t* scene, uint32_t dt_ms);
+/* systems: engine-private, run in order from one table over the packed arrays */
+typedef struct { const char* name; void (*run)(scene_t* scene, uint32_t dt_ms); } scene_system_t;
 /* animate -> placements from dirty transforms -> camera view -> census and draw */
 ```
 
-Open for the walk-through:
+Decided `[M]`:
 
-- Do game-defined components and systems belong in the rule, or does game
-  logic stay in the app's `update()` for now `[A: later]`?
-- 2D drawing and the UI toolkit are immediate mode, called from `frame()`.
-  Are they outside the rule (a frame-time API, not a scene system) `[A]`?
+| Question | Decision | Condition |
+|---|---|---|
+| game-defined components and systems | later: game logic stays in the app's `update()` and talks through engine components and entity calls | engine systems run from a table, not a hard-coded call chain, so registration can be added without rework; it comes with the first game that needs behaviour over many entities |
+| immediate-mode 2D drawing and the UI toolkit | outside the rule: a per-frame API called from `frame()` | UI attached to something in the 3D world (a health bar, a name tag) is a scene component the scene draws; it comes with the first game that needs it |
 
 ---
 
