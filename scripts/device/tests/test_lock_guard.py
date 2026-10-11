@@ -51,6 +51,12 @@ class FakeSerial:
     def close(self):
         pass
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *unused):
+        return False
+
 
 @contextlib.contextmanager
 def plugged(*ports):
@@ -274,13 +280,15 @@ class PortFollowingTests(Store):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM6")) as ports, \
                 mock.patch.object(device.subprocess, "run") as run, \
                 mock.patch.object(device, "python_with_pyserial", return_value="python"), \
+                mock.patch.object(device, "reconnect_after_reset"), \
                 device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
             device.open_serial()
             device.reset()
             ports[:] = [usb(BOARD_B, "COM5"), usb(BOARD_A, "COM9")]
             device.open_serial()
             device.reset()
-        self.assertEqual(FakeSerial.opened, ["COM5", "COM9"])
+        # A reset opens the port first, to wait out a straggler still holding it.
+        self.assertEqual(FakeSerial.opened, ["COM5", "COM5", "COM9", "COM9"])
         reset_ports = [call.args[0][call.args[0].index("-p") + 1] for call in run.call_args_list]
         self.assertEqual(reset_ports, ["COM5", "COM9"])
 
@@ -347,7 +355,7 @@ class LostLockTests(Store):
         self.assertIsNone(durations_rows(self.store)[-1]["error"])
         self.assertIsNone(self.store.status(BOARD_A)["lock"])
 
-    def reopen_after_reset(self, second_open):
+    def reopen_after_reset(self, reconnected):
         class PortGone(FakeConnection):
             said = False
 
@@ -357,8 +365,8 @@ class LostLockTests(Store):
                     return b"boot line\n"
                 raise OSError("USB device disappeared")
 
-        opens = mock.Mock(side_effect=[PortGone(), second_open])
-        with mock.patch.object(device, "open_when_free", opens), \
+        with mock.patch.object(device, "open_when_free", return_value=PortGone()), \
+                mock.patch.object(device, "reconnect_after_reset", side_effect=reconnected), \
                 contextlib.redirect_stderr(io.StringIO()):
             return device.capture_after_reset(self.root / "reset.log", 30, None)
 
@@ -416,6 +424,8 @@ class FlashTests(Store):
     @contextlib.contextmanager
     def scripts(self, **fakes):
         with mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
+                mock.patch.object(device, "reconnect_after_reset",
+                                  side_effect=device.require_live_lock), \
                 mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts(**fakes)), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
@@ -1225,8 +1235,7 @@ class SuiteFailureTests(Store):
 
 
 class DyingHandle(Replies):
-    """The port as the flash left it: a development bootloader power cycles
-    the chip, and the handle opened before that dies unread."""
+    """A handle whose board resets under it: the port leaves USB."""
 
     def __init__(self):
         super().__init__(b"")
@@ -1252,8 +1261,8 @@ class Booted(Replies):
 
 
 class PostFlashBoard:
-    """Every port open under one batch, the order a flash leaves them in:
-    the handle about to die, the boot to the console, then the board up."""
+    """Every port open under one batch after the flash's reset is waited
+    out: the boot to the console, then the board up."""
 
     BOOT = (b"BUILD_ID=abc-diag\nI (2100) shell: listening for 'screenshot' on the console\n"
             b"I (2101) shell: Ready, 4 apps registered\nBUILD_ID=abc-diag\n")
@@ -1271,8 +1280,6 @@ class PostFlashBoard:
         # Another command asking for the board between any two steps.
         self.refused.append(self.store.acquire(BOARD_A, self.contender, "run-suite", wait=0))
         if self.opens == 1:
-            return DyingHandle()
-        if self.opens == 2:
             board = self
 
             class Boot(Replies):
@@ -1349,7 +1356,7 @@ class BatchLockTests(Store):
 
     def test_a_filtered_capture_cut_short_does_not_end_the_batch(self):
         board = PostFlashBoard(self.store, "someone-else")
-        connections = iter([DyingHandle(), Replies(PostFlashBoard.BOOT), DyingHandle()])
+        connections = iter([Replies(PostFlashBoard.BOOT), DyingHandle()])
 
         def open_port(*unused, **unused_keywords):
             board.console_up = True

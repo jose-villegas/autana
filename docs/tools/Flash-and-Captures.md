@@ -59,10 +59,11 @@ sequenceDiagram
     Sh->>Board: esptool write_flash @flash_args, hash-verify each region
     Sh->>Board: RTS reset
     Sh-->>Dev: exit status
+    Dev->>Board: wait for the port to leave USB and return, by serial number
     Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
     Dev->>Snap: remove, whether the write succeeded or not
     opt suite --flash and selftest, still under the same lock
-        Dev->>Board: reopen the port as the board power cycles and boots
+        Dev->>Board: open the returned port and read the boot
         Dev->>Board: suite --flash: once its console is up, send RUNSUITE
         Dev->>Board: capture until the suites end
         Note over Dev,Board: the capture fails on any other BUILD_ID
@@ -85,9 +86,8 @@ takes the lock once, flashes once, captures every suite `--runs` times, and
 writes one summary across all runs.
 
 Between the flash and the first request it waits, still under the lock, for
-the new image to boot to its console. A development bootloader power cycles
-the chip after the flash's reset, so the port the flash used re-enumerates
-about a second later, and a request sent before then is lost. That boot is
+the new image to boot to its console: a request sent before then is lost.
+That boot is
 kept as a `boot-diag` capture; a board with no console within 30 s is
 reported, and the first run goes ahead to show what it does instead.
 
@@ -113,9 +113,13 @@ A suite capture stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line
 disappears mid-capture ends it as `port lost` with what was read kept, so a
 multi-suite run carries on with its next suite. It fails if the build has no
 suites, does not contain the requested suite, or reports any failed test.
-`autana reset` reboots with esptool and returns once the port is back;
-`reset --capture` and `selftest` reopen the port if it vanishes or stays
-silent after the reset.
+Every reset (`autana reset`, the end of a flash, `selftest`, `coredump`)
+power-cycles the board, so its port leaves USB and returns, possibly under
+another name. The command waits for the board's serial number to leave the
+port list and come back, then opens the port; opening sooner gets the dying
+handle. A capture whose board reboots again mid-capture reconnects the same
+way and reads on. A board silent for 2 s after a reset is taken for a chip
+in download mode and restarted through the watchdog.
 
 ## Talking to a running device
 
