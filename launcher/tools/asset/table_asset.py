@@ -1,11 +1,17 @@
 """TABL: named rows of little-endian int16 values, read in place by asset_table.c."""
 
 import struct
+from pathlib import Path
+
+from build.c_header import read_define
+
+TABLE_READER = Path(__file__).resolve().parents[2] / "main/asset/asset_table.h"
 
 TYPE = b"TABL"
-VERSION = 1
-NAME_SIZE = 24
-HEADER = struct.Struct("<HHHBB")
+VERSION = read_define(TABLE_READER, "ASSET_TABLE_VERSION")
+NAME_SIZE = read_define(TABLE_READER, "ASSET_TABLE_NAME_SIZE")
+HEADER_SIZE = read_define(TABLE_READER, "ASSET_TABLE_HEADER_SIZE")
+HEADER = struct.Struct(f"<HHHBB{HEADER_SIZE - struct.calcsize('<HHHBB')}x")
 AT_VERSION, AT_ROWS, AT_COLUMNS, AT_RESERVED = 0, 2, 4, 7
 VALUE = struct.Struct("<h")
 COUNT_MAX = 0xFFFF

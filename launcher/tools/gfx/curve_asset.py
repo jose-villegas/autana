@@ -8,6 +8,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "device"))
 
 from asset import table_asset
+from build.c_header import read_define
 from gfx.image_asset import load_source
 from panel_size import PANEL_WIDTH, PANEL_HEIGHT
 from render_diff import read_png
@@ -16,7 +17,8 @@ TYPE = table_asset.TYPE
 SUFFIX = ".curve.toml"
 ROW = "y"
 VIEW_W, VIEW_H = PANEL_HEIGHT, PANEL_WIDTH
-Q_SHIFT = 4
+SPRING_LINE_HEADER = TOOLS.parent / "packages/math/include/math/motion/spring_line.h"
+Q_SHIFT = read_define(SPRING_LINE_HEADER, "SPRING_LINE_OUT_SHIFT")
 MAX_NEIGHBOUR_STEP_PX = 8
 PEAK_DIVISOR = 2
 GREY_RED = 19595
