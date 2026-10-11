@@ -218,6 +218,20 @@ kernel(fixture_t* f, kernel_t kind) {
 }
 
 static void
+assert_direct_quality(const fixture_t* f) {
+    int direct_max = 0;
+    for (int v = 0; v < f->bind.vertex_count; v++) {
+        uint8_t reference[R3D_SKIN_LIGHT_CHANNELS];
+        skin_light_reference(reference_normal(f, v, false), &f->lights, f->bind.colors[v], 0, reference);
+        for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
+            const int error = abs((int)f->light[v][k] - reference[k]);
+            direct_max = error > direct_max ? error : direct_max;
+        }
+    }
+    TEST_ASSERT_LESS_OR_EQUAL_INT(R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, direct_max);
+}
+
+static void
 quality(fixture_t* f, kernel_t kind) {
     if (kind == NORMAL_PALETTE || kind == TABLE_BUILD) {
         return;
@@ -243,16 +257,7 @@ quality(fixture_t* f, kernel_t kind) {
         }
     }
     if (kind == DIRECT) {
-        int direct_max = 0;
-        for (int v = 0; v < f->bind.vertex_count; v++) {
-            uint8_t reference[R3D_SKIN_LIGHT_CHANNELS];
-            skin_light_reference(reference_normal(f, v, false), &f->lights, f->bind.colors[v], 0, reference);
-            for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-                const int error = abs((int)f->light[v][k] - reference[k]);
-                direct_max = error > direct_max ? error : direct_max;
-            }
-        }
-        TEST_ASSERT_LESS_OR_EQUAL_INT(R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, direct_max);
+        assert_direct_quality(f);
     } else {
         TEST_ASSERT_LESS_OR_EQUAL_INT(
             kind == TABLE ? R3D_SKIN_LIGHT_TABLE_ERROR_BOUND : R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, error_max);
