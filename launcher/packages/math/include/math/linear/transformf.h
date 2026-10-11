@@ -36,3 +36,39 @@ transformf_rotate_around(transformf_t* t, vec3f_t point, vec3f_t axis, float ang
     transformf_set_position(t, vec3f_add(point, quatf_rotate(turn, vec3f_sub(t->position, point))));
     transformf_set_rotation(t, quatf_normalize(quatf_mul(turn, t->rotation)));
 }
+
+#define TRANSFORMF_MATRIX_TOLERANCE 1e-4F
+
+/* Decomposes affine TRS; refuses shear, reflection, singular or nonfinite matrices. */
+static inline bool
+transformf_from_mat(mat4f_t matrix, transformf_t* out) {
+    vec3f_t axes[3];
+    float scale[3];
+    for (int c = 0; c < 3; c++) {
+        axes[c] = (vec3f_t){matrix.m[0][c], matrix.m[1][c], matrix.m[2][c]};
+        scale[c] = sqrtf(vec3f_dot(axes[c], axes[c]));
+        if (!isfinite(scale[c]) || scale[c] <= 0.0F) {
+            return false;
+        }
+        axes[c] = vec3f_scale(axes[c], 1.0F / scale[c]);
+        if ((!isfinite(matrix.m[3][c]) || fabsf(matrix.m[3][c]) > TRANSFORMF_MATRIX_TOLERANCE)
+            || !isfinite(matrix.m[c][3])) {
+            return false;
+        }
+    }
+    if (!isfinite(matrix.m[3][3]) || fabsf(matrix.m[3][3] - 1.0F) > TRANSFORMF_MATRIX_TOLERANCE) {
+        return false;
+    }
+    if (fabsf(vec3f_dot(axes[0], axes[1])) > TRANSFORMF_MATRIX_TOLERANCE
+        || fabsf(vec3f_dot(axes[0], axes[2])) > TRANSFORMF_MATRIX_TOLERANCE
+        || fabsf(vec3f_dot(axes[1], axes[2])) > TRANSFORMF_MATRIX_TOLERANCE
+        || vec3f_dot(vec3f_cross(axes[0], axes[1]), axes[2]) <= 0.0F) {
+        return false;
+    }
+    *out = (transformf_t){.position = {matrix.m[0][3], matrix.m[1][3], matrix.m[2][3]},
+                          .rotation = quatf_normalize(quatf_from_basis(axes[0], axes[1], axes[2])),
+                          .scale = {scale[0], scale[1], scale[2]},
+                          .matrix = matrix,
+                          .cached = true};
+    return true;
+}

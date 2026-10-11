@@ -162,6 +162,7 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
 | `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle})`$<br> $`\mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point})`$<br> $`\mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
+| `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#53)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 | `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
@@ -181,10 +182,11 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
 
-The scalar steps behind them, in `vec_convert.h`:
+The scalar steps behind them, in `vec_convert.h` and `math/scalar/mathf_round.h`:
 
 | Function | Rule |
 |---|---|
+| `mathf_clamp_finite(v, lo, hi)` | Inclusive finite ordered bounds; NaN maps to `lo`, infinities to the corresponding bound |
 | `mathf_round_i32(v)` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` |
 | `mathf_round_s(v, scale)` | `v / scale` to int16, rounded and saturated |
 | `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
@@ -204,6 +206,8 @@ These take and return plain integers, not structs.
 | `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, any `int` value |
 | `mathi_repeat_u32(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint32_t` value |
 | `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range |
+| `mathi_repeat_u64(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint64_t` value |
+| `mathi_clamp_u64(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint64_t` range |
 
 `math/scalar/units.h` owns `MATH_MS_PER_S`, the integer milliseconds per
 second for time conversions.
