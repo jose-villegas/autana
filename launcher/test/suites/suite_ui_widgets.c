@@ -916,7 +916,7 @@ test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing(void) {
     TEST_ASSERT_FALSE(dropdown_open);
 }
 
-/* The Control Center's backdrop: the screen underneath repainted through a
+/* The boot backdrop: the home screen repainted through a
  * repaint-only frame on the same frame the real screen is built. */
 static void
 backdrop_repaint(void) {

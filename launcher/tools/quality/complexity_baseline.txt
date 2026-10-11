@@ -703,7 +703,6 @@
 7	launcher/test/heap_arena.c:191	arena_pool_heap_bytes
 7	launcher/test/suites.c:58	suites_run_all
 7	launcher/test/suites/suite_boot_anim_perf.c:204	time_frames
-7	launcher/test/suites/suite_control_center_layout.c:79	test_no_two_elements_overlap
 7	launcher/test/suites/suite_gfx.c:1493	draw_readback_band_frame_n
 7	launcher/test/suites/suite_gfx.c:1309	memtp_best_us
 7	launcher/test/suites/suite_gfx_color.c:295	check_covers_both_at_cell
@@ -944,8 +943,6 @@
 6	launcher/test/suites/suite_boot_anim.c:1259	test_the_hue_wheel_has_no_seams
 6	launcher/test/suites/suite_boot_anim.c:862	test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion
 6	launcher/test/suites/suite_boot_anim.c:1522	test_the_title_stays_on_the_panel_once_visible
-6	launcher/test/suites/suite_control_center_layout.c:44	test_every_element_clears_the_panel_edge
-6	launcher/test/suites/suite_control_center_layout.c:65	test_every_tap_target_is_finger_sized
 6	launcher/test/suites/suite_gfx.c:1167	test_a_near_budget_split_crosses_the_gather_threshold
 6	launcher/test/suites/suite_gfx.c:1521	test_band_mode_readback_is_the_frame_its_bands_drew
 6	launcher/test/suites/suite_gfx.c:325	test_dither_stays_in_phase_across_separate_calls
@@ -1411,10 +1408,8 @@
 4	launcher/main/scene/scene_draw.c:43	scene_activate
 4	launcher/main/scene/scene_draw.c:187	scene_compose
 4	launcher/main/scene/scene_draw.c:105	update_placements
-4	launcher/main/ui/system_navigation.c:9	system_navigation_step
 4	launcher/main/ui/ui.c:316	clear_vanished_canvases
 4	launcher/main/ui/ui_build.c:504	ui_begin_screen
-4	launcher/main/ui/ui_control_center_draw.c:56	draw_connectivity_card
 4	launcher/main/ui/ui_pointer.c:65	step_deferred
 4	launcher/main/ui/ui_pointer.c:197	ui_pointer_step
 4	launcher/main/ui/ui_ridge.c:991	advance_dissolve
@@ -1817,7 +1812,6 @@
 3	launcher/main/input/touch_point.c:9	touch_point_prepare
 3	launcher/main/main.c:908	console_list_apps
 3	launcher/main/main.c:113	draw_build_mark
-3	launcher/main/main.c:400	step_launcher
 3	launcher/main/render/r3d_lit_mesh.c:39	array_at
 3	launcher/main/render/r3d_pipeline.c:285	clamp_row
 3	launcher/main/render/r3d_pipeline.c:462	draw_rebuilt
@@ -2213,7 +2207,6 @@
 2	launcher/main/main.c:828	run_pending_selftest_suite
 2	launcher/main/main.c:640	shell_test_leaving_empties_the_arena_after_exit
 2	launcher/main/main.c:654	shell_test_stale_exit_is_cleared
-2	launcher/main/main.c:374	step_control_center
 2	launcher/main/render/r3d_pipeline.c:397	clip_to_guard
 2	launcher/main/render/r3d_pipeline.c:455	rows_miss_target
 2	launcher/main/render/r3d_span.c:56	plane_of
@@ -2226,9 +2219,6 @@
 2	launcher/main/ui/ui_build.c:222	ui_set_font_scaled
 2	launcher/main/ui/ui_build.c:244	ui_set_transform
 2	launcher/main/ui/ui_canvas_marks.c:11	ui_canvas_marks_painted
-2	launcher/main/ui/ui_control_center_draw.c:87	draw_notification
-2	launcher/main/ui/ui_control_center_draw.c:70	draw_slider
-2	launcher/main/ui/ui_control_center_draw.c:33	ui_control_center_baked_layout
 2	launcher/main/ui/ui_pointer.c:90	step_pressed
 2	launcher/main/ui/ui_ridge.c:1122	allocate_once
 2	launcher/main/ui/ui_ridge.c:222	backdrop_dither_pick

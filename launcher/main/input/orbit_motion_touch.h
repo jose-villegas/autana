@@ -3,9 +3,8 @@
  * steering. A drag turns whatever orbits with the finger, as if spinning a
  * turntable. A double tap asks for home; tap and then drag the second press
  * up or down instead, and it zooms: down brings it closer. A touch that
- * lands in the strip along the home-gesture edge or the edge opposite it
- * (where the control centre opens) belongs to the shell, so it never
- * steers, zooms or taps.
+ * lands in the strip along the home-gesture edge belongs to the shell, so
+ * it never steers, zooms or taps.
  *
  * Pure: the frame's input_t, the panel's size and turn, and which edge holds
  * the home gesture come in; orbit_motion.h's orbit_motion_input_t comes out.

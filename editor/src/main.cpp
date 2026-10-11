@@ -78,20 +78,8 @@ struct SystemScreen {
 
 bool
 render_preview(Preview& preview, const SystemScreen& screen) {
-    control_center_layout_t authored = {};
-    if (screen.document) {
-        const ScreenLayout& layout = screen.document->layout(preview.orientation);
-        authored.canvas_width = static_cast<int16_t>(layout.canvas_width);
-        authored.canvas_height = static_cast<int16_t>(layout.canvas_height);
-        if (layout.rects.size() != CONTROL_CENTER_ELEMENT_COUNT) {
-            return false;
-        }
-        std::copy(layout.rects.begin(), layout.rects.end(), authored.rects);
-    }
-    std::string error;
-    return editor_runtime_render(screen.runtime_screen, screen.document ? &authored : nullptr, preview.surface.pixels(),
-                                 preview.surface.width(), preview.surface.height())
-           && preview.surface.upload(error);
+    return editor_runtime_render(screen.runtime_screen, preview.surface.pixels(), preview.surface.width(),
+                                 preview.surface.height());
 }
 
 std::filesystem::path
@@ -495,41 +483,12 @@ draw_editor(EditorState& state, Preview& landscape, Preview& portrait) {
     return preview_changed;
 }
 
-std::optional<EditorState>
-load_system_screens(std::string& error) {
-    const std::filesystem::path ui_directory = std::filesystem::path(EDITOR_PROJECT_ROOT) / "launcher" / "main" / "ui";
-    std::optional<LayoutDocument> control_center =
-        LayoutDocument::load(ui_directory / "control_center_layout.json", error);
-    if (!control_center) {
-        return std::nullopt;
-    }
-    if (static_cast<int>(control_center->elements().size())
-        != editor_runtime_element_count(EDITOR_SCREEN_CONTROL_CENTER)) {
-        error = "control_center_layout.json and the baked header disagree on the element count; rebake";
-        return std::nullopt;
-    }
-
-    EditorState state;
-    state.screens.push_back({"Launcher", EDITOR_SCREEN_LAUNCHER, std::nullopt, std::nullopt});
-    state.screens.push_back({"Control Center", EDITOR_SCREEN_CONTROL_CENTER, std::nullopt, std::nullopt});
-    SystemScreen& authored = state.screens.back();
-    authored.history.emplace(*control_center);
-    authored.document = std::move(control_center);
-    state.active = state.screens.size() - 1;
-    return state;
-}
-
 } // namespace
 
 int
 main() {
-    std::string load_error;
-    std::optional<EditorState> loaded = load_system_screens(load_error);
-    if (!loaded) {
-        std::fprintf(stderr, "System screens failed to load: %s\n", load_error.c_str());
-        return 1;
-    }
-    EditorState state = std::move(*loaded);
+    EditorState state;
+    state.screens.push_back({"Launcher", EDITOR_SCREEN_LAUNCHER, std::nullopt, std::nullopt});
 
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {

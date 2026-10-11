@@ -1,7 +1,7 @@
 /*
  * orbit_motion_touch: a drag turns the orbit by the finger's travel the
- * way the picture is held; touches that land in the shell's strips (the home edge
- * and the one opposite) never steer or tap; two quick taps ask for home,
+ * way the picture is held; touches that land in the shell's home-edge strip
+ * never steer or tap; two quick taps ask for home,
  * and anything else between them does not.
  */
 
@@ -104,16 +104,16 @@ test_orbit_motion_touch_a_turned_panel_steers_by_the_upright_picture(void) {
 }
 
 void
-test_orbit_motion_touch_a_drag_from_the_home_strip_or_the_one_opposite_never_steers(void) {
+test_orbit_motion_touch_only_the_home_strip_reserves_a_drag(void) {
     const int starts[][2] = {{CENTRE_X, GFX_HEIGHT - INSIDE_STRIP}, {CENTRE_X, INSIDE_STRIP}};
     for (unsigned i = 0; i < sizeof starts / sizeof starts[0]; i++) {
         orbit_motion_touch_t t;
         orbit_motion_touch_init(&t);
         const orbit_motion_input_t out =
             drag_on(&t, PORTRAIT, starts[i][0], starts[i][1], starts[i][0] + DRAG_PX, CENTRE_Y);
-        TEST_ASSERT_FALSE(out.held);
-        TEST_ASSERT_EQUAL_FLOAT(0.0F, out.yaw_turn);
-        TEST_ASSERT_EQUAL_FLOAT(0.0F, out.pitch_turn);
+        TEST_ASSERT_EQUAL_INT(i != 0, out.held);
+        TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, i == 0 ? 0.0F : -DRAG_PX * per_px(), out.yaw_turn);
+        TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, i == 0 ? 0.0F : (CENTRE_Y - INSIDE_STRIP) * per_px(), out.pitch_turn);
     }
 }
 
@@ -244,7 +244,7 @@ run_orbit_motion_touch_suite(void) {
     RUN_TEST(test_orbit_motion_touch_a_drag_turns_by_its_travel_right_turning_the_eye_left_and_down_raising_it);
     RUN_TEST(test_orbit_motion_touch_a_drag_across_the_shorter_side_turns_the_named_amount);
     RUN_TEST(test_orbit_motion_touch_a_turned_panel_steers_by_the_upright_picture);
-    RUN_TEST(test_orbit_motion_touch_a_drag_from_the_home_strip_or_the_one_opposite_never_steers);
+    RUN_TEST(test_orbit_motion_touch_only_the_home_strip_reserves_a_drag);
     RUN_TEST(test_orbit_motion_touch_a_drag_from_a_side_edge_steers_when_home_is_at_the_bottom);
     RUN_TEST(test_orbit_motion_touch_two_quick_taps_ask_for_home_once);
     RUN_TEST(test_orbit_motion_touch_taps_too_far_apart_are_not_a_double_tap);

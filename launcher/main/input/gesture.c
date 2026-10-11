@@ -11,17 +11,6 @@ gesture_in_edge_zone(int x, int y, gesture_edge_t edge, int screen_w, int screen
     return false;
 }
 
-gesture_edge_t
-gesture_opposite_edge(gesture_edge_t edge) {
-    switch (edge) {
-        case GESTURE_EDGE_TOP: return GESTURE_EDGE_BOTTOM;
-        case GESTURE_EDGE_BOTTOM: return GESTURE_EDGE_TOP;
-        case GESTURE_EDGE_LEFT: return GESTURE_EDGE_RIGHT;
-        case GESTURE_EDGE_RIGHT: return GESTURE_EDGE_LEFT;
-    }
-    return edge;
-}
-
 bool
 gesture_is_edge_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h) {
     if (!input->down || !gesture_in_edge_zone(input->press_x, input->press_y, edge, screen_w, screen_h)) {
