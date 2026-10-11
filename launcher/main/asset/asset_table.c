@@ -2,8 +2,6 @@
 
 #include <string.h>
 
-enum { AT_ROWS = 2, AT_COLUMNS = 4, AT_FRAC_BITS = 6, AT_RESERVED = 7 };
-
 static uint16_t
 half(const uint8_t* at) {
     return (uint16_t)(at[0] | ((uint16_t)at[1] << 8));
@@ -19,11 +17,11 @@ asset_table_open(asset_view_t entry, asset_table_t* out) {
     if (half(base) != ASSET_TABLE_VERSION) {
         return ASSET_ERR_VERSION;
     }
-    const uint16_t rows = half(base + AT_ROWS);
-    const uint16_t columns = half(base + AT_COLUMNS);
+    const uint16_t rows = half(base + ASSET_TABLE_AT_ROWS);
+    const uint16_t columns = half(base + ASSET_TABLE_AT_COLUMNS);
     const size_t stride = ASSET_TABLE_NAME_SIZE + (sizeof(int16_t) * columns);
     const uint64_t size = ASSET_TABLE_HEADER_SIZE + ((uint64_t)rows * stride);
-    if (rows == 0 || columns == 0 || base[AT_RESERVED] != 0 || size != entry.size) {
+    if (rows == 0 || columns == 0 || base[ASSET_TABLE_AT_RESERVED] != 0 || size != entry.size) {
         return ASSET_ERR_FORMAT;
     }
     for (int i = 0; i < rows; i++) {
@@ -31,7 +29,7 @@ asset_table_open(asset_view_t entry, asset_table_t* out) {
             return ASSET_ERR_FORMAT;
         }
     }
-    *out = (asset_table_t){base, rows, columns, base[AT_FRAC_BITS]};
+    *out = (asset_table_t){base, rows, columns, base[ASSET_TABLE_AT_FRAC_BITS]};
     return ASSET_OK;
 }
 

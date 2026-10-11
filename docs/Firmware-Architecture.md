@@ -216,6 +216,7 @@ become a goal.
 the order is most of the point:
 
 ```
+ui_ridge_load()             the curve from the engine pack, held mounted
 shell_init()                the shell's own state, which the self-tests
                             step before the loop runs
 post_run_before_display()   the SD card, on its own SDMMC bus
@@ -230,10 +231,8 @@ shell_check_console_prefixes()
                             prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
-boot_anim_run()             the startup animation, 5.5 s; it mounts the
-                            first pack (its clip's), which first reads
-                            the asset directory; with no pack it holds a
-                            rest pose
+boot_anim_run()             the startup animation, 5.5 s; it mounts its
+                            clip's pack; with no pack it holds a rest pose
 gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no
                             sensor: the display stays upright

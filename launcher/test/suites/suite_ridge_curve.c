@@ -1,7 +1,6 @@
 /*
- * Portable suite: the baked ridge curve, checked against the boot photograph
- * it has to lie on, read from the boot picture's pack, rather than against
- * the drawing the generator read.
+ * Portable suite: the ridge curve in the engine pack, checked against the boot
+ * photograph it has to lie on rather than against the drawing it was baked from.
  */
 
 #include <stdbool.h>
@@ -18,7 +17,9 @@
 #include "gfx/image/gfx_image.h"
 #include "ui/ui_icons.h"
 
-#define VIEW_W               GFX_HEIGHT
+#include "ui/ui_ridge.h"
+
+#define VIEW_W               RIDGE_CURVE_POINTS
 #define VIEW_H               GFX_WIDTH
 
 /* Two 5-row bands, one each side of the curve, 3 rows clear of it. */
@@ -148,7 +149,7 @@ suite_ridge_curve(void) {
     TEST_ASSERT_NOT_NULL(engine);
     TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_find(engine, "ridge", ASSET_TABLE_ASSET, &curve_entry));
     TEST_ASSERT_EQUAL(ASSET_OK, asset_table_open(curve_entry, &table));
-    TEST_ASSERT_EQUAL(ASSET_OK, asset_table_row(&table, "y", GFX_HEIGHT, &curve));
+    TEST_ASSERT_EQUAL(ASSET_OK, asset_table_row(&table, "y", RIDGE_CURVE_POINTS, &curve));
     curve_shift = table.frac_bits;
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);

@@ -13,10 +13,6 @@ enum {
     FRAC_BITS = 4,
     STRIDE = ASSET_TABLE_NAME_SIZE + COLUMNS * sizeof(int16_t),
     TABLE_BYTES = ASSET_TABLE_HEADER_SIZE + ROWS * STRIDE,
-    AT_ROWS = 2,
-    AT_COLUMNS = 4,
-    AT_FRAC_BITS = 6,
-    AT_RESERVED = 7,
 };
 
 static uint8_t*
@@ -24,9 +20,9 @@ fixture(void) {
     uint8_t* bytes = calloc(TABLE_BYTES + 1, 1);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_put16(bytes, ASSET_TABLE_VERSION);
-    test_pack_put16(bytes + AT_ROWS, ROWS);
-    test_pack_put16(bytes + AT_COLUMNS, COLUMNS);
-    bytes[AT_FRAC_BITS] = FRAC_BITS;
+    test_pack_put16(bytes + ASSET_TABLE_AT_ROWS, ROWS);
+    test_pack_put16(bytes + ASSET_TABLE_AT_COLUMNS, COLUMNS);
+    bytes[ASSET_TABLE_AT_FRAC_BITS] = FRAC_BITS;
     memcpy(bytes + ASSET_TABLE_HEADER_SIZE, "first", sizeof "first");
     memcpy(bytes + ASSET_TABLE_HEADER_SIZE + STRIDE, "second", sizeof "second");
     test_pack_put16(bytes + ASSET_TABLE_HEADER_SIZE + ASSET_TABLE_NAME_SIZE, (uint16_t)INT16_MIN);
@@ -40,11 +36,20 @@ test_rows_point_into_the_entry_and_lookup_checks_columns_and_names(void) {
     const asset_status_t opened = asset_table_open((asset_view_t){bytes, TABLE_BYTES}, &table);
     const int16_t* row = NULL;
     const asset_status_t found = asset_table_row(&table, "first", COLUMNS, &row);
+    const int16_t* first_row = row;
     const bool in_place = (const void*)row == bytes + ASSET_TABLE_HEADER_SIZE + ASSET_TABLE_NAME_SIZE;
     const int value = row == NULL ? 0 : row[0];
     const asset_status_t mismatch = asset_table_row(&table, "first", COLUMNS + 1, &row);
     const bool cleared = row == NULL;
+    row = first_row;
     const asset_status_t missing = asset_table_row(&table, "absent", COLUMNS, &row);
+    const bool missing_cleared = row == NULL;
+    row = first_row;
+    const asset_status_t prefix = asset_table_row(&table, "fir", COLUMNS, &row);
+    const bool prefix_cleared = row == NULL;
+    row = first_row;
+    const asset_status_t extended = asset_table_row(&table, "firstly", COLUMNS, &row);
+    const bool extended_cleared = row == NULL;
     const asset_status_t second = asset_table_row(&table, "second", COLUMNS, &row);
     const bool second_in_place = (const void*)row == bytes + ASSET_TABLE_HEADER_SIZE + STRIDE + ASSET_TABLE_NAME_SIZE;
     free(bytes);
@@ -57,6 +62,11 @@ test_rows_point_into_the_entry_and_lookup_checks_columns_and_names(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, mismatch);
     TEST_ASSERT_TRUE(cleared);
     TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, missing);
+    TEST_ASSERT_TRUE(missing_cleared);
+    TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, prefix);
+    TEST_ASSERT_TRUE(prefix_cleared);
+    TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, extended);
+    TEST_ASSERT_TRUE(extended_cleared);
     TEST_ASSERT_EQUAL(ASSET_OK, second);
     TEST_ASSERT_TRUE(second_in_place);
 }
@@ -82,10 +92,10 @@ test_short_misaligned_wrong_version_and_wrong_size_entries_are_rejected(void) {
 
 static void
 test_empty_dimensions_reserved_byte_and_unterminated_names_are_rejected(void) {
-    static const int fields[] = {AT_ROWS, AT_COLUMNS, AT_RESERVED};
+    static const int fields[] = {ASSET_TABLE_AT_ROWS, ASSET_TABLE_AT_COLUMNS, ASSET_TABLE_AT_RESERVED};
     for (size_t i = 0; i < sizeof fields / sizeof fields[0]; i++) {
         uint8_t* bytes = fixture();
-        bytes[fields[i]] = fields[i] == AT_RESERVED ? 1 : 0;
+        bytes[fields[i]] = fields[i] == ASSET_TABLE_AT_RESERVED ? 1 : 0;
         asset_table_t table;
         const asset_status_t status = asset_table_open((asset_view_t){bytes, TABLE_BYTES}, &table);
         free(bytes);

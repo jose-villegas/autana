@@ -512,16 +512,58 @@ export AUTANA_SCENE_PROBE
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
-    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
+    export ASAN_OPTIONS
+    "$OUT"
 else
     "$OUT"
 fi
 
+"$PYTHON" - "$BUILD_DIR" "$TEST_DIR/../tools" <<'PY_CURVE'
+import pathlib
+import sys
+sys.path.insert(0, sys.argv[2])
+from asset import table_asset
+from asset.asset_pack import build_pack
+from gfx import curve_asset
+out = pathlib.Path(sys.argv[1])
+columns, shift = curve_asset.VIEW_W, curve_asset.Q_SHIFT
+for case, count, frac, name in (("frac-bits", columns, shift + 1, curve_asset.ROW),
+                                ("columns", columns - 1, shift, curve_asset.ROW),
+                                ("row", columns, shift, "absent")):
+    folder = out / ("ridge-invalid-" + case)
+    folder.mkdir(exist_ok=True)
+    table = table_asset.encode({name: [0] * count}, frac)
+    (folder / "engine.apak").write_bytes(build_pack([("ridge", table_asset.TYPE, table)]))
+PY_CURVE
+
 EMPTY_ASSETS="$BUILD_DIR/no-packs"
 mkdir -p "$EMPTY_ASSETS"
 FALLBACK_LOG="$BUILD_DIR/ridge-fallback.log"
-AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback 2> "$FALLBACK_LOG"
+if ! AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback > "$FALLBACK_LOG" 2>&1; then
+    tail -12 "$FALLBACK_LOG"
+    exit 1
+fi
 if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$FALLBACK_LOG")" != 1 ]; then
     echo "FAIL: missing curve must log its fallback once" >&2
     exit 1
 fi
+
+for INVALID_CASE in frac-bits columns row; do
+    INVALID_LOG="$BUILD_DIR/ridge-invalid-$INVALID_CASE.log"
+    if ! AUTANA_ASSET_DIR="$BUILD_DIR/ridge-invalid-$INVALID_CASE" "$OUT" --run suite_ridge_fallback > "$INVALID_LOG" 2>&1; then
+        tail -12 "$INVALID_LOG"
+        exit 1
+    fi
+    if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$INVALID_LOG")" != 1 ]; then
+        echo "FAIL: invalid curve ($INVALID_CASE) must log its fallback once" >&2
+        exit 1
+    fi
+done
+
+for CURVE_LOG in "$FALLBACK_LOG" "$BUILD_DIR"/ridge-invalid-*.log; do
+    if grep -E 'runtime error:|ERROR: (AddressSanitizer|LeakSanitizer)' "$CURVE_LOG"; then
+        exit 1
+    fi
+    printf 'ridge fallback (%s): %s\n' "$(basename "$CURVE_LOG")" "$(grep -E '^[0-9]+ Tests ' "$CURVE_LOG")"
+done

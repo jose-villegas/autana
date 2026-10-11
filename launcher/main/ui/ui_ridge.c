@@ -31,9 +31,9 @@
 #define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)
 #define RIDGE_DEPTH2_ONE     (1 << RIDGE_DEPTH2_SHIFT)
 
-#define RIDGE_SUBPIXEL_SHIFT 4
+/* Ridge positions in sub-pixels; the spring line writes them, and ui_ridge_load() refuses a curve baked with another shift. */
+#define RIDGE_SUBPIXEL_SHIFT SPRING_LINE_OUT_SHIFT
 #define RIDGE_SUBPIXEL_ONE   (1 << RIDGE_SUBPIXEL_SHIFT)
-_Static_assert(SPRING_LINE_OUT_SHIFT == RIDGE_SUBPIXEL_SHIFT, "the spring line writes ridge sub-pixels");
 
 TUNE_OWNER(ridge);
 TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
@@ -85,7 +85,7 @@ TUNE(ridge, boot_hold_ms, 700, 0, 10000);
 TUNE(ridge, ambient_ease_ms, 4000, 0, 30000);
 
 #define RIDGE_EXTRA        88
-#define RIDGE_COLUMNS      (GFX_HEIGHT + (2 * RIDGE_EXTRA))
+#define RIDGE_COLUMNS      (RIDGE_CURVE_POINTS + (2 * RIDGE_EXTRA))
 #define RIDGE_LAYER_COUNT  3
 #define RIDGE_MAX_LIP_PX   48
 #define MIN_TILT_STRENGTH  64
@@ -151,6 +151,7 @@ typedef struct {
 
 #define RIDGE_ENTRY        "ridge"
 #define RIDGE_ROW          "y"
+/* A level fallback crosses the middle of the landscape frame. */
 #define RIDGE_LEVEL_HEIGHT (GFX_WIDTH / 2)
 
 #define TAG                "ui_ridge"
@@ -158,12 +159,14 @@ static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
 static const int16_t* curve;
 static ridge_t* ridge;
 static bool allocation_tried;
+static bool load_tried;
 
 void
 ui_ridge_load(void) {
-    if (curve != NULL) {
+    if (load_tried) {
         return;
     }
+    load_tried = true;
     const asset_pack_t* pack = asset_store_pack(UI_ENGINE_PACK);
     asset_status_t status = ASSET_ERR_NO_PACK;
     if (pack != NULL) {
@@ -177,11 +180,13 @@ ui_ridge_load(void) {
             status = ASSET_ERR_FORMAT;
         }
         if (status == ASSET_OK) {
-            status = asset_table_row(&table, RIDGE_ROW, GFX_HEIGHT, &curve);
+            status = asset_table_row(&table, RIDGE_ROW, RIDGE_CURVE_POINTS, &curve);
         }
     }
     if (status != ASSET_OK) {
-        curve = &level_height;
+        if (pack != NULL) {
+            asset_store_release(UI_ENGINE_PACK);
+        }
         ESP_LOGW(TAG, "no ridge curve in pack engine (%s): the ridge is level", asset_status_text(status));
     }
 }
@@ -1159,6 +1164,7 @@ bake_what_is_tuned(void) {
 
 static void
 allocate_once(void) {
+    ui_ridge_load();
     if (allocation_tried) {
         return;
     }
@@ -1170,8 +1176,8 @@ allocate_once(void) {
     memset(ridge, 0, sizeof *ridge);
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS, spring_tension, spring_stiffness,
                      spring_damping);
-    if (curve != NULL && curve != &level_height) {
-        ridge_motion_extend(curve, GFX_HEIGHT, ridge->rigid, RIDGE_EXTRA);
+    if (curve != NULL) {
+        ridge_motion_extend(curve, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
     } else {
         for (int i = 0; i < RIDGE_COLUMNS; i++) {
             ridge->rigid[i] = level_height;

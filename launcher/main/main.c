@@ -83,6 +83,7 @@ static __attribute__((noinline)) void
 app_boot_init(void) {
     printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
+    ui_ridge_load();
     shell_init();
     heap_mark("boot");
 
@@ -121,7 +122,6 @@ app_boot_init(void) {
      * would start upright and visibly turn into place. */
     display_reset_quarter();
     ui_launcher_init();
-    ui_ridge_load();
     ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
 
     boot_anim_set_ending_backdrop(shell_paint_home_under_boot);
