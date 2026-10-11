@@ -13,7 +13,7 @@
  * A round trip returns the original exactly where the destination can hold
  * it (int <-> float, int16 <-> int32 inside its range, Q16.16 values from a
  * float multiple of 1/65536), and the nearest representable value otherwise.
- * Needs libm for lroundf. Header-only and static inline.
+ * Header-only and static inline.
  */
 #pragma once
 
@@ -28,19 +28,9 @@
 #include "math/linear/vec3i.h"
 #include "math/linear/vec3s.h"
 #include "math/linear/vec3x.h"
+#include "math/scalar/mathf_round.h"
 #include "math/scalar/maths.h"
 #include "math/scalar/mathx.h"
-
-/* The largest float below 2^31, so a clamped value still converts. */
-#define MATH_FLOAT_INT_LIMIT 2147483520.0F
-
-static inline int32_t
-mathf_round_i32(float v) {
-    if (v >= MATH_FLOAT_INT_LIMIT) {
-        return INT32_MAX;
-    }
-    return v <= -MATH_FLOAT_INT_LIMIT ? INT32_MIN : (int32_t)lroundf(v);
-}
 
 static inline int16_t
 mathf_round_s(float v, float scale) {

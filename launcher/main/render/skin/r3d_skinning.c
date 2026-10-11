@@ -1,13 +1,13 @@
 #include "render/skin/r3d_skinning.h"
 #include <assert.h>
 #include <limits.h>
-#include <math.h>
 #include <string.h>
+#include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
 
 static size_t
 cluster_offset(const r3d_lit_mesh_t* bind) {
-    const size_t vertex_bytes = (size_t)bind->vertex_count * (sizeof(int16_t[3]) + sizeof(uint8_t[3]));
+    const size_t vertex_bytes = (size_t)bind->vertex_count * sizeof(int16_t[3]);
     return mathi_size_ceil(vertex_bytes, _Alignof(r3d_lit_cluster_t));
 }
 
@@ -30,14 +30,13 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
     }
     uint8_t* p = block;
     out->positions = (int16_t(*)[3])(void*)p;
-    out->colors = (uint8_t(*)[3])(void*)(p + ((size_t)bind->vertex_count * sizeof *out->positions));
     out->clusters = (r3d_lit_cluster_t*)(void*)(p + cluster_offset(bind));
     out->nodes = (r3d_lit_node_t*)(void*)(p + node_offset(bind));
     memcpy(out->clusters, bind->clusters, (size_t)bind->cluster_count * sizeof *out->clusters);
     memcpy(out->nodes, bind->nodes, (size_t)bind->node_count * sizeof *out->nodes);
     out->mesh = *bind;
     out->mesh.positions = (const int16_t(*)[3])out->positions;
-    out->mesh.colors = bind->colors == NULL ? NULL : (const uint8_t(*)[3])out->colors;
+    out->mesh.colors = bind->colors;
     out->mesh.clusters = out->clusters;
     out->mesh.nodes = out->nodes;
     return true;
@@ -78,10 +77,11 @@ grow_bounds(int16_t lo[POSITION_AXES], int16_t hi[POSITION_AXES], const int16_t 
 static inline __attribute__((always_inline)) void
 skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const int16_t bind[POSITION_AXES],
             int16_t out[POSITION_AXES]) {
+    const float weight_scale = 1.0F / (float)R3D_SKIN_WEIGHT_SUM;
     float posed[POSITION_AXES] = {0};
     for (int i = 0; i < influences; i++) {
         const mat4f_t* joint = &palette[record[i]];
-        const float weight = (float)record[influences + i] / (float)R3D_SKIN_WEIGHT_SUM;
+        const float weight = (float)record[influences + i] * weight_scale;
         for (int axis = 0; axis < POSITION_AXES; axis++) {
             const float position = (joint->m[axis][0] * bind[0]) + (joint->m[axis][1] * bind[1])
                                    + (joint->m[axis][2] * bind[2]) + joint->m[axis][POSITION_AXES];
@@ -89,7 +89,7 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
         }
     }
     for (int a = 0; a < POSITION_AXES; a++) {
-        out[a] = (int16_t)lroundf(mathf_clamp(posed[a], (float)INT16_MIN, (float)INT16_MAX));
+        out[a] = (int16_t)mathf_round_i32(mathf_clamp(posed[a], (float)INT16_MIN, (float)INT16_MAX));
     }
 }
 
@@ -104,10 +104,6 @@ skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pa
             skin_vertex(skin->vertices + ((size_t)v * skin->vertex_stride), influences, palette, bind->positions[v],
                         out->positions[v]);
             grow_bounds(cluster->lo, cluster->hi, out->positions[v], out->positions[v]);
-        }
-        if (bind->colors != NULL) {
-            memcpy(out->colors + cluster->vertex_first, bind->colors + cluster->vertex_first,
-                   (size_t)cluster->vertex_count * sizeof *out->colors);
         }
     }
 }

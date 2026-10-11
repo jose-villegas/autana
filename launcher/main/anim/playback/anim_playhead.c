@@ -1,9 +1,6 @@
 #include "anim/playback/anim_playhead.h"
 #include <math.h>
 
-enum { MILLISECONDS_PER_SECOND = 1000 };
-
-/* Shared scalar unit and wrap helpers are not available to this runtime. */
 static uint32_t
 clip_time(uint64_t t_ms, const anim_clip_t* clip, anim_wrap_t wrap) {
     const uint32_t duration = clip->duration_ms;
@@ -42,5 +39,5 @@ anim_playhead_advance(anim_playhead_t* p, const anim_clip_t* clip, uint32_t dt_m
 
 float
 anim_playhead_seconds(const anim_playhead_t* p, const anim_clip_t* clip) {
-    return (float)clip_time(p->t_ms, clip, p->wrap) * (1.0F / (float)MILLISECONDS_PER_SECOND);
+    return anim_clip_seconds(clip, p->t_ms, p->wrap);
 }

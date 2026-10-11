@@ -173,11 +173,11 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
 
-The scalar steps behind them, in `vec_convert.h`:
+The scalar steps behind them use `vec_convert.h` and `math/scalar/mathf_round.h`:
 
 | Function | Rule |
 |---|---|
-| `mathf_round_i32(v)` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` |
+| `mathf_round_i32` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` |
 | `mathf_round_s(v, scale)` | `v / scale` to int16, rounded and saturated |
 | `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
 | `mathx_to_f(v)` | Q16.16 to float |

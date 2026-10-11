@@ -7,7 +7,6 @@
 
 typedef struct {
     int16_t (*positions)[3];
-    uint8_t (*colors)[3];
     r3d_lit_cluster_t* clusters;
     r3d_lit_node_t* nodes;
     r3d_lit_mesh_t mesh;

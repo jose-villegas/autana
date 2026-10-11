@@ -100,7 +100,7 @@ test_skin_ranges_two_and_four_influences_and_refit(void) {
         const int expected = (int)(translation + 0.5F);
         TEST_ASSERT_EQUAL_INT16(expected, f.out.positions[0][0]);
         TEST_ASSERT_EQUAL_INT16(expected + POSITION_SCALE, f.out.positions[1][0]);
-        TEST_ASSERT_EQUAL_MEMORY(COLORS, f.out.colors, sizeof COLORS);
+        TEST_ASSERT_EQUAL_PTR(COLORS, f.out.mesh.colors);
         r3d_skin_refit_nodes(&f.out);
         TEST_ASSERT_EQUAL_INT16(expected, f.out.nodes[0].lo[0]);
         TEST_ASSERT_EQUAL_INT16(expected + POSITION_SCALE, f.out.nodes[0].hi[0]);
