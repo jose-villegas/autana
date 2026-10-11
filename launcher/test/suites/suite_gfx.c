@@ -33,8 +33,6 @@
 #include "board/board.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
@@ -142,7 +140,7 @@ test_touch_controller_is_present(void) {
 /* Long enough for a lift to count as one, plus a few polls either side. */
 static input_t
 input_after_polls(void) {
-    vTaskDelay(pdMS_TO_TICKS(TOUCH_RELEASE_QUIET_US / 1000 + 5 * 1000 / TOUCH_POLL_HZ));
+    timing_sleep_ms(TOUCH_RELEASE_QUIET_US / 1000 + 5 * 1000 / TOUCH_POLL_HZ);
     input_t in = {0};
     touch_read(&in);
     return in;

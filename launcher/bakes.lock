@@ -8,7 +8,8 @@ sha256 = "bbbb63e802570a6b421c9fe3f96390c672e613183cf921158efea45c96a534c8"
 size = 343012
 seeded = true
 
-# [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments and sampler code. bake.py lock writes them; bake.py check samples them again.
+# [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments
+# and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
 key = "7d590c608d7173a4657c3d8a9a28e6072a752825af1402b2b92933cc3d6154cb"

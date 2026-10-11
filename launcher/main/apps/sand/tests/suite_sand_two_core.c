@@ -11,14 +11,10 @@
 #include "unity.h"
 
 #include "core/job.h"
+#include "core/timing.h"
 
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"
-#endif
-
-#ifdef DEVICE_BUILD
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #endif
 
 #define TC_W ((int)REAL_W)
@@ -1741,7 +1737,7 @@ typedef struct {
 static void
 job_timeout_worker(void* ctx) {
     const job_timeout_ctx_t* const work = ctx;
-    vTaskDelay(pdMS_TO_TICKS(20));
+    timing_sleep_ms(20);
     *work->finished = true;
 }
 
@@ -1763,7 +1759,7 @@ test_a_timed_out_job_falls_back_inline(void) {
     TEST_ASSERT_TRUE(job_run_core1(job_inline_worker, &inline_ctx, sizeof inline_ctx));
     TEST_ASSERT_EQUAL_INT(1, inline_calls);
 
-    vTaskDelay(pdMS_TO_TICKS(40));
+    timing_sleep_ms(40);
     TEST_ASSERT_TRUE(finished);
     TEST_ASSERT_TRUE(job_wait(0));
 }

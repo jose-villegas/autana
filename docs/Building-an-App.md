@@ -228,7 +228,7 @@ edge. An app with an on-screen way out calls
 | Set its own panel clock: `gfx_set_panel_clock_hz()` | yes, and never restore it |
 | Call `gfx_request_full_redraw()` | yes, from anywhere on core 0 |
 | Call `gfx_present()` | **no**; the shell presents |
-| Loop, block or `vTaskDelay` | **no**; return promptly |
+| Loop, block or pause (`timing_sleep_ms`, `timing_yield`) | **no**; return promptly |
 | Keep a second framebuffer | **no**; there is one |
 | Any `gfx_*` call from `update()` | **no**; the buffer may be mid-send |
 

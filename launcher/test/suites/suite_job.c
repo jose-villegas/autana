@@ -6,11 +6,7 @@
 #include "unity.h"
 
 #include "core/job.h"
-
-#ifdef DEVICE_BUILD
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#endif
+#include "core/timing.h"
 
 typedef struct {
     int value;
@@ -111,7 +107,7 @@ typedef struct {
 static void
 job_test_slow(void* ctx) {
     const job_slow_ctx_t* const work = ctx;
-    vTaskDelay(pdMS_TO_TICKS(20));
+    timing_sleep_ms(20);
     *work->finished = true;
 }
 

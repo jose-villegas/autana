@@ -37,7 +37,7 @@ asset_directory_size(const void* head, size_t available) {
     return ASSET_DIRECTORY_HEADER_SIZE + (count * ASSET_DIRECTORY_ROW_SIZE);
 }
 
-/* Each row in turn: a valid name, on a sector, after the rows and the pack
+/* Each row in turn: a valid name, on a MMU page, after the rows and the pack
  * before it, inside the region, its name not seen before. */
 static asset_status_t
 check_rows(const uint8_t* bytes, uint32_t count, uint32_t region) {
@@ -46,7 +46,7 @@ check_rows(const uint8_t* bytes, uint32_t count, uint32_t region) {
         const uint8_t* row = row_at(bytes, i);
         const uint32_t offset = asset_read_u32(row + ROW_OFFSET);
         const uint32_t size = asset_read_u32(row + ROW_SIZE);
-        if (!name_is_valid(row) || offset % ASSET_PACK_ALIGN != 0 || offset < end) {
+        if (!name_is_valid(row) || offset % ASSET_MMU_PAGE_SIZE != 0 || offset < end) {
             return ASSET_ERR_BOUNDS;
         }
         if (offset > region || size > region - offset) {
@@ -94,13 +94,26 @@ asset_directory_open(asset_directory_t* directory, const void* base, size_t size
 }
 
 asset_status_t
+asset_directory_entry(const asset_directory_t* directory, uint32_t index, const char** name, asset_slot_t* slot) {
+    *name = NULL;
+    *slot = (asset_slot_t){0};
+    if (directory->base == NULL || index >= directory->count) {
+        return ASSET_ERR_NOT_FOUND;
+    }
+    const uint8_t* row = row_at(directory->base, index);
+    *name = (const char*)row;
+    *slot = (asset_slot_t){.offset = asset_read_u32(row + ROW_OFFSET), .size = asset_read_u32(row + ROW_SIZE)};
+    return ASSET_OK;
+}
+
+asset_status_t
 asset_directory_find(const asset_directory_t* directory, const char* name, asset_slot_t* slot) {
     *slot = (asset_slot_t){0};
     for (uint32_t i = 0; directory->base != NULL && i < directory->count; i++) {
         const uint8_t* row = row_at(directory->base, i);
         if (strncmp((const char*)row, name, ASSET_NAME_MAX) == 0) {
-            *slot = (asset_slot_t){.offset = asset_read_u32(row + ROW_OFFSET), .size = asset_read_u32(row + ROW_SIZE)};
-            return ASSET_OK;
+            const char* found;
+            return asset_directory_entry(directory, i, &found, slot);
         }
     }
     return ASSET_ERR_NOT_FOUND;

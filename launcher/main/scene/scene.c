@@ -8,6 +8,7 @@
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "gfx/draw/gfx_color.h"
+#include "math/scalar/mathi.h"
 #include "scene/scene_internal.h"
 
 #define LOADED_MAX 8
@@ -23,12 +24,12 @@ static const r3d_placement_t IDENTITY = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, transforms, flags, total;
+    size_t renderers, cameras, instances, flags, locals, animators, skins, total;
 } layout_t;
 
-static size_t
-carve(size_t* end, size_t bytes, size_t align) {
-    const size_t at = (*end + align - 1) & ~(align - 1);
+size_t
+scene_storage_carve(size_t* end, size_t bytes, size_t align) {
+    const size_t at = mathi_size_ceil(*end, align);
     *end = at + bytes;
     return at;
 }
@@ -37,11 +38,15 @@ static layout_t
 layout_for(const scene_asset_t* asset) {
     layout_t l;
     size_t end = sizeof(scene_t);
-    l.renderers = carve(&end, sizeof(scene_renderer_t) * asset->renderer_count, alignof(scene_renderer_t));
-    l.cameras = carve(&end, sizeof(scene_camera_t) * asset->camera_count, alignof(scene_camera_t));
-    l.instances = carve(&end, sizeof(r3d_instance_t) * asset->renderer_count, alignof(r3d_instance_t));
-    l.transforms = carve(&end, sizeof(scene_transform_t) * asset->entity_count, alignof(scene_transform_t));
-    l.flags = carve(&end, asset->entity_count, 1);
+    SCENE_STORAGE_RESERVE(l, end, renderers, scene_renderer_t, asset->renderer_count);
+    SCENE_STORAGE_RESERVE(l, end, cameras, scene_camera_t, asset->camera_count);
+    const int entities = asset->entity_count;
+    SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, entities);
+    const int renderers = asset->renderer_count;
+    SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
+    SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, entities);
     l.total = end;
     return l;
 }
@@ -65,16 +70,16 @@ instantiate(const scene_asset_t* asset) {
     scene->renderers = (scene_renderer_t*)(void*)(block + l.renderers);
     scene->cameras = (scene_camera_t*)(void*)(block + l.cameras);
     scene->instances = (r3d_instance_t*)(void*)(block + l.instances);
-    scene->transforms = (scene_transform_t*)(void*)(block + l.transforms);
     scene->flags = block + l.flags;
-    memcpy(scene->transforms, asset->transforms, sizeof(scene_transform_t) * asset->entity_count);
+    scene->locals = (transformf_t*)(void*)(block + l.locals);
+    scene->animators = (scene_animator_t*)(void*)(block + l.animators);
+    scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
                                                       .near_z = c->near_z,
-                                                      .placement = &scene->transforms[c->entity],
-                                                      .path = NULL},
+                                                      .pose = &scene->locals[c->entity]},
                                              .entity = c->entity,
                                              .clear = GFX_RGB(c->clear_rgb)};
     }
@@ -96,8 +101,8 @@ copy_id(char out[ASSET_NAME_MAX], const char* id) {
     out[length] = '\0';
 }
 
-static scene_failure_t
-failure(scene_status_t status, asset_status_t asset, const char* what) {
+scene_failure_t
+scene_failure_make(scene_status_t status, asset_status_t asset, const char* what) {
     scene_failure_t out = {status, asset, ""};
     copy_id(out.what, what);
     return out;
@@ -110,53 +115,68 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
         const char* mesh = scene->asset.renderers[i].mesh;
         const asset_status_t status = r3d_lit_mesh_open(pack, mesh, &scene->renderers[i].mesh);
         if (status != ASSET_OK) {
-            return failure(SCENE_ERR_ASSET, status, mesh);
+            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
     }
-    return failure(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
 }
 
-/* Points each camera that has a clip at its node's translation and rotation. */
 static scene_failure_t
-open_paths(scene_t* scene, const asset_pack_t* pack) {
+open_camera_animators(scene_t* scene) {
     for (int i = 0; i < scene->asset.camera_count; i++) {
-        const scene_asset_camera_t* c = &scene->asset.cameras[i];
-        if (c->clip[0] == '\0') {
+        const scene_asset_camera_t* camera = &scene->asset.cameras[i];
+        if (camera->clip[0] == '\0') {
             continue;
         }
-        scene_camera_t* camera = &scene->cameras[i];
-        anim_tracks_t tracks;
-        anim_node_tracks_t node;
-        asset_status_t status = anim_tracks_from_pack(pack, c->clip, &tracks);
-        if (status == ASSET_OK) {
-            status = anim_tracks_find_node(&tracks, c->node, &node);
+        const char* clips[] = {camera->clip};
+        scene_failure_t why;
+        if (!scene_animator_set_clips(scene, camera->entity, NULL, clips, 1, &why)) {
+            return why;
         }
-        if (status != ASSET_OK) {
-            return failure(SCENE_ERR_ASSET, status, c->clip);
-        }
-        camera->path.translation = node.translation;
-        camera->path.rotation = node.rotation;
-        camera->path.clip = tracks.clip;
-        camera->lens.path = &camera->path;
+        (void)scene_animator_play(scene, camera->entity, 0, 0);
     }
-    return failure(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+}
+
+static bool
+local_from_placement(const scene_placement_t* placement, transformf_t* out) {
+    mat4f_t matrix = mat4f_identity();
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            matrix.m[r][c] = placement->m[r][c];
+        }
+    }
+    matrix.m[0][3] = placement->position.x;
+    matrix.m[1][3] = placement->position.y;
+    matrix.m[2][3] = placement->position.z;
+    return transformf_from_mat(matrix, out);
+}
+
+static scene_failure_t
+open_transforms(scene_t* scene) {
+    for (int e = 0; e < scene->asset.entity_count; e++) {
+        if (!local_from_placement(&scene->asset.transforms[e], &scene->locals[e])) {
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e]);
+        }
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
 }
 
 /* The pack's scene entry `id`, opened. */
 static scene_failure_t
 open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
     if (pack == NULL) {
-        return failure(SCENE_ERR_ASSET, ASSET_ERR_NO_PACK, id);
+        return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_NO_PACK, id);
     }
     asset_view_t entry;
     asset_status_t status = asset_pack_find(pack, id, SCENE_ASSET, &entry);
     if (status == ASSET_ERR_NOT_FOUND) {
-        return failure(SCENE_ERR_UNKNOWN, ASSET_OK, id);
+        return scene_failure_make(SCENE_ERR_UNKNOWN, ASSET_OK, id);
     }
     if (status == ASSET_OK) {
         status = scene_asset_open(entry, asset);
     }
-    return failure(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
+    return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
 }
 
 static scene_t*
@@ -175,21 +195,26 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
         return fail(why, opened);
     }
     if (loaded_count == LOADED_MAX) {
-        return fail(why, failure(SCENE_ERR_FULL, ASSET_OK, id));
+        return fail(why, scene_failure_make(SCENE_ERR_FULL, ASSET_OK, id));
     }
     scene_t* scene = instantiate(&asset);
     if (scene == NULL) {
-        return fail(why, failure(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return fail(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
+    scene->pack = pack;
     copy_id(scene->id, id);
     scene_failure_t done = open_meshes(scene, pack);
     if (done.status == SCENE_OK) {
-        done = open_paths(scene, pack);
+        done = open_transforms(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_camera_animators(scene);
     }
     if (why != NULL) {
         *why = done;
     }
     if (done.status != SCENE_OK) {
+        scene_animation_release(scene);
         memory_free(scene);
         return NULL;
     }
@@ -225,6 +250,7 @@ scene_unload(scene_t* scene) {
         loaded_count--;
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;
+        scene_animation_release(scene);
         memory_free(scene);
         return;
     }
@@ -270,8 +296,8 @@ scene_find(const scene_t* scene, const char* name) {
 }
 
 /* The index of the entity's renderer, or -1 when it draws nothing. */
-static int
-renderer_of(const scene_t* scene, scene_entity_t entity) {
+int
+scene_renderer_index(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         if (scene->asset.renderers[i].entity == entity) {
@@ -283,13 +309,13 @@ renderer_of(const scene_t* scene, scene_entity_t entity) {
 
 const char*
 scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity) {
-    const int i = renderer_of(scene, entity);
+    const int i = scene_renderer_index(scene, entity);
     return i < 0 ? NULL : scene->asset.renderers[i].mesh;
 }
 
 const r3d_lit_mesh_t*
 scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
-    const int i = renderer_of(scene, entity);
+    const int i = scene_renderer_index(scene, entity);
     return i < 0 ? NULL : &scene->renderers[i].mesh;
 }
 
@@ -312,13 +338,13 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
 const scene_transform_t*
 scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
-    return &scene->transforms[entity];
+    return &scene->locals[entity];
 }
 
 void
-scene_entity_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
+scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
-    scene->transforms[entity] = *transform;
+    scene->locals[entity] = *transform;
     scene->flags[entity] |= SCENE_FLAG_DIRTY;
 }
 
@@ -336,6 +362,6 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
 }
 
 bool
-scene_transform_is_identity(const scene_transform_t* transform) {
+scene_transform_is_identity(const scene_placement_t* transform) {
     return memcmp(transform, &IDENTITY, sizeof IDENTITY) == 0;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when docs/math/README.md and math/linear/ disagree about what exists.
+"""Fail when docs/math/README.md and the math headers disagree about what exists.
 
     python scripts/gates/check_math_docs.py [--root ROOT]
 
@@ -23,7 +23,11 @@ hand:
     `TRANSFORM<S>_IDENTITY` initializer must be named on the page;
   * the other way round: every `name(` the page puts in backticks must exist,
     as `P_` or a prefix of that function's own family, or as a function a
-    header defines.
+    header defines;
+  * every inline formula, in $...$ or $`...`$, has at most
+    MAX_INLINE_MATH_CHARS characters of TeX outside code spans and fences;
+    a longer one is split into one span per step, joined with <br>.
+    Fenced blocks and `$$...$$` display math are not measured.
 """
 
 import argparse
@@ -35,6 +39,10 @@ import sys
 MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
 
+# An inline formula cannot wrap, so a long one overflows a phone-width column.
+# TeX source length stands in for rendered width: 110 fits one step, not a derivation.
+MAX_INLINE_MATH_CHARS = 110
+
 FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
@@ -45,6 +53,7 @@ FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
 HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$|(`+).*?(?<!`)\2(?!`)|(?<![\\$])\$(?!\$)([^$\n]*)\$(?!\$)")
 PAGE_CALL = re.compile(r"`[^`\n]*?\b([A-Za-z][A-Za-z0-9]*_[a-z0-9_]+)\(")
 
 
@@ -119,6 +128,16 @@ def check(root):
     page = read(root / PAGE)
     family_of, functions, patterns, swizzle_names, problems = instantiations(root)
 
+    for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), page).splitlines(), start=1):
+        for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
+            formula = quoted_formula or plain_formula
+            if len(formula) > MAX_INLINE_MATH_CHARS:
+                problems.append(
+                    "%s:%d: inline math has %d characters (limit %d); "
+                    "split the formula into one span per step joined with <br>"
+                    % (PAGE.as_posix(), line_number, len(formula), MAX_INLINE_MATH_CHARS)
+                )
+
     for family in FAMILIES:
         template = root / MATH / (family + "_template.h")
         own = set(TEMPLATE_FUNCTION.findall(read(template)))
@@ -149,6 +168,9 @@ def check(root):
         for name in HAND_WRITTEN.findall(text) + IDENTITY.findall(text):
             if name not in page:
                 problems.append("%s: the page does not name %s (%s)" % (PAGE.as_posix(), name, header.name))
+
+    for header in sorted((root / MATH.parent / "scalar").glob("*.h")):
+        defined.update(HAND_WRITTEN.findall(read(header)))
 
     valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
