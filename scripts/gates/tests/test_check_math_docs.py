@@ -47,6 +47,24 @@ class CheckMathDocs(unittest.TestCase):
     def test_a_synthetic_tree_that_agrees_passes(self):
         self.assertEqual([], problems_for())
 
+    def test_a_short_inline_math_span_passes(self):
+        self.assertEqual([], problems_for(page_extra="$`a + b`$\n"))
+
+    def test_an_inline_math_span_at_the_limit_passes(self):
+        formula = "x" * check_math_docs.MAX_INLINE_MATH_CHARS
+        self.assertEqual([], problems_for(page_extra="$`%s`$\n" % formula))
+
+    def test_an_over_limit_inline_math_span_fails_with_its_line(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        problems = problems_for(page_extra="\n$`%s`$\n" % formula)
+        self.assertEqual(1, len(problems))
+        self.assertIn("docs/math/README.md:23:", problems[0])
+        self.assertIn("split the formula into one span per step joined with <br>", problems[0])
+
+    def test_separate_inline_math_spans_are_measured_individually(self):
+        formula = "x" * check_math_docs.MAX_INLINE_MATH_CHARS
+        self.assertEqual([], problems_for(page_extra="$`%s`$<br> $`%s`$\n" % (formula, formula)))
+
     def test_a_template_function_missing_from_the_page_fails(self):
         extra = "    static inline int P##_wobble(int a) { return a; } \\\n"
         self.assertTrue(any("P_wobble(" in p for p in problems_for(template_extra=extra)))

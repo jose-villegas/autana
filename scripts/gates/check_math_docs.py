@@ -35,6 +35,11 @@ import sys
 MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
 
+# Keep unbreakable steps within a phone content width of about 320 px: the split
+# steps render at most 303 px at 16 px. 110 allows single steps, not derivations;
+# TeX source length is a guard, not a rendered-width measurement.
+MAX_INLINE_MATH_CHARS = 110
+
 FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
@@ -45,6 +50,7 @@ FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
 HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$")
 PAGE_CALL = re.compile(r"`[^`\n]*?\b([A-Za-z][A-Za-z0-9]*_[a-z0-9_]+)\(")
 
 
@@ -118,6 +124,15 @@ def check(root):
     root = pathlib.Path(root)
     page = read(root / PAGE)
     family_of, functions, patterns, swizzle_names, problems = instantiations(root)
+
+    for line_number, line in enumerate(page.splitlines(), start=1):
+        for formula in INLINE_MATH.findall(line):
+            if len(formula) > MAX_INLINE_MATH_CHARS:
+                problems.append(
+                    "%s:%d: inline math has %d characters (limit %d); "
+                    "split the formula into one span per step joined with <br>"
+                    % (PAGE.as_posix(), line_number, len(formula), MAX_INLINE_MATH_CHARS)
+                )
 
     for family in FAMILIES:
         template = root / MATH / (family + "_template.h")
