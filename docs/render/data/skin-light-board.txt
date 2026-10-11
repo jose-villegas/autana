@@ -1,638 +1,821 @@
-# Kernel comparison: direct versus the normal-indexed table
-BUILD_ID 8651de3988fb-diag
-I (7033) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (7056) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (7057) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (7271) skin_light_perf: test_skin_only min=350421cycles max=351819cycles avg=350444cycles med=350421cycles p95=350488cycles
-I (7273) skin_light_perf: COST cycles_per_vertex=356.119
-I (7273) skin_light_perf: CHECK positions=2d1fd531
-I (7274) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (7276) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (7300) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (7300) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (7622) skin_light_perf: test_fused_direct_1 min=571984cycles max=586591cycles avg=574163cycles med=571987cycles p95=586591cycles
-I (7623) skin_light_perf: COST cycles_per_vertex=581.288
-I (7627) skin_light_perf: CHECK fused_positions=2d1fd531 fused_light=e3836f6d
-I (7632) skin_light_perf: QUALITY max=46 mean=0.557927 checksum=e3836f6d
-I (7633) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (7635) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (7659) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (7660) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (7982) skin_light_perf: test_fused_direct_2 min=595011cycles max=609650cycles avg=597210cycles med=595019cycles p95=609650cycles
-I (7983) skin_light_perf: COST cycles_per_vertex=604.694
-I (7987) skin_light_perf: CHECK fused_positions=2d1fd531 fused_light=14ede646
-I (7993) skin_light_perf: QUALITY max=44 mean=0.749322 checksum=14ede646
-I (7994) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (7996) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (8019) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (8020) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (8344) skin_light_perf: test_fused_direct_4 min=639442cycles max=654051cycles avg=641619cycles med=639442cycles p95=654051cycles
-I (8345) skin_light_perf: COST cycles_per_vertex=649.839
-I (8349) skin_light_perf: CHECK fused_positions=2d1fd531 fused_light=51453f96
-I (8356) skin_light_perf: QUALITY max=62 mean=1.195122 checksum=51453f96
-I (8357) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (8359) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (8382) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (8383) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (8810) skin_light_perf: test_fused_renormalised_4 min=745131cycles max=748786cycles avg=745897cycles med=745198cycles p95=748759cycles
-I (8811) skin_light_perf: COST cycles_per_vertex=757.315
-I (8816) skin_light_perf: CHECK fused_positions=2d1fd531 fused_light=1996ef74
-I (8822) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=1996ef74
-I (8823) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (8825) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (8849) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (8849) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (8959) skin_light_perf: test_direct_1 min=216766cycles max=218220cycles avg=216792cycles med=216774cycles p95=216833cycles
-I (8961) skin_light_perf: COST cycles_per_vertex=220.299
-I (8966) skin_light_perf: QUALITY max=46 mean=0.557927 checksum=e3836f6d
-I (8967) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (8969) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (8992) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (8993) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (9202) skin_light_perf: test_direct_2 min=240730cycles max=255297cycles avg=242908cycles med=240740cycles p95=255297cycles
-I (9204) skin_light_perf: COST cycles_per_vertex=244.654
-I (9209) skin_light_perf: QUALITY max=44 mean=0.749322 checksum=14ede646
-I (9210) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (9212) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (9235) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (9236) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (9447) skin_light_perf: test_direct_4 min=284200cycles max=284249cycles avg=284211cycles med=284209cycles p95=284249cycles
-I (9449) skin_light_perf: COST cycles_per_vertex=288.830
-I (9455) skin_light_perf: QUALITY max=62 mean=1.195122 checksum=51453f96
-I (9456) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (9458) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (9481) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (9482) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (9695) skin_light_perf: test_renormalised_1 min=320571cycles max=349227cycles avg=322912cycles med=320594cycles p95=335212cycles
-I (9696) skin_light_perf: COST cycles_per_vertex=325.807
-I (9701) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=019001a5
-I (9702) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (9704) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (9727) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (9728) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (9942) skin_light_perf: test_renormalised_2 min=343067cycles max=343197cycles avg=343104cycles med=343101cycles p95=343197cycles
-I (9943) skin_light_perf: COST cycles_per_vertex=348.680
-I (9948) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=307c288a
-I (9949) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (9951) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (9975) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (9976) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (10191) skin_light_perf: test_renormalised_4 min=386554cycles max=401212cycles avg=388761cycles med=386585cycles p95=401212cycles
-I (10192) skin_light_perf: COST cycles_per_vertex=392.871
-I (10198) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=1996ef74
-I (10199) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (10201) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (10225) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (10225) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (10439) skin_light_perf: test_table_lookup min=324164cycles max=338772cycles avg=326353cycles med=324164cycles p95=338772cycles
-I (10440) skin_light_perf: COST cycles_per_vertex=329.435
-I (10446) skin_light_perf: QUALITY max=18 mean=1.484079 checksum=d09cc2de
-I (10447) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (10449) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (10473) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (10473) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (10575) skin_light_perf: test_table_build_1 min=26811cycles max=27008cycles avg=26814cycles med=26811cycles p95=26839cycles
-I (10577) skin_light_perf: COST cycles_per_build=26811.000
-I (10578) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=9fd0abb1
-I (10579) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (10581) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (10604) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (10605) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (10708) skin_light_perf: test_table_build_2 min=32827cycles max=34315cycles avg=32845cycles med=32827cycles p95=32867cycles
-I (10710) skin_light_perf: COST cycles_per_build=32827.000
-I (10711) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=b5cc2df3
-I (10712) skin_light_perf: HEAP released internal_free=92763 largest=51200
-I (10714) skin_light_perf: HEAP before internal_free=92763 largest=51200
-I (10737) skin_light_perf: HEAP allocated internal_free=70335 largest=31744
-I (10738) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (10841) skin_light_perf: test_table_build_4 min=44347cycles max=44497cycles avg=44349cycles med=44347cycles p95=44381cycles
-I (10843) skin_light_perf: COST cycles_per_build=44347.000
-I (10844) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=7feea17b
-I (10845) skin_light_perf: HEAP released internal_free=92763 largest=51200
+BUILD_ID bf9edf215977-diag
 
-BUILD_ID 5df9ac860fde-diag
+# Capture 210739_runsuite-suite_skin_light_perf-run2_ville-JV-48840.log
+I (20178) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (20203) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (20204) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (20205) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (20307) skin_light_perf: test_normal_palette_build min=5103cycles max=5107cycles avg=5103cycles med=5103cycles p95=5103cycles
+I (20309) skin_light_perf: COST cycles_per_build=5103.000
+I (20309) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:316:test_normal_palette_build:PASS
+I (20312) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (20337) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (20338) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (20339) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (20553) skin_light_perf: test_skin_only min=354364cycles max=368999cycles avg=356554cycles med=354365cycles p95=368985cycles
+I (20555) skin_light_perf: COST cycles_per_vertex=360.127
+I (20556) skin_light_perf: CHECK positions=2d1fd531
+I (20556) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:317:test_skin_only:PASS
+I (20558) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (20584) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (20584) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (20585) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (20910) skin_light_perf: test_fused_direct_1 min=630233cycles max=644853cycles avg=632426cycles med=630233cycles p95=644853cycles
+I (20911) skin_light_perf: COST cycles_per_vertex=640.481
+I (20936) skin_light_perf: CHECK fused_positions=2d1fd531
+I (20936) skin_light_perf: QUALITY max=8 mean=0.246612 checksum=d7c8f9f1
+I (20937) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:318:test_fused_direct_1:PASS
+I (20939) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (20965) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (20965) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (20966) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (21292) skin_light_perf: test_fused_direct_2 min=653080cycles max=667681cycles avg=655271cycles med=653080cycles p95=667681cycles
+I (21293) skin_light_perf: COST cycles_per_vertex=663.699
+I (21318) skin_light_perf: CHECK fused_positions=2d1fd531
+I (21319) skin_light_perf: QUALITY max=9 mean=0.264905 checksum=4a022daf
+I (21320) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:319:test_fused_direct_2:PASS
+I (21322) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (21347) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (21348) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (21349) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (21676) skin_light_perf: test_fused_direct_4 min=697325cycles max=711935cycles avg=699519cycles med=697329cycles p95=711935cycles
+I (21677) skin_light_perf: COST cycles_per_vertex=708.668
+I (21703) skin_light_perf: CHECK fused_positions=2d1fd531
+I (21703) skin_light_perf: QUALITY max=13 mean=0.353997 checksum=81b9718d
+I (21704) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:320:test_fused_direct_4:PASS
+I (21706) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (21732) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (21732) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (21734) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (22165) skin_light_perf: test_fused_table_1 min=842833cycles max=858820cycles avg=843722cycles med=842868cycles p95=846391cycles
+I (22166) skin_light_perf: COST cycles_per_vertex=856.573
+I (22191) skin_light_perf: CHECK fused_positions=2d1fd531
+I (22191) skin_light_perf: QUALITY max=7 mean=0.455623 checksum=8b292e4f
+I (22192) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:321:test_fused_table_1:PASS
+I (22194) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (22220) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (22220) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (22222) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (22653) skin_light_perf: test_fused_table_2 min=842639cycles max=846211cycles avg=843375cycles med=842647cycles p95=846211cycles
+I (22654) skin_light_perf: COST cycles_per_vertex=856.349
+I (22679) skin_light_perf: CHECK fused_positions=2d1fd531
+I (22680) skin_light_perf: QUALITY max=4 mean=0.360095 checksum=ef4089d8
+I (22680) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:322:test_fused_table_2:PASS
+I (22683) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (22708) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (22709) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (22710) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (23140) skin_light_perf: test_fused_table_4 min=842435cycles max=846089cycles avg=843179cycles med=842486cycles p95=846007cycles
+I (23142) skin_light_perf: COST cycles_per_vertex=856.185
+I (23168) skin_light_perf: CHECK fused_positions=2d1fd531
+I (23168) skin_light_perf: QUALITY max=4 mean=0.380420 checksum=68abe462
+I (23169) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:323:test_fused_table_4:PASS
+I (23171) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (23197) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (23197) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (23199) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (23301) skin_light_perf: test_table_build_1 min=30353cycles max=30633cycles avg=30357cycles med=30353cycles p95=30407cycles
+I (23303) skin_light_perf: COST cycles_per_build=30353.000
+I (23303) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:324:test_table_build_1:PASS
+I (23305) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (23331) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (23331) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (23333) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (23436) skin_light_perf: test_table_build_2 min=42331cycles max=42570cycles avg=42336cycles med=42331cycles p95=42389cycles
+I (23438) skin_light_perf: COST cycles_per_build=42331.000
+I (23438) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:325:test_table_build_2:PASS
+I (23440) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (23466) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (23467) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (23468) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (23572) skin_light_perf: test_table_build_4 min=65401cycles max=73033cycles avg=65479cycles med=65401cycles p95=65435cycles
+I (23574) skin_light_perf: COST cycles_per_build=65401.000
+I (23574) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:326:test_table_build_4:PASS
+I (23576) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (23602) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (23602) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (23603) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (23929) skin_light_perf: test_fused_renormalised_1 min=669306cycles max=683923cycles avg=671484cycles med=669306cycles p95=683923cycles
+I (23930) skin_light_perf: COST cycles_per_vertex=680.189
+I (23955) skin_light_perf: CHECK fused_positions=2d1fd531
+I (23955) skin_light_perf: QUALITY max=1 mean=0.184282 checksum=bf090b21
+I (23956) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:327:test_fused_renormalised_1:PASS
+I (23958) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (23984) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (23985) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (23986) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (24312) skin_light_perf: test_fused_renormalised_2 min=691578cycles max=706191cycles avg=693756cycles med=691578cycles p95=706191cycles
+I (24313) skin_light_perf: COST cycles_per_vertex=702.823
+I (24338) skin_light_perf: CHECK fused_positions=2d1fd531
+I (24339) skin_light_perf: QUALITY max=1 mean=0.185637 checksum=58d5cd7a
+I (24340) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:328:test_fused_renormalised_2:PASS
+I (24342) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (24367) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (24368) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (24369) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (24796) skin_light_perf: test_fused_renormalised_4 min=736230cycles max=750810cycles avg=740569cycles med=739779cycles p95=750810cycles
+I (24797) skin_light_perf: COST cycles_per_vertex=751.808
+I (24823) skin_light_perf: CHECK fused_positions=2d1fd531
+I (24824) skin_light_perf: QUALITY max=2 mean=0.180217 checksum=8084bf9f
+I (24824) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:329:test_fused_renormalised_4:PASS
+I (24827) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (24852) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (24853) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (24854) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (27444) skin_light_perf: test_exact_separate_1 min=5605051cycles max=5624340cycles avg=5609676cycles med=5608542cycles p95=5619781cycles
+I (27445) skin_light_perf: COST cycles_per_vertex=5699.738
+I (27470) skin_light_perf: CHECK fused_positions=2d1fd531
+I (27470) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=445b6c55
+I (27471) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:330:test_exact_separate_1:PASS
+I (27473) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (27499) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (27500) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (27500) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (30094) skin_light_perf: test_exact_separate_2 min=5692952cycles max=5711216cycles avg=5697521cycles med=5693388cycles p95=5711216cycles
+I (30095) skin_light_perf: COST cycles_per_vertex=5785.963
+I (30120) skin_light_perf: CHECK fused_positions=2d1fd531
+I (30121) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=ac12c02b
+I (30122) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:331:test_exact_separate_2:PASS
+I (30124) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (30149) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (30150) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (30151) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (32850) skin_light_perf: test_exact_separate_4 min=5871862cycles max=5887413cycles avg=5873796cycles med=5875223cycles p95=5875451cycles
+I (32851) skin_light_perf: COST cycles_per_vertex=5970.755
+I (32877) skin_light_perf: CHECK fused_positions=2d1fd531
+I (32878) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=f9a7a40b
+I (32878) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:332:test_exact_separate_4:PASS
+RUNSUITE_COMPLETE name=suite_skin_light_perf found=1 selected=17 unmatched=0
 
-I (13229) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (13252) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (13256) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (13257) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (13360) skin_light_perf: test_normal_palette_build min=38183cycles max=38373cycles avg=38186cycles med=38183cycles p95=38218cycles
-I (13361) skin_light_perf: COST cycles_per_build=38183.000
-I (13361) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (13364) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (13387) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (13390) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (13391) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (13604) skin_light_perf: test_skin_only min=350221cycles max=364837cycles avg=352396cycles med=350222cycles p95=364837cycles
-I (13606) skin_light_perf: COST cycles_per_vertex=355.917
-I (13607) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (13609) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (13632) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (13636) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (13637) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (13960) skin_light_perf: test_fused_nl_1 min=620449cycles max=635100cycles avg=622632cycles med=620449cycles p95=635100cycles
-I (13961) skin_light_perf: COST cycles_per_vertex=630.538
-I (13962) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (13964) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (13987) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (13991) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (13992) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (14316) skin_light_perf: test_fused_nl_2 min=643492cycles max=659869cycles avg=645842cycles med=643492cycles p95=658152cycles
-I (14317) skin_light_perf: COST cycles_per_vertex=653.955
-I (14318) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (14320) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (14343) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (14347) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (14348) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (14673) skin_light_perf: test_fused_nl_4 min=687881cycles max=707441cycles avg=690108cycles med=687881cycles p95=702503cycles
-I (14675) skin_light_perf: COST cycles_per_vertex=699.066
-I (14676) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (14678) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (14701) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (14705) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (14706) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (15031) skin_light_perf: test_fused_rsqrt_1 min=654887cycles max=669502cycles avg=657081cycles med=654887cycles p95=669502cycles
-I (15032) skin_light_perf: COST cycles_per_vertex=665.536
-I (15033) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (15035) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (15059) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (15062) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (15063) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (15389) skin_light_perf: test_fused_rsqrt_2 min=677943cycles max=692944cycles avg=680139cycles med=677943cycles p95=692566cycles
-I (15390) skin_light_perf: COST cycles_per_vertex=688.966
-I (15391) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (15393) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (15417) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (15420) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (15421) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (15847) skin_light_perf: test_fused_rsqrt_4 min=723704cycles max=753369cycles avg=728215cycles med=727271cycles p95=738318cycles
-I (15848) skin_light_perf: COST cycles_per_vertex=739.097
-I (15849) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (15851) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (15875) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (15878) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (15879) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (16204) skin_light_perf: test_fused_renormalised_1 min=661064cycles max=675676cycles avg=663294cycles med=661070cycles p95=675676cycles
-I (16205) skin_light_perf: COST cycles_per_vertex=671.819
-I (16211) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (16212) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (16214) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (16237) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (16241) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (16242) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (16568) skin_light_perf: test_fused_renormalised_2 min=683378cycles max=697978cycles avg=685572cycles med=683387cycles p95=697978cycles
-I (16569) skin_light_perf: COST cycles_per_vertex=694.499
-I (16575) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (16576) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (16578) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (16601) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (16605) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (16606) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (17032) skin_light_perf: test_fused_renormalised_4 min=728050cycles max=731632cycles avg=728778cycles med=728060cycles p95=731632cycles
-I (17033) skin_light_perf: COST cycles_per_vertex=739.898
-I (17039) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (17040) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (17042) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (17066) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (17069) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (17070) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (17605) skin_light_perf: test_exact_separate_1 min=969050cycles max=984025cycles avg=974503cycles med=972643cycles p95=983645cycles
-I (17606) skin_light_perf: COST cycles_per_vertex=988.458
-I (17612) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (17613) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (17615) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (17638) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (17642) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (17642) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (18178) skin_light_perf: test_exact_separate_2 min=991326cycles max=1009478cycles avg=996772cycles med=994951cycles p95=1009478cycles
-I (18179) skin_light_perf: COST cycles_per_vertex=1011.129
-I (18185) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (18186) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (18188) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (18211) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (18215) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (18216) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (18753) skin_light_perf: test_exact_separate_4 min=1034613cycles max=1054259cycles avg=1040099cycles med=1038258cycles p95=1052858cycles
-I (18754) skin_light_perf: COST cycles_per_vertex=1055.140
-I (18760) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (18761) skin_light_perf: HEAP released internal_free=92755 largest=51200
+# Capture 210752_runsuite-suite_skin_light_perf-run3_ville-JV-48840.log
+I (33552) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (33577) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (33578) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (33579) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (33681) skin_light_perf: test_normal_palette_build min=5103cycles max=5195cycles avg=5103cycles med=5103cycles p95=5103cycles
+I (33683) skin_light_perf: COST cycles_per_build=5103.000
+I (33683) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:316:test_normal_palette_build:PASS
+I (33686) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (33711) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (33712) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (33713) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (33928) skin_light_perf: test_skin_only min=354364cycles max=368985cycles avg=356561cycles med=354365cycles p95=368985cycles
+I (33929) skin_light_perf: COST cycles_per_vertex=360.127
+I (33930) skin_light_perf: CHECK positions=2d1fd531
+I (33930) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:317:test_skin_only:PASS
+I (33932) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (33957) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (33958) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (33959) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (34284) skin_light_perf: test_fused_direct_1 min=630233cycles max=646227cycles avg=632426cycles med=630233cycles p95=644853cycles
+I (34285) skin_light_perf: COST cycles_per_vertex=640.481
+I (34310) skin_light_perf: CHECK fused_positions=2d1fd531
+I (34310) skin_light_perf: QUALITY max=8 mean=0.246612 checksum=d7c8f9f1
+I (34311) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:318:test_fused_direct_1:PASS
+I (34313) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (34339) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (34339) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (34340) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (34666) skin_light_perf: test_fused_direct_2 min=653080cycles max=667681cycles avg=655271cycles med=653080cycles p95=667681cycles
+I (34667) skin_light_perf: COST cycles_per_vertex=663.699
+I (34692) skin_light_perf: CHECK fused_positions=2d1fd531
+I (34693) skin_light_perf: QUALITY max=9 mean=0.264905 checksum=4a022daf
+I (34694) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:319:test_fused_direct_2:PASS
+I (34696) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (34721) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (34722) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (34723) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (35050) skin_light_perf: test_fused_direct_4 min=697323cycles max=711935cycles avg=699519cycles med=697329cycles p95=711935cycles
+I (35051) skin_light_perf: COST cycles_per_vertex=708.668
+I (35077) skin_light_perf: CHECK fused_positions=2d1fd531
+I (35077) skin_light_perf: QUALITY max=13 mean=0.353997 checksum=81b9718d
+I (35078) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:320:test_fused_direct_4:PASS
+I (35080) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (35106) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (35106) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (35108) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (35539) skin_light_perf: test_fused_table_1 min=842833cycles max=857513cycles avg=846492cycles med=842833cycles p95=857513cycles
+I (35540) skin_light_perf: COST cycles_per_vertex=856.538
+I (35565) skin_light_perf: CHECK fused_positions=2d1fd531
+I (35565) skin_light_perf: QUALITY max=7 mean=0.455623 checksum=8b292e4f
+I (35566) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:321:test_fused_table_1:PASS
+I (35568) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (35594) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (35594) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (35596) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (36027) skin_light_perf: test_fused_table_2 min=842639cycles max=857289cycles avg=846297cycles med=842639cycles p95=857289cycles
+I (36028) skin_light_perf: COST cycles_per_vertex=856.340
+I (36053) skin_light_perf: CHECK fused_positions=2d1fd531
+I (36054) skin_light_perf: QUALITY max=4 mean=0.360095 checksum=ef4089d8
+I (36055) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:322:test_fused_table_2:PASS
+I (36057) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (36082) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (36083) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (36084) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (36515) skin_light_perf: test_fused_table_4 min=842435cycles max=857094cycles avg=846080cycles med=842435cycles p95=857094cycles
+I (36516) skin_light_perf: COST cycles_per_vertex=856.133
+I (36542) skin_light_perf: CHECK fused_positions=2d1fd531
+I (36542) skin_light_perf: QUALITY max=4 mean=0.380420 checksum=68abe462
+I (36543) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:323:test_fused_table_4:PASS
+I (36545) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (36571) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (36571) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (36573) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (36675) skin_light_perf: test_table_build_1 min=30353cycles max=30878cycles avg=30362cycles med=30353cycles p95=30407cycles
+I (36677) skin_light_perf: COST cycles_per_build=30353.000
+I (36677) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:324:test_table_build_1:PASS
+I (36679) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (36705) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (36705) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (36707) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (36810) skin_light_perf: test_table_build_2 min=42331cycles max=42627cycles avg=42336cycles med=42331cycles p95=42389cycles
+I (36812) skin_light_perf: COST cycles_per_build=42331.000
+I (36812) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:325:test_table_build_2:PASS
+I (36814) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (36840) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (36840) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (36842) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (36946) skin_light_perf: test_table_build_4 min=65401cycles max=65438cycles avg=65402cycles med=65401cycles p95=65435cycles
+I (36948) skin_light_perf: COST cycles_per_build=65401.000
+I (36948) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:326:test_table_build_4:PASS
+I (36950) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (36976) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (36976) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (36977) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (37303) skin_light_perf: test_fused_renormalised_1 min=669306cycles max=688897cycles avg=671533cycles med=669306cycles p95=683923cycles
+I (37304) skin_light_perf: COST cycles_per_vertex=680.189
+I (37329) skin_light_perf: CHECK fused_positions=2d1fd531
+I (37330) skin_light_perf: QUALITY max=1 mean=0.184282 checksum=bf090b21
+I (37330) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:327:test_fused_renormalised_1:PASS
+I (37333) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (37358) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (37359) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (37360) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (37686) skin_light_perf: test_fused_renormalised_2 min=691578cycles max=706191cycles avg=693757cycles med=691578cycles p95=706191cycles
+I (37687) skin_light_perf: COST cycles_per_vertex=702.823
+I (37712) skin_light_perf: CHECK fused_positions=2d1fd531
+I (37713) skin_light_perf: QUALITY max=1 mean=0.185637 checksum=58d5cd7a
+I (37714) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:328:test_fused_renormalised_2:PASS
+I (37716) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (37741) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (37742) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (37743) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (38170) skin_light_perf: test_fused_renormalised_4 min=736230cycles max=754374cycles avg=740572cycles med=736230cycles p95=754374cycles
+I (38171) skin_light_perf: COST cycles_per_vertex=748.201
+I (38197) skin_light_perf: CHECK fused_positions=2d1fd531
+I (38198) skin_light_perf: QUALITY max=2 mean=0.180217 checksum=8084bf9f
+I (38198) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:329:test_fused_renormalised_4:PASS
+I (38201) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (38226) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (38227) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (38228) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (40818) skin_light_perf: test_exact_separate_1 min=5605261cycles max=5623585cycles avg=5609791cycles med=5605269cycles p95=5623569cycles
+I (40819) skin_light_perf: COST cycles_per_vertex=5696.412
+I (40844) skin_light_perf: CHECK fused_positions=2d1fd531
+I (40844) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=445b6c55
+I (40845) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:330:test_exact_separate_1:PASS
+I (40847) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (40873) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (40873) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (40874) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (43468) skin_light_perf: test_exact_separate_2 min=5693067cycles max=5707976cycles avg=5697517cycles med=5696663cycles p95=5707976cycles
+I (43469) skin_light_perf: COST cycles_per_vertex=5789.292
+I (43494) skin_light_perf: CHECK fused_positions=2d1fd531
+I (43495) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=ac12c02b
+I (43496) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:331:test_exact_separate_2:PASS
+I (43498) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (43523) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (43524) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (43525) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (46224) skin_light_perf: test_exact_separate_4 min=5871847cycles max=5887970cycles avg=5877429cycles med=5875429cycles p95=5886544cycles
+I (46225) skin_light_perf: COST cycles_per_vertex=5970.964
+I (46251) skin_light_perf: CHECK fused_positions=2d1fd531
+I (46252) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=f9a7a40b
+I (46252) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:332:test_exact_separate_4:PASS
+RUNSUITE_COMPLETE name=suite_skin_light_perf found=1 selected=17 unmatched=0
 
-I (19493) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (19516) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (19520) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (19520) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (19624) skin_light_perf: test_normal_palette_build min=38183cycles max=38635cycles avg=38188cycles med=38183cycles p95=38218cycles
-I (19625) skin_light_perf: COST cycles_per_build=38183.000
-I (19625) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (19628) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (19651) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (19654) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (19655) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (19869) skin_light_perf: test_skin_only min=350222cycles max=366861cycles avg=352417cycles med=350222cycles p95=364837cycles
-I (19870) skin_light_perf: COST cycles_per_vertex=355.917
-I (19871) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (19873) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (19896) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (19900) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (19901) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (20224) skin_light_perf: test_fused_nl_1 min=620449cycles max=635100cycles avg=622632cycles med=620449cycles p95=635100cycles
-I (20225) skin_light_perf: COST cycles_per_vertex=630.538
-I (20226) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (20228) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (20251) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (20255) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (20256) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (20579) skin_light_perf: test_fused_nl_2 min=643492cycles max=658179cycles avg=645693cycles med=643492cycles p95=658152cycles
-I (20581) skin_light_perf: COST cycles_per_vertex=653.955
-I (20582) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (20584) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (20607) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (20611) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (20612) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (20938) skin_light_perf: test_fused_nl_4 min=687881cycles max=702503cycles avg=690073cycles med=687881cycles p95=702503cycles
-I (20939) skin_light_perf: COST cycles_per_vertex=699.066
-I (20940) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (20942) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (20965) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (20969) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (20970) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (21295) skin_light_perf: test_fused_rsqrt_1 min=654887cycles max=670925cycles avg=657081cycles med=654887cycles p95=669502cycles
-I (21296) skin_light_perf: COST cycles_per_vertex=665.536
-I (21297) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (21299) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (21323) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (21326) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (21327) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (21653) skin_light_perf: test_fused_rsqrt_2 min=677943cycles max=692566cycles avg=680135cycles med=677943cycles p95=692566cycles
-I (21654) skin_light_perf: COST cycles_per_vertex=688.966
-I (21655) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (21657) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (21680) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (21684) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (21685) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (22111) skin_light_perf: test_fused_rsqrt_4 min=723704cycles max=738322cycles avg=728060cycles med=727271cycles p95=738318cycles
-I (22112) skin_light_perf: COST cycles_per_vertex=739.097
-I (22113) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (22115) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (22139) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (22142) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (22143) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (22468) skin_light_perf: test_fused_renormalised_1 min=661064cycles max=676031cycles avg=663262cycles med=661070cycles p95=675676cycles
-I (22469) skin_light_perf: COST cycles_per_vertex=671.819
-I (22475) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (22476) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (22478) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (22501) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (22505) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (22506) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (22832) skin_light_perf: test_fused_renormalised_2 min=683378cycles max=697978cycles avg=685572cycles med=683387cycles p95=697978cycles
-I (22833) skin_light_perf: COST cycles_per_vertex=694.499
-I (22839) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (22840) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (22842) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (22865) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (22869) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (22870) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (23296) skin_light_perf: test_fused_renormalised_4 min=728050cycles max=731632cycles avg=728778cycles med=728060cycles p95=731632cycles
-I (23297) skin_light_perf: COST cycles_per_vertex=739.898
-I (23303) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (23304) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (23306) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (23330) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (23333) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (23334) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (23869) skin_light_perf: test_exact_separate_1 min=969051cycles max=983643cycles avg=972711cycles med=969076cycles p95=983643cycles
-I (23870) skin_light_perf: COST cycles_per_vertex=984.833
-I (23876) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (23877) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (23879) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (23902) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (23906) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (23907) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (24442) skin_light_perf: test_exact_separate_2 min=991330cycles max=1009541cycles avg=996787cycles med=994897cycles p95=1009541cycles
-I (24443) skin_light_perf: COST cycles_per_vertex=1011.074
-I (24449) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (24450) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (24452) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (24475) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (24479) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (24480) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (25017) skin_light_perf: test_exact_separate_4 min=1034613cycles max=1052847cycles avg=1040095cycles med=1038250cycles p95=1052847cycles
-I (25018) skin_light_perf: COST cycles_per_vertex=1055.132
-I (25024) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (25025) skin_light_perf: HEAP released internal_free=92755 largest=51200
+# Capture 210806_runsuite-suite_skin_light_perf-run4_ville-JV-48840.log
+I (46934) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (46959) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (46960) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (46961) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (47063) skin_light_perf: test_normal_palette_build min=5103cycles max=6564cycles avg=5119cycles med=5103cycles p95=5103cycles
+I (47065) skin_light_perf: COST cycles_per_build=5103.000
+I (47065) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:316:test_normal_palette_build:PASS
+I (47068) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (47093) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (47094) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (47095) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (47309) skin_light_perf: test_skin_only min=354364cycles max=368985cycles avg=356553cycles med=354365cycles p95=368985cycles
+I (47311) skin_light_perf: COST cycles_per_vertex=360.127
+I (47312) skin_light_perf: CHECK positions=2d1fd531
+I (47312) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:317:test_skin_only:PASS
+I (47314) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (47339) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (47340) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (47341) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (47666) skin_light_perf: test_fused_direct_1 min=630233cycles max=644853cycles avg=632426cycles med=630233cycles p95=644853cycles
+I (47667) skin_light_perf: COST cycles_per_vertex=640.481
+I (47692) skin_light_perf: CHECK fused_positions=2d1fd531
+I (47692) skin_light_perf: QUALITY max=8 mean=0.246612 checksum=d7c8f9f1
+I (47693) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:318:test_fused_direct_1:PASS
+I (47695) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (47721) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (47721) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (47722) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (48048) skin_light_perf: test_fused_direct_2 min=653080cycles max=667681cycles avg=655271cycles med=653080cycles p95=667681cycles
+I (48049) skin_light_perf: COST cycles_per_vertex=663.699
+I (48074) skin_light_perf: CHECK fused_positions=2d1fd531
+I (48075) skin_light_perf: QUALITY max=9 mean=0.264905 checksum=4a022daf
+I (48075) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:319:test_fused_direct_2:PASS
+I (48078) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (48103) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (48104) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (48105) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (48431) skin_light_perf: test_fused_direct_4 min=697325cycles max=711935cycles avg=699519cycles med=697329cycles p95=711935cycles
+I (48433) skin_light_perf: COST cycles_per_vertex=708.668
+I (48459) skin_light_perf: CHECK fused_positions=2d1fd531
+I (48459) skin_light_perf: QUALITY max=13 mean=0.353997 checksum=81b9718d
+I (48460) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:320:test_fused_direct_4:PASS
+I (48462) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (48488) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (48488) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (48490) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (48921) skin_light_perf: test_fused_table_1 min=842833cycles max=847732cycles avg=843576cycles med=842868cycles p95=846391cycles
+I (48922) skin_light_perf: COST cycles_per_vertex=856.573
+I (48947) skin_light_perf: CHECK fused_positions=2d1fd531
+I (48947) skin_light_perf: QUALITY max=7 mean=0.455623 checksum=8b292e4f
+I (48948) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:321:test_fused_table_1:PASS
+I (48950) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (48975) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (48976) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (48977) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (49409) skin_light_perf: test_fused_table_2 min=842639cycles max=846211cycles avg=843389cycles med=842647cycles p95=846211cycles
+I (49410) skin_light_perf: COST cycles_per_vertex=856.349
+I (49435) skin_light_perf: CHECK fused_positions=2d1fd531
+I (49436) skin_light_perf: QUALITY max=4 mean=0.360095 checksum=ef4089d8
+I (49437) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:322:test_fused_table_2:PASS
+I (49439) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (49464) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (49465) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (49466) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (49897) skin_light_perf: test_fused_table_4 min=842435cycles max=846007cycles avg=843178cycles med=842486cycles p95=846007cycles
+I (49898) skin_light_perf: COST cycles_per_vertex=856.185
+I (49924) skin_light_perf: CHECK fused_positions=2d1fd531
+I (49924) skin_light_perf: QUALITY max=4 mean=0.380420 checksum=68abe462
+I (49925) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:323:test_fused_table_4:PASS
+I (49927) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (49953) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (49953) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (49954) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (50057) skin_light_perf: test_table_build_1 min=30353cycles max=30704cycles avg=30358cycles med=30353cycles p95=30407cycles
+I (50059) skin_light_perf: COST cycles_per_build=30353.000
+I (50059) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:324:test_table_build_1:PASS
+I (50061) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (50087) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (50087) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (50089) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (50192) skin_light_perf: test_table_build_2 min=42331cycles max=42502cycles avg=42335cycles med=42331cycles p95=42389cycles
+I (50194) skin_light_perf: COST cycles_per_build=42331.000
+I (50194) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:325:test_table_build_2:PASS
+I (50196) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (50222) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (50222) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (50224) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (50328) skin_light_perf: test_table_build_4 min=65401cycles max=65521cycles avg=65403cycles med=65401cycles p95=65435cycles
+I (50330) skin_light_perf: COST cycles_per_build=65401.000
+I (50330) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:326:test_table_build_4:PASS
+I (50332) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (50358) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (50358) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (50359) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (50685) skin_light_perf: test_fused_renormalised_1 min=669306cycles max=684743cycles avg=671639cycles med=669306cycles p95=683923cycles
+I (50686) skin_light_perf: COST cycles_per_vertex=680.189
+I (50711) skin_light_perf: CHECK fused_positions=2d1fd531
+I (50711) skin_light_perf: QUALITY max=1 mean=0.184282 checksum=bf090b21
+I (50712) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:327:test_fused_renormalised_1:PASS
+I (50715) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (50740) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (50741) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (50742) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (51068) skin_light_perf: test_fused_renormalised_2 min=691578cycles max=706191cycles avg=693756cycles med=691578cycles p95=706191cycles
+I (51069) skin_light_perf: COST cycles_per_vertex=702.823
+I (51094) skin_light_perf: CHECK fused_positions=2d1fd531
+I (51095) skin_light_perf: QUALITY max=1 mean=0.185637 checksum=58d5cd7a
+I (51096) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:328:test_fused_renormalised_2:PASS
+I (51098) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (51123) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (51124) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (51125) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (51552) skin_light_perf: test_fused_renormalised_4 min=736230cycles max=750810cycles avg=740569cycles med=739779cycles p95=750810cycles
+I (51553) skin_light_perf: COST cycles_per_vertex=751.808
+I (51579) skin_light_perf: CHECK fused_positions=2d1fd531
+I (51580) skin_light_perf: QUALITY max=2 mean=0.180217 checksum=8084bf9f
+I (51580) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:329:test_fused_renormalised_4:PASS
+I (51583) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (51608) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (51609) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (51610) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (54200) skin_light_perf: test_exact_separate_1 min=5605173cycles max=5619781cycles avg=5609521cycles med=5608542cycles p95=5619781cycles
+I (54201) skin_light_perf: COST cycles_per_vertex=5699.738
+I (54226) skin_light_perf: CHECK fused_positions=2d1fd531
+I (54227) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=445b6c55
+I (54227) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:330:test_exact_separate_1:PASS
+I (54229) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (54255) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (54256) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (54257) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (56850) skin_light_perf: test_exact_separate_2 min=5692952cycles max=5711222cycles avg=5697678cycles med=5693388cycles p95=5711216cycles
+I (56851) skin_light_perf: COST cycles_per_vertex=5785.963
+I (56876) skin_light_perf: CHECK fused_positions=2d1fd531
+I (56877) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=ac12c02b
+I (56878) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:331:test_exact_separate_2:PASS
+I (56880) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (56905) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (56906) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (56907) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (59606) skin_light_perf: test_exact_separate_4 min=5871659cycles max=5890295cycles avg=5877273cycles med=5875223cycles p95=5890295cycles
+I (59607) skin_light_perf: COST cycles_per_vertex=5970.755
+I (59633) skin_light_perf: CHECK fused_positions=2d1fd531
+I (59633) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=f9a7a40b
+I (59634) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:332:test_exact_separate_4:PASS
+RUNSUITE_COMPLETE name=suite_skin_light_perf found=1 selected=17 unmatched=0
 
-I (25806) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (25829) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (25833) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (25833) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (25937) skin_light_perf: test_normal_palette_build min=38183cycles max=38218cycles avg=38184cycles med=38183cycles p95=38210cycles
-I (25938) skin_light_perf: COST cycles_per_build=38183.000
-I (25938) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (25941) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (25964) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (25967) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (25968) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (26181) skin_light_perf: test_skin_only min=350221cycles max=350273cycles avg=350227cycles med=350222cycles p95=350273cycles
-I (26183) skin_light_perf: COST cycles_per_vertex=355.917
-I (26184) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (26186) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (26209) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (26213) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (26214) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (26537) skin_light_perf: test_fused_nl_1 min=620449cycles max=635100cycles avg=622633cycles med=620449cycles p95=635100cycles
-I (26538) skin_light_perf: COST cycles_per_vertex=630.538
-I (26539) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (26541) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (26564) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (26568) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (26569) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (26892) skin_light_perf: test_fused_nl_2 min=643492cycles max=658152cycles avg=645688cycles med=643492cycles p95=658152cycles
-I (26894) skin_light_perf: COST cycles_per_vertex=653.955
-I (26895) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (26897) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (26920) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (26924) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (26925) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (27250) skin_light_perf: test_fused_nl_4 min=687881cycles max=702504cycles avg=690072cycles med=687881cycles p95=702503cycles
-I (27252) skin_light_perf: COST cycles_per_vertex=699.066
-I (27253) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (27255) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (27278) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (27282) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (27283) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (27607) skin_light_perf: test_fused_rsqrt_1 min=654887cycles max=669502cycles avg=657067cycles med=654887cycles p95=669502cycles
-I (27608) skin_light_perf: COST cycles_per_vertex=665.536
-I (27609) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (27611) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (27635) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (27638) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (27639) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (27965) skin_light_perf: test_fused_rsqrt_2 min=677941cycles max=692566cycles avg=680135cycles med=677943cycles p95=692566cycles
-I (27966) skin_light_perf: COST cycles_per_vertex=688.966
-I (27967) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (27969) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (27992) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (27996) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (27997) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (28423) skin_light_perf: test_fused_rsqrt_4 min=723704cycles max=738918cycles avg=728067cycles med=727271cycles p95=738318cycles
-I (28424) skin_light_perf: COST cycles_per_vertex=739.097
-I (28425) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (28427) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (28451) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (28454) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (28455) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (28780) skin_light_perf: test_fused_renormalised_1 min=661064cycles max=675676cycles avg=663259cycles med=661070cycles p95=675676cycles
-I (28781) skin_light_perf: COST cycles_per_vertex=671.819
-I (28787) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (28788) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (28790) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (28813) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (28817) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (28818) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (29144) skin_light_perf: test_fused_renormalised_2 min=683378cycles max=697978cycles avg=685610cycles med=683387cycles p95=697978cycles
-I (29145) skin_light_perf: COST cycles_per_vertex=694.499
-I (29151) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (29152) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (29154) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (29178) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (29181) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (29182) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (29608) skin_light_perf: test_fused_renormalised_4 min=728050cycles max=731632cycles avg=728778cycles med=728060cycles p95=731632cycles
-I (29609) skin_light_perf: COST cycles_per_vertex=739.898
-I (29615) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (29616) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (29618) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (29642) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (29645) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (29646) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (30180) skin_light_perf: test_exact_separate_1 min=969008cycles max=984025cycles avg=974504cycles med=972643cycles p95=983645cycles
-I (30181) skin_light_perf: COST cycles_per_vertex=988.458
-I (30187) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (30188) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (30190) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (30213) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (30217) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (30218) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (30753) skin_light_perf: test_exact_separate_2 min=991330cycles max=1024171cycles avg=996924cycles med=994951cycles p95=1009489cycles
-I (30754) skin_light_perf: COST cycles_per_vertex=1011.129
-I (30760) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (30761) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (30763) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (30786) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (30790) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (30791) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (31328) skin_light_perf: test_exact_separate_4 min=1034613cycles max=1053601cycles avg=1040093cycles med=1038258cycles p95=1052858cycles
-I (31329) skin_light_perf: COST cycles_per_vertex=1055.140
-I (31335) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (31336) skin_light_perf: HEAP released internal_free=92755 largest=51200
+# Capture 210819_runsuite-suite_skin_light_perf-run5_ville-JV-48840.log
+I (60329) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (60354) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (60355) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (60356) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (60458) skin_light_perf: test_normal_palette_build min=5103cycles max=5296cycles avg=5104cycles med=5103cycles p95=5103cycles
+I (60460) skin_light_perf: COST cycles_per_build=5103.000
+I (60460) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:316:test_normal_palette_build:PASS
+I (60463) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (60488) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (60489) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (60490) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (60705) skin_light_perf: test_skin_only min=354364cycles max=383534cycles avg=354663cycles med=354364cycles p95=354430cycles
+I (60706) skin_light_perf: COST cycles_per_vertex=360.126
+I (60707) skin_light_perf: CHECK positions=2d1fd531
+I (60707) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:317:test_skin_only:PASS
+I (60709) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (60734) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (60735) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (60736) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (61061) skin_light_perf: test_fused_direct_1 min=630233cycles max=644853cycles avg=632426cycles med=630233cycles p95=644853cycles
+I (61062) skin_light_perf: COST cycles_per_vertex=640.481
+I (61087) skin_light_perf: CHECK fused_positions=2d1fd531
+I (61087) skin_light_perf: QUALITY max=8 mean=0.246612 checksum=d7c8f9f1
+I (61088) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:318:test_fused_direct_1:PASS
+I (61090) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (61116) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (61116) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (61117) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (61443) skin_light_perf: test_fused_direct_2 min=653080cycles max=672603cycles avg=655307cycles med=653080cycles p95=667681cycles
+I (61444) skin_light_perf: COST cycles_per_vertex=663.699
+I (61469) skin_light_perf: CHECK fused_positions=2d1fd531
+I (61470) skin_light_perf: QUALITY max=9 mean=0.264905 checksum=4a022daf
+I (61471) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:319:test_fused_direct_2:PASS
+I (61473) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (61498) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (61499) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (61500) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (61827) skin_light_perf: test_fused_direct_4 min=697325cycles max=711935cycles avg=699519cycles med=697329cycles p95=711935cycles
+I (61828) skin_light_perf: COST cycles_per_vertex=708.668
+I (61854) skin_light_perf: CHECK fused_positions=2d1fd531
+I (61854) skin_light_perf: QUALITY max=13 mean=0.353997 checksum=81b9718d
+I (61855) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:320:test_fused_direct_4:PASS
+I (61857) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (61883) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (61883) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (61885) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (62316) skin_light_perf: test_fused_table_1 min=842833cycles max=857420cycles avg=847165cycles med=846351cycles p95=857420cycles
+I (62317) skin_light_perf: COST cycles_per_vertex=860.113
+I (62342) skin_light_perf: CHECK fused_positions=2d1fd531
+I (62342) skin_light_perf: QUALITY max=7 mean=0.455623 checksum=8b292e4f
+I (62343) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:321:test_fused_table_1:PASS
+I (62345) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (62371) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (62371) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (62373) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (62804) skin_light_perf: test_fused_table_2 min=842639cycles max=858859cycles avg=847005cycles med=846165cycles p95=857297cycles
+I (62805) skin_light_perf: COST cycles_per_vertex=859.924
+I (62830) skin_light_perf: CHECK fused_positions=2d1fd531
+I (62831) skin_light_perf: QUALITY max=4 mean=0.360095 checksum=ef4089d8
+I (62832) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:322:test_fused_table_2:PASS
+I (62834) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (62859) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (62860) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (62861) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (63293) skin_light_perf: test_fused_table_4 min=842435cycles max=847398cycles avg=843227cycles med=842486cycles p95=846007cycles
+I (63294) skin_light_perf: COST cycles_per_vertex=856.185
+I (63320) skin_light_perf: CHECK fused_positions=2d1fd531
+I (63320) skin_light_perf: QUALITY max=4 mean=0.380420 checksum=68abe462
+I (63321) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:323:test_fused_table_4:PASS
+I (63323) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (63349) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (63349) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (63351) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (63453) skin_light_perf: test_table_build_1 min=30353cycles max=30670cycles avg=30359cycles med=30353cycles p95=30407cycles
+I (63455) skin_light_perf: COST cycles_per_build=30353.000
+I (63455) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:324:test_table_build_1:PASS
+I (63457) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (63483) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (63483) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (63485) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (63588) skin_light_perf: test_table_build_2 min=42331cycles max=42408cycles avg=42334cycles med=42331cycles p95=42389cycles
+I (63590) skin_light_perf: COST cycles_per_build=42331.000
+I (63590) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:325:test_table_build_2:PASS
+I (63592) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (63618) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (63618) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (63620) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (63725) skin_light_perf: test_table_build_4 min=65401cycles max=94675cycles avg=65695cycles med=65401cycles p95=65435cycles
+I (63726) skin_light_perf: COST cycles_per_build=65401.000
+I (63726) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:326:test_table_build_4:PASS
+I (63728) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (63754) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (63754) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (63755) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (64081) skin_light_perf: test_fused_renormalised_1 min=669306cycles max=683923cycles avg=671484cycles med=669306cycles p95=683923cycles
+I (64082) skin_light_perf: COST cycles_per_vertex=680.189
+I (64107) skin_light_perf: CHECK fused_positions=2d1fd531
+I (64108) skin_light_perf: QUALITY max=1 mean=0.184282 checksum=bf090b21
+I (64108) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:327:test_fused_renormalised_1:PASS
+I (64111) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (64136) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (64137) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (64138) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (64465) skin_light_perf: test_fused_renormalised_2 min=691578cycles max=707590cycles avg=693916cycles med=691578cycles p95=706191cycles
+I (64466) skin_light_perf: COST cycles_per_vertex=702.823
+I (64491) skin_light_perf: CHECK fused_positions=2d1fd531
+I (64492) skin_light_perf: QUALITY max=1 mean=0.185637 checksum=58d5cd7a
+I (64493) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:328:test_fused_renormalised_2:PASS
+I (64495) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (64520) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (64521) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (64522) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (64949) skin_light_perf: test_fused_renormalised_4 min=736226cycles max=739796cycles avg=736951cycles med=736230cycles p95=739796cycles
+I (64950) skin_light_perf: COST cycles_per_vertex=748.201
+I (64976) skin_light_perf: CHECK fused_positions=2d1fd531
+I (64977) skin_light_perf: QUALITY max=2 mean=0.180217 checksum=8084bf9f
+I (64977) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:329:test_fused_renormalised_4:PASS
+I (64980) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (65005) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (65006) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (65007) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (67597) skin_light_perf: test_exact_separate_1 min=5604910cycles max=5620866cycles avg=5606023cycles med=5605166cycles p95=5608804cycles
+I (67598) skin_light_perf: COST cycles_per_vertex=5696.307
+I (67623) skin_light_perf: CHECK fused_positions=2d1fd531
+I (67623) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=445b6c55
+I (67624) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:330:test_exact_separate_1:PASS
+I (67626) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (67652) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (67653) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (67654) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (70247) skin_light_perf: test_exact_separate_2 min=5693067cycles max=5707775cycles avg=5696811cycles med=5693231cycles p95=5707775cycles
+I (70248) skin_light_perf: COST cycles_per_vertex=5785.804
+I (70273) skin_light_perf: CHECK fused_positions=2d1fd531
+I (70274) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=ac12c02b
+I (70275) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:331:test_exact_separate_2:PASS
+I (70277) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (70302) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (70303) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (70304) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (73003) skin_light_perf: test_exact_separate_4 min=5871672cycles max=5890980cycles avg=5875678cycles med=5871888cycles p95=5886615cycles
+I (73004) skin_light_perf: COST cycles_per_vertex=5967.366
+I (73030) skin_light_perf: CHECK fused_positions=2d1fd531
+I (73031) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=f9a7a40b
+I (73031) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:332:test_exact_separate_4:PASS
+RUNSUITE_COMPLETE name=suite_skin_light_perf found=1 selected=17 unmatched=0
 
-I (32064) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (32087) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (32091) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (32091) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (32195) skin_light_perf: test_normal_palette_build min=38183cycles max=38593cycles avg=38188cycles med=38183cycles p95=38218cycles
-I (32196) skin_light_perf: COST cycles_per_build=38183.000
-I (32197) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (32199) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (32222) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (32226) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (32226) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (32441) skin_light_perf: test_skin_only min=350222cycles max=364837cycles avg=352410cycles med=350222cycles p95=364837cycles
-I (32442) skin_light_perf: COST cycles_per_vertex=355.917
-I (32443) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (32445) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (32468) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (32472) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (32473) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (32796) skin_light_perf: test_fused_nl_1 min=620449cycles max=635100cycles avg=622631cycles med=620449cycles p95=635100cycles
-I (32797) skin_light_perf: COST cycles_per_vertex=630.538
-I (32798) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (32800) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (32823) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (32827) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (32828) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (33152) skin_light_perf: test_fused_nl_2 min=643492cycles max=658152cycles avg=645673cycles med=643492cycles p95=658152cycles
-I (33153) skin_light_perf: COST cycles_per_vertex=653.955
-I (33154) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (33156) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (33179) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (33183) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (33184) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (33509) skin_light_perf: test_fused_nl_4 min=687881cycles max=702503cycles avg=690072cycles med=687881cycles p95=702503cycles
-I (33511) skin_light_perf: COST cycles_per_vertex=699.066
-I (33512) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (33514) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (33537) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (33541) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (33542) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (33867) skin_light_perf: test_fused_rsqrt_1 min=654887cycles max=669502cycles avg=657081cycles med=654887cycles p95=669502cycles
-I (33868) skin_light_perf: COST cycles_per_vertex=665.536
-I (33869) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (33871) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (33895) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (33898) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (33899) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (34225) skin_light_perf: test_fused_rsqrt_2 min=677941cycles max=692566cycles avg=680135cycles med=677943cycles p95=692566cycles
-I (34226) skin_light_perf: COST cycles_per_vertex=688.966
-I (34227) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (34229) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (34253) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (34256) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (34257) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (34683) skin_light_perf: test_fused_rsqrt_4 min=723704cycles max=738918cycles avg=728065cycles med=727271cycles p95=738318cycles
-I (34684) skin_light_perf: COST cycles_per_vertex=739.097
-I (34685) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (34687) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (34711) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (34714) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (34715) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (35040) skin_light_perf: test_fused_renormalised_1 min=661064cycles max=675676cycles avg=663259cycles med=661070cycles p95=675676cycles
-I (35041) skin_light_perf: COST cycles_per_vertex=671.819
-I (35047) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (35048) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (35050) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (35073) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (35077) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (35078) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (35404) skin_light_perf: test_fused_renormalised_2 min=683378cycles max=697978cycles avg=685609cycles med=683387cycles p95=697978cycles
-I (35405) skin_light_perf: COST cycles_per_vertex=694.499
-I (35411) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (35412) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (35414) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (35438) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (35441) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (35442) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (35868) skin_light_perf: test_fused_renormalised_4 min=728050cycles max=742745cycles avg=728926cycles med=728060cycles p95=731632cycles
-I (35869) skin_light_perf: COST cycles_per_vertex=739.898
-I (35876) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (35876) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (35879) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (35902) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (35905) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (35906) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (36441) skin_light_perf: test_exact_separate_1 min=969076cycles max=972790cycles avg=970864cycles med=972640cycles p95=972643cycles
-I (36442) skin_light_perf: COST cycles_per_vertex=988.455
-I (36448) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (36449) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (36451) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (36474) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (36478) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (36479) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (37014) skin_light_perf: test_exact_separate_2 min=991330cycles max=1005972cycles avg=994985cycles med=991351cycles p95=1005930cycles
-I (37015) skin_light_perf: COST cycles_per_vertex=1007.471
-I (37021) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (37022) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (37024) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (37047) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (37051) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (37052) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (37589) skin_light_perf: test_exact_separate_4 min=1034613cycles max=1049954cycles avg=1038290cycles med=1034692cycles p95=1049211cycles
-I (37590) skin_light_perf: COST cycles_per_vertex=1051.516
-I (37596) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (37597) skin_light_perf: HEAP released internal_free=92755 largest=51200
-
-I (38353) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (38376) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (38380) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (38381) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (38484) skin_light_perf: test_normal_palette_build min=38183cycles max=38417cycles avg=38186cycles med=38183cycles p95=38218cycles
-I (38485) skin_light_perf: COST cycles_per_build=38183.000
-I (38485) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (38488) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (38511) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (38515) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (38515) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (38729) skin_light_perf: test_skin_only min=350221cycles max=351615cycles avg=350242cycles med=350222cycles p95=350273cycles
-I (38731) skin_light_perf: COST cycles_per_vertex=355.917
-I (38732) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (38734) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (38757) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (38761) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (38762) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (39085) skin_light_perf: test_fused_nl_1 min=620449cycles max=635835cycles avg=622640cycles med=620449cycles p95=635100cycles
-I (39086) skin_light_perf: COST cycles_per_vertex=630.538
-I (39087) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (39089) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (39112) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (39116) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (39117) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (39440) skin_light_perf: test_fused_nl_2 min=643482cycles max=658152cycles avg=645673cycles med=643492cycles p95=658152cycles
-I (39442) skin_light_perf: COST cycles_per_vertex=653.955
-I (39443) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (39445) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (39468) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (39472) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (39473) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (39799) skin_light_perf: test_fused_nl_4 min=687881cycles max=703027cycles avg=690078cycles med=687881cycles p95=702503cycles
-I (39800) skin_light_perf: COST cycles_per_vertex=699.066
-I (39801) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (39803) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (39826) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (39830) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (39831) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (40156) skin_light_perf: test_fused_rsqrt_1 min=654887cycles max=670916cycles avg=657226cycles med=654887cycles p95=669502cycles
-I (40157) skin_light_perf: COST cycles_per_vertex=665.536
-I (40158) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (40160) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (40184) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (40187) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (40188) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (40514) skin_light_perf: test_fused_rsqrt_2 min=677941cycles max=697513cycles avg=680171cycles med=677943cycles p95=692566cycles
-I (40515) skin_light_perf: COST cycles_per_vertex=688.966
-I (40516) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (40518) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (40542) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (40545) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (40546) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (40972) skin_light_perf: test_fused_rsqrt_4 min=723704cycles max=738878cycles avg=724595cycles med=723713cycles p95=727317cycles
-I (40973) skin_light_perf: COST cycles_per_vertex=735.481
-I (40974) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (40976) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (41000) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (41003) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (41004) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (41329) skin_light_perf: test_fused_renormalised_1 min=661064cycles max=675676cycles avg=663259cycles med=661070cycles p95=675676cycles
-I (41330) skin_light_perf: COST cycles_per_vertex=671.819
-I (41336) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (41337) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (41339) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (41362) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (41366) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (41367) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (41693) skin_light_perf: test_fused_renormalised_2 min=683378cycles max=697978cycles avg=685572cycles med=683387cycles p95=697978cycles
-I (41694) skin_light_perf: COST cycles_per_vertex=694.499
-I (41700) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (41701) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (41703) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (41726) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (41730) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (41731) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (42157) skin_light_perf: test_fused_renormalised_4 min=728060cycles max=746196cycles avg=732399cycles med=728060cycles p95=746196cycles
-I (42158) skin_light_perf: COST cycles_per_vertex=739.898
-I (42164) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (42165) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (42167) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (42190) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (42194) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (42195) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
-I (42730) skin_light_perf: test_exact_separate_1 min=969076cycles max=983645cycles avg=974499cycles med=972637cycles p95=983645cycles
-I (42731) skin_light_perf: COST cycles_per_vertex=988.452
-I (42737) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=bf090b21
-I (42738) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (42740) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (42763) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (42767) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (42768) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
-I (43303) skin_light_perf: test_exact_separate_2 min=991330cycles max=1010216cycles avg=996779cycles med=994914cycles p95=1009478cycles
-I (43304) skin_light_perf: COST cycles_per_vertex=1011.091
-I (43310) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=58d5cd7a
-I (43311) skin_light_perf: HEAP released internal_free=92755 largest=51200
-I (43313) skin_light_perf: HEAP before internal_free=92755 largest=51200
-I (43336) skin_light_perf: RAM renderer_colors=2952 renderer_normals=792 renderer_light_copy=0 scene_transfer_internal=1024 scene_world_lights_psram=116
-I (43340) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
-I (43341) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
-I (43878) skin_light_perf: test_exact_separate_4 min=1034613cycles max=1052858cycles avg=1040099cycles med=1038258cycles p95=1052858cycles
-I (43879) skin_light_perf: COST cycles_per_vertex=1055.140
-I (43885) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=8084bf9f
-I (43886) skin_light_perf: HEAP released internal_free=92755 largest=51200
+# Capture 210832_runsuite-suite_skin_light_perf-run6_ville-JV-48840.log
+I (73710) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (73735) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (73736) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (73737) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (73839) skin_light_perf: test_normal_palette_build min=5103cycles max=5195cycles avg=5103cycles med=5103cycles p95=5103cycles
+I (73841) skin_light_perf: COST cycles_per_build=5103.000
+I (73841) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:316:test_normal_palette_build:PASS
+I (73844) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (73869) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (73870) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (73871) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (74085) skin_light_perf: test_skin_only min=354364cycles max=368985cycles avg=356567cycles med=354365cycles p95=368985cycles
+I (74087) skin_light_perf: COST cycles_per_vertex=360.127
+I (74088) skin_light_perf: CHECK positions=2d1fd531
+I (74088) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:317:test_skin_only:PASS
+I (74090) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (74115) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (74116) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (74117) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (74440) skin_light_perf: test_fused_direct_1 min=630233cycles max=644853cycles avg=632412cycles med=630233cycles p95=644853cycles
+I (74442) skin_light_perf: COST cycles_per_vertex=640.481
+I (74467) skin_light_perf: CHECK fused_positions=2d1fd531
+I (74467) skin_light_perf: QUALITY max=8 mean=0.246612 checksum=d7c8f9f1
+I (74468) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:318:test_fused_direct_1:PASS
+I (74470) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (74495) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (74496) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (74497) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (74822) skin_light_perf: test_fused_direct_2 min=653080cycles max=667681cycles avg=655257cycles med=653080cycles p95=667681cycles
+I (74823) skin_light_perf: COST cycles_per_vertex=663.699
+I (74848) skin_light_perf: CHECK fused_positions=2d1fd531
+I (74849) skin_light_perf: QUALITY max=9 mean=0.264905 checksum=4a022daf
+I (74850) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:319:test_fused_direct_2:PASS
+I (74852) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (74877) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (74878) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (74879) skin_light_perf: RAM mode=direct renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (75206) skin_light_perf: test_fused_direct_4 min=697325cycles max=711935cycles avg=699519cycles med=697329cycles p95=711935cycles
+I (75207) skin_light_perf: COST cycles_per_vertex=708.668
+I (75233) skin_light_perf: CHECK fused_positions=2d1fd531
+I (75233) skin_light_perf: QUALITY max=13 mean=0.353997 checksum=81b9718d
+I (75234) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:320:test_fused_direct_4:PASS
+I (75236) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (75262) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (75262) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (75264) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (75695) skin_light_perf: test_fused_table_1 min=842796cycles max=857513cycles avg=846479cycles med=842833cycles p95=857513cycles
+I (75696) skin_light_perf: COST cycles_per_vertex=856.538
+I (75721) skin_light_perf: CHECK fused_positions=2d1fd531
+I (75721) skin_light_perf: QUALITY max=7 mean=0.455623 checksum=8b292e4f
+I (75722) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:321:test_fused_table_1:PASS
+I (75724) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (75750) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (75750) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (75752) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (76183) skin_light_perf: test_fused_table_2 min=842639cycles max=857289cycles avg=846283cycles med=842639cycles p95=857289cycles
+I (76184) skin_light_perf: COST cycles_per_vertex=856.340
+I (76209) skin_light_perf: CHECK fused_positions=2d1fd531
+I (76210) skin_light_perf: QUALITY max=4 mean=0.360095 checksum=ef4089d8
+I (76211) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:322:test_fused_table_2:PASS
+I (76213) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (76238) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (76239) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (76240) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (76672) skin_light_perf: test_fused_table_4 min=842435cycles max=857073cycles avg=846815cycles med=846007cycles p95=857073cycles
+I (76673) skin_light_perf: COST cycles_per_vertex=859.763
+I (76699) skin_light_perf: CHECK fused_positions=2d1fd531
+I (76699) skin_light_perf: QUALITY max=4 mean=0.380420 checksum=68abe462
+I (76700) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:323:test_fused_table_4:PASS
+I (76702) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (76728) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (76728) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (76730) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (76832) skin_light_perf: test_table_build_1 min=30353cycles max=30769cycles avg=30360cycles med=30353cycles p95=30407cycles
+I (76834) skin_light_perf: COST cycles_per_build=30353.000
+I (76834) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:324:test_table_build_1:PASS
+I (76836) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (76862) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (76862) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (76864) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (76967) skin_light_perf: test_table_build_2 min=42331cycles max=42390cycles avg=42333cycles med=42331cycles p95=42389cycles
+I (76969) skin_light_perf: COST cycles_per_build=42331.000
+I (76969) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:325:test_table_build_2:PASS
+I (76971) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (76997) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (76997) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (76999) skin_light_perf: RAM mode=table renderer_bytes=3744 scene_bytes=2048 renderer_colors=2952 renderer_normals=792 scene_table=1024 scene_metadata_psram=124
+I (77103) skin_light_perf: test_table_build_4 min=65401cycles max=66859cycles avg=65419cycles med=65401cycles p95=65435cycles
+I (77105) skin_light_perf: COST cycles_per_build=65401.000
+I (77105) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:326:test_table_build_4:PASS
+I (77107) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (77133) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (77133) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (77134) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (77460) skin_light_perf: test_fused_renormalised_1 min=669306cycles max=683923cycles avg=671498cycles med=669306cycles p95=683923cycles
+I (77461) skin_light_perf: COST cycles_per_vertex=680.189
+I (77486) skin_light_perf: CHECK fused_positions=2d1fd531
+I (77486) skin_light_perf: QUALITY max=1 mean=0.184282 checksum=bf090b21
+I (77487) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:327:test_fused_renormalised_1:PASS
+I (77490) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (77515) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (77516) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (77517) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (77843) skin_light_perf: test_fused_renormalised_2 min=691578cycles max=711144cycles avg=693806cycles med=691578cycles p95=706191cycles
+I (77844) skin_light_perf: COST cycles_per_vertex=702.823
+I (77869) skin_light_perf: CHECK fused_positions=2d1fd531
+I (77870) skin_light_perf: QUALITY max=1 mean=0.185637 checksum=58d5cd7a
+I (77871) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:328:test_fused_renormalised_2:PASS
+I (77873) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (77898) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (77899) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (77900) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (78327) skin_light_perf: test_fused_renormalised_4 min=736230cycles max=750845cycles avg=739866cycles med=736230cycles p95=750845cycles
+I (78328) skin_light_perf: COST cycles_per_vertex=748.201
+I (78354) skin_light_perf: CHECK fused_positions=2d1fd531
+I (78355) skin_light_perf: QUALITY max=2 mean=0.180217 checksum=8084bf9f
+I (78355) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:329:test_fused_renormalised_4:PASS
+I (78358) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (78383) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (78384) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=1
+I (78385) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (80975) skin_light_perf: test_exact_separate_1 min=5605166cycles max=5621226cycles avg=5609072cycles med=5605409cycles p95=5619747cycles
+I (80976) skin_light_perf: COST cycles_per_vertex=5696.554
+I (81001) skin_light_perf: CHECK fused_positions=2d1fd531
+I (81001) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=445b6c55
+I (81002) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:330:test_exact_separate_1:PASS
+I (81004) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (81030) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (81031) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=2
+I (81031) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (83625) skin_light_perf: test_exact_separate_2 min=5693067cycles max=5709178cycles avg=5693970cycles med=5693180cycles p95=5696534cycles
+I (83626) skin_light_perf: COST cycles_per_vertex=5785.752
+I (83651) skin_light_perf: CHECK fused_positions=2d1fd531
+I (83652) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=ac12c02b
+I (83653) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:331:test_exact_separate_2:PASS
+I (83655) skin_light_perf: HEAP before internal_free=92771 largest=51200
+I (83680) skin_light_perf: HEAP allocated internal_free=72599 largest=31744
+I (83681) skin_light_perf: POSE clip=gallop seconds=0.200 vertices=984 influences=2 lights=4
+I (83682) skin_light_perf: RAM mode=renormalised renderer_bytes=3744 scene_bytes=1024 renderer_colors=2952 renderer_normals=792 scene_table=0 scene_metadata_psram=124
+I (86381) skin_light_perf: test_exact_separate_4 min=5871659cycles max=5890458cycles avg=5877412cycles med=5875223cycles p95=5890295cycles
+I (86382) skin_light_perf: COST cycles_per_vertex=5970.755
+I (86408) skin_light_perf: CHECK fused_positions=2d1fd531
+I (86409) skin_light_perf: QUALITY max=0 mean=0.000000 checksum=f9a7a40b
+I (86409) skin_light_perf: HEAP released internal_free=92771 largest=51200
+:332:test_exact_separate_4:PASS
+RUNSUITE_COMPLETE name=suite_skin_light_perf found=1 selected=17 unmatched=0
