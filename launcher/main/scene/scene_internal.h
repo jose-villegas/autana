@@ -104,7 +104,7 @@ typedef struct {
     mat4f_t* palette;
     void* internal_storage;
     uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
-    r3d_skin_lights_t lights;
+    r3d_skin_lights_t* lights;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -113,6 +113,7 @@ struct scene {
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     int animator_count, skeleton_animator_count;
     int light_count;
+    bool lights_dirty;
     scene_light_t* lights;
     vec3f_t ambient_color;
     float ambient_intensity, tonemap_white, transfer_white;

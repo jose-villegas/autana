@@ -61,7 +61,7 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 static const char* TAG = "skin_light_perf";
 static const vec3f_t DIRECTIONS[] = {
     {0.45F, 0.80F, 0.40F}, {-0.70F, 0.35F, 0.30F}, {0.10F, 0.40F, -0.90F}, {0, -1, 0.15F}};
-static const vec3f_t COLOURS[] = {
+static const vec3f_t COLORS[] = {
     {0.80F, 0.72F, 0.60F}, {0.25F, 0.32F, 0.45F}, {0.35F, 0.35F, 0.30F}, {0.20F, 0.16F, 0.10F}};
 
 typedef struct {
@@ -154,7 +154,7 @@ fixture(int lights) {
     f->lights.ambient = (vec3f_t){0.22F, 0.22F, 0.25F};
     for (int i = 0; i < lights; i++) {
         f->lights.direction[i] = vec3f_normalize(DIRECTIONS[i]);
-        f->lights.colour[i] = COLOURS[i];
+        f->lights.color[i] = COLORS[i];
     }
     r3d_skin_light_transfer_build(0.0F, f->transfer);
     f->lights.transfer = f->transfer;
@@ -187,10 +187,47 @@ reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
     light_evaluate(n, &f->lights, f->bind.colors[vertex], out);
 }
 
-typedef enum { SKIN, FUSED, EXACT_SEPARATE } kernel_t;
+typedef enum { SKIN, FUSED_NL, FUSED_RSQRT, FUSED, EXACT_SEPARATE } kernel_t;
+
+static kernel_t stage;
+
+/* Reuse the shipped vertex transform and bounds loop; diagnostic stages add no switches to that kernel. */
+static void
+stage_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t albedo[3], uint8_t out[3]) {
+    (void)albedo;
+    const vec3f_t sum = light_irradiance(stage == FUSED_RSQRT ? light_renormalise(normal) : normal, lights);
+    const float channels[] = {sum.x, sum.y, sum.z};
+    for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
+        out[k] = (uint8_t)mathf_clamp(channels[k] * R3D_SKIN_LIGHT_BYTE_SCALE + 0.5F, 0.0F, R3D_SKIN_LIGHT_BYTE_SCALE);
+    }
+}
+
+#define light_evaluate            stage_evaluate
+#define light_renormalise(normal) (normal)
+#define r3d_skin_output_bytes     stage_output_bytes
+#define r3d_skin_output_init      stage_output_init
+#define r3d_skin_palette          stage_palette
+#define r3d_skin_clusters         stage_clusters
+#define r3d_skin_clusters_lit     stage_clusters_lit
+#define r3d_skin_refit_nodes      stage_refit_nodes
+#include "render/skin/r3d_skinning.c"
+#undef light_evaluate
+#undef light_renormalise
+#undef r3d_skin_output_bytes
+#undef r3d_skin_output_init
+#undef r3d_skin_palette
+#undef r3d_skin_clusters
+#undef r3d_skin_clusters_lit
+#undef r3d_skin_refit_nodes
+#undef LIT_RANGE
 
 static void
 kernel(fixture_t* f, kernel_t kind) {
+    if (kind == FUSED_NL || kind == FUSED_RSQRT) {
+        stage = kind;
+        stage_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights, f->light);
+        return;
+    }
     if (kind == FUSED) {
         r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights,
                               f->light);
@@ -208,7 +245,7 @@ static void
 quality(fixture_t* f, kernel_t kind) {
     const size_t positions = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
     const uint32_t position_crc = asset_crc32(f->posed.positions, positions);
-    if (kind == SKIN) {
+    if (kind == SKIN || kind == FUSED_NL || kind == FUSED_RSQRT) {
         ESP_LOGI(TAG, "CHECK positions=%08" PRIx32, position_crc);
         return;
     }
@@ -267,6 +304,8 @@ measure(kernel_t kind, int lights, const char* label) {
     PERF_TEST(test_##prefix##_2, kind, 2)                                                                              \
     PERF_TEST(test_##prefix##_4, kind, 4)
 PERF_TEST(test_skin_only, SKIN, 1)
+LIGHT_COUNT_TESTS(fused_nl, FUSED_NL)
+LIGHT_COUNT_TESTS(fused_rsqrt, FUSED_RSQRT)
 LIGHT_COUNT_TESTS(fused_renormalised, FUSED)
 LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 #undef LIGHT_COUNT_TESTS
@@ -275,6 +314,12 @@ LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 void
 suite_skin_light_perf(void) {
     RUN_TEST(test_skin_only);
+    RUN_TEST(test_fused_nl_1);
+    RUN_TEST(test_fused_nl_2);
+    RUN_TEST(test_fused_nl_4);
+    RUN_TEST(test_fused_rsqrt_1);
+    RUN_TEST(test_fused_rsqrt_2);
+    RUN_TEST(test_fused_rsqrt_4);
     RUN_TEST(test_fused_renormalised_1);
     RUN_TEST(test_fused_renormalised_2);
     RUN_TEST(test_fused_renormalised_4);

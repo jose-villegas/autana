@@ -1,11 +1,12 @@
 /* Host comparison operations preserve the measured linear-light variants. */
 #pragma once
 #include <assert.h>
-#include "math/linear/vec3f_octahedral_recip.h"
+#include "math/linear/vec3f.h"
 #include "math/scalar/mathf_round.h"
 #include "render/skin/r3d_skin_light_internal.h"
 #include "skin_light_baseline.h"
 
+/* light_normal records the normal transform of the measured host variant. */
 static inline __attribute__((always_inline)) vec3f_t
 light_normal(const mat4f_t* palette, const uint8_t* joints, const float* weights, int influences, vec3f_t normal) {
     vec3f_t rows[R3D_SKIN_NORMAL_WIDTH];
@@ -39,13 +40,13 @@ axis_cell(int size, float u, unsigned* weight) {
     const float centres = 0.5F * (float)size;
     const float x = mathf_clamp_finite(u * centres + centres - 0.5F, 0.0F, (float)(size - 1));
     const int cell = (int)x < size - 2 ? (int)x : size - 2;
-    *weight = (unsigned)((x - (float)cell) * R3D_SKIN_LIGHT_WEIGHT_ONE);
+    *weight = (unsigned)((x - (float)cell) * SKIN_LIGHT_BASELINE_WEIGHT_ONE);
     return cell;
 }
 
 static inline __attribute__((always_inline)) void
-light_bilinear(int size, const uint8_t (*rgb)[R3D_SKIN_LIGHT_CELL_BYTES], vec3f_t normal, uint8_t out[3]) {
-    const vec2f_t p = vec3f_octahedral_recip(normal);
+light_bilinear(int size, const uint8_t (*rgb)[SKIN_LIGHT_BASELINE_CELL_BYTES], vec3f_t normal, uint8_t out[3]) {
+    const vec2f_t p = vec3f_octahedral(normal);
     unsigned wx, wy;
     const int x = axis_cell(size, p.x, &wx);
     const int y = axis_cell(size, p.y, &wy);
@@ -53,11 +54,11 @@ light_bilinear(int size, const uint8_t (*rgb)[R3D_SKIN_LIGHT_CELL_BYTES], vec3f_
     const uint8_t* b = rgb[y * size + x + 1];
     const uint8_t* c = rgb[(y + 1) * size + x];
     const uint8_t* d = rgb[(y + 1) * size + x + 1];
-    const unsigned rounding = 1U << (2 * R3D_SKIN_LIGHT_WEIGHT_BITS - 1);
+    const unsigned rounding = 1U << (2 * SKIN_LIGHT_BASELINE_WEIGHT_BITS - 1);
     for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-        const unsigned top = a[k] * (R3D_SKIN_LIGHT_WEIGHT_ONE - wx) + b[k] * wx;
-        const unsigned bottom = c[k] * (R3D_SKIN_LIGHT_WEIGHT_ONE - wx) + d[k] * wx;
-        out[k] = (uint8_t)((top * (R3D_SKIN_LIGHT_WEIGHT_ONE - wy) + bottom * wy + rounding)
-                           >> (2 * R3D_SKIN_LIGHT_WEIGHT_BITS));
+        const unsigned top = a[k] * (SKIN_LIGHT_BASELINE_WEIGHT_ONE - wx) + b[k] * wx;
+        const unsigned bottom = c[k] * (SKIN_LIGHT_BASELINE_WEIGHT_ONE - wx) + d[k] * wx;
+        out[k] = (uint8_t)((top * (SKIN_LIGHT_BASELINE_WEIGHT_ONE - wy) + bottom * wy + rounding)
+                           >> (2 * SKIN_LIGHT_BASELINE_WEIGHT_BITS));
     }
 }
