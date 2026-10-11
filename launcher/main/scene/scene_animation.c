@@ -32,7 +32,7 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     for (int e = 0; e < entities; e++) {
         anim_component_ref_t* fields = out.components + (e * 2);
         fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
-        out.targets[e] = (anim_target_t){scene->asset.names[e], fields, 1, &scene->flags[e], SCENE_FLAG_DIRTY};
+        out.targets[e] = (anim_target_t){scene->asset.names[e], fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
     }
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;
@@ -224,6 +224,9 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (status != ASSET_OK) {
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
     }
+    if (scene->light_count > 0 && next.bind.colors == NULL) {
+        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO));
+    }
     const size_t size = r3d_skin_output_bytes(&next.bind);
     size_t end = size;
 
@@ -237,6 +240,10 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
+    if (scene->light_count > 0 && !scene_skin_light_allocate(&next)) {
+        memory_free(next.internal_storage);
+        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+    }
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
     next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
     next.palette = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.palette);
@@ -244,9 +251,16 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
     r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
+    scene_skin_light_table_release(scene, entity);
+    memory_free(scene->skinned_renderers[entity].light_storage);
     memory_free(scene->skinned_renderers[entity].internal_storage);
     scene->skinned_renderers[entity] = next;
     scene->renderers[renderer].mesh = next.output.mesh;
+    if (scene->light_count > 0) {
+        scene->skinned_renderers[entity].output.mesh.colors = next.colors;
+        scene->renderers[renderer].mesh.colors = next.colors;
+    }
+    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, id));
 }
 
@@ -315,6 +329,8 @@ void
 scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
         memory_free(scene->animators[e].storage);
+        scene_skin_light_table_release(scene, (scene_entity_t)e);
+        memory_free(scene->skinned_renderers[e].light_storage);
         memory_free(scene->skinned_renderers[e].internal_storage);
         scene->animators[e] = (scene_animator_t){0};
         scene->skinned_renderers[e] = (scene_skinned_renderer_t){0};
@@ -371,6 +387,13 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
 }
 
+static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {
+    [SCENE_SKIN_LIGHT_DIRECT] = r3d_skin_clusters_lit,
+    [SCENE_SKIN_LIGHT_RENORMALISED] = r3d_skin_clusters_renormalised,
+    [SCENE_SKIN_LIGHT_TABLE] = r3d_skin_clusters_table,
+};
+_Static_assert(sizeof LIGHT_KERNELS / sizeof LIGHT_KERNELS[0] == SCENE_SKIN_LIGHT_TABLE + 1, "lighting mode count");
+
 void
 scene_skin_range(scene_t* scene, int first, int count) {
     int offset = 0;
@@ -382,7 +405,12 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int clusters = skin->bind.cluster_count;
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
-        r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
+        if (scene->light_count > 0 && skin->lighting_valid) {
+            LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
+                                            skin->normal_palette, &scene->world_lights, skin->colors);
+        } else {
+            r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
+        }
         offset += clusters;
     }
 }
@@ -423,12 +451,21 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
     }
 }
 
-void
-scene_animation_step(scene_t* scene, uint32_t dt_ms) {
-    if (scene->animator_count == 0) {
-        return;
+static bool
+skin_lights_changed(const scene_t* scene) {
+    const int entities = scene->asset.entity_count;
+    if (scene->light_count == 0) {
+        return false;
     }
-    animate_entities(scene, dt_ms);
+    bool lights_dirty = false;
+    for (int e = 0; e < entities; e++) {
+        lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE && (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
+    }
+    return lights_dirty;
+}
+
+static int
+skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
     for (int e = 0; e < entities; e++) {
@@ -437,13 +474,41 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
             && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ENABLED)) {
             apply_property(scene, animator, dt_ms);
         }
-        clusters += scene->skinned_renderers[e].internal_storage == NULL || !animator->posed
-                        ? 0
-                        : scene->skinned_renderers[e].bind.cluster_count;
     }
+    const bool lights_dirty = skin_lights_changed(scene);
+    scene->light_table_dirty |= lights_dirty;
+    for (int e = 0; e < entities; e++) {
+        scene_animator_t* animator = &scene->animators[e];
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        if (!(scene->flags[e] & SCENE_FLAG_ENABLED)) {
+            continue;
+        }
+        if (skin->internal_storage != NULL && scene->light_count > 0) {
+            animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
+        }
+        if (skin->internal_storage != NULL && animator->posed) {
+            scene_skin_light_prepare(scene, (scene_entity_t)e);
+            clusters += skin->bind.cluster_count;
+        }
+    }
+    for (int e = 0; e < entities; e++) {
+        scene->flags[e] &= (uint8_t)~SCENE_FLAG_SKIN_DIRTY;
+    }
+    return clusters;
+}
+
+void
+scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+    if (scene->animator_count == 0) {
+        return;
+    }
+    animate_entities(scene, dt_ms);
+    const int clusters = skin_stage_prepare(scene, dt_ms);
+    const int entities = scene->asset.entity_count;
     if (clusters == 0) {
         return;
     }
+    scene_lights_prepare(scene);
     range_t a = {scene, 0, clusters / 2, 0};
     range_t b = {scene, clusters / 2, clusters - (clusters / 2), 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");

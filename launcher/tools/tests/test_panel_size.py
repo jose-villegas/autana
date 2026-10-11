@@ -43,6 +43,10 @@ class ReadDefineTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "BSP_LCD_V_RES"):
             read_define(self.header, "BSP_LCD_V_RES")
 
+    def test_reads_a_string_constant(self):
+        self.header.write_text('#define SUFFIX ".skin"\n', encoding="utf-8")
+        self.assertEqual(read_define(self.header, "SUFFIX"), ".skin")
+
     def test_the_board_header_gives_a_portrait_panel(self):
         self.assertGreater(panel_size.PANEL_HEIGHT, panel_size.PANEL_WIDTH)
 

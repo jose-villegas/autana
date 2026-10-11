@@ -1,8 +1,9 @@
 # Animation system: design sketch
 
-**Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning and the scene
-animator and skinned-renderer components are implemented; lighting, SCNE v2 and
-the clip picker are proposed. `[A]` marks a proposal of this sketch.
+**Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
+animator and skinned-renderer components, and per-renderer lighting (direct
+by default) are implemented. Mode selection from the skin pack entry,
+SCNE v2 and the clip picker are proposed. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
 
@@ -28,14 +29,15 @@ flowchart TB
     Property --> Placement["dirty entity placements"]
     Placement --> Raster
     Pose -.-> Post["proposed post-pose<br/>IK and root motion"]
-    Skin -.-> Light["proposed lighting"]
-    Light -.-> Raster
+    Skin --> Light["lit colors (scenes with lights)"]
+    Light --> Raster
 ```
 
 It runs in the scene's advance (`scene_render()`, before the draw), so an app
 never skins. The raster reads an `r3d_lit_mesh_t` view. A skinned renderer's
 view points `positions`, `clusters` and `nodes` at its mutable buffers,
-retaining the bind mesh's colours.
+retaining the bind mesh's colours unless the scene has lights, when `colors`
+points at its lit buffer.
 
 ## 2. Two cores
 
@@ -95,9 +97,14 @@ bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 | header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient_colour[3]` (linear RGB), `f32 ambient_intensity`, `f32 tonemap_white` |
 
 The lights, ambient and tone map are read by one runtime system: the skinned
-renderers' lighting (`r3d_skin_light_t`, built per skinned renderer from the
-scene's lights in its object space), so a skinned mesh is lit by the same
-numbers the static bake used. SCNE v1 is the scene format. The proposed version adds authored
+renderers' lighting (`r3d_skin_lights_t`, one world-space set per scene that every lit
+skinned renderer reads), so a skinned mesh is lit by the same
+numbers the static bake used. Each renderer selects direct (the default),
+renormalised or table lighting, with bake-matched albedo decode, tone map and
+gamma. Scene-format work fills this private mode from the skin pack entry;
+[lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds the costs,
+quality and choice criteria.
+SCNE v1 is the scene format. The proposed version adds authored
 animator and lighting rows; runtime attachment uses asset ids without these
 rows. TRCK v1 is refused (`ASSET_ERR_VERSION`).
 
@@ -114,10 +121,6 @@ CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#57)</sup>,
 separate influence-count kernels and cluster ranges.
 
 The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime-pose-and-skinning).
-
-Proposed lighting uses a 16×16 bilinear table rebuilt when lights or entity
-rotation change, or direct N.L, selected by device measurements. Its lights,
-ambient and tone map match the static bake.
 
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id attachment
@@ -162,3 +165,5 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 4. Influences per vertex: an import setting, default 2, 4 allowed; the
    entry records it and the runtime skins either.
 5. The range stages use two cores (section 2) with an inline fallback.
+6. Lighting has direct, renormalised and table modes per renderer, defaulting
+   to direct. The skin pack entry selects the mode in the scene-format work.

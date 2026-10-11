@@ -6,10 +6,13 @@
 #include <stdint.h>
 #include "asset/asset_pack.h"
 
+#define R3D_SKIN_ID_SUFFIX    ".skin"
 #define R3D_SKIN_ASSET        ASSET_TYPE('S', 'K', 'I', 'N')
 #define R3D_SKIN_VERSION      1U
 #define R3D_SKIN_WEIGHT_SUM   255U
 #define R3D_SKIN_NORMAL_SCALE 127
+#define R3D_SKIN_WEIGHT_RECIP (1.0F / (float)R3D_SKIN_WEIGHT_SUM)
+#define R3D_SKIN_NORMAL_RECIP (1.0F / (float)R3D_SKIN_NORMAL_SCALE)
 
 enum {
     R3D_SKIN_HEADER_SIZE = 16,

@@ -1,6 +1,7 @@
 #include "scene/scene.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdalign.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +15,7 @@
 #define LOADED_MAX 8
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-bool scene_fail_next_allocation;
+int scene_fail_allocation_after = -1;
 #endif
 static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
@@ -24,7 +25,7 @@ static const r3d_placement_t IDENTITY = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, flags, locals, animators, skins, total;
+    size_t renderers, cameras, instances, flags, locals, animators, skins, lights, total;
 } layout_t;
 
 size_t
@@ -47,20 +48,29 @@ layout_for(const scene_asset_t* asset) {
     SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
     SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
     SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, lights, scene_light_t, entities);
     l.total = end;
     return l;
+}
+
+void*
+scene_allocate(size_t bytes, memory_kind_t kind) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    if (scene_fail_allocation_after == 0) {
+        scene_fail_allocation_after = -1;
+        return NULL;
+    }
+    if (scene_fail_allocation_after > 0) {
+        scene_fail_allocation_after--;
+    }
+#endif
+    return memory_alloc(bytes, kind);
 }
 
 static scene_t*
 instantiate(const scene_asset_t* asset) {
     const layout_t l = layout_for(asset);
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    if (scene_fail_next_allocation) {
-        scene_fail_next_allocation = false;
-        return NULL;
-    }
-#endif
-    uint8_t* block = memory_alloc(l.total, MEMORY_PSRAM);
+    uint8_t* block = scene_allocate(l.total, MEMORY_PSRAM);
     if (block == NULL) {
         return NULL;
     }
@@ -73,8 +83,12 @@ instantiate(const scene_asset_t* asset) {
     scene->flags = block + l.flags;
     scene->locals = (transformf_t*)(void*)(block + l.locals);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
+    scene->lights = (scene_light_t*)(void*)(block + l.lights);
+    scene->ambient_color = SCENE_LIGHT_COLOR_DEFAULT;
+    scene->ambient_intensity = SCENE_AMBIENT_INTENSITY_NONE;
+    scene->tonemap_white = SCENE_TONEMAP_WHITE_NONE;
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, asset->entity_count);
+    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
@@ -251,6 +265,7 @@ scene_unload(scene_t* scene) {
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;
         scene_animation_release(scene);
+        memory_free(scene->light_transfer);
         memory_free(scene);
         return;
     }
@@ -345,7 +360,7 @@ void
 scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
     scene->locals[entity] = *transform;
-    scene->flags[entity] |= SCENE_FLAG_DIRTY;
+    scene->flags[entity] |= SCENE_FLAG_CHANGED;
 }
 
 bool
@@ -359,6 +374,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
     assert(entity < scene->asset.entity_count);
     scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
                                    : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
+    scene->flags[entity] |= SCENE_FLAG_CHANGED;
 }
 
 bool

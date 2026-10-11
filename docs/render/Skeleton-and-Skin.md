@@ -131,8 +131,15 @@ The raster reads the output's `r3d_lit_mesh_t` view.
 One caller-owned buffer block holds positions, cluster bounds and
 node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
 `r3d_skin_output_init()` carves it. The scene allocates it together with model
-matrices and the palette in internal RAM. The mesh retains its bind-colour
-pointers; no colours are copied per frame.
+matrices and the palette in internal RAM. A separate block reserves
+`R3D_SKIN_LIGHT_CHANNELS` bytes per vertex for lit colors and a `mat3f_t`
+world-space normal palette per joint only while the scene has lights.
+Without runtime lights the mesh retains its bind-color pointer, with no copy.
+With lights, the renderer's lighting kernel skins positions and normals together
+and shades the bind albedo into that color buffer.
+The normal palette is the inverse-transpose of entity world times joint palette.
+Scene light directions stay in world space and are shared before cluster
+jobs run; baked renderers keep their pack colors. See [Skinned lighting](Skinned-Lighting.md).
 Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
 
 ```mermaid
@@ -147,8 +154,10 @@ sequenceDiagram
     end
     S->>C0: apply property fields
     opt posed clusters present
-        S->>C1: skin second cluster range
-        S->>C0: skin first cluster range
+        S->>S: build world-space normal palettes
+        S->>S: prepare shared world-space lights
+        S->>C1: skin and light second cluster range
+        S->>C0: skin and light first cluster range
         C1-->>S: job_wait
         S->>S: refit node bounds
     end
@@ -164,7 +173,11 @@ Property clips use `anim_apply()` directly on core 0 after synchronization,
 then the active scene derives placements for renderers whose entities are dirty.
 Inactive scenes do no placement work. Scenes without skeleton animators skip
 the animation split, and no posed clusters means no skin split. Unchanged poses
-skip skinning and node refit. Skin jobs
+skip skinning and node refit. A lit skin runs when its pose changes, or when a
+light entity or its own entity carries `SCENE_FLAG_SKIN_DIRTY`. Light setters,
+`scene_set_transform()`, `scene_entity_set_enabled()` and
+`scene_renderer_set_skin()` set it. The skin stage consumes this bit independently of
+the draw's `SCENE_FLAG_DIRTY`, including for inactive scenes. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
@@ -182,4 +195,4 @@ through scene attachment, animation, split ranges, bounds and drawing.
 ## Current limits
 
 Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
-authored SCNE animator rows and dynamic skin lighting are planned.
+authored SCNE animator and lighting rows are planned.

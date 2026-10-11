@@ -5,6 +5,8 @@
 | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | Bakes the boot animation timeline. |
 | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | Bakes the ordered-dither threshold ranks `gfx_dither.h` reads. |
 | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | Bakes standard graphics palette data. |
+| [gen_skin_light_directions.c](gen_skin_light_directions.c) | Bakes unit directions with the math package's octahedral decoder. |
+| [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | Compiles and runs the host direction generator. |
 | [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
 | [shared_helpers.py](shared_helpers.py) | Writes the shared-owner catalogue from file banners and public names. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
@@ -23,6 +25,7 @@ same. Every checked-in output, from the banner each one carries:
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
 | [gfx_dither_patterns_generated.h](../../main/gfx/draw/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h` |
 | [gfx_palette_standard_generated.h](../../main/gfx/draw/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/gfx/draw/gfx_palette_standard_generated.h` |
+| [r3d_skin_light_directions.h](../../main/render/skin/r3d_skin_light_directions.h) | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | `launcher/` | `sh tools/gen/gen_skin_light_directions.sh > main/render/skin/r3d_skin_light_directions.h` |
 <!-- /generated: generated-files -->
 
 **The output is checked in, beside the code that reads it.** A build-time

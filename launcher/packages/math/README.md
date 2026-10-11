@@ -41,6 +41,7 @@ header's opening comment; `--check` verifies it.
 <!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/math/linear/mat3f.h](include/math/linear/mat3f.h) | Row-major linear matrices and their normal transforms. |
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see math_template.h for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
@@ -69,6 +70,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (math_template.h). |
 | [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. |
+| [include/math/scalar/mathf_rsqrt.h](include/math/scalar/mathf_rsqrt.h) | mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed. |
 | [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalar operations, for grid, pixel and cell coordinates. |
 | [include/math/scalar/maths.h](include/math/scalar/maths.h) | maths: int16 scalar operations for the math templates (math_template.h), coordinates kept compact where memory is short. |
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (math_template.h). |

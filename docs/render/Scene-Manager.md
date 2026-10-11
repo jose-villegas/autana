@@ -11,22 +11,27 @@ shows an app using it.
 A scene holds packed component arrays indexed by a small integer entity id
 (`scene_entity_t`). Attaching clips allocates the animator's bindings and pose
 buffers in PSRAM; attaching a skin allocates its model matrices, palette and
-output mesh together in internal RAM.
+output mesh together in internal RAM. Lit colors and the world-space normal
+palette use a separate internal RAM block only while the scene has lights.
+The first light allocates every existing skin's block transactionally;
+attachment failure preserves the scene.
 
 | Array | One per | Holds |
 |---|---|---|
 | `locals[]` | entity | canonical local position, quaternion rotation and scale; loaded placements must decompose without shear or reflection |
 | `animators[]` | entity | optional clip configuration, layer, independent slot clocks and pose buffers |
-| `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions and bounds; bind-colour pointers |
-| `flags[]` | entity | enabled, and moved since the last draw |
+| `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions, bounds and lit colors; bind-color pointers without runtime lights |
+| `lights[]` | entity | optional directional light, linear color and intensity; at most `R3D_SKIN_LIGHT_MAX` attached per scene |
+| `flags[]` | entity | enabled, moved since the last draw, and changed since the last skin stage |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
-| `cameras[]` | camera | lens, entity TRS pose, clear colour, its entity id |
+| `cameras[]` | camera | lens, entity TRS pose, clear color, its entity id |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#the-scene-entry)). Lights are baked offline
-and are not carried. Names and immutable mesh and track views point into the
+([Scene-Files.md](Scene-Files.md#the-scene-entry)). SCNE v1 carries no lights or lighting settings.
+Runtime setters attach directional lights for skinned renderers; baked
+renderers retain their pack colors. Names and immutable mesh and track views point into the
 asset pack. Camera rows with clips create property animators; their source-node
 alias belongs to that camera row. Binding resolves every clip row before playback.
 
@@ -44,9 +49,20 @@ alias belongs to that camera row. Binding resolves every clip row before playbac
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
 | `scene_animator_play()` / `_set_speed()` / `_set_paused()` / `_seek()` | control playback slots on an entity |
 | `scene_animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | query the attached clips |
+| `scene_light_set_color()` / `_set_intensity()` | attach or update one directional light on an entity; color must be finite linear RGB in [0,1], intensity finite and nonnegative; invalid entities, a full light array or a skin without vertex colors fail without mutation |
+| `scene_light_color()` / `_intensity()` | read a light field, or zero when none is attached |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
 | `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)) |
+
+A new light starts white with zero intensity. Its world direction is its
+entity's rotated +Y axis; moving its rotation changes skin shading next frame,
+including while the pose is paused. Scene ambient and tone map are private;
+SCNE v1 uses zero ambient contribution and an identity tone map.
+All lit skins share world-space lights. Their normal palettes include entity
+and joint scale through an inverse-transpose transform. Skin dirty bits are
+consumed by the skin stage even when another scene is active. The shared
+decode and encode transfer tables are allocated in internal RAM at the first light.
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's
@@ -116,3 +132,9 @@ The shell's half of the API (the two frame halves and the unload on exit) is
 The shell does not call it by name: `shell/scene_system.c` registers it as the
 engine system `scene`, at `SHELL_ORDER_SCENE`
 ([Firmware-Architecture.md](../Firmware-Architecture.md#engine-systems)).
+
+## Per-renderer lighting mode
+
+Each skinned renderer has a private lighting mode, direct by default; tests
+set it with `scene_skin_light_set_mode()` in `scene_internal.h`. See
+[Lighting modes](Skinned-Lighting.md#lighting-modes).
