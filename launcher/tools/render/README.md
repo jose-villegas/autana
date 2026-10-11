@@ -30,15 +30,23 @@
 ## Pinned code layout
 
 `code_layout.py` reads the Xtensa tools and instruction-cache line size from a
-firmware build. The diagnostics gate checks the address-independent rows in
-`launcher/main/render/code_layout.txt`:
+firmware build. The build gates check address-independent rows in each source folder's
+`code_layout.txt`. The checker discovers these files under `launcher/main/`:
 
 ```sh
 python launcher/tools/render/code_layout.py --check launcher/build.diag
-python launcher/tools/render/code_layout.py --write launcher/build.diag
+python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag
 ```
 
-A changed layout is measured between revisions with the Sponza performance
+A baseline uses source entry markers unless it carries `# Functions: baseline`,
+which selects the functions recorded in its table without adding entry padding.
+`# Config: CONFIG_NAME` selects the build whose sdkconfig enables that option;
+without it, the baseline applies to `CONFIG_LAUNCHER_SELFTEST` builds. `--write`
+preserves these headers. `--baseline PATH` selects one owner for reporting,
+checking or writing. Missing symbols and changed sizes, loop offsets or
+cache-line spans fail the check.
+
+A changed render layout is measured between revisions with the Sponza performance
 suite through `launcher/tools/perf/perf_compare.sh`. A slower layout is retuned
 with `RENDER_ENTRY_OFFSET` before the generated file is written.
 

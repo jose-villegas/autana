@@ -1074,6 +1074,13 @@ below it before the tree it belongs to can use any.
 
 ## Performance discipline
 
+The plain release sweep's function sizes and cache-line offsets are checked
+against `launcher/main/apps/sand/code_layout.txt` by the release build gate.
+Its function manifest covers the gravity sweep and two-core scheduler without
+adding entry padding. `core/memory.c` keeps its PSRAM-size query wrapper in IRAM
+so it does not move the measured sweep's flash layout. Device performance
+suites remain the check on the resulting timings.
+
 Every number below came from `timing_now_us()` on real hardware, via
 the device-only tests in `suite_sand_perf.c` (`#ifdef DEVICE_BUILD`), not
 estimated. A captured budget is a fact about one build on one board at one

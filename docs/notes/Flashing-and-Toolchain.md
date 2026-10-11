@@ -142,11 +142,12 @@ never-executed `nop.n` padding ahead of the entry places their loops at the
 offsets measured fastest on the board. The diagnostics build gate in
 `launcher/tools/build/build_diag_check.sh` runs
 `launcher/tools/render/code_layout.py --check` against
-`launcher/main/render/code_layout.txt`, checking function and machine-loop
+source-local `code_layout.txt` baselines for the selected build configuration,
+including `launcher/main/render/code_layout.txt`, checking function and machine-loop
 offsets, sizes and cache-line spans. When a row changes, compare revisions
 with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
 If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write launcher/build.diag`.
+table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
