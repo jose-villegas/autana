@@ -1,7 +1,7 @@
 # Engine layer: design sketch
 
 **Status:** every section approved; a final read before it merges.
-Nothing has moved yet. `[M]` marks the maintainer's decision or constraint.
+The scene transform and animator calls in section 2 exist; the rest has not moved. `[M]` marks the maintainer's decision or constraint.
 
 The firmware becomes three bands over the shared packages: the **platform**
 (board, panel, input, present, core), the **engine** (scene, render, anim,
@@ -108,9 +108,9 @@ Every item in this section is approved.
 
 | System | Public face today | As the rule wants it | Gap |
 |---|---|---|---|
-| scene | `scene_load(id)`, `scene_find(name)`, `scene_entity_set_transform/enabled`, `scene_activate(scene, "camera name")`; storage already packed per scene (`transforms[]`, `flags[]`, `renderers[]`, `cameras[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string; `scene_transform_t` is a render type (`r3d_placement_t`); `scene_camera_lens()` returns a render struct |
+| scene | `scene_load(id)`, `scene_find(name)`, `scene_set_transform()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string; `scene_camera_lens()` returns a render struct |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
-| anim | the sampler and bindings (`anim_tracks_*`, `anim_bind`, `anim_apply`) are the API; boot calls them directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | the camera path is still render's `r3d_scene_path_t`; boot's animation is not a scene |
+| anim | the animator component and `scene_animator_*()`; sampler, binding, pose and layer stay behind `scene/scene.h`; boot calls `anim_tracks_*`/`anim_apply` directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | boot's animation is not a scene |
 | asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
 
 ### Private headers apps include today
@@ -157,7 +157,7 @@ typedef struct { float half_fov_short_tan, near_z; uint16_t clear; } scene_camer
 typedef struct { uint8_t clip; uint16_t blend_ms; } scene_animator_t;
 
 /* calls on entities */
-bool scene_get_transform(const scene_t* scene, scene_entity_t entity, scene_transform_t* out);
+const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
 void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
 bool scene_camera_activate(scene_t* scene, scene_entity_t camera);
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);

@@ -1,9 +1,9 @@
 # Skin frame comparison
 
 `skin_frame.py MODEL.glb --poses CLIP:MS ... --vertices I,J,... --out DIR`
-builds a scratch pack with the existing entry writers and runs `skin_host.c`
+builds a scratch pack with the entry writers and runs `skin_host.c`
 through the scene entity APIs. It uses the compiler selected by `track_host`,
-the glTF reference skinner and the existing preview and comparison renderers.
+the glTF reference skinner and the preview and comparison renderers.
 It requires the mesh baker's dependencies and Pillow; it runs no board code.
 
 `--scale`, `--size` and `--view` select quantization and the common camera.

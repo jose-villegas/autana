@@ -175,10 +175,8 @@ Cited by: [docs/plans/Cluster-LOD.md](plans/Cluster-LOD.md)
 <a id="55"></a>**[55]** W. Jakob, S. Speierer, N. Roussel, D. Vicini. *Dr.Jit: A Just-In-Time Compiler for Differentiable Rendering.* ACM Transactions on Graphics 41(4), SIGGRAPH, 2022. [doi:10.1145/3528223.3530099](https://doi.org/10.1145/3528223.3530099)<br>
 Cited by: [launcher/tools/r3d/README.md](../launcher/tools/r3d/README.md)
 
-56. <a id="56"></a> **Geometric Skinning with Approximate Dual Quaternion Blending** ? L. Kavan, S. Collins, J. Žára, C. O'Sullivan. ACM Transactions on Graphics 27(4), article 105, pp. 1–23, 2008. [doi:10.1145/1409625.1409627](https://doi.org/10.1145/1409625.1409627)
+<a id="56"></a>**[56]** L. Kavan, S. Collins, J. Žára, C. O'Sullivan. *Geometric Skinning with Approximate Dual Quaternion Blending.* ACM Transactions on Graphics 27(4), article 105, pp. 1–23, 2008. [doi:10.1145/1409625.1409627](https://doi.org/10.1145/1409625.1409627)<br>
+Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md)
 
-   Cited by: [docs/Animation-Tracks.md](Animation-Tracks.md), [docs/render/Skeleton-and-Skin.md](render/Skeleton-and-Skin.md), [docs/plans/Animation-System-Design-Sketch.md](plans/Animation-System-Design-Sketch.md)
-
-57. <a id="57"></a> **Pose Space Deformation: A Unified Approach to Shape Interpolation and Skeleton-Driven Deformation** ? J. P. Lewis, M. Cordner, N. Fong. Proceedings of SIGGRAPH '00, pp. 165–172, 2000. [doi:10.1145/344779.344862](https://doi.org/10.1145/344779.344862)
-
-   Cited by: [docs/render/Skeleton-and-Skin.md](render/Skeleton-and-Skin.md), [docs/plans/Animation-System-Design-Sketch.md](plans/Animation-System-Design-Sketch.md)
+<a id="57"></a>**[57]** J. P. Lewis, M. Cordner, N. Fong. *Pose Space Deformation: A Unified Approach to Shape Interpolation and Skeleton-Driven Deformation.* Proceedings of SIGGRAPH '00, pp. 165–172, 2000. [doi:10.1145/344779.344862](https://doi.org/10.1145/344779.344862)<br>
+Cited by: [docs/render/Skeleton-and-Skin.md](render/Skeleton-and-Skin.md), [docs/plans/Animation-System-Design-Sketch.md](plans/Animation-System-Design-Sketch.md)

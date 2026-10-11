@@ -9,20 +9,19 @@ shows an app using it.
 ## What a scene holds
 
 A scene holds packed component arrays indexed by a small integer entity id
-(`scene_entity_t`). Animator configuration allocates its clip bindings, local
-poses in PSRAM. A skinned renderer allocates its model matrices, palette and
-mutable mesh output together in internal RAM.
+(`scene_entity_t`). Attaching clips allocates the animator's bindings and pose
+buffers in PSRAM; attaching a skin allocates its model matrices, palette and
+output mesh together in internal RAM.
 
 | Array | One per | Holds |
 |---|---|---|
-| `transforms[]` | entity | where it stands: a 3x3 and a position, what the raster reads |
 | `locals[]` | entity | canonical local position, quaternion rotation and scale; loaded placements must decompose without shear or reflection |
 | `animators[]` | entity | optional clip configuration, layer, independent slot clocks and pose buffers |
 | `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions and bounds; bind-colour pointers |
 | `flags[]` | entity | enabled, and moved since the last draw |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
 | `cameras[]` | camera | lens, entity TRS pose, clear colour, its entity id |
-| `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` and `transforms[]` |
+| `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
@@ -81,15 +80,10 @@ a static scene included. A camera
 needs the full-framebuffer layout; in band mode the scene is drawn into the
 scratch but there is nothing to upscale it into.
 
-`scene_render()` advances the animator slots of every loaded scene, computes
-skeleton poses and palettes by entity range, then skins cluster ranges and
-refits node bounds. Both range stages synchronize before the next. Property
-clips apply directly to their targets on core 0 after the first synchronization.
-A single dirty-entity pass rebuilds placements. Unchanged poses skip skinning
-and node refit. Camera
-forward is the entity quaternion rotating +Z for static and animated cameras.
-The system then rebuilds the
-placement of each renderer whose entity moved, fills `instances[]` from the
+`scene_render()` runs the animation and skinning stages
+([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime-pose-and-skinning)),
+then rebuilds the placement of each renderer whose entity moved, fills
+`instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized
 for the largest enabled mesh's working buffers, every enabled instance's
 census slot and the render size. Dynamic resolution reserves the finest

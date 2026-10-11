@@ -294,7 +294,7 @@ DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
 ```
 
 The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba
-3<sup>[[15]](../../../docs/Citations.md#15)</sup> and Dr.Jit<sup>[[57]](../../../docs/Citations.md#57)</sup>, whose CUDA
+3<sup>[[15]](../../../docs/Citations.md#15)</sup> and Dr.Jit<sup>[[55]](../../../docs/Citations.md#55)</sup>, whose CUDA
 and LLVM backends the two variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
 repository); what changed is where the files go: that page copies them into Windows' own WSL driver folder, a system
 change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's core library, drjit-core)

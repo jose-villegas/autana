@@ -120,7 +120,7 @@ model times inverse bind. Its translation is multiplied by the mesh's position
 scale, so bind position ticks map directly to posed position ticks.
 
 `render/skin/r3d_skinning.h` owns linear blend skinning
-(LBS)<sup>[[56]](../Citations.md#56)</sup>: each vertex is the weighted sum of
+(LBS)<sup>[[57]](../Citations.md#57)</sup>: each vertex is the weighted sum of
 its palette-transformed bind position. Separate two- and four-influence kernels
 are selected once per entry. They share the weighted-position operation;
 influence selection is outside the vertex loop. The output rounds to nearest
@@ -133,26 +133,27 @@ node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
 `r3d_skin_output_init()` carves it. The scene allocates it together with model
 matrices and the palette in internal RAM. The mesh retains its bind-colour
 pointers; no colours are copied per frame.
-Bind colours and face colours pass through; dynamic lighting is separate.
-Pose blending uses nlerp with quaternion hemisphere correction
-<sup>[[55]](../Citations.md#55)</sup>. This uses only the paper's
-sign-corrected normalized quaternion sum, applied per joint between two
-poses; no dual quaternions.
+Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
 
 ```mermaid
 sequenceDiagram
     participant S as scene system
     participant C0 as core 0
     participant C1 as core 1 job
-    S->>C1: animate second entity range
-    S->>C0: animate first entity range
-    C1-->>S: job_wait
-    S->>C0: apply property fields and rebuild dirty placements
-    S->>C1: skin second cluster range
-    S->>C0: skin first cluster range
-    C1-->>S: job_wait
-    S->>S: refit node bounds
-    S->>S: draw mesh views
+    opt skeleton animators attached
+        S->>C1: animate second entity range
+        S->>C0: animate first entity range
+        C1-->>S: job_wait
+    end
+    S->>C0: apply property fields
+    opt posed clusters present
+        S->>C1: skin second cluster range
+        S->>C0: skin first cluster range
+        C1-->>S: job_wait
+        S->>S: refit node bounds
+    end
+    S->>S: rebuild active renderers with dirty entities
+    S->>S: draw mesh views through camera pose
 ```
 
 `core/job.h` owns `job_run_split()`, shared with the raster. Core 1 takes the
@@ -160,19 +161,20 @@ second range when available; the fallback runs that range inline before core
 0's first range. Each stage waits before the next consumes its outputs.
 Animator jobs write their own poses and palettes.
 Property clips use `anim_apply()` directly on core 0 after synchronization,
-then one dirty-entity pass rebuilds placements. Unchanged poses skip skinning
-and node refit. Skin jobs
+then the active scene derives placements for renderers whose entities are dirty.
+Inactive scenes do no placement work. Scenes without skeleton animators skip
+the animation split, and no posed clusters means no skin split. Unchanged poses
+skip skinning and node refit. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
 The host comparison tool is
 [`skin_frame.py`](../../launcher/tools/r3d/skin/skin_frame.py). It builds SKEL,
-SKIN, TRCK and LMSH entries with their existing writers, controls the entity
-through scene APIs, and renders its output positions with the existing preview
+SKIN, TRCK and LMSH entries with their writers, controls the entity
+through scene APIs, and renders its output positions with the preview
 rasterizer beside `gltf_skin.py`. It checks the C result against a reference
 with the packed weights and quantized bind positions; separate sheets compare
-influence limits and crop every requested source vertex. Commands and
-model-specific images belong alongside the scene's tools. Its options are
+influence limits and crop every requested source vertex. Its options are
 in [the tool's README](../../launcher/tools/r3d/skin/README.md).
 The committed rig in `launcher/test/suites/suite_scene.c` gates both kernels
 through scene attachment, animation, split ranges, bounds and drawing.
@@ -180,5 +182,4 @@ through scene attachment, animation, split ranges, bounds and drawing.
 ## Current limits
 
 Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
-authored SCNE animator rows and dynamic skin lighting are planned; skin kernels
-pass bind colours through.
+authored SCNE animator rows and dynamic skin lighting are planned.

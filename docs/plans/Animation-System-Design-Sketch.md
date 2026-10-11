@@ -43,26 +43,9 @@ the raster does through `job_run_split()` (`core/job.h`): half the batch goes to
 core 1 through `job_try_core1()`, core 0 runs the other half, and
 `job_wait()` is the sync point before the next stage reads.
 
-```mermaid
-sequenceDiagram
-    participant C0 as core 0: scene_render()
-    participant C1 as core 1: job worker
-    participant P as core 1: present task (IRAM)
-    P->>P: sends frame N-1 strips
-    C0->>C1: animators, second half
-    C0->>C0: animators, first half
-    C1-->>C0: job_wait()
-    C0->>C0: apply property clips and rebuild dirty placements
-    C0->>C1: skin, second half of clusters
-    C0->>C0: skin, first half of clusters
-    C1-->>C0: job_wait()
-    C0->>C0: node bounds refit
-    C0->>C1: raster stages
-```
-
 | Stage | Batch split by | Each core writes | Read after the sync by |
 |---|---|---|---|
-| animators | entity (half the animators each) | its animators' poses and skin palettes | skin |
+| animators | entity (half the entity ids each) | its animators' poses and skin palettes | skin |
 | skin | cluster (half the clusters each) | its clusters' vertex range of `positions` and its clusters' bounds | node refit, raster |
 | node refit | none: one pass, under a few dozen nodes | `nodes` | raster |
 
@@ -80,9 +63,9 @@ sequenceDiagram
   runs both halves, so a frame is never wrong, only slower. The skin
   buffers sit in internal RAM, so the job does not contend with
   present for PSRAM; the bind data is read through the flash cache.
-- **The job context** (`JOB_CTX_MAX`, 128 bytes) holds a range and pointers:
+- **The job context** (`JOB_CTX_MAX`) holds a range and pointers:
   `{scene, first, count, dt_ms}`.
-- **Both range stages dispatch through the shared helper** through the shared job helper; the second
+- **Both range stages dispatch through `job_run_split()`;** the second
   range runs inline when core 1 is unavailable. Every kernel takes a range
   (`first`, `count`).
 
@@ -124,18 +107,12 @@ The implemented internal types and signatures live in
 [`anim/playback/anim_layer.h`](../../launcher/main/anim/playback/anim_layer.h),
 [`anim/playback/anim_playhead.h`](../../launcher/main/anim/playback/anim_playhead.h),
 and [`render/skin/r3d_skinning.h`](../../launcher/main/render/skin/r3d_skinning.h).
-Pose sampling preserves unkeyed rest channels. Pose blending uses hemisphere
-corrected nlerp <sup>[[55]](../Citations.md#55)</sup> and linear position and
-scale. This uses only the paper's sign-corrected normalized quaternion sum,
-applied per joint between two poses; no dual quaternions. Interrupted transition
-blends preserve the shown pose in a frozen source buffer. CPU skinning uses
-linear blend skinning <sup>[[56]](../Citations.md#56)</sup>, separate influence-count kernels and cluster ranges.
+Pose sampling preserves unkeyed rest channels.
+Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
+CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#57)</sup>,
+separate influence-count kernels and cluster ranges.
 
-Scene components own these buffers and clocks. The two-stage frame system in
-`scene/scene_animation.c` advances entity ranges, synchronizes, skins cluster
-ranges, synchronizes and refits node bounds. Property clips apply directly to
-their targets on core 0 after the first synchronization. A dirty-entity pass
-rebuilds placements. Unchanged poses skip skinning and node refit.
+The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime-pose-and-skinning).
 
 Proposed lighting uses a 16×16 bilinear table rebuilt when lights or entity
 rotation change, or direct N.L, selected by device measurements. Its lights,

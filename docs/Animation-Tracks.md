@@ -293,7 +293,7 @@ buffers. SCNE camera rows create property animators automatically. Their source
 node names are aliases for their camera entities during binding.
 
 Property clips bind strictly against scene transforms and camera lens fields;
-every binding must resolve. They require `blend_ms == 0`. Skeleton clips bind
+every binding must resolve, and unkeyed fields retain their values. They require `blend_ms == 0`. Skeleton clips bind
 joint paths with `anim_bind_skeleton()` and support a transition blend. Both use
 the same animator component and per-slot playheads. Engine-private declarations
 live in `anim/pose/` and `anim/playback/`; apps include `scene/scene.h`.
@@ -301,7 +301,7 @@ live in `anim/pose/` and `anim/playback/`; apps include `scene/scene.h`.
 A skeleton layer samples each active clip onto the skeleton's rest pose, so an
 unkeyed channel retains rest TRS. Position and scale blend linearly. Rotation
 uses normalized linear interpolation, with a hemisphere check before the sum
-(nlerp)<sup>[[55]](Citations.md#55)</sup>. This uses only the paper's
+(nlerp)<sup>[[56]](Citations.md#56)</sup>. This uses only the paper's
 sign-corrected normalized quaternion sum, applied per joint between two
 poses; no dual quaternions. This preserves unit rotations and takes
 the short quaternion path; its angular speed is not constant. An interrupted
@@ -315,5 +315,6 @@ accumulator retains sub-millisecond steps. Conversion to float seconds happens
 after integer wrap/clamp through `anim_clip_seconds()`.
 
 Every scene playback slot loops; play-once clips are planned.
-Property clips require immediate play; transition blends apply to skeleton
-clips. Controls on an empty or frozen PREVIOUS slot return false.
+Each entity has one animator of one clip kind; a property clip (NULL skeleton)
+cannot replace the skeleton animator on a skinned entity. Controls on an empty
+or frozen PREVIOUS slot return false.
