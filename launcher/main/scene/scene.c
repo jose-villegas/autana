@@ -1,6 +1,7 @@
 #include "scene/scene.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdalign.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,7 @@ static const r3d_placement_t IDENTITY = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, flags, locals, animators, skins, total;
+    size_t renderers, cameras, instances, flags, locals, animators, skins, lights, total;
 } layout_t;
 
 size_t
@@ -47,6 +48,7 @@ layout_for(const scene_asset_t* asset) {
     SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
     SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
     SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, lights, scene_light_t, entities);
     l.total = end;
     return l;
 }
@@ -73,6 +75,10 @@ instantiate(const scene_asset_t* asset) {
     scene->flags = block + l.flags;
     scene->locals = (transformf_t*)(void*)(block + l.locals);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
+    scene->lights = (scene_light_t*)(void*)(block + l.lights);
+    scene->ambient_color = SCENE_LIGHT_COLOR_DEFAULT;
+    scene->ambient_intensity = SCENE_AMBIENT_INTENSITY_NONE;
+    scene->tonemap_white = SCENE_TONEMAP_WHITE_NONE;
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
@@ -215,6 +221,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     }
     if (done.status != SCENE_OK) {
         scene_animation_release(scene);
+        memory_free(scene->light_transfer);
         memory_free(scene);
         return NULL;
     }
@@ -251,6 +258,7 @@ scene_unload(scene_t* scene) {
         memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
         loaded[loaded_count] = NULL;
         scene_animation_release(scene);
+        memory_free(scene->light_transfer);
         memory_free(scene);
         return;
     }
@@ -364,4 +372,106 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
 bool
 scene_transform_is_identity(const scene_placement_t* transform) {
     return memcmp(transform, &IDENTITY, sizeof IDENTITY) == 0;
+}
+
+static scene_light_t*
+light_attach(scene_t* scene, scene_entity_t entity) {
+    if (scene == NULL || entity >= scene->asset.entity_count) {
+        return NULL;
+    }
+    scene_light_t* light = &scene->lights[entity];
+    if (light->kind != SCENE_LIGHT_NONE) {
+        return light;
+    }
+    if (scene->light_count == R3D_SKIN_LIGHT_MAX) {
+        return NULL;
+    }
+    if (scene->light_transfer == NULL) {
+        scene->light_transfer = memory_alloc(sizeof *scene->light_transfer, MEMORY_INTERNAL);
+        if (scene->light_transfer == NULL) {
+            return NULL;
+        }
+        r3d_skin_light_transfer_build(scene->tonemap_white, scene->light_transfer);
+        scene->transfer_white = scene->tonemap_white;
+    }
+    *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
+    scene->light_count++;
+    return light;
+}
+
+bool
+scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb) {
+    if (!isfinite(linear_rgb.x) || !isfinite(linear_rgb.y) || !isfinite(linear_rgb.z) || linear_rgb.x < 0.0F
+        || linear_rgb.x > 1.0F || linear_rgb.y < 0.0F || linear_rgb.y > 1.0F || linear_rgb.z < 0.0F
+        || linear_rgb.z > 1.0F) {
+        return false;
+    }
+    scene_light_t* light = light_attach(scene, entity);
+    if (light == NULL) {
+        return false;
+    }
+    light->color = linear_rgb;
+    return true;
+}
+
+bool
+scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float intensity) {
+    if (!isfinite(intensity) || intensity < 0.0F) {
+        return false;
+    }
+    scene_light_t* light = light_attach(scene, entity);
+    if (light == NULL) {
+        return false;
+    }
+    light->intensity = intensity;
+    return true;
+}
+
+vec3f_t
+scene_light_color(const scene_t* scene, scene_entity_t entity) {
+    return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
+               ? (vec3f_t){0}
+               : scene->lights[entity].color;
+}
+
+float
+scene_light_intensity(const scene_t* scene, scene_entity_t entity) {
+    return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
+               ? 0.0F
+               : scene->lights[entity].intensity;
+}
+
+static void
+skin_lights_prepare(const scene_t* scene, scene_skinned_renderer_t* skin, quatf_t rotation) {
+    const quatf_t inverse = {-rotation.x, -rotation.y, -rotation.z, rotation.w};
+    skin->lights = (r3d_skin_lights_t){.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
+                                       .transfer = scene->light_transfer};
+    for (int l = 0; l < scene->asset.entity_count; l++) {
+        const scene_light_t* light = &scene->lights[l];
+        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ENABLED)) {
+            continue;
+        }
+        const int at = skin->lights.count++;
+        const vec3f_t direction = quatf_rotate(scene->locals[l].rotation, SCENE_LIGHT_AXIS);
+        skin->lights.direction[at] = vec3f_normalize(quatf_rotate(inverse, direction));
+        skin->lights.colour[at] = vec3f_scale(light->color, light->intensity);
+    }
+}
+
+void
+scene_lights_prepare(scene_t* scene) {
+    if (scene->light_count == 0) {
+        return;
+    }
+    if (scene->transfer_white != scene->tonemap_white) {
+        r3d_skin_light_transfer_build(scene->tonemap_white, scene->light_transfer);
+        scene->transfer_white = scene->tonemap_white;
+    }
+    for (int e = 0; e < scene->asset.entity_count; e++) {
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        if (skin->internal_storage == NULL) {
+            continue;
+        }
+        skin_lights_prepare(scene, skin, scene->locals[e].rotation);
+    }
 }

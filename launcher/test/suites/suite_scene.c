@@ -5,6 +5,7 @@
  */
 
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2049,8 +2050,115 @@ test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
 }
 #endif
 
+static void
+test_light_attachment_defaults_refusals_and_capacity(void) {
+    enum { ENTITIES = R3D_SKIN_LIGHT_MAX + 1 };
+
+    scene_light_t lights[ENTITIES] = {0};
+    scene_t scene = {.asset = {.entity_count = ENTITIES}, .lights = lights};
+    TEST_ASSERT_TRUE(scene_light_set_color(&scene, 0, (vec3f_t){0.5F, 0.25F, 0.125F}));
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_LIGHT_INTENSITY_DEFAULT, scene_light_intensity(&scene, 0));
+    TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 1, 2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scene_light_color(&scene, 1).x);
+    TEST_ASSERT_EQUAL_FLOAT(0, scene_light_color(&scene, 2).x);
+    static const vec3f_t invalid[] = {{-0.1F, 0, 0}, {0, 1.1F, 0}, {0, 0, NAN}, {INFINITY, 0, 0}};
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        TEST_ASSERT_FALSE(scene_light_set_color(&scene, 0, invalid[i]));
+        TEST_ASSERT_FALSE(scene_light_set_color(&scene, 2, invalid[i]));
+        TEST_ASSERT_EQUAL_FLOAT(0.5F, scene_light_color(&scene, 0).x);
+        TEST_ASSERT_EQUAL_INT(2, scene.light_count);
+    }
+    static const float invalid_intensity[] = {-1, NAN, INFINITY};
+    for (size_t i = 0; i < sizeof invalid_intensity / sizeof invalid_intensity[0]; i++) {
+        TEST_ASSERT_FALSE(scene_light_set_intensity(&scene, 1, invalid_intensity[i]));
+        TEST_ASSERT_EQUAL_FLOAT(2, scene_light_intensity(&scene, 1));
+    }
+    TEST_ASSERT_FALSE(scene_light_set_intensity(&scene, SCENE_ENTITY_NONE, 1));
+    TEST_ASSERT_FALSE(scene_light_set_color(&scene, SCENE_ENTITY_NONE, SCENE_LIGHT_COLOR_DEFAULT));
+    for (int i = 2; i < R3D_SKIN_LIGHT_MAX; i++) {
+        TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, (scene_entity_t)i, 1));
+    }
+    TEST_ASSERT_FALSE(scene_light_set_intensity(&scene, R3D_SKIN_LIGHT_MAX, 1));
+    TEST_ASSERT_FALSE(scene_light_set_color(&scene, R3D_SKIN_LIGHT_MAX, SCENE_LIGHT_COLOR_DEFAULT));
+    TEST_ASSERT_EQUAL_INT(SCENE_LIGHT_NONE, lights[R3D_SKIN_LIGHT_MAX].kind);
+    TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 0, 3));
+    memory_free(scene.light_transfer);
+}
+
+static void
+test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
+    static const char* const skins[] = {"rig.skin2", "rig.skin4"};
+
+    enum { DEGREES_HALF_TURN = 180 };
+
+    const vec3f_t sun_angles = {40.0F * MATH_PI / DEGREES_HALF_TURN, 30.0F * MATH_PI / DEGREES_HALF_TURN, 0};
+    for (size_t i = 0; i < sizeof skins / sizeof skins[0]; i++) {
+        scene_t* scene = rig_fixture(skins[i], NULL);
+        const scene_entity_t entity = scene_find(scene, "red");
+        const scene_entity_t light = scene_find(scene, "camera");
+        const scene_entity_t baked = scene_find(scene, "green");
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+        const r3d_lit_mesh_t* mesh = scene_entity_mesh(scene, entity);
+        const r3d_lit_mesh_t* static_mesh = scene_entity_mesh(scene, baked);
+        uint8_t baked_colors[QUAD_VERTICES][3];
+        memcpy(baked_colors, static_mesh->colors, sizeof baked_colors);
+        TEST_ASSERT_EQUAL_PTR(skin->bind.colors, mesh->colors);
+        TEST_ASSERT_EQUAL_FLOAT(SCENE_TONEMAP_WHITE_NONE, scene->tonemap_white);
+        TEST_ASSERT_TRUE(scene_light_set_intensity(scene, light, 1));
+        scene_transform_t pose = *scene_entity_transform(scene, light);
+        pose.rotation = quatf_from_euler(sun_angles);
+        scene_set_transform(scene, light, &pose);
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, 0.32F, skin->lights.direction[0].x);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, 0.77F, skin->lights.direction[0].y);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, 0.56F, skin->lights.direction[0].z);
+        TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
+        TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
+        uint8_t lit_colors[RIG_VERTICES][3];
+        memcpy(lit_colors, mesh->colors, sizeof lit_colors);
+        r3d_skin_light_transfer_t* transfer = scene->light_transfer;
+        scene->tonemap_white = 1.0F;
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_PTR(transfer, scene->light_transfer);
+        TEST_ASSERT_NOT_EQUAL(0, memcmp(lit_colors, mesh->colors, sizeof lit_colors));
+        scene->tonemap_white = SCENE_TONEMAP_WHITE_NONE;
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_MEMORY(lit_colors, mesh->colors, sizeof lit_colors);
+        const size_t bytes = r3d_skin_output_bytes(&skin->bind);
+        void* block = malloc(bytes);
+        TEST_ASSERT_NOT_NULL(block);
+        r3d_skin_output_t output;
+        TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
+        uint8_t expected[RIG_VERTICES][3];
+        r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
+                              &skin->lights, expected);
+        TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
+        free(block);
+        TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
+        pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
+        scene_set_transform(scene, light, &pose);
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_NOT_EQUAL(0, memcmp(lit_colors, mesh->colors, sizeof lit_colors));
+        pose.rotation = quatf_identity();
+        scene_set_transform(scene, light, &pose);
+        scene_animation_step(scene, 0);
+        memcpy(lit_colors, mesh->colors, sizeof lit_colors);
+        const quatf_t turn = quatf_from_euler(sun_angles);
+        pose.rotation = turn;
+        scene_set_transform(scene, light, &pose);
+        scene_transform_t renderer = *scene_entity_transform(scene, entity);
+        renderer.rotation = turn;
+        scene_set_transform(scene, entity, &renderer);
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_MEMORY(lit_colors, mesh->colors, sizeof lit_colors);
+        release_fixture();
+    }
+}
+
 void
 run_scene_suite(void) {
+    RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
+    RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);

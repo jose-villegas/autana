@@ -8,9 +8,24 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
-#include "render/skin/r3d_skinning.h"
+#include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
+
+/* Absent ambient contributes zero; SCNE v1 carries no tone map. */
+#define SCENE_AMBIENT_INTENSITY_NONE  0.0F
+#define SCENE_TONEMAP_WHITE_NONE      0.0F
+#define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
+#define SCENE_LIGHT_COLOR_DEFAULT     ((vec3f_t){1.0F, 1.0F, 1.0F})
+#define SCENE_LIGHT_AXIS              ((vec3f_t){0.0F, 1.0F, 0.0F})
+
+typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
+
+typedef struct {
+    scene_light_kind_t kind;
+    vec3f_t color;
+    float intensity;
+} scene_light_t;
 
 #define SCENE_FLAG_ENABLED 1U
 #define SCENE_FLAG_DIRTY   2U
@@ -88,6 +103,8 @@ typedef struct {
     mat4f_t* model;
     mat4f_t* palette;
     void* internal_storage;
+    uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
+    r3d_skin_lights_t lights;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -95,6 +112,11 @@ struct scene {
     char id[ASSET_NAME_MAX];
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     int animator_count, skeleton_animator_count;
+    int light_count;
+    scene_light_t* lights;
+    vec3f_t ambient_color;
+    float ambient_intensity, tonemap_white, transfer_white;
+    r3d_skin_light_transfer_t* light_transfer;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -132,6 +154,7 @@ int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
 void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
+void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);

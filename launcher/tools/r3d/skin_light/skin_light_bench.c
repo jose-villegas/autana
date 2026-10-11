@@ -30,7 +30,7 @@
 
 #include "gfx/draw/gfx_color.h"
 #include "math/linear/vec3f.h"
-#include "render/skin/r3d_skin_light.h"
+#include "skin_light_baseline.h"
 
 #define MAX_JOINTS   64
 #define MAX_LIGHTS   8

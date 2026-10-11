@@ -2,7 +2,7 @@
 
 A skinned mesh bends at run time, so its light cannot be baked into its vertex
 colours the way a static mesh's is. This page measures two ways to light it
-every frame, on the host: direct N.L per vertex, and a per-object lookup table
+every frame in the host comparison: direct N.L per vertex, and a per-object lookup table
 indexed by the skinned normal.
 
 ```mermaid
@@ -30,52 +30,111 @@ the same integer stage, so only the light bytes differ. Lights are
 directional lights plus ambient in object space; each light-count row uses
 the first lights of `LIGHTS` in the benchmark.
 
-## Engine and device measurement
+## Runtime lighting
 
-`render/skin/r3d_skin_light.h` owns the direct and bilinear kernels. Direct
-lighting blends the palette rotations of the packed bind normal, then sums
-ambient and positive N.L terms. The measurement flag renormalises that normal.
-`r3d_skin_clusters_lit` skins positions, grows cluster bounds and evaluates
-direct lighting in one pass, sharing each record, joint lookup and weight.
-The two- and four-influence ranges specialize the inline vertex operations.
-The table stores rounded, saturated linear light bytes and clamps lookup at
-its border. Normal-indexed diffuse tables and bilinear filtering follow
-Miller and Hoffman.<sup>[[58]](../Citations.md#58)</sup>
+`render/skin/r3d_skin_light.h` owns the fused direct N.L shader.
+`r3d_skin_clusters_lit()` shares palette rows and packed weights between
+positions and normals, grows cluster bounds, and shades each vertex.
+The skinned normal is always renormalised. `mathf_rsqrt_approx()` uses the
+S3's reciprocal-square-root seed and one Newton correction; host and QEMU
+use exact square root. The device tests require relative reciprocal error
+at most `MATHF_RSQRT_APPROX_RELATIVE_LIMIT` over the dense normal sweep and
+at most one light-byte error against exact square root over the measured mesh.
+These limits require device validation; host fallback results do not establish
+the instruction's accuracy.
 
-Cell directions are initialized with `vec3f_from_octahedral` into caller-owned
-storage once, outside build timing. Each object owns its light bytes; the
-shared directions require no engine allocation or mutable global storage.
-The host benchmark uses these same rotation, direct-light, table-build and
-bilinear kernels; its float reference and eight-light variants remain
-benchmark comparisons.
+For albedo byte `a`, linear albedo is `(a / 255)^2.2`. Linear radiance is
+albedo times `ambient_colour * ambient_intensity` plus the sum of
+`light_colour * intensity * max(0, N.L)`. Runtime intensity is the scene
+file's intensity, unscaled, matching `light.py:bake_directional`.
+The Reinhard tone map<sup>[[7]](../Citations.md#7)</sup> computes
+`linear / (1 + linear * tonemap_white)`, followed by clamping to [0,1]
+and the bake's 1/2.2 gamma and byte rounding. Runtime lighting has no shadow,
+sky visibility, ambient occlusion or bounced-light pass.
 
-The device suite mounts the demo pack through `asset_store`, opens its model
-entries and samples `gallop` at `POSE_SECONDS` in the suite. Each test allocates
-and releases internal RAM, reports heap free space and largest block, timing
-statistics, cycles per vertex or build, byte-error maximum and mean, and CRC-32.
-The skin-only baseline reports a position checksum. Fused measurements assert
-position and light CRCs against the separate kernels outside timing. The float reference
-normalizes the packed bind normal after independent weighted rotation; the
-host reference uses the source glTF normal, so their error inputs differ.
-Table-build checksums include the zero padding byte in each cell.
-The host report writes `build/checksums.txt` beside the benchmark inputs;
-its table CRCs can be compared directly at matching resolution and light count.
-Vertex CRCs need matching mesh records and pose; the source glTF and packed
-mesh have different records.
+The decode table has `R3D_SKIN_LIGHT_DECODE_SIZE` uint16 entries,
+stored as the rounded upper half of an IEEE float: 512 bytes.
+Each scene with an attached light allocates it together with a 512-byte
+encode table in internal RAM. Its radiance bins use the float exponent and four mantissa
+bits, covering [2^-24, 256); entries sample bin starts and lookup interpolates adjacent bytes with eight-bit weights.
+Under-range values encode to zero; over-range values use the last entry.
+This spacing spends precision near black without a divide or square root
+in the lookup. The combined decode and encode budget is 1024 bytes.
+The host sweep checks a maximum error of two encoded byte steps against
+the float formula, including every albedo byte and white values from zero
+through 16. The limits and sampling are in `suite_skin_light.c`.
 
-Run all device measurements on a diagnostics image with its demo assets:
+The scene prepares light directions and premultiplied colours in each
+renderer's object space before splitting its cluster ranges. A directional
+light points along its entity's rotated +Y axis, matching `import_settings.py:load_light`.
+Only skinned renderers use runtime lights. Without lights, their mesh view
+retains the bind-colour pointer and does no colour copy or shading.
+Each attached skin adds three internal-RAM bytes per vertex for lit colours
+in the positions/palette allocation. Scene component arrays remain in PSRAM.
+SCNE v1 carries no lighting settings: absent ambient contributes zero,
+and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
+The reader's absent tone-map value is `None`; this runtime identity is the
+SCNE v1 policy, not a numeric reader default.
+
+TODO: the SCNE v2 rebake must establish a shared Python/C owner for lighting
+constants and fill scene lights, ambient and tone map from the scene file.
+
+## Board measurement
+
+The committed [capture lines](data/skin-light-board.txt) retain the supplied
+build ids, timing, quality, checksums and heap measurements. Build
+`8651de3988fb-diag` is the decision measurement. The table measurements use
+rounded linear-light bytes and belong to the comparison, not the runtime
+albedo/tone-map shader. Their error is measured against exact normalisation
+of packed bind normals. The [comparison sheet](images/skin-light-sheet.png)
+shows source-normal benchmark error; those inputs differ from packed normals.
+
+<!-- generated: skin-light-board sha256=7532c53623b6dcfeb0b1722c64ecc967a0dd96572ea60c5f46048f594a1aeb2f -->
+| Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
+|---|---|---:|---|---:|---:|---:|
+| efbfc0cb8da4-diag | skin_only | 353.066 | vertex | — | — | — |
+| efbfc0cb8da4-diag | direct_1 | 1024.163 | vertex | — | 46 | 0.557927 |
+| efbfc0cb8da4-diag | direct_2 | 1047.131 | vertex | — | 44 | 0.749322 |
+| efbfc0cb8da4-diag | direct_4 | 1087.561 | vertex | — | 62 | 1.195122 |
+| efbfc0cb8da4-diag | renormalised_1 | 1167.243 | vertex | — | 0 | 0.000000 |
+| efbfc0cb8da4-diag | renormalised_2 | 1190.062 | vertex | — | 0 | 0.000000 |
+| efbfc0cb8da4-diag | renormalised_4 | 1235.703 | vertex | — | 0 | 0.000000 |
+| efbfc0cb8da4-diag | table_lookup | 1060.467 | vertex | — | 18 | 1.484079 |
+| efbfc0cb8da4-diag | table_build_1 | 129453.000 | build | 131.558 | 0 | 0.000000 |
+| efbfc0cb8da4-diag | table_build_2 | 135345.000 | build | 137.546 | 0 | 0.000000 |
+| efbfc0cb8da4-diag | table_build_4 | 146595.000 | build | 148.979 | 0 | 0.000000 |
+| 8651de3988fb-diag | skin_only | 356.119 | vertex | — | — | — |
+| 8651de3988fb-diag | fused_direct_1 | 581.288 | vertex | — | 46 | 0.557927 |
+| 8651de3988fb-diag | fused_direct_2 | 604.694 | vertex | — | 44 | 0.749322 |
+| 8651de3988fb-diag | fused_direct_4 | 649.839 | vertex | — | 62 | 1.195122 |
+| 8651de3988fb-diag | fused_renormalised_4 | 757.315 | vertex | — | 0 | 0.000000 |
+| 8651de3988fb-diag | direct_1 | 220.299 | vertex | — | 46 | 0.557927 |
+| 8651de3988fb-diag | direct_2 | 244.654 | vertex | — | 44 | 0.749322 |
+| 8651de3988fb-diag | direct_4 | 288.830 | vertex | — | 62 | 1.195122 |
+| 8651de3988fb-diag | renormalised_1 | 325.807 | vertex | — | 0 | 0.000000 |
+| 8651de3988fb-diag | renormalised_2 | 348.680 | vertex | — | 0 | 0.000000 |
+| 8651de3988fb-diag | renormalised_4 | 392.871 | vertex | — | 0 | 0.000000 |
+| 8651de3988fb-diag | table_lookup | 329.435 | vertex | — | 18 | 1.484079 |
+| 8651de3988fb-diag | table_build_1 | 26811.000 | build | 27.247 | 0 | 0.000000 |
+| 8651de3988fb-diag | table_build_2 | 32827.000 | build | 33.361 | 0 | 0.000000 |
+| 8651de3988fb-diag | table_build_4 | 44347.000 | build | 45.068 | 0 | 0.000000 |
+<!-- /generated: skin-light-board -->
+
+The device suite measures skin-only, fused renormalised lighting with the
+approximate reciprocal square root, and a suite-only exact square root in a
+separate lighting pass, at each requested light count. The separate pass
+has different row-sharing cost, so its difference from fused timing is not
+an isolated reciprocal-square-root cost. It reports internal free space and
+largest block before allocation, after allocation and after release.
 
 ```sh
 autana --wait 3600 suite suite_skin_light_perf --flash
+python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md
 ```
 
-Select one measurement with `--test test_direct_1`, `test_direct_2`,
-`test_direct_4`, `test_renormalised_1`, `test_renormalised_2`,
-`test_renormalised_4`, `test_table_lookup`, `test_table_build_1`,
-`test_table_build_2`, `test_table_build_4`, `test_skin_only`,
-`test_fused_direct_1`, `test_fused_direct_2`, `test_fused_direct_4`, or
-`test_fused_renormalised_4`. Lighting's marginal cost is the fused cost per
-vertex minus the skin-only cost per vertex.
+The host benchmark keeps its linear-light direct and octahedral comparisons
+in `launcher/tools/r3d/skin_light/skin_light_baseline.*`. The engine has no
+normal-indexed lighting table.
 
 ## Results
 
@@ -183,33 +242,18 @@ with the reference's:
 
 ![The capybara lit by each variant, with its error against the reference](images/skin-light-sheet.png)
 
-## Recommendation
+## Decision
 
-The host and the float-operation counts disagree, and the board decides
-between them:
+The board selects direct N.L. In the decision build, separate direct lighting
+costs 220.299, 244.654 and 288.830 cycles per vertex for one, two and four
+lights. The table lookup alone costs 329.435 cycles per vertex, with its
+build added per object. The fused direct measurements and the exact
+renormalisation comparison are in the generated table above.
 
-- **On the host, direct N.L is faster than every bilinear table at every light
-  count measured**; only nearest lookup overtakes it as lights are added, at
-  the faceted error the sheet shows. Its mean error is lower than any 16x16
-  table's. Only its maximum error is worse: linear blending shortens the
-  normal where joints of different rotation meet and darkens those vertices
-  (the hip in the sheet), and renormalising costs a square root and a divide
-  per vertex.
-- **In float operations the table wins from four lights up**, because its
-  lookup does not grow with the light count and its build is spread over
-  the mesh's vertices; what it adds instead, a divide and the bilinear
-  blend's integer multiplies, is what only the board can price.
-
-If the board confirms the float counts, build **a 16x16 table, bilinear**:
-nearest lookup at 16x16 shows faceted error in the sheet, 32x32 nearest only
-comes near 16x16 bilinear's error at four times the build and the memory,
-and 32x32 bilinear's build costs more per vertex than the lighting it
-replaces at the capybara's vertex count. The table path never renormalises,
-because the octahedral map ignores length. Otherwise light directly, and
-renormalise if the darkened joints show.
-
-Either way, **int8 bind normals**: they leave the maximum RGB565 error
-unchanged and add a fraction of one step on average.
+Runtime uses the fused direct kernel with renormalised int8 bind normals.
+The normal-indexed table remains a host comparison only. Runtime transfer
+lookup tables serve albedo decode, tone mapping and gamma; they do not
+replace per-light N.L evaluation.
 
 ## Reproduce
 
