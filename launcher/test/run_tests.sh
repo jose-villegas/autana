@@ -149,6 +149,7 @@ $MAIN_DIR/render/r3d_skin.c
 $MAIN_DIR/render/skin/r3d_skinning.c
 $MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
+$MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
@@ -517,7 +518,42 @@ export AUTANA_SCENE_PROBE
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
-    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
+    export ASAN_OPTIONS
+    "$OUT"
 else
     "$OUT"
 fi
+
+"$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
+
+EMPTY_ASSETS="$BUILD_DIR/no-packs"
+mkdir -p "$EMPTY_ASSETS"
+FALLBACK_LOG="$BUILD_DIR/ridge-fallback.log"
+if ! AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback > "$FALLBACK_LOG" 2>&1; then
+    tail -12 "$FALLBACK_LOG"
+    exit 1
+fi
+if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$FALLBACK_LOG")" != 1 ]; then
+    echo "FAIL: missing curve must log its fallback once" >&2
+    exit 1
+fi
+
+for INVALID_CASE in frac-bits columns row; do
+    INVALID_LOG="$BUILD_DIR/ridge-invalid-$INVALID_CASE.log"
+    if ! AUTANA_ASSET_DIR="$BUILD_DIR/ridge-invalid-$INVALID_CASE" "$OUT" --run suite_ridge_fallback > "$INVALID_LOG" 2>&1; then
+        tail -12 "$INVALID_LOG"
+        exit 1
+    fi
+    if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$INVALID_LOG")" != 1 ]; then
+        echo "FAIL: invalid curve ($INVALID_CASE) must log its fallback once" >&2
+        exit 1
+    fi
+done
+
+for CURVE_LOG in "$FALLBACK_LOG" "$BUILD_DIR"/ridge-invalid-*.log; do
+    if grep -E 'runtime error:|ERROR: (AddressSanitizer|LeakSanitizer)' "$CURVE_LOG"; then
+        exit 1
+    fi
+    printf 'ridge fallback (%s): %s\n' "$(basename "$CURVE_LOG")" "$(grep -E '^[0-9]+ Tests ' "$CURVE_LOG")"
+done
