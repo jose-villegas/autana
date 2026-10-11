@@ -138,9 +138,16 @@ A component that names content (a mesh, a skin, a clip) holds its asset id
 the component attaches at run time, so content can be rebuilt or repacked
 without touching what refers to it; animators already attach this way.
 
+The id is stored, not derived `[M]`: the import step assigns a 32-bit id
+once and keeps it in the asset's import file, so a rename or a move keeps
+every reference. The bake fails on a collision, and that one id is re-rolled.
+The pack indexes entries by id, and the runtime compares one `uint32_t`.
+Hashing a name is separate: it only finds an asset by name in tools, debug
+views and the console.
+
 ```c
 /* content is named by a stable asset id, never a path or a pointer [M];
- * the id is the hash of the entry's name [M] */
+ * assigned once at import and stored in the asset's import file [M] */
 typedef uint32_t asset_id_t;
 
 /* components: one value type each */
