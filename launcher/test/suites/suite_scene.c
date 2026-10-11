@@ -1549,6 +1549,51 @@ rig_fixture(const char* skin_id, const char* paired_skin) {
 }
 
 static void
+test_mesh_reader_refuses_overlapping_cluster_vertices(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "rig.mesh", R3D_LIT_MESH_ASSET, &entry));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(mesh.clusters[0].vertex_count, mesh.clusters[1].vertex_first);
+    r3d_lit_cluster_t* clusters = (r3d_lit_cluster_t*)(uintptr_t)mesh.clusters;
+    clusters[0].vertex_count++;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_NULL(mesh.positions);
+    clusters[0].vertex_count--;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+}
+
+static void
+test_clip_bind_failure_names_the_first_rejected_clip(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+
+    static const struct {
+        const char* skeleton;
+        const char* clips[2];
+        const char* missing;
+    } cases[] = {{"rig", {"rig.move", "rig.back"}, "none"}, {NULL, {"property.move", "flight"}, "bad"}};
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        anim_tracks_t tracks;
+        anim_binding_t binding;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&fx.pack, cases[i].clips[0], &tracks));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&tracks, 0, &binding));
+        memcpy((char*)(uintptr_t)binding.path, cases[i].missing, strlen(cases[i].missing));
+        TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, cases[i].skeleton, &cases[i].clips[1], 1, NULL));
+        scene_failure_t why;
+        TEST_ASSERT_FALSE(scene_animator_set_clips(scene, entity, cases[i].skeleton, cases[i].clips, 2, &why));
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+        TEST_ASSERT_EQUAL_STRING(cases[i].clips[0], why.what);
+        TEST_ASSERT_EQUAL_INT(1, scene_animator_clip_count(scene, entity));
+        TEST_ASSERT_EQUAL_STRING(cases[i].clips[1], scene_animator_clip_name(scene, entity, 0));
+    }
+}
+
+static void
 test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
     static const char* const skins[] = {"rig.skin2", "rig.skin4"};
     for (size_t k = 0; k < sizeof skins / sizeof skins[0]; k++) {
@@ -1926,6 +1971,8 @@ run_scene_suite(void) {
     RUN_TEST(test_static_scene_and_unposed_skin_do_not_dispatch_jobs);
 #endif
 
+    RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
+    RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_skin_split_inside_an_entity_matches_full_range);
     RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);

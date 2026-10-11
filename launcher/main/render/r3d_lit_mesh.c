@@ -70,6 +70,19 @@ clusters_are_inside(const r3d_lit_mesh_t* mesh) {
 }
 
 static bool
+clusters_are_disjoint(const r3d_lit_mesh_t* mesh) {
+    int end = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
+        if (cluster->vertex_first < end) {
+            return false;
+        }
+        end = cluster->vertex_first + cluster->vertex_count;
+    }
+    return true;
+}
+
+static bool
 nodes_are_inside(const r3d_lit_mesh_t* mesh) {
     for (int n = 0; n < mesh->node_count; n++) {
         const r3d_lit_node_t* node = &mesh->nodes[n];
@@ -123,6 +136,9 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     if (built.positions == NULL || built.triangles == NULL || built.clusters == NULL || built.nodes == NULL
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
+    }
+    if (!clusters_are_disjoint(&built)) {
+        return ASSET_ERR_FORMAT;
     }
     *mesh = built;
     return ASSET_OK;

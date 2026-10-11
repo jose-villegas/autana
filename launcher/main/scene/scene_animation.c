@@ -98,7 +98,8 @@ allocate_animator(scene_animator_t* a, int clips, int curves) {
 }
 
 static asset_status_t
-bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curves, scene_entity_t owner) {
+bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curves, scene_entity_t owner,
+           const char** failed) {
     const animator_layout_t l = layout_for(a->layer.clip_count, curves, a->skeleton.joint_count);
     uint8_t* block = a->storage;
     targets_t targets = {0};
@@ -131,6 +132,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curv
             status = anim_bind(&clip->tracks, targets.targets, targets.count, clip->fields, a->counts[c], NULL);
         }
         if (status != ANIM_BIND_OK) {
+            *failed = ids[c];
             result = ASSET_ERR_FORMAT;
             break;
         }
@@ -180,7 +182,7 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     if (!allocate_animator(&a, count, curves)) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed));
     }
-    status = bind_clips(scene, &a, ids, curves, entity);
+    status = bind_clips(scene, &a, ids, curves, entity, &failed);
     if (status != ASSET_OK) {
         memory_free(a.storage);
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, failed));
