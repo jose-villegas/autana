@@ -26,15 +26,15 @@ output mesh together in internal RAM.
 
 Array lengths come from the scene's `SCNE` entry
 ([Scene-Files.md](Scene-Files.md#the-scene-entry)). Lights are baked offline
-and are not carried. Names and immutable mesh and track views point into the asset pack. Camera
-rows with clips create property animators; their source-node alias belongs
-to that camera row. Binding resolves every clip row before playback.
+and are not carried. Names and immutable mesh and track views point into the
+asset pack. Camera rows with clips create property animators; their source-node
+alias belongs to that camera row. Binding resolves every clip row before playback.
 
 ## What an app calls
 
 | Call | Meaning |
 |---|---|
-| `scene_load(id, &why)` | mounts the [asset pack](../assets/README.md#the-store) `id` and loads its scene entry `id`, every mesh it names and its camera's clip, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, with the entry's id and the pack's status |
+| `scene_load(id, &why)` | mounts the [asset pack](../assets/README.md#the-store) `id` and loads its scene entry `id`, every mesh it names and its camera's clip, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, or an entity whose placement does not decompose, with the entry's id and the pack's status |
 | `scene_unload(scene)` | frees it and releases its pack; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
@@ -108,8 +108,8 @@ pack outlives the scene, which reads its entry, meshes and clip in place.
 
 Host tools and tests pass a `const render_view_t*` to `raster_draw()`
 and compose its picture with `raster_upscale()`. `r3d_scene_view_at()` builds a
-frame view from a camera's path when it has one, otherwise from its pose; a
-scene camera's pose is its entity's, which a property animator moves.
+frame view from a camera's pose; a scene camera's pose is its entity's,
+which a property animator moves.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.

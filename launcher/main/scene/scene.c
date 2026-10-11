@@ -122,7 +122,7 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
 }
 
 static scene_failure_t
-open_paths(scene_t* scene) {
+open_camera_animators(scene_t* scene) {
     for (int i = 0; i < scene->asset.camera_count; i++) {
         const scene_asset_camera_t* camera = &scene->asset.cameras[i];
         if (camera->clip[0] == '\0') {
@@ -208,7 +208,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
         done = open_transforms(scene);
     }
     if (done.status == SCENE_OK) {
-        done = open_paths(scene);
+        done = open_camera_animators(scene);
     }
     if (why != NULL) {
         *why = done;
@@ -364,14 +364,4 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
 bool
 scene_transform_is_identity(const scene_placement_t* transform) {
     return memcmp(transform, &IDENTITY, sizeof IDENTITY) == 0;
-}
-
-scene_entity_t
-scene_camera_entity(const scene_t* scene, const r3d_scene_camera_t* camera) {
-    for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (&scene->cameras[i].lens == camera) {
-            return scene->cameras[i].entity;
-        }
-    }
-    return SCENE_ENTITY_NONE;
 }

@@ -196,6 +196,7 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     const scene_animator_t* old = &scene->animators[entity];
     scene->skeleton_animator_count +=
         (a.root == ANIM_ROOT_SKELETON) - (old->storage != NULL && old->root == ANIM_ROOT_SKELETON);
+    scene->animator_count += old->storage == NULL;
     memory_free(old->storage);
     a.dirty = true;
     scene->animators[entity] = a;
@@ -316,6 +317,7 @@ scene_animation_release(scene_t* scene) {
         scene->animators[e] = (scene_animator_t){0};
         scene->skinned_renderers[e] = (scene_skinned_renderer_t){0};
     }
+    scene->animator_count = 0;
     scene->skeleton_animator_count = 0;
 }
 
@@ -399,6 +401,9 @@ skin_slice(void* ctx) {
 
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+    if (scene->animator_count == 0) {
+        return;
+    }
     const int entities = scene->asset.entity_count, half = entities / 2;
     range_t a = {scene, 0, half, dt_ms}, b = {scene, half, entities - half, dt_ms};
     if (scene->skeleton_animator_count != 0) {

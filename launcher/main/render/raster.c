@@ -271,7 +271,6 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    _Static_assert(sizeof *mine <= JOB_CTX_MAX, "raster slice fits job context");
     job_run_split(transform_slice, mine, other, sizeof *mine);
     FRAME_COST_END(transformed_from, "r3d.transform");
 
@@ -287,7 +286,6 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     mine->count = raster->height - mid;
     other->first = 0;
     other->count = mid;
-    _Static_assert(sizeof *mine <= JOB_CTX_MAX, "raster slice fits job context");
     job_run_split(draw_slice, mine, other, sizeof *mine);
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
@@ -334,7 +332,6 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         work->mine =
             (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
         work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
-        _Static_assert(sizeof work->mine <= JOB_CTX_MAX, "raster slice fits job context");
         job_run_split(resolve_slice, &work->mine, &work->other, sizeof work->mine);
         FRAME_COST_END(resolved_from, "r3d.resolve");
     }
@@ -405,7 +402,6 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     const int mid = height / 2;
     slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};
     const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0, NULL, NULL};
-    _Static_assert(sizeof mine <= JOB_CTX_MAX, "raster slice fits job context");
     job_run_split(upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

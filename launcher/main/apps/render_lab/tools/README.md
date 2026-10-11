@@ -178,5 +178,5 @@ show a vertex through an occluding surface. The image difference is amplified
 by the comparison tool. Exact packed-weight reference errors and per-vertex
 influence-limit displacements are in
 [`measurements.json`](images/skin-frame/measurements.json). This tool bakes its
-own LMSH with the existing meshlet writer, so its vertex layout is independent
+own LMSH with the meshlet writer, so its vertex layout is independent
 of a scene pack's bake. The sheets use the poses named on the command line.

@@ -164,7 +164,7 @@ last after its last, as glTF defines.
 A scene animator keeps its own clock in an `anim_playhead_t`
 (`anim/playback/anim_playhead.h`), which scales by speed and wraps the same way.
 `anim_quat_rotate()` turns a vector by a sampled rotation, such as a
-camera's look direction in `r3d_scene_camera_sample()`.
+camera's look direction.
 
 ## Authoring
 
@@ -293,9 +293,10 @@ buffers. SCNE camera rows create property animators automatically. Their source
 node names are aliases for their camera entities during binding.
 
 Property clips bind strictly against scene transforms and camera lens fields;
-every binding must resolve, and unkeyed fields retain their values. They require `blend_ms == 0`. Skeleton clips bind
-joint paths with `anim_bind_skeleton()` and support a transition blend. Both use
-the same animator component and per-slot playheads. Engine-private declarations
+every binding must resolve, and unkeyed fields retain their values. They require
+`blend_ms == 0`. Skeleton clips bind joint paths with `anim_bind_skeleton()`
+and support a transition blend. Both use the same animator component and
+per-slot playheads. Engine-private declarations
 live in `anim/pose/` and `anim/playback/`; apps include `scene/scene.h`.
 
 A skeleton layer samples each active clip onto the skeleton's rest pose, so an

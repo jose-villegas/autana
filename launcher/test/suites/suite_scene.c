@@ -788,8 +788,8 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
-    TEST_ASSERT_EQUAL_UINT32(3000, scene_animator_clip_duration_ms(scene, scene_camera_entity(scene, lens),
-                                                                   0)); /* the probe clip's length */
+    TEST_ASSERT_EQUAL_UINT32(
+        3000, scene_animator_clip_duration_ms(scene, scene_find(scene, "camera"), 0)); /* the probe clip's length */
 }
 #endif
 
@@ -1865,21 +1865,36 @@ test_skeleton_animator_count_tracks_attachment_replacement_and_release(void) {
     scene_t* scene = load("test_pair");
     const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
     TEST_ASSERT_EQUAL_INT(0, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(0, scene->animator_count);
     static const char* const clips[] = {"rig.move"};
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, red, "rig", clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(1, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(1, scene->animator_count);
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, red, "rig", clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(1, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(1, scene->animator_count);
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, green, "rig", clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(2, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(2, scene->animator_count);
     static const char* const property[] = {"property.move"};
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, red, NULL, property, 1, NULL));
     TEST_ASSERT_EQUAL_INT(1, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(2, scene->animator_count);
     scene_animation_release(scene);
     TEST_ASSERT_EQUAL_INT(0, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(0, scene->animator_count);
 }
 
 #ifdef HOST_HEAP_ARENA
+static void
+test_scene_without_animators_does_not_access_components(void) {
+    fixture();
+    scene_t untouched = *load("test_pair");
+    untouched.animators = NULL;
+    untouched.skinned_renderers = NULL;
+    scene_animation_step(&untouched, RIG_DURATION_MS / 2);
+}
+
 static void
 test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
     fixture();
@@ -1907,6 +1922,7 @@ run_scene_suite(void) {
     RUN_TEST(test_set_transform_defers_placement_until_the_scene_draws);
     RUN_TEST(test_skeleton_animator_count_tracks_attachment_replacement_and_release);
 #ifdef HOST_HEAP_ARENA
+    RUN_TEST(test_scene_without_animators_does_not_access_components);
     RUN_TEST(test_static_scene_and_unposed_skin_do_not_dispatch_jobs);
 #endif
 

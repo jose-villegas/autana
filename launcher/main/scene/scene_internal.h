@@ -2,6 +2,7 @@
  * scene_internal: the scene's layout and components, shared by scene.c
  * (load, entities), scene_animation.c (animators, skinning) and scene_draw.c
  * (the active camera and the draw), and the SCNE entry scene_asset.c reads.
+ * Not for apps.
  */
 #pragma once
 
@@ -93,7 +94,7 @@ struct scene {
     scene_asset_t asset;
     char id[ASSET_NAME_MAX];
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
-    int skeleton_animator_count;
+    int animator_count, skeleton_animator_count;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -134,5 +135,3 @@ void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
 void scene_skin_range(scene_t* scene, int first, int count);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
-
-scene_entity_t scene_camera_entity(const scene_t* scene, const r3d_scene_camera_t* camera);
