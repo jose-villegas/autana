@@ -78,10 +78,39 @@ class TokenTests(unittest.TestCase):
         code = self.tokens("def f(x):\n    return x + 1\n")
         self.assertEqual(code, self.tokens("# what f is\ndef f(x):  # one more\n\n\n  return x  +  1\n"))
 
-    def test_a_changed_expression_or_docstring_does(self):
-        code = self.tokens('def f(x):\n    """Adds one."""\n    return x + 1\n')
-        self.assertNotEqual(code, self.tokens('def f(x):\n    """Adds one."""\n    return x + 2\n'))
-        self.assertNotEqual(code, self.tokens('def f(x):\n    """Adds two."""\n    return x + 1\n'))
+    def test_string_statements_do_not_change_the_code(self):
+        cases = (
+            ('x = 1\n', '"""Module."""\nx = 1\n', '"""Changed."""\nx = 1\n'),
+            ('class C:\n    x = 1\n', 'class C:\n    """Class."""\n    x = 1\n',
+             'class C:\n    """Changed."""\n    x = 1\n'),
+            ('def f():\n    return 1\n', 'def f():\n    """Function."""\n    return 1\n',
+             'def f():\n    """Changed."""\n    return 1\n'),
+            ('async def f():\n    return 1\n', 'async def f():\n    """Async."""\n    return 1\n',
+             'async def f():\n    """Changed."""\n    return 1\n'),
+            ('x = 1\n', 'x = 1\n"Bare string."\n', 'x = 1\n"Changed."\n'),
+            ('class E(Exception): """x"""\n', 'class E(Exception): """y"""\n',
+             'class E(Exception): """Changed."""\n'),
+            ('def f():\n    return 1\n', 'def f():\n    (\n        "Multiline"\n        " string"\n    )\n    return 1\n',
+             'def f():\n    (\n        "Changed"\n        " string"\n    )\n    return 1\n'),
+        )
+        for plain, documented, changed in cases:
+            with self.subTest(source=documented):
+                self.assertEqual(self.tokens(plain), self.tokens(documented))
+                self.assertEqual(self.tokens(documented), self.tokens(changed))
+
+    def test_statement_boundaries_change_the_code(self):
+        self.assertNotEqual(self.tokens("f\n(x)\n"), self.tokens("f(x)\n"))
+
+    def test_non_string_constant_statements_stay_in_the_code(self):
+        for expression in ('b"x"', '0', '...'):
+            with self.subTest(expression=expression):
+                self.assertNotEqual(self.tokens("x = 1\n"), self.tokens(expression + "\nx = 1\n"))
+
+    def test_changed_expressions_and_expression_strings_change_the_code(self):
+        for plain, edited in (('x = 1\n', 'x = 2\n'), ('f("a")\n', 'f("b")\n'),
+                              ('x = f"a"\n', 'x = f"b"\n'), ('x = b"a"\n', 'x = b"b"\n')):
+            with self.subTest(source=plain):
+                self.assertNotEqual(self.tokens(plain), self.tokens(edited))
 
     def test_a_changed_constant_name_or_string_does(self):
         code = self.tokens('SCALE = 8\nNAME = "a"\nf(SCALE)\n')
@@ -105,6 +134,110 @@ class ContentKeyTests(unittest.TestCase):
             (root / "c.c").write_bytes(b'#include "core/mathf.h"\nint f(void) { return 2; }\n')
             self.assertEqual(bake.c_content(root / "a.c"), bake.c_content(root / "b.c"))
             self.assertNotEqual(bake.c_content(root / "a.c"), bake.c_content(root / "c.c"))
+
+    def content(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "scratch.c"
+            path.write_bytes(text)
+            return bake.c_content(path)
+
+    def test_c_comments_layout_code_and_literals(self):
+        cases = (
+            (b'int a; /* x */\n', b'int a; /* y\n z */\n'),
+            (b'int a; // x\n', b'int a; // y\n'),
+            (b'int a; // x\\\n continued\nint b;\n', b'int a; // y\\\n changed\nint b;\n'),
+            (b'#define A 1 /* x */\n', b'#define A 1 /* y */\n'),
+            (b'int a;\n', b'// added\n\n  int  a;\t\n/* more */\n'),
+            (b'a/**/b\n', b'a b\n'),
+            (b"#error don't\n/* x */\nint a;\n", b"#error don't\n/* y */\nint a;\n"),
+            (b"c = '/'; q = '\"'; /* x */\n", b"c = '/'; q = '\"'; /* y */\n"),
+            (b"c = '*'; q = '\"'; // x\n", b"c = '*'; q = '\"'; // y\n"),
+        )
+        changed = (
+            (b'char *s = "/* a */";\n', b'char *s = "/* b */";\n'),
+            (b'char *s = "// a";\n', b'char *s = "// b";\n'),
+            (b'int a;\n', b'int b;\n'),
+            (b'#define A 1\nint x;\n', b'#define A 1 int x;\n'),
+            (b'char *s = "a  b";\n', b'char *s = "a b";\n'),
+            (b"c = '/'/* x */;\n", b"c = '-'/* x */;\n"),
+            (b"int n = 1'000; int x;\n", b"int n = 1'000; int y;\n"),
+            (b'#define A 1\\\n + 2\n', b'#define A 1 + 2\n'),
+        )
+        for equal, pairs in ((True, cases), (False, changed)):
+            for plain, edited in pairs:
+                with self.subTest(source=plain):
+                    self.assertEqual(equal, self.content(plain) == self.content(edited))
+
+    def test_c_quote_types_and_escapes_preserve_literal_bytes(self):
+        for plain, edited in (
+            (br'"a\" /* p */ b"', br'"a\" /* q */ b"'),
+            (b'"it\'s /* p */"', b'"it\'s /* q */"'),
+        ):
+            with self.subTest(source=plain):
+                self.assertNotEqual(self.content(plain), self.content(edited))
+
+    def test_c_char_quotes_do_not_hide_comments_or_next_line_code(self):
+        for literal in (b"'\"'", br"'\''", b"'/'", b"'*'"):
+            with self.subTest(literal=literal):
+                plain = b"c = " + literal + b"; /* p */\nint a;\n"
+                edited = b"c = " + literal + b"; /* q */\nint a;\n"
+                code = b"c = " + literal + b"; /* q */\nint b;\n"
+                self.assertEqual(self.content(plain), self.content(edited))
+                self.assertNotEqual(self.content(plain), self.content(code))
+
+    def test_c_line_boundaries_count(self):
+        self.assertNotEqual(self.content(b"#define A 1\n  int x;\n"),
+                            self.content(b"#define A 1 int x;\n"))
+
+    def test_c_nonfinal_line_trailing_comments_and_spaces_do_not_count(self):
+        plain = self.content(b"int a;\nint b;\n")
+        for edited in (b"int a; // x\nint b;\n", b"int a;  \t\nint b;\n"):
+            with self.subTest(source=edited):
+                self.assertEqual(plain, self.content(edited))
+
+    def test_c_later_line_indentation_and_leading_comments_do_not_count(self):
+        plain = self.content(b"int a;\nint b;\n")
+        for edited in (b"int a;\n  int b;\n", b"int a;\n/* x */int b;\n"):
+            with self.subTest(source=edited):
+                self.assertEqual(plain, self.content(edited))
+
+    def test_c_non_utf8_bytes_round_trip_and_carriage_returns_count(self):
+        text = b'char *s = "\xff";\n'
+        self.assertEqual(self.content(text), hashlib.sha256(text).hexdigest())
+        self.assertNotEqual(self.content(b"int a;\r\n"), self.content(b"int a;\n"))
+
+    def test_scratch_stage_keys_ignore_documentation_and_count_each_files_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            entry, source, header = (root / name for name in ("entry.py", "scratch.c", "scratch.h"))
+            originals = {
+                entry: 'import pathlib\nSOURCE = pathlib.Path(__file__).parent / "scratch.c"\nVALUE = 1\n',
+                source: '#include "scratch.h"\nint x = 1;\n',
+                header: '#define A 1\n',
+            }
+
+            def key():
+                bake.module_facts.cache_clear()
+                paths = bake.closure([entry])
+                contents = [bake.digest(bake.code_tokens(path)) for path in paths]
+                contents.extend(bake.native_inputs(paths).values())
+                # Mirrors tool_digest's combination of code, versions and references.
+                return bake.digest([sorted(contents), {}, []])
+
+            try:
+                for path, text in originals.items():
+                    path.write_bytes(text.encode())
+                original = key()
+                for path, text in originals.items():
+                    with self.subTest(file=path.name):
+                        documentation = '"""Documentation."""\n# comment\n' if path == entry else '/* documentation */\n// comment\n'
+                        path.write_bytes((documentation + text).encode())
+                        self.assertEqual(original, key())
+                        path.write_bytes(text.replace('1', '2').encode())
+                        self.assertNotEqual(original, key())
+                        path.write_bytes(text.encode())
+            finally:
+                bake.module_facts.cache_clear()
 
     def test_a_moved_module_keys_the_same_and_an_edited_one_does_not(self):
         def key(layout, value="1"):

@@ -70,6 +70,9 @@ import zipfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
+
+from c_lexer import c_code
 
 from build import packages  # noqa: E402
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
@@ -296,19 +299,39 @@ def plumbing_lines(tree):
     return lines
 
 
+def string_statement_spans(tree):
+    """Spans of statements that are only a string, which compute nothing."""
+    return [((node.lineno, node.col_offset), (node.end_lineno, node.end_col_offset))
+            for node in ast.walk(tree) if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)]
+
+
 def code_tokens(path):
-    """A file's tokens without comments, blank lines, layout or import plumbing: the same on every
-    Python from 3.12, and wherever the file lives."""
-    skipped = plumbing_lines(module_facts(path)[0])
+    """A file's tokens without comments, docstrings, blank lines, layout or import plumbing: the same
+    on every Python from 3.12, and wherever the file lives."""
+    tree = module_facts(path)[0]
+    skipped = plumbing_lines(tree)
+    strings = string_statement_spans(tree)
+    kept = []
     with path.open("rb") as source:
-        return [[tokenize.tok_name[token.type], "" if tokenize.tok_name[token.type] in SHAPE_TOKENS else token.string]
-                for token in tokenize.tokenize(source.readline)
-                if tokenize.tok_name[token.type] not in SKIPPED_TOKENS and token.start[0] not in skipped]
+        for token in tokenize.tokenize(source.readline):
+            kind = tokenize.tok_name[token.type]
+            if kind in SKIPPED_TOKENS or token.start[0] in skipped:
+                continue
+            if any(start <= token.start < end for start, end in strings):
+                continue
+            if kind == "NEWLINE" and (not kept or kept[-1][0] in SHAPE_TOKENS):
+                continue
+            kept.append([kind, "" if kind in SHAPE_TOKENS else token.string])
+    return kept
 
 
 def c_content(path):
-    """A C file's bytes without its #include lines: the headers they reach are in the stage by content."""
-    return hashlib.sha256(INCLUDE_LINE.sub(b"", pathlib.Path(path).read_bytes())).hexdigest()
+    """C content without includes, comments or blank lines, with outside-literal spacing normalized.
+    Literal bytes and directive newlines count; the included headers count separately."""
+    data = INCLUDE_LINE.sub(b"", pathlib.Path(path).read_bytes())
+    content = c_code(data.decode("utf-8", errors="surrogateescape"))
+    return hashlib.sha256(content.encode("utf-8", errors="surrogateescape")).hexdigest()
 
 
 @functools.cache

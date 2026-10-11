@@ -39,7 +39,8 @@ import subprocess
 import sys
 
 
-from c_comments import EXCLUDED, RULE_RUN, blank_comments, file_header, scan, sources
+from c_lexer import c_code
+from c_comments import EXCLUDED, RULE_RUN, file_header, scan, sources
 
 
 def tracked_sources():
@@ -47,8 +48,8 @@ def tracked_sources():
             extensions=(".c", ".h", ".cpp", ".hpp"), excluded=False)]
 
 def code_only(source):
-    """Code with comments blanked and whitespace flattened for comment-only diffs."""
-    return re.sub(r"\s+", " ", blank_comments(source)).strip()
+    """Normalized code for comment-only diffs, preserving literal bytes."""
+    return c_code(source)
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
