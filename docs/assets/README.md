@@ -82,6 +82,7 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
 | `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
 | `IMAG` | A picture | [The image entry](#the-image-entry) |
+| `TABL` | Named int16 rows | [The table entry](#the-table-entry) |
 
 ### The image entry
 
@@ -108,6 +109,30 @@ shorter than a row or, one bit a pixel, not whole bytes, or rows over the
 header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
 that are misaligned. The pixels it returns point into the
 entry.
+
+### The table entry
+
+[`table_asset.py`](../../launcher/tools/asset/table_asset.py) writes generic
+numeric tables. All fields are little-endian and offsets start at the entry's
+first byte.
+
+| Part | Size | Holds |
+|---|---|---|
+| Header | 8 bytes | u16 version (1), u16 rows, u16 columns, u8 fractional bits, u8 reserved (0) |
+| Row | 24 + 2 x columns bytes | NUL-padded name[24], then int16 values[columns] |
+
+Row i starts at `8 + i * (24 + 2 * columns)`. `asset_table_open()` requires
+a 2-byte-aligned base and a complete header (`ASSET_ERR_BOUNDS`), version 1
+(`ASSET_ERR_VERSION`), nonempty dimensions, zero reserved byte, exact entry
+size and a NUL in every name (`ASSET_ERR_FORMAT`). `asset_table_row()` checks
+the requested column count (`ASSET_ERR_FORMAT`) and looks up a name
+(`ASSET_ERR_NOT_FOUND` when absent). Its values point into the mounted pack;
+the reader allocates nothing.
+
+[`curve_asset.py`](../../launcher/tools/gfx/curve_asset.py) bakes a
+`NAME.curve.toml` and the PNG it names into entry NAME: one bright line
+crossing every column of the panel's landscape frame, stored as row `y` of
+brightness-weighted heights.
 
 ## The pack directory
 

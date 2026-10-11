@@ -27,7 +27,7 @@ static const ui_icon_name_t SYSTEM_NAMES[UI_ICON_COUNT] = {
 };
 
 static gfx_image_t system_icons[UI_ICON_COUNT];
-static ui_icon_set_t system_set = {UI_ENGINE_PACK, SYSTEM_NAMES, UI_ICON_COUNT, system_icons, false};
+static ui_icon_set_t system_set = {ASSET_ENGINE_PACK, SYSTEM_NAMES, UI_ICON_COUNT, system_icons, false};
 
 bool
 ui_icon_set_load(ui_icon_set_t* set) {

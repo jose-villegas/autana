@@ -12,6 +12,8 @@
 
 #include "asset/asset_pack.h"
 
+#define ASSET_ENGINE_PACK      "engine"
+
 /* The variable that names a host's pack folder. */
 #define ASSET_STORE_DIR_ENV    "AUTANA_ASSET_DIR"
 
