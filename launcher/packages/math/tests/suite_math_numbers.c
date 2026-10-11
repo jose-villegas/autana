@@ -6,6 +6,7 @@
  * headers say it does.
  */
 
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -631,8 +632,86 @@ test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range(void) {
     TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(UINT32_MAX, crossing_lo, crossing_hi));
 }
 
+static void
+test_scalar_clamp_maps_nonfinite_values_to_bounds(void) {
+    const float lo = -2.0F;
+    const float hi = 3.0F;
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(NAN, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(hi, mathf_clamp_finite(INFINITY, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(-INFINITY, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(-FLT_MAX, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(hi, mathf_clamp_finite(FLT_MAX, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(lo, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(hi, mathf_clamp_finite(hi, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(0, mathf_clamp_finite(0, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, mathf_clamp_finite(0.5F, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(-0.5F, mathf_clamp_finite(-0.5F, lo, hi));
+}
+
+static void
+test_scalar_rounding_preserves_large_integers_and_half_away_ties(void) {
+    static const float values[] = {0, 0.49F, -0.49F, 0.5F, -0.5F, 1.5F, -1.5F};
+    static const int32_t rounded[] = {0, 0, 0, 1, -1, 2, -2};
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        TEST_ASSERT_EQUAL_INT32(rounded[i], mathf_round_i32(values[i]));
+    }
+    const int32_t odd = (1U << (FLT_MANT_DIG - 1)) + 1;
+    TEST_ASSERT_EQUAL_INT32(odd, mathf_round_i32((float)odd));
+    TEST_ASSERT_EQUAL_INT32(-odd, mathf_round_i32((float)-odd));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathf_round_i32(MATH_FLOAT_INT_LIMIT));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathf_round_i32(-MATH_FLOAT_INT_LIMIT));
+}
+
+static void
+test_transform_matrix_refusals_and_shear_tolerance_boundary(void) {
+    mat4f_t matrix = mat4f_identity();
+    transformf_t pose;
+    matrix.m[0][3] = INFINITY;
+    TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
+    matrix = mat4f_identity();
+    matrix.m[3][3] = 2;
+    TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
+    matrix = mat4f_identity();
+    matrix.m[0][1] = TRANSFORMF_MATRIX_TOLERANCE;
+    TEST_ASSERT_TRUE(transformf_from_mat(matrix, &pose));
+    matrix.m[0][1] = nextafterf(TRANSFORMF_MATRIX_TOLERANCE, INFINITY);
+    TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
+}
+
+static void
+test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods(void) {
+    const uint64_t duration = MATH_MS_PER_S;
+    const uint64_t beyond_word = (uint64_t)UINT32_MAX + duration;
+    const uint64_t wide_period = UINT64_MAX - 1;
+    TEST_ASSERT_EQUAL_UINT64(mathi_repeat_u32(UINT32_MAX, MATH_MS_PER_S), mathi_repeat_u64(beyond_word, duration));
+    TEST_ASSERT_EQUAL_UINT64(0, mathi_repeat_u64(wide_period, wide_period));
+    TEST_ASSERT_EQUAL_UINT64(1, mathi_repeat_u64(UINT64_MAX, wide_period));
+    TEST_ASSERT_EQUAL_UINT64(wide_period - 1, mathi_repeat_u64(wide_period - 1, wide_period));
+    TEST_ASSERT_EQUAL_UINT64(0, mathi_repeat_u64(0, UINT64_MAX));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX - 1, mathi_repeat_u64(UINT64_MAX - 1, UINT64_MAX));
+}
+
+static void
+test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary(void) {
+    const uint64_t boundary = (uint64_t)UINT32_MAX + 1;
+    const uint64_t lo = boundary - MATH_MS_PER_S, hi = boundary + MATH_MS_PER_S;
+    TEST_ASSERT_EQUAL_UINT64(lo, mathi_clamp_u64(0, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(lo, mathi_clamp_u64(lo - 1, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(boundary, mathi_clamp_u64(boundary, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(hi, mathi_clamp_u64(hi, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(hi, mathi_clamp_u64(UINT64_MAX, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(0, mathi_clamp_u64(0, 0, UINT64_MAX));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX, mathi_clamp_u64(UINT64_MAX, 0, UINT64_MAX));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX - 1, mathi_clamp_u64(UINT64_MAX, UINT64_MAX - 1, UINT64_MAX - 1));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods);
+    RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
+    RUN_TEST(test_scalar_clamp_maps_nonfinite_values_to_bounds);
+    RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
+    RUN_TEST(test_transform_matrix_refusals_and_shear_tolerance_boundary);
     RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
     RUN_TEST(test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range);
     RUN_TEST(test_looking_keeps_forward_at_large_positions);

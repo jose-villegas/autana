@@ -107,6 +107,7 @@ offsets. `strings_off` must be a multiple of 4.
 ```c
 anim_tracks_t clip;
 anim_track_t move;
+float out[ANIM_WIDTH_MAX];
 if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
     && anim_tracks_find(&clip, "camera", ANIM_COMPONENT_TRANSFORM,
                         "position", &move) == ASSET_OK) {
@@ -155,13 +156,15 @@ const float seconds = anim_clip_seconds(&clip.clip, t_ms, ANIM_LOOP);
 anim_track_sample(&move, seconds, out);
 ```
 
-`anim_clip_seconds()` wraps `t_ms` at the clip's duration with an integer
-remainder, so a long run keeps its millisecond resolution, and converts to
-seconds once. `ANIM_CLAMP` holds it at the duration instead; a loop authors
-its first key again as its last. `anim_track_sample()` holds a track's first
-value before its first key and its last after its last, as glTF defines.
+`anim_clip_seconds()` wraps the integer time at the clip's duration before
+converting to seconds, preserving millisecond resolution over a long run.
+`ANIM_CLAMP` holds at the duration; a loop authors its first key again as its
+last. `anim_track_sample()` holds the first value before its first key and the
+last after its last, as glTF defines.
+A scene animator keeps its own clock in an `anim_playhead_t`
+(`anim/playback/anim_playhead.h`), which scales by speed and wraps the same way.
 `anim_quat_rotate()` turns a vector by a sampled rotation, such as a
-camera's look direction in `r3d_scene_camera_sample()`.
+camera's look direction.
 
 ## Authoring
 
@@ -279,3 +282,40 @@ build it, the compiler or the flags change.
 - **Portable.** No ESP-IDF and no allocation; a host suite runs all of it.
 - **The caller owns the environment.** Time is passed in; nothing reads a
   clock.
+
+## Scene playback
+
+Apps configure an entity with `scene_animator_set_clips()` and control it with
+`scene_animator_play()`, `scene_animator_set_speed()` and
+`scene_animator_set_paused()`. Clip count and names come from scene queries.
+Asset ids are resolved once; the scene owns the animator, binding arrays and
+buffers. SCNE camera rows create property animators automatically. Their source
+node names are aliases for their camera entities during binding.
+
+Property clips bind strictly against scene transforms and camera lens fields;
+every binding must resolve, and unkeyed fields retain their values. They require
+`blend_ms == 0`. Skeleton clips bind joint paths with `anim_bind_skeleton()`
+and support a transition blend. Both use the same animator component and
+per-slot playheads. Engine-private declarations
+live in `anim/pose/` and `anim/playback/`; apps include `scene/scene.h`.
+
+A skeleton layer samples each active clip onto the skeleton's rest pose, so an
+unkeyed channel retains rest TRS. Position and scale blend linearly. Rotation
+uses normalized linear interpolation, with a hemisphere check before the sum
+(nlerp)<sup>[[56]](Citations.md#56)</sup>. This uses only the paper's
+sign-corrected normalized quaternion sum, applied per joint between two
+poses; no dual quaternions. This preserves unit rotations and takes
+the short quaternion path; its angular speed is not constant. An interrupted
+transition blend copies the last displayed pose into the layer's frozen PSRAM
+buffer and starts the new blend from it. Interrupting that blend also freezes
+the currently displayed result.
+
+Each slot has its own speed and pause. Speed has Q16.16 precision.
+Advancement widens the millisecond product before wrapping; a fractional
+accumulator retains sub-millisecond steps. Conversion to float seconds happens
+after integer wrap/clamp through `anim_clip_seconds()`.
+
+Every scene playback slot loops; play-once clips are planned.
+Each entity has one animator of one clip kind; a property clip (NULL skeleton)
+cannot replace the skeleton animator on a skinned entity. Controls on an empty
+or frozen PREVIOUS slot return false.
