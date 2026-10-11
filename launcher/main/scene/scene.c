@@ -8,6 +8,7 @@
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "gfx/draw/gfx_color.h"
+#include "math/scalar/mathi.h"
 #include "scene/scene_internal.h"
 
 #define LOADED_MAX 8
@@ -28,7 +29,7 @@ typedef struct {
 
 size_t
 scene_storage_carve(size_t* end, size_t bytes, size_t align) {
-    const size_t at = (*end + align - 1) & ~(align - 1);
+    const size_t at = mathi_size_ceil(*end, align);
     *end = at + bytes;
     return at;
 }
@@ -37,17 +38,14 @@ static layout_t
 layout_for(const scene_asset_t* asset) {
     layout_t l;
     size_t end = sizeof(scene_t);
-    l.renderers =
-        scene_storage_carve(&end, sizeof(scene_renderer_t) * asset->renderer_count, alignof(scene_renderer_t));
+    SCENE_STORAGE_RESERVE(l, end, renderers, scene_renderer_t, asset->renderer_count);
     SCENE_STORAGE_RESERVE(l, end, cameras, scene_camera_t, asset->camera_count);
     SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, asset->renderer_count);
-    l.transforms =
-        scene_storage_carve(&end, sizeof(scene_transform_t) * asset->entity_count, alignof(scene_transform_t));
+    SCENE_STORAGE_RESERVE(l, end, transforms, scene_transform_t, asset->entity_count);
     SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, asset->entity_count);
     SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, asset->entity_count);
     SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, asset->entity_count);
-    l.skins = scene_storage_carve(&end, sizeof(scene_skinned_renderer_t) * asset->entity_count,
-                                  alignof(scene_skinned_renderer_t));
+    SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, asset->entity_count);
     l.total = end;
     return l;
 }
@@ -358,7 +356,6 @@ void
 scene_entity_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
     const bool valid = local_from_placement(transform, &scene->locals[entity]);
-    assert(valid);
     if (!valid) {
         return;
     }

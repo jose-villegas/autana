@@ -5,7 +5,8 @@
 void
 anim_layer_init(anim_layer_t* l, const anim_clip_t* clips, int count, anim_pose_t shown, anim_pose_t frozen) {
     assert(count >= 0 && count <= ANIM_LAYER_CLIP_NONE);
-    assert(shown.joint_count == frozen.joint_count && shown.local != frozen.local);
+    assert(shown.joint_count == frozen.joint_count);
+    assert(shown.joint_count == 0 || shown.local != frozen.local);
     *l = (anim_layer_t){.clips = clips, .clip_count = count, .shown = shown, .frozen = frozen};
     l->current.clip = ANIM_LAYER_CLIP_NONE;
     l->previous.clip = ANIM_LAYER_CLIP_NONE;

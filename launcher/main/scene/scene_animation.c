@@ -63,7 +63,7 @@ finish(scene_failure_t* why, scene_failure_t result) {
 }
 
 typedef struct {
-    size_t clips, times, counts, tables, names, joints, fields, sampled, values, shown, frozen, model, palette, total;
+    size_t clips, times, counts, tables, names, joints, fields, shown, frozen, total;
 } animator_layout_t;
 
 static animator_layout_t
@@ -75,14 +75,10 @@ layout_for(int clips, int curves, int joints) {
     SCENE_STORAGE_RESERVE(l, end, counts, int, clips);
     SCENE_STORAGE_RESERVE(l, end, tables, const anim_joint_bound_t*, clips);
     SCENE_STORAGE_RESERVE(l, end, names, char, clips* ASSET_NAME_MAX);
-    SCENE_STORAGE_RESERVE(l, end, joints, anim_joint_bound_t, curves);
+    SCENE_STORAGE_RESERVE(l, end, joints, anim_joint_bound_t, joints == 0 ? 0 : curves);
     SCENE_STORAGE_RESERVE(l, end, fields, anim_bound_t, joints == 0 ? curves : 0);
-    SCENE_STORAGE_RESERVE(l, end, sampled, anim_bound_t, joints == 0 ? curves : 0);
-    SCENE_STORAGE_RESERVE(l, end, values, float, joints == 0 ? curves * ANIM_WIDTH_MAX : 0);
-    SCENE_STORAGE_RESERVE(l, end, shown, transformf_t, joints == 0 ? 1 : joints);
-    SCENE_STORAGE_RESERVE(l, end, frozen, transformf_t, joints == 0 ? 1 : joints);
-    SCENE_STORAGE_RESERVE(l, end, model, mat4f_t, joints);
-    SCENE_STORAGE_RESERVE(l, end, palette, mat4f_t, joints);
+    SCENE_STORAGE_RESERVE(l, end, shown, transformf_t, joints);
+    SCENE_STORAGE_RESERVE(l, end, frozen, transformf_t, joints);
     l.total = end;
     return l;
 }
@@ -99,9 +95,7 @@ allocate_animator(scene_animator_t* a, int clips, int curves) {
     a->clips = (scene_animator_clip_t*)(void*)(block + l.clips);
     a->counts = (int*)(void*)(block + l.counts);
     a->joint_tables = (const anim_joint_bound_t**)(void*)(block + l.tables);
-    a->model = (mat4f_t*)(void*)(block + l.model);
-    a->palette = (mat4f_t*)(void*)(block + l.palette);
-    const uint8_t joints = a->skeleton.joint_count == 0 ? 1 : a->skeleton.joint_count;
+    const uint8_t joints = a->skeleton.joint_count;
     anim_layer_init(&a->layer, (anim_clip_t*)(void*)(block + l.times), clips,
                     (anim_pose_t){(transformf_t*)(void*)(block + l.shown), joints},
                     (anim_pose_t){(transformf_t*)(void*)(block + l.frozen), joints});
@@ -125,7 +119,9 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curv
         scene_animator_clip_t* clip = &a->clips[c];
         (void)anim_tracks_from_pack(scene->pack, ids[c], &clip->tracks);
         char* name = (char*)block + l.names + (c * ASSET_NAME_MAX);
-        memcpy(name, ids[c], strlen(ids[c]) + 1);
+        const size_t length = strlen(ids[c]);
+        assert(length < ASSET_NAME_MAX);
+        memcpy(name, ids[c], length + 1);
         clip->id = name;
         ((anim_clip_t*)(void*)a->layer.clips)[c] = clip->tracks.clip;
         a->counts[c] = clip->tracks.count;
@@ -136,13 +132,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curv
             status = anim_bind_skeleton(&clip->tracks, &a->skeleton, clip->joints, a->counts[c], NULL);
         } else {
             clip->fields = (anim_bound_t*)(void*)(block + l.fields) + first;
-            clip->sampled = (anim_bound_t*)(void*)(block + l.sampled) + first;
             status = anim_bind(&clip->tracks, targets.targets, targets.count, clip->fields, a->counts[c], NULL);
-            for (int i = 0; status == ANIM_BIND_OK && i < a->counts[c]; i++) {
-                clip->sampled[i] = clip->fields[i];
-                clip->sampled[i].target = (float*)(void*)(block + l.values) + (first + i) * ANIM_WIDTH_MAX;
-                clip->sampled[i].dirty = NULL;
-            }
         }
         if (status != ANIM_BIND_OK) {
             result = ASSET_ERR_FORMAT;
@@ -184,7 +174,7 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     if (status == ASSET_OK) {
         status = count_curves(scene, a.root, ids, count, &curves, &failed);
     }
-    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     if (skin->internal_storage != NULL && skin->skin.joint_count != a.skeleton.joint_count) {
         status = ASSET_ERR_FORMAT;
     }
@@ -202,12 +192,13 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     if (a.root == ANIM_ROOT_SKELETON) {
         anim_pose_rest(&a.skeleton, &a.layer.shown);
         anim_pose_rest(&a.skeleton, &a.layer.frozen);
-        anim_pose_model(&a.skeleton, &a.layer.shown, a.model);
         if (skin->internal_storage != NULL) {
-            r3d_skin_palette(&skin->skin, a.model, skin->bind.position_scale, a.palette);
+            anim_pose_model(&a.skeleton, &a.layer.shown, skin->model);
+            r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
         }
     }
     memory_free(scene->animators[entity].storage);
+    a.dirty = true;
     scene->animators[entity] = a;
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, scene->id));
 }
@@ -232,13 +223,24 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
     }
     const size_t size = r3d_skin_output_bytes(&next.bind);
-    next.internal_storage = memory_alloc(size, MEMORY_INTERNAL);
+    size_t end = size;
+
+    struct {
+        size_t model, palette;
+    } layout;
+
+    SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, next.skin.joint_count);
+    SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, next.skin.joint_count);
+    next.internal_storage = memory_alloc(end, MEMORY_INTERNAL);
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
-    r3d_skin_palette(&next.skin, animator->model, next.bind.position_scale, animator->palette);
-    r3d_skin_clusters(&next.skin, &next.bind, animator->palette, 0, next.bind.cluster_count, &next.output);
+    next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
+    next.palette = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.palette);
+    anim_pose_model(&animator->skeleton, &animator->layer.shown, next.model);
+    r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
+    r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
     memory_free(scene->skinned_renderers[entity].internal_storage);
     scene->skinned_renderers[entity] = next;
@@ -261,6 +263,7 @@ scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t bl
         return false;
     }
     anim_layer_play(&a->layer, (uint8_t)clip, blend_ms);
+    a->dirty = true;
     return true;
 }
 
@@ -269,7 +272,10 @@ slot_playhead(scene_animator_t* a, scene_animator_slot_t slot) {
     if (slot == SCENE_ANIMATOR_CURRENT) {
         return &a->layer.current.playhead;
     }
-    return slot == SCENE_ANIMATOR_PREVIOUS ? &a->layer.previous.playhead : NULL;
+    return slot == SCENE_ANIMATOR_PREVIOUS && !a->layer.frozen_previous
+                   && a->layer.previous.clip != ANIM_LAYER_CLIP_NONE
+               ? &a->layer.previous.playhead
+               : NULL;
 }
 
 bool
@@ -311,43 +317,56 @@ scene_animation_release(scene_t* scene) {
     }
 }
 
+static bool
+advance_animator(scene_animator_t* a, uint32_t dt_ms) {
+    const uint32_t current = a->layer.current.playhead.t_ms;
+    const uint32_t previous = a->layer.previous.playhead.t_ms;
+    const uint32_t blended = a->layer.blended_ms;
+    anim_layer_advance(&a->layer, dt_ms);
+    const bool changed = a->dirty || current != a->layer.current.playhead.t_ms
+                         || previous != a->layer.previous.playhead.t_ms || blended != a->layer.blended_ms;
+    a->dirty = false;
+    return changed;
+}
+
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
     for (int e = first; e < first + count; e++) {
         scene_animator_t* a = &scene->animators[e];
-        if (a->storage == NULL || a->layer.current.clip == ANIM_LAYER_CLIP_NONE) {
+        a->posed = false;
+        if (a->storage == NULL || a->root != ANIM_ROOT_SKELETON || a->layer.current.clip == ANIM_LAYER_CLIP_NONE
+            || !(scene->flags[e] & SCENE_FLAG_ENABLED)) {
             continue;
         }
-        anim_layer_advance(&a->layer, dt_ms);
-        if (a->root == ANIM_ROOT_SKELETON) {
-            const anim_pose_t* pose = anim_layer_pose(&a->layer, &a->skeleton, a->joint_tables, a->counts);
-            anim_pose_model(&a->skeleton, pose, a->model);
-            const scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-            if (skin->internal_storage != NULL) {
-                r3d_skin_palette(&skin->skin, a->model, skin->bind.position_scale, a->palette);
-            }
-        } else {
-            const anim_slot_t* slot = &a->layer.current;
-            const scene_animator_clip_t* clip = &a->clips[slot->clip];
-            const float seconds = anim_playhead_seconds(&slot->playhead, &clip->tracks.clip);
-            anim_apply(clip->sampled, clip->tracks.count, seconds);
+        a->posed = advance_animator(a, dt_ms);
+        if (!a->posed) {
+            continue;
+        }
+        const anim_pose_t* pose = anim_layer_pose(&a->layer, &a->skeleton, a->joint_tables, a->counts);
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        if (skin->internal_storage != NULL) {
+            anim_pose_model(&a->skeleton, pose, skin->model);
+            r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
         }
     }
 }
 
 static void
-apply_property(scene_t* scene, scene_animator_t* a) {
-    const scene_animator_clip_t* clip = &a->clips[a->layer.current.clip];
-    for (int i = 0; i < clip->tracks.count; i++) {
-        const anim_bound_t* target = &clip->fields[i];
-        memcpy(target->target, clip->sampled[i].target, target->curve.width * sizeof(float));
-        *target->dirty |= target->dirty_bit;
-        for (int e = 0; e < scene->asset.entity_count; e++) {
-            const uintptr_t value = (uintptr_t)target->target, base = (uintptr_t)&scene->locals[e];
-            if (value >= base && value < base + offsetof(transformf_t, matrix)) {
-                scene->locals[e].cached = false;
-                scene->transforms[e] = r3d_placement_from(&scene->locals[e]);
-            }
+apply_property(scene_animator_t* a, uint32_t dt_ms) {
+    if (!advance_animator(a, dt_ms)) {
+        return;
+    }
+    const anim_slot_t* slot = &a->layer.current;
+    const scene_animator_clip_t* clip = &a->clips[slot->clip];
+    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead, &clip->tracks.clip));
+}
+
+static void
+rebuild_placements(scene_t* scene) {
+    for (int e = 0; e < scene->asset.entity_count; e++) {
+        if (scene->flags[e] & SCENE_FLAG_DIRTY) {
+            scene->locals[e].cached = false;
+            scene->transforms[e] = r3d_placement_from(&scene->locals[e]);
         }
     }
 }
@@ -357,13 +376,13 @@ scene_skin_range(scene_t* scene, int first, int count) {
     int offset = 0;
     for (int e = 0; e < scene->asset.entity_count; e++) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (skin->internal_storage == NULL) {
+        if (skin->internal_storage == NULL || !scene->animators[e].posed) {
             continue;
         }
         const int clusters = skin->bind.cluster_count;
         const int start = mathi_clamp(first - offset, 0, clusters),
                   end = mathi_clamp(first + count - offset, 0, clusters);
-        r3d_skin_clusters(&skin->skin, &skin->bind, scene->animators[e].palette, start, end - start, &skin->output);
+        r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         offset += clusters;
     }
 }
@@ -397,17 +416,19 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
         if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
-            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE) {
-            apply_property(scene, animator);
+            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ENABLED)) {
+            apply_property(animator, dt_ms);
         }
-        clusters +=
-            scene->skinned_renderers[e].internal_storage == NULL ? 0 : scene->skinned_renderers[e].bind.cluster_count;
+        clusters += scene->skinned_renderers[e].internal_storage == NULL || !animator->posed
+                        ? 0
+                        : scene->skinned_renderers[e].bind.cluster_count;
     }
+    rebuild_placements(scene);
     a = (range_t){scene, 0, clusters / 2, 0};
     b = (range_t){scene, clusters / 2, clusters - (clusters / 2), 0};
     job_run_split(skin_slice, &a, &b, sizeof a);
     for (int e = 0; e < entities; e++) {
-        if (scene->skinned_renderers[e].internal_storage != NULL) {
+        if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
         }
     }
@@ -429,6 +450,7 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     }
     p->t_ms = t_ms;
     p->fraction = 0;
+    a->dirty = true;
     scene_animation_step(scene, 0);
     return true;
 }

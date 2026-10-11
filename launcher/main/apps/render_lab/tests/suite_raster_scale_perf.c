@@ -399,9 +399,8 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, camera));
-    const r3d_scene_camera_t* flown_path = scene_camera_lens(flown, camera);
-    TEST_ASSERT_NOT_NULL(flown_path);
-    const uint32_t period = r3d_scene_camera_period_ms(flown_path);
+    TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera));
+    const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_context_set_scale(render_context_main(), 50);

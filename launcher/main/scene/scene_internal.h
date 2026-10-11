@@ -65,7 +65,6 @@ typedef struct {
     const char* id;
     anim_joint_bound_t* joints;
     anim_bound_t* fields;
-    anim_bound_t* sampled;
 } scene_animator_clip_t;
 
 typedef struct {
@@ -73,17 +72,18 @@ typedef struct {
     anim_skeleton_t skeleton;
     scene_animator_clip_t* clips;
     void* storage;
-    mat4f_t* model;
-    mat4f_t* palette;
     const anim_joint_bound_t** joint_tables;
     int* counts;
     uint8_t root;
+    bool dirty, posed;
 } scene_animator_t;
 
 typedef struct {
     r3d_skin_t skin;
     r3d_lit_mesh_t bind;
     r3d_skin_output_t output;
+    mat4f_t* model;
+    mat4f_t* palette;
     void* internal_storage;
 } scene_skinned_renderer_t;
 

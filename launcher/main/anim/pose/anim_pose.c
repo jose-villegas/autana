@@ -81,9 +81,11 @@ bind_joint(const anim_binding_t* binding, int joint, anim_joint_bound_t* out) {
     for (int c = ANIM_JOINT_POSITION; c <= ANIM_JOINT_SCALE; c++) {
         if (offset == FIELDS[c].offset) {
             *out = (anim_joint_bound_t){resolved.curve, (uint8_t)joint, (anim_joint_channel_t)c};
+            return ANIM_BIND_OK;
         }
     }
-    return ANIM_BIND_OK;
+    assert(false);
+    return ANIM_BIND_ERR_FIELD;
 }
 
 anim_bind_status_t
