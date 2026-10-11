@@ -21,6 +21,9 @@ void heap_arena_snapshot(size_t* out_blocks, size_t* out_bytes);
  * peak is never reported lower than what a previous leak left behind (that
  * inflation is the point: it is what the device would also see). */
 size_t heap_arena_peak_bytes(void);
+
+/* Restarts the peak, and each pool's low-water mark at its free space now,
+ * so heap_caps_get_minimum_free_size() answers for the time since. */
 void heap_arena_reset_peak(void);
 
 /* The PSRAM heap a PSRAM size leaves: `override` as the environment variable
