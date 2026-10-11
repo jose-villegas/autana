@@ -371,7 +371,7 @@ class LostLockTests(Store):
         with mock.patch.object(device, "open_when_free", return_value=PortGone()), \
                 mock.patch.object(device, "reconnect_after_reset", side_effect=reconnected), \
                 contextlib.redirect_stderr(io.StringIO()):
-            return device.capture_after_reset(self.root / "reset.log", 30, None)
+            return device.capture_after_reset(self.root / "reset.log", 30, None, connection=PortGone())
 
     def test_a_reopen_after_reset_ends_port_lost_only_on_usb_absence(self):
         with device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
@@ -701,6 +701,7 @@ class FlashTests(Store):
         args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                          worktree=str(worktree), out=str(log))
         with mock.patch.object(device, "git_bash", return_value=sys.executable), \
+                mock.patch.object(device, "reconnect_after_reset", return_value=FakeConnection()), \
                 mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaises(RuntimeError) as caught:
@@ -1202,7 +1203,7 @@ class SuiteFailureTests(Store):
     def batched(self, args, **stubs):
         """device.batch(args) with the build, the image write, the boot wait
         and git stubbed, plus `stubs` (name: patch keywords) on device."""
-        stubs = {"build_image": {}, "write_image": {"return_value": "abc"}, "await_console": {},
+        stubs = {"build_image": {}, "write_image": {"return_value": ("abc", FakeConnection())}, "await_console": {},
                  "git_commit": {"return_value": "c0ffee"}, **stubs}
         with contextlib.ExitStack() as stack:
             for name, keywords in stubs.items():
@@ -1309,11 +1310,11 @@ class BatchLockTests(Store):
             self.waiter_got_it.append((time.monotonic(), held))
             self.store.release(BOARD_A, held["token"])
 
-        def write_image(built, store, board_id, held_lock=None):
+        def write_image(built, store, board_id, held_lock=None, keep_connection=False):
             tokens.append(store.status(board_id)["lock"]["token"])
             self.waiter = threading.Thread(target=wait_for_the_board)
             self.waiter.start()
-            return "abc-diag"
+            return ("abc-diag", board.open()) if keep_connection else "abc-diag"
 
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
                          suite=["sand"], runs=runs, perf_scope=False, flash=True, max_seconds=5,
@@ -1354,7 +1355,7 @@ class BatchLockTests(Store):
                                return_value=(b"Guru Meditation Error\n", "timeout")), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stderr(errors):
-            device.await_console(args, BOARD_A, "abc-diag", None)
+            device.await_console(args, BOARD_A, "abc-diag", None, FakeConnection())
         self.assertIn("no console from BUILD_ID=abc-diag", errors.getvalue())
 
     def test_a_filtered_capture_cut_short_does_not_end_the_batch(self):
@@ -1369,7 +1370,7 @@ class BatchLockTests(Store):
                          suite=["sand"], runs=3, perf_scope=False, flash=True, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None, test_filter=["one"])
         with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc-diag"), \
+                mock.patch.object(device, "write_image", side_effect=lambda *a, **kw: ("abc-diag", open_port())), \
                 mock.patch.object(device, "open_when_free", side_effect=open_port), \
                 mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \

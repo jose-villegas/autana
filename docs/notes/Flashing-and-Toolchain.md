@@ -38,10 +38,9 @@ power-cycles the SoC: USB drops and comes back, possibly on a **different
 COM number**. Nothing depends on the number: after every reset `device.py`
 waits for the board's USB serial number to leave the port list and come
 back, then opens the port it is listed under, so no open gets the dying
-handle. Every open `device.py` makes leaves DTR and RTS low. Windows applies
-both low together in its DCB. On Linux, cdc_acm raises both on open, so
-`device.py` opens with both raised, then lowers RTS before DTR. This avoids
-DTR low with RTS high, the USB Serial/JTAG reset state. `selftest` and
+handle. Every open `device.py` makes leaves DTR and RTS low without passing
+through the USB Serial/JTAG reset state (DTR low, RTS high); `open_serial`
+in [device.py](../../scripts/device/device.py) says how on each OS. `selftest` and
 `batch` check the console `BUILD_ID` against the flashed image.
 
 If it vanishes from USB entirely (no COM port, no device at vendor ID

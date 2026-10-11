@@ -43,12 +43,10 @@ class Replies(FakeConnection):
 
 
 class FakeUsbBoard:
-    """One board on a fake USB bus, at pyserial's boundary, in the real one's
-    order: a reset takes its port off the bus `leaves` seconds later and lists
-    it again `returns` seconds after the reset, under the next of `names`. A
-    handle opened before the port left dies with it. An open with DTR or RTS
-    raised, pyserial's default, resets the board, as on USB Serial/JTAG.
-    Each handle reads `boot_line` once."""
+    """One board at pyserial's boundary, in the order measured on the board:
+    a reset unlists its port after `leaves`, lists it after `returns` under
+    the next name, and permits opens after `opens`. Old handles die. DTR low
+    with RTS high resets USB Serial/JTAG. Each handle reads boot_line once."""
 
     boot_line = b""
 
@@ -90,25 +88,33 @@ class FakeUsbBoard:
                 or (self.blocked_at is not None and self.blocked_at <= now < self.open_at)):
             raise FileNotFoundError(2, "could not open port " + str(port))
         boot = self.boot
-        if dtr or rts:
+        if not dtr and rts:
             self.reset(now)
         return boot
 
     def alive(self, boot, now):
         return self.listed(now) and self.reset_at is None and boot == self.boot
 
-    def serial_module(self, clock, sleep=lambda seconds: None):
+    def serial_module(self, clock, sleep=lambda seconds: None, platform="nt"):
         """A stand-in for the `serial` module, every port on this board."""
         board = self
 
         class Serial:
             def __init__(self, port=None, **unused):
+                self.boot = None
                 self.port, self.dtr, self.rts = port, True, True
                 self.boot, self.unread = None, b""
                 if port is not None:
                     self.open()
 
+            def __setattr__(self, name, value):
+                object.__setattr__(self, name, value)
+                if name in ("dtr", "rts") and getattr(self, "boot", None) is not None:
+                    board.open(self.port, self.dtr, self.rts, clock())
+
             def open(self):
+                if platform == "posix":
+                    board.open(self.port, self.dtr, True, clock())
                 self.boot = board.open(self.port, self.dtr, self.rts, clock())
                 self.unread = board.boot_line
 
@@ -135,7 +141,7 @@ class FakeUsbBoard:
         return type("serial", (), {"Serial": Serial,
                                    "SerialTimeoutException": SerialTimeoutException})
 
-    def esptool(self, clock, sleep, startup=0.2):
+    def esptool(self, clock, sleep, startup=0.2, status=0):
         """subprocess.run for `esptool ... --after hard_reset chip_id`: a new
         process opens the port about `startup` seconds later, and the reset
         on its way out takes the port off the bus."""
@@ -149,5 +155,8 @@ class FakeUsbBoard:
                     raise subprocess.CalledProcessError(2, command)
                 return subprocess.CompletedProcess(command, 2)
             self.reset(clock())
-            return subprocess.CompletedProcess(command, 0)
+            result = subprocess.CompletedProcess(command, status)
+            if check:
+                result.check_returncode()
+            return result
         return run

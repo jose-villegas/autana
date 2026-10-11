@@ -59,12 +59,12 @@ sequenceDiagram
     Sh->>Board: esptool write_flash @flash_args, hash-verify each region
     Sh->>Board: RTS reset
     Sh-->>Dev: exit status
-    Dev->>Board: wait for the port to leave USB and return, by serial number
+    Dev->>Board: reconnect by serial number, even after a failed write
     Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
     Dev->>Snap: remove, whether the write succeeded or not
     opt suite --flash and selftest, still under the same lock
         Dev->>Board: selftest resets again, waits for USB, then captures
-        Dev->>Board: suite --flash opens the returned port and reads the boot
+        Dev->>Board: suite --flash reads the boot on the returned handle
         Dev->>Board: suite --flash: once its console is up, send RUNSUITE
         Dev->>Board: capture until the suites end
         Note over Dev,Board: the capture fails on any other BUILD_ID
@@ -113,12 +113,14 @@ A suite capture stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line
 disappears mid-capture ends it as `port lost` with what was read kept, so a
 multi-suite run carries on with its next suite. It fails if the build has no
 suites, does not contain the requested suite, or reports any failed test.
-Every reset (`autana reset`, the end of a flash, `selftest`, `coredump`)
-power-cycles the board, so its port leaves USB and returns, possibly under
-another name. The command waits for the board's serial number to leave the
-port list and come back, then opens the port; opening sooner gets the dying
-handle. Only `reset --capture` and `selftest` captures reconnect after a
-mid-capture reboot and read on; a suite capture ends as `port lost`. For
+A reset that power-cycles the board takes its port off USB and back,
+possibly under another name. The command waits for the board's serial
+number to leave the port list and come back, then opens it; opening sooner
+gets the dying handle. A reset that keeps USB up costs only the bounded
+leave wait in [device.py](../../scripts/device/device.py). Captures that
+read a reset's boot (`reset --capture`, `selftest`, and the boot capture
+after `suite --flash` through `await_console`) reconnect after a mid-capture
+reboot and read on. A suite capture ends as `port lost`. For
 `reset --capture` and `selftest`, a board silent after the RTS reset for
 `RESET_FIRST_BYTE_SECONDS` in [device.py](../../scripts/device/device.py) is
 taken for a chip in download mode and restarted once through the watchdog.

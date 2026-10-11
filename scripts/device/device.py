@@ -186,7 +186,7 @@ def board_for_lock(store, named=None, remembered=False):
                        + " - name one with --board: " + ", ".join(candidates))
 
 
-# A reset power-cycles the board, and its USB Serial/JTAG port leaves the bus
+# A power-cycling reset takes the USB Serial/JTAG port off the bus
 # about 0.2 s after esptool returns and is listed about 1 s after esptool returns.
 # The reappear bound covers a slow host and still fails fast. A reset that
 # keeps the port up costs only RESET_LEAVE_SECONDS.
@@ -225,11 +225,12 @@ FLUSH_POLL_SECONDS = 0.05
 
 
 def open_serial():
-    """Open the locked board exclusively. POSIX uses an advisory flock, which
-    excludes our readers and esptool but not screen or ModemManager. Busy
-    opens raise OSError for open_when_free. POSIX opens with DTR and RTS raised,
-    then lowers RTS before DTR to avoid the USB Serial/JTAG reset state.
-    Windows applies both low together in its DCB."""
+    """Opens the locked board's port for this process alone. Windows refuses
+    a second open; POSIX needs exclusive (advisory flock), else readers split
+    bytes. It excludes our readers and esptool, not screen or ModemManager.
+    A refused open is OSError, treated as busy by open_when_free. DTR low with
+    RTS high resets USB Serial/JTAG: Windows sets both low before open;
+    POSIX opens with both raised and lowers RTS before DTR."""
     port = locked_port()
     try:
         import serial
@@ -272,10 +273,14 @@ def open_serial():
     connection.write_timeout = BOOT_WAIT_SECONDS
     if os.name == "nt":
         connection.dtr = connection.rts = False
-    connection.open()
-    if os.name != "nt":
-        connection.rts = False
-        connection.dtr = False
+    try:
+        connection.open()
+        if os.name != "nt":
+            connection.rts = False
+            connection.dtr = False
+    except BaseException:
+        connection.close()
+        raise
     return connection
 
 
@@ -411,8 +416,7 @@ def open_when_free(seconds=PORT_WAIT_SECONDS, opener=None, sleep=time.sleep,
             require_live_lock()
             remaining = deadline - now()
             if remaining <= 0:
-                raise PortUnavailable("board port still " + reason + " when the "
-                                      + str(int(seconds)) + "s wait ran out: "
+                raise PortUnavailable("board port still " + reason + " when the wait ran out: "
                                       + str(error) + previous_holder_note()) from error
             if not waited:
                 print("waiting for the board port, " + reason, file=sys.stderr)
@@ -707,15 +711,33 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
-def run_resetting(command, check=False):
-    """Run a command that resets the board, returning its status and live port.
-    A nonzero exit still waits for USB before reporting the command failure."""
-    result = subprocess.run(command, check=False)
-    connection = reconnect_after_reset()
-    if check and result.returncode:
+def run_resetting(command, check=False, run=None):
+    """Run a resetting command, then reconnect even on failure. A custom run
+    returns its status or raises: flash uses Built.run/run_to_end to retain
+    its log and lock-loss watcher. A failed command keeps its own failure
+    when USB never returns; unchecked commands return their status and None."""
+    failure = None
+    if run is None:
+        status = subprocess.run(command, check=False).returncode
+    else:
+        try:
+            status = run(command)
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+            failure, status = error, None
+    if check and status:
+        failure = subprocess.CalledProcessError(status, command)
+    try:
+        connection = reconnect_after_reset()
+    except PortUnavailable as unavailable:
+        if failure is not None:
+            raise failure from unavailable
+        if not status:
+            raise
+        return status, None
+    if failure is not None:
         connection.close()
-        result.check_returncode()
-    return result.returncode, connection
+        raise failure
+    return status, connection
 
 
 def reset(after="hard_reset"):
@@ -747,7 +769,7 @@ RESET_FIRST_BYTE_SECONDS = 2
 
 
 def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
-                        complete=tests_done, connection=None):
+                        complete=tests_done, *, connection):
     """The console after a reset whose port reconnect_after_reset saw come
     back. A board that says nothing within RESET_FIRST_BYTE_SECONDS ends as
     "silent". One that reboots again mid-capture drops the port, which is
@@ -759,7 +781,6 @@ def capture_after_reset(output, seconds, idle_seconds, expected_build_id=None,
     def ended(reason):
         return bytes(data), reason if data else "silent"
 
-    connection = connection or open_when_free(seconds, reason="re-enumerating after reset")
     while True:
         with connection:
             part, reason = capture(connection, output, deadline - time.monotonic(),
@@ -789,7 +810,7 @@ def console_up(build_id):
     return complete
 
 
-def await_console(args, board, build_id, acquired_at):
+def await_console(args, board, build_id, acquired_at, connection):
     """Waits under the caller's lock, after the flash's own reset, for
     `build_id` to boot to its console: a request sent before then is lost.
     A board that never gets there is reported, not refused,
@@ -799,9 +820,7 @@ def await_console(args, board, build_id, acquired_at):
     data, reason = b"", None
     try:
         data, reason = capture_after_reset(output, BOOT_WAIT_SECONDS, None, build_id,
-                                           console_up(build_id))
-    except PortUnavailable as unavailable:
-        reason = str(unavailable)
+                                           console_up(build_id), connection=connection)
     finally:
         path = record_capture(output, managed, started_at=started_at, board=board,
                               owner=args.owner, purpose=args.purpose, command="boot",
@@ -1211,10 +1230,11 @@ def build_image(args, board, extra_flags=()):
     return built
 
 
-def write_image(built, store, board, held_lock=None):
+def write_image(built, store, board, held_lock=None, keep_connection=False):
     """Writes `built`'s snapshot under the lock, a fresh one, or `held_lock`,
     and returns its build id, the snapshot's own. The snapshot is gone
-    afterwards, written or not."""
+    afterwards, written or not. keep_connection returns (build id, live port)
+    for a boot capture under the same lock."""
     build_id = None
     error = None
     held = None
@@ -1222,9 +1242,11 @@ def write_image(built, store, board, held_lock=None):
         with holding(store, board, built.args, held_lock, "flash") as held:
             with open_when_free():
                 pass
-            built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
-                      "ab")
-            reconnect_after_reset().close()
+            _, connection = run_resetting(built.write, check=True, run=lambda unused:
+                built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
+                          "ab") or 0)
+            if not keep_connection:
+                connection.close()
             build_id = built.build_id
             print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
     except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
@@ -1234,7 +1256,7 @@ def write_image(built, store, board, held_lock=None):
         built.__exit__(None, None, None)
         built.record(build_id=build_id, error=error,
                      acquired_at=held.held["acquired_at"] if held else None)
-    return build_id
+    return (build_id, connection) if keep_connection else build_id
 
 
 def test_patterns(values):
@@ -1507,7 +1529,8 @@ def coredump(args, store, board):
         if gdb:
             command += ["--gdb", str(gdb)]
         status, connection = run_resetting(command + [str(elf)])
-        connection.close()
+        if connection is not None:
+            connection.close()
         return status
 
 
@@ -1705,12 +1728,14 @@ def batch(args, store, board):
     with build_cm as built, \
             HeldLock(store, board, args.owner, "batch", args.wait) as held:
         if args.flash:
-            build_id = write_image(built, store, board, held_lock=held)
+            build_id, connection = write_image(built, store, board, held_lock=held,
+                                               keep_connection=True)
             if args.expect_build_id and build_id != args.expect_build_id:
+                connection.close()
                 raise RuntimeError(
                     f"build id mismatch: expected {args.expect_build_id}, flashed {build_id} - "
                     "refusing to run any suite")
-            await_console(flash_args, board, build_id, held.held["acquired_at"])
+            await_console(flash_args, board, build_id, held.held["acquired_at"], connection)
         else:
             build_id = args.expect_build_id
         commit = git_commit(worktree)
