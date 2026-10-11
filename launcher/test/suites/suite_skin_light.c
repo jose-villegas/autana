@@ -69,6 +69,27 @@ fixture_light(fixture_t* f, r3d_skin_light_kernel_t kernel) {
 }
 
 static void
+test_reference_decodes_packed_normal_length(void) {
+    fixture_t* f = malloc(sizeof *f);
+    TEST_ASSERT_NOT_NULL(f);
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+        fixture(influences, f);
+        f->skin.vertices = f->records;
+        for (int v = 0; v < VERTICES; v++) {
+            int8_t* bind = (int8_t*)(f->records + v * f->skin.vertex_stride + 2 * influences);
+            bind[0] = -R3D_SKIN_NORMAL_SCALE;
+            bind[1] = R3D_SKIN_NORMAL_SCALE / 2;
+            bind[2] = R3D_SKIN_NORMAL_SCALE;
+            const vec3f_t got = skin_light_reference_normal(&f->skin, f->normals, v, false);
+            TEST_ASSERT_FLOAT_WITHIN(0.00001F, -1.0F, got.x);
+            TEST_ASSERT_FLOAT_WITHIN(0.00001F, bind[1] * R3D_SKIN_NORMAL_RECIP, got.y);
+            TEST_ASSERT_FLOAT_WITHIN(0.00001F, 1.0F, got.z);
+        }
+    }
+    free(f);
+}
+
+static void
 test_transfer_error_against_float_bake(void) {
     static const float whites[] = {0, 0.25F, 0.5F, 1, 2, 4, 16};
 
@@ -212,24 +233,14 @@ test_direct_sum_matches_independent_float_reference(void) {
 }
 
 static void
-assert_rotated_reference(const fixture_t* f, int influences, const uint8_t weights[][JOINTS],
-                         const uint8_t colors[VERTICES][3], const r3d_skin_lights_t* lights, bool normalise,
-                         int bound) {
+assert_rotated_reference(const fixture_t* f, const uint8_t colors[VERTICES][3], const r3d_skin_lights_t* lights,
+                         bool normalise, int bound) {
     for (int v = 0; v < VERTICES; v++) {
-        float n[3] = {0};
-        const int axis = v % R3D_SKIN_NORMAL_WIDTH;
-        for (int j = 0; j < influences; j++) {
-            for (int k = 0; k < R3D_SKIN_NORMAL_WIDTH; k++) {
-                n[k] += f->palette[j].m[k][axis] * weights[influences / 2 - 1][j] / R3D_SKIN_WEIGHT_SUM;
-            }
-        }
-        const float facing = fmaxf(0, normalise ? n[1] / sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) : n[1]);
-        const float channels[] = {lights->ambient.x + lights->color[0].x * facing,
-                                  lights->ambient.y + lights->color[0].y * facing,
-                                  lights->ambient.z + lights->color[0].z * facing};
+        const vec3f_t normal = skin_light_reference_normal(&f->skin, f->normals, v, normalise);
+        uint8_t expected[R3D_SKIN_LIGHT_CHANNELS];
+        skin_light_reference(normal, lights, colors[v], 1, expected);
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-            const float decoded = powf((float)colors[v][k] / R3D_SKIN_LIGHT_BYTE_SCALE, R3D_SKIN_LIGHT_GAMMA);
-            TEST_ASSERT_UINT8_WITHIN(bound, skin_light_reference_encode(decoded * channels[k], 1), f->out[v][k]);
+            TEST_ASSERT_UINT8_WITHIN(bound, expected[k], f->out[v][k]);
         }
     }
 }
@@ -280,7 +291,7 @@ test_fused_rotations_unequal_weights_match_independent_reference(void) {
         lights.table_scale = r3d_skin_light_table_build(&lights, table);
         for (size_t mode = 0; mode < sizeof modes / sizeof modes[0]; mode++) {
             modes[mode].kernel(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, f->normals, &lights, f->out);
-            assert_rotated_reference(f, influences, weights, colors, &lights, modes[mode].normalise, modes[mode].bound);
+            assert_rotated_reference(f, colors, &lights, modes[mode].normalise, modes[mode].bound);
         }
         free(table);
         free(block);
@@ -538,6 +549,7 @@ test_table_extreme_finite_intensities(void) {
 
 void
 suite_skin_light(void) {
+    RUN_TEST(test_reference_decodes_packed_normal_length);
     RUN_TEST(test_table_extreme_finite_intensities);
     RUN_TEST(test_table_scale_tracks_sampled_maximum_and_cells);
     RUN_TEST(test_irradiance_table_preserves_range_and_matches_float);

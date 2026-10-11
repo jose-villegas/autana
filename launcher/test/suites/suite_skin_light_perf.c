@@ -168,26 +168,10 @@ fixture(int lights) {
 }
 
 /* Packed bind normals keep quality checks independent of source-normal quantisation. */
-static vec3f_t
-reference_normal(const fixture_t* f, int vertex, bool renormalise) {
-    const uint8_t* r = f->skin.vertices + (size_t)vertex * f->skin.vertex_stride;
-    const int influences = f->skin.influences;
-    const int8_t* bind = (const int8_t*)(r + 2 * influences);
-    float normal[R3D_SKIN_NORMAL_WIDTH] = {0};
-    for (int i = 0; i < influences; i++) {
-        const mat3f_t* m = &f->normals[r[i]];
-        const float weight = (float)r[influences + i] / R3D_SKIN_WEIGHT_SUM;
-        for (int axis = 0; axis < R3D_SKIN_NORMAL_WIDTH; axis++) {
-            normal[axis] += weight * (m->m[axis][0] * bind[0] + m->m[axis][1] * bind[1] + m->m[axis][2] * bind[2]);
-        }
-    }
-    const vec3f_t blended = {normal[0], normal[1], normal[2]};
-    return renormalise ? vec3f_normalize(blended) : blended;
-}
-
 static void
 reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
-    skin_light_reference(reference_normal(f, vertex, true), &f->lights, f->bind.colors[vertex], 0, out);
+    skin_light_reference(skin_light_reference_normal(&f->skin, f->normals, vertex, true), &f->lights,
+                         f->bind.colors[vertex], 0, out);
 }
 
 typedef enum { SKIN, DIRECT, RENORMALISED, TABLE, EXACT_SEPARATE, NORMAL_PALETTE, TABLE_BUILD } kernel_t;
@@ -222,7 +206,8 @@ assert_direct_quality(const fixture_t* f) {
     int direct_max = 0;
     for (int v = 0; v < f->bind.vertex_count; v++) {
         uint8_t reference[R3D_SKIN_LIGHT_CHANNELS];
-        skin_light_reference(reference_normal(f, v, false), &f->lights, f->bind.colors[v], 0, reference);
+        skin_light_reference(skin_light_reference_normal(&f->skin, f->normals, v, false), &f->lights, f->bind.colors[v],
+                             0, reference);
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
             const int error = abs((int)f->light[v][k] - reference[k]);
             direct_max = error > direct_max ? error : direct_max;
