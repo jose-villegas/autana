@@ -770,6 +770,7 @@ test_mathi_lerp(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathi_lerp(INT32_MIN, INT32_MAX, INT32_MAX, INT32_MAX));
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathi_lerp(INT32_MAX, INT32_MIN, INT32_MAX, INT32_MAX));
     TEST_ASSERT_EQUAL_INT32(-1, mathi_lerp(INT32_MIN, INT32_MAX, 1, 2));
+    TEST_ASSERT_EQUAL_INT32(0, mathi_lerp(INT32_MAX, INT32_MIN, 1, 2));
     TEST_ASSERT_EQUAL_INT32(1, mathi_lerp(2, -1, 1, 2));
     TEST_ASSERT_EQUAL_INT32(-1, mathi_lerp(-2, 1, 1, 2));
 }
@@ -867,6 +868,17 @@ DEFINE_SCALAR_BOUND_TESTS(mathx, TEST_ASSERT_EQUAL_INT32, INT32_MIN, INT32_MAX)
 DEFINE_SCALAR_INTEGER_RANGE_TESTS(maths, INT16_MIN, INT16_MAX)
 DEFINE_SCALAR_INTEGER_RANGE_TESTS(mathx, INT32_MIN, INT32_MAX)
 
+static void
+test_float_ranges_with_decimal_lengths(void) {
+    static const float values[] = {3.3F, -3.3F, 6.6F, -6.6F};
+    const float len = 1.1F, lo = 0, hi = len;
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        const float r = mathf_repeat(values[i], len), w = mathf_wrap(values[i], lo, hi);
+        TEST_ASSERT_TRUE(r >= 0 && r < len);
+        TEST_ASSERT_TRUE(w >= lo && w < hi);
+    }
+}
+
 void
 suite_math_numbers(void) {
     RUN_TEST(test_mathf_lerp);
@@ -874,6 +886,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_mathi_lerp_u8);
     RUN_TEST(test_maths_lerp);
     RUN_TEST(test_mathx_lerp);
+    RUN_TEST(test_float_ranges_with_decimal_lengths);
     RUN_TEST(test_mathf_repeat);
     RUN_TEST(test_mathf_wrap);
     RUN_TEST(test_mathf_min);
