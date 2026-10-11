@@ -111,6 +111,26 @@ grow_bounds(int16_t lo[POSITION_AXES], int16_t hi[POSITION_AXES], const int16_t 
     }
 }
 
+static inline __attribute__((always_inline)) float
+skin_weight(const uint8_t* record, int influences, int influence) {
+    return (float)record[influences + influence] * R3D_SKIN_WEIGHT_RECIP;
+}
+
+static inline __attribute__((always_inline)) void
+skin_blend_position_axis(const mat4f_t* joint, const int16_t bind[POSITION_AXES], int axis, float weight,
+                         float* posed) {
+    const float position = (joint->m[axis][0] * (float)bind[0]) + (joint->m[axis][1] * (float)bind[1])
+                           + (joint->m[axis][2] * (float)bind[2]) + joint->m[axis][POSITION_AXES];
+    *posed += position * weight;
+}
+
+static inline __attribute__((always_inline)) void
+skin_store_position(const float posed[POSITION_AXES], int16_t out[POSITION_AXES]) {
+    for (int a = 0; a < POSITION_AXES; a++) {
+        out[a] = (int16_t)mathf_round_i32(mathf_clamp_finite(posed[a], (float)INT16_MIN, (float)INT16_MAX));
+    }
+}
+
 static inline __attribute__((always_inline)) void
 skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const int16_t bind[POSITION_AXES],
                 int16_t out[POSITION_AXES], const mat3f_t* normals, vec3f_t* normal) {
@@ -118,28 +138,20 @@ skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, c
     float posed[POSITION_AXES] = {0};
     for (int i = 0; i < influences; i++) {
         const mat4f_t* joint = &palette[record[i]];
-        const float weight = (float)record[influences + i] * R3D_SKIN_WEIGHT_RECIP;
+        const float weight = skin_weight(record, influences, i);
+        const mat3f_t* matrix = &normals[record[i]];
         for (int axis = 0; axis < POSITION_AXES; axis++) {
-            const float position = (joint->m[axis][0] * (float)bind[0]) + (joint->m[axis][1] * (float)bind[1])
-                                   + (joint->m[axis][2] * (float)bind[2]) + joint->m[axis][POSITION_AXES];
-            posed[axis] += position * weight;
-            if (normal != NULL) {
-                const mat3f_t* matrix = &normals[record[i]];
-                const vec3f_t row =
-                    vec3f_scale((vec3f_t){matrix->m[axis][0], matrix->m[axis][1], matrix->m[axis][2]}, weight);
-                rows[axis] = i == 0 ? row : vec3f_add(rows[axis], row);
-            }
+            skin_blend_position_axis(joint, bind, axis, weight, &posed[axis]);
+            const vec3f_t row =
+                vec3f_scale((vec3f_t){matrix->m[axis][0], matrix->m[axis][1], matrix->m[axis][2]}, weight);
+            rows[axis] = i == 0 ? row : vec3f_add(rows[axis], row);
         }
     }
-    if (normal != NULL) {
-        const int8_t* packed = (const int8_t*)(record + 2 * influences);
-        const vec3f_t n = {packed[0] * R3D_SKIN_NORMAL_RECIP, packed[1] * R3D_SKIN_NORMAL_RECIP,
-                           packed[2] * R3D_SKIN_NORMAL_RECIP};
-        *normal = (vec3f_t){vec3f_dot(rows[0], n), vec3f_dot(rows[1], n), vec3f_dot(rows[2], n)};
-    }
-    for (int a = 0; a < POSITION_AXES; a++) {
-        out[a] = (int16_t)mathf_round_i32(mathf_clamp_finite(posed[a], (float)INT16_MIN, (float)INT16_MAX));
-    }
+    const int8_t* packed = (const int8_t*)(record + 2 * influences);
+    const vec3f_t n = {packed[0] * R3D_SKIN_NORMAL_RECIP, packed[1] * R3D_SKIN_NORMAL_RECIP,
+                       packed[2] * R3D_SKIN_NORMAL_RECIP};
+    *normal = (vec3f_t){vec3f_dot(rows[0], n), vec3f_dot(rows[1], n), vec3f_dot(rows[2], n)};
+    skin_store_position(posed, out);
 }
 
 static inline __attribute__((always_inline)) void
@@ -154,20 +166,15 @@ skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t
 static inline __attribute__((always_inline)) void
 skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const int16_t bind[POSITION_AXES],
             int16_t out[POSITION_AXES]) {
-    const float weight_scale = 1.0F / (float)R3D_SKIN_WEIGHT_SUM;
     float posed[POSITION_AXES] = {0};
     for (int i = 0; i < influences; i++) {
         const mat4f_t* joint = &palette[record[i]];
-        const float weight = (float)record[influences + i] * weight_scale;
+        const float weight = skin_weight(record, influences, i);
         for (int axis = 0; axis < POSITION_AXES; axis++) {
-            const float position = (joint->m[axis][0] * (float)bind[0]) + (joint->m[axis][1] * (float)bind[1])
-                                   + (joint->m[axis][2] * (float)bind[2]) + joint->m[axis][POSITION_AXES];
-            posed[axis] += position * weight;
+            skin_blend_position_axis(joint, bind, axis, weight, &posed[axis]);
         }
     }
-    for (int a = 0; a < POSITION_AXES; a++) {
-        out[a] = (int16_t)mathf_round_i32(mathf_clamp_finite(posed[a], (float)INT16_MIN, (float)INT16_MAX));
-    }
+    skin_store_position(posed, out);
 }
 
 static inline __attribute__((always_inline)) void
