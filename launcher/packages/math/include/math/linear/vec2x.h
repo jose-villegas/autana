@@ -10,4 +10,4 @@
 #include "math/scalar/mathx.h"
 
 MATH_DEFINE_VEC2(vec2x, int32_t, int32_t, mathx)
-MATH_DEFINE_VEC2_LERP(vec2x, int32_t, mathx)
+MATH_DEFINE_VEC_LERP(vec2x, int32_t, mathx, 2)

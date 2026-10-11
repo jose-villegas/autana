@@ -13,6 +13,7 @@
  *        static inline functions OPS_add, OPS_mul, OPS_one and the rest in
  *        mathf.h, mathi.h, maths.h and mathx.h. A family names only the ones
  *        it uses, so a type without OPS_div or OPS_sqrt gets no normalize.
+ *   N    the vector component count for component-wise operations
  *   D, S, N   a swizzle's result and source vector types, and the source's
  *        component count (vec_swizzle_template.h)
  *

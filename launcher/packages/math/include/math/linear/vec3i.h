@@ -12,5 +12,5 @@
 #include "math/scalar/mathi.h"
 
 MATH_DEFINE_VEC3(vec3i, int32_t, int64_t, mathi)
-MATH_DEFINE_VEC3_LERP_RATIO(vec3i, mathi)
+MATH_DEFINE_VEC_LERP_RATIO(vec3i, mathi, 3)
 MATH_DEFINE_VEC_SWIZZLE(vec3i, vec2i, int32_t)
