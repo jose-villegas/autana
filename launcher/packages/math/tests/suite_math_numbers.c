@@ -6,7 +6,6 @@
  * headers say it does.
  */
 
-#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -572,16 +571,26 @@ test_integer_repeat_and_wrap_cover_negative_values_and_int_limits(void) {
     TEST_ASSERT_EQUAL_INT(negative, mathi_wrap(negative, lo, hi));
     TEST_ASSERT_EQUAL_INT(hi - 1, mathi_wrap(lo - 1, lo, hi));
     const int extremes[] = {INT_MIN, INT_MAX};
-    const int lower_bounds[] = {lo, INT_MIN, 0};
-    const int upper_bounds[] = {hi, INT_MIN + INT_MAX, INT_MAX};
-    for (size_t r = 0; r < sizeof lower_bounds / sizeof lower_bounds[0]; r++) {
-        const int64_t width = (int64_t)upper_bounds[r] - lower_bounds[r];
+    const int below_negative_range = -20;
+    const int above_negative_range = 8;
+    const int negative_range_expected = -6;
+    TEST_ASSERT_EQUAL_INT(negative_range_expected, mathi_wrap(below_negative_range, lo, hi));
+    TEST_ASSERT_EQUAL_INT(negative_range_expected, mathi_wrap(above_negative_range, lo, hi));
+    const int bounds[][2] = {{lo, hi}, {INT_MIN, INT_MIN + INT_MAX}, {0, INT_MAX}, {INT_MIN, INT_MAX}};
+    for (size_t r = 0; r < sizeof bounds / sizeof bounds[0]; r++) {
+        const int64_t width = (int64_t)bounds[r][1] - bounds[r][0];
         for (size_t i = 0; i < sizeof extremes / sizeof extremes[0]; i++) {
-            const int64_t offset = (int64_t)extremes[i] - lower_bounds[r];
-            const int want = (int)(lower_bounds[r] + (offset % width + width) % width);
-            TEST_ASSERT_EQUAL_INT(want, mathi_wrap(extremes[i], lower_bounds[r], upper_bounds[r]));
+            const int64_t offset = (int64_t)extremes[i] - bounds[r][0];
+            const int want = (int)(bounds[r][0] + (offset % width + width) % width);
+            TEST_ASSERT_EQUAL_INT(want, mathi_wrap(extremes[i], bounds[r][0], bounds[r][1]));
         }
     }
+    const int full_width_endpoint_expected = INT_MIN;
+    const int full_width_negative_expected = -1;
+    const int full_width_zero_expected = 0;
+    TEST_ASSERT_EQUAL_INT(full_width_endpoint_expected, mathi_wrap(INT_MAX, INT_MIN, INT_MAX));
+    TEST_ASSERT_EQUAL_INT(full_width_negative_expected, mathi_wrap(-1, INT_MIN, INT_MAX));
+    TEST_ASSERT_EQUAL_INT(full_width_zero_expected, mathi_wrap(0, INT_MIN, INT_MAX));
 }
 
 static void
@@ -599,6 +608,18 @@ test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range(void) {
     TEST_ASSERT_EQUAL_UINT32(lo + 1u, mathi_clamp_u32(lo + 1u, lo, hi));
     TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(hi, lo, hi));
     TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(UINT32_MAX, lo, hi));
+    const uint32_t signed_boundary = (uint32_t)INT32_MAX + 1u;
+    const uint32_t crossing_lo = signed_boundary - duration;
+    const uint32_t crossing_hi = signed_boundary + duration;
+    TEST_ASSERT_EQUAL_UINT32(crossing_lo, mathi_clamp_u32(0, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_lo, mathi_clamp_u32(crossing_lo - 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_lo, mathi_clamp_u32(crossing_lo, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(signed_boundary - 1u, mathi_clamp_u32(signed_boundary - 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(signed_boundary, mathi_clamp_u32(signed_boundary, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(signed_boundary + 1u, mathi_clamp_u32(signed_boundary + 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(crossing_hi, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(crossing_hi + 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(UINT32_MAX, crossing_lo, crossing_hi));
 }
 
 void

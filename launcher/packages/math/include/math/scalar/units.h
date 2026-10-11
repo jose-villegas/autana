@@ -1,6 +1,5 @@
 /*
- * units: the unit constants for scalar maths, including the milliseconds
- * in a second for integer time conversions.
+ * units: MATH_MS_PER_S, the milliseconds in a second, for integer time conversions.
  */
 #pragma once
 

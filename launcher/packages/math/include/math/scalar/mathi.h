@@ -126,17 +126,16 @@ mathi_repeat(int v, int len) {
     return remainder < 0 ? remainder + len : remainder;
 }
 
-/* Into [lo, hi); lo < hi and the width must fit int. */
+/* Into [lo, hi); lo < hi. */
 static inline int
 mathi_wrap(int v, int lo, int hi) {
     assert(lo < hi);
-    const int64_t len = (int64_t)hi - lo;
-    assert(len <= INT_MAX);
-    const int64_t remainder = ((int64_t)v - lo) % len;
-    return (int)(lo + (remainder < 0 ? remainder + len : remainder));
+    const uint32_t len = (uint32_t)hi - (uint32_t)lo;
+    const uint32_t r = v >= lo ? ((uint32_t)v - (uint32_t)lo) % len : (len - ((uint32_t)lo - (uint32_t)v) % len) % len;
+    return (int)((uint32_t)lo + r);
 }
 
-/* Into [0, len) without losing integer clock precision; len > 0. */
+/* Into [0, len) for any uint32_t; len > 0. */
 static inline uint32_t
 mathi_repeat_u32(uint32_t v, uint32_t len) {
     assert(len > 0);

@@ -13,7 +13,8 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 FUNCTION = "    static inline int P##_add(int a) { return a; } \\\n"
 
 
-def make_tree(root, page_extra="", template_extra="", header_extra="", skip_section=None, empty_template=None):
+def make_tree(root, page_extra="", template_extra="", header_extra="", skip_section=None, empty_template=None,
+              scalar_extra="", outside_extra=""):
     """A minimal tree that agrees with itself; each argument breaks one rule."""
     math = root / "launcher/packages/math/include/math/linear"
     math.mkdir(parents=True)
@@ -23,6 +24,10 @@ def make_tree(root, page_extra="", template_extra="", header_extra="", skip_sect
         if family == empty_template:
             body = "#define MATH_DEFINE_X(P)\n"
         (math / (family + "_template.h")).write_text(body)
+    for directory, body in (("scalar", scalar_extra), ("motion", outside_extra)):
+        headers = math.parent / directory
+        headers.mkdir()
+        (headers / "helpers.h").write_text(body)
     (math / "vec2f.h").write_text("MATH_DEFINE_VEC2(vec2f, float)\n" + header_extra)
     page = "".join("### %s\n\n| `P_add(` |\n\n" % f for f in check_math_docs.FAMILIES if f != skip_section)
     page += "`vec2f`\n" + page_extra
@@ -53,6 +58,19 @@ class CheckMathDocs(unittest.TestCase):
     def test_a_hand_written_function_the_page_names_passes(self):
         extra = "static inline int\nvec2f_wobble(int a) {\n    return a;\n}\n"
         self.assertEqual([], problems_for(header_extra=extra, page_extra="`vec2f_wobble(a)`\n"))
+
+    def test_a_page_entry_defined_in_a_scalar_header_passes(self):
+        definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
+        self.assertEqual([], problems_for(scalar_extra=definition, page_extra="`mathi_wrap(a)`\n"))
+
+    def test_a_page_entry_removed_from_a_scalar_header_fails(self):
+        problems = problems_for(page_extra="`mathi_wrap(a)`\n")
+        self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
+
+    def test_a_page_entry_defined_only_outside_linear_and_scalar_fails(self):
+        definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
+        problems = problems_for(outside_extra=definition, page_extra="`mathi_wrap(a)`\n")
+        self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
 
     def test_an_identity_initializer_the_page_lacks_fails(self):
         extra = "#define TRANSFORMQ_IDENTITY {0}\n"
