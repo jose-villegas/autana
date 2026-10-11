@@ -9,6 +9,13 @@
 
 #include "asset/asset_pack.h"
 
+#ifdef ESP_PLATFORM
+#include "asset/asset_directory.h"
+
+/* Borrowed directory, owned by the flash backend for the store lifetime. */
+asset_status_t asset_store_backend_directory(const asset_directory_t** opened);
+#endif
+
 /* Maps or reads pack `name` and opens it into `pack`. On success `mapping`
  * is what asset_store_backend_unmount() takes back; on failure nothing is
  * held. Logs nothing. */

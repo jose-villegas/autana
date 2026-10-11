@@ -23,7 +23,7 @@
 
 #define ROWS            2
 #define DIRECTORY_BYTES (ASSET_DIRECTORY_HEADER_SIZE + (ROWS * ASSET_DIRECTORY_ROW_SIZE))
-#define REGION          (4U * ASSET_PACK_ALIGN)
+#define REGION          (4U * ASSET_MMU_PAGE_SIZE)
 
 static uint8_t*
 row(uint8_t* directory, int index) {
@@ -35,7 +35,7 @@ seal(uint8_t* directory) {
     test_pack_put32(directory + 4, asset_crc32(directory + 8, DIRECTORY_BYTES - 8));
 }
 
-/* Pack "one" at the first sector after the directory, "two" two sectors on. */
+/* Pack "one" at the first MMU page after the directory, "two" two MMU pages on. */
 static uint8_t*
 make_directory(void) {
     uint8_t* directory = calloc(1, DIRECTORY_BYTES);
@@ -44,11 +44,11 @@ make_directory(void) {
     test_pack_put32(directory + 8, ASSET_DIRECTORY_VERSION);
     test_pack_put32(directory + 12, ROWS);
     memcpy(row(directory, 0), "one", 3);
-    test_pack_put32(row(directory, 0) + 32, ASSET_PACK_ALIGN);
+    test_pack_put32(row(directory, 0) + 32, ASSET_MMU_PAGE_SIZE);
     test_pack_put32(row(directory, 0) + 36, 100);
     memcpy(row(directory, 1), "two", 3);
-    test_pack_put32(row(directory, 1) + 32, 3U * ASSET_PACK_ALIGN);
-    test_pack_put32(row(directory, 1) + 36, ASSET_PACK_ALIGN);
+    test_pack_put32(row(directory, 1) + 32, 3U * ASSET_MMU_PAGE_SIZE);
+    test_pack_put32(row(directory, 1) + 36, ASSET_MMU_PAGE_SIZE);
     seal(directory);
     return directory;
 }
@@ -68,8 +68,8 @@ test_a_directory_opens_and_finds_each_pack_by_name(void) {
     TEST_ASSERT_EQUAL_UINT32(DIRECTORY_BYTES, asset_directory_size(directory, ASSET_DIRECTORY_HEADER_SIZE));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_directory_open(&opened, directory, DIRECTORY_BYTES, REGION));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_directory_find(&opened, "two", &slot));
-    TEST_ASSERT_EQUAL_UINT32(3U * ASSET_PACK_ALIGN, slot.offset);
-    TEST_ASSERT_EQUAL_UINT32(ASSET_PACK_ALIGN, slot.size);
+    TEST_ASSERT_EQUAL_UINT32(3U * ASSET_MMU_PAGE_SIZE, slot.offset);
+    TEST_ASSERT_EQUAL_UINT32(ASSET_MMU_PAGE_SIZE, slot.size);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_directory_find(&opened, "one", &slot));
     TEST_ASSERT_EQUAL_UINT32(100, slot.size);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, asset_directory_find(&opened, "on", &slot));
@@ -103,11 +103,11 @@ test_a_row_out_of_range_misaligned_or_overlapping_is_refused(void) {
         int field;
         uint32_t value;
     } cases[] = {
-        {1, 36, (2U * ASSET_PACK_ALIGN) + 1U},  /* ends past the region */
-        {1, 32, REGION},                        /* starts at its end */
-        {1, 32, (2U * ASSET_PACK_ALIGN) + 16U}, /* not on a sector */
-        {0, 32, 0},                             /* over the directory */
-        {1, 32, ASSET_PACK_ALIGN},              /* over pack one */
+        {1, 36, (2U * ASSET_MMU_PAGE_SIZE) + 1U},  /* ends past the region */
+        {1, 32, REGION},                           /* starts at its end */
+        {1, 32, (2U * ASSET_MMU_PAGE_SIZE) + 16U}, /* not on a MMU page */
+        {0, 32, 0},                                /* over the directory */
+        {1, 32, ASSET_MMU_PAGE_SIZE},              /* over pack one */
     };
 
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
