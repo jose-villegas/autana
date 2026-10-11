@@ -1,22 +1,5 @@
-/*
- * tween: timeline ramps, easing and lerps, in one place.
- *
- * `static inline`, like math/scalar/fixed.h: nothing here is expensive enough
- * on its own to need a cross-file call, and some of these run once per point
- * drawn in an animation.
- *
- * MILLISECONDS IN, Q0 (0..255) OUT
- *
- * tween_ramp() takes plain uint32_t milliseconds rather than a fixed-point
- * time, because callers have a timestamp already
- * (timing_now_us(), scaled to ms) and nothing here needs sub-millisecond
- * precision. The OUTPUT fraction is Q0 (a uint8_t, 0..255 standing for
- * 0.0..1.0), deliberately coarser than the Q12/Q16.16 this tree uses
- * elsewhere: a choreography fraction only ever multiplies something and gets
- * divided by 255 again, so nothing is lost by keeping it in a single byte,
- * and a single byte is what threads cleanly through boot_anim.h's existing
- * arithmetic without a second fixed-point scale to keep straight there.
- */
+/* Millisecond timelines return byte weights: choreography needs no sub-millisecond precision.
+ * Inline easing keeps per-point animation calls cheap. */
 #pragma once
 
 #include <stdint.h>
@@ -58,17 +41,4 @@ tween_ease_out(uint8_t linear) {
 static inline uint8_t
 tween_ease_in(uint8_t linear) {
     return (uint8_t)(((uint32_t)linear * linear) / 255u);
-}
-
-/* a, at u8 = 0; b, at u8 = 255; linear between. The shape "interpolate
- * toward a target" recurs in this tree (a position lerping to a settle
- * point, an angle turning to a camera's end, a growing length), worth
- * naming once rather than re-deriving `a + (b - a) * u8 / 255`
- * everywhere. int64_t through the widening fx_mul_floor() insists on:
- * (b - a) can be tens of thousands, a naive int32_t product won't
- * overflow today, but the cost of being wrong later is a silent
- * wraparound, not a compiler error. */
-static inline int32_t
-tween_lerp_i32(int32_t a, int32_t b, uint8_t u8) {
-    return a + (int32_t)(((int64_t)(b - a) * u8) / 255);
 }

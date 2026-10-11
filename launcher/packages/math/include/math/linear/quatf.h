@@ -31,6 +31,8 @@ quatf_slerp(quatf_t a, quatf_t b, float t) {
         const float inv_sine = 1.0F / sinf(angle);
         wa = sinf((1.0F - t) * angle) * inv_sine;
         wb = sinf(t * angle) * inv_sine;
+    } else {
+        return quatf_nlerp(a, b, t);
     }
     return quatf_normalize(
         (quatf_t){(a.x * wa) + (b.x * wb), (a.y * wa) + (b.y * wb), (a.z * wa) + (b.z * wb), (a.w * wa) + (b.w * wb)});

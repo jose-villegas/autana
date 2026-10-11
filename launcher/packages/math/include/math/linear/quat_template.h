@@ -69,6 +69,19 @@
         return (P##_t){OPS##_mul(q.x, k), OPS##_mul(q.y, k), OPS##_mul(q.z, k), OPS##_mul(q.w, k)};                    \
     }                                                                                                                  \
                                                                                                                        \
+    /* normalize(a * (1 - t) + b * t); q and -q take the same shortest arc. */                                         \
+    static inline P##_t P##_nlerp(P##_t a, P##_t b, T t) {                                                             \
+        const T dot = OPS##_add(OPS##_add(OPS##_add(OPS##_mul(a.x, b.x), OPS##_mul(a.y, b.y)), OPS##_mul(a.z, b.z)),   \
+                                OPS##_mul(a.w, b.w));                                                                  \
+        if (dot < OPS##_zero()) {                                                                                      \
+            b = (P##_t){OPS##_neg(b.x), OPS##_neg(b.y), OPS##_neg(b.z), OPS##_neg(b.w)};                               \
+        }                                                                                                              \
+        const T wa = OPS##_sub(OPS##_one(), t);                                                                        \
+        return P##_normalize((P##_t){                                                                                  \
+            OPS##_add(OPS##_mul(a.x, wa), OPS##_mul(b.x, t)), OPS##_add(OPS##_mul(a.y, wa), OPS##_mul(b.y, t)),        \
+            OPS##_add(OPS##_mul(a.z, wa), OPS##_mul(b.z, t)), OPS##_add(OPS##_mul(a.w, wa), OPS##_mul(b.w, t))});      \
+    }                                                                                                                  \
+                                                                                                                       \
     /* Axes r, u, f as columns. If rx + uy + fz > 0: s = 2 sqrt(1 + rx + uy + fz), */                                  \
     /*   q = ((uz - fy)/s, (fx - rz)/s, (ry - ux)/s, s/4). */                                                          \
     /* Else s is from the largest diagonal, e.g. s = 2 sqrt(1 + rx - uy - fz), */                                      \

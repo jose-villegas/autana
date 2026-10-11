@@ -179,3 +179,15 @@ mathi_isqrt64(uint64_t value) {
     }
     return (uint32_t)root;
 }
+
+/* Truncation keeps the fractional step toward a; the full int32 span fits int64. */
+static inline int32_t
+mathi_lerp(int32_t a, int32_t b, int32_t t, int32_t n) {
+    assert(n > 0 && t >= 0 && t <= n);
+    return (int32_t)((int64_t)a + (((int64_t)b - a) * t) / n);
+}
+
+static inline int32_t
+mathi_lerp_u8(int32_t a, int32_t b, uint8_t w) {
+    return mathi_lerp(a, b, w, UINT8_MAX);
+}

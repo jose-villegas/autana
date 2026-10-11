@@ -10,3 +10,4 @@
 #include "math/scalar/maths.h"
 
 MATH_DEFINE_VEC2(vec2s, int16_t, int64_t, maths)
+MATH_DEFINE_VEC2_LERP_RATIO(vec2s, maths)
