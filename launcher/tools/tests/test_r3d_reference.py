@@ -1,7 +1,10 @@
 """Checks the source-reference renderer on a one-triangle lit mesh: its light, its pixels and its normal buffer."""
 
+import contextlib
+import io
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -19,6 +22,7 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
 def plane_source(corners):
@@ -260,6 +264,161 @@ class BounceReferenceTests(unittest.TestCase):
         from r3d import reference_render as reference
         with self.assertRaisesRegex(ValueError, "leave --workers unset"):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class TraceDeviceTests(unittest.TestCase):
+    """Where a reference set traces: CUDA when it loads a scene, else the mesh bake's variant; mesh bakes never ask."""
+
+    def test_a_reference_traces_on_cuda_when_it_loads_and_on_the_bake_variant_otherwise(self):
+        from unittest.mock import patch
+        from r3d import ray_query
+        for found, want in (("llvm_ad_rgb", ray_query.VARIANT), ("scalar_rgb", ray_query.VARIANT),
+                            (ray_query.GPU_VARIANT, ray_query.GPU_VARIANT)):
+            mi = SimpleNamespace(now="scalar_rgb", variant=lambda: mi.now)
+            mi.set_variant = lambda name: setattr(mi, "now", name)
+
+            def probe(mi):
+                mi.set_variant(found)
+                return found
+
+            with patch.object(ray_query, "import_mitsuba", return_value=mi),                     patch.object(ray_query, "default_variant", side_effect=probe):
+                self.assertEqual(ray_query.trace_variant(), want, found)
+            self.assertEqual(mi.now, "scalar_rgb", "the probe leaves Mitsuba on the variant it was on")
+
+    def test_a_set_on_the_gpu_renders_in_this_process_and_frees_the_device_after(self):
+        from unittest.mock import patch
+        from r3d import ray_query, reference_render
+        from r3d.fitted_variant import poses_text
+
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
+        for variant, freed in ((ray_query.GPU_VARIANT, 1), ("llvm_ad_rgb", 0)):
+            with tempfile.TemporaryDirectory() as directory:
+                poses = pathlib.Path(directory) / "poses.txt"
+                poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    stack.enter_context(patch.object(ray_query, "trace_variant", return_value=variant))
+                    lit = stack.enter_context(patch.object(reference_render, "lit_source", return_value=object()))
+                    render = stack.enter_context(patch.object(reference_render, "render_poses", return_value=(0, 1)))
+                    release = stack.enter_context(patch.object(ray_query, "release_gpu"))
+                    self.assertEqual(reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")]),
+                                     variant)
+            self.assertEqual(lit.call_args.kwargs["variant"], variant)
+            self.assertEqual(render.call_args.kwargs["workers"], 1, "the probe may have opened CUDA: no forked workers")
+            self.assertEqual(release.call_count, freed, variant)
+
+    def test_the_device_is_freed_with_the_bounced_light_cache_empty_even_when_a_pose_fails(self):
+        from unittest.mock import patch
+        from r3d import mesh_import, ray_query, reference_render
+        from r3d.fitted_variant import poses_text
+
+        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
+        seen = []
+        for failure in (None, RuntimeError("pose failed")):
+            mesh_import.PATH_LIGHTS["cached"] = object()
+            with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
+                poses = pathlib.Path(directory) / "poses.txt"
+                poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(patch.object(ray_query, "trace_variant", return_value=ray_query.GPU_VARIANT))
+                stack.enter_context(patch.object(reference_render, "lit_source", return_value=object()))
+                stack.enter_context(patch.object(reference_render, "render_poses", side_effect=failure,
+                                                 return_value=(0, 1)))
+                stack.enter_context(patch.object(ray_query, "release_gpu",
+                                                 side_effect=lambda: seen.append(dict(mesh_import.PATH_LIGHTS))))
+                sets = [(poses, pathlib.Path(directory) / "out")]
+                if failure is None:
+                    reference_render.render_sets(inputs, sets)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "pose failed"):
+                        reference_render.render_sets(inputs, sets)
+        self.assertEqual(seen, [{}, {}], "released after success and after a failure, the cache already empty")
+
+    def test_a_lit_source_traces_its_rays_and_its_bounced_light_on_one_variant(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
+        for given in (None, "cuda_ad_rgb"):
+            with patch.object(reference_render, "load_source", return_value=source),                     patch.object(reference_render, "RayQuery") as query,                     patch.object(reference_render, "path_light_for") as bounce:
+                reference_render.lit_source(job, None, variant=given)
+            self.assertEqual(query.call_args.args[2], given)
+            self.assertEqual(bounce.call_args.args[3], given)
+
+    def test_the_device_probe_answers_in_a_fresh_process_and_without_mitsuba(self):
+        from unittest.mock import patch
+        from r3d import ray_query
+
+        with patch.object(ray_query, "import_mitsuba", return_value=None):
+            self.assertEqual(ray_query.trace_variant(), ray_query.VARIANT)
+        mi = SimpleNamespace(now=None, variant=lambda: mi.now)
+
+        def set_variant(name):
+            if name is None:
+                raise TypeError("no variant to set")
+            mi.now = name
+        mi.set_variant = set_variant
+        with patch.object(ray_query, "import_mitsuba", return_value=mi),                 patch.object(ray_query, "default_variant", return_value=ray_query.GPU_VARIANT):
+            self.assertEqual(ray_query.trace_variant(), ray_query.GPU_VARIANT)
+
+    @needs_mitsuba
+    def test_releasing_the_device_runs_on_a_host_without_one(self):
+        from r3d import ray_query
+        ray_query.release_gpu()
+
+
+def have_cuda():
+    """Whether Mitsuba's CUDA variant traces here; asked only when a test runs, so a CPU host never opens CUDA."""
+    from r3d import ray_query
+    return ray_query.trace_variant() == ray_query.GPU_VARIANT
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "needs NumPy")
+class CudaParityTests(unittest.TestCase):
+    """The reference on CUDA against the reference on LLVM, both with bounced light, on a sunlit corridor seen from a
+    few poses. The same sampler seeds draw the same paths, so the two differ only in float rounding."""
+
+    # Largest per-pixel difference over the mean pixel. None until a first run on a CUDA host measures it: until then
+    # the test reports the difference and skips as not measured, so no bound passes unmeasured.
+    RELATIVE_BOUND = None
+
+    def setUp(self):
+        if not have_cuda():
+            self.skipTest("Mitsuba's CUDA variant does not trace here (no CUDA device, or no OptiX)")
+
+    def tearDown(self):
+        from r3d import mesh_import, mitsuba_reference
+        mesh_import.PATH_LIGHTS.clear()
+        mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
+
+    def render(self, variant):
+        from r3d.path_bake import PathLight
+        from r3d.ray_query import RayQuery
+        from tests.test_r3d_path_bake import SKY, SUN, corridor
+
+        source = corridor()
+        source.intersector = RayQuery(source.p, source.tri_v, variant)
+        source.bounce = PathLight(source, [SUN, SKY], set(), SimpleNamespace(bounces=2, rays=32), 1.0, variant)
+        job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()),
+                              bake=SimpleNamespace(ray_offset=0.01, ao=None))
+        scene = SimpleNamespace(lights=[SUN, SKY], indirect=SimpleNamespace(intensity=1.0))
+        poses = ([30.0, 20.0, 0.0, -0.3, -0.4, 0.0], [60.0, 5.0, 20.0, -1.0, -0.1, -0.3], [5.0, 40.0, -30.0, 0.2, -1.0, 0.4])
+        return np.stack([render_linear(source, job, scene, np.array(pose), 16, 12, 0.6, 2) for pose in poses])
+
+    @needs_llvm
+    def test_cuda_and_llvm_references_agree(self):
+        llvm = self.render("llvm_ad_rgb")
+        cuda = self.render("cuda_ad_rgb")
+        self.assertGreater(llvm.mean(), 0.0, "the poses see lit surfaces")
+        worst = np.abs(cuda - llvm).max() / llvm.mean()
+        if self.RELATIVE_BOUND is None:
+            self.skipTest(f"not measured: largest pixel difference {worst:.3g} of the mean pixel; set RELATIVE_BOUND "
+                          "from it")
+        self.assertLess(worst, self.RELATIVE_BOUND)
 
 
 @needs_mitsuba
