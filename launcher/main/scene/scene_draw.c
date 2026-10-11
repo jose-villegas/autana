@@ -122,7 +122,9 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
     }
     stepped = true;
     for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_loaded_at(i)->elapsed_ms += dt_ms;
+        scene_t* scene = scene_loaded_at(i);
+        scene->elapsed_ms += dt_ms;
+        scene_animation_step(scene, dt_ms);
     }
     if (active.scene != NULL) {
         draw_active(quarter, width, height);

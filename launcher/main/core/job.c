@@ -221,3 +221,15 @@ job_wait(unsigned timeout_ms) {
 }
 
 #endif
+
+void
+job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size, bool use_core1) {
+    assert(ctx_size <= JOB_CTX_MAX);
+    if (!use_core1 || !job_try_core1(fn, second_half, ctx_size)) {
+        fn((void*)second_half);
+    }
+    fn(first_half);
+    const bool done = job_wait(JOB_SPLIT_WAIT_MS);
+    assert(done); /* the next stage reads what core 1 wrote */
+    (void)done;
+}

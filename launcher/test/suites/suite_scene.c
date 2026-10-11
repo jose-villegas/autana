@@ -252,6 +252,13 @@ static const scene_spec_t SCENES[] = {
      {{"camera", IDENTITY}, {"red", IDENTITY}},
      {{1, "red"}},
      {{0, CLEAR_RGB, "unturned", "camera"}}},
+    {"test_aliases",
+     2,
+     0,
+     2,
+     {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
+     {{0}},
+     {{0, CLEAR_RGB, "flight", "camera"}, {1, CLEAR_RGB, "flight", "camera"}}},
 };
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
@@ -563,8 +570,11 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     TEST_ASSERT_NULL(scene_camera_lens(pair, "red"));
     TEST_ASSERT_EQUAL_UINT32(0, r3d_scene_camera_period_ms(scene_camera_lens(pair, NULL)));
 
-    const r3d_scene_camera_t* flight = scene_camera_lens(load("test_flight"), NULL);
-    TEST_ASSERT_EQUAL_UINT32(1000, r3d_scene_camera_period_ms(flight));
+    scene_t* scene = load("test_flight");
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const r3d_scene_camera_t* flight = scene_camera_lens(scene, NULL);
+    TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
     vec3f_t eye;
     vec3f_t forward;
     r3d_scene_camera_sample(flight, 500, &eye, &forward);
@@ -692,7 +702,8 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
-    TEST_ASSERT_EQUAL_UINT32(3000, r3d_scene_camera_period_ms(lens)); /* the probe clip's length */
+    TEST_ASSERT_EQUAL_UINT32(3000, scene_animator_clip_duration_ms(scene, scene_camera_entity(scene, lens),
+                                                                   0)); /* the probe clip's length */
 }
 #endif
 
@@ -1399,6 +1410,35 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
 
 #endif
 
+static void
+test_camera_aliases_advance_independently(void) {
+    fixture();
+    scene_t* scene = load("test_aliases");
+    const scene_entity_t left = scene_find(scene, "camera"), right = scene_find(scene, "right");
+    TEST_ASSERT_TRUE(scene_animator_set_speed(scene, left, SCENE_ANIMATOR_CURRENT, 0.5F));
+    scene_animation_step(scene, 400);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scene->locals[left].position.x);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene->locals[right].position.x);
+}
+
+static void
+test_camera_animator_api_controls_clip_time(void) {
+    fixture();
+    scene_t* scene = load("test_flight");
+    const scene_entity_t camera = scene_find(scene, "camera");
+    TEST_ASSERT_EQUAL_INT(1, scene_animator_clip_count(scene, camera));
+    TEST_ASSERT_EQUAL_STRING("flight", scene_animator_clip_name(scene, camera, 0));
+    TEST_ASSERT_FALSE(scene_animator_play(scene, camera, 0, 100));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, camera, 0, 0));
+    TEST_ASSERT_TRUE(scene_animator_set_speed(scene, camera, SCENE_ANIMATOR_CURRENT, 0.5F));
+    scene_animation_step(scene, 1000);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, camera)->position.x);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true));
+    scene_animation_step(scene, 1000);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, camera)->position.x);
+    TEST_ASSERT_FALSE(scene_animator_play(scene, camera, 1, 0));
+}
+
 void
 run_scene_suite(void) {
 #ifndef DEVICE_BUILD
@@ -1437,6 +1477,8 @@ run_scene_suite(void) {
     RUN_TEST(test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone);
     RUN_TEST(test_activating_a_camera_the_scene_does_not_have_changes_nothing);
     RUN_TEST(test_the_active_camera_flies_its_path_by_the_time_the_shell_gives_it);
+    RUN_TEST(test_camera_animator_api_controls_clip_time);
+    RUN_TEST(test_camera_aliases_advance_independently);
     RUN_TEST(test_a_frame_drawn_in_two_steps_is_the_frame_drawn_in_one);
     RUN_TEST(test_a_paused_scene_neither_advances_nor_draws_until_resumed);
     RUN_TEST(test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target);

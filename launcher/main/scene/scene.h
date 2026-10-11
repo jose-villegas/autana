@@ -98,3 +98,20 @@ void scene_deactivate(void);
 /* While paused nothing advances or draws, as if no camera were active, and
  * the camera stays where it was; for an app drawing its own full screen. */
 void scene_set_paused(bool paused);
+
+typedef enum { SCENE_ANIMATOR_CURRENT, SCENE_ANIMATOR_PREVIOUS } scene_animator_slot_t;
+
+/* skeleton_id NULL binds property clips to scene components. Asset ids are resolved once. */
+bool scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skeleton_id, const char* const* clips,
+                              int count, scene_failure_t* why);
+bool scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* skin_id, scene_failure_t* why);
+/* Property clips require blend_ms == 0. Skeleton clips support a transition blend. */
+bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
+bool scene_animator_set_speed(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, float speed);
+bool scene_animator_set_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, bool paused);
+int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
+const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
+
+/* Seek samples the scene systems immediately, without drawing. */
+uint32_t scene_animator_clip_duration_ms(const scene_t* scene, scene_entity_t entity, int clip);
+bool scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, uint32_t t_ms);

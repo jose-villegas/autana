@@ -15,8 +15,6 @@ TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
 TUNE(render, cull, 1, 0, 1);
 
-#define JOB_WAIT_MS 1000
-
 typedef struct {
     const raster_t* raster;
     const r3d_lit_mesh_t* mesh;
@@ -161,18 +159,6 @@ upscale_slice(void* ctx) {
     upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
 }
 
-/* Core 1 takes a copy of `second_half`, so a caller may reuse both. */
-static void
-run_split(job_fn_t fn, slice_t* first_half, const slice_t* second_half) {
-    if (!job_try_core1(fn, second_half, sizeof *second_half)) {
-        fn((void*)second_half);
-    }
-    fn(first_half);
-    const bool done = job_wait(JOB_WAIT_MS);
-    assert(done); /* the next stage reads what core 1 wrote */
-    (void)done;
-}
-
 int
 raster_vertex_capacity(const raster_t* raster) {
     int most = 0;
@@ -285,7 +271,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    run_split(transform_slice, mine, other);
+    job_run_split(transform_slice, mine, other, sizeof *mine, true);
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
@@ -300,7 +286,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     mine->count = raster->height - mid;
     other->first = 0;
     other->count = mid;
-    run_split(draw_slice, mine, other);
+    job_run_split(draw_slice, mine, other, sizeof *mine, true);
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
@@ -346,7 +332,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         work->mine =
             (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
         work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
-        run_split(resolve_slice, &work->mine, &work->other);
+        job_run_split(resolve_slice, &work->mine, &work->other, sizeof work->mine, true);
         FRAME_COST_END(resolved_from, "r3d.resolve");
     }
 }
@@ -416,6 +402,6 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     const int mid = height / 2;
     slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};
     const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0, NULL, NULL};
-    run_split(upscale_slice, &mine, &other);
+    job_run_split(upscale_slice, &mine, &other, sizeof mine, true);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

@@ -26,3 +26,7 @@ bool job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size);
 /* Waits for the dispatched core-1 job. False retains it for a later wait;
  * later jobs run inline in the meantime. */
 bool job_wait(unsigned timeout_ms);
+
+#define JOB_SPLIT_WAIT_MS 1000U
+/* The second context is copied on dispatch. Both ranges finish before the next stage reads. */
+void job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size, bool use_core1);

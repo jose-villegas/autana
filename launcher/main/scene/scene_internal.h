@@ -6,6 +6,8 @@
 #pragma once
 
 #include "anim/anim_tracks.h"
+#include "anim/playback/anim_layer.h"
+#include "render/skin/r3d_skinning.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 
@@ -53,11 +55,37 @@ typedef struct {
 } scene_renderer_t;
 
 typedef struct {
-    r3d_scene_camera_t lens; /* its path, when it has one, is `path` */
-    r3d_scene_path_t path;
+    r3d_scene_camera_t lens;
     scene_entity_t entity;
     uint16_t clear; /* panel pixel format */
 } scene_camera_t;
+
+typedef struct {
+    anim_tracks_t tracks;
+    const char* id;
+    anim_joint_bound_t* joints;
+    anim_bound_t* fields;
+    anim_bound_t* sampled;
+} scene_animator_clip_t;
+
+typedef struct {
+    anim_layer_t layer;
+    anim_skeleton_t skeleton;
+    scene_animator_clip_t* clips;
+    void* storage;
+    mat4f_t* model;
+    mat4f_t* palette;
+    const anim_joint_bound_t** joint_tables;
+    int* counts;
+    uint8_t root;
+} scene_animator_t;
+
+typedef struct {
+    r3d_skin_t skin;
+    r3d_lit_mesh_t bind;
+    r3d_skin_output_t output;
+    void* internal_storage;
+} scene_skinned_renderer_t;
 
 struct scene {
     scene_asset_t asset;
@@ -68,6 +96,10 @@ struct scene {
     uint8_t* flags;                /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
+    const asset_pack_t* pack;
+    transformf_t* locals;
+    scene_animator_t* animators;
+    scene_skinned_renderer_t* skinned_renderers;
     r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
 };
 
@@ -90,3 +122,14 @@ void scene_draw_release(void);
 
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const scene_transform_t* transform);
+
+size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
+int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
+void scene_animation_release(scene_t* scene);
+void scene_animation_step(scene_t* scene, uint32_t dt_ms);
+void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
+void scene_skin_range(scene_t* scene, int first, int count);
+
+scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
+
+scene_entity_t scene_camera_entity(const scene_t* scene, const r3d_scene_camera_t* camera);

@@ -228,15 +228,17 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
 }
 
 static void
-test_the_camera_of_a_baked_placement_looks_down_its_third_column(void) {
-    const r3d_placement_t turned = {{{0, 0, 1}, {0, 1, 0}, {-1, 0, 0}}, {5, 6, 7}}; /* a quarter turn about y */
+test_the_camera_rotates_plus_z_by_its_entity_pose(void) {
+    transformf_t turned = TRANSFORMF_IDENTITY;
+    transformf_set_position(&turned, (vec3f_t){5, 6, 7});
+    transformf_set_rotation(&turned, quatf_from_axis_angle((vec3f_t){0, 1, 0}, MATH_PI / 2.0F));
     const r3d_scene_camera_t camera = {1.0F, 1.0F, &turned, NULL};
     vec3f_t eye;
     vec3f_t forward;
     r3d_scene_camera_sample(&camera, 0, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(5.0F, eye.x);
     TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.x);
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, forward.z);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, 0.0F, forward.z);
     const r3d_scene_camera_t fixed = {1.0F, 1.0F, NULL, NULL};
     r3d_scene_camera_sample(&fixed, 0, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.z);
@@ -248,8 +250,7 @@ test_a_placement_from_a_pose_stands_the_camera_there_looking_down_its_plus_z(voi
     transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
     transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
-    const r3d_placement_t placement = r3d_placement_from(&pose);
-    const r3d_scene_camera_t camera = {1.0F, 1.0F, &placement, NULL};
+    const r3d_scene_camera_t camera = {1.0F, 1.0F, &pose, NULL};
     vec3f_t eye;
     vec3f_t forward;
     r3d_scene_camera_sample(&camera, 0, &eye, &forward);
@@ -283,7 +284,7 @@ suite_r3d_scene(void) {
     RUN_TEST(test_a_scale_widens_an_instance_about_its_position);
     RUN_TEST(test_a_rotation_turns_an_instance_about_its_position);
     RUN_TEST(test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first);
-    RUN_TEST(test_the_camera_of_a_baked_placement_looks_down_its_third_column);
+    RUN_TEST(test_the_camera_rotates_plus_z_by_its_entity_pose);
     RUN_TEST(test_a_placement_from_a_pose_stands_the_camera_there_looking_down_its_plus_z);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
 }

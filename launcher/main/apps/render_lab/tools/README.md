@@ -154,3 +154,29 @@ with `--scene launcher/demo/sponza/sponza.scene.toml` and
 `--suite run_sponza_perf_suite`. Its fixed flythrough samples measure the selected
 renderer with both culling settings. The generated table belongs to
 [Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).
+
+## Skinned frame comparison
+
+The model-independent skin-frame tool compares scene-controlled C skinning
+with the glTF reference and generates a sheet of two versus four influences.
+The selected source vertices are marked red in enlarged crops. All panels use
+bind colours, so the comparison isolates deformation rather than lighting.
+
+```sh
+python launcher/tools/r3d/skin/skin_frame.py "$(python launcher/tools/bake/bake.py path capybara.glb)" \
+  --poses gallop:200 half_bound:200 \
+  --vertices 7,11,44,54,77,129,171,205,211,260,302 \
+  --out launcher/main/apps/render_lab/tools/images/skin-frame
+```
+
+![C skinning beside the glTF reference](images/skin-frame/reference-sheet.png)
+![Two and four influence limits, with amplified image differences](images/skin-frame/influence-sheet.png)
+![Each requested vertex at both influence limits](images/skin-frame/vertex-crops.png)
+
+The circles locate the corresponding posed vertex in each panel; a crop may
+show a vertex through an occluding surface. The image difference is amplified
+by the comparison tool. Exact packed-weight reference errors and per-vertex
+influence-limit displacements are in
+[`measurements.json`](images/skin-frame/measurements.json). This tool bakes its
+own LMSH with the existing meshlet writer, so its vertex layout is independent
+of a scene pack's bake. The sheets use the poses named on the command line.

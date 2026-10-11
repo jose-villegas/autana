@@ -19,10 +19,9 @@ r3d_scene_camera_period_ms(const r3d_scene_camera_t* camera) {
 void
 r3d_scene_camera_sample(const r3d_scene_camera_t* camera, uint32_t t_ms, vec3f_t* eye, vec3f_t* forward) {
     if (camera->path == NULL) {
-        const r3d_placement_t* at = camera->placement;
+        const transformf_t* at = camera->pose;
         *eye = at == NULL ? (vec3f_t){0.0F, 0.0F, 0.0F} : at->position;
-        *forward = at == NULL ? (vec3f_t){0.0F, 0.0F, 1.0F}
-                              : vec3f_normalize((vec3f_t){at->m[0][2], at->m[1][2], at->m[2][2]});
+        *forward = at == NULL ? (vec3f_t){0.0F, 0.0F, 1.0F} : quatf_rotate(at->rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
         return;
     }
     float position[ANIM_WIDTH_MAX];

@@ -8,22 +8,28 @@ shows an app using it.
 
 ## What a scene holds
 
-A scene is one allocation of packed component arrays indexed by a small integer
-entity id (`scene_entity_t`). Nothing is allocated per entity.
+A scene holds packed component arrays indexed by a small integer entity id
+(`scene_entity_t`). Animator configuration allocates its clip bindings, local
+poses, model matrices and palette in PSRAM. A skinned renderer allocates its
+mutable mesh output in internal RAM.
 
 | Array | One per | Holds |
 |---|---|---|
 | `transforms[]` | entity | where it stands: a 3x3 and a position, what the raster reads |
+| `locals[]` | entity | canonical local position, quaternion rotation and scale; loaded placements must decompose without shear or reflection |
+| `animators[]` | entity | optional clip configuration, layer, independent slot clocks and pose buffers |
+| `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions, colours and bounds |
 | `flags[]` | entity | enabled, and moved since the last draw |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
-| `cameras[]` | camera | lens, optional glTF path (the clip's two tracks, pointing into the pack), clear colour, its entity id |
+| `cameras[]` | camera | lens, entity TRS pose, clear colour, its entity id |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` and `transforms[]` |
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
 ([Scene-Files.md](Scene-Files.md#the-scene-entry)). Lights are baked offline
-and are not carried. Names, mesh views and camera paths point into the asset
-pack, so on the board they read flash in place and cost no RAM.
+and are not carried. Names and immutable mesh and track views point into the asset pack. Camera
+rows with clips create property animators; their source-node alias belongs
+to that camera row. Binding resolves every clip row before playback.
 
 ## What an app calls
 
@@ -33,7 +39,7 @@ pack, so on the board they read flash in place and cost no RAM.
 | `scene_unload(scene)` | frees it and releases its pack; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
-| `scene_camera_lens(scene, camera)` | a camera's lens and path (NULL: the first), to sample without drawing |
+| `scene_camera_lens(scene, camera)` | a camera's lens and current entity pose (NULL: the first), to sample without drawing |
 | `scene_entity_set_transform()` / `_set_enabled()` | move an entity, hide or show a renderer |
 | `scene_activate(scene, camera)` | makes that camera (NULL: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
@@ -71,7 +77,12 @@ a static scene included. A camera
 needs the full-framebuffer layout; in band mode the scene is drawn into the
 scratch but there is nothing to upscale it into.
 
-`scene_render()` advances the clock of every loaded scene, then rebuilds the
+`scene_render()` advances the animator slots of every loaded scene, computes
+skeleton poses and palettes by entity range, then skins cluster ranges and
+refits node bounds. Both range stages synchronize before the next. Property
+clips commit their sampled fields after the first synchronization. Camera
+forward is the entity quaternion rotating +Z for static and animated cameras.
+The system then rebuilds the
 placement of each renderer whose entity moved, fills `instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized
 for the largest enabled mesh's working buffers, every enabled instance's
@@ -105,3 +116,9 @@ The shell's half of the API (the two frame halves and the unload on exit) is
 The shell does not call it by name: `shell/scene_system.c` registers it as the
 engine system `scene`, at `SHELL_ORDER_SCENE`
 ([Firmware-Architecture.md](../Firmware-Architecture.md#engine-systems)).
+
+Playback and runtime asset-id attachment use `scene/scene.h`: clip queries,
+play, speed, pause and seek operate on entity components. Every slot loops.
+Property clips require an immediate play; skeleton clips support transition
+blends with frozen-pose interruption. Manual transform setters require the
+same decomposable TRS as scene loading.
