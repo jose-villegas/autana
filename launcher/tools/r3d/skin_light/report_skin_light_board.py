@@ -59,7 +59,7 @@ def rows(text):
 def lighting_modes(text):
     measured = list(rows(text))
     builds = [row[0] for row in measured if re.fullmatch(r"fused_table_\d+", row[1])]
-    table = ["| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / frame | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |",
+    table = ["| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |",
              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     if not builds:
         raise ValueError("no runtime table capture")

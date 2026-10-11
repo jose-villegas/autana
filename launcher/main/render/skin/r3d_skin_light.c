@@ -56,7 +56,7 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
         uint32_t packed = 0;
 #pragma GCC unroll R3D_SKIN_LIGHT_CHANNELS
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-            const uint32_t value = (uint32_t)(fminf(channels[k], maximum) * encode + 0.5F);
+            const uint32_t value = (uint32_t)((channels[k] < maximum ? channels[k] : maximum) * encode + 0.5F);
             packed |= value << (k * R3D_SKIN_LIGHT_TABLE_BITS);
         }
         out->cells[cell] = packed;

@@ -8,7 +8,8 @@ The wrapper restores `origin/main`'s release image afterwards;
 
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
 test patterns (`-` for all), and a table command (`-` reads the capture's
-`<row> both cores: mean <N>us` lines). Pattern width and count limits come
+`<row> both cores: mean <N>us`, `<row> one core: mean <N>us`, or
+`<row> mean <N>us` lines). Pattern width and count limits come
 from each project's `launcher/test/suites.h`; a pattern over the width is
 refused before any flash, and patterns over the count run as several requests
 on the same flash. Each test must match patterns in one request only; a row

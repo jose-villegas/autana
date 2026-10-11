@@ -285,7 +285,7 @@ measure(kernel_t kind, int lights, const char* label) {
     }
     const perf_stats_t stats = perf_stats_compute(f->samples, SAMPLES);
     const perf_stats_t micros = perf_stats_compute(f->micros, SAMPLES);
-    ESP_LOGI(TAG, "%s both cores: mean %lldus", label + sizeof TEST_PREFIX - 1, (long long)micros.avg);
+    ESP_LOGI(TAG, "%s one core: mean %lldus", label + sizeof TEST_PREFIX - 1, (long long)micros.avg);
     ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus", label, (long long)micros.min,
              (long long)micros.max, (long long)micros.avg, (long long)micros.med, (long long)micros.p95);
     ESP_LOGI(TAG, "%s min=%lldcycles max=%lldcycles avg=%lldcycles med=%lldcycles p95=%lldcycles", label,
