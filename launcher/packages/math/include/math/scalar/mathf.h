@@ -136,7 +136,10 @@ mathf_max(float a, float b) {
 static inline float
 mathf_repeat(float v, float len) {
     assert(len > 0.0F);
-    const float r = v - floorf(v / len) * len;
+    float r = v - floorf(v / len) * len;
+    if (r < 0.0F) {
+        r += len;
+    }
     /* A tiny negative input can round the remainder up to the excluded endpoint. */
     return r < len ? r : 0.0F;
 }

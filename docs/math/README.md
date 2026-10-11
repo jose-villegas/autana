@@ -88,8 +88,8 @@ use (its scale is zero, so its matrix sends every point to the origin). Code nev
 ## Scalar helpers
 
 Each scalar header also holds the arithmetic the templates call (`OPS_add`,
-`OPS_mul`, `mathx_sqrt`, `mathx_sin_turns`, ...); the tables below list the
-helpers a caller uses directly.
+`OPS_mul`, `mathx_sqrt`, `mathx_sin_turns`, ...); the tables below list the range, lerp and rounding helpers; the header itself, or the
+[catalogue](../Shared-Helpers.md), lists the rest.
 
 ### mathi.h
 
@@ -163,7 +163,7 @@ modified through a pointer except the transform's own `t`.
 | `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
 | `P_repeat(v, len)` | component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
 | `P_wrap(v, lo, hi)` | component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
-| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ |
+| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ or $`\mathrm{lerp}(a_k,b_k,t,n)`$ |
 | `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y)`$ |
 | `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y)`$ |
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y)`$ |
@@ -181,7 +181,7 @@ modified through a pointer except the transform's own `t`.
 | `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
 | `P_repeat(v, len)` | component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
 | `P_wrap(v, lo, hi)` | component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
-| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ |
+| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ or $`\mathrm{lerp}(a_k,b_k,t,n)`$ |
 | `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y,\ a_z + b_z)`$ |
 | `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y,\ a_z - b_z)`$ |
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
@@ -263,9 +263,9 @@ The scalar steps behind them, in `vec_convert.h`:
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `mathf_round_s(v, scale)` | int16 conversion in `vec_convert.h`, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
-| `mathf_to_x(v)` | q16.16 conversion in `vec_convert.h`, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
-| `mathx_to_f(v)` | float conversion in `vec_convert.h` | $`v/2^{16}`$ |
+| `mathf_round_s(v, scale)` | int16, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
+| `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
+| `mathx_to_f(v)` | float | $`v/2^{16}`$ |
 
 ## Examples
 

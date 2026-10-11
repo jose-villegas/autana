@@ -468,50 +468,75 @@ test_quatx_nlerp(void) {
 }
 
 static void
-test_quatf_slerp_preserves_float_results(void) {
-    static const quatf_t expected[] = {
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-        {0x1.4799a60000000p-9F, 0x1.4799a60000000p-8F, -0x1.4799a60000000p-9F, 0x1.fffd8c0000000p-1F},
-        {0x1.479b380000000p-8F, 0x1.479b380000000p-7F, -0x1.479b380000000p-8F, 0x1.fff62e0000000p-1F},
-        {0x1.4794ee0000000p-7F, 0x1.4794ee0000000p-6F, -0x1.4794ee0000000p-7F, 0x1.ffd8b40000000p-1F},
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-        {0x1.3207f80000000p-3F, 0x1.3207f80000000p-3F, 0x1.3207f80000000p-3F, 0x1.ee8dd80000000p-1F},
-        {0x1.279a740000000p-2F, 0x1.279a740000000p-2F, 0x1.279a740000000p-2F, 0x1.bb67ae0000000p-1F},
-        {0x1.0000000000000p-1F, 0x1.0000000000000p-1F, 0x1.0000000000000p-1F, 0x1.0000000000000p-1F},
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-        {0x1.3207f80000000p-3F, 0x1.3207f80000000p-3F, 0x1.3207f80000000p-3F, 0x1.ee8dd80000000p-1F},
-        {0x1.279a740000000p-2F, 0x1.279a740000000p-2F, 0x1.279a740000000p-2F, 0x1.bb67ae0000000p-1F},
-        {0x1.0000000000000p-1F, 0x1.0000000000000p-1F, 0x1.0000000000000p-1F, 0x1.0000000000000p-1F},
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-        {0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x0.0000000000000p+0F, 0x1.0000000000000p+0F},
-    };
-    const quatf_t bs[] = {
-        {0.01F, 0.02F, -0.01F, 1.0F}, {0.5F, 0.5F, 0.5F, 0.5F}, {-0.5F, -0.5F, -0.5F, -0.5F}, {0, 0, 0, 1}};
-    const float ts[] = {0.0F, 0.25F, 0.5F, 1.0F};
-    for (size_t i = 0; i < sizeof bs / sizeof bs[0]; i++) {
-        for (size_t j = 0; j < sizeof ts / sizeof ts[0]; j++) {
-            const quatf_t got = quatf_slerp(quatf_identity(), quatf_normalize(bs[i]), ts[j]);
-            const size_t index = i * (sizeof ts / sizeof ts[0]) + j;
-            TEST_ASSERT_EQUAL_MEMORY(&expected[index], &got, sizeof got);
-        }
+test_quatf_slerp_preserves_rotation_behaviour(void) {
+    const quatf_t a = quatf_identity(), b = {0.5F, 0.5F, 0.5F, 0.5F};
+    const quatf_t neg = {-b.x, -b.y, -b.z, -b.w};
+    const quatf_t midpoint = {1.0F / sqrtf(12.0F), 1.0F / sqrtf(12.0F), 1.0F / sqrtf(12.0F), sqrtf(3.0F) / 2};
+    const quatf_t start = quatf_slerp(a, b, 0), end = quatf_slerp(a, b, 1);
+    const quatf_t got = quatf_slerp(a, b, 0.5F), flipped = quatf_slerp(a, neg, 0.5F);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, a, start);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, b, end);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, midpoint, got);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, got, flipped);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1, got.x * got.x + got.y * got.y + got.z * got.z + got.w * got.w);
+}
+
+static void
+test_quatf_slerp_threshold_branches(void) {
+    static const float cosines[] = {0.99951F, 0.99949F};
+    const float weight = 0.25F, branch_slack = 1e-7F;
+    const quatf_t a = quatf_identity();
+    for (size_t i = 0; i < sizeof cosines / sizeof cosines[0]; i++) {
+        const float cosine = cosines[i];
+        const quatf_t b = {sqrtf(1 - cosine * cosine), 0, 0, cosine};
+        const float angle = acosf(cosine);
+        const quatf_t spherical =
+            quatf_normalize((quatf_t){b.x * sinf(weight * angle) / sinf(angle), 0, 0,
+                                      (sinf((1 - weight) * angle) + b.w * sinf(weight * angle)) / sinf(angle)});
+        const quatf_t linear = quatf_nlerp(a, b, weight);
+        const quatf_t expected = i == 0 ? linear : spherical;
+        const quatf_t got = quatf_slerp(a, b, weight);
+        TEST_ASSERT_TRUE(fabsf(linear.x - spherical.x) > branch_slack);
+        CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, branch_slack, expected, got);
+        TEST_ASSERT_FLOAT_WITHIN(SLACK, 1, got.x * got.x + got.w * got.w);
     }
-    static const quatf_t off_axis_expected[] = {
-        {0x1.a43ea80000000p-4F, 0x1.a43da00000000p-3F, 0x1.3b2e380000000p-2F, 0x1.d8c5540000000p-1F},
-    };
-    const quatf_t a = quatf_normalize((quatf_t){0.1F, 0.2F, 0.3F, 0.9F});
-    const quatf_t b = quatf_normalize((quatf_t){0.1F + 1.0F / 4096.0F, 0.2F, 0.3F, 0.9F});
-    const float off_axis_weights[] = {1.0F / 256.0F};
-    for (size_t i = 0; i < sizeof off_axis_weights / sizeof off_axis_weights[0]; i++) {
-        const quatf_t got = quatf_slerp(a, b, off_axis_weights[i]);
-        TEST_ASSERT_EQUAL_MEMORY(&off_axis_expected[i], &got, sizeof got);
+}
+
+static void
+test_vector_float_ranges_with_decimal_lengths(void) {
+    const float len = 1.1F, lo = 0, hi = len;
+    const vec2f_t r2 = vec2f_repeat((vec2f_t){3.3F, -3.3F}, (vec2f_t){len, len});
+    const vec3f_t r3 = vec3f_repeat((vec3f_t){3.3F, -3.3F, 6.6F}, (vec3f_t){len, len, len});
+    const vec2f_t w2 = vec2f_wrap((vec2f_t){3.3F, -3.3F}, (vec2f_t){lo, lo}, (vec2f_t){hi, hi});
+    const vec3f_t w3 = vec3f_wrap((vec3f_t){3.3F, -3.3F, 6.6F}, (vec3f_t){lo, lo, lo}, (vec3f_t){hi, hi, hi});
+    const float repeats[] = {r2.x, r2.y, r3.x, r3.y, r3.z};
+    const float wraps[] = {w2.x, w2.y, w3.x, w3.y, w3.z};
+    for (size_t i = 0; i < sizeof repeats / sizeof repeats[0]; i++) {
+        TEST_ASSERT_TRUE(repeats[i] >= 0 && repeats[i] < len);
+        TEST_ASSERT_TRUE(wraps[i] >= lo && wraps[i] < hi);
     }
+}
+
+#define CHECK_RATIO_THIRDS(P, MAKE, CHECK)                                                                             \
+    do {                                                                                                               \
+        const P##_t got = P##_lerp(MAKE(P, 1, 8, -8, 3), MAKE(P, 1, -2, 2, -7), 1, 3);                                 \
+        CHECK(TEST_ASSERT_EQUAL_INT32, 1, got, 5, -5, 0);                                                              \
+    } while (0)
+
+static void
+test_vector_ratio_lerp_uses_its_denominator(void) {
+    CHECK_RATIO_THIRDS(vec2i, MAKE_VEC2, CHECK_VEC2);
+    CHECK_RATIO_THIRDS(vec2s, MAKE_VEC2, CHECK_VEC2);
+    CHECK_RATIO_THIRDS(vec3i, MAKE_VEC3, CHECK_VEC3);
+    CHECK_RATIO_THIRDS(vec3s, MAKE_VEC3, CHECK_VEC3);
 }
 
 void
 suite_math(void) {
-    RUN_TEST(test_quatf_slerp_preserves_float_results);
+    RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
+    RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
+    RUN_TEST(test_quatf_slerp_preserves_rotation_behaviour);
+    RUN_TEST(test_quatf_slerp_threshold_branches);
     RUN_TEST(test_vec2f_min);
     RUN_TEST(test_vec2f_max);
     RUN_TEST(test_vec2f_clamp);

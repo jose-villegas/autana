@@ -171,7 +171,8 @@ mathi_isqrt64(uint64_t value) {
     return (uint32_t)root;
 }
 
-/* Truncation keeps the fractional step toward a; the full int32 span fits int64. */
+/* Truncation keeps the fractional step toward a. The step is int64 because a full int32 span overflows,
+ * and it divides in 32 bits when it fits: a 64-bit divide is a library call on the board. */
 static inline int32_t
 mathi_lerp(int32_t a, int32_t b, int32_t t, int32_t n) {
     assert(n > 0 && t >= 0 && t <= n);
