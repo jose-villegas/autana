@@ -6,6 +6,12 @@
 /* The largest float below 2^31, so a clamped value still converts. */
 #define MATH_FLOAT_INT_LIMIT 2147483520.0F
 
+/* Finite ordered bounds; NaN maps to lo and infinities to the corresponding bound. */
+static inline float
+mathf_clamp_finite(float v, float lo, float hi) {
+    return v > lo ? (v < hi ? v : hi) : lo;
+}
+
 static inline int32_t
 mathf_round_i32(float v) {
     if (v >= MATH_FLOAT_INT_LIMIT) {

@@ -633,6 +633,22 @@ test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range(void) {
 }
 
 static void
+test_scalar_clamp_maps_nonfinite_values_to_bounds(void) {
+    const float lo = -2.0F;
+    const float hi = 3.0F;
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(NAN, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(hi, mathf_clamp_finite(INFINITY, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(-INFINITY, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(-FLT_MAX, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(hi, mathf_clamp_finite(FLT_MAX, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_clamp_finite(lo, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(hi, mathf_clamp_finite(hi, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(0, mathf_clamp_finite(0, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, mathf_clamp_finite(0.5F, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(-0.5F, mathf_clamp_finite(-0.5F, lo, hi));
+}
+
+static void
 test_scalar_rounding_preserves_large_integers_and_half_away_ties(void) {
     static const float values[] = {0, 0.49F, -0.49F, 0.5F, -0.5F, 1.5F, -1.5F};
     static const int32_t rounded[] = {0, 0, 0, 1, -1, 2, -2};
@@ -693,6 +709,7 @@ void
 suite_math_numbers(void) {
     RUN_TEST(test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods);
     RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
+    RUN_TEST(test_scalar_clamp_maps_nonfinite_values_to_bounds);
     RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
     RUN_TEST(test_transform_matrix_refusals_and_shear_tolerance_boundary);
     RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);

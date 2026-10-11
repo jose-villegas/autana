@@ -1,3 +1,5 @@
+#include <float.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include "render/skin/r3d_skinning.h"
@@ -130,6 +132,35 @@ test_rotated_nonuniform_palette_transforms_off_axis_vertices(void) {
 }
 
 static void
+test_extreme_inverse_bind_with_zero_weight_clamps_nan(void) {
+    static const int16_t positions[VERTICES][3] = {{2, 0, 0}, {2, 0, 0}, {2, 0, 0}, {2, 0, 0}};
+    static const float inverse[JOINTS][R3D_SKIN_MATRIX_WIDTH] = {
+        {FLT_MAX, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0},
+    };
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+        fixture_t f = fixture(influences);
+        f.bind.positions = positions;
+        f.skin.inverse_binds = inverse;
+        for (int j = 0; j < JOINTS; j++) {
+            f.model[j] = mat4f_identity();
+        }
+        for (int v = 0; v < VERTICES; v++) {
+            uint8_t* record = f.records + v * f.skin.vertex_stride;
+            memset(record, 0, 2 * influences);
+            record[influences] = R3D_SKIN_WEIGHT_SUM;
+        }
+        r3d_skin_palette(&f.skin, f.model, POSITION_SCALE, f.palette);
+        r3d_skin_clusters(&f.skin, &f.bind, f.palette, 0, CLUSTERS, &f.out);
+        for (int v = 0; v < VERTICES; v++) {
+            TEST_ASSERT_EQUAL_INT16(INT16_MIN, f.out.positions[v][0]);
+            TEST_ASSERT_EQUAL_INT16(0, f.out.positions[v][1]);
+            TEST_ASSERT_EQUAL_INT16(0, f.out.positions[v][2]);
+        }
+        release(&f);
+    }
+}
+
+static void
 test_output_storage_refuses_null_or_short_and_retains_colourless_bind(void) {
     fixture_t f = fixture(R3D_SKIN_INFLUENCES_MIN);
     const size_t bytes = r3d_skin_output_bytes(&f.bind);
@@ -148,6 +179,7 @@ test_output_storage_refuses_null_or_short_and_retains_colourless_bind(void) {
 
 void
 suite_skinning(void) {
+    RUN_TEST(test_extreme_inverse_bind_with_zero_weight_clamps_nan);
     RUN_TEST(test_rotated_nonuniform_palette_transforms_off_axis_vertices);
     RUN_TEST(test_output_storage_refuses_null_or_short_and_retains_colourless_bind);
     RUN_TEST(test_palette_inverse_bind_and_position_ticks);

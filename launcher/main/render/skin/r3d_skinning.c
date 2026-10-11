@@ -89,7 +89,7 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
         }
     }
     for (int a = 0; a < POSITION_AXES; a++) {
-        out[a] = (int16_t)mathf_round_i32(mathf_clamp(posed[a], (float)INT16_MIN, (float)INT16_MAX));
+        out[a] = (int16_t)mathf_round_i32(mathf_clamp_finite(posed[a], (float)INT16_MIN, (float)INT16_MAX));
     }
 }
 
