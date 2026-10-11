@@ -56,15 +56,17 @@ class CheckMathDocs(unittest.TestCase):
 
     def test_an_over_limit_inline_math_span_fails_with_its_line(self):
         formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
-        with tempfile.TemporaryDirectory() as d:
-            root = pathlib.Path(d)
-            make_tree(root, page_extra="\n$`%s`$\n" % formula)
-            page = (root / check_math_docs.PAGE).read_text()
-            expected_line = next(i for i, line in enumerate(page.splitlines(), start=1) if formula in line)
-            problems = check_math_docs.check(root)
-        self.assertEqual(1, len(problems))
-        self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
-        self.assertIn("split the formula into one span per step joined with <br>", problems[0])
+        for prefix in ("\n", "```math\na + b\nc + d\n```\n"):
+            with self.subTest(prefix=prefix):
+                with tempfile.TemporaryDirectory() as d:
+                    root = pathlib.Path(d)
+                    make_tree(root, page_extra=prefix + "$`%s`$\n" % formula)
+                    page = (root / check_math_docs.PAGE).read_text()
+                    expected_line = next(i for i, line in enumerate(page.splitlines(), start=1) if formula in line)
+                    problems = check_math_docs.check(root)
+                self.assertEqual(1, len(problems))
+                self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
+                self.assertIn("split the formula into one span per step joined with <br>", problems[0])
 
     def test_separate_inline_math_spans_are_measured_individually(self):
         formula = "x" * check_math_docs.MAX_INLINE_MATH_CHARS
@@ -99,17 +101,6 @@ class CheckMathDocs(unittest.TestCase):
             with self.subTest(language=language):
                 self.assertEqual([], problems_for(page_extra="```%s\n$%s$ and $`%s`$\n```\n" %
                                                  (language, formula, formula)))
-
-    def test_an_over_limit_span_after_a_multiline_fence_has_its_real_line(self):
-        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
-        with tempfile.TemporaryDirectory() as d:
-            root = pathlib.Path(d)
-            make_tree(root, page_extra="```math\na + b\nc + d\n```\n$`%s`$\n" % formula)
-            page = (root / check_math_docs.PAGE).read_text()
-            expected_line = next(i for i, line in enumerate(page.splitlines(), start=1) if formula in line)
-            problems = check_math_docs.check(root)
-        self.assertEqual(1, len(problems))
-        self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
 
     def test_escaped_dollars_far_apart_are_not_measured(self):
         formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
