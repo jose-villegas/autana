@@ -8,18 +8,18 @@ sha256 = "bbbb63e802570a6b421c9fe3f96390c672e613183cf921158efea45c96a534c8"
 size = 343012
 seeded = true
 
-# Exact sampled camera poses, memoized by clip bytes, sampling arguments and sampler code.
+# [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "a15f88ffdbe958ad2e2af6b0d5fd56a089020145a20089520a222c0e18a9081e"
+key = "7d590c608d7173a4657c3d8a9a28e6072a752825af1402b2b92933cc3d6154cb"
 poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
 count = 364
 clip = "launcher/demo/sponza/flythrough.anim.toml"
-source = "launcher/demo/sponza/sponza.scene.toml"
+host = "Windows AMD64"
 
 [[poses]]
-key = "f429f92bcc39a3006bf29294f1fdeff24a69e82c95b1ade1a421918d8a330564"
+key = "cb4f57b3af8ba1304139eff85ba57fecd915844b9bfc6f60a8cbb80f45be64ea"
 poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
-source = "launcher/demo/sponza/sponza.scene.toml"
+host = "Windows AMD64"
