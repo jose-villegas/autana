@@ -14,11 +14,6 @@ typedef struct registry_entry {
     struct registry_entry* next;
 } registry_entry_t;
 
-static registry_entry_t
-fixture(const char* name, int order) {
-    return (registry_entry_t){.name = name, .order = order};
-}
-
 static int
 entry_order(const void* a, const void* b) {
     const registry_entry_t* first = a;
@@ -32,7 +27,7 @@ static void
 test_registration_order_does_not_change_list_order(void) {
     static const int permutations[][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
     for (size_t i = 0; i < sizeof permutations / sizeof permutations[0]; i++) {
-        registry_entry_t entries[] = {fixture("a", 0), fixture("b", 1), fixture("c", 2)};
+        registry_entry_t entries[] = {{.name = "c", .order = 0}, {.name = "b", .order = 1}, {.name = "a", .order = 2}};
         registry_entry_t* head = NULL;
         for (size_t j = 0; j < sizeof entries / sizeof entries[0]; j++) {
             TEST_ASSERT_EQUAL(REGISTRY_ADDED, registry_add(&head, &rule, &entries[permutations[i][j]]));
@@ -46,7 +41,7 @@ test_registration_order_does_not_change_list_order(void) {
 
 static void
 test_same_object_is_already_and_links_stay_untouched(void) {
-    registry_entry_t first = fixture("a", 0), last = fixture("b", 1);
+    registry_entry_t first = {.name = "a", .order = 0}, last = {.name = "b", .order = 1};
     registry_entry_t* head = &first;
     first.next = &last;
     TEST_ASSERT_TRUE(registry_contains(head, rule.link, &last));
@@ -59,27 +54,30 @@ test_same_object_is_already_and_links_stay_untouched(void) {
 
 static void
 test_name_clash_with_different_order_leaves_all_links_untouched(void) {
-    registry_entry_t first = fixture("a", 0), last = fixture("b", 1), duplicate = fixture("b", -1);
-    registry_entry_t* head = &first;
-    first.next = &last;
-    duplicate.next = &first;
-    TEST_ASSERT_EQUAL(REGISTRY_CLASH, registry_add(&head, &rule, &duplicate));
-    TEST_ASSERT_EQUAL_PTR(&first, head);
-    TEST_ASSERT_EQUAL_PTR(&last, first.next);
-    TEST_ASSERT_NULL(last.next);
-    TEST_ASSERT_EQUAL_PTR(&first, duplicate.next);
-    TEST_ASSERT_FALSE(registry_contains(head, rule.link, &duplicate));
+    const registry_rule_t rules[] = {REGISTRY_RULE(registry_entry_t, strcmp, entry_order),
+                                     REGISTRY_RULE(registry_entry_t, strcmp, NULL)};
+    for (size_t i = 0; i < sizeof rules / sizeof rules[0]; i++) {
+        registry_entry_t first = {.name = "a", .order = 0}, last = {.name = "b", .order = 1},
+                         duplicate = {.name = "b", .order = -1};
+        registry_entry_t* head = &first;
+        first.next = &last;
+        duplicate.next = &first;
+        TEST_ASSERT_EQUAL(REGISTRY_CLASH, registry_add(&head, &rules[i], &duplicate));
+        TEST_ASSERT_EQUAL_PTR(&first, head);
+        TEST_ASSERT_EQUAL_PTR(&last, first.next);
+        TEST_ASSERT_NULL(last.next);
+        TEST_ASSERT_EQUAL_PTR(&first, duplicate.next);
+    }
 }
 
 static void
-test_same_name_clashes_without_entry_order(void) {
-    registry_entry_t first = fixture("a", 0), duplicate = fixture("a", 1);
+test_new_entry_precedes_an_entry_with_equal_order(void) {
+    registry_entry_t first = {.name = "a", .order = 0}, added = {.name = "b", .order = 0};
     registry_entry_t* head = &first;
-    const registry_rule_t order_rule = REGISTRY_RULE(registry_entry_t, strcmp, NULL);
-    TEST_ASSERT_EQUAL(REGISTRY_CLASH, registry_add(&head, &order_rule, &duplicate));
-    TEST_ASSERT_EQUAL_PTR(&first, head);
+    TEST_ASSERT_EQUAL(REGISTRY_ADDED, registry_add(&head, &rule, &added));
+    TEST_ASSERT_EQUAL_PTR(&added, head);
+    TEST_ASSERT_EQUAL_PTR(&first, added.next);
     TEST_ASSERT_NULL(first.next);
-    TEST_ASSERT_NULL(duplicate.next);
 }
 
 void
@@ -87,7 +85,7 @@ run_registry_suite(void) {
     RUN_TEST(test_registration_order_does_not_change_list_order);
     RUN_TEST(test_same_object_is_already_and_links_stay_untouched);
     RUN_TEST(test_name_clash_with_different_order_leaves_all_links_untouched);
-    RUN_TEST(test_same_name_clashes_without_entry_order);
+    RUN_TEST(test_new_entry_precedes_an_entry_with_equal_order);
 }
 
 #else
