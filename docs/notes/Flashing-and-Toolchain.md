@@ -35,10 +35,12 @@ in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
 The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
 power-cycles the SoC: USB drops and comes back, possibly on a **different
-COM number**. Nothing depends on the number; `device.py` finds the board by
-its USB serial number and looks the port up again before every open. The
-first open after the drop can get the old handle, which reads nothing; only
-`reset --capture` and `selftest` reopen a silent handle, and `selftest` and
+COM number**. Nothing depends on the number: after every reset `device.py`
+waits for the board's USB serial number to leave the port list and come
+back, then opens the port it is listed under, so no open gets the dying
+handle. Every open `device.py` makes leaves DTR and RTS low without passing
+through the USB Serial/JTAG reset state (DTR low, RTS high); `open_serial`
+in [device.py](../../scripts/device/device.py) says how on each OS. `selftest` and
 `batch` check the console `BUILD_ID` against the flashed image.
 
 If it vanishes from USB entirely (no COM port, no device at vendor ID
