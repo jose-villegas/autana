@@ -1757,6 +1757,36 @@ test_property_animation_moves_a_drawn_entity(void) {
 }
 
 static void
+test_camera_seek_invalidates_the_entity_matrix(void) {
+    fixture();
+    scene_t* scene = show("test_flight", NULL);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    TEST_ASSERT_TRUE(scene_entity_transform(scene, camera)->cached);
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    scene_transform_t sampled = *scene_entity_transform(scene, camera);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, transformf_matrix(&sampled).m[0][3]);
+    TEST_ASSERT_TRUE((scene->flags[camera] & SCENE_FLAG_DIRTY) != 0);
+}
+
+static void
+test_inactive_property_target_invalidates_its_entity_matrix(void) {
+    fixture();
+    show("test_solo", NULL);
+    scene_t* scene = load("test_pair");
+    const scene_entity_t owner = scene_find(scene, "camera");
+    const scene_entity_t target = scene_find(scene, "red");
+    static const char* const clips[] = {"property.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, owner, NULL, clips, 1, NULL));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, owner, 0, 0));
+    TEST_ASSERT_TRUE(scene_entity_transform(scene, target)->cached);
+    scene->flags[target] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, owner, SCENE_ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
+    scene_transform_t sampled = *scene_entity_transform(scene, target);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transformf_matrix(&sampled).m[0][3]);
+    TEST_ASSERT_TRUE((scene->flags[target] & SCENE_FLAG_DIRTY) != 0);
+}
+
+static void
 test_unchanged_poses_skip_skinning_and_refit(void) {
     scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
@@ -2042,6 +2072,8 @@ run_scene_suite(void) {
     RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);
     RUN_TEST(test_scene_open_refuses_shear_and_reflection_naming_the_entity);
     RUN_TEST(test_property_animation_moves_a_drawn_entity);
+    RUN_TEST(test_camera_seek_invalidates_the_entity_matrix);
+    RUN_TEST(test_inactive_property_target_invalidates_its_entity_matrix);
     RUN_TEST(test_unchanged_poses_skip_skinning_and_refit);
     RUN_TEST(test_previous_slot_pause_and_empty_or_frozen_controls);
     RUN_TEST(test_animator_queries_and_controls_refuse_missing_or_out_of_range);

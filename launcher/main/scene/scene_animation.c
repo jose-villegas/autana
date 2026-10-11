@@ -358,13 +358,17 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
 }
 
 static void
-apply_property(scene_animator_t* a, uint32_t dt_ms) {
+apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     if (!advance_animator(a, dt_ms)) {
         return;
     }
     const anim_slot_t* slot = &a->layer.current;
     const scene_animator_clip_t* clip = &a->clips[slot->clip];
     anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead, &clip->tracks.clip));
+    for (int i = 0; i < clip->tracks.count; i++) {
+        const ptrdiff_t entity = clip->fields[i].dirty - scene->flags;
+        scene->locals[entity].cached = false;
+    }
 }
 
 void
@@ -428,7 +432,7 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
         scene_animator_t* animator = &scene->animators[e];
         if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
             && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ENABLED)) {
-            apply_property(animator, dt_ms);
+            apply_property(scene, animator, dt_ms);
         }
         clusters += scene->skinned_renderers[e].internal_storage == NULL || !animator->posed
                         ? 0

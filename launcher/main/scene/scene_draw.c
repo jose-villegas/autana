@@ -79,8 +79,6 @@ update_placements(scene_t* scene) {
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_DIRTY) != 0) {
-            /* anim_apply writes transform fields without the cache-invalidating setters. */
-            scene->locals[r->entity].cached = false;
             r->placement = r3d_placement_from(&scene->locals[r->entity]);
             r->placed = !scene_transform_is_identity(&r->placement);
         }
