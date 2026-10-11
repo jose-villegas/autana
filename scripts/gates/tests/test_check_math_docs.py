@@ -102,7 +102,7 @@ class CheckMathDocs(unittest.TestCase):
                 self.assertEqual([], problems_for(page_extra="```%s\n$%s$ and $`%s`$\n```\n" %
                                                  (language, formula, formula)))
 
-    def test_escaped_dollars_far_apart_are_not_measured(self):
+    def test_escaped_dollars_are_not_measured(self):
         formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
         self.assertEqual([], problems_for(page_extra=r"\$%s\$" % formula + "\n"))
 

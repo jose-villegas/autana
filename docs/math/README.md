@@ -170,25 +170,25 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 
 Always an explicit call named for destination and source, both `vec2` and `vec3`.
 
-| Function | Purpose | Formula |
-|---|---|---|
-| `vec3f_from_vec3i(v)`, `vec2f_from_vec2i(v)` | exact | |
-| `vec3i_from_vec3f(v)`, `vec2i_from_vec2f(v)` | rounded to nearest, saturated | |
-| `vec3f_from_vec3s(v, scale)`, `vec2f_from_vec2s(v, scale)` | `v * scale`: one int16 step is `scale` units | |
-| `vec3s_from_vec3f(v, scale)`, `vec2s_from_vec2f(v, scale)` | `v / scale`, rounded, saturated to int16 | |
-| `vec3f_from_vec3x(v)`, `vec2f_from_vec2x(v)` | `v / 65536` | |
-| `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated | |
-| `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening | |
-| `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing | |
+| Function | Rule |
+|---|---|
+| `vec3f_from_vec3i(v)`, `vec2f_from_vec2i(v)` | exact |
+| `vec3i_from_vec3f(v)`, `vec2i_from_vec2f(v)` | rounded to nearest, saturated |
+| `vec3f_from_vec3s(v, scale)`, `vec2f_from_vec2s(v, scale)` | `v * scale`: one int16 step is `scale` units |
+| `vec3s_from_vec3f(v, scale)`, `vec2s_from_vec2f(v, scale)` | `v / scale`, rounded, saturated to int16 |
+| `vec3f_from_vec3x(v)`, `vec2f_from_vec2x(v)` | `v / 65536` |
+| `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
+| `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
+| `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
 
 The scalar steps behind them, in `vec_convert.h`:
 
-| Function | Purpose | Formula |
-|---|---|---|
-| `mathf_round_i32(v)` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` | |
-| `mathf_round_s(v, scale)` | `v / scale` to int16, rounded and saturated | |
-| `mathf_to_x(v)` | float to Q16.16, rounded and saturated | |
-| `mathx_to_f(v)` | Q16.16 to float | |
+| Function | Rule |
+|---|---|
+| `mathf_round_i32(v)` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` |
+| `mathf_round_s(v, scale)` | `v / scale` to int16, rounded and saturated |
+| `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
+| `mathx_to_f(v)` | Q16.16 to float |
 
 Scalar operations live in `math/scalar/` (`mathf.h`, `mathi.h`, `maths.h`, `mathx.h`)
 (`mathx_add`, `mathx_mul`, `mathx_div`, `mathx_sqrt`, `mathx_sin_turns`, ...);
@@ -198,12 +198,12 @@ a family names only the ones it uses.
 
 These take and return plain integers, not structs.
 
-| Function | Purpose | Formula |
-|---|---|---|
-| `mathi_repeat(v, len)` | Floored modulo into `[0, len)`; `len > 0`, any `int` value | |
-| `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, any `int` value | |
-| `mathi_repeat_u32(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint32_t` value | |
-| `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range | |
+| Function | Range and contract |
+|---|---|
+| `mathi_repeat(v, len)` | Floored modulo into `[0, len)`; `len > 0`, any `int` value |
+| `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, any `int` value |
+| `mathi_repeat_u32(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint32_t` value |
+| `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range |
 
 `math/scalar/units.h` owns `MATH_MS_PER_S`, the integer milliseconds per
 second for time conversions.
