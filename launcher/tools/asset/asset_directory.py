@@ -12,17 +12,16 @@ import zlib
 from pathlib import Path
 
 from asset.asset_pack import PackError, NAME_BYTES, padded
-from device.panel_size import read_define
+from build.c_header import read_define
 
 DIRECTORY_READER = Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h"
-_header = DIRECTORY_READER.read_text(encoding="utf-8")
 
 DIRECTORY_MAGIC = b"ABDR"
-DIRECTORY_VERSION = read_define(_header, "ASSET_DIRECTORY_VERSION")
+DIRECTORY_VERSION = read_define(DIRECTORY_READER, "ASSET_DIRECTORY_VERSION")
 DIRECTORY_HEADER = struct.Struct("<4sIII")
 DIRECTORY_ROW = struct.Struct(f"<{NAME_BYTES}sII")
 DIRECTORY_CRC_START = struct.calcsize("<4sI")
-MMU_PAGE_SIZE = read_define(_header, "ASSET_MMU_PAGE_SIZE")
+MMU_PAGE_SIZE = read_define(DIRECTORY_READER, "ASSET_MMU_PAGE_SIZE")
 
 
 def build_directory(packs):

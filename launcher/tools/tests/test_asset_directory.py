@@ -1,6 +1,7 @@
 """The directory writer's page layout and reader checks."""
 
 import pathlib
+import subprocess
 import struct
 import sys
 import unittest
@@ -11,7 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset import asset_directory
 from asset.asset_directory import build_directory, parse_directory
 from asset.asset_pack import PackError, NAME_BYTES, build_pack as make_pack, parse_pack
-from device.panel_size import read_define
+from build.c_header import read_define
 
 LIT_MESH = b"LMSH"
 
@@ -31,9 +32,30 @@ class DirectoryTests(unittest.TestCase):
         return bytes(image)
 
     def test_layout_constants_come_from_the_reader_header(self):
-        header = (pathlib.Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h").read_text()
+        header = (pathlib.Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h")
         self.assertEqual(asset_directory.MMU_PAGE_SIZE, read_define(header, "ASSET_MMU_PAGE_SIZE"))
         self.assertEqual(asset_directory.DIRECTORY_VERSION, read_define(header, "ASSET_DIRECTORY_VERSION"))
+
+    def test_import_does_not_read_the_display_header(self):
+        script = """
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, sys.argv[1])
+read_text = Path.read_text
+
+def read_without_display(path, *args, **kwargs):
+    if path.name == "display.h":
+        raise AssertionError("asset tooling read the display header")
+    return read_text(path, *args, **kwargs)
+
+with patch.object(Path, "read_text", read_without_display):
+    from asset import asset_directory
+"""
+        result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).resolve().parents[1])],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_each_pack_parses_back_on_its_own_page(self):
         image = self.image()
