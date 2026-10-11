@@ -961,7 +961,7 @@ class LocalSourceTests(unittest.TestCase):
             (asset / "texture.weird").write_bytes(b"texture")
             source = '[source]\npath = "asset/m.obj"\ncredit = "c"\n'
             write_import(root, source=source, output='[output]\n', body=SIMPLIFY + VARIANT)
-            objects = renderer(extra='variant = "mesh"\nbake = true\n' + FIT)
+            objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
             scene_path = write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE)
             scene = load_scene(scene_path)
             job = scene.renderers[0]
