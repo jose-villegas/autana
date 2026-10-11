@@ -81,7 +81,7 @@ use (its scale is zero, so its matrix sends every point to the origin). Code nev
 and returns small structs by value. Inputs may alias outputs; nothing is
 modified through a pointer except the transform's own `t`.
 
-### Scalar ranges (`mathi.h`, `mathf.h`)
+### Scalar ranges (`mathi.h`)
 
 | Function | Range and contract |
 |---|---|
@@ -89,10 +89,8 @@ modified through a pointer except the transform's own `t`.
 | `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, width fits `int`, any `int` value |
 | `mathi_repeat_u32(v, len)` | Exact integer modulo into `[0, len)`; `len > 0`, including clocks near `UINT32_MAX` |
 | `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range |
-| `mathf_repeat(v, len)` | Into `[0, len)`; finite value and finite `len > 0`; a rounded upper bound maps to zero |
-| `mathf_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, finite offset and width; a rounded upper bound maps to `lo` |
 
-`math/linear/math_const.h` owns `MATH_MS_PER_S`, the integer milliseconds per
+`math/scalar/units.h` owns `MATH_MS_PER_S`, the integer milliseconds per
 second for time conversions.
 
 ### vec2 (`f i s x`)

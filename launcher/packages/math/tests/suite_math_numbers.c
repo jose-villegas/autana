@@ -22,6 +22,7 @@
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "math/scalar/units.h"
 
 #define Q           ((float)MATHX_ONE)
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -600,46 +601,10 @@ test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range(void) {
     TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(UINT32_MAX, lo, hi));
 }
 
-static void
-test_float_repeat_excludes_the_rounded_upper_bound(void) {
-    const float length = 1.0F;
-    const float negative = -1.25F;
-    const float fraction = 0.75F;
-    const float tiny_values[] = {-FLT_MIN, -1e-8F};
-    TEST_ASSERT_EQUAL_FLOAT(fraction, mathf_repeat(negative, length));
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(-length, length));
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(length, length));
-    for (size_t i = 0; i < sizeof tiny_values / sizeof tiny_values[0]; i++) {
-        const float got = mathf_repeat(tiny_values[i], length);
-        TEST_ASSERT_TRUE(got >= 0.0F && got < length);
-    }
-}
-
-static void
-test_float_wrap_round_trips_with_negative_bounds(void) {
-    const float lo = -2.0F;
-    const float hi = -1.0F;
-    const float middle = -1.25F;
-    const float width = hi - lo;
-    const int turns = 4;
-    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_wrap(lo, lo, hi));
-    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_wrap(hi, lo, hi));
-    for (int turn = -turns; turn <= turns; turn++) {
-        const float shifted = middle + (float)turn * width;
-        const float got = mathf_wrap(shifted, lo, hi);
-        TEST_ASSERT_EQUAL_FLOAT(middle, got);
-        TEST_ASSERT_EQUAL_FLOAT(got, mathf_wrap(got, lo, hi));
-    }
-    const float rounded_hi = mathf_wrap(nextafterf(lo, -INFINITY), lo, hi);
-    TEST_ASSERT_TRUE(rounded_hi >= lo && rounded_hi < hi);
-}
-
 void
 suite_math_numbers(void) {
     RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
     RUN_TEST(test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range);
-    RUN_TEST(test_float_repeat_excludes_the_rounded_upper_bound);
-    RUN_TEST(test_float_wrap_round_trips_with_negative_bounds);
     RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);

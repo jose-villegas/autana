@@ -1,7 +1,14 @@
 /*
- * mathi: integer scalar operations, including clamp, repeat and wrap.
- * Template sums and products wrap at int32; dot products widen to int64.
- * Integer vectors have no division, normalization or rotation.
+ * mathi: plain integer scalar operations, for grid, pixel and cell
+ * coordinates. The first group serves the math templates (math_template.h):
+ * sums and products wrap like any int32, so a caller keeps its coordinates
+ * small, and a dot product widens to int64. The template group has no div,
+ * sqrt or angle op, so an `i` vector gets no normalize or rotation. The rest are the shared integer helpers: abs, min,
+ * max, clamp, repeat, wrap, an approximate length, an integer square root, even rounding.
+ *
+ * `static inline`: some are called tens of thousands of times a second from
+ * an innermost loop, where a cross-file call is not free. abs and sign are
+ * prefixed like the rest, which also keeps them clear of <stdlib.h>.
  */
 #pragma once
 
