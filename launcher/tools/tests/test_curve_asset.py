@@ -13,7 +13,8 @@ sys.path.insert(0, str(TOOLS))
 from asset import table_asset
 from gfx import curve_asset
 from r3d import build_pack
-from asset.asset_pack import parse_pack, parse_directory, build_directory
+from asset.asset_directory import parse_directory, build_directory
+from asset.asset_pack import parse_pack
 from test_gfx_image_asset import png
 
 class CurveTests(unittest.TestCase):
