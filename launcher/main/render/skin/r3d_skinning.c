@@ -6,7 +6,7 @@
 #include "math/scalar/mathi.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
-static void
+static inline __attribute__((always_inline)) void
 check_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, int first, int count) {
     assert(skin->vertex_count == (uint32_t)bind->vertex_count);
     assert(first >= 0 && count >= 0 && first <= bind->cluster_count && count <= bind->cluster_count - first);
