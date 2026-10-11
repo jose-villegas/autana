@@ -4,6 +4,7 @@
  * of view 1 projects each x unit 3.2 pixels from the centre of a 64-pixel view.
  */
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,7 @@ enum {
     QUAD_VERTICES = 4,
     QUAD_TRIANGLES = 2,
     MESH_HEADER = 44,
+    MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
     RIG_ENTRIES = 10,
     RIG_MESH_BYTES = 200,
@@ -1565,6 +1567,43 @@ test_mesh_reader_refuses_overlapping_cluster_vertices(void) {
 }
 
 static void
+test_mesh_reader_requires_complete_cluster_coverage(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "rig.mesh", R3D_LIT_MESH_ASSET, &entry));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    r3d_lit_cluster_t* clusters = (r3d_lit_cluster_t*)(uintptr_t)mesh.clusters;
+    const int last = mesh.cluster_count - 1;
+    for (int c = 0; c <= last; c++) {
+        const r3d_lit_cluster_t saved = clusters[c];
+        clusters[c].triangle_count = 0;
+        clusters[c].vertex_count--;
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+        TEST_ASSERT_NULL(mesh.positions);
+        clusters[c] = saved;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    }
+    TEST_ASSERT_EQUAL_INT(0, mesh.clusters[0].vertex_first);
+    TEST_ASSERT_EQUAL_INT(mesh.vertex_count, clusters[last].vertex_first + clusters[last].vertex_count);
+}
+
+static void
+test_mesh_reader_accepts_only_positive_int_scales(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "rig.mesh", R3D_LIT_MESH_ASSET, &entry));
+    uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
+    r3d_lit_mesh_t mesh;
+    test_pack_put32(bytes + MESH_SCALE_AT, INT_MAX);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(INT_MAX, mesh.position_scale);
+    test_pack_put32(bytes + MESH_SCALE_AT, (uint32_t)INT_MAX + 1U);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_NULL(mesh.positions);
+}
+
+static void
 test_clip_bind_failure_names_the_first_rejected_clip(void) {
     fixture();
     scene_t* scene = show("test_pair", NULL);
@@ -1954,6 +1993,29 @@ test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
     const int paused = job_calls_count();
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_INT(paused + 1, job_calls_count());
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene_find(scene, "red")];
+    const scene_entity_t entity = scene_find(scene, "red");
+    for (int entities = 1; entities <= scene->asset.entity_count; entities++) {
+        for (int clusters = 1; clusters <= skin->bind.cluster_count; clusters++) {
+            scene_t limited = *scene;
+            limited.asset.entity_count = entities;
+            if (entities == 1) {
+                limited.animators += entity;
+                limited.skinned_renderers += entity;
+                limited.flags += entity;
+            }
+            const int saved = skin->bind.cluster_count;
+            skin->bind.cluster_count = clusters;
+            TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, false));
+            scene->animators[entity].dirty = true;
+            const int calls = job_calls_count();
+            scene_animation_step(&limited, 0);
+            TEST_ASSERT_EQUAL_INT(calls + (entities > 1) + (clusters > 1), job_calls_count());
+            TEST_ASSERT_TRUE(scene->animators[entity].posed);
+            TEST_ASSERT_EQUAL_INT16(skin->bind.positions[0][0], skin->output.positions[0][0]);
+            skin->bind.cluster_count = saved;
+        }
+    }
 }
 #endif
 
@@ -1972,6 +2034,8 @@ run_scene_suite(void) {
 #endif
 
     RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
+    RUN_TEST(test_mesh_reader_requires_complete_cluster_coverage);
+    RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_skin_split_inside_an_entity_matches_full_range);

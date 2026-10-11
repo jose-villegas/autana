@@ -401,17 +401,28 @@ skin_slice(void* ctx) {
     scene_skin_range(r->scene, r->first, r->count);
 }
 
+static void
+animate_entities(scene_t* scene, uint32_t dt_ms) {
+    if (scene->skeleton_animator_count == 0) {
+        return;
+    }
+    const int entities = scene->asset.entity_count, half = entities / 2;
+    range_t a = {scene, 0, half, dt_ms}, b = {scene, half, entities - half, dt_ms};
+    _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
+    if (half == 0) {
+        animate_slice(&b);
+    } else {
+        job_run_split(animate_slice, &a, &b, sizeof a);
+    }
+}
+
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (scene->animator_count == 0) {
         return;
     }
-    const int entities = scene->asset.entity_count, half = entities / 2;
-    range_t a = {scene, 0, half, dt_ms}, b = {scene, half, entities - half, dt_ms};
-    if (scene->skeleton_animator_count != 0) {
-        _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
-        job_run_split(animate_slice, &a, &b, sizeof a);
-    }
+    animate_entities(scene, dt_ms);
+    const int entities = scene->asset.entity_count;
     int clusters = 0;
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
@@ -426,10 +437,13 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (clusters == 0) {
         return;
     }
-    a = (range_t){scene, 0, clusters / 2, 0};
-    b = (range_t){scene, clusters / 2, clusters - (clusters / 2), 0};
+    range_t a = {scene, 0, clusters / 2, 0}, b = {scene, clusters / 2, clusters - (clusters / 2), 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
-    job_run_split(skin_slice, &a, &b, sizeof a);
+    if (a.count == 0) {
+        skin_slice(&b);
+    } else {
+        job_run_split(skin_slice, &a, &b, sizeof a);
+    }
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);

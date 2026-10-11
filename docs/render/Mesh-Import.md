@@ -215,8 +215,11 @@ cluster or node array, and an inner node's children come after it, so a walk
 down the tree ends; a failure there, or a vertex, triangle, cluster or node
 count past `VERTEX_LIMIT` in `r3d_lit_mesh.c`, is `ASSET_ERR_BOUNDS`. A mesh
 with no clusters, no nodes, no position scale, or not exactly one colour
-source is `ASSET_ERR_FORMAT`. Cluster vertex ranges must be ordered and
-disjoint; a violation is `ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry;
+source is `ASSET_ERR_FORMAT`. Position scale must be in `1..INT_MAX`.
+Cluster vertex ranges must cover every vertex exactly once in order: the
+first starts at zero, each starts at the previous end, and the last ends at
+the vertex count. An invalid scale or coverage is `ASSET_ERR_FORMAT`.
+`lit_mesh.py` writes the entry;
 `r3d_lit_mesh.c` is the one reader.
 
 ## The offline tools

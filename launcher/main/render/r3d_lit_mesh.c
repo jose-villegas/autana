@@ -1,5 +1,6 @@
 #include "render/r3d_lit_mesh.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
 #include "asset/asset_entry.h"
@@ -70,16 +71,16 @@ clusters_are_inside(const r3d_lit_mesh_t* mesh) {
 }
 
 static bool
-clusters_are_disjoint(const r3d_lit_mesh_t* mesh) {
+clusters_cover_vertices(const r3d_lit_mesh_t* mesh) {
     int end = 0;
     for (int c = 0; c < mesh->cluster_count; c++) {
         const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
-        if (cluster->vertex_first < end) {
+        if (cluster->vertex_first != end) {
             return false;
         }
         end = cluster->vertex_first + cluster->vertex_count;
     }
-    return true;
+    return end == mesh->vertex_count;
 }
 
 static bool
@@ -115,8 +116,9 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
         return ASSET_ERR_BOUNDS;
     }
+    const uint32_t scale = word(asset->data, POSITION_SCALE);
     /* One colour source, a scale, and a root for the tree to start from. */
-    if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || word(asset->data, POSITION_SCALE) == 0) {
+    if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || scale == 0 || scale > INT_MAX) {
         return ASSET_ERR_FORMAT;
     }
     r3d_lit_mesh_t built = {
@@ -129,7 +131,7 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         .triangle_count = (int)triangles,
         .cluster_count = (int)clusters,
         .node_count = (int)nodes,
-        .position_scale = (int)word(asset->data, POSITION_SCALE),
+        .position_scale = (int)scale,
         .face_colors = face_at == 0 ? NULL : array_at(asset, face_at, triangles, 2),
     };
     const bool colours_fit = colors_at == 0 ? built.face_colors != NULL : built.colors != NULL;
@@ -137,7 +139,7 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
     }
-    if (!clusters_are_disjoint(&built)) {
+    if (!clusters_cover_vertices(&built)) {
         return ASSET_ERR_FORMAT;
     }
     *mesh = built;
