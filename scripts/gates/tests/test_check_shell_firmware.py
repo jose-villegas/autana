@@ -35,7 +35,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_each_vendor_include_fails(self):
         for header in ("esp_timer.h", "esp_err.h", "esp_heap_caps.h", "nvs_flash.h", "nvs.h", "freertos/task.h",
-                       "bsp/esp-bsp.h", "driver/gpio.h", "hal/gpio_ll.h", "soc/soc.h", "rom/ets_sys.h"):
+                       "bsp/esp-bsp.h", "driver/gpio.h", "hal/gpio_ll.h", "soc/soc.h", "rom/ets_sys.h", "multi_heap.h"):
             with self.subTest(header=header):
                 self.assertEqual(self.problems(f'#include "{header}"\n'),
                                  [f"launcher/main/main.c:1: includes {header}"])
@@ -56,7 +56,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_a_vendor_name_fails(self):
         for name in ("esp_err_to_name", "ESP_ERROR_CHECK", "nvs_flash_init", "NVS_READONLY", "heap_caps_malloc",
-                     "MALLOC_CAP_DMA", "bsp_display_start", "vTaskDelay", "xTaskCreate", "xQueueSend",
+                     "MALLOC_CAP_DMA", "multi_heap_free", "esp_psram_get_size", "bsp_display_start", "vTaskDelay", "xTaskCreate", "xQueueSend",
                      "uxTaskGetStackHighWaterMark", "ulTaskNotifyTake", "pvPortMalloc", "portMAX_DELAY",
                      "configTICK_RATE_HZ", "pdMS_TO_TICKS", "TaskHandle_t", "SemaphoreHandle_t", "TickType_t"):
             with self.subTest(name=name):
