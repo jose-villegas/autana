@@ -40,8 +40,12 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
     out->positions = (int16_t(*)[3])(void*)p;
     out->clusters = (r3d_lit_cluster_t*)(void*)(p + cluster_offset(bind));
     out->nodes = (r3d_lit_node_t*)(void*)(p + node_offset(bind));
-    memcpy(out->clusters, bind->clusters, (size_t)bind->cluster_count * sizeof *out->clusters);
-    memcpy(out->nodes, bind->nodes, (size_t)bind->node_count * sizeof *out->nodes);
+    if (bind->cluster_count != 0) {
+        memcpy(out->clusters, bind->clusters, (size_t)bind->cluster_count * sizeof *out->clusters);
+    }
+    if (bind->node_count != 0) {
+        memcpy(out->nodes, bind->nodes, (size_t)bind->node_count * sizeof *out->nodes);
+    }
     out->mesh = *bind;
     out->mesh.positions = (const int16_t(*)[3])out->positions;
     out->mesh.colors = bind->colors;
@@ -56,8 +60,8 @@ r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f
     for (int joint = 0; joint < joints; joint++) {
         const mat3f_t matrix = mat3f_mul(linear, mat3f_from_mat4(palette[joint]));
         const mat3f_t cofactor = mat3f_cofactor(matrix);
-        const float det =
-            matrix.m[0][0] * cofactor.m[0][0] + matrix.m[0][1] * cofactor.m[0][1] + matrix.m[0][2] * cofactor.m[0][2];
+        const float det = (matrix.m[0][0] * cofactor.m[0][0]) + (matrix.m[0][1] * cofactor.m[0][1])
+                          + (matrix.m[0][2] * cofactor.m[0][2]);
         if (det == 0.0F || !isfinite(det)) {
             return false;
         }
@@ -147,9 +151,9 @@ skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, c
             rows[axis] = i == 0 ? row : vec3f_add(rows[axis], row);
         }
     }
-    const int8_t* packed = (const int8_t*)(record + 2 * influences);
-    const vec3f_t n = {packed[0] * R3D_SKIN_NORMAL_RECIP, packed[1] * R3D_SKIN_NORMAL_RECIP,
-                       packed[2] * R3D_SKIN_NORMAL_RECIP};
+    const int8_t* packed = (const int8_t*)(record + (2 * influences));
+    const vec3f_t n = {(float)packed[0] * R3D_SKIN_NORMAL_RECIP, (float)packed[1] * R3D_SKIN_NORMAL_RECIP,
+                       (float)packed[2] * R3D_SKIN_NORMAL_RECIP};
     *normal = (vec3f_t){vec3f_dot(rows[0], n), vec3f_dot(rows[1], n), vec3f_dot(rows[2], n)};
     skin_store_position(posed, out);
 }
