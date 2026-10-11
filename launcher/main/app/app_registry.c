@@ -1,4 +1,6 @@
-/* Apps self-register so deleting their folder removes them from every runtime. */
+/* app_registry: one app_t.next list, no hardware dependency; firmware, host test
+ * runner, editor runtime and every render-host harness share it. Apps self-register:
+ * adding or deleting main/apps/<name>/ (source, logic, tests) touches no other file, including CMakeLists.txt. */
 #include "app/app.h"
 
 #include <assert.h>
@@ -12,7 +14,7 @@ void
 app_register(app_t* app) {
     static const registry_rule_t rule = REGISTRY_RULE(app_t, strcmp, NULL);
     const registry_add_t result = registry_add(&apps_head, &rule, app);
-    assert(result == REGISTRY_ADDED && "two apps share a name");
+    assert(result == REGISTRY_ADDED && "app registered twice or name taken");
     (void)result;
 }
 

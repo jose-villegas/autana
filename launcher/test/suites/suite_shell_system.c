@@ -133,14 +133,14 @@ expect_calls(const char* what, const char* const* names, int count, const phase_
 static void
 test_every_phase_runs_the_systems_by_order_whatever_order_they_registered_in(void) {
     fixture();
-    systems[0] = fake("c", 30);
-    systems[1] = fake("a", 10);
+    systems[0] = fake("c", 10);
+    systems[1] = fake("a", 30);
     systems[2] = fake("b", 20);
     for (int i = 0; i < SYSTEMS_MAX; i++) {
         shell_system_register(&systems[i]);
     }
 
-    static const char* const by_order[] = {"a", "b", "c"};
+    static const char* const by_order[] = {"c", "b", "a"};
     for (int p = 0; p < PHASE_COUNT; p++) {
         call_count = 0;
         phases[p].run(16);

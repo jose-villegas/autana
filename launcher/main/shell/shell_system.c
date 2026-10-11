@@ -1,4 +1,5 @@
-/* Portable system registration keeps firmware and host phases in the same run order. */
+/* shell_system: registered engine systems linked by shell_system_t.next in run
+ * order; no hardware dependency, so host tests run the board's phases. */
 #include "shell/shell_system.h"
 
 #include <assert.h>
@@ -9,7 +10,7 @@
 static shell_system_t* systems_head;
 
 static int
-runs_before(const void* a, const void* b) {
+run_order(const void* a, const void* b) {
     const shell_system_t* first = a;
     const shell_system_t* second = b;
     return first->order == second->order ? strcmp(first->name, second->name)
@@ -18,9 +19,9 @@ runs_before(const void* a, const void* b) {
 
 void
 shell_system_register(shell_system_t* system) {
-    static const registry_rule_t rule = REGISTRY_RULE(shell_system_t, strcmp, runs_before);
+    static const registry_rule_t rule = REGISTRY_RULE(shell_system_t, strcmp, run_order);
     const registry_add_t result = registry_add(&systems_head, &rule, system);
-    assert(result == REGISTRY_ADDED && "two systems share a name");
+    assert(result == REGISTRY_ADDED && "system registered twice or name taken");
     (void)result;
 }
 
