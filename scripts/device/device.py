@@ -186,10 +186,10 @@ def board_for_lock(store, named=None, remembered=False):
                        + " - name one with --board: " + ", ".join(candidates))
 
 
-# A power-cycling reset takes the USB Serial/JTAG port off the bus
-# about 0.2 s after esptool returns and is listed about 1 s after esptool returns.
-# The reappear bound covers a slow host and still fails fast. A reset that
-# keeps the port up costs only RESET_LEAVE_SECONDS.
+# A power-cycling reset takes the USB Serial/JTAG port off the bus about
+# 0.2 s after esptool returns, and lists it again about 1 s after. The
+# reappear bound covers a slow host and still fails fast; a reset that keeps
+# the port up costs only RESET_LEAVE_SECONDS.
 RESET_LEAVE_SECONDS = 2
 USB_POLL_SECONDS = 0.05
 PORT_REAPPEAR_SECONDS = 20
@@ -226,11 +226,12 @@ FLUSH_POLL_SECONDS = 0.05
 
 def open_serial():
     """Opens the locked board's port for this process alone. Windows refuses
-    a second open; POSIX needs exclusive (advisory flock), else readers split
-    bytes. It excludes our readers and esptool, not screen or ModemManager.
-    A refused open is OSError, treated as busy by open_when_free. DTR low with
-    RTS high resets USB Serial/JTAG: Windows sets both low before open;
-    POSIX opens with both raised and lowers RTS before DTR."""
+    a second open by itself; POSIX needs `exclusive`, an advisory flock that
+    keeps out our readers and esptool but not screen or ModemManager, else two
+    readers silently split the byte stream. A refused open is an OSError,
+    which open_when_free treats as busy. DTR low with RTS high resets USB
+    Serial/JTAG, so Windows sets both low before the open, and POSIX, which
+    opens with both raised, lowers RTS before DTR."""
     port = locked_port()
     try:
         import serial
@@ -711,43 +712,29 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
     return bytes(data), "timeout"
 
 
-def run_resetting(command, check=False, run=None):
-    """Run a resetting command, then reconnect even on failure. A custom run
-    returns its status or raises: flash uses Built.run/run_to_end to retain
-    its log and lock-loss watcher. A failed command keeps its own failure
-    when USB never returns; unchecked commands return their status and None."""
-    failure = None
-    if run is None:
-        status = subprocess.run(command, check=False).returncode
-    else:
-        try:
-            status = run(command)
-        except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-            failure, status = error, None
-    if check and status:
-        failure = subprocess.CalledProcessError(status, command)
+def run_resetting(run):
+    """Runs `run`, a step that resets the board and raises on failure, then
+    reconnects whether or not it succeeded, and returns the new boot's open
+    port. A failure stays the failure, even when the port never returns."""
     try:
-        connection = reconnect_after_reset()
-    except PortUnavailable as unavailable:
-        if failure is not None:
-            raise failure from unavailable
-        if not status:
-            raise
-        return status, None
-    if failure is not None:
-        connection.close()
-        raise failure
-    return status, connection
+        run()
+    except LockLost:
+        raise
+    except (OSError, RuntimeError, subprocess.CalledProcessError):
+        with contextlib.suppress(PortUnavailable):
+            reconnect_after_reset().close()
+        raise
+    return reconnect_after_reset()
 
 
 def reset(after="hard_reset"):
-    """Restart through esptool and return the new boot's open port. RTS cannot
+    """Restarts through esptool and returns the new boot's open port. RTS cannot
     restart a chip in download mode, which watchdog_reset can."""
     with open_when_free():
         pass
-    _, connection = run_resetting([python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3",
-                                   "-p", locked_port(), "--after", after, "chip_id"], check=True)
-    return connection
+    command = [python_with_pyserial(), "-m", "esptool", "--chip", "esp32s3",
+               "-p", locked_port(), "--after", after, "chip_id"]
+    return run_resetting(lambda: subprocess.run(command, check=True))
 
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
@@ -816,7 +803,11 @@ def await_console(args, board, build_id, acquired_at, connection):
     A board that never gets there is reported, not refused,
     since the capture that follows says what it did instead."""
     started_at = now()
-    output, managed = resolve_capture_path(None, "boot-" + args.variant, args.owner, started_at)
+    try:
+        output, managed = resolve_capture_path(None, "boot-" + args.variant, args.owner, started_at)
+    except BaseException:
+        connection.close()
+        raise
     data, reason = b"", None
     try:
         data, reason = capture_after_reset(output, BOOT_WAIT_SECONDS, None, build_id,
@@ -1230,33 +1221,32 @@ def build_image(args, board, extra_flags=()):
     return built
 
 
-def write_image(built, store, board, held_lock=None, keep_connection=False):
-    """Writes `built`'s snapshot under the lock, a fresh one, or `held_lock`,
-    and returns its build id, the snapshot's own. The snapshot is gone
-    afterwards, written or not. keep_connection returns (build id, live port)
-    for a boot capture under the same lock."""
-    build_id = None
-    error = None
-    held = None
+def write_image(built, store, board, held_lock):
+    """Writes `built`'s snapshot under the caller's lock and returns its build
+    id and the new boot's open port. The snapshot is gone afterwards,
+    written or not; the caller closes the port before releasing the lock."""
+    build_id = error = held = connection = None
     try:
-        with holding(store, board, built.args, held_lock, "flash") as held:
-            with open_when_free():
-                pass
-            _, connection = run_resetting(built.write, check=True, run=lambda unused:
-                built.run(lambda **popen: write_snapshot(held, built.write, built.image, **popen),
-                          "ab") or 0)
-            if not keep_connection:
-                connection.close()
-            build_id = built.build_id
-            print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
-    except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
-        error = str(caught)
+        try:
+            with holding(store, board, built.args, held_lock, "flash") as held:
+                with open_when_free():
+                    pass
+                connection = run_resetting(lambda: built.run(lambda **popen:
+                    write_snapshot(held, built.write, built.image, **popen), "ab"))
+                build_id = built.build_id
+                print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
+            error = str(caught)
+            raise
+        finally:
+            built.__exit__(None, None, None)
+            built.record(build_id=build_id, error=error,
+                         acquired_at=held.held["acquired_at"] if held else None)
+    except BaseException:
+        if connection is not None:
+            connection.close()
         raise
-    finally:
-        built.__exit__(None, None, None)
-        built.record(build_id=build_id, error=error,
-                     acquired_at=held.held["acquired_at"] if held else None)
-    return (build_id, connection) if keep_connection else build_id
+    return build_id, connection
 
 
 def test_patterns(values):
@@ -1388,7 +1378,8 @@ def selftest(args, store, board):
                                     variant="diag", out=None)
     with build_image(flash_args, board, extra_flags) as built, \
             HeldLock(store, board, args.owner, "selftest", args.wait) as held:
-        build_id = write_image(built, store, board, held_lock=held)
+        build_id, connection = write_image(built, store, board, held)
+        connection.close()
         commit = git_commit(worktree)
 
         data = b""
@@ -1518,20 +1509,20 @@ def coredump(args, store, board):
         port = locked_port()
         if args.erase:
             parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-            _, connection = run_resetting([idf_python(), str(parttool), "--port", port,
-                                           "erase_partition", "--partition-name=" + COREDUMP_PARTITION],
-                                          check=True)
-            connection.close()
+            command = [idf_python(), str(parttool), "--port", port,
+                       "erase_partition", "--partition-name=" + COREDUMP_PARTITION]
+            run_resetting(lambda: subprocess.run(command, check=True)).close()
             print("coredump partition erased")
             return 0
         command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "--port", port, "info_corefile"]
         gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
         if gdb:
             command += ["--gdb", str(gdb)]
-        status, connection = run_resetting(command + [str(elf)])
-        if connection is not None:
-            connection.close()
-        return status
+        try:
+            run_resetting(lambda: subprocess.run(command + [str(elf)], check=True)).close()
+        except subprocess.CalledProcessError as failure:
+            return failure.returncode
+        return 0
 
 
 def replies_to(data, reply, until):
@@ -1728,8 +1719,7 @@ def batch(args, store, board):
     with build_cm as built, \
             HeldLock(store, board, args.owner, "batch", args.wait) as held:
         if args.flash:
-            build_id, connection = write_image(built, store, board, held_lock=held,
-                                               keep_connection=True)
+            build_id, connection = write_image(built, store, board, held)
             if args.expect_build_id and build_id != args.expect_build_id:
                 connection.close()
                 raise RuntimeError(
@@ -2037,8 +2027,10 @@ def main(argv=None):
             return 0
         if args.command == "flash":
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
-            with build_image(args, board, extra_flags) as built:
-                write_image(built, store, board)
+            with build_image(args, board, extra_flags) as built, \
+                    HeldLock(store, board, args.owner, "flash", args.wait) as held:
+                _, connection = write_image(built, store, board, held)
+                connection.close()
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]

@@ -45,7 +45,8 @@ class Replies(FakeConnection):
 class FakeUsbBoard:
     """One board at pyserial's boundary, in the order measured on the board:
     a reset unlists its port after `leaves`, lists it after `returns` under
-    the next name, and permits opens after `opens`. Old handles die. DTR low
+    the next name, and permits opens after `opens` and refuses them from `busy_at`
+    while still listed. Old handles die. DTR low
     with RTS high resets USB Serial/JTAG. Each handle reads boot_line once."""
 
     boot_line = b""
@@ -82,8 +83,8 @@ class FakeUsbBoard:
             self.resets += 1
 
     def open(self, port, dtr, rts, now):
-        """The boot a new handle belongs to; FileNotFoundError when `port` is
-        not on the bus, as pyserial reports a port that left."""
+        """The boot a new handle belongs to; FileNotFoundError when `port`
+        cannot be opened now."""
         if (not self.listed(now) or port != self.port
                 or (self.blocked_at is not None and self.blocked_at <= now < self.open_at)):
             raise FileNotFoundError(2, "could not open port " + str(port))
@@ -101,7 +102,6 @@ class FakeUsbBoard:
 
         class Serial:
             def __init__(self, port=None, **unused):
-                self.boot = None
                 self.port, self.dtr, self.rts = port, True, True
                 self.boot, self.unread = None, b""
                 if port is not None:

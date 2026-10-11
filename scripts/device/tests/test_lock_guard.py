@@ -441,7 +441,9 @@ class FlashTests(Store):
         store = store or self.store
         args = self.args(variant, out)
         with self.scripts(**fakes), device.build_image(args, BOARD_A) as built:
-            device.write_image(built, store, BOARD_A)
+            with device.HeldLock(store, BOARD_A, built.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(built, store, BOARD_A, held)
+                connection.close()
         return self.output
 
     def entry(self):
@@ -510,7 +512,9 @@ class FlashTests(Store):
     def test_the_snapshot_is_gone_as_soon_as_the_write_ends(self):
         with self.snapshots() as made, self.scripts(), \
                 device.build_image(self.args(), BOARD_A) as built:
-            device.write_image(built, self.store, BOARD_A)
+            with device.HeldLock(self.store, BOARD_A, built.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(built, self.store, BOARD_A, held)
+                connection.close()
             self.assertFalse(made[0].exists())
 
     def test_batch_and_selftest_record_the_snapshots_id_from_a_write_that_prints_none(self):
@@ -563,8 +567,12 @@ class FlashTests(Store):
                 device.build_image(first_args, BOARD_A) as first, \
                 device.build_image(second_args, BOARD_A) as second:
             self.assertNotEqual(first.image, second.image)
-            device.write_image(first, self.store, BOARD_A)
-            device.write_image(second, self.store, BOARD_A)
+            with device.HeldLock(self.store, BOARD_A, first.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(first, self.store, BOARD_A, held)
+                connection.close()
+            with device.HeldLock(self.store, BOARD_A, second.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(second, self.store, BOARD_A, held)
+                connection.close()
         self.assertEqual(written, ["first", "second"])
 
     def test_the_build_runs_with_the_board_free_for_anyone_else(self):
@@ -624,7 +632,9 @@ class FlashTests(Store):
         args = self.args()
         with self.scripts(write=write), device.build_image(args, BOARD_A) as built:
             fake_flash.write_image(built.build_dir, "xyz", app=b"another build")
-            device.write_image(built, self.store, BOARD_A)
+            with device.HeldLock(self.store, BOARD_A, built.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(built, self.store, BOARD_A, held)
+                connection.close()
         self.assertEqual(written, [b"app"])
         self.assertEqual(self.entry()["build_id"], "abc")
         self.assertEqual(self.store.status(BOARD_A)["lock"], None)
@@ -706,7 +716,9 @@ class FlashTests(Store):
                 contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaises(RuntimeError) as caught:
                 with device.build_image(args, BOARD_A) as built:
-                    device.write_image(built, self.store, BOARD_A)
+                    with device.HeldLock(self.store, BOARD_A, built.args.owner, "flash", 0) as held:
+                        _, connection = device.write_image(built, self.store, BOARD_A, held)
+                        connection.close()
         self.assertEqual(str(caught.exception),
                          "flash_image.sh failed (exit 2): A fatal error occurred: Could not open "
                          f"COM3, the port is busy - flash log: {log}")
@@ -1187,7 +1199,7 @@ class SuiteFailureTests(Store):
                          perf_scope=False, max_seconds=5, idle_seconds=None)
         replies = Replies(b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1\n")
         with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc"), \
+                mock.patch.object(device, "write_image", return_value=("abc", FakeConnection())), \
                 mock.patch.object(device, "reset", return_value=replies), \
                 mock.patch.object(device, "open_when_free", return_value=replies), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
@@ -1310,11 +1322,11 @@ class BatchLockTests(Store):
             self.waiter_got_it.append((time.monotonic(), held))
             self.store.release(BOARD_A, held["token"])
 
-        def write_image(built, store, board_id, held_lock=None, keep_connection=False):
+        def write_image(built, store, board_id, held_lock):
             tokens.append(store.status(board_id)["lock"]["token"])
             self.waiter = threading.Thread(target=wait_for_the_board)
             self.waiter.start()
-            return ("abc-diag", board.open()) if keep_connection else "abc-diag"
+            return "abc-diag", board.open()
 
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
                          suite=["sand"], runs=runs, perf_scope=False, flash=True, max_seconds=5,
