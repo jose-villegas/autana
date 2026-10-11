@@ -134,20 +134,20 @@ per frame, and RAM per
 renderer and per scene. Scene bytes are shared across renderers. The table is
 generated from the [board capture](#board-measurement).
 
-<!-- generated: skin-light-modes sha256=2a0381bc63b7442c9595ecfa9cf9496eb9ea33e9e1b7ca431e7cdcbe7866fd40 -->
-Build `95e6c074f9ed-diag`.
+<!-- generated: skin-light-modes sha256=5eb1e45004dfec2fe27a4ae739cd09b714a4c38f27b2739d165ce133f011ac41 -->
+Build `8d0d33ecbdb9-diag`.
 
 | Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| direct | 1 | 640.509 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 2 | 663.720 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
-| direct | 4 | 708.673 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 1 | 681.001 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 2 | 703.676 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
-| renormalised | 4 | 749.085 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
-| table | 1 | 856.566 | 7 | 0.455623 | 90833.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 2 | 856.338 | 4 | 0.360095 | 102537.000 | 5104.000 | 3744 | 2048 | 124 |
-| table | 4 | 856.126 | 4 | 0.380420 | 125131.000 | 5104.000 | 3744 | 2048 | 124 |
+| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
+| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
+| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
+| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
+| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
+| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
 <!-- /generated: skin-light-modes -->
 
 ## Board measurement
@@ -160,26 +160,26 @@ Runtime error is measured against float lighting of packed bind normals.
 The [comparison sheet](images/skin-light-sheet.png) shows source-normal
 benchmark error; those inputs differ from packed normals.
 
-<!-- generated: skin-light-board sha256=00069f3a572c5e2985d16cb17016f331b359b14fe09ca956ded64f3e8118f184 -->
+<!-- generated: skin-light-board sha256=a3a646596a6be493c4342f7fa7bc0718f76dbd69ad9ee504aab3d80df22176b9 -->
 | Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
 |---|---|---:|---|---:|---:|---:|
-| 95e6c074f9ed-diag | normal_palette_build | 5104.000 | build | 5.187 | — | — |
-| 95e6c074f9ed-diag | skin_only | 353.082 | vertex | — | — | — |
-| 95e6c074f9ed-diag | fused_direct_1 | 640.509 | vertex | — | 8 | 0.246612 |
-| 95e6c074f9ed-diag | fused_direct_2 | 663.720 | vertex | — | 9 | 0.264905 |
-| 95e6c074f9ed-diag | fused_direct_4 | 708.673 | vertex | — | 13 | 0.353997 |
-| 95e6c074f9ed-diag | fused_table_1 | 856.566 | vertex | — | 7 | 0.455623 |
-| 95e6c074f9ed-diag | fused_table_2 | 856.338 | vertex | — | 4 | 0.360095 |
-| 95e6c074f9ed-diag | fused_table_4 | 856.126 | vertex | — | 4 | 0.380420 |
-| 95e6c074f9ed-diag | table_build_1 | 90833.000 | build | 92.310 | — | — |
-| 95e6c074f9ed-diag | table_build_2 | 102537.000 | build | 104.204 | — | — |
-| 95e6c074f9ed-diag | table_build_4 | 125131.000 | build | 127.166 | — | — |
-| 95e6c074f9ed-diag | fused_renormalised_1 | 681.001 | vertex | — | 1 | 0.184282 |
-| 95e6c074f9ed-diag | fused_renormalised_2 | 703.676 | vertex | — | 1 | 0.185637 |
-| 95e6c074f9ed-diag | fused_renormalised_4 | 749.085 | vertex | — | 2 | 0.180217 |
-| 95e6c074f9ed-diag | exact_separate_1 | 5695.488 | vertex | — | 0 | 0.000000 |
-| 95e6c074f9ed-diag | exact_separate_2 | 5784.909 | vertex | — | 0 | 0.000000 |
-| 95e6c074f9ed-diag | exact_separate_4 | 5969.760 | vertex | — | 0 | 0.000000 |
+| 8d0d33ecbdb9-diag | normal_palette_build | 5104.000 | build | 5.187 | — | — |
+| 8d0d33ecbdb9-diag | skin_only | 353.080 | vertex | — | — | — |
+| 8d0d33ecbdb9-diag | fused_direct_1 | 640.495 | vertex | — | 8 | 0.246612 |
+| 8d0d33ecbdb9-diag | fused_direct_2 | 663.714 | vertex | — | 9 | 0.264905 |
+| 8d0d33ecbdb9-diag | fused_direct_4 | 708.679 | vertex | — | 13 | 0.353997 |
+| 8d0d33ecbdb9-diag | fused_table_1 | 865.099 | vertex | — | 7 | 0.455623 |
+| 8d0d33ecbdb9-diag | fused_table_2 | 861.271 | vertex | — | 4 | 0.360095 |
+| 8d0d33ecbdb9-diag | fused_table_4 | 861.167 | vertex | — | 4 | 0.380420 |
+| 8d0d33ecbdb9-diag | table_build_1 | 32224.000 | build | 32.748 | — | — |
+| 8d0d33ecbdb9-diag | table_build_2 | 44202.000 | build | 44.921 | — | — |
+| 8d0d33ecbdb9-diag | table_build_4 | 67278.000 | build | 68.372 | — | — |
+| 8d0d33ecbdb9-diag | fused_renormalised_1 | 680.045 | vertex | — | 1 | 0.184282 |
+| 8d0d33ecbdb9-diag | fused_renormalised_2 | 702.716 | vertex | — | 1 | 0.185637 |
+| 8d0d33ecbdb9-diag | fused_renormalised_4 | 748.143 | vertex | — | 2 | 0.180217 |
+| 8d0d33ecbdb9-diag | exact_separate_1 | 5695.459 | vertex | — | 0 | 0.000000 |
+| 8d0d33ecbdb9-diag | exact_separate_2 | 5784.883 | vertex | — | 0 | 0.000000 |
+| 8d0d33ecbdb9-diag | exact_separate_4 | 5969.855 | vertex | — | 0 | 0.000000 |
 <!-- /generated: skin-light-board -->
 
 The device suite measures skin-only, normal-palette build, the exact-separate
