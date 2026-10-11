@@ -1,5 +1,86 @@
 # Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.
 
+[[bake]]
+output = "capybara.capybara.mesh"
+source = "launcher/demo/capybara/capybara.scene.toml"
+key = "e3ca13cd57dfd7c828338fc3f7f518d34110aa1d079828f7bdc7bef2e8d1b7da"
+sha256 = "9024a2f573fdc2a0435c095cdf0ccd4b695b97d266abe512467e33157ae848b8"
+size = 15872
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "capybara.glb"
+source = "launcher/demo/capybara/capybara.import.toml"
+key = "e6cd6da2117fddc062cb3f6aff1404d7b3797bf84cf395ef5594978bde3f2618"
+sha256 = "bbbb63e802570a6b421c9fe3f96390c672e613183cf921158efea45c96a534c8"
+size = 343012
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "capybara.meadow.mesh"
+source = "launcher/demo/capybara/capybara.scene.toml"
+key = "44b9d75429aebd58e1b0044704668857ea33d87e61bcfb1da78d27fd6f7fdc79"
+sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
+size = 132
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "fae37403bee14b0735cc65e1b9cb387e86581b869163434b33bd5f087ed32e17"
+sha256 = "649d221759b9424a8f52260088ec7ceb25e3b6a808ff2fd15a041e396311b0ef"
+size = 264924
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_fitted.start.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "e841511ce51b71c9c3ef53b6817f804b8858b6045b6999648c8e379236b02ead"
+sha256 = "d41c3138102796c8b32209b4c4a5cd3a700decfdc89215bfff448e0077c3c133"
+size = 160408
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_fitted_full.start.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "7ecf93eb93b24bd159775a871bc97839763c72c8840e328efb3adad478df3314"
+sha256 = "e72b3f8f92aae6d49dfd93e49ef98c15b3e7d947f5edb886fb894e009ff551e6"
+size = 312704
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_flat.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "f82b937e310653df46b1ae3cd060ff7c88588531201990e3363571c5a93d09cd"
+sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
+size = 243452
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_flat_fitted.start.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "ff16552af7702e386fc636b6bde33f2acfec27b24dfbb4f77b8b8c47d77a5375"
+sha256 = "9c7ac61ce87ea700bd199d8e1f87e96cf0f6a17835335261e5080c0714065955"
+size = 285732
+run = 38152622664
+host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_lite.mesh"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "8e3fc609c87caf13ba0e7faa232b300d06c5c3ccb6dd82a6b6bf3d284ad96694"
+sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
+size = 130140
+run = 38152622664
+host = "Linux x86_64"
+
 # [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
