@@ -1,8 +1,7 @@
 # Baker scalability: design sketch
 
-**Status:** step 1 approved and built; steps 2 to 5 are a sketch, step 2 waiting until OptiX loads on the GPU
-runner. `[A]` marks an assumption or a proposal nobody asked for. This page says where the time goes and what
-changes.
+**Status:** steps 1 and 2 approved and built; steps 3 to 5 are a sketch. `[A]` marks an assumption or a
+proposal nobody asked for. This page says where the time goes and what changes.
 
 A fit is three stages (see [Cached-Bakes-Design-Sketch.md](Cached-Bakes-Design-Sketch.md)): its start, a mesh
 bake made by the CPU Bakes job; its reference set, one per `ReferenceInputs` in the GPU runner's cache; and the
@@ -12,13 +11,12 @@ fit.
 
 | Stage | Where it runs | What dominates | Why |
 |---|---|---|---|
-| Reference set | GPU runner, on the CPU (Mitsuba LLVM) | the bounced light: Mitsuba's path integrator at every primary hit, already spread over every core | one set per reference key, rendered on the CPU |
+| Reference set | GPU runner: Mitsuba CUDA (OptiX), Mitsuba LLVM where OptiX does not load | the bounced light: Mitsuba's path integrator at every primary hit | one set per reference key |
 | Start (mesh bake) | hosted runner, CPU | the camera-path visibility pass: NumPy bookkeeping around up to 100 rounds of `RayQuery.all_hits`, single-threaded | the same pass as every mesh |
 | Fit | GPU (torch, nvdiffrast) | the optimiser steps | already on the GPU |
 | Mesh bake (CI) | hosted runner, CPU | the same Mitsuba and NumPy work, minutes per mesh | not a problem today |
 
-So the one GPU-shaped workload, path-traced bounced light, runs on the CPU, and the visibility pass is
-single-threaded NumPy.
+The visibility pass is single-threaded NumPy.
 
 ## 2. Design
 
@@ -35,13 +33,14 @@ flowchart LR
 ```python
 # r3d/fitted_variant.py: ReferenceInputs (every field a reference set reads), reference_inputs(job, scene)
 # r3d/reference_render.py
-def render_sets(inputs: ReferenceInputs, sets: list[tuple[Path, Path]], samples=4) -> None
-    # loads the source and builds PathLight once, renders each (poses file, folder);
-    # step 2 adds the device it traced on
+def render_sets(inputs: ReferenceInputs, sets: list[tuple[Path, Path]], samples=4) -> str
+    # loads the source and builds PathLight once on trace_variant(), renders each (poses file, folder);
+    # returns the variant, which prepare_references records in the set's traced_on.txt
 
-# r3d/ray_query.py (step 2)
-def trace_variant(gpu: bool) -> str
-    # "cuda_ad_rgb" when gpu and OptiX initialises, else "llvm_ad_rgb" (isa-pinned). Mesh bakes pass False.
+# r3d/ray_query.py
+def trace_variant() -> str
+    # "cuda_ad_rgb" when it loads a scene (mitsuba_reference.default_variant), else VARIANT, "llvm_ad_rgb"
+    # (isa-pinned), which mesh bakes keep by never asking; RayQuery and PathLight take the variant.
 
 # bake/bake.py
 def stage_keys(job, scene, tools, start_sha256=None) -> dict
@@ -70,7 +69,7 @@ workflows already run in.
 | Step | Change | Keys | Bytes | Lock |
 |---|---|---|---|---|
 | 1 | Reference keyed on `ReferenceInputs`; start becomes a locked mesh bake made by CI; fit keyed on the start's bytes | every reference and fit key changes, once | starts: same as a runner-made start on the same CPU vendor; fits: new (not reproducible) | the CPU job adds start rows; one GPU run, shared with the other fit re-keys waiting for it, re-makes the fits; `lock --from-run` both |
-| 2 | Reference on Mitsuba CUDA, LLVM kept as the fallback, same output files | `reference_render.py` is in the reference closure, so it re-keys every fit once | reference bytes differ between CUDA and LLVM, and LLVM's already differ between CPU vendors | references are never locked; fits are pinned by bytes, so a device change reaches a pack only at the next refit. A parity test bounds the CUDA-to-LLVM difference on a few poses [A] |
+| 2 | Reference on Mitsuba CUDA, LLVM kept as the fallback, same output files | `ray_query.py`, `path_bake.py` and `mesh_import.py` are in the mesh closure and `reference_render.py` in the reference one, so every mesh, start and fit re-keys once; mesh bytes stay the same, mesh bakes keeping LLVM | reference bytes differ between CUDA and LLVM, and LLVM's already differ between CPU vendors | references are never locked; fits are pinned by bytes, so a device change reaches a pack only at the next refit. A parity test bounds the CUDA-to-LLVM difference on a few poses |
 | 3 | Visibility pass stops each ray at its first drawn hit plus the tie distance instead of collecting every hit | `mesh_import.py` is in every closure: every mesh, start, reference and fit key changes | identical visible sets, so identical mesh and start bytes (a test asserts the set) | CPU run re-makes meshes with the locked bytes under new keys; a fit re-keys only through the reference closure |
 | 4 | Parallel across cores: `bake.py bake` runs independent bakes as a stage graph, CPU stages beside GPU ones | none | none | none |
 | 5 | Native code only if the profile after steps 2 and 3 shows NumPy dominating: candidates are the reference's per-hit albedo and normals, and the visibility bookkeeping | the stage's closure (C sources count) | must be identical, asserted | as step 3 |
@@ -80,12 +79,11 @@ and forked workers each held a copy of the scene and ran the machine out of memo
 
 ## Assumptions and open points
 
-- OptiX does not load on the GPU runner today: under WSL 2 the driver ships only a loader stub, and
-  Mitsuba's CUDA variant needs the Linux driver's `libnvoptix.so.1`, its companion libraries and
-  `nvoptix.bin`, per Mitsuba's OptiX setup page. Step 2 waits for that install; `Bakes GPU` with `probe`
-  reports whether it works.
-- [A] Mitsuba CUDA and torch share the runner's GPU in one process; the reference frees its arrays before
-  the fit starts.
+- Under WSL 2 the driver ships only an OptiX loader stub; the GPU runner keeps the Linux driver's OptiX
+  files in `~/gpu/optix`, named to the `Bakes GPU` steps that trace (`DRJIT_LIBOPTIX_PATH`,
+  `LD_LIBRARY_PATH`) and to nothing else. `probe` reports whether the CUDA variant traces.
+- Mitsuba CUDA and torch share the runner's GPU in one process; `render_sets` frees Dr.Jit's device memory
+  before the fit starts.
 - [A] Starts move to CI, where the hosted runners are AMD, so start bytes match the other CI meshes; nothing
   checks the vendor.
 - [A] The CUDA-to-LLVM parity bound is set from a first measurement, not chosen up front.
