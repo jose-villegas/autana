@@ -52,6 +52,7 @@ set(app_srcs
     "anim/playback/anim_layer.c"
     "render/r3d_skin.c"
     "render/skin/r3d_skinning.c"
+    "render/skin/r3d_skin_light.c"
     "anim/anim_binding.c"
     "asset/asset_pack.c"
     "asset/asset_directory.c"

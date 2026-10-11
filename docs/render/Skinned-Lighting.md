@@ -30,6 +30,46 @@ the same integer stage, so only the light bytes differ. Lights are
 directional lights plus ambient in object space; each light-count row uses
 the first lights of `LIGHTS` in the benchmark.
 
+## Engine and device measurement
+
+`render/skin/r3d_skin_light.h` owns the direct and bilinear kernels. Direct
+lighting blends the palette rotations of the packed bind normal, then sums
+ambient and positive N.L terms. The measurement flag renormalises that normal.
+The table stores rounded, saturated linear light bytes and clamps lookup at
+its border. Normal-indexed diffuse tables and bilinear filtering follow
+Miller and Hoffman.<sup>[[58]](../Citations.md#58)</sup>
+
+Cell directions are initialized with `vec3f_from_octahedral` into caller-owned
+storage once, outside build timing. Each object owns its light bytes; the
+shared directions require no engine allocation or mutable global storage.
+The host benchmark uses these same rotation, direct-light, table-build and
+bilinear kernels; its float reference and eight-light variants remain
+benchmark comparisons.
+
+The device suite mounts the demo pack through `asset_store`, opens its model
+entries and samples `gallop` at `POSE_SECONDS` in the suite. Each test allocates
+and releases internal RAM, reports heap free space and largest block, timing
+statistics, cycles per vertex or build, byte-error maximum and mean, and CRC-32.
+The skin-only baseline reports a position checksum. The float reference
+normalizes the packed bind normal after independent weighted rotation; the
+host reference uses the source glTF normal, so their error inputs differ.
+Table-build checksums include the zero padding byte in each cell.
+The host report writes `build/checksums.txt` beside the benchmark inputs;
+its table CRCs can be compared directly at matching resolution and light count.
+Vertex CRCs need matching mesh records and pose; the source glTF and packed
+mesh have different records.
+
+Run all device measurements on a diagnostics image with its demo assets:
+
+```sh
+autana --wait 3600 suite skin_light_perf --flash
+```
+
+Select one measurement with `--test test_direct_1`, `test_direct_2`,
+`test_direct_4`, `test_renormalised_1`, `test_renormalised_2`,
+`test_renormalised_4`, `test_table_lookup`, `test_table_build_1`,
+`test_table_build_2`, `test_table_build_4`, or `test_skin_only`.
+
 ## Results
 
 The mesh is the hand-rigged capybara's glTF export, the cached bake
@@ -43,50 +83,50 @@ a divide or square root costs several instructions.
 
 Per-vertex cost, the table's build excluded:
 
-<!-- generated: skin-light-cost sha256=0230fcd048f963d58473099bf7c659d0c563c90aebe08d5985e009788ac43922 -->
+<!-- generated: skin-light-cost sha256=5bc7e2364e8d21cc79729111b7f40539119ae95c19fa8c96f28ea5cddebec6ca -->
 613 vertices x 242 frames, median of 15 runs; host compiler 16.1.0.
 
 | Variant | Lights | mul | add | div | sqrt | other | int mul | ns/vertex |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Skin only (shared) | any | 45 | 33 | 0 | 0 | 0 | 0 | 6.1 |
-| Reference: float normal, renormalised | 1 | 57 | 40 | 1 | 1 | 7 | 0 | 9.3 |
-| Reference: float normal, renormalised | 2 | 63 | 45 | 1 | 1 | 8 | 0 | 10.6 |
-| Reference: float normal, renormalised | 4 | 75 | 55 | 1 | 1 | 10 | 0 | 13.9 |
-| Reference: float normal, renormalised | 8 | 99 | 75 | 1 | 1 | 14 | 0 | 20.9 |
-| Direct: float normal | 1 | 51 | 38 | 0 | 0 | 7 | 0 | 7.5 |
-| Direct: float normal | 2 | 57 | 43 | 0 | 0 | 8 | 0 | 8.4 |
-| Direct: float normal | 4 | 69 | 53 | 0 | 0 | 10 | 0 | 9.9 |
-| Direct: float normal | 8 | 93 | 73 | 0 | 0 | 14 | 0 | 12.9 |
-| Direct: int8 normal | 1 | 51 | 38 | 0 | 0 | 10 | 0 | 7.6 |
-| Direct: int8 normal | 2 | 57 | 43 | 0 | 0 | 11 | 0 | 8.4 |
-| Direct: int8 normal | 4 | 69 | 53 | 0 | 0 | 13 | 0 | 10.5 |
-| Direct: int8 normal | 8 | 93 | 73 | 0 | 0 | 17 | 0 | 13.7 |
-| Table 8x8 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.8 |
-| Table 16x16 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.8 |
-| Table 32x32 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 8.8 |
-| Table 8x8 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 16.3 |
-| Table 16x16 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 16.3 |
-| Table 32x32 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 16.3 |
+| Skin only (shared) | any | 45 | 33 | 0 | 0 | 0 | 0 | 10.6 |
+| Reference: float normal, renormalised | 1 | 57 | 40 | 1 | 1 | 7 | 0 | 23.1 |
+| Reference: float normal, renormalised | 2 | 63 | 45 | 1 | 1 | 8 | 0 | 24.4 |
+| Reference: float normal, renormalised | 4 | 75 | 55 | 1 | 1 | 10 | 0 | 28.2 |
+| Reference: float normal, renormalised | 8 | 99 | 75 | 1 | 1 | 14 | 0 | 38.6 |
+| Direct: float normal | 1 | 51 | 38 | 0 | 0 | 7 | 0 | 18.0 |
+| Direct: float normal | 2 | 57 | 43 | 0 | 0 | 8 | 0 | 18.9 |
+| Direct: float normal | 4 | 69 | 53 | 0 | 0 | 10 | 0 | 21.5 |
+| Direct: float normal | 8 | 93 | 73 | 0 | 0 | 14 | 0 | 31.1 |
+| Direct: int8 normal | 1 | 54 | 41 | 0 | 0 | 13 | 0 | 31.0 |
+| Direct: int8 normal | 2 | 60 | 46 | 0 | 0 | 14 | 0 | 38.0 |
+| Direct: int8 normal | 4 | 72 | 56 | 0 | 0 | 16 | 0 | 46.8 |
+| Direct: int8 normal | 8 | 93 | 73 | 0 | 0 | 17 | 0 | 33.4 |
+| Table 8x8 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 23.1 |
+| Table 16x16 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 23.1 |
+| Table 32x32 nearest: int8 normal | any | 49 | 39 | 1 | 0 | 13 | 0 | 23.0 |
+| Table 8x8 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 38.9 |
+| Table 16x16 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 38.4 |
+| Table 32x32 bilinear: int8 normal | any | 51 | 41 | 1 | 0 | 21 | 18 | 38.3 |
 <!-- /generated: skin-light-cost -->
 
 The table's build, per object per frame, and what it adds per vertex at the
 capybara's vertex count and at a larger mesh's (`LARGE_MESH`):
 
-<!-- generated: skin-light-build sha256=3be8439a05172d66dc570d6d8ebaca6d4e1416567b4c59eb393948609cabb2c1 -->
+<!-- generated: skin-light-build sha256=4a27db89032abb2a45845fad4a5f4bba957f6cc66cb999ff31582efb4683063d -->
 | Table | Cells | Bytes per object | Shared direction bytes | Lights | mul | add | div | sqrt | other | int mul | Build us/frame | Build ns/vertex, 613 vertices | Build ns/vertex, 1500 vertices |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 8x8 | 64 | 256 | 768 | 1 | 384 | 320 | 0 | 0 | 448 | 0 | 0.10 | 0.2 | 0.1 |
-| 8x8 | 64 | 256 | 768 | 2 | 768 | 640 | 0 | 0 | 512 | 0 | 0.14 | 0.2 | 0.1 |
-| 8x8 | 64 | 256 | 768 | 4 | 1536 | 1280 | 0 | 0 | 640 | 0 | 0.21 | 0.3 | 0.1 |
-| 8x8 | 64 | 256 | 768 | 8 | 3072 | 2560 | 0 | 0 | 896 | 0 | 0.37 | 0.6 | 0.2 |
-| 16x16 | 256 | 1024 | 3072 | 1 | 1536 | 1280 | 0 | 0 | 1792 | 0 | 0.40 | 0.6 | 0.3 |
-| 16x16 | 256 | 1024 | 3072 | 2 | 3072 | 2560 | 0 | 0 | 2048 | 0 | 0.55 | 0.9 | 0.4 |
-| 16x16 | 256 | 1024 | 3072 | 4 | 6144 | 5120 | 0 | 0 | 2560 | 0 | 0.85 | 1.4 | 0.6 |
-| 16x16 | 256 | 1024 | 3072 | 8 | 12288 | 10240 | 0 | 0 | 3584 | 0 | 1.49 | 2.4 | 1.0 |
-| 32x32 | 1024 | 4096 | 12288 | 1 | 6144 | 5120 | 0 | 0 | 7168 | 0 | 1.55 | 2.5 | 1.0 |
-| 32x32 | 1024 | 4096 | 12288 | 2 | 12288 | 10240 | 0 | 0 | 8192 | 0 | 2.26 | 3.7 | 1.5 |
-| 32x32 | 1024 | 4096 | 12288 | 4 | 24576 | 20480 | 0 | 0 | 10240 | 0 | 3.54 | 5.8 | 2.4 |
-| 32x32 | 1024 | 4096 | 12288 | 8 | 49152 | 40960 | 0 | 0 | 14336 | 0 | 6.39 | 10.4 | 4.3 |
+| 8x8 | 64 | 256 | 768 | 1 | 576 | 512 | 0 | 0 | 640 | 0 | 0.78 | 1.3 | 0.5 |
+| 8x8 | 64 | 256 | 768 | 2 | 960 | 832 | 0 | 0 | 704 | 0 | 0.88 | 1.4 | 0.6 |
+| 8x8 | 64 | 256 | 768 | 4 | 1728 | 1472 | 0 | 0 | 832 | 0 | 1.18 | 1.9 | 0.8 |
+| 8x8 | 64 | 256 | 768 | 8 | 3072 | 2560 | 0 | 0 | 896 | 0 | 0.94 | 1.5 | 0.6 |
+| 16x16 | 256 | 1024 | 3072 | 1 | 2304 | 2048 | 0 | 0 | 2560 | 0 | 2.98 | 4.9 | 2.0 |
+| 16x16 | 256 | 1024 | 3072 | 2 | 3840 | 3328 | 0 | 0 | 2816 | 0 | 3.65 | 5.9 | 2.4 |
+| 16x16 | 256 | 1024 | 3072 | 4 | 6912 | 5888 | 0 | 0 | 3328 | 0 | 5.18 | 8.5 | 3.5 |
+| 16x16 | 256 | 1024 | 3072 | 8 | 12288 | 10240 | 0 | 0 | 3584 | 0 | 4.26 | 6.9 | 2.8 |
+| 32x32 | 1024 | 4096 | 12288 | 1 | 9216 | 8192 | 0 | 0 | 10240 | 0 | 11.23 | 18.3 | 7.5 |
+| 32x32 | 1024 | 4096 | 12288 | 2 | 15360 | 13312 | 0 | 0 | 11264 | 0 | 13.68 | 22.3 | 9.1 |
+| 32x32 | 1024 | 4096 | 12288 | 4 | 27648 | 23552 | 0 | 0 | 13312 | 0 | 19.10 | 31.2 | 12.7 |
+| 32x32 | 1024 | 4096 | 12288 | 8 | 49152 | 40960 | 0 | 0 | 14336 | 0 | 17.30 | 28.2 | 11.5 |
 <!-- /generated: skin-light-build -->
 
 Error against the reference over every vertex of every frame. Light byte is the
