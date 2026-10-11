@@ -6,6 +6,7 @@
  * headers say it does.
  */
 
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -19,6 +20,8 @@
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
+#include "math/scalar/units.h"
 
 #define Q           ((float)MATHX_ONE)
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -551,8 +554,87 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     }
 }
 
+static void
+test_integer_repeat_and_wrap_cover_negative_values_and_int_limits(void) {
+    const int length = 7;
+    const int lo = -10;
+    const int hi = -3;
+    const int negative = -9;
+    TEST_ASSERT_EQUAL_INT(length - 2, mathi_repeat(negative, length));
+    TEST_ASSERT_EQUAL_INT(0, mathi_repeat(-length, length));
+    TEST_ASSERT_EQUAL_INT(0, mathi_repeat(length, length));
+    TEST_ASSERT_EQUAL_INT(0, mathi_repeat(0, length));
+    TEST_ASSERT_EQUAL_INT((int)(((int64_t)INT_MIN % length + length) % length), mathi_repeat(INT_MIN, length));
+    TEST_ASSERT_EQUAL_INT(INT_MAX % length, mathi_repeat(INT_MAX, length));
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(lo, lo, hi));
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(hi, lo, hi));
+    TEST_ASSERT_EQUAL_INT(negative, mathi_wrap(negative, lo, hi));
+    TEST_ASSERT_EQUAL_INT(hi - 1, mathi_wrap(lo - 1, lo, hi));
+    const int several_widths = 4;
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(lo - length, lo, hi));
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(lo - several_widths * length, lo, hi));
+    const int crossing_lo = -3;
+    const int crossing_hi = 5;
+    const int crossing_width = crossing_hi - crossing_lo;
+    TEST_ASSERT_EQUAL_INT(crossing_lo, mathi_wrap(crossing_lo - crossing_width, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_INT(crossing_lo,
+                          mathi_wrap(crossing_lo - several_widths * crossing_width, crossing_lo, crossing_hi));
+    const int extremes[] = {INT_MIN, INT_MAX};
+    const int below_negative_range = -20;
+    const int above_negative_range = 8;
+    const int negative_range_expected = -6;
+    TEST_ASSERT_EQUAL_INT(negative_range_expected, mathi_wrap(below_negative_range, lo, hi));
+    TEST_ASSERT_EQUAL_INT(negative_range_expected, mathi_wrap(above_negative_range, lo, hi));
+    const int bounds[][2] = {{lo, hi}, {INT_MIN, INT_MIN + INT_MAX}, {0, INT_MAX}, {INT_MIN, INT_MAX}};
+    for (size_t r = 0; r < sizeof bounds / sizeof bounds[0]; r++) {
+        const int64_t width = (int64_t)bounds[r][1] - bounds[r][0];
+        for (size_t i = 0; i < sizeof extremes / sizeof extremes[0]; i++) {
+            const int64_t offset = (int64_t)extremes[i] - bounds[r][0];
+            const int want = (int)(bounds[r][0] + (offset % width + width) % width);
+            TEST_ASSERT_EQUAL_INT(want, mathi_wrap(extremes[i], bounds[r][0], bounds[r][1]));
+        }
+    }
+    const int full_width_endpoint_expected = INT_MIN;
+    const int full_width_negative_expected = -1;
+    const int full_width_zero_expected = 0;
+    TEST_ASSERT_EQUAL_INT(full_width_endpoint_expected, mathi_wrap(INT_MAX, INT_MIN, INT_MAX));
+    TEST_ASSERT_EQUAL_INT(full_width_negative_expected, mathi_wrap(-1, INT_MIN, INT_MAX));
+    TEST_ASSERT_EQUAL_INT(full_width_zero_expected, mathi_wrap(0, INT_MIN, INT_MAX));
+}
+
+static void
+test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range(void) {
+    const uint32_t duration = MATH_MS_PER_S;
+    const uint32_t clock = UINT32_MAX - 1u;
+    const uint32_t lo = UINT32_MAX - duration;
+    const uint32_t hi = UINT32_MAX - 1u;
+    TEST_ASSERT_EQUAL_UINT32(clock % duration, mathi_repeat_u32(clock, duration));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX % duration, mathi_repeat_u32(UINT32_MAX, duration));
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_repeat_u32(duration, duration));
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_repeat_u32(0, duration));
+    TEST_ASSERT_EQUAL_UINT32(lo, mathi_clamp_u32(lo - 1u, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(lo, mathi_clamp_u32(lo, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(lo + 1u, mathi_clamp_u32(lo + 1u, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(hi, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(UINT32_MAX, lo, hi));
+    const uint32_t signed_boundary = (uint32_t)INT32_MAX + 1u;
+    const uint32_t crossing_lo = signed_boundary - duration;
+    const uint32_t crossing_hi = signed_boundary + duration;
+    TEST_ASSERT_EQUAL_UINT32(crossing_lo, mathi_clamp_u32(0, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_lo, mathi_clamp_u32(crossing_lo - 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_lo, mathi_clamp_u32(crossing_lo, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(signed_boundary - 1u, mathi_clamp_u32(signed_boundary - 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(signed_boundary, mathi_clamp_u32(signed_boundary, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(signed_boundary + 1u, mathi_clamp_u32(signed_boundary + 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(crossing_hi, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(crossing_hi + 1u, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_UINT32(crossing_hi, mathi_clamp_u32(UINT32_MAX, crossing_lo, crossing_hi));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
+    RUN_TEST(test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range);
     RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
