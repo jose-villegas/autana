@@ -46,9 +46,8 @@ preserves these headers. `--baseline PATH` selects one owner for reporting,
 checking or writing. Missing symbols and changed sizes, loop offsets or
 cache-line spans fail the check.
 
-A changed render layout is measured between revisions with the Sponza performance
-suite through `launcher/tools/perf/perf_compare.sh`. A slower layout is retuned
-with `RENDER_ENTRY_OFFSET` before the generated file is written.
+For a changed baseline, the checker prints the measurement and re-recording
+instruction.
 
 ## Meshlet size captures
 

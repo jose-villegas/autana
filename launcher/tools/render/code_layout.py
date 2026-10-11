@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report, write, or check the cache-line layout of pinned code.
+"""Report, write, or check the cache-line layout of measured code.
 
 Each source folder owns code_layout.txt for its measured functions. Entry
 markers also select functions, so an unrecorded marker fails the check.
@@ -332,7 +332,7 @@ def main(argv=None):
             selected = args.baseline.resolve()
             owners = {path: functions for path, functions in owners.items() if path.resolve() == selected}
             if not owners:
-                raise LayoutError("no pinned source folder for %s" % args.baseline)
+                raise LayoutError("no baseline source folder for %s" % args.baseline)
         sdkconfig = (build / "sdkconfig").read_text(encoding="utf-8")
         failed = False
         for baseline, functions in owners.items():
@@ -355,12 +355,13 @@ def main(argv=None):
                     raise LayoutError("no %s - regenerate it with --write" % baseline)
                 differences = layout_differences(parse_layout(baseline.read_text(encoding="utf-8")), rows)
                 if differences:
-                    print("code_layout.py: pinned layout changed in %s:" % baseline)
+                    print("code_layout.py: measured layout changed in %s:" % baseline)
                     print("\n".join("  " + difference for difference in differences))
-                    print("Measure both revisions on the board before regenerating this baseline.")
+                    print("Measure both revisions with launcher/tools/perf/perf_compare.sh; "
+                          "accept and re-record with --write --baseline, or fix the layout.")
                     failed = True
                 else:
-                    print("pinned layout matches %s (%d rows, %d-byte lines)" % (baseline, len(rows), line_size))
+                    print("measured layout matches %s (%d rows, %d-byte lines)" % (baseline, len(rows), line_size))
             else:
                 print(baseline)
                 display_report(entries, line_size)

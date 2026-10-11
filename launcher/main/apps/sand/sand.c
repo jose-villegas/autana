@@ -1790,10 +1790,6 @@ sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
     return chunk_sched.order.rank[to] > chunk_sched.order.rank[from];
 }
 
-/* Its aligned successor starts halfway through a cache line when this entry is line-aligned. */
-#ifdef ESP_PLATFORM
-__attribute__((aligned(CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE)))
-#endif
 bool
 sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
                     sand_chunk_fn_t fn, void* pass) {
