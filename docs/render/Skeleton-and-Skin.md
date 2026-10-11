@@ -104,3 +104,82 @@ with that id through `tracks_asset`, whose layout is owned by [Animation
 tracks](../Animation-Tracks.md). Import settings accept that clip list for
 Blender sources. Ids are ASCII and fit 31 bytes; invalid ids and colliding
 ids fail naming the id and sources.
+
+## Runtime pose and skinning
+
+The scene owns animator and skinned-renderer component arrays indexed by
+entity. `scene_animator_set_clips()` accepts a skeleton id and clip ids;
+`scene_renderer_set_skin()` binds a skin to that entity's mesh, checking joint
+and vertex counts. Property animators use no skeleton. The scene releases
+component PSRAM storage and each mesh's internal RAM when it unloads.
+
+`anim_pose_rest()`, `anim_sample_pose()` and `anim_pose_blend()` produce local
+joint TRS. `anim_pose_model()` walks joints once in stored order, multiplying
+parents before children and treating each root independently. A palette is
+model times inverse bind. Its translation is multiplied by the mesh's position
+scale, so bind position ticks map directly to posed position ticks.
+
+`render/skin/r3d_skinning.h` owns linear blend skinning
+(LBS)<sup>[[57]](../Citations.md#57)</sup>: each vertex is the weighted sum of
+its palette-transformed bind position. Separate two- and four-influence kernels
+are selected once per entry. They share the weighted-position operation;
+influence selection is outside the vertex loop. The output rounds to nearest
+int16 ticks, ties away from zero, and saturates at the int16 limits. Cluster
+bounds enclose these output ticks. A reverse node pass unions child bounds.
+The raster reads the output's `r3d_lit_mesh_t` view.
+
+One caller-owned buffer block holds positions, cluster bounds and
+node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
+`r3d_skin_output_init()` carves it. The scene allocates it together with model
+matrices and the palette in internal RAM. The mesh retains its bind-colour
+pointers; no colours are copied per frame.
+Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
+
+```mermaid
+sequenceDiagram
+    participant S as scene system
+    participant C0 as core 0
+    participant C1 as core 1 job
+    opt skeleton animators attached
+        S->>C1: animate second entity range
+        S->>C0: animate first entity range
+        C1-->>S: job_wait
+    end
+    S->>C0: apply property fields
+    opt posed clusters present
+        S->>C1: skin second cluster range
+        S->>C0: skin first cluster range
+        C1-->>S: job_wait
+        S->>S: refit node bounds
+    end
+    S->>S: rebuild active renderers with dirty entities
+    S->>S: draw mesh views through camera pose
+```
+
+`core/job.h` owns `job_run_split()`, shared with the raster. Core 1 takes the
+second range when available; the fallback runs that range inline before core
+0's first range. Each stage waits before the next consumes its outputs.
+Animator jobs write their own poses and palettes.
+Property clips use `anim_apply()` directly on core 0 after synchronization,
+then the active scene derives placements for renderers whose entities are dirty.
+Inactive scenes do no placement work. Scenes without skeleton animators skip
+the animation split, and no posed clusters means no skin split. Unchanged poses
+skip skinning and node refit. Skin jobs
+write disjoint cluster vertex ranges. Node refit runs after the skin sync.
+Job contexts are checked against `JOB_CTX_MAX` at compile time.
+
+The host comparison tool is
+[`skin_frame.py`](../../launcher/tools/r3d/skin/skin_frame.py). It builds SKEL,
+SKIN, TRCK and LMSH entries with their writers, controls the entity
+through scene APIs, and renders its output positions with the preview
+rasterizer beside `gltf_skin.py`. It checks the C result against a reference
+with the packed weights and quantized bind positions; separate sheets compare
+influence limits and crop every requested source vertex. Its options are
+in [the tool's README](../../launcher/tools/r3d/skin/README.md).
+The committed rig in `launcher/test/suites/suite_scene.c` gates both kernels
+through scene attachment, animation, split ranges, bounds and drawing.
+
+## Current limits
+
+Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
+authored SCNE animator rows and dynamic skin lighting are planned.
