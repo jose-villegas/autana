@@ -102,9 +102,8 @@ typedef struct {
     console_verb_t* first;
 } console_registry_t;
 
-/* Kept in ASCII case-folded name order, so dispatch and any future listing
- * never depend on link order. A name already taken by a different verb is
- * refused (false); the same verb object registered twice is a no-op (true). */
+/* ASCII case-folded name order makes dispatch independent of link order.
+ * A different verb with the same name returns false; re-registering the same object returns true. */
 bool console_register(console_registry_t* registry, console_verb_t* verb);
 
 /* True if `line` is `name`, or `name` plus one space and more (never a

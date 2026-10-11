@@ -35,16 +35,9 @@ name_ncmp(const char* line, const char* name, size_t n) {
     return 0;
 }
 
-static int
-entry_order(const void* a, const void* b) {
-    const console_verb_t* first = a;
-    const console_verb_t* second = b;
-    return name_cmp(first->name, second->name);
-}
-
 bool
 console_register(console_registry_t* registry, console_verb_t* verb) {
-    static const registry_rule_t rule = {offsetof(console_verb_t, next), entry_order, NULL};
+    static const registry_rule_t rule = REGISTRY_RULE(console_verb_t, name_cmp, NULL);
     return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
 }
 

@@ -26,14 +26,7 @@ entry_order(const void* a, const void* b) {
     return (first->order > second->order) - (first->order < second->order);
 }
 
-static bool
-entry_clash(const void* a, const void* b) {
-    const registry_entry_t* first = a;
-    const registry_entry_t* second = b;
-    return strcmp(first->name, second->name) == 0;
-}
-
-static const registry_rule_t rule = {offsetof(registry_entry_t, next), entry_order, entry_clash};
+static const registry_rule_t rule = REGISTRY_RULE(registry_entry_t, strcmp, entry_order);
 
 static void
 test_registration_order_does_not_change_list_order(void) {
@@ -79,10 +72,10 @@ test_name_clash_with_different_order_leaves_all_links_untouched(void) {
 }
 
 static void
-test_equal_order_clashes_without_a_clash_callback(void) {
-    registry_entry_t first = fixture("a", 0), duplicate = fixture("b", 0);
+test_same_name_clashes_without_entry_order(void) {
+    registry_entry_t first = fixture("a", 0), duplicate = fixture("a", 1);
     registry_entry_t* head = &first;
-    const registry_rule_t order_rule = {offsetof(registry_entry_t, next), entry_order, NULL};
+    const registry_rule_t order_rule = REGISTRY_RULE(registry_entry_t, strcmp, NULL);
     TEST_ASSERT_EQUAL(REGISTRY_CLASH, registry_add(&head, &order_rule, &duplicate));
     TEST_ASSERT_EQUAL_PTR(&first, head);
     TEST_ASSERT_NULL(first.next);
@@ -94,7 +87,7 @@ run_registry_suite(void) {
     RUN_TEST(test_registration_order_does_not_change_list_order);
     RUN_TEST(test_same_object_is_already_and_links_stay_untouched);
     RUN_TEST(test_name_clash_with_different_order_leaves_all_links_untouched);
-    RUN_TEST(test_equal_order_clashes_without_a_clash_callback);
+    RUN_TEST(test_same_name_clashes_without_entry_order);
 }
 
 #else
