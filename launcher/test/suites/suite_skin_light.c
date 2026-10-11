@@ -1,4 +1,5 @@
 /* Lighting contracts cover transfer accuracy and split cluster ranges. */
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -427,6 +428,7 @@ assert_table_sweep(const r3d_skin_lights_t* lights, float white) {
 
 static void
 test_irradiance_table_preserves_range_and_matches_float(void) {
+    TEST_ASSERT_EQUAL_INT(CHAR_BIT, R3D_SKIN_LIGHT_TABLE_BITS);
     int maximum = 0;
 
     r3d_skin_light_transfer_t* transfer = malloc(sizeof *transfer);
@@ -458,8 +460,48 @@ test_irradiance_table_preserves_range_and_matches_float(void) {
     free(transfer);
 }
 
+static void
+test_table_scale_tracks_sampled_maximum_and_cells(void) {
+    r3d_skin_light_table_t* table = malloc(sizeof *table);
+    TEST_ASSERT_NOT_NULL(table);
+    static const vec3f_t directions[] = {{0, 1, 0}, {0, -1, 0}, {1, 0, 0}, {-1, 0, 0}};
+    const vec3f_t color = {1, 2, 4};
+    for (int count = 0; count <= R3D_SKIN_LIGHT_MAX; count++) {
+        r3d_skin_lights_t lights = {.count = count, .table = table};
+        memcpy(lights.direction, directions, sizeof directions);
+        for (int i = 0; i < count; i++) {
+            lights.color[i] = color;
+        }
+        lights.table_scale = r3d_skin_light_table_build(&lights, table);
+        float maximum = 0.0F;
+        for (int y = 0; y < R3D_SKIN_LIGHT_TABLE_SIDE; y++) {
+            for (int x = 0; x < R3D_SKIN_LIGHT_TABLE_SIDE; x++) {
+                const vec2f_t point = {2.0F * x / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F,
+                                       2.0F * y / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F};
+                const vec3f_t direct = light_irradiance(vec3f_from_octahedral(point), &lights);
+                const float channels[] = {direct.x, direct.y, direct.z};
+                const uint32_t packed = table->cells[y * R3D_SKIN_LIGHT_TABLE_SIDE + x];
+                TEST_ASSERT_EQUAL_UINT32(0, packed >> (R3D_SKIN_LIGHT_CHANNELS * R3D_SKIN_LIGHT_TABLE_BITS));
+                for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
+                    const uint32_t quantized =
+                        (packed >> (channel * R3D_SKIN_LIGHT_TABLE_BITS)) & R3D_SKIN_LIGHT_TABLE_MASK;
+                    TEST_ASSERT_FLOAT_WITHIN(lights.table_scale, channels[channel], quantized * lights.table_scale);
+                    maximum = fmaxf(maximum, channels[channel]);
+                }
+            }
+        }
+        if (count == 0) {
+            TEST_ASSERT_EQUAL_FLOAT(1.0F, lights.table_scale);
+        } else {
+            TEST_ASSERT_EQUAL_FLOAT(maximum, lights.table_scale * R3D_SKIN_LIGHT_TABLE_MASK);
+        }
+    }
+    free(table);
+}
+
 void
 suite_skin_light(void) {
+    RUN_TEST(test_table_scale_tracks_sampled_maximum_and_cells);
     RUN_TEST(test_irradiance_table_preserves_range_and_matches_float);
     RUN_TEST(test_default_direct_preserves_blended_normal_length);
     RUN_TEST(test_normal_palette_refuses_nonfinite_inverse);
