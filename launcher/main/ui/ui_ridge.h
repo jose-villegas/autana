@@ -9,9 +9,13 @@
 #include "input/input.h"
 
 #define RIDGE_CURVE_POINTS GFX_HEIGHT
+#define RIDGE_CURVE_VIEW_H GFX_WIDTH
 
 /* Read the curve from the engine pack and keep that pack mounted; only the first call reads. An unavailable or invalid curve releases the pack and draws a level ridge. */
 void ui_ridge_load(void);
+
+/* The loaded row, or NULL when the ridge is level. */
+const int16_t* ui_ridge_curve(void);
 
 /* Which way is down in the screen plane, as input/tilt.h reports it: `gx`
  * and `gy` in the panel's own axes, `strength` 0-256 and `shake` 0-255. The

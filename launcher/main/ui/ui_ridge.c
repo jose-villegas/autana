@@ -25,7 +25,6 @@
 #include "ui/ridge_motion.h"
 #include "ui/ridge_pose.h"
 #include "ui/ridge_theme.h"
-#include "ui/ui_icons.h"
 
 /* One panel pixel of depth2: doubled coordinates times a RIDGE_POSE_ONE pose. */
 #define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)
@@ -152,7 +151,7 @@ typedef struct {
 #define RIDGE_ENTRY        "ridge"
 #define RIDGE_ROW          "y"
 /* A level fallback crosses the middle of the landscape frame. */
-#define RIDGE_LEVEL_HEIGHT (GFX_WIDTH / 2)
+#define RIDGE_LEVEL_HEIGHT (RIDGE_CURVE_VIEW_H / 2)
 
 #define TAG                "ui_ridge"
 static const int16_t level_height = RIDGE_LEVEL_HEIGHT * RIDGE_SUBPIXEL_ONE;
@@ -167,7 +166,7 @@ ui_ridge_load(void) {
         return;
     }
     load_tried = true;
-    const asset_pack_t* pack = asset_store_pack(UI_ENGINE_PACK);
+    const asset_pack_t* pack = asset_store_pack(ASSET_ENGINE_PACK);
     asset_status_t status = ASSET_ERR_NO_PACK;
     if (pack != NULL) {
         asset_view_t entry;
@@ -185,10 +184,16 @@ ui_ridge_load(void) {
     }
     if (status != ASSET_OK) {
         if (pack != NULL) {
-            asset_store_release(UI_ENGINE_PACK);
+            asset_store_release(ASSET_ENGINE_PACK);
         }
-        ESP_LOGW(TAG, "no ridge curve in pack engine (%s): the ridge is level", asset_status_text(status));
+        ESP_LOGW(TAG, "no ridge curve in pack %s (%s): the ridge is level", ASSET_ENGINE_PACK,
+                 asset_status_text(status));
     }
+}
+
+const int16_t*
+ui_ridge_curve(void) {
+    return curve;
 }
 
 static uint32_t
@@ -406,7 +411,7 @@ raster_boundaries(void) {
         int x0 = 0;
         int y0 = 0;
         for (int point = 0; point < RIDGE_COLUMNS; point++) {
-            const int32_t h = ridge->layers[layer][point] - (GFX_WIDTH * (RIDGE_SUBPIXEL_ONE / 2));
+            const int32_t h = ridge->layers[layer][point] - (RIDGE_CURVE_VIEW_H * (RIDGE_SUBPIXEL_ONE / 2));
             const int x1 = fx_round_shift32(
                 ((GFX_WIDTH - 1) * (RIDGE_SUBPIXEL_ONE / 2)) + pose_scale(along_x + (h * dx)), RIDGE_SUBPIXEL_SHIFT);
             const int y1 = fx_round_shift32(

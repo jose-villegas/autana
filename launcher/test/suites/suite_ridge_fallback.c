@@ -10,7 +10,6 @@
 #include "gfx/draw/gfx_dither.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
-#include "ui/ui_icons.h"
 #include "ui/ui_ridge.h"
 
 /* The level fallback leaves broad regions of solid land and shaded sky. */
@@ -63,6 +62,7 @@ suite_ridge_fallback(void) {
     /* The fallback log comes from the first load; building and repeated loads must not repeat it. */
     ui_ridge_reset_for_test();
     ui_ridge_load();
+    TEST_ASSERT_NULL(ui_ridge_curve());
     ui_ridge_load();
     ui_ridge_set_ambient(false);
     ui_ridge_settle();
@@ -72,5 +72,5 @@ suite_ridge_fallback(void) {
 
 SUITE_REGISTER_ON_REQUEST(suite_ridge_fallback);
 #ifndef DEVICE_BUILD
-SUITE_READS(suite_ridge_fallback, UI_ENGINE_PACK);
+SUITE_READS(suite_ridge_fallback, ASSET_ENGINE_PACK);
 #endif

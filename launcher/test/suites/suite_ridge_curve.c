@@ -10,17 +10,15 @@
 #include "unity.h"
 
 #include "asset/asset_store.h"
-#include "asset/asset_table.h"
 #include "boot/boot_anim.h"
 #include "gfx/draw/gfx_color.h"
 #include "gfx/gfx.h"
 #include "gfx/image/gfx_image.h"
-#include "ui/ui_icons.h"
-
+#include "math/motion/spring_line.h"
 #include "ui/ui_ridge.h"
 
 #define VIEW_W               RIDGE_CURVE_POINTS
-#define VIEW_H               GFX_WIDTH
+#define VIEW_H               RIDGE_CURVE_VIEW_H
 
 /* Two 5-row bands, one each side of the curve, 3 rows clear of it. */
 #define BAND_NEAR            3
@@ -143,14 +141,10 @@ test_the_boot_picture_loads(void) {
 
 void
 suite_ridge_curve(void) {
-    const asset_pack_t* engine = asset_store_pack(UI_ENGINE_PACK);
-    asset_view_t curve_entry;
-    asset_table_t table;
-    TEST_ASSERT_NOT_NULL(engine);
-    TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_find(engine, "ridge", ASSET_TABLE_ASSET, &curve_entry));
-    TEST_ASSERT_EQUAL(ASSET_OK, asset_table_open(curve_entry, &table));
-    TEST_ASSERT_EQUAL(ASSET_OK, asset_table_row(&table, "y", RIDGE_CURVE_POINTS, &curve));
-    curve_shift = table.frac_bits;
+    ui_ridge_load();
+    curve = ui_ridge_curve();
+    TEST_ASSERT_NOT_NULL(curve);
+    curve_shift = SPRING_LINE_OUT_SHIFT;
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
     const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
@@ -167,9 +161,8 @@ suite_ridge_curve(void) {
         asset_store_release(BOOT_PHOTO);
     }
     photo = (gfx_image_t){0};
-    asset_store_release(UI_ENGINE_PACK);
     curve = NULL;
 }
 
 SUITE_REGISTER(suite_ridge_curve);
-SUITE_READS(suite_ridge_curve, BOOT_PHOTO, UI_ENGINE_PACK);
+SUITE_READS(suite_ridge_curve, BOOT_PHOTO, ASSET_ENGINE_PACK);
