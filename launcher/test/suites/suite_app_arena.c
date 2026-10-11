@@ -15,7 +15,6 @@
 #endif
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"
-#include "esp_psram.h"
 
 extern unsigned char _ext_ram_noinit_start;
 extern unsigned char _ext_ram_noinit_end;
@@ -189,13 +188,20 @@ test_the_arena_is_reserved_whichever_source_gives_the_psram_size(void) {
     TEST_ASSERT_EQUAL_UINT(HOST_HEAP_ARENA_PSRAM_BYTES - APP_ARENA_BYTES, heap_arena_psram_heap_bytes(NULL));
     TEST_ASSERT_EQUAL_UINT(12u * 1024u * 1024u - APP_ARENA_BYTES, heap_arena_psram_heap_bytes("12582912"));
 }
+
+/* The modelled chip is the heap and the block the board places ahead of it. */
+static void
+test_the_psram_chip_is_the_heap_and_the_block(void) {
+    TEST_ASSERT_EQUAL_UINT(memory_total_bytes(MEMORY_PSRAM) + APP_ARENA_BYTES, memory_psram_bytes());
+}
 #endif
 
 #ifdef DEVICE_BUILD
 static void
 test_the_psram_heap_starts_past_the_block(void) {
-    const size_t psram = esp_psram_get_size();
+    const size_t psram = memory_psram_bytes();
     const size_t heap = memory_total_bytes(MEMORY_PSRAM);
+    TEST_ASSERT_GREATER_THAN_UINT(APP_ARENA_BYTES, psram);
     TEST_ASSERT_LESS_OR_EQUAL_UINT(psram - APP_ARENA_BYTES, heap);
     TEST_ASSERT_GREATER_OR_EQUAL_UINT(psram / 2, heap); /* the block does not take the heap's share */
 }
@@ -227,6 +233,7 @@ run_app_arena_suite(void) {
 #ifdef HOST_HEAP_ARENA
     RUN_TEST(test_the_psram_heap_offers_only_what_the_arena_leaves);
     RUN_TEST(test_the_arena_is_reserved_whichever_source_gives_the_psram_size);
+    RUN_TEST(test_the_psram_chip_is_the_heap_and_the_block);
 #endif
 #ifdef DEVICE_BUILD
     RUN_TEST(test_the_psram_heap_starts_past_the_block);

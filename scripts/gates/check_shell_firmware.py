@@ -22,9 +22,10 @@ patterns themselves, not by a list. Comments and string literals are not
 code. There is no exemption list: a reason for the shell to touch the vendor
 code is a missing module, so add one.
 
-The vendor timer and heap have owners: esp_timer_* belongs to
-core/timing, and heap_caps_* and MALLOC_CAP_* to core/memory.
-In the firmware, its suites and its tools, a name of either is code only in
+The vendor clock, pause and heap have owners: esp_timer_* and vTaskDelay
+belong to core/timing, and heap_caps_*, MALLOC_CAP_*, multi_heap_*,
+esp_psram_* and the esp_get_*heap_size queries to core/memory.
+In the firmware, its suites and its tools, a name of any is code only in
 its owner's own files (core/timing.* and core/timing_*.*, the
 same for memory) or in a driver: anything under board/, or a *_device.c in
 launcher/main/ outside a tests/ folder, where the name means a suite that runs
@@ -45,9 +46,9 @@ MAIN = "launcher/main/main.c"
 SHELL = "launcher/main/shell/"
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]')
-VENDOR_INCLUDE_RE = re.compile(r"^(esp_(?!log\.h$)|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/)")
+VENDOR_INCLUDE_RE = re.compile(r"^(esp_(?!log\.h$)|nvs|freertos/|bsp/|driver/|hal/|soc/|rom/|multi_heap)")
 VENDOR_NAME_RE = re.compile(
-    r"^(esp_|ESP_(?!LOG[A-Z]$)|nvs_|NVS_|heap_caps_|MALLOC_CAP_|bsp_|BSP_"
+    r"^(esp_|ESP_(?!LOG[A-Z]$)|nvs_|NVS_|heap_caps_|MALLOC_CAP_|multi_heap_|bsp_|BSP_"
     r"|(v|x|ux|ul|pv|pc)[A-Z]|(port|config)[A-Z]|pd[A-Z]"
     r"|(Task|Queue|Semaphore|Event|Timer|Stream|Message)\w*Handle_t$|(U?Base|Tick|Stack)Type_t$)")
 
@@ -96,22 +97,21 @@ def problems(root="."):
     return found
 
 
-OWNED_NAME_RE = re.compile(r"\b(esp_timer_|heap_caps_|MALLOC_CAP_)\w*")
-OWNER_OF = {"esp_timer_": "timing", "heap_caps_": "memory", "MALLOC_CAP_": "memory"}
+OWNED_NAME_RE = re.compile(r"\b(?:(?P<timing>esp_timer_\w*|vTaskDelay\b)"
+                           r"|(?P<memory>(?:heap_caps_|MALLOC_CAP_|multi_heap_|esp_psram_)\w*|esp_get_\w*heap_size\b))")
 CHECKED = (*FIRST_PARTY, "launcher/test/suites/", "launcher/tools/")
 CORE = "launcher/main/core/"
 
 
-def may_use(rel, prefix):
-    """True when `rel` owns names with `prefix`, or is a driver. A suite's
-    *_device.c is a test that runs on the board, not a driver."""
+def may_use(rel, module):
+    """True when `rel` is one of core/`module`'s files, or is a driver. A
+    suite's *_device.c is a test that runs on the board, not a driver."""
     if rel.startswith("launcher/main/board/"):
         return True
     if rel.startswith("launcher/main/") and rel.endswith("_device.c") and "/tests/" not in rel:
         return True
     if not rel.startswith(CORE) or "/" in rel[len(CORE):]:
         return False
-    module = OWNER_OF[prefix]
     stem = pathlib.PurePosixPath(rel).stem
     return stem == module or stem.startswith(module + "_")
 
@@ -126,10 +126,9 @@ def owner_problems(root="."):
         text = (pathlib.Path(root) / rel).read_text(encoding="utf-8", errors="replace")
         code = COMMENT_OR_STRING_RE.sub(blank, text).splitlines()
         for number, line in enumerate(code, 1):
-            for name in dict.fromkeys(m.group(0) for m in OWNED_NAME_RE.finditer(line)):
-                prefix = OWNED_NAME_RE.match(name).group(1)
-                if not may_use(rel, prefix):
-                    found.append(f"{rel}:{number}: uses {name}; only core/{OWNER_OF[prefix]} and a driver may")
+            for name, module in dict.fromkeys((m.group(0), m.lastgroup) for m in OWNED_NAME_RE.finditer(line)):
+                if not may_use(rel, module):
+                    found.append(f"{rel}:{number}: uses {name}; only core/{module} and a driver may")
     return found
 
 
