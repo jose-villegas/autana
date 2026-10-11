@@ -7,7 +7,11 @@
 
 #include <stdint.h>
 
+#include "asset/asset_directory.h"
 #include "asset/asset_pack.h"
+
+/* Only the flash backend defines this; the borrowed directory lives with the store. */
+asset_status_t asset_store_backend_directory(const asset_directory_t** opened);
 
 /* Maps or reads pack `name` and opens it into `pack`. On success `mapping`
  * is what asset_store_backend_unmount() takes back; on failure nothing is
