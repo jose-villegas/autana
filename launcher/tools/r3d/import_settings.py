@@ -12,7 +12,7 @@ import re
 import tomllib
 from types import SimpleNamespace
 
-from anim import tracks_asset
+from anim import clip_name
 from asset.asset_pack import NAME_BYTES
 from gltf.gltf_read import ASSET_SUFFIXES
 
@@ -445,10 +445,10 @@ def load_camera_path(path, base, where):
     file (its id is the stem), and the node in it that is the camera."""
     check_keys(path, ("animation", "node"), where)
     animation = (base / text(path["animation"], f"{where}.animation")).resolve()
-    if not animation.name.endswith(tracks_asset.SUFFIX) or not animation.is_file():
-        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {tracks_asset.SUFFIX} file")
+    if not animation.name.endswith(clip_name.SUFFIX) or not animation.is_file():
+        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {clip_name.SUFFIX} file")
     node = identifier(path["node"], f"{where}.node")
-    clip = tracks_asset.clip_id(animation)
+    clip = clip_name.clip_id(animation)
     if len(clip.encode("utf-8")) >= NAME_BYTES:
         raise SettingsError(f"{where}.animation: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
     return SimpleNamespace(animation=animation, clip=clip, node=node)
