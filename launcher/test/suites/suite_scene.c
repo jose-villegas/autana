@@ -221,6 +221,12 @@ static const scene_spec_t SCENES[] = {
      {{"left", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}, {"red", IDENTITY}},
      {{2, "red"}},
      {{0, CLEAR_RGB, "", ""}, {1, CLEAR_RGB, "", ""}}},
+    {.id = "test_aliases",
+     .entity_count = 2,
+     .camera_count = 2,
+     .entities = {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
+     .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight", .node = "camera"},
+                 {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight", .node = "camera"}}},
     /* a camera flying a clip the pack does not hold */
     {"test_lost",
      2,
@@ -252,13 +258,7 @@ static const scene_spec_t SCENES[] = {
      {{"camera", IDENTITY}, {"red", IDENTITY}},
      {{1, "red"}},
      {{0, CLEAR_RGB, "unturned", "camera"}}},
-    {"test_aliases",
-     2,
-     0,
-     2,
-     {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
-     {{0}},
-     {{0, CLEAR_RGB, "flight", "camera"}, {1, CLEAR_RGB, "flight", "camera"}}},
+
 };
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))

@@ -124,6 +124,8 @@ void scene_draw_release(void);
 bool scene_transform_is_identity(const scene_transform_t* transform);
 
 size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
+#define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \
+    ((layout).member = scene_storage_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
 int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
 void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);

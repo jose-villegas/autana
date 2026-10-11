@@ -58,12 +58,17 @@ test_transition_blend_endpoints_midpoint_and_hemisphere(void) {
     transformf_set_position(&b.local[0], (vec3f_t){6, 0, 0});
     transformf_set_scale(&b.local[0], (vec3f_t){4, 4, 4});
     transformf_set_rotation(&b.local[0], (quatf_t){0, 0, 1, 0});
-    anim_pose_blend(&a.pose, &b.pose, 0.0F, &out.pose);
-    TEST_ASSERT_EQUAL_FLOAT(2, out.local[0].position.x);
-    TEST_ASSERT_EQUAL_FLOAT(1, out.local[0].rotation.w);
-    anim_pose_blend(&a.pose, &b.pose, 1.0F, &out.pose);
-    TEST_ASSERT_EQUAL_FLOAT(6, out.local[0].position.x);
-    TEST_ASSERT_EQUAL_FLOAT(1, out.local[0].rotation.z);
+
+    static const struct {
+        float weight, position, z, w;
+    } ENDPOINTS[] = {{0, 2, 0, 1}, {1, 6, 1, 0}};
+
+    for (size_t i = 0; i < sizeof ENDPOINTS / sizeof ENDPOINTS[0]; i++) {
+        anim_pose_blend(&a.pose, &b.pose, ENDPOINTS[i].weight, &out.pose);
+        TEST_ASSERT_EQUAL_FLOAT(ENDPOINTS[i].position, out.local[0].position.x);
+        TEST_ASSERT_EQUAL_FLOAT(ENDPOINTS[i].z, out.local[0].rotation.z);
+        TEST_ASSERT_EQUAL_FLOAT(ENDPOINTS[i].w, out.local[0].rotation.w);
+    }
     anim_pose_blend(&a.pose, &b.pose, 0.5F, &out.pose);
     TEST_ASSERT_EQUAL_FLOAT(4, out.local[0].position.x);
     TEST_ASSERT_EQUAL_FLOAT(3, out.local[0].scale.x);

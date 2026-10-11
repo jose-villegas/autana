@@ -39,13 +39,13 @@ layout_for(const scene_asset_t* asset) {
     size_t end = sizeof(scene_t);
     l.renderers =
         scene_storage_carve(&end, sizeof(scene_renderer_t) * asset->renderer_count, alignof(scene_renderer_t));
-    l.cameras = scene_storage_carve(&end, sizeof(scene_camera_t) * asset->camera_count, alignof(scene_camera_t));
-    l.instances = scene_storage_carve(&end, sizeof(r3d_instance_t) * asset->renderer_count, alignof(r3d_instance_t));
+    SCENE_STORAGE_RESERVE(l, end, cameras, scene_camera_t, asset->camera_count);
+    SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, asset->renderer_count);
     l.transforms =
         scene_storage_carve(&end, sizeof(scene_transform_t) * asset->entity_count, alignof(scene_transform_t));
-    l.flags = scene_storage_carve(&end, asset->entity_count, 1);
-    l.locals = scene_storage_carve(&end, sizeof(transformf_t) * asset->entity_count, alignof(transformf_t));
-    l.animators = scene_storage_carve(&end, sizeof(scene_animator_t) * asset->entity_count, alignof(scene_animator_t));
+    SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, asset->entity_count);
+    SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, asset->entity_count);
+    SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, asset->entity_count);
     l.skins = scene_storage_carve(&end, sizeof(scene_skinned_renderer_t) * asset->entity_count,
                                   alignof(scene_skinned_renderer_t));
     l.total = end;

@@ -66,26 +66,23 @@ typedef struct {
     size_t clips, times, counts, tables, names, joints, fields, sampled, values, shown, frozen, model, palette, total;
 } animator_layout_t;
 
-#define SCENE_ANIMATOR_RESERVE(member, type, count)                                                                    \
-    l.member = scene_storage_carve(&end, sizeof(type) * (size_t)(count), alignof(type))
-
 static animator_layout_t
 layout_for(int clips, int curves, int joints) {
     animator_layout_t l;
     size_t end = 0;
-    SCENE_ANIMATOR_RESERVE(clips, scene_animator_clip_t, clips);
-    SCENE_ANIMATOR_RESERVE(times, anim_clip_t, clips);
-    SCENE_ANIMATOR_RESERVE(counts, int, clips);
-    SCENE_ANIMATOR_RESERVE(tables, const anim_joint_bound_t*, clips);
-    SCENE_ANIMATOR_RESERVE(names, char, clips* ASSET_NAME_MAX);
-    SCENE_ANIMATOR_RESERVE(joints, anim_joint_bound_t, curves);
-    SCENE_ANIMATOR_RESERVE(fields, anim_bound_t, joints == 0 ? curves : 0);
-    SCENE_ANIMATOR_RESERVE(sampled, anim_bound_t, joints == 0 ? curves : 0);
-    SCENE_ANIMATOR_RESERVE(values, float, joints == 0 ? curves * ANIM_WIDTH_MAX : 0);
-    SCENE_ANIMATOR_RESERVE(shown, transformf_t, joints == 0 ? 1 : joints);
-    SCENE_ANIMATOR_RESERVE(frozen, transformf_t, joints == 0 ? 1 : joints);
-    SCENE_ANIMATOR_RESERVE(model, mat4f_t, joints);
-    SCENE_ANIMATOR_RESERVE(palette, mat4f_t, joints);
+    SCENE_STORAGE_RESERVE(l, end, clips, scene_animator_clip_t, clips);
+    SCENE_STORAGE_RESERVE(l, end, times, anim_clip_t, clips);
+    SCENE_STORAGE_RESERVE(l, end, counts, int, clips);
+    SCENE_STORAGE_RESERVE(l, end, tables, const anim_joint_bound_t*, clips);
+    SCENE_STORAGE_RESERVE(l, end, names, char, clips* ASSET_NAME_MAX);
+    SCENE_STORAGE_RESERVE(l, end, joints, anim_joint_bound_t, curves);
+    SCENE_STORAGE_RESERVE(l, end, fields, anim_bound_t, joints == 0 ? curves : 0);
+    SCENE_STORAGE_RESERVE(l, end, sampled, anim_bound_t, joints == 0 ? curves : 0);
+    SCENE_STORAGE_RESERVE(l, end, values, float, joints == 0 ? curves * ANIM_WIDTH_MAX : 0);
+    SCENE_STORAGE_RESERVE(l, end, shown, transformf_t, joints == 0 ? 1 : joints);
+    SCENE_STORAGE_RESERVE(l, end, frozen, transformf_t, joints == 0 ? 1 : joints);
+    SCENE_STORAGE_RESERVE(l, end, model, mat4f_t, joints);
+    SCENE_STORAGE_RESERVE(l, end, palette, mat4f_t, joints);
     l.total = end;
     return l;
 }

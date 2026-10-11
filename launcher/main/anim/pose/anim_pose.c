@@ -92,11 +92,8 @@ anim_bind_skeleton(const anim_tracks_t* clip, const anim_skeleton_t* skeleton, a
     if (failed != NULL) {
         *failed = -1;
     }
-    if (clip->root != ANIM_ROOT_SKELETON) {
-        return ANIM_BIND_ERR_ROOT;
-    }
-    if (count < clip->count) {
-        return ANIM_BIND_ERR_SPACE;
+    if (clip->root != ANIM_ROOT_SKELETON || count < clip->count) {
+        return clip->root == ANIM_ROOT_SKELETON ? ANIM_BIND_ERR_SPACE : ANIM_BIND_ERR_ROOT;
     }
     for (int i = 0; i < clip->count; i++) {
         anim_binding_t binding;
