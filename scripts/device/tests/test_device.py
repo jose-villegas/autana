@@ -1148,6 +1148,13 @@ class FlashCommandLineTests(unittest.TestCase):
     def run_main(self, argv):
         calls = []
         connection = mock.Mock()
+        store = mock_store()
+
+        def fake_write_image(built, lock_store, board, held):
+            self.assertIs(held, device.ACTIVE_LOCK.held)
+            self.assertIs(held.store, store)
+            connection.close.side_effect = lambda: self.assertIs(device.ACTIVE_LOCK.held, held)
+            return "abc", connection
 
         def fake_build_image(args, port, extra_flags=()):
             calls.append(list(extra_flags))
@@ -1155,14 +1162,33 @@ class FlashCommandLineTests(unittest.TestCase):
 
         with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
              mock.patch.object(device, "build_image", fake_build_image), \
-             mock.patch.object(device, "write_image", return_value=("abc", connection)), \
-             mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()):
+             mock.patch.object(device, "write_image", side_effect=fake_write_image), \
+             mock.patch.object(device.device_lock, "LockStore", return_value=store):
             device.main(argv)
         connection.close.assert_called_once_with()
         return calls
 
     def test_successful_flash_closes_reconnected_handle(self):
         self.run_main(["--owner", "a", "flash", "--variant", "dev", "--worktree", "C:/wt"])
+
+    def test_standalone_flash_records_one_flash_duration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = fake_flash.worktree(Path(directory) / "engine")
+            store = mock_store()
+            store.root = Path(directory) / "lock"
+            connection = FakeConnection([])
+            with recorded_serial(connection, Path(directory) / "records"), \
+                 mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+                 mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                 mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts()), \
+                 mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
+                 mock.patch.object(device, "reconnect_after_reset", return_value=connection):
+                code = device.main(["--owner", "a", "flash", "--variant", "dev",
+                                    "--worktree", str(worktree)])
+            self.assertEqual(code, 0)
+            rows = device_lock.duration_rows(store.root)
+            self.assertEqual([row["command"] for row in rows], ["flash"])
+            self.assertIsNone(rows[0]["error"])
 
     def test_perf_scope_flag_becomes_an_extra_flag(self):
         calls = self.run_main(["--owner", "a", "flash", "--variant", "diag",
@@ -2143,7 +2169,7 @@ class ResetReconnectTests(unittest.TestCase):
         self.assertAlmostEqual(self.clock, bound)
 
     def test_failed_flash_reconnects_before_releasing_lock(self):
-        held = Namespace(held={"acquired_at": None})
+        held = Namespace(held={"acquired_at": None}, kind="batch")
         failure = RuntimeError("write failed")
         def write(*unused):
             self.usb.reset(self.now())
@@ -2171,7 +2197,7 @@ class ResetReconnectTests(unittest.TestCase):
         self.assertGreaterEqual(self.clock, self.usb.open_at)
 
     def test_flash_lock_lost_message_survives_without_reconnect(self):
-        held = Namespace(held={"acquired_at": None})
+        held = Namespace(held={"acquired_at": None}, kind="batch")
         failure = device.LockLost("device lock was lost during the flash; the flash was stopped")
         built = mock.MagicMock(run=mock.Mock(side_effect=failure))
         with mock.patch.object(device, "holding", return_value=contextlib.nullcontext(held)), \
@@ -2183,7 +2209,7 @@ class ResetReconnectTests(unittest.TestCase):
         reconnect.assert_not_called()
 
     def test_flash_handle_closes_when_lock_exit_or_record_raises(self):
-        held = Namespace(held={"acquired_at": None})
+        held = Namespace(held={"acquired_at": None}, kind="batch")
         for stage in ("lock", "record", "snapshot"):
             with self.subTest(stage=stage):
                 connection = mock.Mock()
@@ -2216,7 +2242,7 @@ class ResetReconnectTests(unittest.TestCase):
         connection.close.assert_called_once_with()
 
     def test_flash_boot_uses_returned_handle_without_opening_again(self):
-        held = Namespace(held={"acquired_at": None})
+        held = Namespace(held={"acquired_at": None}, kind="batch")
         def write(*unused):
             self.usb.reset(self.now())
         built = mock.MagicMock(build_id="abc", write=["flash"], run=mock.Mock(side_effect=write))

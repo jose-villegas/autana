@@ -1234,7 +1234,8 @@ def write_image(built, store, board, held_lock):
     build_id = error = held = None
     with contextlib.ExitStack() as cleanup:
         try:
-            with holding(store, board, built.args, held_lock, "flash") as held:
+            with (contextlib.nullcontext(held_lock) if held_lock.kind == "flash" else
+                  holding(store, board, built.args, held_lock, "flash")) as held:
                 with open_when_free():
                     pass
                 connection = run_resetting(lambda: built.run(lambda **popen:
