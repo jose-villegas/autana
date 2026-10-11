@@ -23,7 +23,11 @@ hand:
     `TRANSFORM<S>_IDENTITY` initializer must be named on the page;
   * the other way round: every `name(` the page puts in backticks must exist,
     as `P_` or a prefix of that function's own family, or as a function a
-    header defines.
+    header defines;
+  * every inline formula, in $...$ or $`...`$, has at most
+    MAX_INLINE_MATH_CHARS characters of TeX outside code spans and fences;
+    a longer one is split into one span per step, joined with <br>.
+    Fenced ```math blocks are unmeasured because they wrap as a block.
 """
 
 import argparse
@@ -35,9 +39,8 @@ import sys
 MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
 
-# Keep unbreakable steps within a phone content width of about 320 px: the split
-# steps render at most 303 px at 16 px. 110 allows single steps, not derivations;
-# TeX source length is a guard, not a rendered-width measurement.
+# An inline formula cannot wrap, so a long one overflows a phone-width column.
+# TeX source length stands in for rendered width: 110 fits one step, not a derivation.
 MAX_INLINE_MATH_CHARS = 110
 
 FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
@@ -50,7 +53,7 @@ FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
 HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
-INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$")
+INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$|(`+).*?(?<!`)\2(?!`)|(?<![\\$])\$(?!\$)([^$\n]*)\$(?!\$)")
 PAGE_CALL = re.compile(r"`[^`\n]*?\b([A-Za-z][A-Za-z0-9]*_[a-z0-9_]+)\(")
 
 
@@ -125,8 +128,9 @@ def check(root):
     page = read(root / PAGE)
     family_of, functions, patterns, swizzle_names, problems = instantiations(root)
 
-    for line_number, line in enumerate(page.splitlines(), start=1):
-        for formula in INLINE_MATH.findall(line):
+    for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), page).splitlines(), start=1):
+        for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
+            formula = quoted_formula or plain_formula
             if len(formula) > MAX_INLINE_MATH_CHARS:
                 problems.append(
                     "%s:%d: inline math has %d characters (limit %d); "

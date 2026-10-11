@@ -56,14 +56,49 @@ class CheckMathDocs(unittest.TestCase):
 
     def test_an_over_limit_inline_math_span_fails_with_its_line(self):
         formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
-        problems = problems_for(page_extra="\n$`%s`$\n" % formula)
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, page_extra="\n$`%s`$\n" % formula)
+            page = (root / check_math_docs.PAGE).read_text()
+            expected_line = next(i for i, line in enumerate(page.splitlines(), start=1) if formula in line)
+            problems = check_math_docs.check(root)
         self.assertEqual(1, len(problems))
-        self.assertIn("docs/math/README.md:23:", problems[0])
+        self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
         self.assertIn("split the formula into one span per step joined with <br>", problems[0])
 
     def test_separate_inline_math_spans_are_measured_individually(self):
         formula = "x" * check_math_docs.MAX_INLINE_MATH_CHARS
         self.assertEqual([], problems_for(page_extra="$`%s`$<br> $`%s`$\n" % (formula, formula)))
+
+    def test_every_inline_math_span_on_a_line_is_measured(self):
+        for delimiters in (("$`", "`$"), ("$", "$")):
+            with self.subTest(delimiters=delimiters):
+                opening, closing = delimiters
+                for length in (check_math_docs.MAX_INLINE_MATH_CHARS, check_math_docs.MAX_INLINE_MATH_CHARS + 1):
+                    with self.subTest(length=length):
+                        formula = "x" * length
+                        problems = problems_for(page_extra="%sa%s then %s%s%s\n" %
+                                                (opening, closing, opening, formula, closing))
+                        self.assertEqual(int(length > check_math_docs.MAX_INLINE_MATH_CHARS), len(problems))
+
+    def test_an_over_limit_plain_dollar_math_span_fails(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        problems = problems_for(page_extra="$%s$\n" % formula)
+        self.assertEqual(1, len(problems))
+        self.assertIn("inline math has %d characters" % len(formula), problems[0])
+
+    def test_dollars_inside_code_spans_are_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for code in ("`$%s$`", "``$`%s`$``"):
+            with self.subTest(code=code):
+                self.assertEqual([], problems_for(page_extra=code % formula + "\n"))
+
+    def test_inline_math_inside_code_fences_is_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for language in ("math", "c"):
+            with self.subTest(language=language):
+                self.assertEqual([], problems_for(page_extra="```%s\n$%s$ and $`%s`$\n```\n" %
+                                                 (language, formula, formula)))
 
     def test_a_template_function_missing_from_the_page_fails(self):
         extra = "    static inline int P##_wobble(int a) { return a; } \\\n"
