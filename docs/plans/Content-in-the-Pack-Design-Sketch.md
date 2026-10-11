@@ -227,7 +227,7 @@ change them twice.
 Same rule: data goes to the pack and its generated file is deleted; true
 compile-time tables may stay. Files to classify: the boot photograph's header,
 `boot_anim_curve.h`, `boot_anim_timeline.h`, `gfx_palette_standard_generated.h`,
-`gfx_dither_patterns_generated.h`, `control_center_layout_generated.h`,
+`gfx_dither_patterns_generated.h`,
 `ridge_curve_generated.h`, `icons_system.h`, the sand
 icon, palette and `captured_slope_data.h` headers, and the banner-carrying
 `capybara.glb`. Anything needed before or without the pack inherits the

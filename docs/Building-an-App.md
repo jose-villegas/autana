@@ -106,7 +106,7 @@ an app leaves by leaving the build:
 
 ## Lifecycle
 
-The shell's state machine (Launcher, Control Center, and a running app) is
+The shell's state machine (the launcher and a running app) is
 in [Firmware-Architecture.md](Firmware-Architecture.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to

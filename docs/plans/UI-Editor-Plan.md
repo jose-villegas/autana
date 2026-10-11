@@ -1,8 +1,8 @@
 # Plan: a UI editor, and the layout format underneath it
 
-**Status**: phases 1 to 4 exist for one screen. The editor is
-[`editor/`](../../editor/README.md); Control Center is its one authored
-document and the launcher a preview beside it. The brush screen is not yet a
+**Status**: the document model, validation, editing controls and layout baker
+exist in [`editor/`](../../editor/README.md). The launcher is a preview;
+no firmware screen has an authored document. The brush screen is not yet a
 document.
 
 The objective is a tool where a screen is **authored visually and edited
@@ -25,15 +25,14 @@ proposes a separate level editor that previews through the simulation.
 | shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
 
 A screen becomes editable with three things: its JSON, a draw function taking
-the baked struct (`ui_control_center_draw()` is the model), and an entry in
-`runtime.c` and in `load_system_screens()`. Nothing else in the editor names a
+the baked struct with a runtime layout override, and an entry in
+`runtime.c` and the screen list in `main.cpp`. Nothing else in the editor names a
 screen.
 
 The format holds **rects and nothing else**. Of the six layout concepts and
 the text constraint described below, none is expressed yet; every rect is
-absolute per orientation. That was enough for Control Center and will not be
-for a flowed list such as the launcher, which is why the launcher is only
-previewed.
+absolute per orientation. A flowed list such as the launcher needs more
+than fixed rects, so the launcher is only previewed.
 
 ## The render half already runs in this repo
 
@@ -162,8 +161,7 @@ run by `.github/workflows/host-tests.yml`.
 ## Phases
 
 1. **Layout as authored data.** A screen's JSON, a generator, a baked header,
-   and the screen's draw function reading the table. *Exists for Control
-   Center.*
+   and the screen's draw function reading the table. *Planned for firmware screens.*
 
    For a screen that already computes its rects, the acceptance is that its
    suite passes untouched and **the baked rects are identical to what the
@@ -189,9 +187,8 @@ run by `.github/workflows/host-tests.yml`.
    the rects that moved: a format only a GUI can produce is a format nobody
    can review.
 
-5. **A second screen proves the model.** The brush screen, then the palette.
-   A format that has only ever expressed one screen has proven nothing about
-   being a format, and these two need the stack, fill and text concepts the
+5. **App screens prove the model.** The brush screen, then the palette.
+   These screens need the stack, fill and text concepts the
    format still lacks.
 
 6. **Cost overlays.** The panel's bands and dirty cells drawn over the canvas

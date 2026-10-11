@@ -1,8 +1,8 @@
 # Editor
 
-The host-side authoring tool. It edits a firmware screen's layout and previews
-it **through the firmware's own UI and gfx code**, compiled for the host, so
-what it shows is what the device draws. UI layout is its first module; the
+The host-side authoring tool. Its document model validates, saves and bakes
+authored layouts. The window previews the launcher **through the firmware's
+own UI and gfx code**, compiled for the host, in both orientations. The
 plan is [`docs/plans/UI-Editor-Plan.md`](../docs/plans/UI-Editor-Plan.md).
 
 The device runtime stays under `launcher/`. SDL2, Dear ImGui and C++ are
@@ -13,7 +13,7 @@ host-only and never enter an ESP-IDF component graph.
 ```mermaid
 flowchart LR
     JSON["launcher/main/ui/<br/>&lt;screen&gt;_layout.json"] -->|load / save| DOC["LayoutDocument<br/><i>src/layout_document</i>"]
-    DOC -->|rects, every edit| RT["editor_runtime_render()<br/><i>runtime/runtime.c</i>"]
+    RT["editor_runtime_render()<br/><i>runtime/runtime.c</i>"]
     RT -->|"real ui/ + gfx/"| PREVIEW["both orientations,<br/>side by side"]
     DOC -->|"Bake: bake_header()"| HEADER["&lt;screen&gt;_layout_generated.h"]
     HEADER --> FW["firmware build"]
@@ -46,19 +46,17 @@ editor/
 └── tests/                    CTest: GoogleTest and C runtime tests
 ```
 
-Control Center is the authored document. The launcher is listed beside it as
-a preview only: it is a flowed scrolling list, which a table of fixed rects
+The launcher is the listed screen, as a preview only: it is a flowed scrolling list, which a table of fixed rects
 cannot express.
 
 ## Adding a screen
 
 1. Write `launcher/main/ui/<screen>_layout.json` and bake it.
 2. Give the screen a draw function that takes the baked struct, split from
-   its frame the way `ui_control_center_draw.c` is.
-3. Add the screen to `editor_screen_t` and to `runtime.c`'s render and
-   element-count switch, and its sources to `editor_runtime` in
+   its frame, and support a runtime layout override.
+3. Add the screen to `editor_screen_t` and to `runtime.c`'s rendering, and its sources to `editor_runtime` in
    `CMakeLists.txt`.
-4. Load its document in `load_system_screens()` in `main.cpp`.
+4. Load its document in the screen list in `main.cpp`.
 
 ## Build
 
@@ -100,8 +98,7 @@ CTest is the single entry point.
 |---|---|
 | `editor_document.*` (GoogleTest) | load, validate, save, bake, wrong rect count; fixtures assert their named rule; JSON re-serialises byte for byte |
 | `editor_core.*` (GoogleTest) | edit history: undo, redo, saved revision |
-| `editor_navigation.*` (GoogleTest) | the firmware's `system_navigation.c`, all four rotations |
-| `editor_runtime_smoke` (C) | both screens and orientations render; an authored rect reaches the pixels; bad layouts are refused |
+| `editor_runtime_smoke` (C) | the launcher renders in both orientations; invalid buffers and dimensions are refused |
 | `editor_ridge_backdrop` (C) | the launcher over its ridge: idle sends nothing, a touch wakes it, and at rest the screen is the settled one exactly |
 
 The window itself - SDL and Dear ImGui glue - has no automated coverage.
@@ -114,6 +111,5 @@ cmake --build editor/build-coverage --target editor_coverage
 ```
 
 That runs the tests and fails under 80% line or 70% branch coverage of
-`layout_document.cpp`, `core/edit_history.h`, `runtime.c` and
-`system_navigation.c`, writing `coverage/index.html` and `coverage/coverage.xml`
+`layout_document.cpp`, `core/edit_history.h` and `runtime.c`, writing `coverage/index.html` and `coverage/coverage.xml`
 into the build directory.
