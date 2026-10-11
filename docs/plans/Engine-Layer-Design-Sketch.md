@@ -112,7 +112,7 @@ runs as systems over packed component arrays; its internals stay private.
 | scene | `scene_load(id)`, `scene_find(name)`, `scene_entity_set_transform/enabled`, `scene_activate(scene, "camera name")`; storage already packed per scene (`transforms[]`, `flags[]`, `renderers[]`, `cameras[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string; `scene_transform_t` is a render type (`r3d_placement_t`); `scene_camera_lens()` returns a render struct |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[A]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the sampler and bindings (`anim_tracks_*`, `anim_bind`, `anim_apply`) are the API; boot calls them directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | the camera path is still render's `r3d_scene_path_t`; boot's animation is not a scene |
-| asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: content is named by id in component fields and loaded with the scene; pack format and store private | direct store calls from apps |
+| asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
 
 ### Private headers apps include today
 
@@ -134,10 +134,19 @@ reachable only from its own folder. The gate then needs no list.
 
 ### The face, as types and functions `[A]`
 
+A component that names content (a mesh, a skin, a clip) holds its asset id
+`[M]`. The engine resolves the id to the pack entry when the scene loads or
+the component attaches at run time, so content can be rebuilt or repacked
+without touching what refers to it; animators already attach this way.
+
 ```c
+/* content is named by a stable asset id, never a path or a pointer [M];
+ * the id is the hash of the entry's name [A] */
+typedef uint32_t asset_id_t;
+
 /* components: one value type each */
 typedef transformf_t scene_transform_t;                            /* position, rotation, scale */
-typedef struct { char mesh[ASSET_NAME_MAX]; } scene_renderer_t;
+typedef struct { asset_id_t mesh; } scene_renderer_t;
 typedef struct { float half_fov_short_tan, near_z; uint16_t clear; } scene_camera_t;
 typedef struct { uint8_t clip; uint16_t blend_ms; } scene_animator_t;
 
