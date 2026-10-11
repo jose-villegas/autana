@@ -136,7 +136,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
-    const uint32_t period = scene_animator_clip_duration_ms(sponza, scene_camera_entity(sponza, path), 0);
+    const uint32_t period = scene_animator_clip_duration_ms(scene, scene_camera_entity(scene, path), 0);
     int poses = 0;
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
@@ -234,7 +234,7 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
     const int index = frame_cost_event_index(event);
     TEST_ASSERT_TRUE(index >= 0);
     frame_cost_shared_post_arm(bracket, index);
-    const uint32_t period = scene_animator_clip_duration_ms(sponza, scene_camera_entity(sponza, path), 0);
+    const uint32_t period = scene_animator_clip_duration_ms(scene, scene_camera_entity(scene, path), 0);
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, scene_camera_entity(scene, path), SCENE_ANIMATOR_CURRENT, t_ms);
         const render_view_t view = r3d_scene_view_at(path, t_ms, raster_viewport(raster, 0));
@@ -317,7 +317,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster->height = config->steps[0].height;
     raster->destination_width = GFX_WIDTH;
     raster->destination_height = GFX_HEIGHT;
-    const uint32_t period = scene_animator_clip_duration_ms(sponza, scene_camera_entity(sponza, path), 0);
+    const uint32_t period = scene_animator_clip_duration_ms(scene, scene_camera_entity(scene, path), 0);
     const int poses = (int)((period + POSE_EVERY_MS - 1) / POSE_EVERY_MS);
     raster->scratch = memory_alloc(raster_scratch_bytes(raster), MEMORY_PSRAM);
     gfx_color_t* destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);

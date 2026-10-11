@@ -392,7 +392,7 @@ void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     const int entities = scene->asset.entity_count, half = entities / 2;
     range_t a = {scene, 0, half, dt_ms}, b = {scene, half, entities - half, dt_ms};
-    job_run_split(animate_slice, &a, &b, sizeof a, true);
+    job_run_split(animate_slice, &a, &b, sizeof a);
     int clusters = 0;
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
@@ -405,7 +405,7 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     }
     a = (range_t){scene, 0, clusters / 2, 0};
     b = (range_t){scene, clusters / 2, clusters - (clusters / 2), 0};
-    job_run_split(skin_slice, &a, &b, sizeof a, true);
+    job_run_split(skin_slice, &a, &b, sizeof a);
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);

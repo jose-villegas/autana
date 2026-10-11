@@ -1,6 +1,7 @@
 /* A core-1 job is one copied callback context and no queue. */
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -28,5 +29,16 @@ bool job_try_core1(job_fn_t fn, const void* ctx, size_t ctx_size);
 bool job_wait(unsigned timeout_ms);
 
 #define JOB_SPLIT_WAIT_MS 1000U
+
 /* The second context is copied on dispatch. Both ranges finish before the next stage reads. */
-void job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size, bool use_core1);
+static inline __attribute__((always_inline)) void
+job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size) {
+    assert(ctx_size <= JOB_CTX_MAX);
+    if (!job_try_core1(fn, second_half, ctx_size)) {
+        fn((void*)second_half);
+    }
+    fn(first_half);
+    const bool done = job_wait(JOB_SPLIT_WAIT_MS);
+    assert(done); /* the next stage reads what core 1 wrote */
+    (void)done;
+}
