@@ -9,7 +9,11 @@ name: Bakes GPU
 # runner's cache. `again` re-makes fits the lock already has, to measure a fit
 # against its locked bytes; those are never locked from this run. `probe`
 # installs and bakes nothing: it reports whether Mitsuba's CUDA variant can
-# trace on the runner (its driver, OptiX, one small render).
+# trace on the runner (its driver, OptiX, one small render). Reference sets
+# trace on that variant when it loads, else on the CPU. Under WSL 2 Dr.Jit
+# finds OptiX only through the Linux driver's libnvoptix (Mitsuba's OptiX
+# setup page); the runner keeps a copy in ~/gpu/optix, which only the steps
+# that trace name, in their own environment.
 
 on:
   workflow_dispatch:
@@ -52,10 +56,12 @@ jobs:
         run: |
           nvidia-smi --query-gpu=name,driver_version --format=csv
           ls -l /usr/lib/wsl/lib 2>/dev/null | grep -i -e optix -e libcuda || echo "no /usr/lib/wsl/lib OptiX or CUDA library"
-          echo "DRJIT_LIBOPTIX_PATH=${DRJIT_LIBOPTIX_PATH:-unset}"
+          ls -l "$HOME/gpu/optix" 2>/dev/null || echo "no ~/gpu/optix: reference sets trace on the CPU"
 
       - name: One small render on cuda_ad_rgb
-        run: sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
+        run: |
+          export DRJIT_LIBOPTIX_PATH="$HOME/gpu/optix/libnvoptix.so.1" LD_LIBRARY_PATH="$HOME/gpu/optix"
+          sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
 
   gpu:
     name: Bake missing fits
@@ -84,6 +90,7 @@ jobs:
           AGAIN: ${{ inputs.again }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          export DRJIT_LIBOPTIX_PATH="$HOME/gpu/optix/libnvoptix.so.1" LD_LIBRARY_PATH="$HOME/gpu/optix"
           args=(--kind fit --out "$RUNNER_TEMP/bakes")
           for name in $ONLY; do args+=(--only "$name"); done
           if [ "$AGAIN" = true ]; then args+=(--again); fi
