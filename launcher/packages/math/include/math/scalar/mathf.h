@@ -1,12 +1,11 @@
 /*
- * mathf: single-precision float's scalar operations for the math templates
- * (math_template.h). The FPU has no double, so one stray promotion costs an
- * order of magnitude; the build refuses the promotion across the whole main
- * component (main/CMakeLists.txt). Angles are radians. Needs libm for sqrtf,
- * sinf, cosf and acosf. A `w` operation is the one a dot product sums with.
+ * mathf: single-precision scalar operations, including clamp, repeat and wrap.
+ * The S3 has no double FPU; use float throughout. Angles are radians.
+ * Needs libm. A `w` operation is the one a dot product sums with.
  */
 #pragma once
 
+#include <assert.h>
 #include <math.h>
 
 #ifdef __XTENSA__
@@ -36,6 +35,24 @@ mathf_four(void) {
 static inline float
 mathf_clamp(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* Into [0, len) for finite v and finite len > 0; rounded len maps to zero.
+ * Reducing first keeps the quotient finite even for extreme magnitudes. */
+static inline float
+mathf_repeat(float v, float len) {
+    assert(len > 0.0F);
+    const float remainder = fmodf(v, len);
+    const float repeated = remainder - floorf(remainder / len) * len;
+    return repeated >= len ? 0.0F : (repeated < 0.0F ? 0.0F : repeated);
+}
+
+/* Into [lo, hi); lo < hi and the offset and width must be finite. */
+static inline float
+mathf_wrap(float v, float lo, float hi) {
+    assert(lo < hi);
+    const float wrapped = lo + mathf_repeat(v - lo, hi - lo);
+    return wrapped >= hi ? lo : wrapped;
 }
 
 static inline float

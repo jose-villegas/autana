@@ -1,18 +1,12 @@
 /*
- * mathi: plain integer scalar operations, for grid, pixel and cell
- * coordinates. The first group serves the math templates (math_template.h):
- * sums and products wrap like any int32, so a caller keeps its coordinates
- * small, and a dot product widens to int64. The template group has no div,
- * sqrt or angle op, so an `i` vector gets no normalize or rotation. The rest are the shared integer helpers: abs, min,
- * max, clamp, an approximate length, an integer square root, even rounding.
- *
- * `static inline`: some are called tens of thousands of times a second from
- * an innermost loop, where a cross-file call is not free. abs and sign are
- * prefixed like the rest, which also keeps them clear of <stdlib.h>.
+ * mathi: integer scalar operations, including clamp, repeat and wrap.
+ * Template sums and products wrap at int32; dot products widen to int64.
+ * Integer vectors have no division, normalization or rotation.
  */
 #pragma once
 
 #include <assert.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -115,6 +109,37 @@ mathi_even_ceil(int v) {
 static inline __attribute__((always_inline)) int
 mathi_clamp(int value, int lo, int hi) {
     return value < lo ? lo : (value > hi ? hi : value);
+}
+
+/* Floored modulo into [0, len); len must be positive. */
+static inline int
+mathi_repeat(int v, int len) {
+    assert(len > 0);
+    const int remainder = v % len;
+    return remainder < 0 ? remainder + len : remainder;
+}
+
+/* Into [lo, hi); lo < hi and the width must fit int. */
+static inline int
+mathi_wrap(int v, int lo, int hi) {
+    assert(lo < hi);
+    const int64_t len = (int64_t)hi - lo;
+    assert(len <= INT_MAX);
+    const int64_t remainder = ((int64_t)v - lo) % len;
+    return (int)(lo + (remainder < 0 ? remainder + len : remainder));
+}
+
+/* Into [0, len) without losing integer clock precision; len > 0. */
+static inline uint32_t
+mathi_repeat_u32(uint32_t v, uint32_t len) {
+    assert(len > 0);
+    return v % len;
+}
+
+/* Inclusive clamp over the full uint32_t range. */
+static inline uint32_t
+mathi_clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
 }
 
 /* Floor of the square root over the whole uint64_t range. */

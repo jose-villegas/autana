@@ -6,6 +6,8 @@
  * headers say it does.
  */
 
+#include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -19,6 +21,7 @@
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
 
 #define Q           ((float)MATHX_ONE)
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
@@ -551,8 +554,92 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     }
 }
 
+static void
+test_integer_repeat_and_wrap_cover_negative_values_and_int_limits(void) {
+    const int length = 7;
+    const int lo = -10;
+    const int hi = -3;
+    const int negative = -9;
+    TEST_ASSERT_EQUAL_INT(length - 2, mathi_repeat(negative, length));
+    TEST_ASSERT_EQUAL_INT(0, mathi_repeat(-length, length));
+    TEST_ASSERT_EQUAL_INT(0, mathi_repeat(length, length));
+    TEST_ASSERT_EQUAL_INT(0, mathi_repeat(0, length));
+    TEST_ASSERT_EQUAL_INT((int)(((int64_t)INT_MIN % length + length) % length), mathi_repeat(INT_MIN, length));
+    TEST_ASSERT_EQUAL_INT(INT_MAX % length, mathi_repeat(INT_MAX, length));
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(lo, lo, hi));
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(hi, lo, hi));
+    TEST_ASSERT_EQUAL_INT(negative, mathi_wrap(negative, lo, hi));
+    TEST_ASSERT_EQUAL_INT(hi - 1, mathi_wrap(lo - 1, lo, hi));
+    const int extremes[] = {INT_MIN, INT_MAX};
+    const int lower_bounds[] = {lo, INT_MIN, 0};
+    const int upper_bounds[] = {hi, INT_MIN + INT_MAX, INT_MAX};
+    for (size_t r = 0; r < sizeof lower_bounds / sizeof lower_bounds[0]; r++) {
+        const int64_t width = (int64_t)upper_bounds[r] - lower_bounds[r];
+        for (size_t i = 0; i < sizeof extremes / sizeof extremes[0]; i++) {
+            const int64_t offset = (int64_t)extremes[i] - lower_bounds[r];
+            const int want = (int)(lower_bounds[r] + (offset % width + width) % width);
+            TEST_ASSERT_EQUAL_INT(want, mathi_wrap(extremes[i], lower_bounds[r], upper_bounds[r]));
+        }
+    }
+}
+
+static void
+test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range(void) {
+    const uint32_t duration = MATH_MS_PER_S;
+    const uint32_t clock = UINT32_MAX - 1u;
+    const uint32_t lo = UINT32_MAX - duration;
+    const uint32_t hi = UINT32_MAX - 1u;
+    TEST_ASSERT_EQUAL_UINT32(clock % duration, mathi_repeat_u32(clock, duration));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX % duration, mathi_repeat_u32(UINT32_MAX, duration));
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_repeat_u32(duration, duration));
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_repeat_u32(0, duration));
+    TEST_ASSERT_EQUAL_UINT32(lo, mathi_clamp_u32(lo - 1u, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(lo, mathi_clamp_u32(lo, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(lo + 1u, mathi_clamp_u32(lo + 1u, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(hi, lo, hi));
+    TEST_ASSERT_EQUAL_UINT32(hi, mathi_clamp_u32(UINT32_MAX, lo, hi));
+}
+
+static void
+test_float_repeat_excludes_the_rounded_upper_bound(void) {
+    const float length = 1.0F;
+    const float negative = -1.25F;
+    const float fraction = 0.75F;
+    const float tiny_values[] = {-FLT_MIN, -1e-8F};
+    TEST_ASSERT_EQUAL_FLOAT(fraction, mathf_repeat(negative, length));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(-length, length));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(length, length));
+    for (size_t i = 0; i < sizeof tiny_values / sizeof tiny_values[0]; i++) {
+        const float got = mathf_repeat(tiny_values[i], length);
+        TEST_ASSERT_TRUE(got >= 0.0F && got < length);
+    }
+}
+
+static void
+test_float_wrap_round_trips_with_negative_bounds(void) {
+    const float lo = -2.0F;
+    const float hi = -1.0F;
+    const float middle = -1.25F;
+    const float width = hi - lo;
+    const int turns = 4;
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_wrap(lo, lo, hi));
+    TEST_ASSERT_EQUAL_FLOAT(lo, mathf_wrap(hi, lo, hi));
+    for (int turn = -turns; turn <= turns; turn++) {
+        const float shifted = middle + (float)turn * width;
+        const float got = mathf_wrap(shifted, lo, hi);
+        TEST_ASSERT_EQUAL_FLOAT(middle, got);
+        TEST_ASSERT_EQUAL_FLOAT(got, mathf_wrap(got, lo, hi));
+    }
+    const float rounded_hi = mathf_wrap(nextafterf(lo, -INFINITY), lo, hi);
+    TEST_ASSERT_TRUE(rounded_hi >= lo && rounded_hi < hi);
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
+    RUN_TEST(test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range);
+    RUN_TEST(test_float_repeat_excludes_the_rounded_upper_bound);
+    RUN_TEST(test_float_wrap_round_trips_with_negative_bounds);
     RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);

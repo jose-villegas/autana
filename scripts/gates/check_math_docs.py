@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when docs/math/README.md and math/linear/ disagree about what exists.
+"""Fail when docs/math/README.md and the math headers disagree about what exists.
 
     python scripts/gates/check_math_docs.py [--root ROOT]
 
@@ -149,6 +149,9 @@ def check(root):
         for name in HAND_WRITTEN.findall(text) + IDENTITY.findall(text):
             if name not in page:
                 problems.append("%s: the page does not name %s (%s)" % (PAGE.as_posix(), name, header.name))
+
+    for header in sorted((root / MATH.parent / "scalar").glob("*.h")):
+        defined.update(HAND_WRITTEN.findall(read(header)))
 
     valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
