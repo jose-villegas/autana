@@ -12,8 +12,8 @@ hand:
     contain `P_name(`;
   * an instantiation is a `MATH_DEFINE_<FAMILY>(prefix, ...)` call in a
     header; the page must name `prefix` in backticks;
-  * a template outside the five families (vec_swizzle_template.h) adds its
-    `P##_name(` functions to the family of the prefix its call passes as P;
+  * template macro calls bind arguments recursively, so shared definers add
+    their `P##_name(` and `P##_##OP(` functions to the calling family;
   * a swizzle family is a `MATH_DEFINE_SWIZZLE<k>(D, S, N)` call in a
     template macro: S's family section must contain the pattern
     `P_<c1>...<ck>(`, its names are every k letters of S's struct fields,
@@ -47,7 +47,9 @@ FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
 HEADER_CALL = re.compile(r"^(MATH_DEFINE_\w+)\(([^)]*)\)", re.M)
-TEMPLATE_MACRO = re.compile(r"^#define (MATH_DEFINE_\w+)\(([^)]*)\)(.*?)(?=^#define |\Z)", re.M | re.S)
+TEMPLATE_MACRO = re.compile(r"^#define (MATH_\w+)\(([^)]*)\)(.*?)(?=^#define |\Z)", re.M | re.S)
+MACRO_CALL = re.compile(r"\b(MATH_\w+)\(([^()]*)\)")
+BOUND_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(?:##(\w+)|(\w+))\(", re.M)
 SWIZZLE_CALL = re.compile(r"\bMATH_DEFINE_SWIZZLE(\d+)\((\w+), (\w+), (\d+)\)")
 FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
 HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)
@@ -82,7 +84,7 @@ def instantiations(root):
     for template in sorted((root / MATH).glob("*_template.h")):
         text = read(template)
         for name, params, body in TEMPLATE_MACRO.findall(text):
-            macros[name] = (split_args(params), body, template.name in family_templates)
+            macros[name] = (split_args(params), body)
         m = FIELDS.search(text)
         if template.name in family_templates and m:
             fields[template.name[: -len("_template.h")]] = split_args(m.group(1))
@@ -101,25 +103,40 @@ def instantiations(root):
     patterns = {f: set() for f in FAMILIES}
     names = set()
     problems = []
-    for name, args in calls:
-        if name not in macros or args[0] not in family_of:
-            continue
-        params, body, own_family = macros[name]
-        if not own_family:
-            functions[family_of[args[0]]].update(TEMPLATE_FUNCTION.findall(body))
+
+    def visit(name, args, family, active):
+        if name not in macros or name in active:
+            return
+        params, body = macros[name]
         bind = dict(zip(params, args))
+        owner = family_of.get(bind.get("P"), family)
+        for parameter, literal in BOUND_FUNCTION.findall(body):
+            functions[owner].add(bind.get(parameter, parameter) if parameter else literal)
         for length, _, source, count in SWIZZLE_CALL.findall(body):
             prefix = bind.get(source, source)
-            family = family_of.get(prefix)
-            letters = fields.get(family, [])
+            source_family = family_of.get(prefix)
+            if source_family is None:
+                continue
+            letters = fields.get(source_family, [])
             if int(count) != len(letters):
                 problems.append(
                     "%s(%s) swizzles %s as %s components, but %s has %d"
-                    % (name, args[0], prefix, count, family, len(letters))
+                    % (name, args[0], prefix, count, source_family, len(letters))
                 )
                 continue
-            patterns[family].add("P_%s(" % "".join("<c%d>" % i for i in range(1, int(length) + 1)))
+            patterns[source_family].add("P_%s(" % "".join("<c%d>" % i for i in range(1, int(length) + 1)))
             names.update(prefix + "_" + "".join(t) for t in itertools.product(letters, repeat=int(length)))
+        for callee, arguments in MACRO_CALL.findall(body):
+            bound = [bind.get(arg, arg) for arg in split_args(arguments)]
+            visit(callee, bound, owner, active | {name})
+
+    for name, args in calls:
+        if args[0] in family_of:
+            visit(name, args, family_of[args[0]], set())
+    for family in FAMILIES:
+        text = read(root / MATH / (family + "_template.h"))
+        for name, params, _ in TEMPLATE_MACRO.findall(text):
+            visit(name, split_args(params), family, set())
     return family_of, functions, patterns, names, problems
 
 
