@@ -173,9 +173,10 @@ Property clips use `anim_apply()` directly on core 0 after synchronization,
 then the active scene derives placements for renderers whose entities are dirty.
 Inactive scenes do no placement work. Scenes without skeleton animators skip
 the animation split, and no posed clusters means no skin split. Unchanged poses
-skip skinning and node refit. A lit skin runs when its pose changes,
-a light setter marks its entity with `SCENE_FLAG_SKIN_DIRTY`, or a light or skin entity carries
-`SCENE_FLAG_SKIN_DIRTY`. The skin stage consumes this bit independently of
+skip skinning and node refit. A lit skin runs when its pose changes, or when a
+light entity or its own entity carries `SCENE_FLAG_SKIN_DIRTY`. Light setters,
+`scene_set_transform()`, `scene_entity_set_enabled()` and
+`scene_renderer_set_skin()` set it. The skin stage consumes this bit independently of
 the draw's `SCENE_FLAG_DIRTY`, including for inactive scenes. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.

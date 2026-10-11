@@ -870,7 +870,7 @@ static void
 test_a_load_with_no_memory_left_says_so_and_takes_nothing(void) {
     fixture();
     scene_failure_t why;
-    scene_fail_next_allocation = true;
+    scene_fail_allocation_after = 0;
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
     TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", &why)); /* the failure was for one load only */
@@ -2091,7 +2091,7 @@ static void
 test_light_transfer_allocation_refuses_without_changes(void) {
     scene_light_t light = {0};
     scene_t scene = {.asset = {.entity_count = 1}, .lights = &light};
-    scene_fail_next_allocation = true;
+    scene_fail_allocation_after = 0;
     TEST_ASSERT_FALSE(scene_light_set_intensity(&scene, 0, 1));
     TEST_ASSERT_NULL(scene.light_transfer);
     TEST_ASSERT_EQUAL_INT(0, scene.light_count);
@@ -2100,7 +2100,7 @@ test_light_transfer_allocation_refuses_without_changes(void) {
 
 static void
 test_idle_lit_skin_skips_and_transform_changes_run(void) {
-    scene_fail_next_allocation = false;
+    scene_fail_allocation_after = -1;
     scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
     const scene_entity_t light = scene_find(scene, "camera");
@@ -2133,6 +2133,8 @@ test_invalid_normal_transform_skips_lighting_and_recovers(void) {
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     TEST_ASSERT_TRUE(scene_light_set_intensity(scene, light, 1));
     TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
+    scene->ambient_color = SCENE_LIGHT_COLOR_DEFAULT;
+    scene->ambient_intensity = 1;
     static const float scales[] = {0, NAN, INFINITY};
     for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
         scene_transform_t pose = *scene_entity_transform(scene, entity);
@@ -2152,6 +2154,21 @@ test_invalid_normal_transform_skips_lighting_and_recovers(void) {
     scene_set_transform(scene, entity, &pose);
     scene_animation_step(scene, 0);
     TEST_ASSERT_TRUE(skin->lighting_valid);
+    TEST_ASSERT_GREATER_THAN_UINT8(0, skin->colors[0][0]);
+}
+
+static void
+test_lit_load_unload_releases_internal_storage(void) {
+    const size_t before = memory_free_bytes(MEMORY_INTERNAL);
+    scene_t* scene = rig_fixture("rig.skin2", "rig.quad");
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, scene_find(scene, "camera"), 1));
+    TEST_ASSERT_LESS_THAN_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
+    const scene_entity_t red = scene_find(scene, "red");
+    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, red, "rig.skin4", NULL));
+    TEST_ASSERT_LESS_THAN_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, red, "rig.skin2", NULL));
+    release_fixture();
+    TEST_ASSERT_EQUAL_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
 }
 
 static void
@@ -2165,7 +2182,7 @@ test_first_light_storage_rollback_and_lit_skin_allocation_failure(void) {
     for (int allocation = 0; allocation < 3; allocation++) {
         const scene_t saved = *scene;
         const uint8_t flags = scene->flags[light];
-        scene_fail_light_allocation_after = allocation;
+        scene_fail_allocation_after = allocation;
         TEST_ASSERT_FALSE(scene_light_set_intensity(scene, light, 1));
         TEST_ASSERT_EQUAL_MEMORY(&saved, scene, sizeof saved);
         TEST_ASSERT_EQUAL_UINT8(flags, scene->flags[light]);
@@ -2173,6 +2190,8 @@ test_first_light_storage_rollback_and_lit_skin_allocation_failure(void) {
         TEST_ASSERT_NULL(a->light_storage);
         TEST_ASSERT_NULL(b->light_storage);
         TEST_ASSERT_NULL(a->colors);
+        TEST_ASSERT_NULL(b->colors);
+        TEST_ASSERT_NULL(a->normal_palette);
         TEST_ASSERT_NULL(b->normal_palette);
         TEST_ASSERT_EQUAL_PTR(a->bind.colors, scene_entity_mesh(scene, red)->colors);
         TEST_ASSERT_EQUAL_PTR(b->bind.colors, scene_entity_mesh(scene, green)->colors);
@@ -2183,7 +2202,7 @@ test_first_light_storage_rollback_and_lit_skin_allocation_failure(void) {
     const void* light_storage = a->light_storage;
     const void* colors = scene_entity_mesh(scene, red)->colors;
     const size_t lit_free = memory_free_bytes(MEMORY_INTERNAL);
-    scene_fail_light_allocation_after = 0;
+    scene_fail_allocation_after = 0;
     scene_failure_t why;
     TEST_ASSERT_FALSE(scene_renderer_set_skin(scene, red, "rig.skin4", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
@@ -2219,11 +2238,13 @@ test_paused_skin_setters_replacement_and_reenable(void) {
     scene_animation_step(scene, 0);
     TEST_ASSERT_TRUE(scene->animators[entity].posed);
     TEST_ASSERT_EQUAL_UINT8(0, skin->colors[0][0]);
+    TEST_ASSERT_TRUE(scene_light_set_color(scene, light, SCENE_LIGHT_COLOR_DEFAULT));
     TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, "rig.skin4", NULL));
     TEST_ASSERT_EQUAL_PTR(skin->colors, scene_entity_mesh(scene, entity)->colors);
     scene_animation_step(scene, 0);
     TEST_ASSERT_TRUE(scene->animators[entity].posed);
-    TEST_ASSERT_EQUAL_UINT8(0, skin->colors[0][0]);
+    TEST_ASSERT_GREATER_THAN_UINT8(0, skin->bind.colors[0][0]);
+    TEST_ASSERT_UINT8_WITHIN(1, skin->bind.colors[0][0], skin->colors[0][0]);
     scene_entity_set_enabled(scene, entity, false);
     TEST_ASSERT_TRUE(scene_light_set_color(scene, light, SCENE_LIGHT_COLOR_DEFAULT));
     scene_animation_step(scene, 0);
@@ -2409,6 +2430,7 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
 void
 run_scene_suite(void) {
     RUN_TEST(test_invalid_normal_transform_skips_lighting_and_recovers);
+    RUN_TEST(test_lit_load_unload_releases_internal_storage);
     RUN_TEST(test_first_light_storage_rollback_and_lit_skin_allocation_failure);
     RUN_TEST(test_face_color_skin_refuses_lights_and_lit_attachment);
     RUN_TEST(test_paused_skin_setters_replacement_and_reenable);

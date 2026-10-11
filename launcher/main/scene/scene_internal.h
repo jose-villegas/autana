@@ -8,6 +8,7 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
+#include "core/memory.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
@@ -135,11 +136,11 @@ struct scene {
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-/* A suite sets it to make the next scene allocation fail once, so an out of
- * memory load is shown without emptying the heap. */
-extern bool scene_fail_next_allocation;
-extern int scene_fail_light_allocation_after;
+/* Fault injection exercises allocation rollback without exhausting the heap. */
+extern int scene_fail_allocation_after;
 #endif
+
+void* scene_allocate(size_t bytes, memory_kind_t kind);
 
 /* The loaded scenes, in load order. */
 int scene_loaded_count(void);

@@ -1,5 +1,5 @@
 /* mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed.
- * Positive finite inputs use the hardware seed on Xtensa; host/QEMU use exact sqrt. */
+ * Xtensa uses the hardware seed; host/QEMU use exact sqrt. */
 #pragma once
 #include <math.h>
 

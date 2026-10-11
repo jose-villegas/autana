@@ -82,12 +82,14 @@ Only scenes with attached lights reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
 vertex for lit colors and a `mat3f_t` normal palette per joint, in a separate
 internal RAM block per skin. The first light allocates all existing skins'
 blocks transactionally; a new skin in a lit scene allocates its own block.
-A skin without vertex colors refuses light attachment, and attaching such a
-skin to a lit scene fails with `skin vertex colors required`, changing nothing.
-Skin face colors are albedo. Disabled lights contribute nothing; attached
+Lighting needs per-vertex albedo. A light setter in a scene holding a skin
+without vertex colors (a face-color skin, for example) fails with
+`skin vertex colors required`, and so does attaching such a skin to a lit
+scene. Neither changes anything. Disabled lights contribute nothing; attached
 lights keep the lit color pointer, so zero ambient and no enabled lights
-produce black. Scene unload releases the blocks. World light directions are computed once per frame and
-every lit renderer reads the scene's shared `r3d_skin_lights_t`. Scene
+produce black. Scene unload releases the blocks. World light directions are
+computed at most once per frame, and every lit renderer reads the scene's
+shared `r3d_skin_lights_t`. Scene
 component arrays and the world-light set remain in PSRAM.
 SCNE v1 carries no lighting settings: absent ambient contributes zero,
 and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
@@ -97,14 +99,16 @@ SCNE v1 has no writers for the private ambient and tone-map fields.
 ## Board measurement
 
 The committed [capture lines](data/skin-light-board.txt) hold the
-build ids, timing, quality, checksums and heap measurements. Build
+build ids, timing, quality, checksums and heap measurements. The generated
+table takes the median timing per build and kernel and the worst quality
+errors across captured runs. Build
 `8651de3988fb-diag` is the kernel comparison that selects direct over the table. The table measurements use
 rounded linear-light bytes and belong to the comparison, not the runtime
 albedo/tone-map shader. Their error is measured against exact normalisation
 of packed bind normals. The [comparison sheet](images/skin-light-sheet.png)
 shows source-normal benchmark error; those inputs differ from packed normals.
 
-<!-- generated: skin-light-board sha256=75d0a910a024317c0c6a3045595c00c7215f7d709020555b113120d54f4b649c -->
+<!-- generated: skin-light-board sha256=1f56ded728e964fe8f516d9ede7ec09b16b709640f40734bad40d8802b3aaeee -->
 | Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
 |---|---|---:|---|---:|---:|---:|
 | 8651de3988fb-diag | skin_only | 356.119 | vertex | — | — | — |
@@ -122,6 +126,20 @@ shows source-normal benchmark error; those inputs differ from packed normals.
 | 8651de3988fb-diag | table_build_1 | 26811.000 | build | 27.247 | 0 | 0.000000 |
 | 8651de3988fb-diag | table_build_2 | 32827.000 | build | 33.361 | 0 | 0.000000 |
 | 8651de3988fb-diag | table_build_4 | 44347.000 | build | 45.068 | 0 | 0.000000 |
+| 5df9ac860fde-diag | normal_palette_build | 38183.000 | build | 38.804 | — | — |
+| 5df9ac860fde-diag | skin_only | 355.917 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_nl_1 | 630.538 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_nl_2 | 653.955 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_nl_4 | 699.066 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_rsqrt_1 | 665.536 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_rsqrt_2 | 688.966 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_rsqrt_4 | 739.097 | vertex | — | — | — |
+| 5df9ac860fde-diag | fused_renormalised_1 | 671.819 | vertex | — | 0 | 0.000000 |
+| 5df9ac860fde-diag | fused_renormalised_2 | 694.499 | vertex | — | 0 | 0.000000 |
+| 5df9ac860fde-diag | fused_renormalised_4 | 739.898 | vertex | — | 0 | 0.000000 |
+| 5df9ac860fde-diag | exact_separate_1 | 988.455 | vertex | — | 0 | 0.000000 |
+| 5df9ac860fde-diag | exact_separate_2 | 1011.091 | vertex | — | 0 | 0.000000 |
+| 5df9ac860fde-diag | exact_separate_4 | 1055.140 | vertex | — | 0 | 0.000000 |
 <!-- /generated: skin-light-board -->
 
 The device suite reports normal-palette cycles per build, renderer color
@@ -139,7 +157,7 @@ largest block before allocation, after allocation and after release.
 ```sh
 autana --wait 3600 suite suite_skin_light_perf --flash
 # Copy BUILD_ID, POSE, timing, COST, QUALITY, CHECKSUM and HEAP lines from
-# the printed capture path into docs/render/data/skin-light-board.txt.
+# the printed capture path into docs/render/data/skin-light-board.txt. Include RAM lines.
 python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md
 ```
 

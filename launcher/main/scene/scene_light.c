@@ -1,28 +1,9 @@
-/* Scene lights own shared transfer tables and each lit skin's temporary storage. */
+/* Scene lights own shared transfer tables and each lit skin's color and normal-palette block. */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "core/memory.h"
 #include "scene/scene_internal.h"
-
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-int scene_fail_light_allocation_after = -1;
-#endif
-
-static void*
-light_allocate(size_t bytes) {
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    if (scene_fail_next_allocation || scene_fail_light_allocation_after == 0) {
-        scene_fail_next_allocation = false;
-        scene_fail_light_allocation_after = -1;
-        return NULL;
-    }
-    if (scene_fail_light_allocation_after > 0) {
-        scene_fail_light_allocation_after--;
-    }
-#endif
-    return memory_alloc(bytes, MEMORY_INTERNAL);
-}
 
 bool
 scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
@@ -34,7 +15,7 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
 
     SCENE_STORAGE_RESERVE(layout, end, colors, uint8_t, skin->bind.vertex_count* R3D_SKIN_LIGHT_CHANNELS);
     SCENE_STORAGE_RESERVE(layout, end, normals, mat3f_t, skin->skin.joint_count);
-    void* storage = light_allocate(end);
+    void* storage = scene_allocate(end, MEMORY_INTERNAL);
     if (storage == NULL) {
         return false;
     }
@@ -54,7 +35,7 @@ light_storage_allocate(scene_t* scene) {
             return false;
         }
     }
-    r3d_skin_light_transfer_t* transfer = light_allocate(sizeof *transfer);
+    r3d_skin_light_transfer_t* transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
     if (transfer == NULL) {
         return false;
     }

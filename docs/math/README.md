@@ -140,11 +140,12 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 ### mat3 (`f`)
 
 `mat3f_t` stores a row-major linear matrix. `mat3f_from_mat4()` extracts
-its linear part, excluding translation. `mat3f_cofactor()` returns the
+its linear part, excluding translation. `mat3f_mul()` multiplies two linear
+matrices. `mat3f_cofactor()` returns the
 cofactor matrix: determinant times inverse-transpose for an invertible input,
 without division. It satisfies `cofactor(M) * transpose(M) = det(M) * I`,
-including a negative determinant for a reflection. Normal transforms use it
-with renormalisation and positive determinants.
+including a negative determinant for a reflection. Dividing it by the
+determinant gives the inverse-transpose.
 
 ### mat4 (`f x`)
 

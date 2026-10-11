@@ -231,7 +231,6 @@ stage_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t al
 #undef r3d_skin_clusters
 #undef r3d_skin_clusters_lit
 #undef r3d_skin_refit_nodes
-#undef LIT_RANGE
 
 static void
 kernel(fixture_t* f, kernel_t kind) {
