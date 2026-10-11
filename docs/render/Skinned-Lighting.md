@@ -105,8 +105,10 @@ allocates its shared irradiance table<sup>[[58]](../Citations.md#58)</sup> in
 internal RAM only while at least one renderer uses table mode. Cells store
 packed 8-bit RGB with one scale per table, kept in the scene's
 `r3d_skin_lights_t`. The scale covers the grid's maximum irradiance, preserving irradiance above one.
-The builder computes each unit direction with `vec3f_from_octahedral()` and
-uses two irradiance passes to avoid a scratch allocation. Its irradiance
+Directions come from flash because recomputing them per build costs more
+than the table itself. The host C generator calls `vec3f_from_octahedral()`
+from the math package. The builder uses two irradiance passes to avoid a
+scratch allocation. Its irradiance
 range is `R3D_SKIN_LIGHT_IRRADIANCE_MIN` through `R3D_SKIN_LIGHT_IRRADIANCE_MAX`;
 a table below the floor has zero cells and unit scale, and larger values clamp
 to the ceiling before quantisation.
