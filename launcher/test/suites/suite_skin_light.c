@@ -460,6 +460,26 @@ test_irradiance_table_preserves_range_and_matches_float(void) {
     free(transfer);
 }
 
+static float
+assert_table_cell(const r3d_skin_lights_t* lights, int x, int y) {
+    float maximum = 0.0F;
+    const vec2f_t point = {2.0F * x / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F,
+                           2.0F * y / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F};
+    const vec3f_t direct = light_irradiance(vec3f_from_octahedral(point), lights);
+    const float channels[] = {direct.x, direct.y, direct.z};
+    const uint32_t packed = lights->table->cells[y * R3D_SKIN_LIGHT_TABLE_SIDE + x];
+    TEST_ASSERT_EQUAL_UINT32(0, packed >> (R3D_SKIN_LIGHT_CHANNELS * R3D_SKIN_LIGHT_TABLE_BITS));
+    for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
+        const uint32_t quantized = (packed >> (channel * R3D_SKIN_LIGHT_TABLE_BITS)) & R3D_SKIN_LIGHT_TABLE_MASK;
+        TEST_ASSERT_FLOAT_WITHIN(lights->table_scale * 0.5001F, channels[channel], quantized * lights->table_scale);
+        if (channels[channel] == 0) {
+            TEST_ASSERT_EQUAL_UINT32(0, quantized);
+        }
+        maximum = fmaxf(maximum, channels[channel]);
+    }
+    return maximum;
+}
+
 static void
 test_table_scale_tracks_sampled_maximum_and_cells(void) {
     r3d_skin_light_table_t* table = malloc(sizeof *table);
@@ -476,22 +496,7 @@ test_table_scale_tracks_sampled_maximum_and_cells(void) {
         float maximum = 0.0F;
         for (int y = 0; y < R3D_SKIN_LIGHT_TABLE_SIDE; y++) {
             for (int x = 0; x < R3D_SKIN_LIGHT_TABLE_SIDE; x++) {
-                const vec2f_t point = {2.0F * x / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F,
-                                       2.0F * y / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F};
-                const vec3f_t direct = light_irradiance(vec3f_from_octahedral(point), &lights);
-                const float channels[] = {direct.x, direct.y, direct.z};
-                const uint32_t packed = table->cells[y * R3D_SKIN_LIGHT_TABLE_SIDE + x];
-                TEST_ASSERT_EQUAL_UINT32(0, packed >> (R3D_SKIN_LIGHT_CHANNELS * R3D_SKIN_LIGHT_TABLE_BITS));
-                for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
-                    const uint32_t quantized =
-                        (packed >> (channel * R3D_SKIN_LIGHT_TABLE_BITS)) & R3D_SKIN_LIGHT_TABLE_MASK;
-                    TEST_ASSERT_FLOAT_WITHIN(lights.table_scale * 0.5001F, channels[channel],
-                                             quantized * lights.table_scale);
-                    if (channels[channel] == 0) {
-                        TEST_ASSERT_EQUAL_UINT32(0, quantized);
-                    }
-                    maximum = fmaxf(maximum, channels[channel]);
-                }
+                maximum = fmaxf(maximum, assert_table_cell(&lights, x, y));
             }
         }
         if (count == 0) {
