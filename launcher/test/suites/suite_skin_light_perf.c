@@ -166,9 +166,9 @@ fixture(int lights) {
     return f;
 }
 
-/* Exact normalization reference blends the packed bind normal with the world-space normal palette. */
+/* Packed bind normals keep quality checks independent of source-normal quantisation. */
 static vec3f_t
-reference_normal(const fixture_t* f, int vertex) {
+reference_normal(const fixture_t* f, int vertex, bool renormalise) {
     const uint8_t* r = f->skin.vertices + (size_t)vertex * f->skin.vertex_stride;
     const int influences = f->skin.influences;
     const int8_t* bind = (const int8_t*)(r + 2 * influences);
@@ -180,12 +180,13 @@ reference_normal(const fixture_t* f, int vertex) {
             normal[axis] += weight * (m->m[axis][0] * bind[0] + m->m[axis][1] * bind[1] + m->m[axis][2] * bind[2]);
         }
     }
-    return vec3f_normalize((vec3f_t){normal[0], normal[1], normal[2]});
+    const vec3f_t blended = {normal[0], normal[1], normal[2]};
+    return renormalise ? vec3f_normalize(blended) : blended;
 }
 
 static void
 reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
-    skin_light_reference(reference_normal(f, vertex), &f->lights, f->bind.colors[vertex], 0, out);
+    skin_light_reference(reference_normal(f, vertex, true), &f->lights, f->bind.colors[vertex], 0, out);
 }
 
 typedef enum { SKIN, DIRECT, RENORMALISED, TABLE, EXACT_SEPARATE, NORMAL_PALETTE, TABLE_BUILD } kernel_t;
@@ -240,7 +241,18 @@ quality(fixture_t* f, kernel_t kind) {
             error_max = error > error_max ? error : error_max;
         }
     }
-    if (kind != DIRECT) {
+    if (kind == DIRECT) {
+        int direct_max = 0;
+        for (int v = 0; v < f->bind.vertex_count; v++) {
+            uint8_t reference[R3D_SKIN_LIGHT_CHANNELS];
+            skin_light_reference(reference_normal(f, v, false), &f->lights, f->bind.colors[v], 0, reference);
+            for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
+                const int error = abs((int)f->light[v][k] - reference[k]);
+                direct_max = error > direct_max ? error : direct_max;
+            }
+        }
+        TEST_ASSERT_LESS_OR_EQUAL_INT(R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, direct_max);
+    } else {
         TEST_ASSERT_LESS_OR_EQUAL_INT(
             kind == TABLE ? R3D_SKIN_LIGHT_TABLE_ERROR_BOUND : R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, error_max);
     }

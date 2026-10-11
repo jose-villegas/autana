@@ -125,12 +125,8 @@ reference_light(vec3f_t n, const lights_t* l, uint8_t out[3]) {
  * scales. */
 static const ops_t OPS_RENORMALISE = {6, 2, 1, 1, 0, 0};
 
-/* Both lookups start from the octahedral point (docs/Citations.md#21): 3 abs, 2 add, a reciprocal,
- * 2 mul, the hemisphere test, and on the lower half 2 abs, 2 sub, 2 sign
- * copies (2 mul, 4 add, 1 div, 8 other).
- *
- * Nearest: then the cell, 2 add, 2 mul, 2 conversions; the row offset is a
- * shift (power-of-two sizes). */
+/* Octahedral coordinates (docs/Citations.md#21) share the reciprocal and hemisphere fold;
+ * nearest lookup adds cell conversion and a power-of-two row offset. */
 static const ops_t OPS_NEAREST = {2 + 2, 4 + 2, 1, 0, 8 + 2, 0};
 
 /* Bilinear: then per axis a multiply-add to the cell-centre grid, a clamp

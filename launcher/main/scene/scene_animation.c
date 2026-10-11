@@ -240,7 +240,6 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
-    next.light_kernel = r3d_skin_clusters_lit;
     if (scene->light_count > 0 && !scene_skin_light_allocate(&next)) {
         memory_free(next.internal_storage);
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
@@ -252,7 +251,7 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
     r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
-    scene_skin_light_detach(scene, entity);
+    scene_skin_light_table_release(scene, entity);
     memory_free(scene->skinned_renderers[entity].light_storage);
     memory_free(scene->skinned_renderers[entity].internal_storage);
     scene->skinned_renderers[entity] = next;
@@ -330,7 +329,7 @@ void
 scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
         memory_free(scene->animators[e].storage);
-        scene_skin_light_detach(scene, (scene_entity_t)e);
+        scene_skin_light_table_release(scene, (scene_entity_t)e);
         memory_free(scene->skinned_renderers[e].light_storage);
         memory_free(scene->skinned_renderers[e].internal_storage);
         scene->animators[e] = (scene_animator_t){0};
@@ -388,6 +387,13 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
 }
 
+static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {
+    [SCENE_SKIN_LIGHT_DIRECT] = r3d_skin_clusters_lit,
+    [SCENE_SKIN_LIGHT_RENORMALISED] = r3d_skin_clusters_renormalised,
+    [SCENE_SKIN_LIGHT_TABLE] = r3d_skin_clusters_table,
+};
+_Static_assert(sizeof LIGHT_KERNELS / sizeof LIGHT_KERNELS[0] == SCENE_SKIN_LIGHT_TABLE + 1, "lighting mode count");
+
 void
 scene_skin_range(scene_t* scene, int first, int count) {
     int offset = 0;
@@ -400,8 +406,8 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
         if (scene->light_count > 0 && skin->lighting_valid) {
-            skin->light_kernel(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
-                               skin->normal_palette, &scene->world_lights, skin->colors);
+            LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
+                                            skin->normal_palette, &scene->world_lights, skin->colors);
         } else {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }

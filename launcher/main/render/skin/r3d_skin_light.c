@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
-#include "render/skin/r3d_skin_light_directions.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
 void
@@ -26,11 +25,20 @@ r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_t* ou
     }
 }
 
+static vec3f_t
+table_direction(int cell) {
+    const vec2f_t point = {2.0F * (cell % R3D_SKIN_LIGHT_TABLE_SIDE) / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F,
+                           2.0F * (cell / R3D_SKIN_LIGHT_TABLE_SIDE) / (R3D_SKIN_LIGHT_TABLE_SIDE - 1) - 1.0F};
+    return vec3f_from_octahedral(point);
+}
+
+/* Normal-indexed illumination (docs/Citations.md#58), octahedral directions (docs/Citations.md#21). */
 float
 r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table_t* out) {
+    /* Light-change builds use two passes to avoid a large scratch buffer and an allocation failure path. */
     float maximum = 0.0F;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_irradiance(light_table_directions[cell], lights);
+        const vec3f_t sum = light_irradiance(table_direction(cell), lights);
         if (sum.x > maximum) {
             maximum = sum.x;
         }
@@ -41,15 +49,20 @@ r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table
             maximum = sum.z;
         }
     }
-    const float scale = maximum > 0.0F ? maximum / R3D_SKIN_LIGHT_TABLE_MASK : 1.0F;
-    const float encode = maximum > 0.0F ? R3D_SKIN_LIGHT_TABLE_MASK / maximum : 0.0F;
+    if (maximum < R3D_SKIN_LIGHT_IRRADIANCE_MIN) {
+        memset(out, 0, sizeof *out);
+        return 1.0F;
+    }
+    maximum = fminf(maximum, R3D_SKIN_LIGHT_IRRADIANCE_MAX);
+    const float scale = maximum / R3D_SKIN_LIGHT_TABLE_MASK;
+    const float encode = R3D_SKIN_LIGHT_TABLE_MASK / maximum;
     for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
-        const vec3f_t sum = light_irradiance(light_table_directions[cell], lights);
+        const vec3f_t sum = light_irradiance(table_direction(cell), lights);
         const float channels[] = {sum.x, sum.y, sum.z};
         uint32_t packed = 0;
 #pragma GCC unroll R3D_SKIN_LIGHT_CHANNELS
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-            const uint32_t value = (uint32_t)(channels[k] * encode + 0.5F);
+            const uint32_t value = (uint32_t)(fminf(channels[k], maximum) * encode + 0.5F);
             packed |= value << (k * R3D_SKIN_LIGHT_TABLE_BITS);
         }
         out->cells[cell] = packed;
