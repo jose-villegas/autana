@@ -3,6 +3,11 @@
 #include <math.h>
 #include "render/skin/r3d_skin_light.h"
 
+/* suite_skin_light.c angular sweep: host worst 43 bytes, plus one byte of rounding margin. */
+#define R3D_SKIN_LIGHT_TABLE_ERROR_BOUND    44
+/* test_transfer_error_against_float_bake reaches two bytes; a one-byte bound fails. */
+#define R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND 2
+
 static inline uint8_t
 skin_light_reference_encode(float linear, float white) {
     const float mapped = fminf(linear / (1.0F + linear * white), 1.0F);

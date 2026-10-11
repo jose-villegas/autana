@@ -71,6 +71,28 @@ COST cycles_per_build=200
         self.assertIn("Build `runtime-diag`", table)
         self.assertIn("| table | 1 | 100.000 | 8 | 0.5 | 200.000 | 40.000 | 80 | 1920 | 124 |", table)
 
+    def test_modes_require_table_capture(self):
+        with self.assertRaisesRegex(ValueError, "table"):
+            lighting_modes("BUILD_ID empty-diag\n")
+
+    def test_modes_use_latest_table_build_memory_and_derived_counts(self):
+        def capture(build, memory, costs):
+            text = f"BUILD_ID {build}\nPOSE vertices=4\nRAM mode=table renderer_bytes={memory} scene_bytes=20 scene_metadata_psram=30\n"
+            for cost in costs:
+                text += f"skin_light_perf: test_fused_table_3 med=1cycles\nCOST cycles_per_vertex={cost}\nQUALITY max=1 mean=0.1\n"
+            text += "skin_light_perf: test_table_build_3 med=1cycles\nCOST cycles_per_build=1\n"
+            return text
+        text = capture("old-diag", 10, [100]) + capture("new-diag", 40, [2, 4])
+        table = lighting_modes(text)
+        self.assertIn("Build `new-diag`", table)
+        self.assertIn("| table | 3 | 3.000 | 1 | 0.1 |", table)
+        self.assertIn("| 40 | 20 | 30 |", table)
+        self.assertNotIn("old-diag", table)
+
+    def test_modes_require_table_build_cost(self):
+        with self.assertRaisesRegex(ValueError, "table"):
+            lighting_modes("BUILD_ID empty-diag\nskin_light_perf: test_fused_table_1 med=1cycles\nCOST cycles_per_vertex=1\n")
+
     def test_comment_lines_are_ignored(self):
         self.assertEqual(list(rows("# Capture comments\n")), [])
 

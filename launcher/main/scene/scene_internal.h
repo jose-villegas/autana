@@ -115,7 +115,6 @@ typedef struct {
     void* light_storage;
     bool lighting_valid;
     scene_skin_light_mode_t light_mode;
-    r3d_skin_light_kernel_t light_kernel;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -171,7 +170,7 @@ void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
 bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
-void scene_skin_light_detach(scene_t* scene, scene_entity_t entity);
+void scene_skin_light_table_release(scene_t* scene, scene_entity_t entity);
 bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
 void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
 void scene_lights_prepare(scene_t* scene);

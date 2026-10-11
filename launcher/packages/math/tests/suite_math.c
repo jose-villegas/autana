@@ -395,8 +395,22 @@ test_mat3_from_nonsymmetric_mat4_preserves_rows(void) {
     }
 }
 
+static void
+test_mat3_product_applies_right_operand_first(void) {
+    const mat3f_t left = {{{1, 2, 3}, {4, 5, 6}, {7, 8, 10}}};
+    const mat3f_t right = {{{2, -1, 4}, {3, 5, 0}, {-2, 6, 1}}};
+    const mat3f_t expected = {{{2, 27, 7}, {11, 57, 22}, {18, 93, 38}}};
+    const mat3f_t product = mat3f_mul(left, right);
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int col = 0; col < MAT3F_AXES; col++) {
+            TEST_ASSERT_EQUAL_FLOAT(expected.m[row][col], product.m[row][col]);
+        }
+    }
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
     RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);

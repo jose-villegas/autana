@@ -5,9 +5,6 @@
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
-static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {r3d_skin_clusters_lit, r3d_skin_clusters_renormalised,
-                                                        r3d_skin_clusters_table};
-
 bool
 scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     size_t end = 0;
@@ -24,7 +21,6 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     }
     memset(storage, 0, end);
     skin->light_storage = storage;
-    skin->light_kernel = LIGHT_KERNELS[skin->light_mode];
     skin->colors = (uint8_t(*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)storage + layout.colors);
     skin->normal_palette = (mat3f_t*)(void*)((uint8_t*)storage + layout.normals);
     return true;
@@ -200,19 +196,18 @@ scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_ligh
         scene->light_table_dirty = true;
     }
     if (skin->light_mode == SCENE_SKIN_LIGHT_TABLE) {
-        scene_skin_light_detach(scene, entity);
+        scene_skin_light_table_release(scene, entity);
     }
     if (mode == SCENE_SKIN_LIGHT_TABLE) {
         scene->light_table_users++;
     }
     skin->light_mode = mode;
-    skin->light_kernel = LIGHT_KERNELS[mode];
     scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
     return true;
 }
 
 void
-scene_skin_light_detach(scene_t* scene, scene_entity_t entity) {
+scene_skin_light_table_release(scene_t* scene, scene_entity_t entity) {
     if (scene->skinned_renderers[entity].light_mode != SCENE_SKIN_LIGHT_TABLE) {
         return;
     }

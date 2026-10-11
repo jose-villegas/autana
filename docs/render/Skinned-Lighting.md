@@ -17,25 +17,12 @@ flowchart TB
     Transfer --> Mesh["lit mesh colors"]
 ```
 
-| Variant | Per vertex |
-|---|---|
-| Reference | float bind normal, skinned, renormalised, N.L per light |
-| Direct | skinned, not renormalised, N.L per light; bind normal as float or int8 per axis |
-| Table, nearest | int8 bind normal, skinned, its octahedral point<sup>[[21]](../Citations.md#21)</sup> (`vec3f_octahedral`, any length) picks one cell |
-| Table, bilinear | the same point blends the four nearest cell centres with 8-bit weights |
-
-Each table cell holds the light of its centre's direction as three bytes, padded to
-four. A cell's direction is fixed, so the directions are one table shared by
-every object; the light bytes are rebuilt per object per frame. Every variant ends in
-the same integer stage, so only the light bytes differ. The host comparison's lights are
-directional lights plus ambient in object space; each light-count row uses
-the first lights of `LIGHTS` in the benchmark.
-
 ## Runtime lighting
 
 `render/skin/r3d_skin_light.h` owns the fused lighting kernels.
-`r3d_skin_clusters_lit()` shares packed weights between position and normal
-palettes, grows cluster bounds, and shades each vertex. The normal palette
+`r3d_skin_clusters_lit()` (direct), `r3d_skin_clusters_renormalised()` and
+`r3d_skin_clusters_table()` share packed weights between position and normal
+palettes, grow cluster bounds, and shade each vertex. The normal palette
 holds the inverse-transpose of `entity_world * joint_palette` for each joint:
 the cofactor divided by its determinant before blending. Non-uniform scale
 and runtime reflections set through `scene_set_transform()` are lit correctly.
@@ -100,24 +87,29 @@ SCNE v1 has no writers for the private ambient and tone-map fields.
 ## Lighting modes
 
 Lighting mode is private to each skinned renderer. **Direct is the default**,
-the cheapest mode: it evaluates N.L on the blended, unrenormalised world-space
-normal. Pick it when joint darkening is acceptable. Renormalised evaluates
+the cheapest mode: it evaluates N.L on the blended world-space normal without
+renormalising, so vertices where joints blend come out darker. Pick it when
+that is acceptable. Renormalised evaluates
 N.L after `mathf_rsqrt` normalisation and removes that darkening at small cost;
 pick it when normal length must not affect light intensity. Table evaluates bilinear
-irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>;
-its lookup cost is flat in light count, so it only pays with more lights
-than direct handles cheaply. The scene light cap (`R3D_SKIN_LIGHT_MAX`)
-currently bounds that trade-off. These modes are an import choice;
-the scene-format work fills each renderer's mode from its skin pack entry.
+irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>.
+Its per-vertex cost does not grow with light count, but every light change
+rebuilds the shared table. The table below compares it with direct at each
+light count up to `R3D_SKIN_LIGHT_MAX`. No import setting or public call selects
+a mode, so every renderer runs direct; reading the mode from the skin pack
+entry is planned ([design sketch](../plans/Animation-System-Design-Sketch.md)).
 Runtime tests and device suites select the mode through `scene_internal.h`.
 
-Normal palettes carry inverse-transpose correctness in every mode. A scene
+Every mode reads the same inverse-transpose normal palette. A scene
 allocates its shared irradiance table<sup>[[58]](../Citations.md#58)</sup> in
 internal RAM only while at least one renderer uses table mode. Cells store
-packed 8-bit RGB with a per-table scale in scene metadata. The scale
-covers the grid's maximum irradiance, preserving irradiance above one.
-The builder reads unit directions from a generated flash table and evaluates
-ambient plus directional lighting without normalising cell directions.
+packed 8-bit RGB with one scale per table, kept in the scene's
+`r3d_skin_lights_t`. The scale covers the grid's maximum irradiance, preserving irradiance above one.
+The builder computes each unit direction with `vec3f_from_octahedral()` and
+uses two irradiance passes to avoid a scratch allocation. Its irradiance
+range is `R3D_SKIN_LIGHT_IRRADIANCE_MIN` through `R3D_SKIN_LIGHT_IRRADIANCE_MAX`;
+a table below the floor has zero cells and unit scale, and larger values clamp
+to the ceiling before quantisation.
 Integer bilinear lookup blends those fixed-point channels before
 albedo multiplication, tone mapping and encoding, using multiplication by the
 shared scale. `vec3f_octahedral()` pays a reciprocal division; interpolation
@@ -127,7 +119,7 @@ budget and encoding are defined by `R3D_SKIN_LIGHT_TABLE_*`.
 
 A mode change keeps the shared color and normal-palette tail and changes the
 renderer kernel outside the vertex loop. Allocation failure preserves the
-mode, kernel, pointers and free bytes. The last table renderer releases the
+mode, pointers and free bytes. The last table renderer releases the
 table. Light setters and a light entity's `SCENE_FLAG_SKIN_DIRTY` rebuild it;
 posing or rotating a skin does not. All table renderers read the same world
 lights and scene table.
@@ -135,8 +127,8 @@ lights and scene table.
 The generated table reports fused cycles per vertex at each light count,
 worst and mean light-byte error against independently evaluated float
 lighting, table and normal-palette build cycles per frame, and RAM per
-renderer and per scene. Scene bytes are shared across renderers. Its generator reads the board capture, without substituting
-host timings.
+renderer and per scene. Scene bytes are shared across renderers. The table is
+generated from the [board capture](#board-measurement).
 
 <!-- generated: skin-light-modes sha256=af7c95fec712bfcef964c51334ba32ee0447d122722669f63e606398348accf6 -->
 Build `bf9edf215977-diag`.
@@ -154,18 +146,12 @@ Build `bf9edf215977-diag`.
 | table | 4 | 856.185 | 4 | 0.380420 | 65401.000 | 5103.000 | 3744 | 2048 | 124 |
 <!-- /generated: skin-light-modes -->
 
-The comparison sheet shows normal-length darkening and the octahedral
-approximation across the recorded host variants. Its encoded-light table
-experiment is separate from the runtime irradiance format.
-
-![Lighting variants and error against the float reference](images/skin-light-sheet.png)
-
 ## Board measurement
 
 The committed [capture lines](data/skin-light-board.txt) hold the
 build id, timing, quality, checksums, heap measurements and RAM allocations.
 The generated table takes the median timing per build and kernel and the worst quality
-errors across captured runs. The first run is warm-up and is excluded.
+errors across captured runs. The capture omits each session's first run, a warm-up.
 Runtime error is measured against float lighting of packed bind normals.
 The [comparison sheet](images/skin-light-sheet.png) shows source-normal
 benchmark error; those inputs differ from packed normals.
@@ -201,17 +187,34 @@ normals and uses square root, float albedo decode and gamma independently
 of the runtime transfer tables.
 
 ```sh
-autana --wait 3600 suite suite_skin_light_perf --flash
+autana --wait 3600 suite suite_skin_light_perf --runs 6 --flash
 # Copy BUILD_ID, POSE, timing, COST, QUALITY, CHECKSUM and HEAP lines from
 # the printed capture path into docs/render/data/skin-light-board.txt. Include RAM lines.
 python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md
 ```
 
-The host benchmark keeps its linear-light direct and octahedral comparisons
-in `launcher/tools/r3d/skin_light/skin_light_baseline.*`. The runtime table stores irradiance before albedo and tone mapping; the host
-comparison tables store encoded light bytes and use a different transfer.
-
 ## Results
+
+The host comparison's variants:
+
+| Variant | Per vertex |
+|---|---|
+| Reference | float bind normal, skinned, renormalised, N.L per light |
+| Direct | skinned, not renormalised, N.L per light; bind normal as float or int8 per axis |
+| Table, nearest | int8 bind normal, skinned, its octahedral point<sup>[[21]](../Citations.md#21)</sup> (`vec3f_octahedral`, any length) picks one cell |
+| Table, bilinear | the same point blends the four nearest cell centres with 8-bit weights |
+
+Each host comparison table cell holds the light of its centre's direction as three bytes, padded to
+four. A cell's direction is fixed, so the directions are one table shared by
+every object; the light bytes are rebuilt per object per frame. Every variant ends in
+the same integer stage, so only the light bytes differ. The host comparison's lights are
+directional lights plus ambient in object space; each light-count row uses
+the first lights of `LIGHTS` in the benchmark.
+
+The host benchmark keeps its linear-light direct and octahedral comparisons
+in `launcher/tools/r3d/skin_light/skin_light_baseline.*`. The runtime table
+stores irradiance before albedo and tone mapping; the host comparison tables
+store encoded light bytes and use a different transfer.
 
 The mesh is the hand-rigged capybara's glTF export, the cached bake
 `python launcher/tools/bake/bake.py path capybara.glb` prints, passed to
@@ -319,10 +322,8 @@ with the reference's:
 
 ## Decision
 
-Modes are an import choice, defaulting to direct for cost. Renormalised
-removes joint darkening; table has fixed lookup cost in light count. The
-[lighting modes](#lighting-modes) section contains the generated runtime
-quality and cost table and the comparison sheet.
+Direct is the default; [Lighting modes](#lighting-modes) says when to pick
+the others.
 
 ## Reproduce
 

@@ -77,7 +77,9 @@ r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f
     return true;
 }
 
-enum { POSITION_AXES = 3, MATRIX_COLUMNS = 4, LIGHT_DIRECT, LIGHT_RENORMALISED, LIGHT_TABLE };
+enum { POSITION_AXES = 3, MATRIX_COLUMNS = 4 };
+
+enum { LIGHT_DIRECT, LIGHT_RENORMALISED, LIGHT_TABLE };
 
 void
 r3d_skin_palette(const r3d_skin_t* skin, const mat4f_t* model, int position_scale, mat4f_t* palette) {

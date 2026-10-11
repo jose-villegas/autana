@@ -72,7 +72,7 @@ static void
 test_transfer_error_against_float_bake(void) {
     static const float whites[] = {0, 0.25F, 0.5F, 1, 2, 4, 16};
 
-    enum { SAMPLES_PER_BIN = 16, MAX_ERROR = 2 };
+    enum { SAMPLES_PER_BIN = 16 };
 
     r3d_skin_light_transfer_t* transfer = malloc(sizeof *transfer);
     TEST_ASSERT_NOT_NULL(transfer);
@@ -85,15 +85,16 @@ test_transfer_error_against_float_bake(void) {
              i++) {
             const float linear = exp2f(R3D_SKIN_LIGHT_RADIANCE_MIN_EXP
                                        + (float)i / (SAMPLES_PER_BIN * (1 << R3D_SKIN_LIGHT_RADIANCE_BITS)));
-            TEST_ASSERT_UINT8_WITHIN(MAX_ERROR, skin_light_reference_encode(linear, whites[w]),
-                                     light_encode(linear, transfer));
+            TEST_ASSERT_UINT8_WITHIN(R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND,
+                                     skin_light_reference_encode(linear, whites[w]), light_encode(linear, transfer));
         }
         for (int albedo = 0; albedo < R3D_SKIN_LIGHT_DECODE_SIZE; albedo++) {
             const float exact = powf((float)albedo / R3D_SKIN_LIGHT_BYTE_SCALE, R3D_SKIN_LIGHT_GAMMA);
             const float decoded = light_decode((uint8_t)albedo, transfer);
             for (int intensity = 0; intensity <= 64; intensity++) {
                 const float value = intensity * 0.25F;
-                TEST_ASSERT_UINT8_WITHIN(MAX_ERROR, skin_light_reference_encode(exact * value, whites[w]),
+                TEST_ASSERT_UINT8_WITHIN(R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND,
+                                         skin_light_reference_encode(exact * value, whites[w]),
                                          light_encode(decoded * value, transfer));
             }
         }
@@ -403,8 +404,7 @@ assert_table_sample(vec3f_t normal, const r3d_skin_lights_t* lights, float white
     int maximum = 0;
     for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
         TEST_ASSERT_UINT8_WITHIN(R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, expected[k], direct[k]);
-        TEST_ASSERT_UINT8_WITHIN(R3D_SKIN_LIGHT_TABLE_ERROR_BOUND + R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND, direct[k],
-                                 sampled[k]);
+        TEST_ASSERT_UINT8_WITHIN(R3D_SKIN_LIGHT_TABLE_ERROR_BOUND, expected[k], sampled[k]);
         const int error = abs((int)expected[k] - sampled[k]);
         maximum = error > maximum ? error : maximum;
     }
@@ -485,7 +485,11 @@ test_table_scale_tracks_sampled_maximum_and_cells(void) {
                 for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
                     const uint32_t quantized =
                         (packed >> (channel * R3D_SKIN_LIGHT_TABLE_BITS)) & R3D_SKIN_LIGHT_TABLE_MASK;
-                    TEST_ASSERT_FLOAT_WITHIN(lights.table_scale, channels[channel], quantized * lights.table_scale);
+                    TEST_ASSERT_FLOAT_WITHIN(lights.table_scale * 0.5001F, channels[channel],
+                                             quantized * lights.table_scale);
+                    if (channels[channel] == 0) {
+                        TEST_ASSERT_EQUAL_UINT32(0, quantized);
+                    }
                     maximum = fmaxf(maximum, channels[channel]);
                 }
             }
@@ -499,8 +503,37 @@ test_table_scale_tracks_sampled_maximum_and_cells(void) {
     free(table);
 }
 
+static void
+test_table_extreme_finite_intensities(void) {
+    r3d_skin_light_table_t* table = malloc(sizeof *table);
+    TEST_ASSERT_NOT_NULL(table);
+    static const float intensities[] = {1e-38F, 3e38F};
+    for (size_t i = 0; i < sizeof intensities / sizeof intensities[0]; i++) {
+        r3d_skin_lights_t lights = {.count = 2, .table = table};
+        for (int j = 0; j < lights.count; j++) {
+            lights.direction[j] = (vec3f_t){0, 1, 0};
+            lights.color[j] = (vec3f_t){intensities[i], intensities[i], intensities[i]};
+        }
+        lights.table_scale = r3d_skin_light_table_build(&lights, table);
+        TEST_ASSERT_TRUE(isfinite(lights.table_scale));
+        TEST_ASSERT_GREATER_THAN_FLOAT(0, lights.table_scale);
+        const vec3f_t sampled = r3d_skin_light_table_sample((vec3f_t){0, 1, 0}, &lights);
+        TEST_ASSERT_TRUE(isfinite(sampled.x));
+        if (i == 0) {
+            TEST_ASSERT_EQUAL_FLOAT(1, lights.table_scale);
+            for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
+                TEST_ASSERT_EQUAL_UINT32(0, table->cells[cell]);
+            }
+        } else {
+            TEST_ASSERT_GREATER_THAN_FLOAT(1, sampled.x);
+        }
+    }
+    free(table);
+}
+
 void
 suite_skin_light(void) {
+    RUN_TEST(test_table_extreme_finite_intensities);
     RUN_TEST(test_table_scale_tracks_sampled_maximum_and_cells);
     RUN_TEST(test_irradiance_table_preserves_range_and_matches_float);
     RUN_TEST(test_default_direct_preserves_blended_normal_length);

@@ -1,10 +1,9 @@
 # Animation system: design sketch
 
-**Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning and the scene
-animator, skinned-renderer and three lighting modes are implemented. Each
-renderer defaults to direct; scene-format work fills the mode from its skin
-pack entry. SCNE v2 and
-the clip picker are proposed. `[A]` marks a proposal of this sketch.
+**Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
+animator and skinned-renderer components, and per-renderer lighting (direct
+by default) are implemented. Mode selection from the skin pack entry,
+SCNE v2 and the clip picker are proposed. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
 
@@ -30,14 +29,15 @@ flowchart TB
     Property --> Placement["dirty entity placements"]
     Placement --> Raster
     Pose -.-> Post["proposed post-pose<br/>IK and root motion"]
-    Skin -.-> Light["selected lighting kernel"]
-    Light -.-> Raster
+    Skin --> Light["lit colors (scenes with lights)"]
+    Light --> Raster
 ```
 
 It runs in the scene's advance (`scene_render()`, before the draw), so an app
 never skins. The raster reads an `r3d_lit_mesh_t` view. A skinned renderer's
 view points `positions`, `clusters` and `nodes` at its mutable buffers,
-retaining the bind mesh's colours.
+retaining the bind mesh's colours unless the scene has lights, when `colors`
+points at its lit buffer.
 
 ## 2. Two cores
 
@@ -121,11 +121,6 @@ CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#57)</sup>,
 separate influence-count kernels and cluster ranges.
 
 The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime-pose-and-skinning).
-
-Lighting has three modes per renderer, defaulting to direct. Renormalised
-removes joint darkening; table shares scene irradiance and rebuilds only when
-a light changes. The table is allocated only while used. The scene-format
-work fills the mode from the skin pack entry.
 
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id attachment

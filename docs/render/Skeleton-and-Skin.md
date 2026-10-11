@@ -135,8 +135,8 @@ matrices and the palette in internal RAM. A separate block reserves
 `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex for lit colors and a `mat3f_t`
 world-space normal palette per joint only while the scene has lights.
 Without runtime lights the mesh retains its bind-color pointer, with no copy.
-With lights, `r3d_skin_clusters_lit()` skins positions and normals together,
-renormalises the normal, and shades the bind albedo into that color buffer.
+With lights, the renderer's lighting kernel skins positions and normals together
+and shades the bind albedo into that color buffer.
 The normal palette is the inverse-transpose of entity world times joint palette.
 Scene light directions stay in world space and are shared before cluster
 jobs run; baked renderers keep their pack colors. See [Skinned lighting](Skinned-Lighting.md).
@@ -195,17 +195,4 @@ through scene attachment, animation, split ranges, bounds and drawing.
 ## Current limits
 
 Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
-authored SCNE animator rows and dynamic skin lighting are planned.
-
-## Per-renderer lighting mode
-
-Each skinned renderer owns a private mode and a selected kernel: direct
-(the default), renormalised or table. The scene-format work fills it from
-the skin pack entry. Tests use `scene_skin_light_set_mode()` through
-`scene_internal.h`; no public mode setter or import option is exposed.
-Normal palettes and the lit color tail are shared across all modes. Only
-scenes with a table-mode renderer allocate the shared irradiance table in
-internal RAM, releasing it with the last user or the scene. Mode changes
-allocate transactionally; failure leaves state unchanged. A changed light
-rebuilds the table, while skin poses and entity rotations only change the
-lookup normal. See [Lighting modes](Skinned-Lighting.md#lighting-modes).
+authored SCNE animator and lighting rows are planned.

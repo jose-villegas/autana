@@ -58,11 +58,11 @@ def rows(text):
 
 def lighting_modes(text):
     measured = list(rows(text))
-    builds = [row[0] for row in measured if row[1] == "fused_table_1"]
+    builds = [row[0] for row in measured if re.fullmatch(r"fused_table_\d+", row[1])]
     table = ["| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / frame | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |",
              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     if not builds:
-        return "Board capture for the three runtime modes is pending.\n\n" + "\n".join(table)
+        raise ValueError("no runtime table capture")
     build = builds[-1]
     costs = {row[1]: row for row in measured if row[0] == build}
     memory = {}
@@ -73,9 +73,13 @@ def lighting_modes(text):
         match = re.search(r"RAM mode=(\w+) renderer_bytes=(\d+) scene_bytes=(\d+).*scene_metadata_psram=(\d+)", line)
         if match and current_build == build:
             memory[match[1]] = (match[2], match[3], match[4])
+    if not any(re.fullmatch(r"table_build_\d+", name) for name in costs):
+        raise ValueError("no runtime table build capture")
     palette_row = costs.get("normal_palette_build")
     for mode in ("direct", "renormalised", "table"):
-        for lights in (1, 2, 4):
+        light_counts = sorted(int(match[1]) for name in costs
+                              if (match := re.fullmatch(rf"fused_{mode}_(\d+)", name)))
+        for lights in light_counts:
             row = costs.get(f"fused_{mode}_{lights}")
             if row is None:
                 continue
@@ -92,11 +96,16 @@ def main():
     parser.add_argument("capture", type=pathlib.Path)
     parser.add_argument("document", type=pathlib.Path)
     args = parser.parse_args()
+    capture = args.capture.read_text(encoding="utf-8")
+    try:
+        modes = lighting_modes(capture)
+    except ValueError as error:
+        parser.error(str(error))
     table = ["| Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |",
              "|---|---|---:|---|---:|---:|---:|"]
-    table.extend("| " + " | ".join(row) + " |" for row in rows(args.capture.read_text(encoding="utf-8")))
+    table.extend("| " + " | ".join(row) + " |" for row in rows(capture))
     replace_block(args.document, "skin-light-board", "\n".join(table))
-    replace_block(args.document, "skin-light-modes", lighting_modes(args.capture.read_text(encoding="utf-8")))
+    replace_block(args.document, "skin-light-modes", modes)
 
 
 if __name__ == "__main__":
