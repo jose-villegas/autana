@@ -11,14 +11,14 @@ seeded = true
 # Exact sampled camera poses, memoized by clip bytes, sampling arguments and sampler code.
 
 [[poses]]
-key = "5e941f04fffdcf607061a5a93c17705f7e45823c7440167b13c2cbb64a26eb44"
+key = "a15f88ffdbe958ad2e2af6b0d5fd56a089020145a20089520a222c0e18a9081e"
 poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
 count = 364
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 source = "launcher/demo/sponza/sponza.scene.toml"
 
 [[poses]]
-key = "8be024819e1afd3adff28c688e5f5ee0a76d7bce4d87681866e21e9d9f35a817"
+key = "f429f92bcc39a3006bf29294f1fdeff24a69e82c95b1ade1a421918d8a330564"
 poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
