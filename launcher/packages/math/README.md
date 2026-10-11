@@ -59,6 +59,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec2x.h](include/math/linear/vec2x.h) | vec2x: a 2-component vector of a Q16.16. |
 | [include/math/linear/vec3_template.h](include/math/linear/vec3_template.h) | vec3_template: the three-component vector for one number type; see math_template.h for the macro arguments. |
 | [include/math/linear/vec3f.h](include/math/linear/vec3f.h) | vec3f: a 3-component vector of a float. |
+| [include/math/linear/vec3f_octahedral_recip.h](include/math/linear/vec3f_octahedral_recip.h) | vec3f_octahedral_recip: octahedral projection using mathf_recip for a nonzero direction. |
 | [include/math/linear/vec3i.h](include/math/linear/vec3i.h) | vec3i: a 3-component vector of an int32. |
 | [include/math/linear/vec3s.h](include/math/linear/vec3s.h) | vec3s: a 3-component vector of an int16. |
 | [include/math/linear/vec3x.h](include/math/linear/vec3x.h) | vec3x: a 3-component vector of a Q16.16. |

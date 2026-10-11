@@ -39,3 +39,7 @@ void r3d_skin_light_direct(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, c
                            int count, const r3d_skin_lights_t* lights, bool renormalise, uint8_t (*out)[3]);
 void r3d_skin_light_table(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
                           int count, const r3d_skin_light_table_t* table, uint8_t (*out)[3]);
+
+void r3d_skin_clusters_lit(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
+                           int count, r3d_skin_output_t* posed, const r3d_skin_lights_t* lights, bool renormalise,
+                           uint8_t (*out)[3]);
