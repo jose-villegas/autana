@@ -200,12 +200,17 @@ reference_light(vec3f_t n, const r3d_skin_lights_t* lights, uint8_t out[3]) {
     }
 }
 
-typedef enum { SKIN, DIRECT, RENORMALISED, LOOKUP, BUILD } kernel_t;
+typedef enum { SKIN, DIRECT, RENORMALISED, LOOKUP, BUILD, FUSED_DIRECT, FUSED_RENORMALISED } kernel_t;
 
 static void
 kernel(fixture_t* f, kernel_t kind) {
     switch (kind) {
         case SKIN: r3d_skin_clusters(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed); break;
+        case FUSED_DIRECT:
+        case FUSED_RENORMALISED:
+            r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights,
+                                  kind == FUSED_RENORMALISED, f->light);
+            break;
         case DIRECT:
         case RENORMALISED:
             r3d_skin_light_direct(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->lights,
@@ -219,7 +224,18 @@ kernel(fixture_t* f, kernel_t kind) {
 }
 
 static void
-quality(const fixture_t* f, kernel_t kind) {
+quality(fixture_t* f, kernel_t kind) {
+    if (kind == FUSED_DIRECT || kind == FUSED_RENORMALISED) {
+        const size_t position_bytes = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
+        const size_t light_bytes = (size_t)f->bind.vertex_count * sizeof *f->light;
+        const uint32_t position_crc = asset_crc32(f->posed.positions, position_bytes);
+        const uint32_t light_crc = asset_crc32(f->light, light_bytes);
+        kernel(f, SKIN);
+        TEST_ASSERT_EQUAL_HEX32(position_crc, asset_crc32(f->posed.positions, position_bytes));
+        kernel(f, kind == FUSED_RENORMALISED ? RENORMALISED : DIRECT);
+        TEST_ASSERT_EQUAL_HEX32(light_crc, asset_crc32(f->light, light_bytes));
+        ESP_LOGI(TAG, "CHECK fused_positions=%08" PRIx32 " fused_light=%08" PRIx32, position_crc, light_crc);
+    }
     if (kind == SKIN) {
         ESP_LOGI(TAG, "CHECK positions=%08" PRIx32,
                  asset_crc32(f->posed.positions, (size_t)f->bind.vertex_count * sizeof *f->posed.positions));
@@ -286,6 +302,8 @@ measure(kernel_t kind, int lights, const char* label) {
     PERF_TEST(test_##prefix##_4, kind, 4)
 PERF_TEST(test_skin_only, SKIN, 1)
 LIGHT_COUNT_TESTS(direct, DIRECT)
+LIGHT_COUNT_TESTS(fused_direct, FUSED_DIRECT)
+PERF_TEST(test_fused_renormalised_4, FUSED_RENORMALISED, 4)
 LIGHT_COUNT_TESTS(renormalised, RENORMALISED)
 PERF_TEST(test_table_lookup, LOOKUP, 4)
 LIGHT_COUNT_TESTS(table_build, BUILD)
@@ -295,6 +313,10 @@ LIGHT_COUNT_TESTS(table_build, BUILD)
 void
 suite_skin_light_perf(void) {
     RUN_TEST(test_skin_only);
+    RUN_TEST(test_fused_direct_1);
+    RUN_TEST(test_fused_direct_2);
+    RUN_TEST(test_fused_direct_4);
+    RUN_TEST(test_fused_renormalised_4);
     RUN_TEST(test_direct_1);
     RUN_TEST(test_direct_2);
     RUN_TEST(test_direct_4);

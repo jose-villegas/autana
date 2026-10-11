@@ -123,8 +123,61 @@ test_table_centres_edges_and_ranges(void) {
     free(directions);
 }
 
+static void
+test_fused_matches_separate_ranges(void) {
+    static const int16_t positions[VERTICES][3] = {{-23, 51, 7}, {91, -31, 16}, {7, 19, -52}, {-41, 13, 37}};
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+        for (int renormalise = 0; renormalise <= 1; renormalise++) {
+            fixture_t* f = malloc(sizeof *f);
+            TEST_ASSERT_NOT_NULL(f);
+            *f = fixture(influences);
+            f->skin.vertices = f->records;
+            f->bind.positions = positions;
+            for (int j = 0; j < JOINTS; j++) {
+                f->palette[j].m[0][1] = -0.3F * (j + 1);
+                f->palette[j].m[1][0] = 0.2F * (j + 1);
+                f->palette[j].m[2][3] = 17.0F * j;
+            }
+            const r3d_skin_lights_t lights = {
+                .count = R3D_SKIN_LIGHT_MAX,
+                .direction = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {-1, 0, 0}},
+                .colour = {{0.3F, 0.2F, 0.1F}, {0.1F, 0.2F, 0.3F}, {0.2F, 0.1F, 0.3F}, {0.1F, 0.3F, 0.2F}},
+                .ambient = {0.1F, 0.2F, 0.3F}};
+            const size_t bytes = r3d_skin_output_bytes(&f->bind);
+            void* separate_block = calloc(1, bytes);
+            void* fused_block = calloc(1, bytes);
+            TEST_ASSERT_NOT_NULL(separate_block);
+            TEST_ASSERT_NOT_NULL(fused_block);
+            r3d_skin_output_t separate, fused;
+            TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, separate_block, bytes, &separate));
+            TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, fused_block, bytes, &fused));
+            uint8_t fused_light[VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+            memset(fused_light, SENTINEL, sizeof fused_light);
+            for (int c = CLUSTERS - 1; c >= 0; c--) {
+                r3d_skin_clusters(&f->skin, &f->bind, f->palette, c, 1, &separate);
+                r3d_skin_light_direct(&f->skin, &f->bind, f->palette, c, 1, &lights, renormalise, f->out);
+                r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, c, 1, &fused, &lights, renormalise, fused_light);
+                TEST_ASSERT_EQUAL_HEX32(asset_crc32(separate.positions, sizeof positions),
+                                        asset_crc32(fused.positions, sizeof positions));
+                TEST_ASSERT_EQUAL_HEX32(asset_crc32(f->out, sizeof f->out),
+                                        asset_crc32(fused_light, sizeof fused_light));
+                TEST_ASSERT_EQUAL_MEMORY(separate.positions, fused.positions, sizeof positions);
+                TEST_ASSERT_EQUAL_MEMORY(separate.clusters, fused.clusters, sizeof CLUSTER_ROWS);
+                TEST_ASSERT_EQUAL_MEMORY(f->out, fused_light, sizeof fused_light);
+            }
+            r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, CLUSTERS, 0, &fused, &lights, renormalise,
+                                  fused_light);
+            TEST_ASSERT_EQUAL_MEMORY(f->out, fused_light, sizeof fused_light);
+            free(fused_block);
+            free(separate_block);
+            free(f);
+        }
+    }
+}
+
 void
 suite_skin_light(void) {
+    RUN_TEST(test_fused_matches_separate_ranges);
     RUN_TEST(test_axis_lambert_and_away);
     RUN_TEST(test_ranges_and_influence_rotations);
     RUN_TEST(test_table_centres_edges_and_ranges);

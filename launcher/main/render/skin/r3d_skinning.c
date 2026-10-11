@@ -4,6 +4,7 @@
 #include <string.h>
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
+#include "render/skin/r3d_skin_light_internal.h"
 
 static size_t
 cluster_offset(const r3d_lit_mesh_t* bind) {
@@ -76,17 +77,28 @@ grow_bounds(int16_t lo[POSITION_AXES], int16_t hi[POSITION_AXES], const int16_t 
 
 static inline __attribute__((always_inline)) void
 skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const int16_t bind[POSITION_AXES],
-            int16_t out[POSITION_AXES]) {
-    const float weight_scale = 1.0F / (float)R3D_SKIN_WEIGHT_SUM;
+            int16_t out[POSITION_AXES], vec3f_t* normal) {
+    vec3f_t rows[POSITION_AXES];
     float posed[POSITION_AXES] = {0};
     for (int i = 0; i < influences; i++) {
         const mat4f_t* joint = &palette[record[i]];
-        const float weight = (float)record[influences + i] * weight_scale;
+        const float weight = (float)record[influences + i] * R3D_SKIN_WEIGHT_RECIP;
         for (int axis = 0; axis < POSITION_AXES; axis++) {
             const float position = (joint->m[axis][0] * (float)bind[0]) + (joint->m[axis][1] * (float)bind[1])
                                    + (joint->m[axis][2] * (float)bind[2]) + joint->m[axis][POSITION_AXES];
             posed[axis] += position * weight;
+            if (normal != NULL) {
+                const vec3f_t row =
+                    vec3f_scale((vec3f_t){joint->m[axis][0], joint->m[axis][1], joint->m[axis][2]}, weight);
+                rows[axis] = i == 0 ? row : vec3f_add(rows[axis], row);
+            }
         }
+    }
+    if (normal != NULL) {
+        const int8_t* packed = (const int8_t*)(record + 2 * influences);
+        const vec3f_t n = {packed[0] * R3D_SKIN_NORMAL_RECIP, packed[1] * R3D_SKIN_NORMAL_RECIP,
+                           packed[2] * R3D_SKIN_NORMAL_RECIP};
+        *normal = (vec3f_t){vec3f_dot(rows[0], n), vec3f_dot(rows[1], n), vec3f_dot(rows[2], n)};
     }
     for (int a = 0; a < POSITION_AXES; a++) {
         out[a] = (int16_t)mathf_round_i32(mathf_clamp_finite(posed[a], (float)INT16_MIN, (float)INT16_MAX));
@@ -95,14 +107,22 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
 
 static inline __attribute__((always_inline)) void
 skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
-           r3d_skin_output_t* out, int influences) {
+           r3d_skin_output_t* out, int influences, const r3d_skin_lights_t* lights, bool renormalise,
+           uint8_t (*light)[3]) {
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
         empty_bounds(cluster->lo, cluster->hi);
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
+            vec3f_t normal;
             skin_vertex(skin->vertices + ((size_t)v * skin->vertex_stride), influences, palette, bind->positions[v],
-                        out->positions[v]);
+                        out->positions[v], lights != NULL ? &normal : NULL);
+            if (lights != NULL) {
+                if (renormalise) {
+                    normal = light_renormalise(normal);
+                }
+                light_evaluate(normal, lights, light[v]);
+            }
             grow_bounds(cluster->lo, cluster->hi, out->positions[v], out->positions[v]);
         }
     }
@@ -111,25 +131,44 @@ skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pa
 static void
 skin_two(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
          r3d_skin_output_t* out) {
-    skin_range(skin, bind, palette, first, count, out, R3D_SKIN_INFLUENCES_MIN);
+    skin_range(skin, bind, palette, first, count, out, R3D_SKIN_INFLUENCES_MIN, NULL, false, NULL);
 }
 
 static void
 skin_four(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
           r3d_skin_output_t* out) {
-    skin_range(skin, bind, palette, first, count, out, R3D_SKIN_INFLUENCES_MAX);
+    skin_range(skin, bind, palette, first, count, out, R3D_SKIN_INFLUENCES_MAX, NULL, false, NULL);
 }
 
 void
 r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
                   r3d_skin_output_t* out) {
-    assert(skin->vertex_count == (uint32_t)bind->vertex_count);
-    assert(first >= 0 && count >= 0 && first <= bind->cluster_count && count <= bind->cluster_count - first);
-    assert(skin->influences == R3D_SKIN_INFLUENCES_MIN || skin->influences == R3D_SKIN_INFLUENCES_MAX);
+    check_range(skin, bind, first, count);
     if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {
         skin_two(skin, bind, palette, first, count, out);
     } else {
         skin_four(skin, bind, palette, first, count, out);
+    }
+}
+
+#define LIT_RANGE(name, influences)                                                                                    \
+    static void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count, \
+                     r3d_skin_output_t* out, const r3d_skin_lights_t* lights, bool renormalise, uint8_t(*light)[3]) {  \
+        skin_range(skin, bind, palette, first, count, out, influences, lights, renormalise, light);                    \
+    }
+LIT_RANGE(lit_two, R3D_SKIN_INFLUENCES_MIN)
+LIT_RANGE(lit_four, R3D_SKIN_INFLUENCES_MAX)
+
+void
+r3d_skin_clusters_lit(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
+                      r3d_skin_output_t* out, const r3d_skin_lights_t* lights, bool renormalise, uint8_t (*light)[3]) {
+    assert(lights != NULL);
+    assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);
+    check_range(skin, bind, first, count);
+    if (skin->influences == R3D_SKIN_INFLUENCES_MIN) {
+        lit_two(skin, bind, palette, first, count, out, lights, renormalise, light);
+    } else {
+        lit_four(skin, bind, palette, first, count, out, lights, renormalise, light);
     }
 }
 
