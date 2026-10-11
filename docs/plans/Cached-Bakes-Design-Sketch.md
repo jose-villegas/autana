@@ -212,11 +212,12 @@ whose sha256 differs from the lock.
    and it runs only on the GPU runner, so they live in that runner's local
    cache: `fetch` never looks for them on the release, and `produce` writes
    them there. The release holds meshes and the `.glb`.
-
-5. **Path-dependent stages key on the sampled poses.** A `[[poses]]` memo row
-   keys the exact parsed rows by clip bytes, node, interval, size, lens, near
-   plane and sampler code. A firmware build reads the memo without a host C
-   compiler; a miss names `bake.py lock`, which samples missing rows and writes
-   only those needed. `bake.py check` samples every needed row again and rejects
-   missing, unneeded or differing rows, exactly. Sampler and TRCK changes that
-   preserve the poses preserve mesh, reference and fit keys.
+5. **Path-dependent stages key on the sampled poses.** A `[[poses]]` lock row
+   holds the digest of a camera path's sampled rows, keyed on clip bytes, node,
+   interval, size, lens, near plane and sampler code. A build whose rows are all
+   locked needs no host C compiler. A missing row is sampled through `track_host`
+   when the host can, and otherwise leaves the bake unlocked, naming `bake.py lock`.
+   Only `bake.py lock` writes these rows, sampling every needed one again and
+   dropping the rest; `bake.py check` samples every needed row again and rejects
+   one missing, unneeded or different, exactly. Sampler and TRCK changes that
+   keep the poses keep the mesh, reference and fit keys.

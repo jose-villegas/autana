@@ -258,11 +258,11 @@ class StageTests(unittest.TestCase):
 
         job, scene = fitted_job()
         inputs = reference_inputs(job, scene)
-        recipe = bake.reference_recipe(inputs, TOOL_KEYS)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
-        self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS)))
+        self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS, bake.Poses({}))))
 
     def test_a_fit_brings_its_start_as_a_mesh_bake_no_pack_holds(self):
         found = bake.bakes([build_pack.DEFAULT_SEARCH])
@@ -327,7 +327,7 @@ class FittedBakeCase(unittest.TestCase):
             return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(bake, "read_lock", return_value=lock), \
+        with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (lock, {}) if kw.get("table", "bake") is None else lock), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch.object(bake, "runs_made", return_value=made or {}), \
                 mock.patch.object(produce, "produce", side_effect=stub), \
@@ -446,7 +446,9 @@ class PosesTests(FittedBakeCase):
         self.job = self.scene.renderers[0]
 
     def keys(self, rows=None):
-        return bake.stage_keys(self.job, self.scene, TOOL_KEYS, AnyStart(), rows)
+        poses = bake.Poses({}) if rows is None else rows
+        tools = {**TOOL_KEYS, "poses": bake.tool_digest("poses")}
+        return bake.stage_keys(self.job, self.scene, tools, AnyStart(), poses)
 
     def test_sampler_closure_is_outside_consumers(self):
         excluded = {"anim/track_host.py", "anim/tracks_asset.py", "build/packages.py"}
@@ -458,30 +460,24 @@ class PosesTests(FittedBakeCase):
                                                  "launcher/packages/math/"))
                                  or path == "launcher/tools/anim/track_host.c" for path in native))
 
-    def test_encoder_padding_changes_memo_key_but_keeps_stage_keys(self):
+    def test_encoder_padding_changes_lock_row_key_but_keeps_stage_keys(self):
         from anim import tracks_asset
 
-        before_rows, after_rows = {}, {}
+        before_rows, after_rows = bake.Poses({}), bake.Poses({})
         before = self.keys(before_rows)
-        with tempfile.TemporaryDirectory() as directory:
-            scratch = pathlib.Path(directory) / "encoder.py"
-            scratch.write_text('def encode(original, *args, **kwargs):\n'
-                               '    return original(*args, **kwargs) + bytes(1)\n')
-            namespace = {}
-            exec(compile(scratch.read_text(), str(scratch), "exec"), namespace)
-            original = tracks_asset.encode
-            with mock.patch.object(tracks_asset, "encode", side_effect=lambda *args, **kwargs:
-                                   namespace["encode"](original, *args, **kwargs)):
-                after = self.keys(after_rows)
-        self.assertNotEqual(set(before_rows), set(after_rows))
-        self.assertEqual(sorted(row["poses"] for row in before_rows.values()),
-                         sorted(row["poses"] for row in after_rows.values()))
+        original = tracks_asset.encode
+        with mock.patch.object(tracks_asset, "encode", side_effect=lambda *args, **kwargs:
+                               original(*args, **kwargs) + bytes(1)):
+            after = self.keys(after_rows)
+        self.assertNotEqual(set(before_rows.used), set(after_rows.used))
+        self.assertEqual(sorted(row["poses"] for row in before_rows.used.values()),
+                         sorted(row["poses"] for row in after_rows.used.values()))
         self.assertEqual(before, after)
 
-    def test_native_refactor_changes_memo_key_but_keeps_stage_keys(self):
+    def test_native_refactor_changes_lock_row_key_but_keeps_stage_keys(self):
         from anim import track_host
 
-        before_rows, after_rows = {}, {}
+        before_rows, after_rows = bake.Poses({}), bake.Poses({})
         before = self.keys(before_rows)
         with tempfile.TemporaryDirectory() as directory:
             scratch = pathlib.Path(directory) / "track_host.c"
@@ -502,20 +498,20 @@ class PosesTests(FittedBakeCase):
                     after = self.keys(after_rows)
                 finally:
                     bake.tool_digest.cache_clear()
-        self.assertNotEqual(set(before_rows), set(after_rows))
-        self.assertEqual(sorted(row["poses"] for row in before_rows.values()),
-                         sorted(row["poses"] for row in after_rows.values()))
+        self.assertNotEqual(set(before_rows.used), set(after_rows.used))
+        self.assertEqual(sorted(row["poses"] for row in before_rows.used.values()),
+                         sorted(row["poses"] for row in after_rows.used.values()))
         self.assertEqual(before, after)
 
     def test_real_pose_and_spacing_changes_rekey_consumers(self):
         from anim_probe import write_camera_clip
 
-        rows = {}
+        rows = bake.Poses({})
         before = self.keys(rows)
         write_camera_clip(self.root, reach=2.0)
-        moved = {}
+        moved = bake.Poses({})
         after = self.keys(moved)
-        self.assertNotEqual({row["poses"] for row in rows.values()}, {row["poses"] for row in moved.values()})
+        self.assertNotEqual({row["poses"] for row in rows.used.values()}, {row["poses"] for row in moved.used.values()})
         for stage in ("start", "reference", "fit"):
             self.assertNotEqual(before[stage], after[stage])
         self.job.renderer.visibility.every_ms += 1
@@ -544,56 +540,103 @@ class PosesTests(FittedBakeCase):
         self.assertTrue(all(moved[stage] != still[stage] for stage in ("start", "reference", "fit")))
 
     def test_bad_clip_naming_fails_load(self):
-        from anim import tracks_asset
+        from anim import clip_name
 
         for name, value in (("SUFFIX", ".broken.toml"), ("clip_id", mock.Mock(side_effect=ValueError("broken clip id")))):
-            with self.subTest(name=name), mock.patch.object(tracks_asset, name, value):
+            with self.subTest(name=name), mock.patch.object(clip_name, name, value):
                 with self.assertRaises((ValueError, bake.SettingsError)):
                     load_scene(self.scene_path)
 
     def test_lock_hit_needs_no_sampler_and_miss_names_lock(self):
         from anim import track_host
 
-        rows = {}
+        rows = bake.Poses({})
         before = self.keys(rows)
-        bake.sampled_poses.cache_clear()
-        with mock.patch.object(bake, "read_poses_lock", return_value=rows), \
-                mock.patch.object(track_host, "program", side_effect=AssertionError("compiler unavailable")):
-            self.assertEqual(before, self.keys())
-        with mock.patch.object(bake, "read_poses_lock", return_value={}), \
-                mock.patch.object(track_host, "program", side_effect=track_host.TrackHostError("no compiler")):
-            with self.assertRaisesRegex(bake.BakeMissing, "bake.py lock"):
-                self.keys()
+        with mock.patch.object(track_host, "program", side_effect=AssertionError("compiler unavailable")):
+            self.assertEqual(before, self.keys(bake.Poses(rows.used)))
+        with mock.patch.object(track_host, "program", side_effect=track_host.TrackHostError("no compiler")):
+            self.assertIsNone(self.keys(bake.Poses({}))["start"])
 
     def test_check_resamples_and_rejects_forged_missing_and_unneeded_rows(self):
-        rows = {}
+        rows = bake.Poses({})
         found = bake.bakes([self.root], AnyStart(), rows)
         locked = {item.key: row_of(item, MADE_SHA256) for item in found}
-        self.assertEqual(bake.check(found, locked, rows), [])
-        key = next(iter(rows))
-        forged = {**rows, key: {**rows[key], "poses": "forged"}}
+        self.assertEqual(bake.check_poses(found, rows.used), [])
+        key = next(iter(rows.used))
+        forged = {**rows.used, key: {**rows.used[key], "poses": "forged"}}
         for held, message in ((forged, "differs"), ({}, "missing"),
-                              ({**rows, "unneeded": {**rows[key], "key": "unneeded"}}, "nothing needs")):
+                              ({**rows.used, "unneeded": {**rows.used[key], "key": "unneeded"}}, "nothing needs")):
             with self.subTest(message=message):
-                self.assertTrue(any(message in problem for problem in bake.check(found, locked, held)))
+                self.assertTrue(any(message in problem for problem in bake.check_poses(found, held)))
 
     def test_lock_writes_needed_rows_and_drops_unneeded_rows(self):
-        rows = {}
-        found = bake.bakes([self.root], poses_rows=rows)
+        rows = bake.Poses({})
+        found = bake.bakes([self.root], poses=rows)
         starts = {item.key: MADE_SHA256 for item in found if not item.packed}
         found = bake.bakes([self.root], starts, rows)
         locked = {item.key: row_of(item, MADE_SHA256) for item in found}
-        path = self.root / "memo.lock"
-        bake.write_lock(list(locked.values()), path, poses=[*rows.values(),
-                        {**next(iter(rows.values())), "key": "unneeded"}])
+        path = self.root / "lock_row.lock"
+        bake.write_lock(list(locked.values()), path, poses=[*[{**row, "poses": "forged"} for row in rows.used.values()],
+                        {**next(iter(rows.used.values())), "key": "unneeded"}])
         with mock.patch.object(bake, "LOCK", path), \
-                mock.patch.object(bake, "read_lock", return_value=locked):
+                mock.patch.object(bake, "read_lock", return_value=(locked, bake.read_lock(path, table="poses"))):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(bake.main(["lock", str(self.root)]), 0)
-        held = bake.read_poses_lock(path)
-        self.assertEqual(set(held), set(rows))
+        held = bake.read_lock(path, table="poses")
+        self.assertEqual(set(held), set(rows.used))
+        self.assertEqual({key: row["poses"] for key, row in held.items()},
+                         {key: row["poses"] for key, row in rows.used.items()})
         self.assertTrue(all(set(row) == set(bake.POSE_FIELDS) for row in held.values()))
+
+    def test_missing_sampler_leaves_only_camera_pack_unlocked(self):
+        from anim import track_host
+        from r3d import skin_pack
+
+        plain = self.root / "plain"
+        plain.mkdir()
+        imported = write_import(plain, name="plain.import.toml")
+        (imported.parent / "mesh.mesh").write_bytes(b"plain mesh")
+        packs, jobs = build_pack.pack_jobs([self.root])
+        rows = bake.Poses({})
+        found = bake.bakes_in(packs, jobs, {}, rows)
+        unaffected = [item for item in found if item.scene is None]
+        self.assertTrue(unaffected)
+        lock = {item.key: row_of(item, bake.file_sha256(item.tree), size=item.tree.stat().st_size) for item in unaffected}
+        for item in unaffected:
+            bake.store(item.tree, lock[item.key], item.suffix, self.cache)
+        for failure in (track_host.TrackHostError("no C compiler found; set CC"),
+                        track_host.TrackHostError("no sh"), FileNotFoundError("compiler unavailable")):
+            with self.subTest(failure=str(failure)), \
+                    mock.patch.object(track_host, "program", side_effect=failure), \
+                    mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (lock, {}) if kw.get("table", "bake") is None else lock):
+                missing = bake.bakes_in(packs, jobs)
+                self.assertTrue(all(item.key is None for item in missing if item.scene is not None))
+                with self.assertRaises(bake.BakeUnlocked) as raised:
+                    bake.fetch_all(missing, lock, self.cache, offline=True)
+                message = str(raised.exception)
+                for text in (str(self.scene.camera.component.path.animation), "node", "every_ms", "size",
+                             "bake.py lock", "C compiler", "track_host.py", "CI Bakes check"):
+                    self.assertIn(text, message)
+                self.assertNotIn(str(failure), message)
+                skipped = []
+                with mock.patch.object(build_pack, "REPO", self.root), \
+                        mock.patch.object(build_pack, "pack_entry", side_effect=lambda key, *args, **kw: (key, build_pack.image_asset.TYPE, b"plain")), \
+                        mock.patch.object(skin_pack, "entries", return_value=[]):
+                    with contextlib.redirect_stderr(io.StringIO()) as err:
+                        self.assertEqual(build_pack.main([str(self.root), "-o", str(self.root / "out"),
+                                                             "--bake-cache", str(self.cache), "--offline"]), 2)
+                    self.assertIn("bake.py lock", err.getvalue())
+                    with self.assertRaises(bake.BakeUnlocked):
+                        build_pack.pack_bytes([self.root], cache=self.cache, offline=True)
+                    built = build_pack.pack_bytes([self.root], cache=self.cache, offline=True, unlocked=skipped)
+                self.assertEqual(sorted(built), [imported.name.removesuffix(build_pack.IMPORT)])
+                self.assertEqual(sorted(skipped), sorted(name for name in packs if name not in built))
+
+    def test_missing_clip_is_not_a_sampler_failure(self):
+        self.scene.camera.component.path.animation.unlink()
+        with self.assertRaises((FileNotFoundError, bake.SettingsError)):
+            self.keys()
 
     def test_region_visibility_ignores_clip_changes(self):
         from anim_probe import write_camera_clip
@@ -744,7 +787,7 @@ class LockTests(unittest.TestCase):
         found = [bake_of("k" * 64, self.tree), bake_of("n" * 64, other)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "run": 5}}), \
+                mock.patch.object(bake, "read_lock", return_value=({"k" * 64: {**self.row, "run": 5}}, {})), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
@@ -809,7 +852,7 @@ class LockTests(unittest.TestCase):
         found = [bake_of("k" * 64, self.tree)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={"o" * 64: stale}), \
+                mock.patch.object(bake, "read_lock", return_value=({"o" * 64: stale}, {})), \
                 mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch("urllib.request.urlopen") as network, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
@@ -820,7 +863,7 @@ class LockTests(unittest.TestCase):
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "seeded": True}}), \
+                mock.patch.object(bake, "read_lock", return_value=({"k" * 64: {**self.row, "seeded": True}}, {})), \
                 contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(bake.main(["check"]), 0)
         self.assertIn("1 of 1 rows are seeded", out.getvalue())
@@ -1091,22 +1134,7 @@ def filled_cache(directory):
     return found, lock
 
 
-def cached_tree_lock(test):
-    """Current keys with the tree lock's bytes, for cache integration fixtures without writing the lock."""
-    previous = {row["output"]: row for row in bake.read_lock().values()}
-    found = bake.bakes([build_pack.DEFAULT_SEARCH], {})
-    starts = {item.key: previous[item.output]["sha256"] for item in found if not item.packed and item.kind == "mesh"}
-    found = bake.bakes([build_pack.DEFAULT_SEARCH], starts)
-    rows = {item.key: {**previous[item.output], "key": item.key} for item in found}
-    patch = mock.patch.object(bake, "read_lock", return_value=rows)
-    patch.start()
-    test.addCleanup(patch.stop)
-
-
 class TreeTests(unittest.TestCase):
-    def setUp(self):
-        cached_tree_lock(self)
-
     def test_packs_build_offline_from_a_filled_cache_as_they_do_online(self):
         with tempfile.TemporaryDirectory() as directory:
             filled_cache(directory)
@@ -1148,7 +1176,7 @@ class TreeTests(unittest.TestCase):
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.MESH_SUFFIX, cache).read_bytes())
             name = scratch.output.removesuffix(bake.MESH_SUFFIX)
             rows = {key: row for key, row in lock.items() if key != scratch.key}
-            with mock.patch.object(bake, "read_lock", return_value=rows), \
+            with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (rows, {}) if kw.get("table", "bake") is None else rows), \
                     mock.patch("urllib.request.urlopen") as network:
                 packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], [f"{name}={mesh}"], cache=cache, offline=True)
             network.assert_not_called()
@@ -1172,7 +1200,6 @@ class SkipUnlockedTests(unittest.TestCase):
     """build_pack.py --skip-unlocked: what test/run_tests.sh builds on a branch waiting on the lock."""
 
     def setUp(self):
-        cached_tree_lock(self)
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.root = pathlib.Path(folder.name)
@@ -1186,7 +1213,7 @@ class SkipUnlockedTests(unittest.TestCase):
 
     def build(self, rows, *flags):
         args = ["-o", str(self.out), "--bake-cache", str(self.cache), "--offline", *flags]
-        with mock.patch.object(bake, "read_lock", return_value=rows), \
+        with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (rows, {}) if kw.get("table", "bake") is None else rows), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
             return build_pack.main(args), err.getvalue()
 
