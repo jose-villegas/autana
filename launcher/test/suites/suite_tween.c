@@ -1,13 +1,4 @@
-/*
- * Portable suite: anim/tween.h, timeline ramps, easing and lerps.
- *
- * These moved here from boot_anim.h, which had its own private copies and
- * its own tests for them under boot_anim-specific names. The tests moved
- * too, generalised away from anything boot_anim-shaped (a millisecond of
- * the boot animation, a letter's flight) into checks about the primitives
- * themselves; see suite_boot_anim.c's own history for the originals this
- * suite is closest to.
- */
+/* Portable timeline and easing contracts, independent of animation state. */
 
 #include <stdint.h>
 
@@ -98,52 +89,6 @@ test_ease_out_into_ease_in_makes_a_smooth_apex(void) {
     TEST_ASSERT_TRUE_MESSAGE((just_after - at_start) <= 3, "ease-in should still barely be moving just past the apex");
 }
 
-/* tween_lerp_i32() */
-
-static void
-test_lerp_hits_its_endpoints_exactly(void) {
-    TEST_ASSERT_EQUAL_INT32(1000, tween_lerp_i32(1000, 5000, 0));
-    TEST_ASSERT_EQUAL_INT32(5000, tween_lerp_i32(1000, 5000, 255));
-}
-
-static void
-test_lerp_is_between_its_endpoints_throughout(void) {
-    for (int u = 0; u <= 255; u++) {
-        const int32_t v = tween_lerp_i32(1000, 5000, (uint8_t)u);
-        TEST_ASSERT_TRUE_MESSAGE(v >= 1000 && v <= 5000, "a lerp must never overshoot either endpoint");
-    }
-}
-
-static void
-test_lerp_works_the_same_shrinking_as_growing(void) {
-    /* b < a: the span is negative, and the lerp should still walk from a
-     * down to b rather than assuming growth. */
-    TEST_ASSERT_EQUAL_INT32(5000, tween_lerp_i32(5000, 1000, 0));
-    TEST_ASSERT_EQUAL_INT32(1000, tween_lerp_i32(5000, 1000, 255));
-
-    int32_t last = 6000;
-    for (int u = 0; u <= 255; u++) {
-        const int32_t v = tween_lerp_i32(5000, 1000, (uint8_t)u);
-        TEST_ASSERT_TRUE_MESSAGE(v <= last, "lerping toward a smaller value must decrease monotonically");
-        last = v;
-    }
-}
-
-static void
-test_lerp_handles_a_span_too_wide_for_int32_untouched(void) {
-    /* (b - a) * 255 alone would already be close to overflowing int32_t for
-     * a span in the tens of millions, not a shape any call site here
-     * actually needs, but the (int64_t) widening exists specifically so a
-     * future one does not have to rediscover that the hard way. */
-    const int32_t a = -1000000000;
-    const int32_t b = 1000000000;
-    TEST_ASSERT_EQUAL_INT32(a, tween_lerp_i32(a, b, 0));
-    TEST_ASSERT_EQUAL_INT32(b, tween_lerp_i32(a, b, 255));
-    const int32_t mid = tween_lerp_i32(a, b, 128);
-    TEST_ASSERT_TRUE_MESSAGE(mid > a && mid < b, "a wide span must still land strictly between its endpoints, not "
-                                                 "wrap around from an overflowing intermediate");
-}
-
 void
 suite_tween(void) {
     RUN_TEST(test_a_ramp_is_flat_before_and_after);
@@ -156,11 +101,6 @@ suite_tween(void) {
     RUN_TEST(test_the_ease_in_keeps_its_endpoints_and_lags_in_the_middle);
     RUN_TEST(test_the_ease_in_never_goes_backwards);
     RUN_TEST(test_ease_out_into_ease_in_makes_a_smooth_apex);
-
-    RUN_TEST(test_lerp_hits_its_endpoints_exactly);
-    RUN_TEST(test_lerp_is_between_its_endpoints_throughout);
-    RUN_TEST(test_lerp_works_the_same_shrinking_as_growing);
-    RUN_TEST(test_lerp_handles_a_span_too_wide_for_int32_untouched);
 }
 
 SUITE_REGISTER(suite_tween);

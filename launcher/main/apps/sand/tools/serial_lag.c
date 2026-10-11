@@ -23,6 +23,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "math/scalar/mathi.h"
+
 #include "sand.h"
 #include "sand_priv.h"
 
@@ -45,7 +47,7 @@ typedef struct {
 
 static int
 lerp_step(int from, int to, int step, int steps) {
-    return from + ((to - from) * step) / (steps - 1);
+    return mathi_lerp(from, to, step, steps - 1);
 }
 
 static uint8_t cells_before[LAG_W * LAG_H];

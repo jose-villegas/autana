@@ -41,6 +41,23 @@ def problems_for(**kwargs):
 
 
 class CheckMathDocs(unittest.TestCase):
+    def test_nested_templates_bind_the_operation_name_and_require_its_row(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            math = root / check_math_docs.MATH
+            (math / "math_template.h").write_text(
+                "#define MATH_DEFINE_OPERATION(P, OP) \\\n"
+                "    static inline int P##_##OP(int a) { return a; }\n"
+                "#define MATH_DEFINE_RANGES(P) MATH_DEFINE_OPERATION(P, min)\n")
+            template = math / "vec2_template.h"
+            template.write_text("#define MATH_DEFINE_VEC2(P, T) \\\n" + FUNCTION
+                                + "    MATH_DEFINE_RANGES(P)\n")
+            self.assertTrue(any("P_min(" in p for p in check_math_docs.check(root)))
+            page = root / check_math_docs.PAGE
+            page.write_text(page.read_text().replace("### vec2\n", "### vec2\n`P_min(a, b)`\n"))
+            self.assertEqual([], check_math_docs.check(root))
+
     def test_the_real_page_matches_the_real_headers(self):
         self.assertEqual([], check_math_docs.check(REPO))
 

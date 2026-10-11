@@ -7,7 +7,12 @@
 
 #include <stdbool.h>
 
+#include "math/linear/math_template.h"
 #include "math/linear/vec_swizzle_template.h"
+
+#define MATH_VEC2_COMPONENTS2(OP, a, b)           OP(a.x, b.x), OP(a.y, b.y)
+#define MATH_VEC2_COMPONENTS3(OP, a, b, c)        OP(a.x, b.x, c.x), OP(a.y, b.y, c.y)
+#define MATH_VEC2_LERP_COMPONENTS(OPS, a, b, ...) OPS##_lerp(a.x, b.x, __VA_ARGS__), OPS##_lerp(a.y, b.y, __VA_ARGS__)
 
 #define MATH_DEFINE_VEC2(P, T, W, OPS)                                                                                 \
                                                                                                                        \
@@ -21,6 +26,8 @@
     /* a - b = (ax - bx, ay - by) */                                                                                   \
     static inline P##_t P##_sub(P##_t a, P##_t b) { return (P##_t){OPS##_sub(a.x, b.x), OPS##_sub(a.y, b.y)}; }        \
                                                                                                                        \
+    MATH_DEFINE_VECTOR_RANGES(P, OPS, MATH_VEC2_COMPONENTS2, MATH_VEC2_COMPONENTS3)                                    \
+                                                                                                                       \
     /* a * s = (ax*s, ay*s), in the number type's own units (Q16.16 for fixed). */                                     \
     static inline P##_t P##_scale(P##_t a, T s) { return (P##_t){OPS##_mul(a.x, s), OPS##_mul(a.y, s)}; }              \
                                                                                                                        \
@@ -32,3 +39,6 @@
                                                                                                                        \
     /* P_c1c2(v) = (v.c1, v.c2), each c one of x, y. */                                                                \
     MATH_DEFINE_SWIZZLE2(P, P, 2)
+
+#define MATH_DEFINE_VEC2_LERP(P, T, OPS)    MATH_DEFINE_VECTOR_LERP(P, T, OPS, MATH_VEC2_LERP_COMPONENTS)
+#define MATH_DEFINE_VEC2_LERP_RATIO(P, OPS) MATH_DEFINE_VECTOR_LERP_RATIO(P, OPS, MATH_VEC2_LERP_COMPONENTS)

@@ -8,7 +8,13 @@
 
 #include <stdbool.h>
 
+#include "math/linear/math_template.h"
 #include "math/linear/vec_swizzle_template.h"
+
+#define MATH_VEC3_COMPONENTS2(OP, a, b)    OP(a.x, b.x), OP(a.y, b.y), OP(a.z, b.z)
+#define MATH_VEC3_COMPONENTS3(OP, a, b, c) OP(a.x, b.x, c.x), OP(a.y, b.y, c.y), OP(a.z, b.z, c.z)
+#define MATH_VEC3_LERP_COMPONENTS(OPS, a, b, ...)                                                                      \
+    OPS##_lerp(a.x, b.x, __VA_ARGS__), OPS##_lerp(a.y, b.y, __VA_ARGS__), OPS##_lerp(a.z, b.z, __VA_ARGS__)
 
 #define MATH_DEFINE_VEC3(P, T, W, OPS)                                                                                 \
                                                                                                                        \
@@ -25,6 +31,8 @@
     static inline P##_t P##_sub(P##_t a, P##_t b) {                                                                    \
         return (P##_t){OPS##_sub(a.x, b.x), OPS##_sub(a.y, b.y), OPS##_sub(a.z, b.z)};                                 \
     }                                                                                                                  \
+                                                                                                                       \
+    MATH_DEFINE_VECTOR_RANGES(P, OPS, MATH_VEC3_COMPONENTS2, MATH_VEC3_COMPONENTS3)                                    \
                                                                                                                        \
     /* a * s = (ax*s, ay*s, az*s), in the number type's own units (Q16.16 for fixed). */                               \
     static inline P##_t P##_scale(P##_t a, T s) {                                                                      \
@@ -54,3 +62,6 @@
     static inline P##_t P##_normalize(P##_t a) {                                                                       \
         return P##_scale(a, OPS##_div(OPS##_one(), OPS##_sqrt(P##_dot(a, a))));                                        \
     }
+
+#define MATH_DEFINE_VEC3_LERP(P, T, OPS)    MATH_DEFINE_VECTOR_LERP(P, T, OPS, MATH_VEC3_LERP_COMPONENTS)
+#define MATH_DEFINE_VEC3_LERP_RATIO(P, OPS) MATH_DEFINE_VECTOR_LERP_RATIO(P, OPS, MATH_VEC3_LERP_COMPONENTS)
