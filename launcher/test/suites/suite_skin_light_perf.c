@@ -60,6 +60,7 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #define SAMPLES      100
 #define WARMUP       8
 static const char* TAG = "skin_light_perf";
+static const char TEST_PREFIX[] = "test_";
 static const vec3f_t DIRECTIONS[] = {
     {0.45F, 0.80F, 0.40F}, {-0.70F, 0.35F, 0.30F}, {0.10F, 0.40F, -0.90F}, {0, -1, 0.15F}};
 static const vec3f_t COLORS[] = {
@@ -294,6 +295,7 @@ measure(kernel_t kind, int lights, const char* label) {
     }
     const perf_stats_t stats = perf_stats_compute(f->samples, SAMPLES);
     const perf_stats_t micros = perf_stats_compute(f->micros, SAMPLES);
+    ESP_LOGI(TAG, "%s both cores: mean %lldus", label + sizeof TEST_PREFIX - 1, (long long)micros.avg);
     ESP_LOGI(TAG, "%s min=%lldus max=%lldus avg=%lldus med=%lldus p95=%lldus", label, (long long)micros.min,
              (long long)micros.max, (long long)micros.avg, (long long)micros.med, (long long)micros.p95);
     ESP_LOGI(TAG, "%s min=%lldcycles max=%lldcycles avg=%lldcycles med=%lldcycles p95=%lldcycles", label,
