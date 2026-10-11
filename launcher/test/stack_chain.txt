@@ -23,3 +23,4 @@ indirect ui_end_over : ui_ridge_paint
 indirect icon_walk_blocks : ui_draw_icon_emit ui_transform_icon_emit
 indirect ui_transform_icon_emit : ui.c:icon_fill_emit
 indirect tune.c:change tune_registry_handle_line : suite_r3d_lit.c:cull_reply
+indirect scene_skin_range : r3d_skin_clusters_lit r3d_skin_clusters_renormalised r3d_skin_clusters_table

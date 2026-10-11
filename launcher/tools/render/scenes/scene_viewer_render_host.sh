@@ -21,6 +21,7 @@ main/render/r3d_span.c
 main/render/r3d_scene.c
 main/scene/scene.c
 main/scene/scene_animation.c
+main/scene/scene_light.c
 main/anim/anim_skeleton.c
 main/anim/anim_binding.c
 main/anim/pose/anim_pose.c
@@ -28,6 +29,7 @@ main/anim/playback/anim_layer.c
 main/anim/playback/anim_playhead.c
 main/render/r3d_skin.c
 main/render/skin/r3d_skinning.c
+main/render/skin/r3d_skin_light.c
 main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
