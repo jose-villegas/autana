@@ -2062,21 +2062,19 @@ test_disabled_light_skin_and_two_object_rotations(void) {
     scene_animation_step(scene, 0);
     const scene_skinned_renderer_t* a = &scene->skinned_renderers[red];
     const scene_skinned_renderer_t* b = &scene->skinned_renderers[green];
-    TEST_ASSERT_FLOAT_WITHIN(0.0001F, SCENE_LIGHT_AXIS.y, a->lights->direction[0].y);
-    const quatf_t inverse = {-transform.rotation.x, -transform.rotation.y, -transform.rotation.z, transform.rotation.w};
-    const vec3f_t expected = quatf_rotate(inverse, SCENE_LIGHT_AXIS);
-    TEST_ASSERT_FLOAT_WITHIN(0.0001F, expected.y, b->lights->direction[0].y);
-    TEST_ASSERT_FLOAT_WITHIN(0.0001F, expected.z, b->lights->direction[0].z);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, SCENE_LIGHT_AXIS.y, scene->world_lights.direction[0].y);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, quatf_rotate(transform.rotation, SCENE_LIGHT_AXIS).z,
+                             b->normal_palette[0].m[2][1]);
     scene_entity_set_enabled(scene, light, false);
     scene_animation_step(scene, 0);
-    TEST_ASSERT_EQUAL_INT(0, a->lights->count);
-    TEST_ASSERT_EQUAL_INT(0, b->lights->count);
+    TEST_ASSERT_EQUAL_INT(0, scene->world_lights.count);
+    TEST_ASSERT_EQUAL_INT(0, scene->world_lights.count);
     scene_entity_set_enabled(scene, red, false);
     scene_entity_set_enabled(scene, light, true);
     scene_animation_step(scene, 0);
     TEST_ASSERT_FALSE(scene->animators[red].posed);
     TEST_ASSERT_EQUAL_PTR(a->bind.colors, scene_entity_mesh(scene, red)->colors);
-    TEST_ASSERT_EQUAL_INT(1, b->lights->count);
+    TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
     release_fixture();
 }
 
@@ -2099,11 +2097,14 @@ test_idle_lit_skin_skips_and_transform_changes_run(void) {
     const scene_entity_t light = scene_find(scene, "camera");
     TEST_ASSERT_TRUE(scene_light_set_intensity(scene, light, 1));
     TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
-    scene_animation_step(scene, 0);
-    scene->flags[entity] &= (uint8_t)~SCENE_FLAG_DIRTY;
-    scene->flags[light] &= (uint8_t)~SCENE_FLAG_DIRTY;
-    scene_animation_step(scene, 0);
-    TEST_ASSERT_FALSE(scene->animators[entity].posed);
+    scene_t* active_scene = show("test_sky", NULL);
+    TEST_ASSERT_NOT_EQUAL(scene, active_scene);
+    scene_render(0, 0, SIZE, SIZE);
+    for (int frame = 0; frame < 3; frame++) {
+        scene_render(0, 0, SIZE, SIZE);
+        TEST_ASSERT_FALSE(scene->animators[entity].posed);
+    }
+    TEST_ASSERT_TRUE((scene->flags[entity] & SCENE_FLAG_DIRTY) != 0);
     scene_transform_t pose = *scene_entity_transform(scene, light);
     pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
     scene_set_transform(scene, light, &pose);
@@ -2175,9 +2176,12 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
         pose.rotation = quatf_from_euler(sun_angles);
         scene_set_transform(scene, light, &pose);
         scene_animation_step(scene, 0);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x, skin->lights->direction[0].x);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y, skin->lights->direction[0].y);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z, skin->lights->direction[0].z);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x,
+                                 scene->world_lights.direction[0].x);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y,
+                                 scene->world_lights.direction[0].y);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z,
+                                 scene->world_lights.direction[0].z);
         TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
         TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
         uint8_t lit_colors[RIG_VERTICES][3];
@@ -2197,7 +2201,7 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
         TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
         uint8_t expected[RIG_VERTICES][3];
         r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
-                              skin->lights, expected);
+                              skin->normal_palette, &scene->world_lights, expected);
         TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
         free(block);
         TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));

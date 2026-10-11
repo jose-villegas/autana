@@ -132,11 +132,12 @@ One caller-owned buffer block holds positions, cluster bounds and
 node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
 `r3d_skin_output_init()` carves it. The scene allocates it together with model
 matrices and the palette in internal RAM. The same allocation reserves `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex
-for lit colors and an internal `r3d_skin_lights_t`.
+for lit colors and a `mat3f_t` world-space normal palette per joint.
 Without runtime lights the mesh retains its bind-colour pointer, with no copy.
 With lights, `r3d_skin_clusters_lit()` skins positions and normals together,
 renormalises the normal, and shades the bind albedo into that colour buffer.
-Scene light directions are rotated into renderer object space before cluster
+The normal palette is the cofactor of entity world times joint palette.
+Scene light directions stay in world space and are shared before cluster
 jobs run; baked renderers keep their pack colours. See [Skinned lighting](Skinned-Lighting.md).
 Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
 
@@ -152,7 +153,8 @@ sequenceDiagram
     end
     S->>C0: apply property fields
     opt posed clusters present
-        S->>S: prepare world and object light directions
+        S->>S: build world-space normal palettes
+        S->>S: prepare shared world-space lights
         S->>C1: skin and light second cluster range
         S->>C0: skin and light first cluster range
         C1-->>S: job_wait
@@ -171,7 +173,9 @@ then the active scene derives placements for renderers whose entities are dirty.
 Inactive scenes do no placement work. Scenes without skeleton animators skip
 the animation split, and no posed clusters means no skin split. Unchanged poses
 skip skinning and node refit. A lit skin runs when its pose changes,
-a light setter marks lighting dirty, or a light or skin entity is dirty. Skin jobs
+a light setter marks lighting dirty, or a light or skin entity carries
+`SCENE_FLAG_SKIN_DIRTY`. The skin stage consumes this bit independently of
+the draw's `SCENE_FLAG_DIRTY`, including for inactive scenes. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
