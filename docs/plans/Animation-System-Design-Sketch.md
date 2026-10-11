@@ -170,3 +170,5 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 4. Influences per vertex: an import setting, default 2, 4 allowed; the
    entry records it and the runtime skins either.
 5. The range stages use two cores (section 2) with an inline fallback.
+6. Lighting has direct, renormalised and table modes per renderer, defaulting
+   to direct. The skin pack entry selects the mode in the scene-format work.

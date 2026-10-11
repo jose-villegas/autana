@@ -58,7 +58,9 @@ COST cycles_per_vertex=8
     def test_mode_table_uses_runtime_build_and_ram(self):
         text = """BUILD_ID runtime-diag
 POSE vertices=4
-RAM mode=table renderer_bytes=80 scene_bytes=1920
+RAM mode=table renderer_bytes=80 scene_bytes=1920 scene_metadata_psram=124
+skin_light_perf: test_normal_palette_build med=40cycles
+COST cycles_per_build=40
 skin_light_perf: test_fused_table_1 med=400cycles
 COST cycles_per_vertex=100
 QUALITY max=8 mean=0.5
@@ -67,7 +69,7 @@ COST cycles_per_build=200
 """
         table = lighting_modes(text)
         self.assertIn("Build `runtime-diag`", table)
-        self.assertIn("| table | 1 | 100.000 | 8 | 0.5 | 200.000 | 80 | 1920 |", table)
+        self.assertIn("| table | 1 | 100.000 | 8 | 0.5 | 200.000 | 40.000 | 80 | 1920 | 124 |", table)
 
     def test_comment_lines_are_ignored(self):
         self.assertEqual(list(rows("# Capture comments\n")), [])

@@ -100,13 +100,14 @@ SCNE v1 has no writers for the private ambient and tone-map fields.
 ## Lighting modes
 
 Lighting mode is private to each skinned renderer. **Direct is the default**,
-chosen for cost: it evaluates N.L on the blended, unrenormalised world-space
+the cheapest mode: it evaluates N.L on the blended, unrenormalised world-space
 normal. Pick it when joint darkening is acceptable. Renormalised evaluates
-N.L after `mathf_rsqrt` normalisation and removes that darkening; pick it when
-normal length must not affect light intensity. Table evaluates bilinear
+N.L after `mathf_rsqrt` normalisation and removes that darkening at small cost;
+pick it when normal length must not affect light intensity. Table evaluates bilinear
 irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>;
-its lookup cost is flat in light count. Pick it when that fixed lookup cost
-is preferable to evaluating each light. These modes are an import choice;
+its lookup cost is flat in light count, so it only pays with more lights
+than direct handles cheaply. The scene light cap (`R3D_SKIN_LIGHT_MAX`)
+currently bounds that trade-off. These modes are an import choice;
 the scene-format work fills each renderer's mode from its skin pack entry.
 Runtime tests and device suites select the mode through `scene_internal.h`.
 
@@ -133,15 +134,24 @@ lights and scene table.
 
 The generated table reports fused cycles per vertex at each light count,
 worst and mean light-byte error against independently evaluated float
-lighting, table-build cycles and internal-RAM costs. Scene bytes are shared
-across renderers. Its generator reads the board capture, without substituting
+lighting, table and normal-palette build cycles per frame, and RAM per
+renderer and per scene. Scene bytes are shared across renderers. Its generator reads the board capture, without substituting
 host timings.
 
-<!-- generated: skin-light-modes sha256=2af35b7f951bc7c99ab0e269eb6c39b158d27882d1ac2b1f48c351c923210e75 -->
-Board capture for the three runtime modes is pending.
+<!-- generated: skin-light-modes sha256=af7c95fec712bfcef964c51334ba32ee0447d122722669f63e606398348accf6 -->
+Build `bf9edf215977-diag`.
 
-| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles | Renderer internal bytes | Scene internal bytes |
-|---|---:|---:|---:|---:|---:|---:|---:|
+| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / frame | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| direct | 1 | 640.481 | 8 | 0.246612 | — | 5103.000 | 3744 | 1024 | 124 |
+| direct | 2 | 663.699 | 9 | 0.264905 | — | 5103.000 | 3744 | 1024 | 124 |
+| direct | 4 | 708.668 | 13 | 0.353997 | — | 5103.000 | 3744 | 1024 | 124 |
+| renormalised | 1 | 680.189 | 1 | 0.184282 | — | 5103.000 | 3744 | 1024 | 124 |
+| renormalised | 2 | 702.823 | 1 | 0.185637 | — | 5103.000 | 3744 | 1024 | 124 |
+| renormalised | 4 | 748.201 | 2 | 0.180217 | — | 5103.000 | 3744 | 1024 | 124 |
+| table | 1 | 856.573 | 7 | 0.455623 | 30353.000 | 5103.000 | 3744 | 2048 | 124 |
+| table | 2 | 856.349 | 4 | 0.360095 | 42331.000 | 5103.000 | 3744 | 2048 | 124 |
+| table | 4 | 856.185 | 4 | 0.380420 | 65401.000 | 5103.000 | 3744 | 2048 | 124 |
 <!-- /generated: skin-light-modes -->
 
 The comparison sheet shows normal-length darkening and the octahedral
@@ -153,46 +163,33 @@ experiment is separate from the runtime irradiance format.
 ## Board measurement
 
 The committed [capture lines](data/skin-light-board.txt) hold the
-build ids, timing, quality, checksums and heap measurements. The generated
-table takes the median timing per build and kernel and the worst quality
-errors across captured runs. The `table_lookup` comparison measurements use
-rounded linear-light bytes and belong to the comparison, not the runtime
-albedo/tone-map shader. Their error is measured against exact normalisation
-of packed bind normals. The [comparison sheet](images/skin-light-sheet.png)
-shows source-normal benchmark error; those inputs differ from packed normals.
+build id, timing, quality, checksums, heap measurements and RAM allocations.
+The generated table takes the median timing per build and kernel and the worst quality
+errors across captured runs. The first run is warm-up and is excluded.
+Runtime error is measured against float lighting of packed bind normals.
+The [comparison sheet](images/skin-light-sheet.png) shows source-normal
+benchmark error; those inputs differ from packed normals.
 
-<!-- generated: skin-light-board sha256=1f56ded728e964fe8f516d9ede7ec09b16b709640f40734bad40d8802b3aaeee -->
+<!-- generated: skin-light-board sha256=664dfea35560fdd42d8236748a952bc3cd115471d43a1e18afe4953d4a17a1d9 -->
 | Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
 |---|---|---:|---|---:|---:|---:|
-| 8651de3988fb-diag | skin_only | 356.119 | vertex | — | — | — |
-| 8651de3988fb-diag | fused_direct_1 | 581.288 | vertex | — | 46 | 0.557927 |
-| 8651de3988fb-diag | fused_direct_2 | 604.694 | vertex | — | 44 | 0.749322 |
-| 8651de3988fb-diag | fused_direct_4 | 649.839 | vertex | — | 62 | 1.195122 |
-| 8651de3988fb-diag | fused_renormalised_4 | 757.315 | vertex | — | 0 | 0.000000 |
-| 8651de3988fb-diag | direct_1 | 220.299 | vertex | — | 46 | 0.557927 |
-| 8651de3988fb-diag | direct_2 | 244.654 | vertex | — | 44 | 0.749322 |
-| 8651de3988fb-diag | direct_4 | 288.830 | vertex | — | 62 | 1.195122 |
-| 8651de3988fb-diag | renormalised_1 | 325.807 | vertex | — | 0 | 0.000000 |
-| 8651de3988fb-diag | renormalised_2 | 348.680 | vertex | — | 0 | 0.000000 |
-| 8651de3988fb-diag | renormalised_4 | 392.871 | vertex | — | 0 | 0.000000 |
-| 8651de3988fb-diag | table_lookup | 329.435 | vertex | — | 18 | 1.484079 |
-| 8651de3988fb-diag | table_build_1 | 26811.000 | build | 27.247 | 0 | 0.000000 |
-| 8651de3988fb-diag | table_build_2 | 32827.000 | build | 33.361 | 0 | 0.000000 |
-| 8651de3988fb-diag | table_build_4 | 44347.000 | build | 45.068 | 0 | 0.000000 |
-| 5df9ac860fde-diag | normal_palette_build | 38183.000 | build | 38.804 | — | — |
-| 5df9ac860fde-diag | skin_only | 355.917 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_nl_1 | 630.538 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_nl_2 | 653.955 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_nl_4 | 699.066 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_rsqrt_1 | 665.536 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_rsqrt_2 | 688.966 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_rsqrt_4 | 739.097 | vertex | — | — | — |
-| 5df9ac860fde-diag | fused_renormalised_1 | 671.819 | vertex | — | 0 | 0.000000 |
-| 5df9ac860fde-diag | fused_renormalised_2 | 694.499 | vertex | — | 0 | 0.000000 |
-| 5df9ac860fde-diag | fused_renormalised_4 | 739.898 | vertex | — | 0 | 0.000000 |
-| 5df9ac860fde-diag | exact_separate_1 | 988.455 | vertex | — | 0 | 0.000000 |
-| 5df9ac860fde-diag | exact_separate_2 | 1011.091 | vertex | — | 0 | 0.000000 |
-| 5df9ac860fde-diag | exact_separate_4 | 1055.140 | vertex | — | 0 | 0.000000 |
+| bf9edf215977-diag | normal_palette_build | 5103.000 | build | 5.186 | — | — |
+| bf9edf215977-diag | skin_only | 360.127 | vertex | — | — | — |
+| bf9edf215977-diag | fused_direct_1 | 640.481 | vertex | — | 8 | 0.246612 |
+| bf9edf215977-diag | fused_direct_2 | 663.699 | vertex | — | 9 | 0.264905 |
+| bf9edf215977-diag | fused_direct_4 | 708.668 | vertex | — | 13 | 0.353997 |
+| bf9edf215977-diag | fused_table_1 | 856.573 | vertex | — | 7 | 0.455623 |
+| bf9edf215977-diag | fused_table_2 | 856.349 | vertex | — | 4 | 0.360095 |
+| bf9edf215977-diag | fused_table_4 | 856.185 | vertex | — | 4 | 0.380420 |
+| bf9edf215977-diag | table_build_1 | 30353.000 | build | 30.847 | — | — |
+| bf9edf215977-diag | table_build_2 | 42331.000 | build | 43.019 | — | — |
+| bf9edf215977-diag | table_build_4 | 65401.000 | build | 66.464 | — | — |
+| bf9edf215977-diag | fused_renormalised_1 | 680.189 | vertex | — | 1 | 0.184282 |
+| bf9edf215977-diag | fused_renormalised_2 | 702.823 | vertex | — | 1 | 0.185637 |
+| bf9edf215977-diag | fused_renormalised_4 | 748.201 | vertex | — | 2 | 0.180217 |
+| bf9edf215977-diag | exact_separate_1 | 5696.554 | vertex | — | 0 | 0.000000 |
+| bf9edf215977-diag | exact_separate_2 | 5785.963 | vertex | — | 0 | 0.000000 |
+| bf9edf215977-diag | exact_separate_4 | 5970.755 | vertex | — | 0 | 0.000000 |
 <!-- /generated: skin-light-board -->
 
 The device suite measures skin-only, normal-palette build, the exact-separate

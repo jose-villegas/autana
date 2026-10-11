@@ -59,8 +59,8 @@ def rows(text):
 def lighting_modes(text):
     measured = list(rows(text))
     builds = [row[0] for row in measured if row[1] == "fused_table_1"]
-    table = ["| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles | Renderer internal bytes | Scene internal bytes |",
-             "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    table = ["| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / frame | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     if not builds:
         return "Board capture for the three runtime modes is pending.\n\n" + "\n".join(table)
     build = builds[-1]
@@ -70,9 +70,10 @@ def lighting_modes(text):
     for line in text.splitlines():
         if line.startswith("BUILD_ID "):
             current_build = line.split()[1]
-        match = re.search(r"RAM mode=(\w+) renderer_bytes=(\d+) scene_bytes=(\d+)", line)
+        match = re.search(r"RAM mode=(\w+) renderer_bytes=(\d+) scene_bytes=(\d+).*scene_metadata_psram=(\d+)", line)
         if match and current_build == build:
-            memory[match[1]] = (match[2], match[3])
+            memory[match[1]] = (match[2], match[3], match[4])
+    palette_row = costs.get("normal_palette_build")
     for mode in ("direct", "renormalised", "table"):
         for lights in (1, 2, 4):
             row = costs.get(f"fused_{mode}_{lights}")
@@ -80,7 +81,8 @@ def lighting_modes(text):
                 continue
             build_row = costs.get(f"table_build_{lights}") if mode == "table" else None
             values = [mode, str(lights), row[2], row[-2], row[-1], build_row[2] if build_row else "—",
-                      *memory.get(mode, ("—", "—"))]
+                      palette_row[2] if palette_row else "—",
+                      *memory.get(mode, ("—", "—", "—"))]
             table.append("| " + " | ".join(values) + " |")
     return f"Build `{build}`.\n\n" + "\n".join(table)
 
