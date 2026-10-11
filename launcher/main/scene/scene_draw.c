@@ -79,7 +79,7 @@ update_placements(scene_t* scene) {
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_DIRTY) != 0) {
-            r->placement = scene->transforms[r->entity];
+            r->placement = r3d_placement_from(&scene->locals[r->entity]);
             r->placed = !scene_transform_is_identity(&r->placement);
         }
     }
@@ -110,8 +110,7 @@ draw_active(int quarter, int width, int height) {
     if (count == 0) {
         return;
     }
-    const render_view_t view =
-        r3d_scene_view_at(&camera->lens, scene->elapsed_ms, (viewport_t){width, height, quarter});
+    const render_view_t view = r3d_scene_view_at(&camera->lens, (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
 }
 
@@ -122,7 +121,8 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
     }
     stepped = true;
     for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_loaded_at(i)->elapsed_ms += dt_ms;
+        scene_t* scene = scene_loaded_at(i);
+        scene_animation_step(scene, dt_ms);
     }
     if (active.scene != NULL) {
         draw_active(quarter, width, height);

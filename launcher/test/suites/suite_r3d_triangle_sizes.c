@@ -255,18 +255,16 @@ test_a_poses_file_gives_its_size_lens_and_poses(void) {
 }
 
 static void
-test_source_poses_and_the_engine_clip_make_the_same_asymmetric_view(void) {
-    static const float times[] = {0.0F};
-    static const float positions[] = {3.0F, 2.0F, -400.0F};
-    static const float rotations[] = {0.0F, -0.31622777F, 0.0F, 0.9486833F};
-    const r3d_scene_path_t path = {
-        {1000}, {times, positions, 1, 3, ANIM_LINEAR, 0}, {times, rotations, 1, 4, ANIM_LINEAR, 1}};
+test_source_poses_and_the_engine_camera_make_the_same_asymmetric_view(void) {
+    const transformf_t camera_pose = {.position = {3.0F, 2.0F, -400.0F},
+                                      .rotation = {0.0F, -0.31622777F, 0.0F, 0.9486833F},
+                                      .scale = {1.0F, 1.0F, 1.0F}};
     r3d_sizes_poses_t* poses = malloc(sizeof(*poses));
     TEST_ASSERT_NOT_NULL(poses);
     TEST_ASSERT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 3 2 400 -0.6 0 -0.8\n", poses));
-    const r3d_scene_camera_t camera = {poses->half_fov_short_tan, poses->near_z, NULL, &path};
+    const r3d_scene_camera_t camera = {poses->half_fov_short_tan, poses->near_z, &camera_pose};
     const viewport_t viewport = {poses->width, poses->height, 0};
-    const render_view_t runtime = r3d_scene_view_at(&camera, 0, viewport);
+    const render_view_t runtime = r3d_scene_view_at(&camera, viewport);
     const transformf_t pose = transformf_looking(poses->eye[0], poses->forward[0], (vec3f_t){0, 1, 0});
     const render_view_t measured = render_view_make(&pose, camera.half_fov_short_tan, camera.near_z, viewport);
     const vec3f_t runtime_axes[] = {runtime.position, runtime.screen_x, runtime.screen_y, runtime.forward};
@@ -322,7 +320,7 @@ run_r3d_triangle_sizes_suite(void) {
     RUN_TEST(test_a_triangle_counts_by_its_whole_box_and_shading_mode);
     RUN_TEST(test_the_box_table_shares_are_within_each_square);
     RUN_TEST(test_a_poses_file_gives_its_size_lens_and_poses);
-    RUN_TEST(test_source_poses_and_the_engine_clip_make_the_same_asymmetric_view);
+    RUN_TEST(test_source_poses_and_the_engine_camera_make_the_same_asymmetric_view);
     RUN_TEST(test_a_poses_file_missing_a_part_or_a_number_is_refused);
     RUN_TEST(test_poses_read_from_standard_input_when_the_path_is_a_dash);
 }

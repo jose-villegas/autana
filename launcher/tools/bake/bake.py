@@ -459,8 +459,6 @@ class Poses:
     def digest(self, camera, every_ms, size, tools, unavailable=None):
         """The digest of parsed camera rows, or None when the sampler cannot supply a missing row."""
         from anim import tracks_asset
-        from anim.track_host import TrackHostError
-        from r3d.poses import sample_camera_path
 
         path = camera.path
         if path is None or size is None:
@@ -472,8 +470,11 @@ class Poses:
                       camera.near_z, tools["poses"]])
         row = self.used.get(key) or (None if self.resample else self.held.get(key))
         if row is None and key not in self.missing:
+            from anim.track_host import TrackHostError
+            from r3d.poses import sample_camera_rows
+
             try:
-                width, height, lens, near, rows = sample_camera_path(
+                width, height, lens, near, rows = sample_camera_rows(
                     path.animation, path.node, every_ms, *size, camera.half_fov_short_tan, camera.near_z)
             except TrackHostError:
                 self.missing[key] = (f"poses clip {relative(path.animation)}, node {path.node}, "
