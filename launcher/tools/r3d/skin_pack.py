@@ -1,13 +1,17 @@
 """Uncached rig entries added to scene and import packs after their LMSH entries are ready."""
 
+from pathlib import Path
+
 from bake import bake
 from anim import skeleton_asset, tracks_asset
+from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
 from gltf import gltf_read
 from r3d import skin_asset
 from r3d.import_settings import SettingsError
 
 ID_BYTES = NAME_BYTES - 1
+SKIN_ID_SUFFIX = read_define(Path(__file__).resolve().parents[2] / "main/render/r3d_skin.h", "R3D_SKIN_ID_SUFFIX")
 
 
 def entries(meshes, jobs, cache, offline, influences=skin_asset.DEFAULT_INFLUENCES):
@@ -40,7 +44,7 @@ def entries(meshes, jobs, cache, offline, influences=skin_asset.DEFAULT_INFLUENC
             raise SettingsError(f'{origin}: {error}') from error
         rig_source = (origin, 'skin', document['nodes'][node]['skin'])
         result.extend([(name, skeleton_asset.TYPE, skeleton, rig_source),
-                       (mesh_id + '.skin', skin_asset.TYPE, skin, (settings.path, mesh_id, 'skin'))])
+                       (mesh_id + SKIN_ID_SUFFIX, skin_asset.TYPE, skin, (settings.path, mesh_id, 'skin'))])
         clips = settings.source.get('clips', [])
         if len(set(clips)) != len(clips):
             raise SettingsError(f'{settings.path}: duplicate clip names {clips!r}')

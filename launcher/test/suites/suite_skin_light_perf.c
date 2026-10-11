@@ -1,23 +1,59 @@
 /* Device lighting measurements over the demo pack at a fixed sampled pose. */
+#include <string.h>
+#include "anim/anim_skeleton.h"
+#include "asset/asset_store.h"
+#include "render/r3d_lit_mesh.h"
+#include "render/r3d_skin.h"
 #include "suites.h"
+#include "test_cleanup.h"
+#include "unity.h"
+
+#define PACK_ID "capybara"
+
+static const char*
+entry_name(const asset_pack_t* pack, uint32_t type) {
+    const char* name = NULL;
+    for (uint32_t i = 0; i < pack->count; i++) {
+        asset_entry_t entry;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_entry(pack, i, &entry));
+        if (entry.type == type) {
+            TEST_ASSERT_NULL_MESSAGE(name, "skin_light_perf: ambiguous model entry");
+            name = entry.name;
+        }
+    }
+    TEST_ASSERT_NOT_NULL_MESSAGE(name, "skin_light_perf: model entry missing; flash demo pack");
+    return name;
+}
+
+static void
+open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin, r3d_lit_mesh_t* bind) {
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_skeleton_open(pack, entry_name(pack, ANIM_SKELETON_ASSET), skeleton));
+    const char* skin_id = entry_name(pack, R3D_SKIN_ASSET);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_skin_open(pack, skin_id, skin));
+    const size_t skin_length = strlen(skin_id);
+    const size_t suffix_length = sizeof R3D_SKIN_ID_SUFFIX - 1U;
+    TEST_ASSERT_TRUE_MESSAGE(skin_length > suffix_length, "skin_light_perf: invalid skin id");
+    const size_t mesh_length = skin_length - suffix_length;
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(R3D_SKIN_ID_SUFFIX, skin_id + mesh_length, "skin_light_perf: invalid skin id");
+    char mesh_id[ASSET_NAME_MAX];
+    memcpy(mesh_id, skin_id, mesh_length);
+    mesh_id[mesh_length] = '\0';
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, mesh_id, bind),
+                                  "skin_light_perf: model mesh missing; flash demo assets");
+}
 
 #ifdef DEVICE_BUILD
 #include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
-#include <string.h>
 #include "anim/pose/anim_pose.h"
-#include "asset/asset_store.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "perf_stats.h"
 #include "render/skin/r3d_skin_light.h"
-#include "test_cleanup.h"
-#include "unity.h"
 
-#define PACK_ID      "capybara"
 #define CLIP_ID      "gallop"
 #define POSE_SECONDS 0.2F
 #define SAMPLES      100
@@ -87,21 +123,6 @@ fixture_block(size_t bytes) {
     return block;
 }
 
-static const char*
-entry_name(const asset_pack_t* pack, uint32_t type) {
-    const char* name = NULL;
-    for (uint32_t i = 0; i < pack->count; i++) {
-        asset_entry_t entry;
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_entry(pack, i, &entry));
-        if (entry.type == type) {
-            TEST_ASSERT_NULL_MESSAGE(name, "skin_light_perf: ambiguous model entry");
-            name = entry.name;
-        }
-    }
-    TEST_ASSERT_NOT_NULL_MESSAGE(name, "skin_light_perf: model entry missing; flash demo pack");
-    return name;
-}
-
 static fixture_t*
 fixture(int lights) {
     heap_report("before");
@@ -110,10 +131,7 @@ fixture(int lights) {
     fixture_t* f = active;
     f->pack = asset_store_pack(PACK_ID);
     TEST_ASSERT_NOT_NULL_MESSAGE(f->pack, "skin_light_perf: capybara pack missing; flash demo assets");
-    TEST_ASSERT_EQUAL_INT(ASSET_OK,
-                          anim_skeleton_open(f->pack, entry_name(f->pack, ANIM_SKELETON_ASSET), &f->skeleton));
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_skin_open(f->pack, entry_name(f->pack, R3D_SKIN_ASSET), &f->skin));
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(f->pack, entry_name(f->pack, R3D_LIT_MESH_ASSET), &f->bind));
+    open_model(f->pack, &f->skeleton, &f->skin, &f->bind);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_from_pack(f->pack, CLIP_ID, &f->clip),
                                   "skin_light_perf: gallop clip missing");
     TEST_ASSERT_EQUAL_INT(f->skeleton.joint_count, f->skin.joint_count);
@@ -289,7 +307,30 @@ suite_skin_light_perf(void) {
     RUN_TEST(test_table_build_4);
 }
 #else
+static void
+release_pack(void) {
+    asset_store_release(PACK_ID);
+}
+
+static void
+test_demo_skin_mesh_lookup(void) {
+    const asset_pack_t* pack = asset_store_pack(PACK_ID);
+    TEST_ASSERT_NOT_NULL_MESSAGE(pack, "skin_light_perf: capybara pack missing; flash demo assets");
+    suite_set_test_cleanup(release_pack);
+    anim_skeleton_t skeleton;
+    r3d_skin_t skin;
+    r3d_lit_mesh_t bind;
+    open_model(pack, &skeleton, &skin, &bind);
+    TEST_ASSERT_EQUAL_INT(skeleton.joint_count, skin.joint_count);
+    TEST_ASSERT_EQUAL_INT(bind.vertex_count, skin.vertex_count);
+    release_pack();
+    suite_clear_test_cleanup();
+}
+
 void
-suite_skin_light_perf(void) {}
+suite_skin_light_perf(void) {
+    RUN_TEST(test_demo_skin_mesh_lookup);
+}
 #endif
 SUITE_REGISTER(suite_skin_light_perf);
+SUITE_READS(suite_skin_light_perf, PACK_ID);
