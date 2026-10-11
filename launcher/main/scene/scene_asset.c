@@ -27,7 +27,7 @@ enum {
     AT_CAMERA_ROWS = 20,
 };
 
-_Static_assert(sizeof(scene_transform_t) == 12 * sizeof(float), "a transform is a 3x3 and a position");
+_Static_assert(sizeof(scene_placement_t) == 12 * sizeof(float), "a transform is a 3x3 and a position");
 _Static_assert(sizeof(scene_asset_renderer_t) == 36 && offsetof(scene_asset_renderer_t, mesh) == 4,
                "a renderer row is not the layout scene_asset.py writes");
 _Static_assert(sizeof(scene_asset_camera_t) == 80 && offsetof(scene_asset_camera_t, clip) == 16
@@ -117,7 +117,7 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
         .camera_count = half(entry.data + AT_CAMERAS),
     };
     scene.names = section(entry, AT_NAMES, scene.entity_count, ASSET_NAME_MAX);
-    scene.transforms = section(entry, AT_TRANSFORMS, scene.entity_count, sizeof(scene_transform_t));
+    scene.transforms = section(entry, AT_TRANSFORMS, scene.entity_count, sizeof(scene_placement_t));
     scene.renderers = section(entry, AT_RENDERER_ROWS, scene.renderer_count, sizeof(scene_asset_renderer_t));
     scene.cameras = section(entry, AT_CAMERA_ROWS, scene.camera_count, sizeof(scene_asset_camera_t));
     if (scene.names == NULL || scene.transforms == NULL || scene.renderers == NULL || scene.cameras == NULL) {

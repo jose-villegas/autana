@@ -8,8 +8,8 @@ in [Mesh-Import.md](Mesh-Import.md).
 span rasterizer, and a pipeline that draws a mesh whose light was baked
 offline. It sits above `gfx/`, whose render targets it draws into, and
 otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
-mesh from a pack), so boot and apps both call it. `r3d_scene.h` also reads
-`anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
+mesh from a pack), so boot and apps both call it. `r3d_scene.h` also declares the
+camera's animatable lens fields for `anim/` bindings. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
