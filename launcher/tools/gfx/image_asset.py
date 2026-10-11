@@ -103,15 +103,15 @@ def image_id(path):
     return pathlib.Path(path).name.removesuffix(SUFFIX)
 
 
-def load_source(path):
-    """(the PNG's path, quarter turns) a .image.toml names."""
+def load_source(path, allowed_keys=("source", "quarter_turns")):
+    """(the PNG's path, quarter turns) a root with `allowed_keys` names."""
     path = pathlib.Path(path)
     try:
         values = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
         raise ImageError(f"{path}: {error}") from error
     source, turns = values.get("source"), values.get("quarter_turns", 0)
-    if set(values) - {"source", "quarter_turns"} or not isinstance(source, str) \
+    if set(values) - set(allowed_keys) or not isinstance(source, str) \
             or type(turns) is not int or not 0 <= turns <= 3:
         raise ImageError("%s: holds source = \"x.png\" and optionally quarter_turns = 0 to 3" % path)
     # Beside it, so whatever finds the .image.toml finds its source too.

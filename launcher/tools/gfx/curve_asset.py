@@ -2,7 +2,6 @@
 
 import pathlib
 import sys
-import tomllib
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -66,9 +65,7 @@ def curve_id(path):
 
 def bake(path):
     """The table entry of the PNG beside a curve root."""
-    if set(tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8"))) != {"source"}:
-        raise ValueError("a curve root holds only its PNG source")
-    source, _ = load_source(path)
+    source, _ = load_source(path, allowed_keys=("source",))
     image = read_png(source.read_bytes())
     values = [round(height * (1 << Q_SHIFT)) for height in heights(image)]
     return table_asset.encode({ROW: values}, Q_SHIFT)

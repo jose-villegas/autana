@@ -6,8 +6,12 @@ under "The offline tools".
 
 import struct
 
+from gfx import image_asset
+from asset import table_asset
 from anim import tracks_asset, skeleton_asset
 from r3d import mesh_asset, scene_asset, skin_asset
+
+FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE))
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)
@@ -39,6 +43,8 @@ def _mirror_matrix(matrix, column_signs):
 
 def to_engine(kind, entry):
     """An LMSH, SCNE, TRCK, SKEL or SKIN source entry mirrored once, preserving its layout."""
+    if kind in FRAMELESS:
+        return entry
     out = bytearray(entry)
     if kind == mesh_asset.TYPE:
         vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at = (

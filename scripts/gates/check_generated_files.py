@@ -10,7 +10,7 @@ decoration, is the command that regenerates it, written the way a person
 types it:
 
     python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
-    python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
+    python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h
 
 The command runs from the nearest folder above the file in which its script
 (the first word after an interpreter) exists. It names the file itself as

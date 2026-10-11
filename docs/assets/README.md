@@ -129,12 +129,10 @@ the requested column count (`ASSET_ERR_FORMAT`) and looks up a name
 (`ASSET_ERR_NOT_FOUND` when absent). Its values point into the mounted pack;
 the reader allocates nothing.
 
-[`ridge_curve.py`](../../launcher/tools/gfx/ridge_curve.py) bakes a curve
-from `NAME.curve.toml` with `source = "x.png"` beside it. It uses the panel's
-landscape frame, requires one continuous bright line across every column,
-and stores its brightness-weighted heights as row `y` with four fractional
-bits. The entry id is NAME. UI initialization loads it from the engine pack;
-an unavailable curve draws a level line with its motion and sky intact.
+[`curve_asset.py`](../../launcher/tools/gfx/curve_asset.py) bakes a
+`NAME.curve.toml` and the PNG it names into entry NAME: one bright line
+crossing every column of the panel's landscape frame, stored as row `y` of
+brightness-weighted heights.
 
 ## The pack directory
 
