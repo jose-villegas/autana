@@ -3,9 +3,8 @@
  * steering. A drag turns whatever orbits with the finger, as if spinning a
  * turntable. A double tap asks for home; tap and then drag the second press
  * up or down instead, and it zooms: down brings it closer. A touch that
- * lands in the strip along the home-gesture edge or the edge opposite it
- * (where the control centre opens) belongs to the shell, so it never
- * steers, zooms or taps.
+ * lands in the strip along the home-gesture edge belongs to the shell, so
+ * it never steers, zooms or taps.
  *
  * Pure: the frame's input_t, the panel's size and turn, and which edge holds
  * the home gesture come in; orbit_motion.h's orbit_motion_input_t comes out.
@@ -36,7 +35,7 @@
 #define ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS       350
 
 typedef struct {
-    bool steering;         /* the finger down now landed outside the shell's strips */
+    bool steering;         /* the finger down now landed outside the shell's home-edge strip */
     bool zooming;          /* and it is a tap's second press: it zooms rather than turns */
     int last_x, last_y;    /* where it was last frame, panel pixels */
     uint32_t down_ms;      /* how long it has been down */

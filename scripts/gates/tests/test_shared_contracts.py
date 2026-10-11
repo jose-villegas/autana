@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'scripts/gates'))
 sys.path.insert(0, str(ROOT / 'scripts/device'))
 import c_comments
+from c_lexer import tokens
 import device_report
 
 
@@ -26,7 +27,7 @@ class SharedContractsTests(unittest.TestCase):
         for source, expected in [('x /* unterminated', [('block', 2, 17)]),
                                  ('x // eof', [('line', 2, 8)]),
                                  ('"unterminated // string', [('literal', 0, 23)])]:
-            self.assertEqual(list(c_comments.tokens(source)), expected)
+            self.assertEqual(list(tokens(source)), expected)
         comments = c_comments.scan('scratch.c', '// one\n// two\nx; // three\n/* four */\n/* five */')
         self.assertEqual([c.text for c in comments], ['one two', 'three', 'four five'])
         self.assertEqual(c_comments.file_header('scratch.h', '#pragma once\n/* header */\nx;').text, 'header')

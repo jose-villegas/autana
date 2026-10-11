@@ -35,8 +35,8 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 
 | Kind | Output | Inputs in its key |
 |---|---|---|
-| `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, `mesh_import.py` closure |
-| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
+| `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, the sampled poses' digest for camera-path visibility, `mesh_import.py` closure |
+| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, the sampled poses' digest for training and coverage, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
 | `fit` | the fitted mesh | the reference key, the start's locked bytes, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements; unknown until the start is locked |
 | `blend` | a `.glb` | the `.blend`, export arguments, `blend_skin_to_glb.py` + the pinned Blender version |
 
@@ -212,3 +212,12 @@ whose sha256 differs from the lock.
    and it runs only on the GPU runner, so they live in that runner's local
    cache: `fetch` never looks for them on the release, and `produce` writes
    them there. The release holds meshes and the `.glb`.
+5. **Path-dependent stages key on the sampled poses.** A `[[poses]]` lock row
+   holds the digest of a camera path's sampled rows, keyed on clip bytes, node,
+   interval, size, lens, near plane and sampler code. A build whose rows are all
+   locked needs no host C compiler. A missing row is sampled through `track_host`
+   when the host can, and otherwise leaves the bake unlocked, naming `bake.py lock`.
+   Only `bake.py lock` writes these rows, sampling every needed one again and
+   dropping the rest; `bake.py check` samples every needed row again and rejects
+   one missing, unneeded or different, exactly. Sampler and TRCK changes that
+   keep the poses keep the mesh, reference and fit keys.

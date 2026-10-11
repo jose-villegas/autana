@@ -2,6 +2,7 @@
 import pathlib
 import re
 
+from c_lexer import tokens
 from check_generated_files import generated_files
 from tracked import tracked_files, committable
 
@@ -92,30 +93,6 @@ def balanced_end(source, start, opening="{", closing="}"):
     raise ValueError("unclosed " + opening)
 
 
-def tokens(source, literals=True):
-    """Comment and literal spans; escaped quotes cannot start a comment."""
-    i, n = 0, len(source)
-    while i < n:
-        start = i
-        if literals and source[i] in "\"'":
-            quote = source[i]
-            i += 1
-            while i < n and source[i] != quote:
-                i += 2 if source[i] == "\\" and i + 1 < n else 1
-            i = min(i + 1, n)
-            yield "literal", start, i
-        elif source.startswith("/*", i):
-            end = source.find("*/", i + 2)
-            i = n if end < 0 else end + 2
-            yield "block", start, i
-        elif source.startswith("//", i):
-            end = source.find("\n", i)
-            i = n if end < 0 else end
-            yield "line", start, i
-        else:
-            i += 1
-
-
 def scan(path, source):
     """Yield every comment in `source`, skipping string and char literals."""
     comments = []
@@ -124,7 +101,7 @@ def scan(path, source):
         line += source.count("\n", at, i)
         at = end
         if kind == "literal":
-            line += re.sub(r"\\.", "", source[i:end], flags=re.S).count("\n")
+            line += source.count("\n", i, end)
             continue
         if kind == "block":
             start_of_line = source.rfind("\n", 0, i) + 1
@@ -158,13 +135,14 @@ def scan(path, source):
                 and prev.line + len(prev.raw_lines) == line
             )
             if mergeable:
-                prev.raw_lines.append(source[i:end])
+                prev.raw_lines.extend(source[i:end].split("\n"))
                 prev.spans.append((i, end))
             else:
                 com = Comment(path, line, "line", i, end)
                 com.own_line = own_line
-                com.raw_lines = [source[i:end]]
+                com.raw_lines = source[i:end].split("\n")
                 comments.append(com)
+            line += source.count("\n", i, end)
     if comments:
         comments[0].first = True
     return comments

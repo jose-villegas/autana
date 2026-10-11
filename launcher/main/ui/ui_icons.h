@@ -12,10 +12,6 @@
 #include "gfx/image/gfx_image.h"
 #include "microui.h"
 
-/* The pack every app may read engine artwork from: loaded by ui_init(),
- * before an app can hold store slots, and kept for the run. */
-#define UI_ENGINE_PACK "engine"
-
 /* One icon: its entry's name in the pack, and what an icon-only control
  * shows in its place without one. */
 typedef struct {
@@ -53,7 +49,6 @@ typedef enum {
     UI_ICON_INFO,
     UI_ICON_ALERT,
     UI_ICON_CHEVRON_LEFT,
-    UI_ICON_CHEVRON_RIGHT,
     UI_ICON_CHEVRON_UP,
     UI_ICON_CHEVRON_DOWN,
     UI_ICON_ARROW_LEFT,
@@ -62,7 +57,6 @@ typedef enum {
     UI_ICON_WIFI,
     UI_ICON_GAMEPAD,
     UI_ICON_MONITOR,
-    UI_ICON_PLUS,
     UI_ICON_COUNT
 } ui_icon_id_t;
 

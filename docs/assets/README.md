@@ -82,6 +82,7 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
 | `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
 | `IMAG` | A picture | [The image entry](#the-image-entry) |
+| `TABL` | Named int16 rows | [The table entry](#the-table-entry) |
 
 ### The image entry
 
@@ -108,6 +109,30 @@ shorter than a row or, one bit a pixel, not whole bytes, or rows over the
 header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
 that are misaligned. The pixels it returns point into the
 entry.
+
+### The table entry
+
+[`table_asset.py`](../../launcher/tools/asset/table_asset.py) writes generic
+numeric tables. All fields are little-endian and offsets start at the entry's
+first byte.
+
+| Part | Size | Holds |
+|---|---|---|
+| Header | 8 bytes | u16 version (1), u16 rows, u16 columns, u8 fractional bits, u8 reserved (0) |
+| Row | 24 + 2 x columns bytes | NUL-padded name[24], then int16 values[columns] |
+
+Row i starts at `8 + i * (24 + 2 * columns)`. `asset_table_open()` requires
+a 2-byte-aligned base and a complete header (`ASSET_ERR_BOUNDS`), version 1
+(`ASSET_ERR_VERSION`), nonempty dimensions, zero reserved byte, exact entry
+size and a NUL in every name (`ASSET_ERR_FORMAT`). `asset_table_row()` checks
+the requested column count (`ASSET_ERR_FORMAT`) and looks up a name
+(`ASSET_ERR_NOT_FOUND` when absent). Its values point into the mounted pack;
+the reader allocates nothing.
+
+[`curve_asset.py`](../../launcher/tools/gfx/curve_asset.py) bakes a
+`NAME.curve.toml` and the PNG it names into entry NAME: one bright line
+crossing every column of the panel's landscape frame, stored as row `y` of
+brightness-weighted heights.
 
 ## The pack directory
 
@@ -211,8 +236,9 @@ renderer.
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
-`launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
-directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
+`launcher/tools/asset/asset_pack.py` writes the pack,
+`launcher/tools/asset/asset_directory.py` the directory,
+`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
@@ -255,6 +281,15 @@ held: its bytes were carried over, not made by the code its key names, and
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
+
+The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
+
+| Who | Does |
+|---|---|
+| a build whose poses rows are all locked | reads them; never builds or runs `track_host`, so needs no host C compiler |
+| a key whose row is missing | samples through `track_host` (a host C compiler), or leaves the bake unlocked, naming `bake.py lock` |
+| `bake.py lock` | samples every needed row again and writes it with its `host`, dropping the rest; the only writer |
+| `bake.py check` | samples every needed row again; a missing, unneeded or differing row fails, exactly |
 
 ### Flashing
 

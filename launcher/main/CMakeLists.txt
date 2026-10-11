@@ -30,13 +30,10 @@ set(app_srcs
     "input/input_device.c"
     "input/tilt.c"
     "ui/ui.c"
-    "ui/system_navigation.c"
     "ui/ui_bridge.c"
     "ui/ui_build.c"
     "ui/ui_canvas_marks.c"
     "ui/ui_icons.c"
-    "ui/ui_control_center.c"
-    "ui/ui_control_center_draw.c"
     "ui/ui_launcher.c"
     "ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
@@ -55,6 +52,7 @@ set(app_srcs
     "render/skin/r3d_skin_light.c"
     "anim/anim_binding.c"
     "asset/asset_pack.c"
+    "asset/asset_table.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
@@ -326,17 +324,9 @@ idf_component_register(
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
-    # Required by self-registration, and easy to get wrong.
-    #
-    # This component becomes libmain.a, and a linker only extracts an archive
-    # member if it resolves an undefined symbol. Nothing references an app by
-    # name any more (that is the entire point), so app_sand.o would never be
-    # extracted, its constructor would never enter .init_array, and the app
-    # would silently vanish from the menu. Not a link error: a smaller binary
-    # and a shorter list.
-    #
-    # WHOLE_ARCHIVE links every member regardless. Section garbage collection
-    # still runs, so genuinely unreachable code is still dropped.
+    # Constructors self-register entries without a referenced symbol pulling
+    # their archive members into the link. Keep those constructors while
+    # section garbage collection drops unreachable code.
     WHOLE_ARCHIVE
 )
 
