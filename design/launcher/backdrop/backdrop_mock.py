@@ -10,7 +10,6 @@ without a board.
 Needs numpy and Pillow.
 """
 import math
-import re
 import sys
 from pathlib import Path
 
@@ -18,7 +17,11 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[3]
-W, H = 448, 368
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from asset import table_asset
+from gfx import ridge_curve
+
+W, H = ridge_curve.VIEW_W, ridge_curve.VIEW_H
 FPS, SECONDS = 25, 6.0
 SEED = 0x1199C8
 LIP_PX = 12
@@ -86,8 +89,8 @@ amount = along * 100 // (2 * half)
 SKY = np.stack([SKY_TOP[i] + (SKY_BOTTOM[i] - SKY_TOP[i]) * amount // 100 for i in range(3)], -1)
 SKY = np.broadcast_to(SKY[:, None, :], (H, W, 3))
 
-src = (ROOT / "launcher/main/ui/ridge_curve_generated.h").read_text()
-ridge = np.array([int(v) for v in re.findall(r"-?\d+", src.split("{", 1)[1].split("}")[0])]) / 16.0
+rows, frac_bits = table_asset.decode(ridge_curve.bake(ROOT / "launcher/main/engine/ridge/ridge.curve.toml"))
+ridge = np.array(rows[ridge_curve.ROW]) / (1 << frac_bits)
 X = np.arange(W)
 YY = np.arange(H)[:, None]
 PHASE = CUTOFF[X % 4][None, :]

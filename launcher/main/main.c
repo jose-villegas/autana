@@ -25,6 +25,7 @@
 #include "shell/shell.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
@@ -120,6 +121,7 @@ app_boot_init(void) {
      * would start upright and visibly turn into place. */
     display_reset_quarter();
     ui_launcher_init();
+    ui_ridge_load();
     ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
 
     boot_anim_set_ending_backdrop(shell_paint_home_under_boot);

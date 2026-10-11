@@ -7,6 +7,9 @@
 #include "gfx/draw/gfx_color.h"
 #include "input/input.h"
 
+/* Load the curve at UI initialization; its engine pack stays mounted. */
+void ui_ridge_load(void);
+
 /* Which way is down in the screen plane, as input/tilt.h reports it: `gx`
  * and `gy` in the panel's own axes, `strength` 0-256 and `shake` 0-255. The
  * line eases toward level with it; never called, the line keeps boot's

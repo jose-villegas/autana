@@ -144,6 +144,7 @@ $MAIN_DIR/anim/anim_skeleton.c
 $MAIN_DIR/render/r3d_skin.c
 $MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
+$MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
@@ -514,4 +515,13 @@ if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
 else
     "$OUT"
+fi
+
+EMPTY_ASSETS="$BUILD_DIR/no-packs"
+mkdir -p "$EMPTY_ASSETS"
+FALLBACK_LOG="$BUILD_DIR/ridge-fallback.log"
+AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback 2> "$FALLBACK_LOG"
+if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$FALLBACK_LOG")" != 1 ]; then
+    echo "FAIL: missing curve must log its fallback once" >&2
+    exit 1
 fi

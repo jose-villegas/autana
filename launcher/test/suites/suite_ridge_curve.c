@@ -11,13 +11,15 @@
 #include "unity.h"
 
 #include "asset/asset_store.h"
+#include "asset/asset_table.h"
 #include "boot/boot_anim.h"
 #include "gfx/draw/gfx_color.h"
+#include "gfx/gfx.h"
 #include "gfx/image/gfx_image.h"
-#include "ui/ridge_curve_generated.h"
+#include "ui/ui_icons.h"
 
-#define VIEW_W               RIDGE_CURVE_POINTS
-#define VIEW_H               RIDGE_CURVE_VIEW_H
+#define VIEW_W               GFX_HEIGHT
+#define VIEW_H               GFX_WIDTH
 
 /* Two 5-row bands, one each side of the curve, 3 rows clear of it. */
 #define BAND_NEAR            3
@@ -29,9 +31,12 @@
 #define MIN_COLUMNS_ON_EDGE  95
 #define MAX_COLUMNS_OFF_EDGE 85
 
+static const int16_t* curve;
+static uint8_t curve_shift;
+
 static int
 curve_row(int x) {
-    return (ridge_curve_y[x] + (1 << (RIDGE_CURVE_Q_SHIFT - 1))) >> RIDGE_CURVE_Q_SHIFT;
+    return (curve[x] + (1 << (curve_shift - 1))) >> curve_shift;
 }
 
 /* The photograph, stored a quarter turn clockwise into the panel's frame. */
@@ -87,17 +92,17 @@ columns_on_an_edge(int dx, int dy) {
 
 static void
 test_the_curve_shares_the_photographs_frame(void) {
-    TEST_ASSERT_EQUAL_INT(photo.height, RIDGE_CURVE_POINTS);
-    TEST_ASSERT_EQUAL_INT(photo.width, RIDGE_CURVE_VIEW_H);
+    TEST_ASSERT_EQUAL_INT(photo.height, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(photo.width, GFX_WIDTH);
 }
 
 static void
 test_every_height_is_inside_the_frame_and_near_its_neighbour(void) {
-    const int one_px = 1 << RIDGE_CURVE_Q_SHIFT;
+    const int one_px = 1 << curve_shift;
     for (int x = 0; x < VIEW_W; x++) {
-        TEST_ASSERT_TRUE(ridge_curve_y[x] >= 0 && ridge_curve_y[x] < VIEW_H * one_px);
+        TEST_ASSERT_TRUE(curve[x] >= 0 && curve[x] < VIEW_H * one_px);
         if (x > 0) {
-            TEST_ASSERT_TRUE(abs(ridge_curve_y[x] - ridge_curve_y[x - 1]) <= 8 * one_px);
+            TEST_ASSERT_TRUE(abs(curve[x] - curve[x - 1]) <= 8 * one_px);
         }
     }
 }
@@ -106,13 +111,13 @@ static void
 test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides(void) {
     int summit = 0;
     for (int x = 1; x < VIEW_W; x++) {
-        if (ridge_curve_y[x] < ridge_curve_y[summit]) {
+        if (curve[x] < curve[summit]) {
             summit = x;
         }
     }
     TEST_ASSERT_TRUE(summit > VIEW_W / 2);
-    TEST_ASSERT_TRUE(ridge_curve_y[0] > ridge_curve_y[summit]);
-    TEST_ASSERT_TRUE(ridge_curve_y[VIEW_W - 1] > ridge_curve_y[summit]);
+    TEST_ASSERT_TRUE(curve[0] > curve[summit]);
+    TEST_ASSERT_TRUE(curve[VIEW_W - 1] > curve[summit]);
 }
 
 static void
@@ -137,6 +142,14 @@ test_the_boot_picture_loads(void) {
 
 void
 suite_ridge_curve(void) {
+    const asset_pack_t* engine = asset_store_pack(UI_ENGINE_PACK);
+    asset_view_t curve_entry;
+    asset_table_t table;
+    TEST_ASSERT_NOT_NULL(engine);
+    TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_find(engine, "ridge", ASSET_TABLE_ASSET, &curve_entry));
+    TEST_ASSERT_EQUAL(ASSET_OK, asset_table_open(curve_entry, &table));
+    TEST_ASSERT_EQUAL(ASSET_OK, asset_table_row(&table, "y", GFX_HEIGHT, &curve));
+    curve_shift = table.frac_bits;
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
     const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
@@ -153,7 +166,9 @@ suite_ridge_curve(void) {
         asset_store_release(BOOT_PHOTO);
     }
     photo = (gfx_image_t){0};
+    asset_store_release(UI_ENGINE_PACK);
+    curve = NULL;
 }
 
 SUITE_REGISTER(suite_ridge_curve);
-SUITE_READS(suite_ridge_curve, BOOT_PHOTO);
+SUITE_READS(suite_ridge_curve, BOOT_PHOTO, UI_ENGINE_PACK);

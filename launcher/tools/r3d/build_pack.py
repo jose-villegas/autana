@@ -6,7 +6,7 @@
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml,
-an .icons.toml or a folder searched for all five; with none, launcher/main is
+an .icons.toml, a .curve.toml or a folder searched for these roots; with none, launcher/main is
 searched. An app's
 demo_assets.toml adds launcher/demo/NAME for each NAME in its `demo` list;
 one inside launcher/demo is refused. A folder reached twice is searched
@@ -16,12 +16,13 @@ camera flies; an NAME.import.toml no scene places is pack NAME, holding its
 variants; an NAME.anim.toml no scene names is pack NAME, holding its one clip;
 an NAME.image.toml is pack NAME, holding its one picture; an NAME.icons.toml
 is pack NAME, holding an image entry per icon, each named by the icon. A
+NAME.curve.toml holds one table entry named NAME. A
 NAME.pack.toml makes
 its folder one pack NAME instead: every root under that folder puts its
 entries there, and folder packs do not nest. A mesh
 is the entry <id>.mesh that mesh_import.py wrote, and its pack id is that id;
 a scene (r3d/scene_asset.py), a clip (anim/tracks_asset.py), a picture
-(gfx/image_asset.py) and an icon (gfx/icons_asset.py) are baked here from
+(gfx/image_asset.py), a curve (gfx/ridge_curve.py) and an icon (gfx/icons_asset.py) are baked here from
 their files, each with its stem for id but an icon. Every scene, clip and mesh
 is mirrored into the engine frame on the way in (asset/engine_frame.py); a
 picture or an icon has no 3D frame. Ids are unique within a pack,
@@ -52,7 +53,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from bake import bake  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
-from gfx import icons_asset, image_asset  # noqa: E402
+from gfx import icons_asset, image_asset, ridge_curve  # noqa: E402
 from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
 from r3d import scene_asset, skin_asset, skin_pack  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
@@ -63,8 +64,9 @@ DEFAULT_SEARCH = REPO / "launcher" / "main"
 DEMO = REPO / "launcher" / "demo"
 SCENE, IMPORT, CLIP = ".scene.toml", ".import.toml", tracks_asset.SUFFIX
 IMAGE, ICONS = image_asset.SUFFIX, icons_asset.SUFFIX
-ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS)
-BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS)  # entries baked from their file here; the rest are meshes
+CURVE = ridge_curve.SUFFIX
+ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE)
+BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; the rest are meshes
 FOLDER_PACK = ".pack.toml"
 PACK_SUFFIX = ".apak"
 
@@ -93,7 +95,7 @@ def input_files(paths):
             found.add(path)
         else:
             raise SettingsError(f"{path}: not an .import.toml, a .scene.toml, an .anim.toml, an .image.toml, "
-                                "an .icons.toml or a folder")
+                                "an .icons.toml, a .curve.toml or a folder")
     return sorted(found)
 
 
@@ -170,6 +172,8 @@ def pack_jobs(paths):
     for path in files:
         if path.name.endswith(IMAGE):
             roots[path] = {image_asset.image_id(path): path}
+        elif path.name.endswith(CURVE):
+            roots[path] = {ridge_curve.curve_id(path): path}
         elif path.name.endswith(ICONS):
             roots[path] = {name: path for name in icons_asset.names(path)}
     packs, owner = {}, {}
@@ -255,7 +259,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         mirrored = []
         for key, kind, data in entry_rows:
             try:
-                mirrored.append((key, kind, to_engine(kind, data) if kind != image_asset.TYPE else data))
+                mirrored.append((key, kind, to_engine(kind, data) if kind not in (image_asset.TYPE, ridge_curve.TYPE) else data))
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
         result[name] = build_pack(sorted(mirrored))
@@ -264,8 +268,10 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
 
 def pack_entry(key, source, engine_frame=True):
     """The pack entry `key`: a scene, clip, picture or icon baked from its
-    file, else a mesh's bytes; a scene, clip or mesh in the engine frame unless
+    file, or a curve table, else a mesh's bytes; a scene, clip or mesh in the engine frame unless
     `engine_frame` is false (the skin step matches the source-frame mesh)."""
+    if source.name.endswith(CURVE):
+        return key, ridge_curve.TYPE, ridge_curve.bake(source)
     if source.name.endswith(IMAGE):
         return key, image_asset.TYPE, image_asset.bake(source)
     if source.name.endswith(ICONS):

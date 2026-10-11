@@ -4,6 +4,7 @@ The offline half of `main/asset/`.
 
 | Module | What it does |
 |---|---|
+| [table_asset.py](table_asset.py) | Writes and reads the [table entry](../../../docs/assets/README.md#the-table-entry): named int16 rows with a shared fractional-bit count. Standard library only. |
 | [asset_pack.py](asset_pack.py) | The one writer of the [asset pack](../../../docs/assets/README.md) container and the pack directory: `build_pack()` lays entries out under a header with a CRC-32, `build_directory()` lays packs out on their own sectors, and `parse_pack()` and `parse_directory()` make the checks the firmware makes. Standard library only. |
 
 What goes in an entry is the business of the tool that owns its type; the lit

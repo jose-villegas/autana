@@ -50,6 +50,7 @@ set(app_srcs
     "render/r3d_skin.c"
     "anim/anim_binding.c"
     "asset/asset_pack.c"
+    "asset/asset_table.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
