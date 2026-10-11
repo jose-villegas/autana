@@ -93,14 +93,6 @@ def canonical(value):
     return value
 
 
-def camera_clip(scene):
-    """The TRCK entry the scene camera's clip bakes to; the camera path's
-    poses are sampled from it."""
-    from anim import tracks_asset
-
-    return tracks_asset.bake(scene.camera.component.path.animation)
-
-
 @dataclasses.dataclass(frozen=True)
 class ReferenceInputs:
     """Everything a fit's reference set reads, and so everything its bake key counts (bake/bake.py): the

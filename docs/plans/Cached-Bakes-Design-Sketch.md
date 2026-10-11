@@ -35,8 +35,8 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 
 | Kind | Output | Inputs in its key |
 |---|---|---|
-| `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, `mesh_import.py` closure |
-| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
+| `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, the sampled poses' digest for camera-path visibility, `mesh_import.py` closure |
+| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, the sampled poses' digest for training and coverage, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
 | `fit` | the fitted mesh | the reference key, the start's locked bytes, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements; unknown until the start is locked |
 | `blend` | a `.glb` | the `.blend`, export arguments, `blend_skin_to_glb.py` + the pinned Blender version |
 
@@ -212,3 +212,11 @@ whose sha256 differs from the lock.
    and it runs only on the GPU runner, so they live in that runner's local
    cache: `fetch` never looks for them on the release, and `produce` writes
    them there. The release holds meshes and the `.glb`.
+
+5. **Path-dependent stages key on the sampled poses.** A `[[poses]]` memo row
+   keys the exact parsed rows by clip bytes, node, interval, size, lens, near
+   plane and sampler code. A firmware build reads the memo without a host C
+   compiler; a miss names `bake.py lock`, which samples missing rows and writes
+   only those needed. `bake.py check` samples every needed row again and rejects
+   missing, unneeded or differing rows, exactly. Sampler and TRCK changes that
+   preserve the poses preserve mesh, reference and fit keys.
