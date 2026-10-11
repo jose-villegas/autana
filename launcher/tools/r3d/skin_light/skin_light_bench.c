@@ -1,25 +1,5 @@
-/*
- * Skinned-mesh lighting, measured on the host: direct per-vertex N.L against
- * a per-object lookup table indexed by the skinned normal's octahedral cell
- * (docs/Citations.md#21).
- *
- *   skin_light_bench DATA.bin OUT_DIR
- *
- * DATA.bin is skin_light_data.py's output. Every variant lights every vertex
- * of every frame. OUT_DIR receives three Markdown tables (cost, table build,
- * quality against the reference), sheet.bin, the native RGB565 color of
- * every vertex of the sheet frame under SHEET_LIGHTS lights, one run of
- * vertices per lit variant, the reference first, and sheet.txt, those
- * variants' short labels, one per line.
- *
- * Every variant skins the normal with the rotation part of the blended joint
- * matrices and ends in the same integer stage (light byte times color byte,
- * packed to RGB565), so only the light bytes differ. The `ops_t` constants are the
- * float operations each kernel below performs per vertex, counted by hand
- * from its code: `other` is compares, absolute values, sign copies and
- * conversions between float and integer; `int mul` is integer multiplies
- * beyond the shared final stage.
- */
+/* Host comparisons share the integer color stage so their error measures light bytes.
+ * Operation counts describe the kernels; host timings are not device timings. */
 
 #include <math.h>
 #include <stdint.h>
@@ -276,12 +256,15 @@ variant_ops(const variant_t* v, unsigned lights) {
     return (ops_t){0, 0, 0, 0, 0, 0};
 }
 
+#define RGB888_RED_SHIFT   16
+#define RGB888_GREEN_SHIFT 8
+
 static inline uint16_t
 shade(const uint8_t color[3], const uint8_t l[3]) {
     const uint32_t r = (color[0] * l[0] + 127u) / 255u;
     const uint32_t g = (color[1] * l[1] + 127u) / 255u;
     const uint32_t b = (color[2] * l[2] + 127u) / 255u;
-    return (uint16_t)GFX_RGB565((r << 16) | (g << 8) | b);
+    return (uint16_t)GFX_RGB565((r << RGB888_RED_SHIFT) | (g << RGB888_GREEN_SHIFT) | b);
 }
 
 static double

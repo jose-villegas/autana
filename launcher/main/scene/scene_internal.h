@@ -27,9 +27,12 @@ typedef struct {
     float intensity;
 } scene_light_t;
 
-#define SCENE_FLAG_ENABLED    1U
-#define SCENE_FLAG_DIRTY      2U
-#define SCENE_FLAG_SKIN_DIRTY 4U
+#define SCENE_FLAG_ENABLED         1U
+#define SCENE_FLAG_DIRTY           2U
+#define SCENE_FLAG_SKIN_DIRTY      4U
+#define SCENE_FLAG_CHANGED         (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
+#define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
+#define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
 
 typedef r3d_placement_t scene_placement_t;
 
@@ -106,6 +109,8 @@ typedef struct {
     void* internal_storage;
     uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
     mat3f_t* normal_palette;
+    void* light_storage;
+    bool lighting_valid;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -114,11 +119,10 @@ struct scene {
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     int animator_count, skeleton_animator_count;
     int light_count;
-    bool lights_dirty;
     r3d_skin_lights_t world_lights;
     scene_light_t* lights;
     vec3f_t ambient_color;
-    float ambient_intensity, tonemap_white, transfer_white;
+    float ambient_intensity, tonemap_white;
     r3d_skin_light_transfer_t* light_transfer;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
@@ -134,6 +138,7 @@ struct scene {
 /* A suite sets it to make the next scene allocation fail once, so an out of
  * memory load is shown without emptying the heap. */
 extern bool scene_fail_next_allocation;
+extern int scene_fail_light_allocation_after;
 #endif
 
 /* The loaded scenes, in load order. */
@@ -157,6 +162,8 @@ int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
 void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
+bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
+void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
 void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 

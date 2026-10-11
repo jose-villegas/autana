@@ -26,7 +26,7 @@ flowchart TB
 Each table cell holds the light of its centre's direction as three bytes, padded to
 four. A cell's direction is fixed, so the directions are one table shared by
 every object; the light bytes are rebuilt per object per frame. Every variant ends in
-the same integer stage, so only the light bytes differ. Lights are
+the same integer stage, so only the light bytes differ. The host comparison's lights are
 directional lights plus ambient in object space; each light-count row uses
 the first lights of `LIGHTS` in the benchmark.
 
@@ -35,9 +35,12 @@ the first lights of `LIGHTS` in the benchmark.
 `render/skin/r3d_skin_light.h` owns the fused direct N.L shader.
 `r3d_skin_clusters_lit()` shares packed weights between position and normal
 palettes, grows cluster bounds, and shades each vertex. The normal palette
-holds `mat3f_cofactor(entity_world * joint_palette)` for each joint.
-Renormalisation removes the positive determinant magnitude; non-uniform
-scale is supported and reflected entity transforms are refused.
+holds the inverse-transpose of `entity_world * joint_palette` for each joint:
+the cofactor divided by its determinant before blending. Non-uniform scale
+and runtime reflections set through `scene_set_transform()` are lit correctly.
+A zero or non-finite determinant, or a non-finite inverse-transpose, logs
+`skin normal transform invalid` and skips lighting for that skin; its lit
+colors are black while positions and bounds continue to update.
 The skinned normal is always renormalised. `mathf_rsqrt()` uses the
 S3's reciprocal-square-root seed and one Newton correction; host and QEMU
 use exact square root. The device tests require relative reciprocal error
@@ -46,7 +49,7 @@ at most one light-byte error against exact square root over the measured mesh.
 These limits require device validation; host fallback results do not establish
 the instruction's accuracy.
 
-For albedo byte `a`, linear albedo is `(a / 255)^2.2`. Linear radiance is
+For albedo byte `a`, linear albedo is `(a / 255)^2.2`. Radiance is
 `albedo * (ambient_color * ambient_intensity +
 sum(light_color * intensity * max(0, N.L)))`. Runtime intensity is the scene
 file's intensity, unscaled, matching `light.py:bake_directional`.
@@ -66,9 +69,8 @@ lookup reads one byte without interpolation. The exponent limits are
 `R3D_SKIN_LIGHT_RADIANCE_MIN_EXP` and `R3D_SKIN_LIGHT_RADIANCE_MAX_EXP`.
 Under-range values encode to zero; over-range values use the last entry.
 Xtensa register bit transfers avoid stack spills in decode and encode.
-The host sweep checks a maximum error of two encoded byte steps against
-the float formula, including every albedo byte and white values from zero
-through 16. The limits and sampling are in `suite_skin_light.c`.
+The host sweep checks encoded bytes against the float formula. Its error
+limits, albedo coverage and tone-map white sampling are in `suite_skin_light.c`.
 
 The scene prepares shared world-space light directions and premultiplied
 colors before splitting its cluster ranges. A directional
@@ -76,16 +78,21 @@ light's direction toward the light is its entity's +Y turned by its
 rotation, matching `import_settings.py:load_light`.
 Only skinned renderers use runtime lights. Without lights, their mesh view
 retains the bind-color pointer and does no color copy or shading.
-Each attached skin reserves `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex
-for lit colors and a `mat3f_t` normal palette per joint in its internal
-storage block. World light directions are computed once per frame and
+Only scenes with attached lights reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
+vertex for lit colors and a `mat3f_t` normal palette per joint, in a separate
+internal RAM block per skin. The first light allocates all existing skins'
+blocks transactionally; a new skin in a lit scene allocates its own block.
+A skin without vertex colors refuses light attachment, and attaching such a
+skin to a lit scene fails with `skin vertex colors required`, changing nothing.
+Skin face colors are albedo. Disabled lights contribute nothing; attached
+lights keep the lit color pointer, so zero ambient and no enabled lights
+produce black. Scene unload releases the blocks. World light directions are computed once per frame and
 every lit renderer reads the scene's shared `r3d_skin_lights_t`. Scene
 component arrays and the world-light set remain in PSRAM.
 SCNE v1 carries no lighting settings: absent ambient contributes zero,
 and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
 SCNE v1 has no writers for the private ambient and tone-map fields.
-The scene format and shared lighting-constant owner are tracked in the backlog.
-The interim Python equality test checks the runtime tables against `light.py`.
+`test_skin_light_transfer.py` checks the runtime tables against `light.py`.
 
 ## Board measurement
 
@@ -117,7 +124,7 @@ shows source-normal benchmark error; those inputs differ from packed normals.
 | 8651de3988fb-diag | table_build_4 | 44347.000 | build | 45.068 | 0 | 0.000000 |
 <!-- /generated: skin-light-board -->
 
-The device suite reports normal-palette cycles per build, renderer colour
+The device suite reports normal-palette cycles per build, renderer color
 and normal-palette bytes, light-copy bytes, scene transfer and world-light
 bytes, and heap availability. It measures skin-only, fused N.L writing
 light bytes,
@@ -131,6 +138,8 @@ largest block before allocation, after allocation and after release.
 
 ```sh
 autana --wait 3600 suite suite_skin_light_perf --flash
+# Copy BUILD_ID, POSE, timing, COST, QUALITY, CHECKSUM and HEAP lines from
+# the printed capture path into docs/render/data/skin-light-board.txt.
 python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md
 ```
 
