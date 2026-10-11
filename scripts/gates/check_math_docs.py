@@ -27,7 +27,7 @@ hand:
   * every inline formula, in $...$ or $`...`$, has at most
     MAX_INLINE_MATH_CHARS characters of TeX outside code spans and fences;
     a longer one is split into one span per step, joined with <br>.
-    Fenced ```math blocks are unmeasured because they wrap as a block.
+    Fenced blocks and `$$...$$` display math are not measured.
 """
 
 import argparse

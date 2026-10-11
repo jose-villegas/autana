@@ -100,6 +100,27 @@ class CheckMathDocs(unittest.TestCase):
                 self.assertEqual([], problems_for(page_extra="```%s\n$%s$ and $`%s`$\n```\n" %
                                                  (language, formula, formula)))
 
+    def test_an_over_limit_span_after_a_multiline_fence_has_its_real_line(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, page_extra="```math\na + b\nc + d\n```\n$`%s`$\n" % formula)
+            page = (root / check_math_docs.PAGE).read_text()
+            expected_line = next(i for i, line in enumerate(page.splitlines(), start=1) if formula in line)
+            problems = check_math_docs.check(root)
+        self.assertEqual(1, len(problems))
+        self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
+
+    def test_escaped_dollars_far_apart_are_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        self.assertEqual([], problems_for(page_extra=r"\$%s\$" % formula + "\n"))
+
+    def test_display_dollar_math_is_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for display in ("$$%s$$", r"$$\verb|$|%s$$"):
+            with self.subTest(display=display):
+                self.assertEqual([], problems_for(page_extra=display % formula + "\n"))
+
     def test_a_template_function_missing_from_the_page_fails(self):
         extra = "    static inline int P##_wobble(int a) { return a; } \\\n"
         self.assertTrue(any("P_wobble(" in p for p in problems_for(template_extra=extra)))
