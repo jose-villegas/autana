@@ -111,9 +111,8 @@ typedef struct app {
  * home gesture does, for an app with an on-screen way out. */
 void shell_request_exit(void);
 
-/* The panel edge the home gesture leaves from as the panel is held now; the
- * control centre opens from the edge opposite. A touch landing within
- * GESTURE_HOME_ZONE_DEPTH of either belongs to the shell. */
+/* The panel edge the home gesture leaves from as the panel is held now. A
+ * touch landing within GESTURE_HOME_ZONE_DEPTH of it belongs to the shell. */
 gesture_edge_t shell_home_edge(void);
 
 /*

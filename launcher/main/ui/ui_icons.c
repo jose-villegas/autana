@@ -14,7 +14,6 @@ static const ui_icon_name_t SYSTEM_NAMES[UI_ICON_COUNT] = {
     [UI_ICON_INFO] = {"info", "i"},
     [UI_ICON_ALERT] = {"alert", "!"},
     [UI_ICON_CHEVRON_LEFT] = {"chevron_left", "<"},
-    [UI_ICON_CHEVRON_RIGHT] = {"chevron_right", ">"},
     [UI_ICON_CHEVRON_UP] = {"chevron_up", "^"},
     [UI_ICON_CHEVRON_DOWN] = {"chevron_down", "v"},
     [UI_ICON_ARROW_LEFT] = {"arrow_left", "<"},
@@ -23,7 +22,6 @@ static const ui_icon_name_t SYSTEM_NAMES[UI_ICON_COUNT] = {
     [UI_ICON_WIFI] = {"wifi", "W"},
     [UI_ICON_GAMEPAD] = {"gamepad", "G"},
     [UI_ICON_MONITOR] = {"monitor", "M"},
-    [UI_ICON_PLUS] = {"plus", "+"},
 };
 
 static gfx_image_t system_icons[UI_ICON_COUNT];

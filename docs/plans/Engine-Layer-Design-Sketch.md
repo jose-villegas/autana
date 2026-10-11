@@ -38,10 +38,9 @@ flowchart TB
 ## 1. Shell UI apart from engine and game UI
 
 Today one folder, `ui/`, holds both the toolkit (microui integration,
-widgets, pointer, scroll) and the shell's screens (launcher, ridge backdrop,
-system navigation). The editor compiles all of it, links the app list and
-names system screens. Once Control Center is removed `[M]`, the editor has no
-authored document left.
+widgets, pointer, scroll) and the shell's screens (launcher, ridge backdrop).
+The editor compiles all of it, links the app list and previews the launcher.
+The editor has no authored document.
 
 | | Option | Editor | Shell UI | Cost |
 |---|---|---|---|---|
@@ -57,7 +56,7 @@ authored document left.
 |---|---|
 | `ui/` mixes the toolkit and the shell's screens | `ui/` is the toolkit only; the shell's screens live in `shell/ui/` |
 | `ui_launcher.c` includes `app/app.h`, so the toolkit folder knows the app list | the toolkit includes no system header; the tier gate fails it |
-| the editor's runtime includes `app/app.h`, registers apps by name, links `app/app_registry.c`, and lists system screens (`load_system_screens()`) | the editor opens a project: a folder of `<screen>_layout.json` plus one registered draw entry per screen; it links no system file |
+| the editor's runtime includes `app/app.h`, registers apps by name, links `app/app_registry.c`, and previews the launcher | the editor opens a project: a folder of `<screen>_layout.json` plus one registered draw entry per screen; it links no system file |
 | layouts live in `ui/` | each project keeps its layouts: `shell/ui/`, `apps/<game>/ui/` |
 
 ### What the shell needs that the toolkit lacks
@@ -87,13 +86,12 @@ the engine, the app contract and the platform's face, never `shell/`,
 ### What UI-Editor-Plan.md becomes, and what the shell keeps
 
 - **The plan** is retitled "UI editor: authoring a project's screens" `[M]`.
-  Control Center leaves it; its first document becomes a game screen (the
-  brush screen, already its phase 5); the editor links `ui/` and `gfx/` and no
-  shell or app file, so the launcher preview leaves it until the shell opens
-  as a project.
-- **The shell keeps** (B, the interim): the launcher, the ridge backdrop and
-  system navigation as hand-written C under `shell/ui/`, drawn with the
-  public toolkit like any app.
+  Its first document becomes a game screen (the brush screen, already its
+  phase 5); the editor links `ui/` and `gfx/` and no shell or app file, so the
+  launcher preview leaves it until the shell opens as a project.
+- **The shell keeps** (B, the interim): the launcher and the ridge backdrop
+  as hand-written C under `shell/ui/`, drawn with the public toolkit like
+  any app.
 
 ---
 
@@ -211,7 +209,7 @@ system icons), not code; it keeps its place under L1.
 
 | Today | Destination | Slice |
 |---|---|---|
-| `ui_launcher*`, `ui_ridge*`, `ridge_*`, `system_navigation*` | `shell/ui/` | S2 |
+| `ui_launcher*`, `ui_ridge*`, `ridge_*` | `shell/ui/` | S2 |
 | `ui/` toolkit files | stay | |
 | `apps/diagnostics/` | `shell/apps/diagnostics/` | S2 |
 | `gfx/draw/*`, `gfx/image/*` | `draw/` | S2 |
@@ -298,9 +296,8 @@ path in closure code, so S2 keys the same.
 
 ### Merge order
 
-Scene camera component → Control Center removed → S0 → S1 → no other PR
-open → S2 alone → S3. The `render_view_t` work is independent and may land
-any time before S2.
+Scene camera component → S0 → S1 → no other PR open → S2 alone → S3.
+The `render_view_t` work is independent and may land any time before S2.
 
 ## Related
 

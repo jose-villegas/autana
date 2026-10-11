@@ -1,7 +1,6 @@
 /*
  * shell_apps: switching between the launcher and the running app, and
- * stepping whichever is showing. `current` is NULL while a system screen,
- * the launcher or Control Center, shows.
+ * stepping whichever is showing. `current` is NULL while the launcher shows.
  */
 #pragma once
 
@@ -15,7 +14,7 @@
 void shell_apps_init(void);
 
 /* The physical edge the content's logical bottom lies on at `quarter`, where
- * the home swipe starts; the opposite edge opens Control Center. */
+ * the home swipe starts. */
 gesture_edge_t shell_exit_edge_for_quarter(int quarter);
 
 /* `next` becomes the running app: its enter() now, its first frame() on the
