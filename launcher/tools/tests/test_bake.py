@@ -8,9 +8,11 @@ import dataclasses
 import hashlib
 import io
 import json
+import os
 import pathlib
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -1132,6 +1134,51 @@ def filled_cache(directory):
                                bake.default_cache()).values():
         shutil.copyfile(path, pathlib.Path(directory) / path.name)
     return found, lock
+
+
+class StdlibKeysTests(unittest.TestCase):
+    def test_list_and_check_need_no_numpy_with_held_or_missing_poses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            blocker = root / "numpy"
+            blocker.mkdir()
+            (blocker / "__init__.py").write_text('raise ImportError("numpy blocked for key test")\n')
+            missing = root / "missing.lock"
+            missing.write_text("")
+            environment = {**os.environ, "PYTHONPATH": str(root)}
+            for lock in (bake.LOCK, missing):
+                for command in ("list", "check"):
+                    with self.subTest(lock=lock.name, command=command):
+                        script = (
+                            "import pathlib, sys; "
+                            "sys.path.insert(0, sys.argv[1]); "
+                            "from bake import bake; "
+                            "bake.LOCK = pathlib.Path(sys.argv[2]); "
+                            "bake.read_lock_tables.__defaults__ = (bake.LOCK,); "
+                            "raise SystemExit(bake.main([sys.argv[3]]))"
+                        )
+                        result = subprocess.run([sys.executable, "-c", script, str(TOOLS), str(lock), command],
+                                                env=environment, capture_output=True, text=True)
+                        output = result.stdout + result.stderr
+                        self.assertNotIn("numpy blocked", output)
+                        self.assertNotIn("Traceback", output)
+                        if command == "list":
+                            self.assertEqual(result.returncode, 0, output)
+                        else:
+                            self.assertIn(result.returncode, (0, 1), output)
+                            if lock == bake.LOCK:
+                                self.assertNotIn("  poses ", output)
+                            else:
+                                self.assertIn("  poses ", output)
+
+    def test_list_lock_hit_imports_neither_poses_nor_track_host(self):
+        script = (
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "sys.modules['r3d.poses'] = None; sys.modules['anim.track_host'] = None; "
+            "from bake import bake; raise SystemExit(bake.main(['list']))"
+        )
+        result = subprocess.run([sys.executable, "-c", script, str(TOOLS)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class TreeTests(unittest.TestCase):

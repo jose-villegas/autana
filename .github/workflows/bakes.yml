@@ -36,6 +36,7 @@ jobs:
 
       - name: List the exports and meshes the lock has no row for
         id: missing
+        shell: bash
         run: |
           python launcher/tools/bake/bake.py list --missing --kind blend | tee "$RUNNER_TEMP/blend.txt"
           python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/mesh.txt"
