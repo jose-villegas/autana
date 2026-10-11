@@ -4,6 +4,7 @@ import ast
 import base64
 import io
 import contextlib
+import errno
 import gzip
 import importlib.util
 import itertools
@@ -1851,6 +1852,38 @@ class SerialLineOrderTests(unittest.TestCase):
                 with self.assertRaises(failure):
                     device.open_serial()
                 self.assertTrue(handles[-1].closed)
+
+    def test_posix_port_without_modem_lines_opens_but_io_failure_closes(self):
+        for line in ("rts", "dtr"):
+            for code in (errno.ENOTTY, errno.EINVAL, errno.EIO):
+                with self.subTest(line=line, code=code):
+                    handles = []
+                    class Serial:
+                        def __init__(self):
+                            self.is_open = False
+                            self.closed = False
+                            handles.append(self)
+                        def open(self):
+                            self.is_open = True
+                        def __setattr__(self, name, value):
+                            if name == line and self.is_open:
+                                raise OSError(code, "modem line unavailable")
+                            object.__setattr__(self, name, value)
+                        def close(self):
+                            self.closed = True
+                    with mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
+                         mock.patch.object(device, "locked_port", return_value="fake"), \
+                         mock.patch.object(device, "os", Namespace(name="posix")):
+                        if code == errno.EIO:
+                            with self.assertRaises(OSError) as caught:
+                                device.open_serial()
+                            self.assertEqual(caught.exception.errno, code)
+                            self.assertTrue(handles[0].closed)
+                        else:
+                            connection = device.open_serial()
+                            self.assertIs(connection, handles[0])
+                            self.assertFalse(connection.closed)
+                            connection.close()
 
     def test_posix_lowers_rts_before_dtr_and_windows_uses_one_dcb(self):
         class Serial:

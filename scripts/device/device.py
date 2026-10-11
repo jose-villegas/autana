@@ -4,6 +4,7 @@ USB serial number."""
 import argparse
 import collections
 import contextlib
+import errno
 import gzip
 import json
 import math
@@ -277,8 +278,13 @@ def open_serial():
     try:
         connection.open()
         if os.name != "nt":
-            connection.rts = False
-            connection.dtr = False
+            try:
+                connection.rts = False
+                connection.dtr = False
+            except OSError as error:
+                # A PTY has no modem lines to lower.
+                if error.errno not in (errno.EINVAL, errno.ENOTTY):
+                    raise
     except BaseException:
         connection.close()
         raise
@@ -1225,14 +1231,15 @@ def write_image(built, store, board, held_lock):
     """Writes `built`'s snapshot under the caller's lock and returns its build
     id and the new boot's open port. The snapshot is gone afterwards,
     written or not; the caller closes the port before releasing the lock."""
-    build_id = error = held = connection = None
-    try:
+    build_id = error = held = None
+    with contextlib.ExitStack() as cleanup:
         try:
             with holding(store, board, built.args, held_lock, "flash") as held:
                 with open_when_free():
                     pass
                 connection = run_resetting(lambda: built.run(lambda **popen:
                     write_snapshot(held, built.write, built.image, **popen), "ab"))
+                cleanup.callback(connection.close)
                 build_id = built.build_id
                 print("flashed BUILD_ID=" + build_id + " (esptool hash verified; boot not verified)")
         except (OSError, RuntimeError, subprocess.CalledProcessError) as caught:
@@ -1242,10 +1249,7 @@ def write_image(built, store, board, held_lock):
             built.__exit__(None, None, None)
             built.record(build_id=build_id, error=error,
                          acquired_at=held.held["acquired_at"] if held else None)
-    except BaseException:
-        if connection is not None:
-            connection.close()
-        raise
+        cleanup.pop_all()
     return build_id, connection
 
 
