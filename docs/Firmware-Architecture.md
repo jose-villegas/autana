@@ -12,7 +12,7 @@ home when the app exits. Each frame has one owner per step:
 | Step | Owner | Job |
 |---|---|---|
 | Read touch and motion | shell (`shell/`) | Make one `input_t` for the frame. |
-| Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
+| Update and draw | current app, or the launcher | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
 ![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
@@ -350,9 +350,8 @@ flag ([Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
 `invalidate()` and the launcher gets `ui_invalidate()`. Clearing the flag
-before the draw rather than
-after is what lets a request made inside that very `frame()` reach the next
-pass. The app's side is in
+before the draw rather than after is what lets a request made inside that
+very `frame()` reach the next pass. The app's side is in
 [Building-an-App.md](Building-an-App.md#full-redraw).
 
 ### The frame watch: no allocating or logging in steady state
@@ -408,8 +407,8 @@ visit gets the same block, and taking from it is no dynamic-memory call
 
 ## Drawing a UI, in the shell or in an app
 
-`ui/ui.c` owns the microui integration; the launcher is a
-caller like any app. The controls and helpers are catalogued in
+`ui/ui.c` owns the microui integration; the launcher is a caller like any
+app. The controls and helpers are catalogued in
 [UI-Toolkit.md](UI-Toolkit.md), and how to put a screen together is
 [Building-a-Screen.md](Building-a-Screen.md). What follows is how the
 integration underneath them works.
@@ -548,9 +547,9 @@ different from the root found; the DOWN then waits, frame by frame, and the
 tap is never lost. Ship the press with no hover frame and nothing takes focus:
 every button draws its pressed look while returning 0. A press and release
 inside one frame resolves at once, so on an unsettled root it is lost.
-A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) leaves
-no trace: it neither steps nor reports to the pointer, and microui's focus and
-hover root are as it found them. `ui/ui_pointer.c` also owns the held `DOWN` a
+A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input
+and neither steps nor reports to the pointer. It runs before `input_start()`,
+with no touch in progress. `ui/ui_pointer.c` also owns the held `DOWN` a
 slider needs to track a drag and the UP owed when a lift never reached the UI
 (`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list

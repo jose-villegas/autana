@@ -44,11 +44,11 @@ finger(bool pressed, bool down, bool released, int press_x, int press_y, int x, 
 /* Lands at (x0, y0), moves to (x1, y1) over one frame and holds there; the
  * steering of the moving frame. */
 static orbit_motion_input_t
-drag_on(orbit_motion_touch_t* t, viewport_t viewport, int x0, int y0, int x1, int y1) {
+drag_on(orbit_motion_touch_t* t, viewport_t viewport, gesture_edge_t home_edge, int x0, int y0, int x1, int y1) {
     const input_t down = finger(true, true, false, x0, y0, x0, y0);
-    (void)orbit_motion_touch_step(t, &down, FRAME_MS, viewport, HOME_EDGE);
+    (void)orbit_motion_touch_step(t, &down, FRAME_MS, viewport, home_edge);
     const input_t moved = finger(false, true, false, x0, y0, x1, y1);
-    return orbit_motion_touch_step(t, &moved, FRAME_MS, viewport, HOME_EDGE);
+    return orbit_motion_touch_step(t, &moved, FRAME_MS, viewport, home_edge);
 }
 
 static orbit_motion_input_t
@@ -75,7 +75,8 @@ void
 test_orbit_motion_touch_a_drag_turns_by_its_travel_right_turning_the_eye_left_and_down_raising_it(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
-    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y + DRAG_PX);
+    const orbit_motion_input_t out =
+        drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y + DRAG_PX);
     TEST_ASSERT_TRUE(out.held);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, -DRAG_PX * per_px(), out.yaw_turn);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * per_px(), out.pitch_turn);
@@ -87,7 +88,7 @@ test_orbit_motion_touch_a_drag_across_the_shorter_side_turns_the_named_amount(vo
     orbit_motion_touch_init(&t);
     const int shorter = GFX_WIDTH < GFX_HEIGHT ? GFX_WIDTH : GFX_HEIGHT;
     const orbit_motion_input_t out =
-        drag_on(&t, PORTRAIT, CENTRE_X - shorter / 2, CENTRE_Y, CENTRE_X + shorter / 2, CENTRE_Y);
+        drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X - shorter / 2, CENTRE_Y, CENTRE_X + shorter / 2, CENTRE_Y);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, -ORBIT_MOTION_TOUCH_TURN_PER_SHORT_SIDE, out.yaw_turn);
 }
 
@@ -98,22 +99,66 @@ test_orbit_motion_touch_a_turned_panel_steers_by_the_upright_picture(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
     const viewport_t turned = {GFX_WIDTH, GFX_HEIGHT, 1};
-    const orbit_motion_input_t out = drag_on(&t, turned, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y);
+    const orbit_motion_input_t out = drag_on(&t, turned, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, 0.0F, out.yaw_turn);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * per_px(), fabsf(out.pitch_turn));
 }
 
 void
-test_orbit_motion_touch_only_the_home_strip_reserves_a_drag(void) {
-    const int starts[][2] = {{CENTRE_X, GFX_HEIGHT - INSIDE_STRIP}, {CENTRE_X, INSIDE_STRIP}};
-    for (unsigned i = 0; i < sizeof starts / sizeof starts[0]; i++) {
-        orbit_motion_touch_t t;
-        orbit_motion_touch_init(&t);
-        const orbit_motion_input_t out =
-            drag_on(&t, PORTRAIT, starts[i][0], starts[i][1], starts[i][0] + DRAG_PX, CENTRE_Y);
-        TEST_ASSERT_EQUAL_INT(i != 0, out.held);
-        TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, i == 0 ? 0.0F : -DRAG_PX * per_px(), out.yaw_turn);
-        TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, i == 0 ? 0.0F : (CENTRE_Y - INSIDE_STRIP) * per_px(), out.pitch_turn);
+test_orbit_motion_touch_the_home_strip_reserves_a_drag(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    const orbit_motion_input_t out =
+        drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, GFX_HEIGHT - INSIDE_STRIP, CENTRE_X + DRAG_PX, CENTRE_Y);
+    TEST_ASSERT_FALSE(out.held);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.yaw_turn);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.pitch_turn);
+}
+
+void
+test_orbit_motion_touch_the_opposite_strip_steers_a_drag(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    const orbit_motion_input_t out =
+        drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, INSIDE_STRIP, CENTRE_X + DRAG_PX, CENTRE_Y);
+    TEST_ASSERT_TRUE(out.held);
+    TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, -DRAG_PX * per_px(), out.yaw_turn);
+    TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, (CENTRE_Y - INSIDE_STRIP) * per_px(), out.pitch_turn);
+}
+
+void
+test_orbit_motion_touch_the_left_home_strip_reserves_a_landscape_drag(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    const viewport_t landscape = {GFX_WIDTH, GFX_HEIGHT, 1};
+    const orbit_motion_input_t out =
+        drag_on(&t, landscape, GESTURE_EDGE_LEFT, INSIDE_STRIP, CENTRE_Y, INSIDE_STRIP + DRAG_PX, CENTRE_Y);
+    TEST_ASSERT_FALSE(out.held);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.yaw_turn);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, out.pitch_turn);
+}
+
+void
+test_orbit_motion_touch_opposite_the_left_home_strip_steers_a_landscape_drag(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    const viewport_t landscape = {GFX_WIDTH, GFX_HEIGHT, 1};
+    const int x = GFX_WIDTH - INSIDE_STRIP;
+    const orbit_motion_input_t out = drag_on(&t, landscape, GESTURE_EDGE_LEFT, x, CENTRE_Y, x - DRAG_PX, CENTRE_Y);
+    TEST_ASSERT_TRUE(out.held);
+    TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * per_px(), fabsf(out.pitch_turn));
+}
+
+void
+test_orbit_motion_touch_two_taps_opposite_home_ask_for_home_once(void) {
+    orbit_motion_touch_t t;
+    orbit_motion_touch_init(&t);
+    const input_t down = finger(true, true, false, CENTRE_X, INSIDE_STRIP, CENTRE_X, INSIDE_STRIP);
+    const bool resets[] = {false, true, false};
+    for (size_t i = 0; i < sizeof resets / sizeof resets[0]; i++) {
+        (void)orbit_motion_touch_step(&t, &down, FRAME_MS, PORTRAIT, HOME_EDGE);
+        TEST_ASSERT_EQUAL_INT(resets[i], lift_at(&t, CENTRE_X, INSIDE_STRIP, CENTRE_X, INSIDE_STRIP).reset);
+        wait_ms(&t, ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS / 2);
     }
 }
 
@@ -121,7 +166,8 @@ void
 test_orbit_motion_touch_a_drag_from_a_side_edge_steers_when_home_is_at_the_bottom(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
-    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, INSIDE_STRIP, CENTRE_Y, INSIDE_STRIP + DRAG_PX, CENTRE_Y);
+    const orbit_motion_input_t out =
+        drag_on(&t, PORTRAIT, HOME_EDGE, INSIDE_STRIP, CENTRE_Y, INSIDE_STRIP + DRAG_PX, CENTRE_Y);
     TEST_ASSERT_TRUE(out.held);
 }
 
@@ -150,7 +196,7 @@ test_orbit_motion_touch_a_drag_between_two_taps_breaks_the_pair(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
     (void)tap(&t);
-    (void)drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y);
+    (void)drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y);
     (void)lift_at(&t, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y);
     TEST_ASSERT_FALSE(tap(&t).reset);
 }
@@ -172,7 +218,7 @@ test_orbit_motion_touch_a_tap_within_its_slop_still_counts(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
     (void)tap(&t);
-    (void)drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X + ORBIT_MOTION_TOUCH_TAP_SLOP_PX, CENTRE_Y);
+    (void)drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X + ORBIT_MOTION_TOUCH_TAP_SLOP_PX, CENTRE_Y);
     TEST_ASSERT_TRUE(lift_at(&t, CENTRE_X, CENTRE_Y, CENTRE_X + ORBIT_MOTION_TOUCH_TAP_SLOP_PX, CENTRE_Y).reset);
 }
 
@@ -198,7 +244,8 @@ test_orbit_motion_touch_a_tap_then_a_drag_down_zooms_in_without_turning(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
     (void)tap(&t);
-    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y + DRAG_PX);
+    const orbit_motion_input_t out =
+        drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X + DRAG_PX, CENTRE_Y + DRAG_PX);
     TEST_ASSERT_TRUE(out.held);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, -DRAG_PX * zoom_per_px(), out.zoom_turn);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, out.yaw_turn);
@@ -210,7 +257,7 @@ test_orbit_motion_touch_a_tap_then_a_drag_up_zooms_out_and_never_resets(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
     (void)tap(&t);
-    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y - DRAG_PX);
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y - DRAG_PX);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * zoom_per_px(), out.zoom_turn);
     TEST_ASSERT_FALSE(lift_at(&t, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y - DRAG_PX).reset);
 }
@@ -219,7 +266,7 @@ void
 test_orbit_motion_touch_a_lone_drag_turns_and_never_zooms(void) {
     orbit_motion_touch_t t;
     orbit_motion_touch_init(&t);
-    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y + DRAG_PX);
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, CENTRE_Y, CENTRE_X, CENTRE_Y + DRAG_PX);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, out.zoom_turn);
     TEST_ASSERT_FLOAT_WITHIN(TURN_EPSILON, DRAG_PX * per_px(), out.pitch_turn);
 }
@@ -230,7 +277,7 @@ test_orbit_motion_touch_a_second_press_in_the_home_strip_neither_zooms_nor_turns
     orbit_motion_touch_init(&t);
     (void)tap(&t);
     const int y = GFX_HEIGHT - INSIDE_STRIP;
-    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, CENTRE_X, y, CENTRE_X, y - DRAG_PX);
+    const orbit_motion_input_t out = drag_on(&t, PORTRAIT, HOME_EDGE, CENTRE_X, y, CENTRE_X, y - DRAG_PX);
     TEST_ASSERT_FALSE(out.held);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, out.zoom_turn);
 }
@@ -244,7 +291,11 @@ run_orbit_motion_touch_suite(void) {
     RUN_TEST(test_orbit_motion_touch_a_drag_turns_by_its_travel_right_turning_the_eye_left_and_down_raising_it);
     RUN_TEST(test_orbit_motion_touch_a_drag_across_the_shorter_side_turns_the_named_amount);
     RUN_TEST(test_orbit_motion_touch_a_turned_panel_steers_by_the_upright_picture);
-    RUN_TEST(test_orbit_motion_touch_only_the_home_strip_reserves_a_drag);
+    RUN_TEST(test_orbit_motion_touch_the_home_strip_reserves_a_drag);
+    RUN_TEST(test_orbit_motion_touch_the_opposite_strip_steers_a_drag);
+    RUN_TEST(test_orbit_motion_touch_the_left_home_strip_reserves_a_landscape_drag);
+    RUN_TEST(test_orbit_motion_touch_opposite_the_left_home_strip_steers_a_landscape_drag);
+    RUN_TEST(test_orbit_motion_touch_two_taps_opposite_home_ask_for_home_once);
     RUN_TEST(test_orbit_motion_touch_a_drag_from_a_side_edge_steers_when_home_is_at_the_bottom);
     RUN_TEST(test_orbit_motion_touch_two_quick_taps_ask_for_home_once);
     RUN_TEST(test_orbit_motion_touch_taps_too_far_apart_are_not_a_double_tap);

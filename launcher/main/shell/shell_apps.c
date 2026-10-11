@@ -1,7 +1,7 @@
 /*
  * The shell's app switching: what it does on entering and leaving an app,
- * the launcher it steps while none runs, the home hint,
- * and when a frame is presented.
+ * the launcher it steps while none runs, the home hint, and when a frame
+ * is presented.
  */
 
 #include <stdbool.h>

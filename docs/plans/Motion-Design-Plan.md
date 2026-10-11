@@ -4,8 +4,8 @@
 docs cited, not board measurements.
 
 The goal is motion that explains where things come from: an app grows out
-of its launcher row, a blurred backdrop keeps the screen underneath legible, and a quarter turn
-morphs one layout into the other instead of cutting.
+of its launcher row, a blurred backdrop keeps the screen underneath legible,
+and a quarter turn morphs one layout into the other instead of cutting.
 
 ## What the board allows
 
@@ -37,10 +37,10 @@ What already exists:
 | # | Piece | Approach | Cost (*est*) | Verdict |
 |---|---|---|---|---|
 | 1 | Motion module in `math/motion/`, host-tested, time passed in | Critically damped half-life spring that keeps its velocity when the target changes, for anything the finger drives or can interrupt; 33-entry Q16 easing tables baked from Material 3's emphasized curves for fixed transitions; always sample by elapsed time | A few operations per animated value | Build first |
-| 2 | Cached blurred backdrop | On open: downsample the framebuffer 4x, three box-blur passes (within about 3% of a Gaussian), bake in the tint, keep it; upsample with ordered dither when drawn; the scrim gets much lighter than 230 | 20 KB PSRAM; one hitch of about 20 ms (8 ms downsample read, 1.5 ms blur, 8-12 ms upsample) that can be spread over the first transition frames; nothing per frame while static | Fit |
+| 2 | Cached blurred backdrop | When a panel opens over a paused screen: downsample the framebuffer 4x, three box-blur passes (within about 3% of a Gaussian), bake in the tint, keep it; upsample with ordered dither when drawn; the scrim over the blur can be much lighter than a plain one | 20 KB PSRAM; one hitch of about 20 ms (8 ms downsample read, 1.5 ms blur, 8-12 ms upsample) that can be spread over the first transition frames; nothing per frame while static | Fit |
 | 3 | App open | Container transform: grow the row's own card or colour to full screen, then cut to the app's first full redraw; also hides the app's start-up time | Fills only, dirty area = the card; 3-10 ms present | Fit |
 | 4 | App close | The framebuffer holds the app's last frame at exit: copy it to a half-resolution thumbnail (82 KB PSRAM) and shrink it onto its row, drawn in band-ring mode to avoid bulk PSRAM writes | Scaling 3-5 cycles/px plus the PSRAM read (6-10 ms at full size, about 4x less at half) | Fit with caveat |
-| 5 | Orientation morph | For each element id, lerp its old physical rect to the new one (each baked layout through its own quarter transform); stage it: bounds first, fills and colours lerped, text hidden and cut to the new orientation, faded in at the end; launcher rows pair by app | Fills per frame, full send per frame | Fit; the most work |
+| 5 | Orientation morph | For each element id, lerp its old physical rect to the new one (each orientation's rects through its own quarter transform); stage it: bounds first, fills and colours lerped, text hidden and cut to the new orientation, faded in at the end; launcher rows pair by app | Fills per frame, full send per frame | Fit; the most work |
 
 Ruled out:
 
@@ -75,6 +75,10 @@ Ruled out:
    core 1 is presenting: is it band-ring bound or PSRAM bound?
 2. At what scrim alpha a 1/4-resolution RGB565 blur reads as blur, rather
    than mush or banding, on this AMOLED.
+
+3. The real cost per frame of a full-screen translated sheet in portrait and
+   landscape, from the frame-cost report (`docs/tools/Frame-Cost.md`); that
+   number sets the budget for every piece after the motion module.
 
 ## Sources, read first
 

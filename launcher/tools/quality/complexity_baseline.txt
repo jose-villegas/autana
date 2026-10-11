@@ -1805,7 +1805,7 @@
 3	launcher/main/console/console_verbs.c:37	listed_in
 3	launcher/main/display/display_device.c:66	display_set_system_panel_clock_hz
 3	launcher/main/input/buttons.c:176	poll_once
-3	launcher/main/input/gesture.c:4	gesture_is_edge_swipe
+3	launcher/main/input/gesture.c:4	gesture_is_home_swipe
 3	launcher/main/input/imu.c:152	imu_read
 3	launcher/main/input/tilt.c:196	tilt_shake
 3	launcher/main/input/touch_calib.c:30	clamp

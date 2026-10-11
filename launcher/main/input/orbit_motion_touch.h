@@ -35,7 +35,7 @@
 #define ORBIT_MOTION_TOUCH_DOUBLE_TAP_MS       350
 
 typedef struct {
-    bool steering;         /* the finger down now landed outside the shell's strips */
+    bool steering;         /* the finger down now landed outside the shell's home-edge strip */
     bool zooming;          /* and it is a tap's second press: it zooms rather than turns */
     int last_x, last_y;    /* where it was last frame, panel pixels */
     uint32_t down_ms;      /* how long it has been down */

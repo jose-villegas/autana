@@ -12,7 +12,7 @@ gesture_in_edge_zone(int x, int y, gesture_edge_t edge, int screen_w, int screen
 }
 
 bool
-gesture_is_edge_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h) {
+gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h) {
     if (!input->down || !gesture_in_edge_zone(input->press_x, input->press_y, edge, screen_w, screen_h)) {
         return false;
     }
