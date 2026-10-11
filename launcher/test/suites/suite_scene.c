@@ -4,6 +4,7 @@
  * of view 1 projects each x unit 3.2 pixels from the centre of a 64-pixel view.
  */
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,10 @@
 #include "ui/ui.h"
 #endif
 #include "core/memory.h"
+#ifdef HOST_HEAP_ARENA
+#include "job_calls.h"
+#endif
+#include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
@@ -46,7 +51,7 @@
 #define GREEN_PIXEL_OFFSET 6
 #define CLEAR_RGB          0x336699
 #define QUAD_BYTES         132
-#define PACK_MAX           8192
+#define PACK_MAX           16384
 #define SENTINEL           0x5A5A
 
 /* Copies of one mesh a test draws, to make a culled list worth measuring. */
@@ -54,53 +59,51 @@
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
  * one after another after the 44-byte header. */
-static void
-make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue) {
-    enum {
-        POSITIONS = 44,
-        COLORS = 68,
-        TRIANGLES = 80,
-        CLUSTERS = 92,
-        CLUSTER_VERTICES = 94,
-        CLUSTER_TRIANGLES = 98,
-        CLUSTER_LO = 100,
-        CLUSTER_HI = 106,
-        CLUSTER_DOUBLE_SIDED = 112,
-        NODES = 116,
-        NODE_COUNT = 130,
-        NODE_LEAF = 131,
-    };
+enum {
+    QUAD_VERTICES = 4,
+    QUAD_TRIANGLES = 2,
+    MESH_HEADER = 44,
+    MESH_SCALE_AT = 4 * sizeof(uint32_t),
+    RIG_JOINTS = 4,
+    RIG_ENTRIES = 10,
+    RIG_MESH_BYTES = 200,
+    RIG_VERTICES = 2 * QUAD_VERTICES,
+    RIG_DURATION_MS = 1000,
+    RIG_TRAVEL = 4
+};
 
-    const uint32_t words[11] = {4, 2, 1, 1, 1, POSITIONS, COLORS, TRIANGLES, CLUSTERS, NODES, 0};
-    for (int i = 0; i < 11; i++) {
-        test_pack_put32(entry + (4 * i), words[i]);
+static void
+make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue, int copies) {
+    const int vertices = QUAD_VERTICES * copies, triangles = QUAD_TRIANGLES * copies;
+    const uint32_t positions = MESH_HEADER, colors = positions + vertices * sizeof(int16_t[3]);
+    const uint32_t corners_at = colors + vertices * sizeof(uint8_t[3]);
+    const uint32_t clusters = corners_at + triangles * sizeof(uint16_t[3]);
+    const uint32_t nodes = mathi_size_ceil(clusters + copies * sizeof(r3d_lit_cluster_t), sizeof(uint32_t));
+    const uint32_t words[] = {vertices, triangles, copies, 1, 1, positions, colors, corners_at, clusters, nodes, 0};
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
+        test_pack_put32(entry + sizeof(uint32_t) * i, words[i]);
     }
-    const int xs[4] = {-1, 1, 1, -1};
-    const int ys[4] = {-1, -1, 1, 1};
-    for (int v = 0; v < 4; v++) {
-        test_pack_put16(entry + POSITIONS + (6 * v), xs[v]);
-        test_pack_put16(entry + POSITIONS + (6 * v) + 2, ys[v]);
-        entry[COLORS + (3 * v)] = red;
-        entry[COLORS + (3 * v) + 1] = green;
-        entry[COLORS + (3 * v) + 2] = blue;
+    static const int16_t points[QUAD_VERTICES][3] = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
+    static const uint16_t corners[QUAD_TRIANGLES][3] = {{0, 1, 2}, {0, 2, 3}};
+    for (int c = 0; c < copies; c++) {
+        memcpy(entry + positions + c * sizeof points, points, sizeof points);
+        for (int v = c * QUAD_VERTICES; v < (c + 1) * QUAD_VERTICES; v++) {
+            const uint8_t color[] = {red, green, blue};
+            memcpy(entry + colors + v * sizeof color, color, sizeof color);
+        }
+        for (int t = 0; t < QUAD_TRIANGLES; t++) {
+            for (int axis = 0; axis < 3; axis++) {
+                test_pack_put16(entry + corners_at + (c * QUAD_TRIANGLES + t) * sizeof(uint16_t[3])
+                                    + axis * sizeof(uint16_t),
+                                corners[t][axis] + c * QUAD_VERTICES);
+            }
+        }
+        const r3d_lit_cluster_t cluster = {
+            c * QUAD_VERTICES, QUAD_VERTICES, c * QUAD_TRIANGLES, QUAD_TRIANGLES, {-1, -1, 0}, {1, 1, 0}, true};
+        memcpy(entry + clusters + c * sizeof cluster, &cluster, sizeof cluster);
     }
-    const int corners[6] = {0, 1, 2, 0, 2, 3};
-    for (int i = 0; i < 6; i++) {
-        test_pack_put16(entry + TRIANGLES + (2 * i), corners[i]);
-    }
-    test_pack_put16(entry + CLUSTER_VERTICES, 4);
-    test_pack_put16(entry + CLUSTER_TRIANGLES, 2);
-    test_pack_put16(entry + CLUSTER_LO, -1);
-    test_pack_put16(entry + CLUSTER_LO + 2, -1);
-    test_pack_put16(entry + CLUSTER_HI, 1);
-    test_pack_put16(entry + CLUSTER_HI + 2, 1);
-    entry[CLUSTER_DOUBLE_SIDED] = 1;
-    test_pack_put16(entry + NODES, -1);
-    test_pack_put16(entry + NODES + 2, -1);
-    test_pack_put16(entry + NODES + 6, 1);
-    test_pack_put16(entry + NODES + 8, 1);
-    entry[NODE_COUNT] = 1;
-    entry[NODE_LEAF] = 1;
+    const r3d_lit_node_t node = {{-1, -1, 0}, {1, 1, 0}, 0, copies, true};
+    memcpy(entry + nodes, &node, sizeof node);
 }
 
 static const struct {
@@ -119,8 +122,7 @@ enum {
     FLIGHT_BYTES = FLIGHT_TURNS + (8 * sizeof(float))
 };
 
-/* "flight" is the clip as a scene reads it; "skewed" has a translation 2 wide
- * and "unturned" no rotation, which a scene must refuse. */
+/* A camera translation must be three-wide; unkeyed rotation retains its value. */
 static const struct {
     const char* id;
     anim_value_t position_type;
@@ -174,7 +176,7 @@ typedef struct {
 
     struct {
         const char* name;
-        scene_transform_t at;
+        scene_placement_t at;
     } entities[3];
 
     struct {
@@ -221,6 +223,12 @@ static const scene_spec_t SCENES[] = {
      {{"left", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}, {"red", IDENTITY}},
      {{2, "red"}},
      {{0, CLEAR_RGB, "", ""}, {1, CLEAR_RGB, "", ""}}},
+    {.id = "test_aliases",
+     .entity_count = 2,
+     .camera_count = 2,
+     .entities = {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
+     .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight", .node = "camera"},
+                 {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight", .node = "camera"}}},
     /* a camera flying a clip the pack does not hold */
     {"test_lost",
      2,
@@ -252,6 +260,7 @@ static const scene_spec_t SCENES[] = {
      {{"camera", IDENTITY}, {"red", IDENTITY}},
      {{1, "red"}},
      {{0, CLEAR_RGB, "unturned", "camera"}}},
+
 };
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
@@ -259,7 +268,7 @@ static const scene_spec_t SCENES[] = {
 
 static uint32_t
 scene_entry_size(const scene_spec_t* s) {
-    return 24U + ((uint32_t)s->entity_count * (32U + sizeof(scene_transform_t)))
+    return 24U + ((uint32_t)s->entity_count * (32U + sizeof(scene_placement_t)))
            + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
            + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t));
 }
@@ -268,7 +277,7 @@ static void
 make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
     const uint32_t names = 24;
     const uint32_t transforms = names + ((uint32_t)s->entity_count * 32U);
-    const uint32_t renderers = transforms + ((uint32_t)s->entity_count * sizeof(scene_transform_t));
+    const uint32_t renderers = transforms + ((uint32_t)s->entity_count * sizeof(scene_placement_t));
     const uint32_t cameras = renderers + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t));
     const uint32_t offsets[4] = {names, transforms, renderers, cameras};
     test_pack_put16(entry, SCENE_ASSET_VERSION);
@@ -280,8 +289,8 @@ make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
     }
     for (int i = 0; i < s->entity_count; i++) {
         memcpy(entry + names + (32U * (uint32_t)i), s->entities[i].name, strlen(s->entities[i].name));
-        memcpy(entry + transforms + (sizeof(scene_transform_t) * (size_t)i), &s->entities[i].at,
-               sizeof(scene_transform_t));
+        memcpy(entry + transforms + (sizeof(scene_placement_t) * (size_t)i), &s->entities[i].at,
+               sizeof(scene_placement_t));
     }
     for (int i = 0; i < s->renderer_count; i++) {
         uint8_t* row = entry + renderers + (sizeof(scene_asset_renderer_t) * (size_t)i);
@@ -299,24 +308,108 @@ make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
     }
 }
 
+static void
+make_rig_skeleton(test_pack_t* pack, const char* id, int joints) {
+    const uint32_t rest = ANIM_SKELETON_HEADER_SIZE + joints * ANIM_SKELETON_ROW_SIZE;
+    const uint32_t strings = rest + joints * sizeof(float[ANIM_SKELETON_REST_WIDTH]);
+    uint8_t* entry = test_pack_add(pack, id, ANIM_SKELETON_ASSET, strings + joints * sizeof("root"));
+    test_pack_put16(entry + ANIM_SKELETON_AT_VERSION, ANIM_SKELETON_VERSION);
+    entry[ANIM_SKELETON_AT_COUNT] = joints;
+    test_pack_put32(entry + ANIM_SKELETON_AT_STRINGS, strings);
+    test_pack_put32(entry + ANIM_SKELETON_AT_STRINGS_SIZE, joints * sizeof("root"));
+    test_pack_put32(entry + ANIM_SKELETON_AT_REST, rest);
+    static const char* const paths[] = {"root", "tip1", "tip2", "tip3"};
+    static const float local[ANIM_SKELETON_REST_WIDTH] = {0, 0, 0, 0, 0, 0, 1, 1, 1, 1};
+    for (int j = 0; j < joints; j++) {
+        uint8_t* row = entry + ANIM_SKELETON_HEADER_SIZE + j * ANIM_SKELETON_ROW_SIZE;
+        test_pack_put16(row, j * sizeof("root"));
+        row[offsetof(anim_skeleton_joint_t, parent)] = j == 0 ? ANIM_SKELETON_ROOT : 0;
+        memcpy(entry + strings + j * sizeof("root"), paths[j], sizeof("root"));
+        test_pack_put_floats(entry + rest + j * sizeof local, local, ANIM_SKELETON_REST_WIDTH);
+    }
+}
+
+static void
+make_rig_skin(test_pack_t* pack, const char* id, int influences, int joints, int vertices) {
+    const uint32_t records = R3D_SKIN_HEADER_SIZE + joints * sizeof(float[R3D_SKIN_MATRIX_WIDTH]);
+    const int stride = 2 * influences + R3D_SKIN_RECORD_TAIL;
+    uint8_t* entry = test_pack_add(pack, id, R3D_SKIN_ASSET, records + vertices * stride);
+    test_pack_put16(entry + R3D_SKIN_AT_VERSION, R3D_SKIN_VERSION);
+    entry[R3D_SKIN_AT_JOINTS] = joints;
+    entry[R3D_SKIN_AT_INFLUENCES] = influences;
+    test_pack_put32(entry + R3D_SKIN_AT_VERTICES, vertices);
+    test_pack_put32(entry + R3D_SKIN_AT_INVERSE, R3D_SKIN_HEADER_SIZE);
+    test_pack_put32(entry + R3D_SKIN_AT_RECORDS, records);
+    static const float inverse[R3D_SKIN_MATRIX_WIDTH] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+    for (int j = 0; j < joints; j++) {
+        test_pack_put_floats(entry + R3D_SKIN_HEADER_SIZE + j * sizeof inverse, inverse, R3D_SKIN_MATRIX_WIDTH);
+    }
+    for (int v = 0; v < vertices; v++) {
+        uint8_t* row = entry + records + v * stride;
+        for (int i = 0; i < influences; i++) {
+            row[i] = i;
+            row[influences + i] = R3D_SKIN_WEIGHT_SUM / influences;
+        }
+        row[influences] += R3D_SKIN_WEIGHT_SUM % influences;
+        row[2 * influences + 2] = R3D_SKIN_NORMAL_SCALE;
+    }
+}
+
+static void
+make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t root, int travel) {
+    enum {
+        KEYS = 2,
+        WIDTH = 3,
+        TIMES = TEST_TRACKS_HEADER_SIZE + TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT,
+        VALUES = TIMES + KEYS * sizeof(float),
+        BYTES = VALUES + KEYS * WIDTH * sizeof(float)
+    };
+
+    uint8_t* entry = test_pack_add(pack, id, ANIM_TRACKS_ASSET, BYTES);
+    test_tracks_header(entry, 1, RIG_DURATION_MS);
+    entry[ANIM_TRACKS_AT_ROOT] = root;
+    const test_track_t track = {target, "position", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, VALUES,
+                                KEYS,   ANIM_LINEAR};
+    test_track_row(entry, 0, &track);
+    static const float times[] = {0, 1};
+    const float values[] = {0, 0, 0, (float)travel, 0, 0};
+    test_pack_put_floats(entry + TIMES, times, KEYS);
+    test_pack_put_floats(entry + VALUES, values, KEYS * WIDTH);
+}
+
+static void
+make_rig_entries(test_pack_t* pack) {
+    make_rig_skeleton(pack, "rig", RIG_JOINTS);
+    make_rig_skeleton(pack, "rig.short", R3D_SKIN_INFLUENCES_MIN);
+    make_rig_skin(pack, "rig.skin2", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, RIG_VERTICES);
+    make_rig_skin(pack, "rig.skin4", R3D_SKIN_INFLUENCES_MAX, RIG_JOINTS, RIG_VERTICES);
+    make_rig_skin(pack, "rig.quad", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, QUAD_VERTICES);
+    make_rig_skin(pack, "rig.shortj", R3D_SKIN_INFLUENCES_MIN, R3D_SKIN_INFLUENCES_MIN, RIG_VERTICES);
+    make_rig_clip(pack, "rig.move", "root", ANIM_ROOT_SKELETON, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, -RIG_TRAVEL);
+    make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_TRAVEL);
+    make_quad_entry(test_pack_add(pack, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), 255, 0, 0, 2);
+}
+
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
 make_pack(uint8_t* bytes) {
-    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT);
+    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES);
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
-        make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue);
+        make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue, 1);
     }
     for (int i = 0; i < SCENE_COUNT; i++) {
         make_scene_entry(test_pack_add(&pack, SCENES[i].id, SCENE_ASSET, scene_entry_size(&SCENES[i])), &SCENES[i]);
     }
     uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
     make_scene_entry(bad, &SCENES[0]);
-    test_pack_put16(bad + 24 + (3 * (32 + sizeof(scene_transform_t))) + sizeof(scene_asset_renderer_t), 9);
+    test_pack_put16(bad + 24 + (3 * (32 + sizeof(scene_placement_t))) + sizeof(scene_asset_renderer_t), 9);
     for (int i = 0; i < CLIP_COUNT; i++) {
         make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].position_type,
                         CLIPS[i].track_count);
     }
+    make_rig_entries(&pack);
     return test_pack_finish(&pack);
 }
 
@@ -326,6 +419,7 @@ typedef struct {
     uint16_t* pixels;
     uint16_t* held; /* a picture kept to compare the next with */
     r3d_instance_t* instances;
+    void* saved_skin[2];
     asset_pack_t pack;
     scene_target_t target;
 } fixture_t;
@@ -342,6 +436,8 @@ release_fixture(void) {
     free(fx.pixels);
     free(fx.held);
     free(fx.instances);
+    free(fx.saved_skin[0]);
+    free(fx.saved_skin[1]);
     fx = (fixture_t){0};
 }
 
@@ -411,7 +507,7 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     scene_t* scene = show("test_pair", NULL);
     fx.target.height = PICTURE_HEIGHT;
     scene_render(0, 0, fx.target.width, fx.target.height);
-    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, 0, (viewport_t){SIZE, SIZE / 2, 0});
+    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, (viewport_t){SIZE, SIZE / 2, 0});
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
         render_context_set_scale(c, scale);
@@ -542,9 +638,8 @@ test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_ent
     fixture();
     expect_failure(BAD_SCENE, ASSET_ERR_FORMAT, BAD_SCENE);
     expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
-    expect_failure("test_headless", ASSET_ERR_NOT_FOUND, "flight");
+    expect_failure("test_headless", ASSET_ERR_FORMAT, "flight");
     expect_failure("test_skewed", ASSET_ERR_FORMAT, "skewed");
-    expect_failure("test_unturned", ASSET_ERR_NOT_FOUND, "unturned");
     expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
     TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
 }
@@ -561,13 +656,15 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     TEST_ASSERT_NULL(scene_entity_mesh(pair, scene_find(pair, "camera")));
     TEST_ASSERT_NOT_NULL(scene_camera_lens(pair, "camera"));
     TEST_ASSERT_NULL(scene_camera_lens(pair, "red"));
-    TEST_ASSERT_EQUAL_UINT32(0, r3d_scene_camera_period_ms(scene_camera_lens(pair, NULL)));
 
-    const r3d_scene_camera_t* flight = scene_camera_lens(load("test_flight"), NULL);
-    TEST_ASSERT_EQUAL_UINT32(1000, r3d_scene_camera_period_ms(flight));
+    scene_t* scene = load("test_flight");
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const r3d_scene_camera_t* flight = scene_camera_lens(scene, NULL);
+    TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
     vec3f_t eye;
     vec3f_t forward;
-    r3d_scene_camera_sample(flight, 500, &eye, &forward);
+    r3d_scene_camera_sample(flight, &eye, &forward);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
     TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.z);
 }
@@ -661,8 +758,8 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&probe, "probe_scene", SCENE_ASSET, &scene_entry));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&probe, "probe", ANIM_TRACKS_ASSET, &clip_entry));
     test_pack_t built = test_pack_begin(fx.bytes, PACK_MAX, 4);
-    make_quad_entry(test_pack_add(&built, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), 255, 0, 0);
-    make_quad_entry(test_pack_add(&built, "green", R3D_LIT_MESH_ASSET, QUAD_BYTES), 0, 255, 0);
+    make_quad_entry(test_pack_add(&built, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), 255, 0, 0, 1);
+    make_quad_entry(test_pack_add(&built, "green", R3D_LIT_MESH_ASSET, QUAD_BYTES), 0, 255, 0, 1);
     memcpy(test_pack_add(&built, "probe_scene", SCENE_ASSET, scene_entry.size), scene_entry.data, scene_entry.size);
     memcpy(test_pack_add(&built, "probe", ANIM_TRACKS_ASSET, clip_entry.size), clip_entry.data, clip_entry.size);
     asset_file_release(buffer);
@@ -678,8 +775,9 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(scene, 2));
     TEST_ASSERT_NULL(scene_entity_mesh_id(scene, 1));
     /* a quarter turn about y, scaled (2, 4, 0.5), at (1, 2, 3) */
-    const scene_transform_t want = {{{0, 0, 0.5F}, {0, 4, 0}, {-2, 0, 0}}, {1, 2, 3}};
-    const scene_transform_t* got = scene_entity_transform(scene, 0);
+    const scene_placement_t want = {{{0, 0, 0.5F}, {0, 4, 0}, {-2, 0, 0}}, {1, 2, 3}};
+    const scene_placement_t readback = r3d_placement_from(scene_entity_transform(scene, 0));
+    const scene_placement_t* got = &readback;
     for (int row = 0; row < 3; row++) {
         for (int column = 0; column < 3; column++) {
             TEST_ASSERT_FLOAT_WITHIN(1e-6F, want.m[row][column], got->m[row][column]);
@@ -692,7 +790,8 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
-    TEST_ASSERT_EQUAL_UINT32(3000, r3d_scene_camera_period_ms(lens)); /* the probe clip's length */
+    TEST_ASSERT_EQUAL_UINT32(
+        3000, scene_animator_clip_duration_ms(scene, scene_find(scene, "camera"), 0)); /* the probe clip's length */
 }
 #endif
 
@@ -830,13 +929,14 @@ test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     scene_t* scene = show("test_pair", NULL);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
-    const scene_transform_t away = AT(-4, 0, 0);
-    scene_entity_set_transform(scene, scene_find(scene, "red"), &away);
+    scene_transform_t away = TRANSFORMF_IDENTITY;
+    transformf_set_position(&away, (vec3f_t){-4, 0, 0});
+    scene_set_transform(scene, scene_find(scene, "red"), &away);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
-    const scene_transform_t home = IDENTITY;
-    scene_entity_set_transform(scene, scene_find(scene, "red"), &home);
+    const scene_transform_t home = TRANSFORMF_IDENTITY;
+    scene_set_transform(scene, scene_find(scene, "red"), &home);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
 }
@@ -1040,8 +1140,9 @@ static void
 test_a_camera_without_a_path_follows_its_entitys_transform(void) {
     fixture();
     scene_t* pair = show("test_pair", "camera");
-    const scene_transform_t aside = AT(4, 0, -10);
-    scene_entity_set_transform(pair, scene_find(pair, "camera"), &aside);
+    scene_transform_t aside = TRANSFORMF_IDENTITY;
+    transformf_set_position(&aside, (vec3f_t){4, 0, -10});
+    scene_set_transform(pair, scene_find(pair, "camera"), &aside);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(0.0F)); /* the green quad is 4 units right of the origin */
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
@@ -1125,7 +1226,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
     render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
-    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, 0, (viewport_t){SIZE, SIZE, 0});
+    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, (viewport_t){SIZE, SIZE, 0});
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
     const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
@@ -1399,8 +1500,584 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
 
 #endif
 
+static void
+test_camera_aliases_advance_independently(void) {
+    fixture();
+    scene_t* scene = load("test_aliases");
+    const scene_entity_t left = scene_find(scene, "camera"), right = scene_find(scene, "right");
+    TEST_ASSERT_TRUE(scene_animator_set_speed(scene, left, SCENE_ANIMATOR_CURRENT, 0.5F));
+    scene_animation_step(scene, 400);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, scene->locals[left].position.x);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene->locals[right].position.x);
+}
+
+static void
+test_camera_animator_api_controls_clip_time(void) {
+    fixture();
+    scene_t* scene = load("test_flight");
+    const scene_entity_t camera = scene_find(scene, "camera");
+    TEST_ASSERT_EQUAL_INT(1, scene_animator_clip_count(scene, camera));
+    TEST_ASSERT_EQUAL_STRING("flight", scene_animator_clip_name(scene, camera, 0));
+    TEST_ASSERT_FALSE(scene_animator_play(scene, camera, 0, 100));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, camera, 0, 0));
+    TEST_ASSERT_TRUE(scene_animator_set_speed(scene, camera, SCENE_ANIMATOR_CURRENT, 0.5F));
+    scene_animation_step(scene, 1000);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, camera)->position.x);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true));
+    scene_animation_step(scene, 1000);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, camera)->position.x);
+    TEST_ASSERT_FALSE(scene_animator_play(scene, camera, 1, 0));
+}
+
+static scene_t*
+rig_fixture(const char* skin_id, const char* paired_skin) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    const int renderer = scene_renderer_index(scene, entity);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "rig.mesh", &scene->renderers[renderer].mesh));
+    static const char* const clips[] = {"rig.move", "rig.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, "rig", clips, 2, NULL));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
+    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, skin_id, NULL));
+    const scene_entity_t green = scene_find(scene, "green");
+    scene_entity_set_enabled(scene, green, paired_skin != NULL);
+    if (paired_skin != NULL) {
+        TEST_ASSERT_TRUE(scene_animator_set_clips(scene, green, "rig", clips, 2, NULL));
+        TEST_ASSERT_TRUE(scene_animator_play(scene, green, 0, 0));
+        TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, green, paired_skin, NULL));
+    }
+    return scene;
+}
+
+static void
+test_mesh_reader_refuses_overlapping_cluster_vertices(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "rig.mesh", R3D_LIT_MESH_ASSET, &entry));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(mesh.clusters[0].vertex_count, mesh.clusters[1].vertex_first);
+    r3d_lit_cluster_t* clusters = (r3d_lit_cluster_t*)(uintptr_t)mesh.clusters;
+    clusters[0].vertex_count++;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_NULL(mesh.positions);
+    clusters[0].vertex_count--;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+}
+
+static void
+test_mesh_reader_requires_complete_cluster_coverage(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "rig.mesh", R3D_LIT_MESH_ASSET, &entry));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    r3d_lit_cluster_t* clusters = (r3d_lit_cluster_t*)(uintptr_t)mesh.clusters;
+    const int last = mesh.cluster_count - 1;
+    for (int c = 0; c <= last; c++) {
+        const r3d_lit_cluster_t saved = clusters[c];
+        clusters[c].triangle_count = 0;
+        clusters[c].vertex_count--;
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+        TEST_ASSERT_NULL(mesh.positions);
+        clusters[c] = saved;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    }
+    TEST_ASSERT_EQUAL_INT(0, mesh.clusters[0].vertex_first);
+    TEST_ASSERT_EQUAL_INT(mesh.vertex_count, clusters[last].vertex_first + clusters[last].vertex_count);
+}
+
+static void
+test_mesh_reader_accepts_only_positive_int_scales(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "rig.mesh", R3D_LIT_MESH_ASSET, &entry));
+    uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
+    r3d_lit_mesh_t mesh;
+    test_pack_put32(bytes + MESH_SCALE_AT, INT_MAX);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(INT_MAX, mesh.position_scale);
+    test_pack_put32(bytes + MESH_SCALE_AT, (uint32_t)INT_MAX + 1U);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_NULL(mesh.positions);
+}
+
+static void
+test_clip_bind_failure_names_the_first_rejected_clip(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+
+    static const struct {
+        const char* skeleton;
+        const char* clips[2];
+        const char* missing;
+    } cases[] = {{"rig", {"rig.move", "rig.back"}, "none"}, {NULL, {"property.move", "flight"}, "bad"}};
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        anim_tracks_t tracks;
+        anim_binding_t binding;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&fx.pack, cases[i].clips[0], &tracks));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&tracks, 0, &binding));
+        memcpy((char*)(uintptr_t)binding.path, cases[i].missing, strlen(cases[i].missing));
+        TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, cases[i].skeleton, &cases[i].clips[1], 1, NULL));
+        scene_failure_t why;
+        TEST_ASSERT_FALSE(scene_animator_set_clips(scene, entity, cases[i].skeleton, cases[i].clips, 2, &why));
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+        TEST_ASSERT_EQUAL_STRING(cases[i].clips[0], why.what);
+        TEST_ASSERT_EQUAL_INT(1, scene_animator_clip_count(scene, entity));
+        TEST_ASSERT_EQUAL_STRING(cases[i].clips[1], scene_animator_clip_name(scene, entity, 0));
+    }
+}
+
+static void
+test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
+    static const char* const skins[] = {"rig.skin2", "rig.skin4"};
+    for (size_t k = 0; k < sizeof skins / sizeof skins[0]; k++) {
+        scene_t* scene = rig_fixture(skins[k], NULL);
+        const scene_entity_t entity = scene_find(scene, "red");
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+        const r3d_lit_mesh_t* drawn = scene_entity_mesh(scene, entity);
+        TEST_ASSERT_EQUAL_PTR(skin->output.positions, drawn->positions);
+        TEST_ASSERT_NOT_EQUAL(skin->bind.positions, drawn->positions);
+        TEST_ASSERT_EQUAL_PTR(skin->bind.colors, drawn->colors);
+        frame(0);
+        const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
+        TEST_ASSERT_NOT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), red);
+        for (int step = 1; step <= 3; step++) {
+            scene_animation_step(scene, RIG_DURATION_MS / RIG_TRAVEL);
+            TEST_ASSERT_EQUAL_INT16(step - 1, drawn->positions[0][0]);
+            TEST_ASSERT_EQUAL_INT16(step - 1, drawn->nodes[0].lo[0]);
+            TEST_ASSERT_EQUAL_INT16(step + 1, drawn->nodes[0].hi[0]);
+            frame(0);
+            TEST_ASSERT_EQUAL_PTR(drawn, scene->instances[0].mesh);
+            const int shifted = CENTER + step * SIZE / 20;
+            TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + shifted]);
+        }
+        TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
+        TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, skins[k], NULL));
+        TEST_ASSERT_EQUAL_INT16(2, scene_entity_mesh(scene, entity)->positions[0][0]);
+        release_fixture();
+    }
+}
+
+static void
+test_skin_split_inside_an_entity_matches_full_range(void) {
+    scene_t* scene = rig_fixture("rig.skin4", "rig.quad");
+    const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
+    scene_animate_range(scene, 0, scene->asset.entity_count, RIG_DURATION_MS / 2);
+    scene_skin_range(scene, 0, 3);
+    const scene_entity_t entities[] = {red, green};
+    for (size_t e = 0; e < sizeof entities / sizeof entities[0]; e++) {
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[entities[e]];
+        r3d_skin_refit_nodes(&skin->output);
+        const size_t bytes = r3d_skin_output_bytes(&skin->bind);
+        fx.saved_skin[e] = malloc(bytes);
+        TEST_ASSERT_NOT_NULL(fx.saved_skin[e]);
+        memcpy(fx.saved_skin[e], skin->internal_storage, bytes);
+        memset(skin->internal_storage, 0, bytes);
+        TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, skin->internal_storage, bytes, &skin->output));
+    }
+    scene_skin_range(scene, 0, 1);
+    scene_skin_range(scene, 1, 2);
+    for (size_t e = 0; e < sizeof entities / sizeof entities[0]; e++) {
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[entities[e]];
+        r3d_skin_refit_nodes(&skin->output);
+        TEST_ASSERT_EQUAL_MEMORY(fx.saved_skin[e], skin->internal_storage, r3d_skin_output_bytes(&skin->bind));
+    }
+}
+
+static void
+test_attachment_count_mismatches_preserve_previous_components(void) {
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    const void* animator = scene->animators[entity].storage;
+    const void* skin = scene->skinned_renderers[entity].internal_storage;
+    static const char* const clips[] = {"rig.move"};
+    scene_failure_t why;
+    TEST_ASSERT_FALSE(scene_animator_set_clips(scene, entity, "rig.short", clips, 1, &why));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+    TEST_ASSERT_EQUAL_PTR(animator, scene->animators[entity].storage);
+    static const char* const mismatches[] = {"rig.shortj", "rig.quad"};
+    for (size_t i = 0; i < sizeof mismatches / sizeof mismatches[0]; i++) {
+        TEST_ASSERT_FALSE(scene_renderer_set_skin(scene, entity, mismatches[i], &why));
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+        TEST_ASSERT_EQUAL_PTR(skin, scene->skinned_renderers[entity].internal_storage);
+        TEST_ASSERT_EQUAL_PTR(animator, scene->animators[entity].storage);
+    }
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, "rig", clips, 1, &why));
+    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, "rig.skin4", &why));
+}
+
+static void
+test_scene_open_refuses_shear_and_reflection_naming_the_entity(void) {
+    fixture();
+    asset_view_t entry;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_pair", SCENE_ASSET, &entry));
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
+    scene_placement_t* placement = (scene_placement_t*)(uintptr_t)&asset.transforms[1];
+    const scene_placement_t saved = *placement;
+    for (int reflected = 0; reflected <= 1; reflected++) {
+        *placement = saved;
+        if (reflected) {
+            placement->m[0][0] = -1;
+        } else {
+            placement->m[0][1] = 0.5F;
+        }
+        scene_failure_t why;
+        TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+        TEST_ASSERT_EQUAL_STRING("red", why.what);
+    }
+    *placement = saved;
+    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", NULL));
+}
+
+static void
+test_property_animation_moves_a_drawn_entity(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
+    static const char* const clips[] = {"property.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, NULL, clips, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(0, scene->animators[entity].layer.shown.joint_count);
+    TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
+    frame(0);
+    const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
+    frame(RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene_entity_transform(scene, entity)->position.x);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
+    TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + CENTER + GREEN_PIXEL_OFFSET]);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene->instances[0].placement->position.x);
+}
+
+static void
+test_camera_seek_invalidates_the_entity_matrix(void) {
+    fixture();
+    scene_t* scene = show("test_flight", NULL);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    TEST_ASSERT_TRUE(scene_entity_transform(scene, camera)->cached);
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    scene_transform_t sampled = *scene_entity_transform(scene, camera);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, transformf_matrix(&sampled).m[0][3]);
+    TEST_ASSERT_TRUE((scene->flags[camera] & SCENE_FLAG_DIRTY) != 0);
+}
+
+static void
+test_inactive_property_target_invalidates_its_entity_matrix(void) {
+    fixture();
+    show("test_solo", NULL);
+    scene_t* scene = load("test_pair");
+    const scene_entity_t owner = scene_find(scene, "camera");
+    const scene_entity_t target = scene_find(scene, "red");
+    static const char* const clips[] = {"property.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, owner, NULL, clips, 1, NULL));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, owner, 0, 0));
+    TEST_ASSERT_TRUE(scene_entity_transform(scene, target)->cached);
+    scene->flags[target] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, owner, SCENE_ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
+    scene_transform_t sampled = *scene_entity_transform(scene, target);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transformf_matrix(&sampled).m[0][3]);
+    TEST_ASSERT_TRUE((scene->flags[target] & SCENE_FLAG_DIRTY) != 0);
+}
+
+static void
+test_unchanged_poses_skip_skinning_and_refit(void) {
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    scene_animation_step(scene, RIG_DURATION_MS / 4);
+    TEST_ASSERT_TRUE(scene->animators[entity].posed);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
+    scene_animation_step(scene, RIG_DURATION_MS / 4);
+    TEST_ASSERT_FALSE(scene->animators[entity].posed);
+    TEST_ASSERT_EQUAL_INT16(0, scene_entity_mesh(scene, entity)->positions[0][0]);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, false));
+    scene_entity_set_enabled(scene, entity, false);
+    scene_animation_step(scene, RIG_DURATION_MS / 4);
+    TEST_ASSERT_FALSE(scene->animators[entity].posed);
+    TEST_ASSERT_EQUAL_UINT32(RIG_DURATION_MS / 4, scene->animators[entity].layer.current.playhead.t_ms);
+    scene_entity_set_enabled(scene, entity, true);
+    scene_animation_step(scene, RIG_DURATION_MS / 4);
+    TEST_ASSERT_TRUE(scene->animators[entity].posed);
+    TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, entity)->positions[0][0]);
+}
+
+static void
+test_previous_slot_pause_and_empty_or_frozen_controls(void) {
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    TEST_ASSERT_FALSE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_PREVIOUS, 0));
+    TEST_ASSERT_FALSE(scene_animator_set_speed(scene, entity, SCENE_ANIMATOR_PREVIOUS, 1));
+    TEST_ASSERT_FALSE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_PREVIOUS, true));
+    scene_animation_step(scene, RIG_DURATION_MS / 4);
+    TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 1, RIG_DURATION_MS));
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_PREVIOUS, RIG_DURATION_MS / 4));
+    TEST_ASSERT_TRUE(scene_animator_set_speed(scene, entity, SCENE_ANIMATOR_PREVIOUS, 2));
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_PREVIOUS, true));
+    scene_animation_step(scene, RIG_DURATION_MS / 4);
+    TEST_ASSERT_EQUAL_UINT32(RIG_DURATION_MS / 4, scene->animators[entity].layer.previous.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(RIG_DURATION_MS / 4, scene->animators[entity].layer.current.playhead.t_ms);
+    TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, RIG_DURATION_MS));
+    TEST_ASSERT_TRUE(scene->animators[entity].layer.frozen_previous);
+    TEST_ASSERT_FALSE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_PREVIOUS, 0));
+    TEST_ASSERT_FALSE(scene_animator_set_speed(scene, entity, SCENE_ANIMATOR_PREVIOUS, 1));
+    TEST_ASSERT_FALSE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_PREVIOUS, true));
+}
+
+static void
+test_animator_queries_and_controls_refuse_missing_or_out_of_range(void) {
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t entity = scene_find(scene, "red"), empty = scene_find(scene, "green");
+    TEST_ASSERT_EQUAL_INT(2, scene_animator_clip_count(scene, entity));
+    TEST_ASSERT_EQUAL_STRING("rig.move", scene_animator_clip_name(scene, entity, 0));
+    TEST_ASSERT_EQUAL_UINT32(RIG_DURATION_MS, scene_animator_clip_duration_ms(scene, entity, 0));
+    TEST_ASSERT_EQUAL_INT(0, scene_animator_clip_count(scene, empty));
+    TEST_ASSERT_NULL(scene_animator_clip_name(scene, empty, 0));
+    TEST_ASSERT_EQUAL_UINT32(0, scene_animator_clip_duration_ms(scene, empty, 0));
+    TEST_ASSERT_FALSE(scene_animator_play(scene, empty, 0, 0));
+    TEST_ASSERT_FALSE(scene_animator_seek(scene, empty, SCENE_ANIMATOR_CURRENT, 0));
+    TEST_ASSERT_FALSE(scene_animator_set_paused(scene, empty, SCENE_ANIMATOR_CURRENT, true));
+    TEST_ASSERT_FALSE(scene_animator_set_speed(scene, empty, SCENE_ANIMATOR_CURRENT, 1));
+    for (int clip = -1; clip <= 2; clip += 3) {
+        TEST_ASSERT_NULL(scene_animator_clip_name(scene, entity, clip));
+        TEST_ASSERT_EQUAL_UINT32(0, scene_animator_clip_duration_ms(scene, entity, clip));
+        TEST_ASSERT_FALSE(scene_animator_play(scene, entity, clip, 0));
+    }
+}
+
+static void
+test_set_transform_reads_back_exactly_and_drives_placement(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    scene_transform_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){2, 3, 4});
+    transformf_set_scale(&pose, (vec3f_t){2, 3, 4});
+    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 2, 3}, 0.5F));
+    scene_set_transform(scene, entity, &pose);
+    TEST_ASSERT_EQUAL_MEMORY(&pose, scene_entity_transform(scene, entity), sizeof pose);
+    const scene_placement_t want = r3d_placement_from(&pose);
+    frame(0);
+    const scene_placement_t* placement = scene->instances[0].placement;
+    TEST_ASSERT_EQUAL_MEMORY(&want, placement, sizeof want);
+}
+
+static void
+test_translation_only_camera_clip_retains_rotation(void) {
+    fixture();
+    scene_t* scene = load("test_unturned");
+    const scene_entity_t entity = scene_find(scene, "camera");
+    scene_transform_t pose = *scene_entity_transform(scene, entity);
+    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.5F));
+    scene_set_transform(scene, entity, &pose);
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, entity)->position.x);
+    TEST_ASSERT_EQUAL_MEMORY(&pose.rotation, &scene_entity_transform(scene, entity)->rotation, sizeof pose.rotation);
+    vec3f_t eye, forward;
+    r3d_scene_camera_sample(scene_camera_lens(scene, NULL), &eye, &forward);
+    const vec3f_t wanted = quatf_rotate(pose.rotation, (vec3f_t){0, 0, 1});
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
+    TEST_ASSERT_EQUAL_MEMORY(&wanted, &forward, sizeof wanted);
+}
+
+static void
+test_skin_step_skips_unposed_entities_before_posed_clusters(void) {
+    scene_t* scene = rig_fixture("rig.skin4", "rig.quad");
+    const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, red, SCENE_ANIMATOR_CURRENT, true));
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_FALSE(scene->animators[red].posed);
+    TEST_ASSERT_TRUE(scene->animators[green].posed);
+    TEST_ASSERT_EQUAL_INT16(-1, scene_entity_mesh(scene, red)->positions[0][0]);
+    TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, green)->positions[0][0]);
+    TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, green)->nodes[0].lo[0]);
+}
+
+static void
+test_failed_second_camera_releases_the_first_animator(void) {
+    fixture();
+    asset_view_t entry;
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_aliases", SCENE_ASSET, &entry));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
+    scene_asset_camera_t* cameras = (scene_asset_camera_t*)(uintptr_t)asset.cameras;
+    memcpy(cameras[1].clip, "nowhere", sizeof "nowhere");
+    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_aliases", &why));
+    TEST_ASSERT_EQUAL_STRING("nowhere", why.what);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+}
+
+static void
+test_replacing_skin_clips_drives_the_new_clip_after_one_step(void) {
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, entity)->positions[0][0]);
+    static const char* const clips[] = {"rig.back"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, "rig", clips, 1, NULL));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_INT16(-3, scene_entity_mesh(scene, entity)->positions[0][0]);
+    static const char* const property[] = {"property.move"};
+    scene_failure_t why;
+    TEST_ASSERT_FALSE(scene_animator_set_clips(scene, entity, NULL, property, 1, &why));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+    TEST_ASSERT_EQUAL_STRING("rig.back", scene_animator_clip_name(scene, entity, 0));
+}
+
+static void
+test_disabled_property_animator_does_not_advance_or_write(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const scene_entity_t entity = scene_find(scene, "red");
+    static const char* const clips[] = {"property.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, NULL, clips, 1, NULL));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
+    scene_entity_set_enabled(scene, entity, false);
+    const transformf_t before = *scene_entity_transform(scene, entity);
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_MEMORY(&before, scene_entity_transform(scene, entity), sizeof before);
+    TEST_ASSERT_EQUAL_UINT32(0, scene->animators[entity].layer.current.playhead.t_ms);
+}
+
+static void
+test_set_transform_defers_placement_until_the_scene_draws(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const scene_entity_t entity = scene_find(scene, "red");
+    const int renderer = scene_renderer_index(scene, entity);
+    const r3d_placement_t before = scene->renderers[renderer].placement;
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){2, 3, 4});
+    scene_set_transform(scene, entity, &pose);
+    TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].placement, sizeof before);
+    scene->locals[entity].cached = true;
+    scene_render(RIG_DURATION_MS / 2, 0, SIZE, SIZE);
+    TEST_ASSERT_TRUE(scene->locals[entity].cached);
+    TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].placement, sizeof before);
+    TEST_ASSERT_TRUE(scene_activate(scene, NULL));
+    frame(0);
+    const r3d_placement_t wanted = r3d_placement_from(&pose);
+    TEST_ASSERT_EQUAL_MEMORY(&wanted, &scene->renderers[renderer].placement, sizeof wanted);
+    TEST_ASSERT_FALSE(scene->flags[entity] & SCENE_FLAG_DIRTY);
+}
+
+static void
+test_skeleton_animator_count_tracks_attachment_replacement_and_release(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
+    TEST_ASSERT_EQUAL_INT(0, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(0, scene->animator_count);
+    static const char* const clips[] = {"rig.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, red, "rig", clips, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(1, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(1, scene->animator_count);
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, red, "rig", clips, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(1, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(1, scene->animator_count);
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, green, "rig", clips, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(2, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(2, scene->animator_count);
+    static const char* const property[] = {"property.move"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, red, NULL, property, 1, NULL));
+    TEST_ASSERT_EQUAL_INT(1, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(2, scene->animator_count);
+    scene_animation_release(scene);
+    TEST_ASSERT_EQUAL_INT(0, scene->skeleton_animator_count);
+    TEST_ASSERT_EQUAL_INT(0, scene->animator_count);
+}
+
+#ifdef HOST_HEAP_ARENA
+static void
+test_scene_without_animators_does_not_access_components(void) {
+    fixture();
+    scene_t untouched = *load("test_pair");
+    untouched.animators = NULL;
+    untouched.skinned_renderers = NULL;
+    scene_animation_step(&untouched, RIG_DURATION_MS / 2);
+}
+
+static void
+test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const int before = job_calls_count();
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_INT(before, job_calls_count());
+    release_fixture();
+    scene = rig_fixture("rig.skin2", NULL);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, scene_find(scene, "red"), SCENE_ANIMATOR_CURRENT, true));
+    const int paused = job_calls_count();
+    scene_animation_step(scene, RIG_DURATION_MS / 2);
+    TEST_ASSERT_EQUAL_INT(paused + 1, job_calls_count());
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene_find(scene, "red")];
+    const scene_entity_t entity = scene_find(scene, "red");
+    for (int entities = 1; entities <= scene->asset.entity_count; entities++) {
+        for (int clusters = 1; clusters <= skin->bind.cluster_count; clusters++) {
+            scene_t limited = *scene;
+            limited.asset.entity_count = entities;
+            if (entities == 1) {
+                limited.animators += entity;
+                limited.skinned_renderers += entity;
+                limited.flags += entity;
+            }
+            const int saved = skin->bind.cluster_count;
+            skin->bind.cluster_count = clusters;
+            TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, false));
+            scene->animators[entity].dirty = true;
+            const int calls = job_calls_count();
+            scene_animation_step(&limited, 0);
+            TEST_ASSERT_EQUAL_INT(calls + (entities > 1) + (clusters > 1), job_calls_count());
+            TEST_ASSERT_TRUE(scene->animators[entity].posed);
+            TEST_ASSERT_EQUAL_INT16(skin->bind.positions[0][0], skin->output.positions[0][0]);
+            skin->bind.cluster_count = saved;
+        }
+    }
+}
+#endif
+
 void
 run_scene_suite(void) {
+    RUN_TEST(test_translation_only_camera_clip_retains_rotation);
+    RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
+    RUN_TEST(test_failed_second_camera_releases_the_first_animator);
+    RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);
+    RUN_TEST(test_disabled_property_animator_does_not_advance_or_write);
+    RUN_TEST(test_set_transform_defers_placement_until_the_scene_draws);
+    RUN_TEST(test_skeleton_animator_count_tracks_attachment_replacement_and_release);
+#ifdef HOST_HEAP_ARENA
+    RUN_TEST(test_scene_without_animators_does_not_access_components);
+    RUN_TEST(test_static_scene_and_unposed_skin_do_not_dispatch_jobs);
+#endif
+
+    RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
+    RUN_TEST(test_mesh_reader_requires_complete_cluster_coverage);
+    RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
+    RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
+    RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
+    RUN_TEST(test_skin_split_inside_an_entity_matches_full_range);
+    RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);
+    RUN_TEST(test_scene_open_refuses_shear_and_reflection_naming_the_entity);
+    RUN_TEST(test_property_animation_moves_a_drawn_entity);
+    RUN_TEST(test_camera_seek_invalidates_the_entity_matrix);
+    RUN_TEST(test_inactive_property_target_invalidates_its_entity_matrix);
+    RUN_TEST(test_unchanged_poses_skip_skinning_and_refit);
+    RUN_TEST(test_previous_slot_pause_and_empty_or_frozen_controls);
+    RUN_TEST(test_animator_queries_and_controls_refuse_missing_or_out_of_range);
+    RUN_TEST(test_set_transform_reads_back_exactly_and_drives_placement);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_shell_expanded_pass_replays_build_mark_without_raw_writes);
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
@@ -1437,6 +2114,8 @@ run_scene_suite(void) {
     RUN_TEST(test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone);
     RUN_TEST(test_activating_a_camera_the_scene_does_not_have_changes_nothing);
     RUN_TEST(test_the_active_camera_flies_its_path_by_the_time_the_shell_gives_it);
+    RUN_TEST(test_camera_animator_api_controls_clip_time);
+    RUN_TEST(test_camera_aliases_advance_independently);
     RUN_TEST(test_a_frame_drawn_in_two_steps_is_the_frame_drawn_in_one);
     RUN_TEST(test_a_paused_scene_neither_advances_nor_draws_until_resumed);
     RUN_TEST(test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target);

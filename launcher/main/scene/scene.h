@@ -1,21 +1,8 @@
 /*
- * scene: the engine's scene manager. An app loads scenes by name and
- * activates one camera; the shell advances every loaded scene and draws
- * through the active camera each frame, so an app never calls draw.
- *
- * Storage is data-oriented. A scene is one allocation of packed component
- * arrays indexed by a small entity id: a transform per entity, a renderer
- * (mesh view plus entity id) and a camera (lens, path plus entity id) only
- * for the entities that have one. Names are looked up at setup time only.
- * Lights are baked offline and are not carried.
- *
- * Exactly one camera is active engine-wide, and it draws the enabled
- * renderers of its own scene. Scenes belong to the app running when they were
- * loaded: the shell unloads whatever is left when it exits.
- *
- * A scene is loaded from its pack entry (SCNE), baked from its scene file,
- * and keeps a view of it: the pack must outlive the scene.
- * docs/render/Scene-Manager.md says how a frame goes.
+ * scene: the engine's scene manager. Packed component arrays indexed by a
+ * small entity id hold a transform per entity, and a renderer, camera,
+ * animator or skinned renderer only for entities that have one; animator
+ * and skin buffers are allocated when attached.
  */
 #pragma once
 
@@ -33,19 +20,19 @@ typedef struct scene scene_t;
 typedef uint16_t scene_entity_t;
 #define SCENE_ENTITY_NONE ((scene_entity_t)0xFFFFU)
 
-/* Where an entity stands: the placement the raster reads. */
-typedef r3d_placement_t scene_transform_t;
+/* Where an entity stands: position, quaternion rotation and scale. */
+typedef transformf_t scene_transform_t;
 
 typedef enum {
     SCENE_OK = 0,
     SCENE_ERR_UNKNOWN, /* the pack holds no scene of that id */
     SCENE_ERR_FULL,    /* as many scenes are loaded as the manager holds */
     SCENE_ERR_MEMORY,  /* the scene's block could not be allocated */
-    SCENE_ERR_ASSET,   /* no pack, or its entry, a mesh or its clip did not open: `asset` says why */
+    SCENE_ERR_ASSET, /* no pack, or its entry, a mesh, its clip or an entity's placement did not open: `asset` says why */
 } scene_status_t;
 
 /* What a load reports: its status, the pack's status when an entry failed,
- * and the id of the scene, mesh or clip it was about. A copy, since a failed
+ * and the id of the scene, mesh or clip, or the entity name, it was about. A copy, since a failed
  * load releases the pack the id came from. */
 typedef struct {
     scene_status_t status;
@@ -77,12 +64,12 @@ const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 /* The mesh the entity draws, or NULL when it draws none. */
 const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t entity);
 
-/* The lens and path of the scene's camera `camera` (NULL: its first), to
+/* The lens and entity pose of the scene's camera `camera` (NULL: its first), to
  * sample without drawing; NULL when the scene has no such camera. */
 const r3d_scene_camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
 
 const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
-void scene_entity_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
+void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
 bool scene_entity_enabled(const scene_t* scene, scene_entity_t entity);
 
 /* A disabled entity's renderer is not drawn; every entity starts enabled. */
@@ -98,3 +85,20 @@ void scene_deactivate(void);
 /* While paused nothing advances or draws, as if no camera were active, and
  * the camera stays where it was; for an app drawing its own full screen. */
 void scene_set_paused(bool paused);
+
+typedef enum { SCENE_ANIMATOR_CURRENT, SCENE_ANIMATOR_PREVIOUS } scene_animator_slot_t;
+
+/* skeleton_id NULL binds property clips to scene components. Asset ids are resolved once. */
+bool scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skeleton_id, const char* const* clips,
+                              int count, scene_failure_t* why);
+bool scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* skin_id, scene_failure_t* why);
+/* Property clips require blend_ms == 0. Skeleton clips support a transition blend. */
+bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
+bool scene_animator_set_speed(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, float speed);
+bool scene_animator_set_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, bool paused);
+int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
+const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
+
+uint32_t scene_animator_clip_duration_ms(const scene_t* scene, scene_entity_t entity, int clip);
+/* Seek samples the scene systems immediately, without drawing. */
+bool scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, uint32_t t_ms);

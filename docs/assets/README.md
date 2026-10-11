@@ -70,7 +70,7 @@ bytes are usable as mapped and there is no fix-up pass.
 
 Offsets in the table count from the start of the pack. The writer pads each
 entry to its alignment (16 by default), and the pack must itself start on a
-16-byte boundary, which a sector-aligned mapping and `aligned_alloc()` both
+16-byte boundary, which a page-aligned mapping and `aligned_alloc()` both
 give. The entry rows are read in one place, `asset_pack_entry()`.
 
 An entry's type is four characters stored in the table, so a hex dump reads it.
@@ -143,10 +143,12 @@ directory that says where each lies:
 |---|---|---|
 | Header | 16 bytes | `"ABDR"`, CRC-32 of every byte after it to the end of the rows, format version, pack count |
 | Rows | 40 bytes per pack | name (32 bytes, NUL padded), offset from the region's start, size |
-| Packs | each on its own 4 KB sector, after the rows, in row order | the pack's bytes |
+| Packs | each starting on its own 64 KB MMU page, after the rows, in row order | the pack's bytes |
 
-A sector per pack lets one pack be mapped, and rewritten, without the
-others.
+The partition and every pack start on MMU pages so releasing one mapping
+cannot invalidate another pack. Padding costs less than one MMU page per pack;
+[`asset_directory.py`](../../launcher/tools/asset/asset_directory.py) writes version 2
+using `ASSET_MMU_PAGE_SIZE` from `asset_directory.h`.
 
 ## Checks
 
@@ -166,7 +168,7 @@ directory, finding an entry and reading it each report the first failure:
 | `ASSET_ERR_VERSION` | a pack, directory or entry format version this firmware does not read |
 | `ASSET_ERR_SIZE` | the header is malformed: a size that cannot hold it, or reserved bytes in use |
 | `ASSET_ERR_CRC` | the bytes do not match the checksum |
-| `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned; a directory row outside the region, off its sector, over the rows or the pack before it, or with no room for its name's NUL |
+| `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned; a directory row outside the region, off its MMU page, over the rows or the pack before it, or with no room for its name's NUL |
 | `ASSET_ERR_DUPLICATE` | two directory rows share a name |
 | `ASSET_ERR_NOT_FOUND` | no entry or pack has that name |
 | `ASSET_ERR_TYPE` | the entry is not of the type asked for |
@@ -204,9 +206,8 @@ the app.
 
 On the first mount the store finds the partition and reads its directory into
 RAM, kept for good. Each pack is then mapped alone from its slot. The
-directory is a copy, not a mapping, because it shares its 64 KB flash page with
-the first packs, and QEMU drops every mapping of a page when one of them is
-unmapped. Reads of a mapped
+directory copy holds no MMU page and keeps enumeration independent of pack
+mounts. Reads of a mapped
 pack go through the flash cache as the app's own const data does, so an entry
 costs no RAM and no copy. When the partition table is older than the firmware,
 the directory is missing or a check fails, the log says why and the content

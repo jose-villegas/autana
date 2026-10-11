@@ -233,7 +233,8 @@ Two ways to see raw sensor readings without adding any code:
   largest free DMA-capable block falls below `MIN_LARGEST_DMA_BLOCK` in
   `main/selftest/post.c`, and reports that block plus free DMA heap on every
   boot, release included. Both figures come from `MEMORY_DMA`; reading
-  either against `esp_get_free_heap_size()` compares different pools and
+  either against the console's `heap_free_bytes`
+  (`memory_free_bytes(MEMORY_8BIT)`) compares different pools and
   invents a fragmentation gap that is not there (see
   [Board-and-Memory.md](Board-and-Memory.md)).
 - **A dev build's `HEAPMARK` boot lines**: free and largest-contiguous DMA

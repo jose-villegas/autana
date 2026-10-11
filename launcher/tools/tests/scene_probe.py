@@ -54,6 +54,12 @@ mesh = "green.import.toml"
 """
 
 
+def camera_entry():
+    tracks, duration = tracks_asset.decode(probe_entry())
+    tracks = [t for t in tracks if t["path"] == "lamp" and t["component"] == tracks_asset.TRANSFORM]
+    return tracks_asset.encode(tracks, duration)
+
+
 def probe_pack():
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
@@ -65,7 +71,7 @@ def probe_pack():
         scene.write_text(SCENE)
         entry = scene_asset.bake(scene)
         scene_id = scene_asset.scene_id(scene)
-    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, probe_entry())])
+    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, camera_entry())])
 
 
 def main(argv=None):
