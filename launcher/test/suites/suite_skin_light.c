@@ -16,6 +16,7 @@ typedef struct {
     r3d_skin_t skin;
     r3d_lit_mesh_t bind;
     mat4f_t palette[JOINTS];
+    mat3f_t normals[JOINTS];
     uint8_t records[VERTICES * (2 * R3D_SKIN_INFLUENCES_MAX + R3D_SKIN_RECORD_TAIL)];
     uint8_t out[VERTICES][3];
 } fixture_t;
@@ -29,6 +30,7 @@ fixture(int influences, fixture_t* f) {
                               .vertex_stride = 2 * influences + R3D_SKIN_RECORD_TAIL}};
     for (int j = 0; j < JOINTS; j++) {
         f->palette[j] = mat4f_identity();
+        f->normals[j] = mat3f_from_mat4(f->palette[j]);
     }
     for (int v = 0; v < VERTICES; v++) {
         uint8_t* r = f->records + v * f->skin.vertex_stride;
@@ -138,7 +140,7 @@ test_fused_decodes_albedo_and_split_matches_single(void) {
         TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, blocks[0], bytes, &single));
         TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, blocks[1], bytes, &split));
         uint8_t split_colors[VERTICES][3];
-        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &single, &lights, f->out);
+        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &single, f->normals, &lights, f->out);
         for (int v = 0; v < VERTICES; v++) {
             for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
                 const float decoded = powf((float)colors[v][k] / R3D_SKIN_LIGHT_BYTE_SCALE, R3D_SKIN_LIGHT_GAMMA);
@@ -146,12 +148,12 @@ test_fused_decodes_albedo_and_split_matches_single(void) {
             }
         }
         for (int c = CLUSTERS - 1; c >= 0; c--) {
-            r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, c, 1, &split, &lights, split_colors);
+            r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, c, 1, &split, f->normals, &lights, split_colors);
         }
         TEST_ASSERT_EQUAL_MEMORY(f->out, split_colors, sizeof f->out);
         TEST_ASSERT_EQUAL_MEMORY(single.positions, split.positions, sizeof positions);
         TEST_ASSERT_EQUAL_MEMORY(single.clusters, split.clusters, sizeof CLUSTER_ROWS);
-        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, CLUSTERS, 0, &split, &lights, split_colors);
+        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, CLUSTERS, 0, &split, f->normals, &lights, split_colors);
         TEST_ASSERT_EQUAL_MEMORY(f->out, split_colors, sizeof f->out);
         free(blocks[1]);
         free(blocks[0]);
@@ -186,6 +188,26 @@ test_direct_sum_matches_independent_float_reference(void) {
 }
 
 static void
+assert_rotated_reference(const fixture_t* f, int influences, const uint8_t weights[][JOINTS],
+                         const uint8_t colors[VERTICES][3]) {
+    for (int v = 0; v < VERTICES; v++) {
+        float n[3] = {0};
+        const int axis = v % R3D_SKIN_NORMAL_WIDTH;
+        for (int j = 0; j < influences; j++) {
+            for (int k = 0; k < R3D_SKIN_NORMAL_WIDTH; k++) {
+                n[k] += f->palette[j].m[k][axis] * weights[influences / 2 - 1][j] / R3D_SKIN_WEIGHT_SUM;
+            }
+        }
+        const float facing = fmaxf(0, n[1] / sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]));
+        const float channels[] = {0.1F + facing, 0.2F + 0.7F * facing, 0.3F + 0.3F * facing};
+        for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
+            const float decoded = powf((float)colors[v][k] / R3D_SKIN_LIGHT_BYTE_SCALE, R3D_SKIN_LIGHT_GAMMA);
+            TEST_ASSERT_UINT8_WITHIN(2, reference(decoded * channels[k], 1), f->out[v][k]);
+        }
+    }
+}
+
+static void
 test_fused_rotations_unequal_weights_match_independent_reference(void) {
     static const int16_t positions[VERTICES][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {3, 2, 1}};
     static const uint8_t colors[VERTICES][3] = {{91, 173, 237}, {237, 91, 173}, {173, 237, 91}, {64, 128, 255}};
@@ -201,6 +223,7 @@ test_fused_rotations_unequal_weights_match_independent_reference(void) {
             transformf_t transform = {.rotation = quatf_identity(), .scale = {1, 1, 1}};
             transform.rotation = quatf_from_euler((vec3f_t){0.17F * (j + 1), -0.31F * j, 0.23F * (j + 1)});
             f->palette[j] = transformf_matrix(&transform);
+            f->normals[j] = mat3f_cofactor(mat3f_from_mat4(f->palette[j]));
         }
         for (int v = 0; v < VERTICES; v++) {
             memcpy(f->records + v * f->skin.vertex_stride + influences, weights[influences / 2 - 1], influences);
@@ -218,22 +241,8 @@ test_fused_rotations_unequal_weights_match_independent_reference(void) {
         TEST_ASSERT_NOT_NULL(block);
         r3d_skin_output_t posed;
         TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, block, bytes, &posed));
-        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, &lights, f->out);
-        for (int v = 0; v < VERTICES; v++) {
-            float n[3] = {0};
-            const int axis = v % R3D_SKIN_NORMAL_WIDTH;
-            for (int j = 0; j < influences; j++) {
-                for (int k = 0; k < R3D_SKIN_NORMAL_WIDTH; k++) {
-                    n[k] += f->palette[j].m[k][axis] * weights[influences / 2 - 1][j] / R3D_SKIN_WEIGHT_SUM;
-                }
-            }
-            const float facing = fmaxf(0, n[1] / sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]));
-            const float channels[] = {0.1F + facing, 0.2F + 0.7F * facing, 0.3F + 0.3F * facing};
-            for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-                const float decoded = powf((float)colors[v][k] / R3D_SKIN_LIGHT_BYTE_SCALE, R3D_SKIN_LIGHT_GAMMA);
-                TEST_ASSERT_UINT8_WITHIN(2, reference(decoded * channels[k], 1), f->out[v][k]);
-            }
-        }
+        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &posed, f->normals, &lights, f->out);
+        assert_rotated_reference(f, influences, weights, colors);
         free(block);
         free(transfer);
         free(f);
@@ -252,8 +261,80 @@ test_encode_invalid_and_range_edges(void) {
     free(transfer);
 }
 
+static void
+assert_scaled_lighting(bool joint_scale, bool rotate) {
+    static const int16_t positions[VERTICES][3] = {{0}};
+    static const uint8_t colors[VERTICES][3] = {{255, 255, 255}, {255, 255, 255}, {255, 255, 255}, {255, 255, 255}};
+    fixture_t* f = malloc(sizeof *f);
+    TEST_ASSERT_NOT_NULL(f);
+    fixture(R3D_SKIN_INFLUENCES_MIN, f);
+    f->skin.vertices = f->records;
+    f->bind.positions = positions;
+    f->bind.colors = colors;
+    transformf_t entity = {.rotation = quatf_identity(), .scale = {1, 1, 1}};
+    transformf_t joint = entity;
+    if (joint_scale) {
+        joint.scale.x = 2;
+    } else {
+        entity.scale.x = 2;
+    }
+    if (rotate) {
+        joint.rotation = quatf_from_euler((vec3f_t){0.3F, -0.4F, 0.7F});
+        entity.rotation = quatf_from_euler((vec3f_t){-0.2F, 0.5F, 0.1F});
+        entity.scale = (vec3f_t){2, 3, 1};
+    }
+    for (int j = 0; j < JOINTS; j++) {
+        f->palette[j] = transformf_matrix(&joint);
+    }
+    for (int v = 0; v < VERTICES; v++) {
+        int8_t* n = (int8_t*)(f->records + v * f->skin.vertex_stride + 2 * f->skin.influences);
+        n[0] = n[1] = R3D_SKIN_NORMAL_SCALE;
+        n[2] = 0;
+    }
+    r3d_skin_normal_palette(f->palette, JOINTS, transformf_matrix(&entity), f->normals);
+    /* TRS inverse-transpose independently applies reciprocal scale then quaternion rotation. */
+    vec3f_t expected = quatf_rotate(joint.rotation, (vec3f_t){1 / joint.scale.x, 1 / joint.scale.y, 0});
+    expected = quatf_rotate(entity.rotation, (vec3f_t){expected.x / entity.scale.x, expected.y / entity.scale.y,
+                                                       expected.z / entity.scale.z});
+    const float facing = fmaxf(0, expected.y / sqrtf(vec3f_dot(expected, expected)));
+    r3d_skin_light_transfer_t* transfer = malloc(sizeof *transfer);
+    TEST_ASSERT_NOT_NULL(transfer);
+    r3d_skin_light_transfer_build(0, transfer);
+    const r3d_skin_lights_t lights = {.count = 1, .direction = {{0, 1, 0}}, .color = {{1, 1, 1}}, .transfer = transfer};
+    const size_t bytes = r3d_skin_output_bytes(&f->bind);
+    void* block = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(block);
+    r3d_skin_output_t output;
+    TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, block, bytes, &output));
+    r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &output, f->normals, &lights, f->out);
+    for (int v = 0; v < VERTICES; v++) {
+        TEST_ASSERT_UINT8_WITHIN(2, reference(facing, 0), f->out[v][0]);
+    }
+    free(block);
+    free(transfer);
+    free(f);
+}
+
+static void
+test_joint_nonuniform_scale(void) {
+    assert_scaled_lighting(true, false);
+}
+
+static void
+test_entity_nonuniform_scale(void) {
+    assert_scaled_lighting(false, false);
+}
+
+static void
+test_joint_entity_rotation_and_scale(void) {
+    assert_scaled_lighting(true, true);
+}
+
 void
 suite_skin_light(void) {
+    RUN_TEST(test_joint_nonuniform_scale);
+    RUN_TEST(test_entity_nonuniform_scale);
+    RUN_TEST(test_joint_entity_rotation_and_scale);
     RUN_TEST(test_direct_sum_matches_independent_float_reference);
     RUN_TEST(test_fused_rotations_unequal_weights_match_independent_reference);
     RUN_TEST(test_encode_invalid_and_range_edges);

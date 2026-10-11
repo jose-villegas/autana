@@ -11,7 +11,7 @@ shows an app using it.
 A scene holds packed component arrays indexed by a small integer entity id
 (`scene_entity_t`). Attaching clips allocates the animator's bindings and pose
 buffers in PSRAM; attaching a skin allocates its model matrices, palette and
-output mesh together in internal RAM.
+output mesh, lit colours and world-space normal palette together in internal RAM.
 
 | Array | One per | Holds |
 |---|---|---|
@@ -19,7 +19,7 @@ output mesh together in internal RAM.
 | `animators[]` | entity | optional clip configuration, layer, independent slot clocks and pose buffers |
 | `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions, bounds and lit colours; bind-colour pointers without runtime lights |
 | `lights[]` | entity | optional directional light, linear color and intensity; at most `R3D_SKIN_LIGHT_MAX` attached per scene |
-| `flags[]` | entity | enabled, and moved since the last draw |
+| `flags[]` | entity | enabled, moved since the last draw, and changed since the last skin stage |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
 | `cameras[]` | camera | lens, entity TRS pose, clear colour, its entity id |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
@@ -55,7 +55,10 @@ alias belongs to that camera row. Binding resolves every clip row before playbac
 A new light starts white with zero intensity. Its world direction is its
 entity's rotated +Y axis; moving its rotation changes skin shading next frame,
 including while the pose is paused. Scene ambient and tone map are private;
-SCNE v1 uses zero ambient contribution and an identity tone map. The shared
+SCNE v1 uses zero ambient contribution and an identity tone map.
+All lit skins share world-space lights. Their normal palettes include entity
+and joint scale through a cofactor transform. Skin dirty bits are
+consumed by the skin stage even when another scene is active. The shared
 decode and encode transfer tables are allocated in internal RAM at the first light.
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of

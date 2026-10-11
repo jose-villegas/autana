@@ -1,3 +1,5 @@
+#include "math/linear/mat3f.h"
+#include "math/scalar/rng.h"
 /*
  * Portable suite: math/linear/'s float types. The quaternion's axes, slerp,
  * the matrix built from a TRS, the transform's matrix cache, the camera's
@@ -341,8 +343,50 @@ test_affine_inverse_preserves_small_and_large_scales(void) {
     }
 }
 
+static void
+assert_cofactor_identity(mat3f_t matrix) {
+    const mat3f_t cof = mat3f_cofactor(matrix);
+    const float det = matrix.m[0][0] * cof.m[0][0] + matrix.m[0][1] * cof.m[0][1] + matrix.m[0][2] * cof.m[0][2];
+    TEST_ASSERT_TRUE(fabsf(det) > 0.01F);
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int col = 0; col < MAT3F_AXES; col++) {
+            float product = 0;
+            for (int k = 0; k < MAT3F_AXES; k++) {
+                product += cof.m[row][k] * matrix.m[col][k];
+            }
+            TEST_ASSERT_FLOAT_WITHIN(0.0001F, row == col ? det : 0, product);
+        }
+    }
+}
+
+static void
+test_cofactor_random_matrices_and_reflection(void) {
+    enum { SAMPLES = 128, RANDOM_SHIFT = 8, RANDOM_MASK = 255, RANDOM_CENTER = 128 };
+
+    rng_t random;
+    rng_seed(&random, 1);
+    for (int sample = 0; sample < SAMPLES; sample++) {
+        mat3f_t matrix;
+        for (int row = 0; row < MAT3F_AXES; row++) {
+            for (int col = 0; col < MAT3F_AXES; col++) {
+                const uint32_t state = rng_next(&random);
+                matrix.m[row][col] =
+                    ((int)((state >> RANDOM_SHIFT) & RANDOM_MASK) - RANDOM_CENTER) / (float)RANDOM_CENTER
+                    + (row == col ? 3 : 0);
+            }
+        }
+        assert_cofactor_identity(matrix);
+    }
+    mat3f_t reflection = mat3f_from_mat4(mat4f_identity());
+    reflection.m[0][0] = -2;
+    const mat3f_t cof = mat3f_cofactor(reflection);
+    TEST_ASSERT_EQUAL_FLOAT(-2, reflection.m[0][0] * cof.m[0][0]);
+    assert_cofactor_identity(reflection);
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_cofactor_random_matrices_and_reflection);
     RUN_TEST(test_affine_inverse_preserves_small_and_large_scales);
     RUN_TEST(test_affine_product_and_inverse_match_full_matrices);
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);

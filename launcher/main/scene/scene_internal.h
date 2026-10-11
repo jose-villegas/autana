@@ -27,8 +27,9 @@ typedef struct {
     float intensity;
 } scene_light_t;
 
-#define SCENE_FLAG_ENABLED 1U
-#define SCENE_FLAG_DIRTY   2U
+#define SCENE_FLAG_ENABLED    1U
+#define SCENE_FLAG_DIRTY      2U
+#define SCENE_FLAG_SKIN_DIRTY 4U
 
 typedef r3d_placement_t scene_placement_t;
 
@@ -104,7 +105,7 @@ typedef struct {
     mat4f_t* palette;
     void* internal_storage;
     uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
-    r3d_skin_lights_t* lights;
+    mat3f_t* normal_palette;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -114,6 +115,7 @@ struct scene {
     int animator_count, skeleton_animator_count;
     int light_count;
     bool lights_dirty;
+    r3d_skin_lights_t world_lights;
     scene_light_t* lights;
     vec3f_t ambient_color;
     float ambient_intensity, tonemap_white, transfer_white;

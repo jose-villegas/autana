@@ -33,8 +33,11 @@ the first lights of `LIGHTS` in the benchmark.
 ## Runtime lighting
 
 `render/skin/r3d_skin_light.h` owns the fused direct N.L shader.
-`r3d_skin_clusters_lit()` shares palette rows and packed weights between
-positions and normals, grows cluster bounds, and shades each vertex.
+`r3d_skin_clusters_lit()` shares packed weights between position and normal
+palettes, grows cluster bounds, and shades each vertex. The normal palette
+holds `mat3f_cofactor(entity_world * joint_palette)` for each joint.
+Renormalisation removes the positive determinant magnitude; non-uniform
+scale is supported and reflected entity transforms are refused.
 The skinned normal is always renormalised. `mathf_rsqrt()` uses the
 S3's reciprocal-square-root seed and one Newton correction; host and QEMU
 use exact square root. The device tests require relative reciprocal error
@@ -67,16 +70,17 @@ The host sweep checks a maximum error of two encoded byte steps against
 the float formula, including every albedo byte and white values from zero
 through 16. The limits and sampling are in `suite_skin_light.c`.
 
-The scene prepares light directions and premultiplied colors in each
-renderer's object space before splitting its cluster ranges. A directional
+The scene prepares shared world-space light directions and premultiplied
+colors before splitting its cluster ranges. A directional
 light's direction toward the light is its entity's +Y turned by its
 rotation, matching `import_settings.py:load_light`.
 Only skinned renderers use runtime lights. Without lights, their mesh view
 retains the bind-color pointer and does no color copy or shading.
 Each attached skin reserves `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex
-for lit colors and one `r3d_skin_lights_t` in its internal storage block.
-World light directions are computed once per frame; each posed renderer
-applies only its inverse rotation. Scene component arrays remain in PSRAM.
+for lit colors and a `mat3f_t` normal palette per joint in its internal
+storage block. World light directions are computed once per frame and
+every lit renderer reads the scene's shared `r3d_skin_lights_t`. Scene
+component arrays and the world-light set remain in PSRAM.
 SCNE v1 carries no lighting settings: absent ambient contributes zero,
 and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
 SCNE v1 has no writers for the private ambient and tone-map fields.
@@ -113,7 +117,10 @@ shows source-normal benchmark error; those inputs differ from packed normals.
 | 8651de3988fb-diag | table_build_4 | 44347.000 | build | 45.068 | 0 | 0.000000 |
 <!-- /generated: skin-light-board -->
 
-The device suite measures skin-only, fused N.L writing light bytes,
+The device suite reports normal-palette cycles per build, renderer colour
+and normal-palette bytes, light-copy bytes, scene transfer and world-light
+bytes, and heap availability. It measures skin-only, fused N.L writing
+light bytes,
 fused N.L with `mathf_rsqrt`, and the shipped fused albedo-transfer kernel,
 at each requested light count. Diagnostic stage kernels compile the same
 vertex transform and bounds loop; their stage selector adds a small per-vertex

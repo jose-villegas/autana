@@ -74,6 +74,7 @@ typedef struct {
     anim_joint_bound_t* curves;
     mat4f_t* model;
     mat4f_t* palette;
+    mat3f_t* normals;
     void* positions;
     r3d_skin_output_t posed;
     uint8_t (*light)[3];
@@ -94,6 +95,7 @@ release(void) {
     memory_free(active->curves);
     memory_free(active->model);
     memory_free(active->palette);
+    memory_free(active->normals);
     memory_free(active->positions);
     memory_free(active->light);
     memory_free(active->transfer);
@@ -138,6 +140,7 @@ fixture(int lights) {
     f->curves = fixture_block((size_t)f->clip.count * sizeof *f->curves);
     f->model = fixture_block((size_t)joints * sizeof *f->model);
     f->palette = fixture_block((size_t)joints * sizeof *f->palette);
+    f->normals = fixture_block((size_t)joints * sizeof *f->normals);
     f->positions = fixture_block(r3d_skin_output_bytes(&f->bind));
     f->light = fixture_block((size_t)f->bind.vertex_count * sizeof *f->light);
     f->transfer = fixture_block(sizeof *f->transfer);
@@ -150,6 +153,13 @@ fixture(int lights) {
     anim_sample_pose(f->curves, f->clip.count, POSE_SECONDS, &pose);
     anim_pose_model(&f->skeleton, &pose, f->model);
     r3d_skin_palette(&f->skin, f->model, f->bind.position_scale, f->palette);
+    r3d_skin_normal_palette(f->palette, joints, mat4f_identity(), f->normals);
+    ESP_LOGI(TAG,
+             "RAM renderer_colors=%u renderer_normals=%u renderer_light_copy=%u scene_transfer_internal=%u "
+             "scene_world_lights_psram=%u",
+             (unsigned)((size_t)f->bind.vertex_count * sizeof *f->light),
+             (unsigned)((size_t)joints * sizeof *f->normals), 0U, (unsigned)sizeof *f->transfer,
+             (unsigned)sizeof f->lights);
     f->lights.count = lights;
     f->lights.ambient = (vec3f_t){0.22F, 0.22F, 0.25F};
     for (int i = 0; i < lights; i++) {
@@ -164,7 +174,7 @@ fixture(int lights) {
     return f;
 }
 
-/* Independent float reference uses the packed bind normal, normalized after weighted rotation. */
+/* Exact normalization reference blends the packed bind normal with the world-space normal palette. */
 static vec3f_t
 reference_normal(const fixture_t* f, int vertex) {
     const uint8_t* r = f->skin.vertices + (size_t)vertex * f->skin.vertex_stride;
@@ -172,7 +182,7 @@ reference_normal(const fixture_t* f, int vertex) {
     const int8_t* bind = (const int8_t*)(r + 2 * influences);
     float normal[R3D_SKIN_NORMAL_WIDTH] = {0};
     for (int i = 0; i < influences; i++) {
-        const mat4f_t* m = &f->palette[r[i]];
+        const mat3f_t* m = &f->normals[r[i]];
         const float weight = (float)r[influences + i] / R3D_SKIN_WEIGHT_SUM;
         for (int axis = 0; axis < R3D_SKIN_NORMAL_WIDTH; axis++) {
             normal[axis] += weight * (m->m[axis][0] * bind[0] + m->m[axis][1] * bind[1] + m->m[axis][2] * bind[2]);
@@ -187,7 +197,7 @@ reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
     light_evaluate(n, &f->lights, f->bind.colors[vertex], out);
 }
 
-typedef enum { SKIN, FUSED_NL, FUSED_RSQRT, FUSED, EXACT_SEPARATE } kernel_t;
+typedef enum { SKIN, FUSED_NL, FUSED_RSQRT, FUSED, EXACT_SEPARATE, NORMAL_PALETTE } kernel_t;
 
 static kernel_t stage;
 
@@ -206,6 +216,7 @@ stage_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t al
 #define light_renormalise(normal) (normal)
 #define r3d_skin_output_bytes     stage_output_bytes
 #define r3d_skin_output_init      stage_output_init
+#define r3d_skin_normal_palette   stage_normal_palette
 #define r3d_skin_palette          stage_palette
 #define r3d_skin_clusters         stage_clusters
 #define r3d_skin_clusters_lit     stage_clusters_lit
@@ -215,6 +226,7 @@ stage_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t al
 #undef light_renormalise
 #undef r3d_skin_output_bytes
 #undef r3d_skin_output_init
+#undef r3d_skin_normal_palette
 #undef r3d_skin_palette
 #undef r3d_skin_clusters
 #undef r3d_skin_clusters_lit
@@ -223,14 +235,19 @@ stage_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t al
 
 static void
 kernel(fixture_t* f, kernel_t kind) {
+    if (kind == NORMAL_PALETTE) {
+        r3d_skin_normal_palette(f->palette, f->skin.joint_count, mat4f_identity(), f->normals);
+        return;
+    }
     if (kind == FUSED_NL || kind == FUSED_RSQRT) {
         stage = kind;
-        stage_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights, f->light);
+        stage_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals, &f->lights,
+                           f->light);
         return;
     }
     if (kind == FUSED) {
-        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights,
-                              f->light);
+        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, f->normals,
+                              &f->lights, f->light);
         return;
     }
     r3d_skin_clusters(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed);
@@ -243,6 +260,9 @@ kernel(fixture_t* f, kernel_t kind) {
 
 static void
 quality(fixture_t* f, kernel_t kind) {
+    if (kind == NORMAL_PALETTE) {
+        return;
+    }
     const size_t positions = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
     const uint32_t position_crc = asset_crc32(f->posed.positions, positions);
     if (kind == SKIN || kind == FUSED_NL || kind == FUSED_RSQRT) {
@@ -290,7 +310,8 @@ measure(kernel_t kind, int lights, const char* label) {
     ESP_LOGI(TAG, "%s min=%lldcycles max=%lldcycles avg=%lldcycles med=%lldcycles p95=%lldcycles", label,
              (long long)stats.min, (long long)stats.max, (long long)stats.avg, (long long)stats.med,
              (long long)stats.p95);
-    ESP_LOGI(TAG, "COST cycles_per_%s=%.3f", "vertex", (double)stats.med / f->bind.vertex_count);
+    ESP_LOGI(TAG, "COST cycles_per_%s=%.3f", kind == NORMAL_PALETTE ? "build" : "vertex",
+             (double)stats.med / (kind == NORMAL_PALETTE ? 1 : f->bind.vertex_count));
     quality(f, kind);
     release();
     suite_clear_test_cleanup();
@@ -303,6 +324,7 @@ measure(kernel_t kind, int lights, const char* label) {
     PERF_TEST(test_##prefix##_1, kind, 1)                                                                              \
     PERF_TEST(test_##prefix##_2, kind, 2)                                                                              \
     PERF_TEST(test_##prefix##_4, kind, 4)
+PERF_TEST(test_normal_palette_build, NORMAL_PALETTE, 1)
 PERF_TEST(test_skin_only, SKIN, 1)
 LIGHT_COUNT_TESTS(fused_nl, FUSED_NL)
 LIGHT_COUNT_TESTS(fused_rsqrt, FUSED_RSQRT)
@@ -313,6 +335,7 @@ LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 
 void
 suite_skin_light_perf(void) {
+    RUN_TEST(test_normal_palette_build);
     RUN_TEST(test_skin_only);
     RUN_TEST(test_fused_nl_1);
     RUN_TEST(test_fused_nl_2);

@@ -80,7 +80,7 @@ instantiate(const scene_asset_t* asset) {
     scene->ambient_intensity = SCENE_AMBIENT_INTENSITY_NONE;
     scene->tonemap_white = SCENE_TONEMAP_WHITE_NONE;
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, asset->entity_count);
+    memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
@@ -352,7 +352,7 @@ void
 scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
     scene->locals[entity] = *transform;
-    scene->flags[entity] |= SCENE_FLAG_DIRTY;
+    scene->flags[entity] |= SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY;
 }
 
 bool
@@ -366,7 +366,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
     assert(entity < scene->asset.entity_count);
     scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
                                    : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
-    scene->flags[entity] |= SCENE_FLAG_DIRTY;
+    scene->flags[entity] |= SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY;
     scene->lights_dirty |= scene->lights[entity].kind != SCENE_LIGHT_NONE;
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     if (skin->internal_storage != NULL && scene->light_count > 0) {
@@ -483,16 +483,5 @@ scene_lights_prepare(scene_t* scene) {
         world.direction[at] = quatf_rotate(scene->locals[l].rotation, SCENE_LIGHT_AXIS);
         world.color[at] = vec3f_scale(light->color, light->intensity);
     }
-    for (int e = 0; e < scene->asset.entity_count; e++) {
-        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (skin->internal_storage == NULL || !scene->animators[e].posed) {
-            continue;
-        }
-        const quatf_t rotation = scene->locals[e].rotation;
-        const quatf_t inverse = {-rotation.x, -rotation.y, -rotation.z, rotation.w};
-        *skin->lights = world;
-        for (int l = 0; l < world.count; l++) {
-            skin->lights->direction[l] = vec3f_normalize(quatf_rotate(inverse, world.direction[l]));
-        }
-    }
+    scene->world_lights = world;
 }
