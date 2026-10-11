@@ -102,11 +102,9 @@ typedef struct {
     console_verb_t* first;
 } console_registry_t;
 
-/* Kept in name order, so dispatch and any future listing never depend on
- * link order, the same discipline tune_register() (services/tune.c) already
- * uses. A name already taken by a different verb is refused (false); the
- * same verb object registered twice is a no-op (true, since it is already
- * there). */
+/* Kept in ASCII case-folded name order, so dispatch and any future listing
+ * never depend on link order. A name already taken by a different verb is
+ * refused (false); the same verb object registered twice is a no-op (true). */
 bool console_register(console_registry_t* registry, console_verb_t* verb);
 
 /* True if `line` is `name`, or `name` plus one space and more (never a

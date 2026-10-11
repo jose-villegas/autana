@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "core/registry.h"
+
 /* Verb names are matched ignoring case, so the lowercase name a person
  * types and the uppercase one a harness has always sent are the same
  * verb. ASCII by hand rather than strcasecmp(): this file is built for
@@ -33,33 +35,17 @@ name_ncmp(const char* line, const char* name, size_t n) {
     return 0;
 }
 
-static bool
-listed_in(const console_verb_t* list, const console_verb_t* verb) {
-    for (; list != NULL; list = list->next) {
-        if (list == verb) {
-            return true;
-        }
-    }
-    return false;
+static int
+entry_order(const void* a, const void* b) {
+    const console_verb_t* first = a;
+    const console_verb_t* second = b;
+    return name_cmp(first->name, second->name);
 }
 
 bool
 console_register(console_registry_t* registry, console_verb_t* verb) {
-    if (listed_in(registry->first, verb)) {
-        return true;
-    }
-    for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        if (name_cmp(entry->name, verb->name) == 0) {
-            return false;
-        }
-    }
-    console_verb_t** link = &registry->first;
-    while (*link != NULL && name_cmp((*link)->name, verb->name) < 0) {
-        link = &(*link)->next;
-    }
-    verb->next = *link;
-    *link = verb;
-    return true;
+    static const registry_rule_t rule = {offsetof(console_verb_t, next), entry_order, NULL};
+    return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
 }
 
 bool

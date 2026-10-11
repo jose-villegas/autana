@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/registry.h"
+
 #define REPLY_MAX 112
 
 static tune_registry_t shared;
@@ -22,14 +24,11 @@ tune_handle_line(const char* line, tune_reply_fn reply) {
     return tune_registry_handle_line(&shared, line, reply);
 }
 
-static bool
-listed_in(const tune_entry_t* list, const tune_entry_t* entry) {
-    for (; list != NULL; list = list->next) {
-        if (list == entry) {
-            return true;
-        }
-    }
-    return false;
+static int
+entry_order(const void* a, const void* b) {
+    const tune_entry_t* first = a;
+    const tune_entry_t* second = b;
+    return strcmp(first->name, second->name);
 }
 
 const tune_entry_t*
@@ -44,23 +43,15 @@ tune_find(const tune_registry_t* registry, const char* name) {
 
 bool
 tune_register(tune_registry_t* registry, tune_entry_t* entry) {
-    if (listed_in(registry->first, entry)) {
-        return true;
-    }
-    if (listed_in(registry->clashed, entry)) {
+    static const registry_rule_t rule = {offsetof(tune_entry_t, next), entry_order, NULL};
+    if (registry_contains(registry->clashed, rule.link, entry)) {
         return false;
     }
-    if (tune_find(registry, entry->name) != NULL) {
+    if (registry_add(&registry->first, &rule, entry) == REGISTRY_CLASH) {
         entry->next = registry->clashed;
         registry->clashed = entry;
         return false;
     }
-    tune_entry_t** link = &registry->first;
-    while (*link != NULL && strcmp((*link)->name, entry->name) < 0) {
-        link = &(*link)->next;
-    }
-    entry->next = *link;
-    *link = entry;
     return true;
 }
 
