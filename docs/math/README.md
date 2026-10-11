@@ -205,6 +205,8 @@ These take and return plain integers, not structs.
 | `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, any `int` value |
 | `mathi_repeat_u32(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint32_t` value |
 | `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range |
+| `mathi_repeat_u64(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint64_t` value |
+| `mathi_clamp_u64(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint64_t` range |
 
 `math/scalar/units.h` owns `MATH_MS_PER_S`, the integer milliseconds per
 second for time conversions.

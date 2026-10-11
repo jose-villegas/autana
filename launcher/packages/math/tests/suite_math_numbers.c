@@ -662,8 +662,37 @@ test_transform_matrix_refusals_and_shear_tolerance_boundary(void) {
     TEST_ASSERT_FALSE(transformf_from_mat(matrix, &pose));
 }
 
+static void
+test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods(void) {
+    const uint64_t duration = MATH_MS_PER_S;
+    const uint64_t beyond_word = (uint64_t)UINT32_MAX + duration;
+    const uint64_t wide_period = UINT64_MAX - 1;
+    TEST_ASSERT_EQUAL_UINT64(mathi_repeat_u32(UINT32_MAX, MATH_MS_PER_S), mathi_repeat_u64(beyond_word, duration));
+    TEST_ASSERT_EQUAL_UINT64(0, mathi_repeat_u64(wide_period, wide_period));
+    TEST_ASSERT_EQUAL_UINT64(1, mathi_repeat_u64(UINT64_MAX, wide_period));
+    TEST_ASSERT_EQUAL_UINT64(wide_period - 1, mathi_repeat_u64(wide_period - 1, wide_period));
+    TEST_ASSERT_EQUAL_UINT64(0, mathi_repeat_u64(0, UINT64_MAX));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX - 1, mathi_repeat_u64(UINT64_MAX - 1, UINT64_MAX));
+}
+
+static void
+test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary(void) {
+    const uint64_t boundary = (uint64_t)UINT32_MAX + 1;
+    const uint64_t lo = boundary - MATH_MS_PER_S, hi = boundary + MATH_MS_PER_S;
+    TEST_ASSERT_EQUAL_UINT64(lo, mathi_clamp_u64(0, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(lo, mathi_clamp_u64(lo - 1, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(boundary, mathi_clamp_u64(boundary, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(hi, mathi_clamp_u64(hi, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(hi, mathi_clamp_u64(UINT64_MAX, lo, hi));
+    TEST_ASSERT_EQUAL_UINT64(0, mathi_clamp_u64(0, 0, UINT64_MAX));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX, mathi_clamp_u64(UINT64_MAX, 0, UINT64_MAX));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_MAX - 1, mathi_clamp_u64(UINT64_MAX, UINT64_MAX - 1, UINT64_MAX - 1));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods);
+    RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
     RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
     RUN_TEST(test_transform_matrix_refusals_and_shear_tolerance_boundary);
     RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
