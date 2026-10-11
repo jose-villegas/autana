@@ -116,6 +116,7 @@ $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/pack_reads.c
+$TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
@@ -141,9 +142,14 @@ $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
 $MAIN_DIR/anim/anim_skeleton.c
+$MAIN_DIR/anim/pose/anim_pose.c
+$MAIN_DIR/anim/playback/anim_playhead.c
+$MAIN_DIR/anim/playback/anim_layer.c
 $MAIN_DIR/render/r3d_skin.c
+$MAIN_DIR/render/skin/r3d_skinning.c
 $MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
+$MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
@@ -161,6 +167,7 @@ $MAIN_DIR/render/context/render_context.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
+$MAIN_DIR/scene/scene_animation.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
@@ -377,7 +384,7 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
 done
 COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -pthread -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the
@@ -511,7 +518,42 @@ export AUTANA_SCENE_PROBE
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
-    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
+    export ASAN_OPTIONS
+    "$OUT"
 else
     "$OUT"
 fi
+
+"$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
+
+EMPTY_ASSETS="$BUILD_DIR/no-packs"
+mkdir -p "$EMPTY_ASSETS"
+FALLBACK_LOG="$BUILD_DIR/ridge-fallback.log"
+if ! AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback > "$FALLBACK_LOG" 2>&1; then
+    tail -12 "$FALLBACK_LOG"
+    exit 1
+fi
+if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$FALLBACK_LOG")" != 1 ]; then
+    echo "FAIL: missing curve must log its fallback once" >&2
+    exit 1
+fi
+
+for INVALID_CASE in frac-bits columns row; do
+    INVALID_LOG="$BUILD_DIR/ridge-invalid-$INVALID_CASE.log"
+    if ! AUTANA_ASSET_DIR="$BUILD_DIR/ridge-invalid-$INVALID_CASE" "$OUT" --run suite_ridge_fallback > "$INVALID_LOG" 2>&1; then
+        tail -12 "$INVALID_LOG"
+        exit 1
+    fi
+    if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$INVALID_LOG")" != 1 ]; then
+        echo "FAIL: invalid curve ($INVALID_CASE) must log its fallback once" >&2
+        exit 1
+    fi
+done
+
+for CURVE_LOG in "$FALLBACK_LOG" "$BUILD_DIR"/ridge-invalid-*.log; do
+    if grep -E 'runtime error:|ERROR: (AddressSanitizer|LeakSanitizer)' "$CURVE_LOG"; then
+        exit 1
+    fi
+    printf 'ridge fallback (%s): %s\n' "$(basename "$CURVE_LOG")" "$(grep -E '^[0-9]+ Tests ' "$CURVE_LOG")"
+done

@@ -4,7 +4,7 @@
  * sums and products wrap like any int32, so a caller keeps its coordinates
  * small, and a dot product widens to int64. The template group has no div,
  * sqrt or angle op, so an `i` vector gets no normalize or rotation. The rest are the shared integer helpers: abs, min,
- * max, clamp, an approximate length, an integer square root, even rounding.
+ * max, clamp, repeat, wrap, an approximate length, an integer square root, even rounding.
  *
  * `static inline`: some are called tens of thousands of times a second from
  * an innermost loop, where a cross-file call is not free. abs and sign are
@@ -115,6 +115,49 @@ mathi_even_ceil(int v) {
 static inline __attribute__((always_inline)) int
 mathi_clamp(int value, int lo, int hi) {
     return value < lo ? lo : (value > hi ? hi : value);
+}
+
+/* Floored modulo into [0, len); len must be positive. */
+static inline int
+mathi_repeat(int v, int len) {
+    assert(len > 0);
+    const int remainder = v % len;
+    return remainder < 0 ? remainder + len : remainder;
+}
+
+/* Into [lo, hi); lo < hi. */
+static inline int
+mathi_wrap(int v, int lo, int hi) {
+    assert(lo < hi);
+    const uint32_t len = (uint32_t)hi - (uint32_t)lo;
+    const uint32_t r = v >= lo ? ((uint32_t)v - (uint32_t)lo) % len : (len - ((uint32_t)lo - (uint32_t)v) % len) % len;
+    return (int)((uint32_t)lo + r);
+}
+
+/* Into [0, len) for any uint32_t; len > 0. */
+static inline uint32_t
+mathi_repeat_u32(uint32_t v, uint32_t len) {
+    assert(len > 0);
+    return v % len;
+}
+
+/* Inclusive clamp over the full uint32_t range. */
+static inline uint32_t
+mathi_clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* Unsigned modulo into [0, len); len must be positive. */
+static inline uint64_t
+mathi_repeat_u64(uint64_t v, uint64_t len) {
+    assert(len > 0);
+    return v % len;
+}
+
+/* Inclusive clamp over the full uint64_t range. */
+static inline uint64_t
+mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
 }
 
 /* Floor of the square root over the whole uint64_t range. */

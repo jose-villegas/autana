@@ -12,10 +12,6 @@
 #include "gfx/image/gfx_image.h"
 #include "microui.h"
 
-/* The pack every app may read engine artwork from: loaded by ui_init(),
- * before an app can hold store slots, and kept for the run. */
-#define UI_ENGINE_PACK "engine"
-
 /* One icon: its entry's name in the pack, and what an icon-only control
  * shows in its place without one. */
 typedef struct {

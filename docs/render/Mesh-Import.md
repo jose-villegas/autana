@@ -207,7 +207,7 @@ first byte, is a multiple of 4 and is 0 for an array the mesh does not have.
 A mesh has vertex colours or face colours, never both. The cluster and node sizes
 are checked against the C structs at compile time. `r3d_lit_mesh_from_asset()`
 fills an `r3d_lit_mesh_t` with pointers into the entry, once, and nothing is
-allocated or copied; the rasterizer reads that struct as it always did. Before
+allocated or copied; the rasterizer reads that struct. Before
 it does, the function checks that every array lies inside the entry and on a
 4-byte boundary, every cluster's ranges lie inside the mesh, each cluster's
 triangles index only its own vertices, every node's children lie inside the
@@ -215,7 +215,11 @@ cluster or node array, and an inner node's children come after it, so a walk
 down the tree ends; a failure there, or a vertex, triangle, cluster or node
 count past `VERTEX_LIMIT` in `r3d_lit_mesh.c`, is `ASSET_ERR_BOUNDS`. A mesh
 with no clusters, no nodes, no position scale, or not exactly one colour
-source is `ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry;
+source is `ASSET_ERR_FORMAT`. Position scale must be in `1..INT_MAX`.
+Cluster vertex ranges must cover every vertex exactly once in order: the
+first starts at zero, each starts at the previous end, and the last ends at
+the vertex count. An invalid scale or coverage is `ASSET_ERR_FORMAT`.
+`lit_mesh.py` writes the entry;
 `r3d_lit_mesh.c` is the one reader.
 
 ## The offline tools

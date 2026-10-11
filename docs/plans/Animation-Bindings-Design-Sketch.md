@@ -1,13 +1,15 @@
 # Animation clips as bindings: design sketch
 
-**Status:** approved; step 1 (TRCK v2, `anim_bind`) is built: its entry and API
-are in [Animation-Tracks.md](../Animation-Tracks.md) and `anim/anim_binding.h`;
-steps 2-4 are not built.
+**Status:** approved; steps 1, 2 and 4 are built
+([Animation-Tracks.md](../Animation-Tracks.md),
+[Skeleton-and-Skin.md](../render/Skeleton-and-Skin.md), `scene/scene.h`);
+SCNE camera rows still carry `clip` and `node` rather than an animator row,
+and step 3 (boot) is not built.
 
 A clip is a set of bindings: each names the object path, component and field
 a curve drives. `anim_bind()` resolves a scene clip against caller-supplied
 objects and field declarations once, so no string is compared per frame.
-Scene animators, boot binding and skeleton playback are planned below.
+Boot binding and authored animator rows are planned below.
 
 The curves use `anim_track_t`, `anim_track_sample()` and glTF interpolations.
 
@@ -94,7 +96,7 @@ assumes it [A], and the placement is built from it when the entity is dirty.
 
 | Case | How |
 |---|---|
-| Camera path, today's only player | the camera entity gets an animator playing its clip. The scene entry's camera row loses `clip` and `node`; an animator row (`entity`, clip id, wrap) replaces them. `r3d_scene_path_t` and the path half of `r3d_scene_camera_*` are deleted |
+| Camera animation | the camera entity has a property animator playing the camera row's `clip`, with `node` as its binding alias. An authored animator row (`entity`, clip id, wrap) is planned |
 | Lens animation | a `camera` `half_fov_short_tan` binding on the camera entity |
 | Boot animation (a camera and a space transform) | boot is not a scene, so it passes `anim_bind` a small table of its two objects instead of a scene [A]; its clip and keys need no new source |
 | Skinned clips | a `skeleton` component on the mesh entity exposes its joints as a subtree: `path` continues from the entity into joint names (`root/spine/neck`), `component` is `transform`. Joint bindings resolve once. Blending two clips samples each into scratch values and mixes them before writing; that belongs to the skinning work, and the resolved form allows it |
