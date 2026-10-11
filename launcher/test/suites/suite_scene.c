@@ -1528,7 +1528,7 @@ test_camera_animator_api_controls_clip_time(void) {
 }
 
 static scene_t*
-rig_fixture(const char* skin_id) {
+rig_fixture(const char* skin_id, const char* paired_skin) {
     fixture();
     scene_t* scene = show("test_pair", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
@@ -1538,7 +1538,13 @@ rig_fixture(const char* skin_id) {
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, "rig", clips, 2, NULL));
     TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
     TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, skin_id, NULL));
-    scene_entity_set_enabled(scene, scene_find(scene, "green"), false);
+    const scene_entity_t green = scene_find(scene, "green");
+    scene_entity_set_enabled(scene, green, paired_skin != NULL);
+    if (paired_skin != NULL) {
+        TEST_ASSERT_TRUE(scene_animator_set_clips(scene, green, "rig", clips, 2, NULL));
+        TEST_ASSERT_TRUE(scene_animator_play(scene, green, 0, 0));
+        TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, green, paired_skin, NULL));
+    }
     return scene;
 }
 
@@ -1546,7 +1552,7 @@ static void
 test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
     static const char* const skins[] = {"rig.skin2", "rig.skin4"};
     for (size_t k = 0; k < sizeof skins / sizeof skins[0]; k++) {
-        scene_t* scene = rig_fixture(skins[k]);
+        scene_t* scene = rig_fixture(skins[k], NULL);
         const scene_entity_t entity = scene_find(scene, "red");
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
         const r3d_lit_mesh_t* drawn = scene_entity_mesh(scene, entity);
@@ -1575,13 +1581,8 @@ test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
 
 static void
 test_skin_split_inside_an_entity_matches_full_range(void) {
-    scene_t* scene = rig_fixture("rig.skin4");
+    scene_t* scene = rig_fixture("rig.skin4", "rig.quad");
     const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
-    static const char* const clips[] = {"rig.move"};
-    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, green, "rig", clips, 1, NULL));
-    TEST_ASSERT_TRUE(scene_animator_play(scene, green, 0, 0));
-    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, green, "rig.quad", NULL));
-    scene_entity_set_enabled(scene, green, true);
     scene_animate_range(scene, 0, scene->asset.entity_count, RIG_DURATION_MS / 2);
     scene_skin_range(scene, 0, 3);
     const scene_entity_t entities[] = {red, green};
@@ -1606,7 +1607,7 @@ test_skin_split_inside_an_entity_matches_full_range(void) {
 
 static void
 test_attachment_count_mismatches_preserve_previous_components(void) {
-    scene_t* scene = rig_fixture("rig.skin2");
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
     const void* animator = scene->animators[entity].storage;
     const void* skin = scene->skinned_renderers[entity].internal_storage;
@@ -1673,7 +1674,7 @@ test_property_animation_moves_a_drawn_entity(void) {
 
 static void
 test_unchanged_poses_skip_skinning_and_refit(void) {
-    scene_t* scene = rig_fixture("rig.skin2");
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
     scene_animation_step(scene, RIG_DURATION_MS / 4);
     TEST_ASSERT_TRUE(scene->animators[entity].posed);
@@ -1694,7 +1695,7 @@ test_unchanged_poses_skip_skinning_and_refit(void) {
 
 static void
 test_previous_slot_pause_and_empty_or_frozen_controls(void) {
-    scene_t* scene = rig_fixture("rig.skin2");
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
     TEST_ASSERT_FALSE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_PREVIOUS, 0));
     TEST_ASSERT_FALSE(scene_animator_set_speed(scene, entity, SCENE_ANIMATOR_PREVIOUS, 1));
@@ -1716,7 +1717,7 @@ test_previous_slot_pause_and_empty_or_frozen_controls(void) {
 
 static void
 test_animator_queries_and_controls_refuse_missing_or_out_of_range(void) {
-    scene_t* scene = rig_fixture("rig.skin2");
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red"), empty = scene_find(scene, "green");
     TEST_ASSERT_EQUAL_INT(2, scene_animator_clip_count(scene, entity));
     TEST_ASSERT_EQUAL_STRING("rig.move", scene_animator_clip_name(scene, entity, 0));
@@ -1772,13 +1773,8 @@ test_translation_only_camera_clip_retains_rotation(void) {
 
 static void
 test_skin_step_skips_unposed_entities_before_posed_clusters(void) {
-    scene_t* scene = rig_fixture("rig.skin4");
+    scene_t* scene = rig_fixture("rig.skin4", "rig.quad");
     const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
-    static const char* const clips[] = {"rig.move"};
-    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, green, "rig", clips, 1, NULL));
-    TEST_ASSERT_TRUE(scene_animator_play(scene, green, 0, 0));
-    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, green, "rig.quad", NULL));
-    scene_entity_set_enabled(scene, green, true);
     scene_animation_step(scene, 0);
     TEST_ASSERT_TRUE(scene_animator_set_paused(scene, red, SCENE_ANIMATOR_CURRENT, true));
     scene_animation_step(scene, RIG_DURATION_MS / 2);
@@ -1808,7 +1804,7 @@ test_failed_second_camera_releases_the_first_animator(void) {
 
 static void
 test_replacing_skin_clips_drives_the_new_clip_after_one_step(void) {
-    scene_t* scene = rig_fixture("rig.skin2");
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red");
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, entity)->positions[0][0]);
@@ -1892,7 +1888,7 @@ test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_INT(before, job_calls_count());
     release_fixture();
-    scene = rig_fixture("rig.skin2");
+    scene = rig_fixture("rig.skin2", NULL);
     scene_animation_step(scene, 0);
     TEST_ASSERT_TRUE(scene_animator_set_paused(scene, scene_find(scene, "red"), SCENE_ANIMATOR_CURRENT, true));
     const int paused = job_calls_count();
