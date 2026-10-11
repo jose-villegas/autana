@@ -5,6 +5,9 @@
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
+static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {r3d_skin_clusters_lit, r3d_skin_clusters_renormalised,
+                                                        r3d_skin_clusters_table};
+
 bool
 scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     size_t end = 0;
@@ -21,6 +24,7 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     }
     memset(storage, 0, end);
     skin->light_storage = storage;
+    skin->light_kernel = LIGHT_KERNELS[skin->light_mode];
     skin->colors = (uint8_t(*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)storage + layout.colors);
     skin->normal_palette = (mat3f_t*)(void*)((uint8_t*)storage + layout.normals);
     return true;
@@ -164,5 +168,58 @@ scene_lights_prepare(scene_t* scene) {
         world.direction[at] = quatf_rotate(scene->locals[l].rotation, SCENE_LIGHT_AXIS);
         world.color[at] = vec3f_scale(light->color, light->intensity);
     }
+    world.table = scene->light_table;
+    if (scene->light_table != NULL && scene->light_table_dirty) {
+        world.table_scale = r3d_skin_light_table_build(&world, scene->light_table);
+        scene->light_table_dirty = false;
+    } else {
+        world.table_scale = scene->world_lights.table_scale;
+    }
     scene->world_lights = world;
+}
+
+bool
+scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode) {
+    if (scene == NULL || entity >= scene->asset.entity_count || mode < SCENE_SKIN_LIGHT_DIRECT
+        || mode > SCENE_SKIN_LIGHT_TABLE) {
+        return false;
+    }
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    if (skin->internal_storage == NULL) {
+        return false;
+    }
+    if (skin->light_mode == mode) {
+        return true;
+    }
+    if (mode == SCENE_SKIN_LIGHT_TABLE && scene->light_table == NULL) {
+        r3d_skin_light_table_t* table = scene_allocate(sizeof *table, MEMORY_INTERNAL);
+        if (table == NULL) {
+            return false;
+        }
+        scene->light_table = table;
+        scene->light_table_dirty = true;
+    }
+    if (skin->light_mode == SCENE_SKIN_LIGHT_TABLE) {
+        scene_skin_light_detach(scene, entity);
+    }
+    if (mode == SCENE_SKIN_LIGHT_TABLE) {
+        scene->light_table_users++;
+    }
+    skin->light_mode = mode;
+    skin->light_kernel = LIGHT_KERNELS[mode];
+    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
+    return true;
+}
+
+void
+scene_skin_light_detach(scene_t* scene, scene_entity_t entity) {
+    if (scene->skinned_renderers[entity].light_mode != SCENE_SKIN_LIGHT_TABLE) {
+        return;
+    }
+    scene->light_table_users--;
+    if (scene->light_table_users == 0) {
+        memory_free(scene->light_table);
+        scene->light_table = NULL;
+        scene->world_lights.table = NULL;
+    }
 }

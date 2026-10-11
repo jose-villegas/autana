@@ -101,6 +101,8 @@ typedef struct {
     bool dirty, posed;
 } scene_animator_t;
 
+typedef enum { SCENE_SKIN_LIGHT_DIRECT, SCENE_SKIN_LIGHT_RENORMALISED, SCENE_SKIN_LIGHT_TABLE } scene_skin_light_mode_t;
+
 typedef struct {
     r3d_skin_t skin;
     r3d_lit_mesh_t bind;
@@ -112,6 +114,8 @@ typedef struct {
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
+    scene_skin_light_mode_t light_mode;
+    r3d_skin_light_kernel_t light_kernel;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -125,6 +129,9 @@ struct scene {
     vec3f_t ambient_color;
     float ambient_intensity, tonemap_white;
     r3d_skin_light_transfer_t* light_transfer;
+    r3d_skin_light_table_t* light_table;
+    int light_table_users;
+    bool light_table_dirty;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -163,6 +170,8 @@ int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
 void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
+bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
+void scene_skin_light_detach(scene_t* scene, scene_entity_t entity);
 bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
 void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
 void scene_lights_prepare(scene_t* scene);

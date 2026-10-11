@@ -1,7 +1,9 @@
 # Animation system: design sketch
 
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning and the scene
-animator, skinned-renderer and lighting components are implemented; SCNE v2 and
+animator, skinned-renderer and three lighting modes are implemented. Each
+renderer defaults to direct; scene-format work fills the mode from its skin
+pack entry. SCNE v2 and
 the clip picker are proposed. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
@@ -28,7 +30,7 @@ flowchart TB
     Property --> Placement["dirty entity placements"]
     Placement --> Raster
     Pose -.-> Post["proposed post-pose<br/>IK and root motion"]
-    Skin -.-> Light["proposed lighting"]
+    Skin -.-> Light["selected lighting kernel"]
     Light -.-> Raster
 ```
 
@@ -97,9 +99,11 @@ bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 The lights, ambient and tone map are read by one runtime system: the skinned
 renderers' lighting (`r3d_skin_lights_t`, one world-space set per scene that every lit
 skinned renderer reads), so a skinned mesh is lit by the same
-numbers the static bake used. Direct N.L is selected by the
-[board measurement](../render/Skinned-Lighting.md#board-measurement), with
-normal renormalisation and bake-matched albedo decode, tone map and gamma.
+numbers the static bake used. Each renderer selects direct (the default),
+renormalised or table lighting, with bake-matched albedo decode, tone map and
+gamma. Scene-format work fills this private mode from the skin pack entry;
+[lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds the costs,
+quality and choice criteria.
 SCNE v1 is the scene format. The proposed version adds authored
 animator and lighting rows; runtime attachment uses asset ids without these
 rows. TRCK v1 is refused (`ASSET_ERR_VERSION`).
@@ -118,9 +122,10 @@ separate influence-count kernels and cluster ranges.
 
 The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime-pose-and-skinning).
 
-Proposed lighting uses a 16×16 bilinear table rebuilt when lights or entity
-rotation change, or direct N.L, selected by device measurements. Its lights,
-ambient and tone map match the static bake.
+Lighting has three modes per renderer, defaulting to direct. Renormalised
+removes joint darkening; table shares scene irradiance and rebuilds only when
+a light changes. The table is allocated only while used. The scene-format
+work fills the mode from the skin pack entry.
 
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id attachment

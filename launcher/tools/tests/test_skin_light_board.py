@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "r3d/skin_light"))
-from report_skin_light_board import rows
+from report_skin_light_board import rows, lighting_modes
 
 
 class BoardRows(unittest.TestCase):
@@ -54,6 +54,20 @@ COST cycles_per_vertex=8
         self.assertEqual(result[0][:5], ["first-diag", "build", "30.000", "build", "15.000"])
         self.assertEqual(result[0][-2:], ["50", "0.5"])
         self.assertEqual(result[1][:3], ["second-diag", "build", "8.000"])
+
+    def test_mode_table_uses_runtime_build_and_ram(self):
+        text = """BUILD_ID runtime-diag
+POSE vertices=4
+RAM mode=table renderer_bytes=80 scene_bytes=1920
+skin_light_perf: test_fused_table_1 med=400cycles
+COST cycles_per_vertex=100
+QUALITY max=8 mean=0.5
+skin_light_perf: test_table_build_1 med=200cycles
+COST cycles_per_build=200
+"""
+        table = lighting_modes(text)
+        self.assertIn("Build `runtime-diag`", table)
+        self.assertIn("| table | 1 | 100.000 | 8 | 0.5 | 200.000 | 80 | 1920 |", table)
 
     def test_comment_lines_are_ignored(self):
         self.assertEqual(list(rows("# Capture comments\n")), [])
