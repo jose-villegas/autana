@@ -147,6 +147,7 @@ $MAIN_DIR/anim/playback/anim_playhead.c
 $MAIN_DIR/anim/playback/anim_layer.c
 $MAIN_DIR/render/r3d_skin.c
 $MAIN_DIR/render/skin/r3d_skinning.c
+$MAIN_DIR/render/skin/r3d_skin_light.c
 $MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
 $MAIN_DIR/asset/asset_file.c
