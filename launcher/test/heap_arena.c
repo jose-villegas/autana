@@ -139,7 +139,7 @@ typedef struct {
     size_t cur_blocks;
     size_t peak_bytes;
     size_t free_bytes;     /* what arena_pool_scan() would total */
-    size_t low_free_bytes; /* free_bytes at its lowest since start */
+    size_t low_free_bytes; /* free_bytes at its lowest since the last reset */
     int initialized;
 } arena_pool_t;
 
@@ -317,6 +317,11 @@ arena_pool_scan(arena_pool_t* p, size_t* out_total_free, size_t* out_largest_fre
         }
         b = next;
     }
+    if (total != p->free_bytes) {
+        fprintf(stderr, "heap_arena: %s pool counts %zu bytes free, its blocks hold %zu\n", p->label, p->free_bytes,
+                total);
+        abort();
+    }
     if (out_total_free) {
         *out_total_free = total;
     }
@@ -445,6 +450,9 @@ heap_arena_reset_peak(void) {
      * starts after an earlier leak should show that leak weighing on its
      * own peak, the same way it would starve a real boot. */
     s_internal.peak_bytes = s_internal.cur_bytes;
+    arena_pool_init_once(&s_psram);
+    s_internal.low_free_bytes = s_internal.free_bytes;
+    s_psram.low_free_bytes = s_psram.free_bytes;
 }
 
 /* malloc/calloc/realloc/free interposition */

@@ -143,9 +143,10 @@ flowchart TB
   `scripts/gates/check_shell_firmware.py` fails `main.c` and any file
   under `shell/` on an ESP-IDF, FreeRTOS, NVS or BSP include or call,
   logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
-- **The vendor timer and heap have one owner each.** Code above the drivers
-  reads time with `timing_now_us()` (`core/timing.h`, inlined to the
-  hardware timer's own call) and places or measures memory by kind with
+- **The vendor clock, pause and heap have one owner each.** Code above the
+  drivers reads time with `timing_now_us()` (`core/timing.h`, inlined to the
+  hardware timer's own call), pauses with `timing_sleep_ms()` or
+  `timing_yield()`, and places or measures memory by kind with
   `core/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
   `MEMORY_PSRAM`), whose header says which heap is beneath it on each
   platform. In the firmware, its suites and its tools the same gate fails
@@ -193,7 +194,7 @@ Apps do not loop, do not present, do not block and do not yield. An app's
 `frame()` draws and returns. So:
 
 - switching apps is instant: no teardown of a running loop
-- no app can wedge the device by forgetting to `vTaskDelay`
+- no app can wedge the device by forgetting to yield
 - the shell decides when to present, and can draw its own chrome afterwards
 
 The boot animation runs a loop of its own and `show_post_failures()`
