@@ -37,6 +37,10 @@ typedef enum {
 
 size_t memory_free_bytes(memory_kind_t kind);
 
+/* The low-water mark of memory_free_bytes() since boot: shows a transient
+ * allocation that has already been freed again. */
+size_t memory_min_free_bytes(memory_kind_t kind);
+
 /* The largest single block an allocation of this kind could still get: free
  * space alone does not say whether one big buffer fits. */
 size_t memory_largest_block(memory_kind_t kind);

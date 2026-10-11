@@ -137,6 +137,7 @@ typedef struct {
     size_t cur_bytes;
     size_t cur_blocks;
     size_t peak_bytes;
+    size_t most_bytes; /* peak_bytes since start, never reset */
     int initialized;
 } arena_pool_t;
 
@@ -280,6 +281,9 @@ arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
     p->cur_blocks += 1;
     if (p->cur_bytes > p->peak_bytes) {
         p->peak_bytes = p->cur_bytes;
+    }
+    if (p->cur_bytes > p->most_bytes) {
+        p->most_bytes = p->cur_bytes;
     }
     return (unsigned char*)b + ARENA_HEADER_SIZE;
 }
@@ -634,6 +638,27 @@ heap_caps_get_largest_free_block(uint32_t caps) {
         }
     }
     return best;
+}
+
+/* The free bytes at the pool's fullest since start, payloads only: the
+ * headers its splits took then are not modelled. */
+static size_t
+arena_pool_low_free(arena_pool_t* p) {
+    arena_pool_init_once(p);
+    const size_t start_free = p->cap > ARENA_HEADER_SIZE ? p->cap - ARENA_HEADER_SIZE : 0;
+    return start_free > p->most_bytes ? start_free - p->most_bytes : 0;
+}
+
+size_t
+heap_caps_get_minimum_free_size(uint32_t caps) {
+    size_t total = 0;
+    if (caps_matches_internal(caps)) {
+        total += arena_pool_low_free(&s_internal);
+    }
+    if (caps_matches_psram(caps)) {
+        total += arena_pool_low_free(&s_psram);
+    }
+    return total;
 }
 
 size_t

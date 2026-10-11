@@ -215,6 +215,15 @@ class OwnerProblemsTest(unittest.TestCase):
             with self.subTest(rel=rel):
                 self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
 
+    def test_a_free_heap_query_belongs_to_core_memory(self):
+        text = "size_t f(void) { return esp_get_free_heap_size() + esp_get_minimum_free_heap_size(); }\n"
+        rel = "launcher/main/console/state.c"
+        self.assertEqual(self.problems({rel: text}), [
+            f"{rel}:1: uses esp_get_free_heap_size; only core/memory and a driver may",
+            f"{rel}:1: uses esp_get_minimum_free_heap_size; only core/memory and a driver may",
+        ])
+        self.assertEqual(self.problems({"launcher/main/core/memory.c": text}), [])
+
     def test_a_name_used_twice_on_a_line_is_reported_once(self):
         rel = "launcher/main/gfx/gfx.c"
         self.assertEqual(self.problems({rel: "long d = esp_timer_get_time() - esp_timer_get_time();\n"}),

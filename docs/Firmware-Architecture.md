@@ -149,7 +149,8 @@ flowchart TB
   `core/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
   `MEMORY_PSRAM`), whose header says which heap is beneath it on each
   platform. In the firmware, its suites and its tools the same gate fails
-  any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
+  any `esp_timer_*`, `heap_caps_*`, `MALLOC_CAP_*`, `multi_heap_*` or
+  `esp_get_*heap_size` name outside those two
   modules, `board/` and a driver's `*_device.c`; `launcher/test/` outside
   `suites/` (the host heap model, the stubs, and the harness both platforms
   build) is not checked.
