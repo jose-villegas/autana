@@ -263,15 +263,17 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
-# The software rasteriser's per-pixel loops run from flash through the
-# instruction cache, so where each function starts inside a cache line moves
-# the frame time by a fraction of a percent whenever unrelated code ahead of
-# it in the link grows or shrinks. Starting every render function on a cache
-# line makes its timing independent of link order.
+# Folder-owned alignment keeps flash function offsets stable when earlier code grows.
 if(NOT CMAKE_SCRIPT_MODE_FILE)
-    launcher_glob(render_srcs "${CMAKE_CURRENT_LIST_DIR}/render/*.c")
-    set_source_files_properties(${render_srcs} PROPERTIES
-        COMPILE_OPTIONS "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
+    launcher_glob(alignment_markers "${CMAKE_CURRENT_LIST_DIR}/*/align_functions.cmake")
+    foreach(marker IN LISTS alignment_markers)
+        get_filename_component(owner "${marker}" DIRECTORY)
+        file(GLOB aligned_sources CONFIGURE_DEPENDS "${owner}/*.c")
+        foreach(source IN LISTS aligned_sources)
+            set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS
+                "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
+        endforeach()
+    endforeach()
 endif()
 
 # LAUNCHER_LAYOUT_SEED > 0 pads every source of this component by a size its
@@ -319,17 +321,9 @@ idf_component_register(
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
-    # Required by self-registration, and easy to get wrong.
-    #
-    # This component becomes libmain.a, and a linker only extracts an archive
-    # member if it resolves an undefined symbol. Nothing references an app by
-    # name any more (that is the entire point), so app_sand.o would never be
-    # extracted, its constructor would never enter .init_array, and the app
-    # would silently vanish from the menu. Not a link error: a smaller binary
-    # and a shorter list.
-    #
-    # WHOLE_ARCHIVE links every member regardless. Section garbage collection
-    # still runs, so genuinely unreachable code is still dropped.
+    # Constructors self-register entries without a referenced symbol pulling
+    # their archive members into the link. Keep those constructors while
+    # section garbage collection drops unreachable code.
     WHOLE_ARCHIVE
 )
 

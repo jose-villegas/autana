@@ -2,9 +2,6 @@
 
 #include "core/memory.h"
 
-#ifdef ESP_PLATFORM
-#include "esp_attr.h"
-#endif
 #include "esp_psram.h"
 
 size_t
@@ -27,10 +24,6 @@ memory_total_bytes(memory_kind_t kind) {
     return heap_caps_get_total_size(memory_caps(kind));
 }
 
-/* Setup queries must not shift the measured flash code layout. */
-#ifdef ESP_PLATFORM
-IRAM_ATTR
-#endif
 size_t
 memory_psram_bytes(void) {
     return esp_psram_get_size();
