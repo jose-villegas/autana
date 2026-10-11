@@ -132,21 +132,24 @@ remaining calls and register spills. `always_inline`, used by
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 
-Every compiled source in `launcher/main/render/` receives
+The direct C sources in `launcher/main/render/` receive
 `-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}` from
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
-stabilizes timing; it does not select the fastest loop offsets. Hot functions
-also carry `RENDER_ENTRY_OFFSET` from `launcher/main/render/code_layout.h`:
+stabilizes timing; it does not select the fastest loop offsets. Explicit function
+alignment attributes take precedence and their offsets are baseline-checked. Hot functions
+in `launcher/main/render/` also carry `RENDER_ENTRY_OFFSET` from
+`launcher/main/render/code_layout.h`:
 never-executed `nop.n` padding ahead of the entry places their loops at the
 offsets measured fastest on the board. The diagnostics build gate in
 `launcher/tools/build/build_diag_check.sh` runs
 `launcher/tools/render/code_layout.py --check` against
-`launcher/main/render/code_layout.txt`, checking function and machine-loop
+source-local `code_layout.txt` baselines for the selected build configuration,
+including `launcher/main/render/code_layout.txt`, checking function and machine-loop
 offsets, sizes and cache-line spans. When a row changes, compare revisions
 with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
 If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write launcher/build.diag`.
+table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
