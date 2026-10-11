@@ -1,12 +1,16 @@
-/* Positive normal-range inputs only; one Newton correction of the FPU seed.
+/* mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed.
  * Device sweeps gate relative error and lighting-byte error; host/QEMU use exact sqrt. */
 #pragma once
 #include <math.h>
 
-#define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
+#ifdef __XTENSA__
+#include "sdkconfig.h"
+#endif
+
+#define MATHF_RSQRT_RELATIVE_LIMIT 0.0001F
 
 static inline __attribute__((always_inline)) float
-mathf_rsqrt_approx(float value) {
+mathf_rsqrt(float value) {
 #if defined(__XTENSA__) && !CONFIG_LAUNCHER_QEMU
     float seed;
     __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));

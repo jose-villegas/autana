@@ -7,13 +7,13 @@
  *
  * DATA.bin is skin_light_data.py's output. Every variant lights every vertex
  * of every frame. OUT_DIR receives three Markdown tables (cost, table build,
- * quality against the reference), sheet.bin, the native RGB565 colour of
+ * quality against the reference), sheet.bin, the native RGB565 color of
  * every vertex of the sheet frame under SHEET_LIGHTS lights, one run of
  * vertices per lit variant, the reference first, and sheet.txt, those
  * variants' short labels, one per line.
  *
  * Every variant skins the normal with the rotation part of the blended joint
- * matrices and ends in the same integer stage (light byte times colour byte,
+ * matrices and ends in the same integer stage (light byte times color byte,
  * packed to RGB565), so only the light bytes differ. The `ops_t` constants are the
  * float operations each kernel below performs per vertex, counted by hand
  * from its code: `other` is compares, absolute values, sign copies and
@@ -45,7 +45,7 @@ typedef struct {
     int8_t normal8[3];
     uint8_t joint[4];
     float weight[4];
-    uint8_t colour[3];
+    uint8_t color[3];
 } vertex_t;
 
 typedef mat4f_t rotation_t;
@@ -60,7 +60,7 @@ typedef struct {
  * then four dim accents. Colours are 0..1; the sum can pass 1 and clamps. */
 typedef struct {
     vec3f_t dir;
-    vec3f_t colour;
+    vec3f_t color;
 } light_t;
 
 static const light_t LIGHTS[MAX_LIGHTS] = {
@@ -74,12 +74,12 @@ static const unsigned LIGHT_COUNTS[] = {1, 2, 4, 8};
 #define LIGHT_COUNT_N (sizeof(LIGHT_COUNTS) / sizeof(LIGHT_COUNTS[0]))
 
 /* A frame's lights as the kernels take them: unit directions (divided by 127
- * for an int8 normal, whose length is 127), colours and ambient in light-byte
+ * for an int8 normal, whose length is 127), colors and ambient in light-byte
  * units, ambient carrying the +0.5 that rounds the final conversion. */
 typedef struct {
     unsigned count;
     vec3f_t dir[MAX_LIGHTS];
-    vec3f_t colour[MAX_LIGHTS];
+    vec3f_t color[MAX_LIGHTS];
     vec3f_t ambient;
 } lights_t;
 
@@ -88,7 +88,7 @@ lights_prepare(unsigned count, float dir_scale) {
     lights_t l = {.count = count};
     for (unsigned i = 0; i < count; i++) {
         l.dir[i] = vec3f_scale(vec3f_normalize(LIGHTS[i].dir), dir_scale);
-        l.colour[i] = vec3f_scale(LIGHTS[i].colour, 255.0F);
+        l.color[i] = vec3f_scale(LIGHTS[i].color, 255.0F);
     }
     l.ambient = vec3f_add(vec3f_scale(AMBIENT, 255.0F), (vec3f_t){0.5F, 0.5F, 0.5F});
     return l;
@@ -105,7 +105,7 @@ static const ops_t OPS_SKIN = {45, 33, 0, 0, 0, 0};
 
 static inline vec3f_t
 skin(const rotation_t* frame, const vertex_t* v, vec3f_t n) {
-    return r3d_skin_light_normal(frame, v->joint, v->weight, R3D_SKIN_INFLUENCES_MAX, n);
+    return skin_light_baseline_normal(frame, v->joint, v->weight, R3D_SKIN_INFLUENCES_MAX, n);
 }
 
 static inline vec3f_t
@@ -118,7 +118,7 @@ to_byte(float x) {
     return x < 255.0F ? (uint8_t)x : 255;
 }
 
-/* Per light: N.L (3 mul, 2 add), the facing test (1 other), colour times N.L
+/* Per light: N.L (3 mul, 2 add), the facing test (1 other), color times N.L
  * added in (3 mul, 3 add), counted as if every light faces the normal; then
  * three clamps and three conversions. */
 static const ops_t OPS_LIGHT_BASE = {0, 0, 0, 0, 6, 0};
@@ -131,9 +131,9 @@ reference_light(vec3f_t n, const lights_t* l, uint8_t out[3]) {
     float channels[] = {l->ambient.x, l->ambient.y, l->ambient.z};
     for (unsigned i = 0; i < l->count; i++) {
         const float facing = fmaxf(0.0F, vec3f_dot(n, l->dir[i]));
-        const float colour[] = {l->colour[i].x, l->colour[i].y, l->colour[i].z};
+        const float color[] = {l->color[i].x, l->color[i].y, l->color[i].z};
         for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
-            channels[channel] += colour[channel] * facing;
+            channels[channel] += color[channel] * facing;
         }
     }
     for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
@@ -179,17 +179,17 @@ lut_init(lut_t* t, unsigned size) {
     t->centres = 0.5F * (float)size;
     t->bias = t->centres - 0.5F;
     t->last = (float)(size - 1);
-    r3d_skin_light_directions((int)size, t->dir);
+    skin_light_baseline_directions((int)size, t->dir);
 }
 
 static r3d_skin_lights_t
-engine_lights(const lights_t* lights) {
+baseline_lights(const lights_t* lights) {
     r3d_skin_lights_t out = {.count = (int)lights->count};
     out.ambient =
         vec3f_scale(vec3f_sub(lights->ambient, (vec3f_t){0.5F, 0.5F, 0.5F}), 1.0F / R3D_SKIN_LIGHT_BYTE_SCALE);
     for (int i = 0; i < out.count; i++) {
         out.direction[i] = lights->dir[i];
-        out.colour[i] = vec3f_scale(lights->colour[i], 1.0F / R3D_SKIN_LIGHT_BYTE_SCALE);
+        out.color[i] = vec3f_scale(lights->color[i], 1.0F / R3D_SKIN_LIGHT_BYTE_SCALE);
     }
     return out;
 }
@@ -198,8 +198,8 @@ engine_lights(const lights_t* lights) {
 static void
 lut_build(lut_t* t, const lights_t* l) {
     if (l->count <= R3D_SKIN_LIGHT_MAX) {
-        const r3d_skin_lights_t prepared = engine_lights(l);
-        r3d_skin_light_grid_build((int)t->size, t->dir, &prepared, t->rgb);
+        const r3d_skin_lights_t prepared = baseline_lights(l);
+        skin_light_baseline_grid_build((int)t->size, t->dir, &prepared, t->rgb);
         return;
     }
     const unsigned cells = t->size * t->size;
@@ -277,10 +277,10 @@ variant_ops(const variant_t* v, unsigned lights) {
 }
 
 static inline uint16_t
-shade(const uint8_t colour[3], const uint8_t l[3]) {
-    const uint32_t r = (colour[0] * l[0] + 127u) / 255u;
-    const uint32_t g = (colour[1] * l[1] + 127u) / 255u;
-    const uint32_t b = (colour[2] * l[2] + 127u) / 255u;
+shade(const uint8_t color[3], const uint8_t l[3]) {
+    const uint32_t r = (color[0] * l[0] + 127u) / 255u;
+    const uint32_t g = (color[1] * l[1] + 127u) / 255u;
+    const uint32_t b = (color[2] * l[2] + 127u) / 255u;
     return (uint16_t)GFX_RGB565((r << 16) | (g << 8) | b);
 }
 
@@ -298,7 +298,7 @@ static void
 run_frame(const data_t* d, const variant_t* v, unsigned frame, const lights_t* lf, const lights_t* l8, const lut_t* lut,
           uint8_t (*out)[3]) {
     const rotation_t* rot = &d->rotation[(size_t)frame * d->joints];
-    const r3d_skin_lights_t prepared = l8->count <= R3D_SKIN_LIGHT_MAX ? engine_lights(l8) : (r3d_skin_lights_t){0};
+    const r3d_skin_lights_t prepared = l8->count <= R3D_SKIN_LIGHT_MAX ? baseline_lights(l8) : (r3d_skin_lights_t){0};
     float acc = 0.0F;
     for (unsigned i = 0; i < d->vertices; i++) {
         const vertex_t* vx = &d->vertex[i];
@@ -312,14 +312,14 @@ run_frame(const data_t* d, const variant_t* v, unsigned frame, const lights_t* l
             case K_DIRECT: reference_light(skin(rot, vx, vx->normal), lf, out[i]); break;
             case K_DIRECT8:
                 if (l8->count <= R3D_SKIN_LIGHT_MAX) {
-                    r3d_skin_light_evaluate(skin(rot, vx, normal8(vx)), &prepared, out[i]);
+                    skin_light_baseline_evaluate(skin(rot, vx, normal8(vx)), &prepared, out[i]);
                 } else {
                     reference_light(skin(rot, vx, normal8(vx)), l8, out[i]);
                 }
                 break;
             case K_LUT: memcpy(out[i], lut_lookup(lut, skin(rot, vx, normal8(vx))), 3); break;
             case K_LUT_BILINEAR:
-                r3d_skin_light_bilinear((int)lut->size, lut->rgb, skin(rot, vx, normal8(vx)), out[i]);
+                skin_light_baseline_bilinear((int)lut->size, lut->rgb, skin(rot, vx, normal8(vx)), out[i]);
                 break;
         }
     }
@@ -398,7 +398,7 @@ score(const data_t* d, uint8_t (*got)[3], uint8_t (*ref)[3], result_t* r) {
                 r->light_max = e;
             }
         }
-        const uint16_t a = shade(vx->colour, got[k]), b = shade(vx->colour, ref[k]);
+        const uint16_t a = shade(vx->color, got[k]), b = shade(vx->color, ref[k]);
         const int e[3] = {abs((int)gfx_rgb565_r5(a) - (int)gfx_rgb565_r5(b)),
                           abs((int)gfx_rgb565_g6(a) - (int)gfx_rgb565_g6(b)),
                           abs((int)gfx_rgb565_b5(a) - (int)gfx_rgb565_b5(b))};
@@ -449,7 +449,7 @@ load(const char* path, data_t* d) {
         }
         for (int k = 0; k < 3; k++) {
             v->normal8[k] = (int8_t)lroundf(n[k] * 127.0F);
-            v->colour[k] = c[k];
+            v->color[k] = c[k];
         }
     }
     for (size_t m = 0; ok && m < (size_t)d->frames * d->joints; m++) {
@@ -519,7 +519,7 @@ main(int argc, char** argv) {
                 const unsigned run = vi == reference ? 0 : sheet_runs++;
                 for (unsigned i = 0; i < d.vertices; i++) {
                     sheet[run * d.vertices + i] =
-                        shade(d.vertex[i].colour, mine[(size_t)d.sheet_frame * d.vertices + i]);
+                        shade(d.vertex[i].color, mine[(size_t)d.sheet_frame * d.vertices + i]);
                 }
                 labels[run] = VARIANTS[vi].label;
             }

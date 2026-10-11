@@ -5,21 +5,21 @@
 #include "skin_light_baseline_internal.h"
 
 vec3f_t
-r3d_skin_light_normal(const mat4f_t* palette, const uint8_t* joints, const float* weights, int influences,
-                      vec3f_t normal) {
+skin_light_baseline_normal(const mat4f_t* palette, const uint8_t* joints, const float* weights, int influences,
+                           vec3f_t normal) {
     assert(influences > 0 && influences <= R3D_SKIN_INFLUENCES_MAX);
     return light_normal(palette, joints, weights, influences, normal);
 }
 
 void
-r3d_skin_light_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, uint8_t out[3]) {
+skin_light_baseline_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, uint8_t out[3]) {
     assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);
     baseline_light_evaluate(normal, lights, out);
 }
 
 /* Octahedral directions: docs/Citations.md#21. Normal-indexed lighting: docs/Citations.md#58. */
 void
-r3d_skin_light_directions(int size, vec3f_t* directions) {
+skin_light_baseline_directions(int size, vec3f_t* directions) {
     assert(size >= 2);
     for (int y = 0; y < size; y++) {
         for (int x = 0; x < size; x++) {
@@ -31,8 +31,8 @@ r3d_skin_light_directions(int size, vec3f_t* directions) {
 }
 
 void
-r3d_skin_light_grid_build(int size, const vec3f_t* directions, const r3d_skin_lights_t* lights,
-                          uint8_t (*rgb)[R3D_SKIN_LIGHT_CELL_BYTES]) {
+skin_light_baseline_grid_build(int size, const vec3f_t* directions, const r3d_skin_lights_t* lights,
+                               uint8_t (*rgb)[SKIN_LIGHT_BASELINE_CELL_BYTES]) {
     assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);
     for (int c = 0; c < size * size; c++) {
         baseline_light_evaluate(directions[c], lights, rgb[c]);
@@ -41,7 +41,8 @@ r3d_skin_light_grid_build(int size, const vec3f_t* directions, const r3d_skin_li
 }
 
 void
-r3d_skin_light_bilinear(int size, const uint8_t (*rgb)[R3D_SKIN_LIGHT_CELL_BYTES], vec3f_t normal, uint8_t out[3]) {
+skin_light_baseline_bilinear(int size, const uint8_t (*rgb)[SKIN_LIGHT_BASELINE_CELL_BYTES], vec3f_t normal,
+                             uint8_t out[3]) {
     assert(size >= 2);
     light_bilinear(size, rgb, normal, out);
 }

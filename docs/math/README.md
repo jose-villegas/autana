@@ -119,9 +119,6 @@ modified through a pointer except the transform's own `t`.
 | `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#21)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
 | `vec3f_from_octahedral(p)` | the unit direction of a point of the square, the inverse of `vec3f_octahedral`; `f` only | $`z = 1 - \lvert p_x\rvert - \lvert p_y\rvert`$<br> the point unfolded when $`z < 0`$<br> then normalized |
 
-`vec3f_octahedral_recip(n)` in `math/linear/vec3f_octahedral_recip.h` uses
-`mathf_recip` for the same projection, including its target-specific precision.
-
 A swizzle copies components and does no arithmetic. One that changes dimension
 returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 `vec2f_t` and `vec2f_xyx(v)` a `vec3f_t`: each vec3 header instantiates
@@ -246,3 +243,7 @@ and the rules are in [Build-Variants.md](../Build-Variants.md):
 | `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
+
+| Helper | Contract |
+|---|---|
+| `mathf_rsqrt()` (`math/scalar/mathf_rsqrt.h`) | reciprocal square root for positive normal-range inputs; S3 FPU seed plus one Newton correction, exact sqrt on host/QEMU; device sweep gates `MATHF_RSQRT_RELATIVE_LIMIT` |

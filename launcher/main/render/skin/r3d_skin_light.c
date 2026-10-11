@@ -1,4 +1,4 @@
-/* Reinhard tone map and gamma match tools/r3d/light.py; docs/Citations.md#7. */
+/* Per-channel Reinhard scales the denominator by white; zero is identity. Gamma matches tools/r3d/light.py. */
 #include <assert.h>
 #include <math.h>
 #include <string.h>
@@ -14,7 +14,11 @@ r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_t* ou
         out->decode[i] = (uint16_t)((bits + (1U << (R3D_SKIN_LIGHT_DECODE_SHIFT - 1))) >> R3D_SKIN_LIGHT_DECODE_SHIFT);
     }
     for (int i = 0; i < R3D_SKIN_LIGHT_RADIANCE_SIZE; i++) {
-        const uint32_t bits = ((uint32_t)(i + R3D_SKIN_LIGHT_RADIANCE_FIRST) << R3D_SKIN_LIGHT_RADIANCE_SHIFT);
+        const bool low = i < R3D_SKIN_LIGHT_RADIANCE_LOW_SIZE;
+        const int shift = low ? R3D_SKIN_LIGHT_RADIANCE_LOW_SHIFT : R3D_SKIN_LIGHT_RADIANCE_SHIFT;
+        const int bin = low ? i + R3D_SKIN_LIGHT_RADIANCE_LOW_FIRST
+                            : i - R3D_SKIN_LIGHT_RADIANCE_LOW_SIZE + R3D_SKIN_LIGHT_RADIANCE_FIRST;
+        const uint32_t bits = ((uint32_t)bin << shift) + (1U << (shift - 1));
         float linear;
         memcpy(&linear, &bits, sizeof linear);
         const float mapped = linear / (1.0F + linear * tonemap_white);

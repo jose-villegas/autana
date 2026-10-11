@@ -2051,6 +2051,72 @@ test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
 #endif
 
 static void
+test_disabled_light_skin_and_two_object_rotations(void) {
+    scene_t* scene = rig_fixture("rig.skin2", "rig.quad");
+    const scene_entity_t red = scene_find(scene, "red"), green = scene_find(scene, "green");
+    const scene_entity_t light = scene_find(scene, "camera");
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, light, 1));
+    scene_transform_t transform = *scene_entity_transform(scene, green);
+    transform.rotation = quatf_from_euler((vec3f_t){MATH_PI / 2, 0, 0});
+    scene_set_transform(scene, green, &transform);
+    scene_animation_step(scene, 0);
+    const scene_skinned_renderer_t* a = &scene->skinned_renderers[red];
+    const scene_skinned_renderer_t* b = &scene->skinned_renderers[green];
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, SCENE_LIGHT_AXIS.y, a->lights->direction[0].y);
+    const quatf_t inverse = {-transform.rotation.x, -transform.rotation.y, -transform.rotation.z, transform.rotation.w};
+    const vec3f_t expected = quatf_rotate(inverse, SCENE_LIGHT_AXIS);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, expected.y, b->lights->direction[0].y);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, expected.z, b->lights->direction[0].z);
+    scene_entity_set_enabled(scene, light, false);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_EQUAL_INT(0, a->lights->count);
+    TEST_ASSERT_EQUAL_INT(0, b->lights->count);
+    scene_entity_set_enabled(scene, red, false);
+    scene_entity_set_enabled(scene, light, true);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_FALSE(scene->animators[red].posed);
+    TEST_ASSERT_EQUAL_PTR(a->bind.colors, scene_entity_mesh(scene, red)->colors);
+    TEST_ASSERT_EQUAL_INT(1, b->lights->count);
+    release_fixture();
+}
+
+static void
+test_light_transfer_allocation_refuses_without_changes(void) {
+    scene_light_t light = {0};
+    scene_t scene = {.asset = {.entity_count = 1}, .lights = &light};
+    scene_fail_next_allocation = true;
+    TEST_ASSERT_FALSE(scene_light_set_intensity(&scene, 0, 1));
+    TEST_ASSERT_NULL(scene.light_transfer);
+    TEST_ASSERT_EQUAL_INT(0, scene.light_count);
+    TEST_ASSERT_EQUAL_INT(SCENE_LIGHT_NONE, light.kind);
+}
+
+static void
+test_idle_lit_skin_skips_and_transform_changes_run(void) {
+    scene_fail_next_allocation = false;
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t entity = scene_find(scene, "red");
+    const scene_entity_t light = scene_find(scene, "camera");
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, light, 1));
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
+    scene_animation_step(scene, 0);
+    scene->flags[entity] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    scene->flags[light] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_FALSE(scene->animators[entity].posed);
+    scene_transform_t pose = *scene_entity_transform(scene, light);
+    pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
+    scene_set_transform(scene, light, &pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_TRUE(scene->animators[entity].posed);
+    scene->flags[light] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    scene_set_transform(scene, entity, &pose);
+    scene_animation_step(scene, 0);
+    TEST_ASSERT_TRUE(scene->animators[entity].posed);
+    release_fixture();
+}
+
+static void
 test_light_attachment_defaults_refusals_and_capacity(void) {
     enum { ENTITIES = R3D_SKIN_LIGHT_MAX + 1 };
 
@@ -2109,9 +2175,9 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
         pose.rotation = quatf_from_euler(sun_angles);
         scene_set_transform(scene, light, &pose);
         scene_animation_step(scene, 0);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, 0.32F, skin->lights.direction[0].x);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, 0.77F, skin->lights.direction[0].y);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, 0.56F, skin->lights.direction[0].z);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x, skin->lights->direction[0].x);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y, skin->lights->direction[0].y);
+        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z, skin->lights->direction[0].z);
         TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
         TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
         uint8_t lit_colors[RIG_VERTICES][3];
@@ -2131,7 +2197,7 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
         TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
         uint8_t expected[RIG_VERTICES][3];
         r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
-                              &skin->lights, expected);
+                              skin->lights, expected);
         TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
         free(block);
         TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, true));
@@ -2157,6 +2223,9 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
 
 void
 run_scene_suite(void) {
+    RUN_TEST(test_disabled_light_skin_and_two_object_rotations);
+    RUN_TEST(test_light_transfer_allocation_refuses_without_changes);
+    RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);

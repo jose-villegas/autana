@@ -115,18 +115,23 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
 static inline __attribute__((always_inline)) void
 skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,
            r3d_skin_output_t* out, int influences, const r3d_skin_lights_t* lights, uint8_t (*light)[3]) {
+    const uint8_t* vertices = skin->vertices;
+    const size_t stride = skin->vertex_stride;
+    const int16_t(*positions)[POSITION_AXES] = bind->positions;
+    const uint8_t(*colors)[R3D_SKIN_LIGHT_CHANNELS] = bind->colors;
+    int16_t(*posed)[POSITION_AXES] = out->positions;
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
         empty_bounds(cluster->lo, cluster->hi);
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             vec3f_t normal;
-            skin_vertex(skin->vertices + ((size_t)v * skin->vertex_stride), influences, palette, bind->positions[v],
-                        out->positions[v], lights != NULL ? &normal : NULL);
+            skin_vertex(vertices + ((size_t)v * stride), influences, palette, positions[v], posed[v],
+                        lights != NULL ? &normal : NULL);
             if (lights != NULL) {
-                light_evaluate(light_renormalise(normal), lights, bind->colors[v], light[v]);
+                light_evaluate(light_renormalise(normal), lights, colors[v], light[v]);
             }
-            grow_bounds(cluster->lo, cluster->hi, out->positions[v], out->positions[v]);
+            grow_bounds(cluster->lo, cluster->hi, posed[v], posed[v]);
         }
     }
 }
@@ -157,7 +162,8 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
 #define LIT_RANGE(name, influences)                                                                                    \
     static void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count, \
                      r3d_skin_output_t* out, const r3d_skin_lights_t* lights, uint8_t(*light)[3]) {                    \
-        skin_range(skin, bind, palette, first, count, out, influences, lights, light);                                 \
+        const r3d_skin_lights_t prepared = *lights;                                                                    \
+        skin_range(skin, bind, palette, first, count, out, influences, &prepared, light);                              \
     }
 LIT_RANGE(lit_two, R3D_SKIN_INFLUENCES_MIN)
 LIT_RANGE(lit_four, R3D_SKIN_INFLUENCES_MAX)
