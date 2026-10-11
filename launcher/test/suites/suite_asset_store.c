@@ -103,11 +103,12 @@ test_a_row_out_of_range_misaligned_or_overlapping_is_refused(void) {
         int field;
         uint32_t value;
     } cases[] = {
-        {1, 36, (2U * ASSET_MMU_PAGE_SIZE) + 1U},  /* ends past the region */
-        {1, 32, REGION},                           /* starts at its end */
-        {1, 32, (2U * ASSET_MMU_PAGE_SIZE) + 16U}, /* not on a MMU page */
-        {0, 32, 0},                                /* over the directory */
-        {1, 32, ASSET_MMU_PAGE_SIZE},              /* over pack one */
+        {1, 36, (2U * ASSET_MMU_PAGE_SIZE) + 1U},                         /* ends past the region */
+        {1, 32, REGION},                                                  /* starts at its end */
+        {1, 32, (2U * ASSET_MMU_PAGE_SIZE) + 16U},                        /* not on a MMU page */
+        {1, 32, (2U * ASSET_MMU_PAGE_SIZE) + (ASSET_MMU_PAGE_SIZE / 2U)}, /* sector aligned, off a page */
+        {0, 32, 0},                                                       /* over the directory */
+        {1, 32, ASSET_MMU_PAGE_SIZE},                                     /* over pack one */
     };
 
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {

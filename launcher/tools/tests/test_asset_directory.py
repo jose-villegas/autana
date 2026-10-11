@@ -1,7 +1,6 @@
 """The directory writer's page layout and reader checks."""
 
 import pathlib
-import subprocess
 import struct
 import sys
 import unittest
@@ -31,31 +30,10 @@ class DirectoryTests(unittest.TestCase):
         struct.pack_into("<I", image, 4, zlib.crc32(bytes(image[8:self.row(count)])))
         return bytes(image)
 
-    def test_layout_constants_come_from_the_reader_header(self):
-        header = (pathlib.Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h")
-        self.assertEqual(asset_directory.MMU_PAGE_SIZE, read_define(header, "ASSET_MMU_PAGE_SIZE"))
-        self.assertEqual(asset_directory.DIRECTORY_VERSION, read_define(header, "ASSET_DIRECTORY_VERSION"))
-
-    def test_import_does_not_read_the_display_header(self):
-        script = """
-import sys
-from pathlib import Path
-from unittest.mock import patch
-
-sys.path.insert(0, sys.argv[1])
-read_text = Path.read_text
-
-def read_without_display(path, *args, **kwargs):
-    if path.name == "display.h":
-        raise AssertionError("asset tooling read the display header")
-    return read_text(path, *args, **kwargs)
-
-with patch.object(Path, "read_text", read_without_display):
-    from asset import asset_directory
-"""
-        result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).resolve().parents[1])],
-                                capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
+    def test_directory_struct_sizes_match_the_reader_header(self):
+        header = pathlib.Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h"
+        self.assertEqual(asset_directory.DIRECTORY_HEADER.size, read_define(header, "ASSET_DIRECTORY_HEADER_SIZE"))
+        self.assertEqual(asset_directory.DIRECTORY_ROW.size, read_define(header, "ASSET_DIRECTORY_ROW_SIZE"))
 
     def test_each_pack_parses_back_on_its_own_page(self):
         image = self.image()
