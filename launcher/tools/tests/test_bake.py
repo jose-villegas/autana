@@ -8,9 +8,11 @@ import dataclasses
 import hashlib
 import io
 import json
+import os
 import pathlib
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -78,10 +80,39 @@ class TokenTests(unittest.TestCase):
         code = self.tokens("def f(x):\n    return x + 1\n")
         self.assertEqual(code, self.tokens("# what f is\ndef f(x):  # one more\n\n\n  return x  +  1\n"))
 
-    def test_a_changed_expression_or_docstring_does(self):
-        code = self.tokens('def f(x):\n    """Adds one."""\n    return x + 1\n')
-        self.assertNotEqual(code, self.tokens('def f(x):\n    """Adds one."""\n    return x + 2\n'))
-        self.assertNotEqual(code, self.tokens('def f(x):\n    """Adds two."""\n    return x + 1\n'))
+    def test_string_statements_do_not_change_the_code(self):
+        cases = (
+            ('x = 1\n', '"""Module."""\nx = 1\n', '"""Changed."""\nx = 1\n'),
+            ('class C:\n    x = 1\n', 'class C:\n    """Class."""\n    x = 1\n',
+             'class C:\n    """Changed."""\n    x = 1\n'),
+            ('def f():\n    return 1\n', 'def f():\n    """Function."""\n    return 1\n',
+             'def f():\n    """Changed."""\n    return 1\n'),
+            ('async def f():\n    return 1\n', 'async def f():\n    """Async."""\n    return 1\n',
+             'async def f():\n    """Changed."""\n    return 1\n'),
+            ('x = 1\n', 'x = 1\n"Bare string."\n', 'x = 1\n"Changed."\n'),
+            ('class E(Exception): """x"""\n', 'class E(Exception): """y"""\n',
+             'class E(Exception): """Changed."""\n'),
+            ('def f():\n    return 1\n', 'def f():\n    (\n        "Multiline"\n        " string"\n    )\n    return 1\n',
+             'def f():\n    (\n        "Changed"\n        " string"\n    )\n    return 1\n'),
+        )
+        for plain, documented, changed in cases:
+            with self.subTest(source=documented):
+                self.assertEqual(self.tokens(plain), self.tokens(documented))
+                self.assertEqual(self.tokens(documented), self.tokens(changed))
+
+    def test_statement_boundaries_change_the_code(self):
+        self.assertNotEqual(self.tokens("f\n(x)\n"), self.tokens("f(x)\n"))
+
+    def test_non_string_constant_statements_stay_in_the_code(self):
+        for expression in ('b"x"', '0', '...'):
+            with self.subTest(expression=expression):
+                self.assertNotEqual(self.tokens("x = 1\n"), self.tokens(expression + "\nx = 1\n"))
+
+    def test_changed_expressions_and_expression_strings_change_the_code(self):
+        for plain, edited in (('x = 1\n', 'x = 2\n'), ('f("a")\n', 'f("b")\n'),
+                              ('x = f"a"\n', 'x = f"b"\n'), ('x = b"a"\n', 'x = b"b"\n')):
+            with self.subTest(source=plain):
+                self.assertNotEqual(self.tokens(plain), self.tokens(edited))
 
     def test_a_changed_constant_name_or_string_does(self):
         code = self.tokens('SCALE = 8\nNAME = "a"\nf(SCALE)\n')
@@ -105,6 +136,120 @@ class ContentKeyTests(unittest.TestCase):
             (root / "c.c").write_bytes(b'#include "core/mathf.h"\nint f(void) { return 2; }\n')
             self.assertEqual(bake.c_content(root / "a.c"), bake.c_content(root / "b.c"))
             self.assertNotEqual(bake.c_content(root / "a.c"), bake.c_content(root / "c.c"))
+
+    def content(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "scratch.c"
+            path.write_bytes(text)
+            return bake.c_content(path)
+
+    def test_c_comments_layout_code_and_literals(self):
+        cases = (
+            (b'int a; /* x */\n', b'int a; /* y\n z */\n'),
+            (b'int a; // x\n', b'int a; // y\n'),
+            (b'int a; // x\\\n continued\nint b;\n', b'int a; // y\\\n changed\nint b;\n'),
+            (b'#define A 1 /* x */\n', b'#define A 1 /* y */\n'),
+            (b'int a;\n', b'// added\n\n  int  a;\t\n/* more */\n'),
+            (b'a/**/b\n', b'a b\n'),
+            (b"#error don't\n/* x */\nint a;\n", b"#error don't\n/* y */\nint a;\n"),
+            (b"c = '/'; q = '\"'; /* x */\n", b"c = '/'; q = '\"'; /* y */\n"),
+            (b"c = '*'; q = '\"'; // x\n", b"c = '*'; q = '\"'; // y\n"),
+        )
+        changed = (
+            (b'char *s = "/* a */";\n', b'char *s = "/* b */";\n'),
+            (b'char *s = "// a";\n', b'char *s = "// b";\n'),
+            (b'int a;\n', b'int b;\n'),
+            (b'#define A 1\nint x;\n', b'#define A 1 int x;\n'),
+            (b'char *s = "a  b";\n', b'char *s = "a b";\n'),
+            (b"c = '/'/* x */;\n", b"c = '-'/* x */;\n"),
+            (b"int n = 1'000; int x;\n", b"int n = 1'000; int y;\n"),
+            (b'#define A 1\\\n + 2\n', b'#define A 1 + 2\n'),
+        )
+        for equal, pairs in ((True, cases), (False, changed)):
+            for plain, edited in pairs:
+                with self.subTest(source=plain):
+                    self.assertEqual(equal, self.content(plain) == self.content(edited))
+
+    def test_c_quote_types_and_escapes_preserve_literal_bytes(self):
+        for plain, edited in (
+            (br'"a\" /* p */ b"', br'"a\" /* q */ b"'),
+            (b'"it\'s /* p */"', b'"it\'s /* q */"'),
+        ):
+            with self.subTest(source=plain):
+                self.assertNotEqual(self.content(plain), self.content(edited))
+
+    def test_c_spliced_literal_comment_bytes_change_key(self):
+        plain = b'"p\\\n/* p */";\n/* r */\n'
+        edited = plain.replace(b"/* p */", b"/* q */")
+        self.assertNotEqual(self.content(plain), self.content(edited))
+
+    def test_c_literal_at_line_start_retains_newline(self):
+        plain = b'#define M \\\n"a"\nint x;\n'
+        joined = b'#define M \\\n"a" int x;\n'
+        self.assertNotEqual(self.content(plain), self.content(joined))
+
+    def test_c_char_quotes_do_not_hide_comments_or_next_line_code(self):
+        for literal in (b"'\"'", br"'\''", b"'/'", b"'*'"):
+            with self.subTest(literal=literal):
+                plain = b"c = " + literal + b"; /* p */\nint a;\n"
+                edited = b"c = " + literal + b"; /* q */\nint a;\n"
+                code = b"c = " + literal + b"; /* q */\nint b;\n"
+                self.assertEqual(self.content(plain), self.content(edited))
+                self.assertNotEqual(self.content(plain), self.content(code))
+
+    def test_c_line_boundaries_count(self):
+        self.assertNotEqual(self.content(b"#define A 1\n  int x;\n"),
+                            self.content(b"#define A 1 int x;\n"))
+
+    def test_c_nonfinal_line_trailing_comments_and_spaces_do_not_count(self):
+        plain = self.content(b"int a;\nint b;\n")
+        for edited in (b"int a; // x\nint b;\n", b"int a;  \t\nint b;\n"):
+            with self.subTest(source=edited):
+                self.assertEqual(plain, self.content(edited))
+
+    def test_c_later_line_indentation_and_leading_comments_do_not_count(self):
+        plain = self.content(b"int a;\nint b;\n")
+        for edited in (b"int a;\n  int b;\n", b"int a;\n/* x */int b;\n"):
+            with self.subTest(source=edited):
+                self.assertEqual(plain, self.content(edited))
+
+    def test_c_non_utf8_bytes_round_trip_and_carriage_returns_count(self):
+        text = b'char *s = "\xff";\n'
+        self.assertEqual(self.content(text), hashlib.sha256(text).hexdigest())
+        self.assertNotEqual(self.content(b"int a;\r\n"), self.content(b"int a;\n"))
+
+    def test_scratch_stage_keys_ignore_documentation_and_count_each_files_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            entry, source, header = (root / name for name in ("entry.py", "scratch.c", "scratch.h"))
+            originals = {
+                entry: 'import pathlib\nSOURCE = pathlib.Path(__file__).parent / "scratch.c"\nVALUE = 1\n',
+                source: '#include "scratch.h"\nint x = 1;\n',
+                header: '#define A 1\n',
+            }
+
+            def key():
+                bake.module_facts.cache_clear()
+                paths = bake.closure([entry])
+                contents = [bake.digest(bake.code_tokens(path)) for path in paths]
+                contents.extend(bake.native_inputs(paths).values())
+                # Mirrors tool_digest's combination of code, versions and references.
+                return bake.digest([sorted(contents), {}, []])
+
+            try:
+                for path, text in originals.items():
+                    path.write_bytes(text.encode())
+                original = key()
+                for path, text in originals.items():
+                    with self.subTest(file=path.name):
+                        documentation = '"""Documentation."""\n# comment\n' if path == entry else '/* documentation */\n// comment\n'
+                        path.write_bytes((documentation + text).encode())
+                        self.assertEqual(original, key())
+                        path.write_bytes(text.replace('1', '2').encode())
+                        self.assertNotEqual(original, key())
+                        path.write_bytes(text.encode())
+            finally:
+                bake.module_facts.cache_clear()
 
     def test_a_moved_module_keys_the_same_and_an_edited_one_does_not(self):
         def key(layout, value="1"):
@@ -140,8 +285,8 @@ class NativeTests(unittest.TestCase):
             found = {path.relative_to(root.resolve()).as_posix() for path in bake.c_includes([root / "a.c"], (root / "inc",))}
         self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
 
-    def test_the_pose_samplers_c_and_headers_are_in_the_mesh_stage(self):
-        names = bake.native_inputs(bake.stage_files("mesh"))
+    def test_the_pose_samplers_c_and_headers_are_in_the_poses_stage(self):
+        names = bake.native_inputs(bake.stage_files("poses"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
                          "launcher/packages/math/include/math/scalar/mathf.h"} <= set(names))
 
@@ -258,11 +403,11 @@ class StageTests(unittest.TestCase):
 
         job, scene = fitted_job()
         inputs = reference_inputs(job, scene)
-        recipe = bake.reference_recipe(inputs, TOOL_KEYS)
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
-        self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS)))
+        self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS, bake.Poses({}))))
 
     def test_a_fit_brings_its_start_as_a_mesh_bake_no_pack_holds(self):
         found = bake.bakes([build_pack.DEFAULT_SEARCH])
@@ -327,8 +472,8 @@ class FittedBakeCase(unittest.TestCase):
             return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(bake, "read_lock", return_value=lock), \
-                mock.patch.object(bake, "write_lock", side_effect=written.append), \
+        with mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
+                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch.object(bake, "runs_made", return_value=made or {}), \
                 mock.patch.object(produce, "produce", side_effect=stub), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -437,6 +582,215 @@ class FittedBakeTests(FittedBakeCase):
             job.renderer.visibility.size = (width + 1, height)
 
         self.assertNotEqual(self.reference_key(widen), self.reference_key(lambda job: None))
+
+
+class PosesTests(FittedBakeCase):
+    def setUp(self):
+        super().setUp()
+        self.scene = load_scene(self.scene_path)
+        self.job = self.scene.renderers[0]
+
+    def keys(self, rows=None):
+        poses = bake.Poses({}) if rows is None else rows
+        tools = {**TOOL_KEYS, "poses": bake.tool_digest("poses")}
+        return bake.stage_keys(self.job, self.scene, tools, AnyStart(), poses)
+
+    def test_sampler_closure_is_outside_consumers(self):
+        excluded = {"anim/track_host.py", "anim/tracks_asset.py", "build/packages.py"}
+        for stage in ("mesh", "reference", "fit"):
+            files = bake.stage_files(stage)
+            self.assertFalse(excluded & {path.relative_to(TOOLS).as_posix() for path in files})
+            native = bake.native_inputs(files)
+            self.assertFalse(any(path.startswith(("launcher/main/anim/", "launcher/main/asset/",
+                                                 "launcher/packages/math/"))
+                                 or path == "launcher/tools/anim/track_host.c" for path in native))
+
+    def test_encoder_padding_changes_lock_row_key_but_keeps_stage_keys(self):
+        from anim import tracks_asset
+
+        before_rows, after_rows = bake.Poses({}), bake.Poses({})
+        before = self.keys(before_rows)
+        original = tracks_asset.encode
+        with mock.patch.object(tracks_asset, "encode", side_effect=lambda *args, **kwargs:
+                               original(*args, **kwargs) + bytes(1)):
+            after = self.keys(after_rows)
+        self.assertNotEqual(set(before_rows.used), set(after_rows.used))
+        self.assertEqual(sorted(row["poses"] for row in before_rows.used.values()),
+                         sorted(row["poses"] for row in after_rows.used.values()))
+        self.assertEqual(before, after)
+
+    def test_native_refactor_changes_lock_row_key_but_keeps_stage_keys(self):
+        from anim import track_host
+
+        before_rows, after_rows = bake.Poses({}), bake.Poses({})
+        before = self.keys(before_rows)
+        with tempfile.TemporaryDirectory() as directory:
+            scratch = pathlib.Path(directory) / "track_host.c"
+            original = TOOLS / "anim/track_host.c"
+            code = original.read_text().replace("return 0;", "return (0);")
+            self.assertNotEqual(code, original.read_text())
+            scratch.write_text(code)
+            sources = tuple(scratch if path == original else path for path in track_host.SOURCES)
+            native = bake.native_inputs
+            def changed(files):
+                result = native(files)
+                if any(path.name == "track_host.py" for path in files):
+                    result[bake.relative(original)] = bake.c_content(scratch)
+                return result
+            with mock.patch.object(track_host, "SOURCES", sources), mock.patch.object(bake, "native_inputs", side_effect=changed):
+                bake.tool_digest.cache_clear()
+                try:
+                    after = self.keys(after_rows)
+                finally:
+                    bake.tool_digest.cache_clear()
+        self.assertNotEqual(set(before_rows.used), set(after_rows.used))
+        self.assertEqual(sorted(row["poses"] for row in before_rows.used.values()),
+                         sorted(row["poses"] for row in after_rows.used.values()))
+        self.assertEqual(before, after)
+
+    def test_real_pose_and_spacing_changes_rekey_consumers(self):
+        from anim_probe import write_camera_clip
+
+        rows = bake.Poses({})
+        before = self.keys(rows)
+        write_camera_clip(self.root, reach=2.0)
+        moved = bake.Poses({})
+        after = self.keys(moved)
+        self.assertNotEqual({row["poses"] for row in rows.used.values()}, {row["poses"] for row in moved.used.values()})
+        for stage in ("start", "reference", "fit"):
+            self.assertNotEqual(before[stage], after[stage])
+        self.job.renderer.visibility.every_ms += 1
+        spaced = self.keys()
+        self.assertNotEqual(after["start"], spaced["start"])
+        self.job.renderer.fit.train_every_ms += 1
+        trained = self.keys()
+        self.assertNotEqual(spaced["reference"], trained["reference"])
+        self.assertNotEqual(spaced["fit"], trained["fit"])
+
+    def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
+        from anim_probe import write_camera_clip
+
+        before = self.keys()
+        path = self.scene.camera.component.path
+        renamed = path.animation.with_name("renamed.anim.toml")
+        path.animation.rename(renamed)
+        path.animation = renamed
+        self.assertEqual(before, self.keys())
+        path.animation = write_camera_clip(self.root, name="different", reach=2.0, props=("still",))
+        moved = self.keys()
+        self.assertTrue(all(before[stage] != moved[stage] for stage in ("start", "reference", "fit")))
+        path.animation = write_camera_clip(self.root, name="node", reach=3.0, node="other")
+        path.node = "other"
+        still = self.keys()
+        self.assertTrue(all(moved[stage] != still[stage] for stage in ("start", "reference", "fit")))
+
+    def test_bad_clip_naming_fails_load(self):
+        from anim import clip_name
+
+        for name, value in (("SUFFIX", ".broken.toml"), ("clip_id", mock.Mock(side_effect=ValueError("broken clip id")))):
+            with self.subTest(name=name), mock.patch.object(clip_name, name, value):
+                with self.assertRaises((ValueError, bake.SettingsError)):
+                    load_scene(self.scene_path)
+
+    def test_lock_hit_needs_no_sampler_and_miss_names_lock(self):
+        from anim import track_host
+
+        rows = bake.Poses({})
+        before = self.keys(rows)
+        with mock.patch.object(track_host, "program", side_effect=AssertionError("compiler unavailable")):
+            self.assertEqual(before, self.keys(bake.Poses(rows.used)))
+        with mock.patch.object(track_host, "program", side_effect=track_host.TrackHostError("no compiler")):
+            self.assertIsNone(self.keys(bake.Poses({}))["start"])
+
+    def test_check_resamples_and_rejects_forged_missing_and_unneeded_rows(self):
+        rows = bake.Poses({})
+        found = bake.bakes([self.root], AnyStart(), rows)
+        locked = {item.key: row_of(item, MADE_SHA256) for item in found}
+        self.assertEqual(bake.check_poses(found, rows.used), [])
+        key = next(iter(rows.used))
+        forged = {**rows.used, key: {**rows.used[key], "poses": "forged"}}
+        for held, message in ((forged, "differs"), ({}, "missing"),
+                              ({**rows.used, "unneeded": {**rows.used[key], "key": "unneeded"}}, "nothing needs")):
+            with self.subTest(message=message):
+                self.assertTrue(any(message in problem for problem in bake.check_poses(found, held)))
+
+    def test_lock_writes_needed_rows_and_drops_unneeded_rows(self):
+        rows = bake.Poses({})
+        found = bake.bakes([self.root], poses=rows)
+        starts = {item.key: MADE_SHA256 for item in found if not item.packed}
+        found = bake.bakes([self.root], starts, rows)
+        locked = {item.key: row_of(item, MADE_SHA256) for item in found}
+        path = self.root / "lock_row.lock"
+        bake.write_lock(list(locked.values()), path, poses=[*[{**row, "poses": "forged"} for row in rows.used.values()],
+                        {**next(iter(rows.used.values())), "key": "unneeded"}])
+        with mock.patch.object(bake, "LOCK", path), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": locked, "poses": bake.read_lock(path, table="poses")}):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(bake.main(["lock", str(self.root)]), 0)
+        held = bake.read_lock(path, table="poses")
+        self.assertEqual(set(held), set(rows.used))
+        self.assertEqual({key: row["poses"] for key, row in held.items()},
+                         {key: row["poses"] for key, row in rows.used.items()})
+        self.assertTrue(all(set(row) == set(bake.POSE_FIELDS) for row in held.values()))
+
+    def test_missing_sampler_leaves_only_camera_pack_unlocked(self):
+        from anim import track_host
+        from r3d import skin_pack
+
+        plain = self.root / "plain"
+        plain.mkdir()
+        imported = write_import(plain, name="plain.import.toml")
+        (imported.parent / "mesh.mesh").write_bytes(b"plain mesh")
+        packs, jobs = build_pack.pack_jobs([self.root])
+        rows = bake.Poses({})
+        found = bake.bakes_in(packs, jobs, {}, rows)
+        unaffected = [item for item in found if item.scene is None]
+        self.assertTrue(unaffected)
+        lock = {item.key: row_of(item, bake.file_sha256(item.tree), size=item.tree.stat().st_size) for item in unaffected}
+        for item in unaffected:
+            bake.store(item.tree, lock[item.key], item.suffix, self.cache)
+        for failure in (track_host.TrackHostError("no C compiler found; set CC"),
+                        track_host.TrackHostError("no sh"), FileNotFoundError("compiler unavailable")):
+            with self.subTest(failure=str(failure)), \
+                    mock.patch.object(track_host, "program", side_effect=failure), \
+                    mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}):
+                missing = bake.bakes_in(packs, jobs)
+                self.assertTrue(all(item.key is None for item in missing if item.scene is not None))
+                with self.assertRaises(bake.BakeUnlocked) as raised:
+                    bake.fetch_all(missing, lock, self.cache, offline=True)
+                message = str(raised.exception)
+                for text in (str(self.scene.camera.component.path.animation), "node", "every_ms", "size",
+                             "bake.py lock", "C compiler", "track_host.py", "CI Bakes check"):
+                    self.assertIn(text, message)
+                self.assertNotIn(str(failure), message)
+                skipped = []
+                with mock.patch.object(build_pack, "REPO", self.root), \
+                        mock.patch.object(build_pack, "pack_entry", side_effect=lambda key, *args, **kw: (key, build_pack.image_asset.TYPE, b"plain")), \
+                        mock.patch.object(skin_pack, "entries", return_value=[]):
+                    with contextlib.redirect_stderr(io.StringIO()) as err:
+                        self.assertEqual(build_pack.main([str(self.root), "-o", str(self.root / "out"),
+                                                             "--bake-cache", str(self.cache), "--offline"]), 2)
+                    self.assertIn("bake.py lock", err.getvalue())
+                    with self.assertRaises(bake.BakeUnlocked):
+                        build_pack.pack_bytes([self.root], cache=self.cache, offline=True)
+                    built = build_pack.pack_bytes([self.root], cache=self.cache, offline=True, unlocked=skipped)
+                self.assertEqual(sorted(built), [imported.name.removesuffix(build_pack.IMPORT)])
+                self.assertEqual(sorted(skipped), sorted(name for name in packs if name not in built))
+
+    def test_missing_clip_is_not_a_sampler_failure(self):
+        self.scene.camera.component.path.animation.unlink()
+        with self.assertRaises((FileNotFoundError, bake.SettingsError)):
+            self.keys()
+
+    def test_region_visibility_ignores_clip_changes(self):
+        from anim_probe import write_camera_clip
+
+        self.job.renderer.fit = None
+        self.job.renderer.visibility.source = "region"
+        before = self.keys()
+        write_camera_clip(self.root, reach=2.0)
+        self.assertEqual(before, self.keys())
 
 
 class SharedStartTests(FittedBakeCase):
@@ -578,8 +932,8 @@ class LockTests(unittest.TestCase):
         found = [bake_of("k" * 64, self.tree), bake_of("n" * 64, other)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "run": 5}}), \
-                mock.patch.object(bake, "write_lock", side_effect=written.append), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {"k" * 64: {**self.row, "run": 5}}, "poses": {}}), \
+                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
         rows = {row["key"]: row for row in written[0]}
@@ -643,8 +997,8 @@ class LockTests(unittest.TestCase):
         found = [bake_of("k" * 64, self.tree)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={"o" * 64: stale}), \
-                mock.patch.object(bake, "write_lock", side_effect=written.append), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {"o" * 64: stale}, "poses": {}}), \
+                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch("urllib.request.urlopen") as network, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
         network.assert_not_called()
@@ -654,7 +1008,7 @@ class LockTests(unittest.TestCase):
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]
         with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={"k" * 64: {**self.row, "seeded": True}}), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {"k" * 64: {**self.row, "seeded": True}}, "poses": {}}), \
                 contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(bake.main(["check"]), 0)
         self.assertIn("1 of 1 rows are seeded", out.getvalue())
@@ -925,6 +1279,51 @@ def filled_cache(directory):
     return found, lock
 
 
+class StdlibKeysTests(unittest.TestCase):
+    def test_list_and_check_need_no_numpy_with_held_or_missing_poses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            blocker = root / "numpy"
+            blocker.mkdir()
+            (blocker / "__init__.py").write_text('raise ImportError("numpy blocked for key test")\n')
+            missing = root / "missing.lock"
+            missing.write_text("")
+            environment = {**os.environ, "PYTHONPATH": str(root)}
+            for lock in (bake.LOCK, missing):
+                for command in ("list", "check"):
+                    with self.subTest(lock=lock.name, command=command):
+                        script = (
+                            "import pathlib, sys; "
+                            "sys.path.insert(0, sys.argv[1]); "
+                            "from bake import bake; "
+                            "bake.LOCK = pathlib.Path(sys.argv[2]); "
+                            "bake.read_lock_tables.__defaults__ = (bake.LOCK,); "
+                            "raise SystemExit(bake.main([sys.argv[3]]))"
+                        )
+                        result = subprocess.run([sys.executable, "-c", script, str(TOOLS), str(lock), command],
+                                                env=environment, capture_output=True, text=True)
+                        output = result.stdout + result.stderr
+                        self.assertNotIn("numpy blocked", output)
+                        self.assertNotIn("Traceback", output)
+                        if command == "list":
+                            self.assertEqual(result.returncode, 0, output)
+                        else:
+                            self.assertIn(result.returncode, (0, 1), output)
+                            if lock == bake.LOCK:
+                                self.assertNotIn("  poses ", output)
+                            else:
+                                self.assertIn("  poses ", output)
+
+    def test_list_lock_hit_imports_neither_poses_nor_track_host(self):
+        script = (
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "sys.modules['r3d.poses'] = None; sys.modules['anim.track_host'] = None; "
+            "from bake import bake; raise SystemExit(bake.main(['list']))"
+        )
+        result = subprocess.run([sys.executable, "-c", script, str(TOOLS)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 class TreeTests(unittest.TestCase):
     def test_packs_build_offline_from_a_filled_cache_as_they_do_online(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -967,7 +1366,7 @@ class TreeTests(unittest.TestCase):
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.MESH_SUFFIX, cache).read_bytes())
             name = scratch.output.removesuffix(bake.MESH_SUFFIX)
             rows = {key: row for key, row in lock.items() if key != scratch.key}
-            with mock.patch.object(bake, "read_lock", return_value=rows), \
+            with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (rows, {}) if kw.get("table", "bake") is None else rows), \
                     mock.patch("urllib.request.urlopen") as network:
                 packs = build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], [f"{name}={mesh}"], cache=cache, offline=True)
             network.assert_not_called()
@@ -1004,7 +1403,7 @@ class SkipUnlockedTests(unittest.TestCase):
 
     def build(self, rows, *flags):
         args = ["-o", str(self.out), "--bake-cache", str(self.cache), "--offline", *flags]
-        with mock.patch.object(bake, "read_lock", return_value=rows), \
+        with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (rows, {}) if kw.get("table", "bake") is None else rows), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
             return build_pack.main(args), err.getvalue()
 

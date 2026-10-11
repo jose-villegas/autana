@@ -39,16 +39,13 @@ import subprocess
 import sys
 
 
-from c_comments import EXCLUDED, RULE_RUN, blank_comments, file_header, scan, sources
+from c_lexer import c_code
+from c_comments import EXCLUDED, RULE_RUN, file_header, scan, sources
 
 
 def tracked_sources():
     return [p.as_posix() for p in sources(".", tracked=True,
             extensions=(".c", ".h", ".cpp", ".hpp"), excluded=False)]
-
-def code_only(source):
-    """Code with comments blanked and whitespace flattened for comment-only diffs."""
-    return re.sub(r"\s+", " ", blank_comments(source)).strip()
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
@@ -117,7 +114,7 @@ def verify_comments_only(ref, paths):
             print(f"new file, nothing to compare: {path}")
             continue
         after = open(path, encoding="utf-8", errors="replace").read()
-        if code_only(before) != code_only(after):
+        if c_code(before) != c_code(after):
             bad.append(path)
     for path in bad:
         print(f"CODE CHANGED: {path}")
