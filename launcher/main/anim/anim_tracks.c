@@ -42,24 +42,54 @@ string_fits(const anim_tracks_t* tracks, uint16_t offset) {
     return offset < size && memchr(strings + offset, 0, size - offset) != NULL;
 }
 
-static asset_status_t
-check_row(const anim_tracks_t* tracks, const uint8_t* row) {
+/* A row's strings, codes and padding, before its arrays are read. */
+static bool
+row_fields_valid(const anim_tracks_t* tracks, const uint8_t* row) {
     if (!string_fits(tracks, half(row + ANIM_TRACKS_ROW_PATH))
         || !string_fits(tracks, half(row + ANIM_TRACKS_ROW_FIELD))) {
+        return false;
+    }
+    if (half(row + ANIM_TRACKS_ROW_KEYS) == 0 || row[ANIM_TRACKS_ROW_TYPE] > ANIM_VALUE_COLOUR
+        || row[ANIM_TRACKS_ROW_INTERP] > ANIM_CUBIC || word(row + ANIM_TRACKS_ROW_COMPONENT) == 0) {
+        return false;
+    }
+    for (int i = ANIM_TRACKS_ROW_PAD; i < ANIM_TRACKS_ROW_SIZE; i++) {
+        if (row[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Finite and strictly increasing. */
+static bool
+times_valid(const float* times, uint32_t keys) {
+    for (uint32_t i = 0; i < keys; i++) {
+        if (!isfinite(times[i]) || (i > 0 && times[i] <= times[i - 1])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+values_finite(const float* values, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++) {
+        if (!isfinite(values[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static asset_status_t
+check_row(const anim_tracks_t* tracks, const uint8_t* row) {
+    if (!row_fields_valid(tracks, row)) {
         return ASSET_ERR_FORMAT;
     }
     const uint32_t keys = half(row + ANIM_TRACKS_ROW_KEYS);
     const uint8_t type = row[ANIM_TRACKS_ROW_TYPE];
     const uint8_t interp = row[ANIM_TRACKS_ROW_INTERP];
-    const uint32_t component = word(row + ANIM_TRACKS_ROW_COMPONENT);
-    if (keys == 0 || type > ANIM_VALUE_COLOUR || interp > ANIM_CUBIC || component == 0) {
-        return ASSET_ERR_FORMAT;
-    }
-    for (int i = ANIM_TRACKS_ROW_PAD; i < ANIM_TRACKS_ROW_SIZE; i++) {
-        if (row[i] != 0) {
-            return ASSET_ERR_FORMAT;
-        }
-    }
     const uint32_t values_count = keys * WIDTHS[type] * (interp == ANIM_CUBIC ? ANIM_TRACKS_CUBIC_RUNS : 1U);
     if (!floats_fit(tracks, word(row + ANIM_TRACKS_ROW_TIMES), keys)
         || !floats_fit(tracks, word(row + ANIM_TRACKS_ROW_VALUES), values_count)) {
@@ -67,17 +97,7 @@ check_row(const anim_tracks_t* tracks, const uint8_t* row) {
     }
     const float* times = (const float*)(const void*)(tracks->base + word(row + ANIM_TRACKS_ROW_TIMES));
     const float* values = (const float*)(const void*)(tracks->base + word(row + ANIM_TRACKS_ROW_VALUES));
-    for (uint32_t i = 0; i < keys; i++) {
-        if (!isfinite(times[i]) || (i > 0 && times[i] <= times[i - 1])) {
-            return ASSET_ERR_FORMAT;
-        }
-    }
-    for (uint32_t i = 0; i < values_count; i++) {
-        if (!isfinite(values[i])) {
-            return ASSET_ERR_FORMAT;
-        }
-    }
-    return ASSET_OK;
+    return times_valid(times, keys) && values_finite(values, values_count) ? ASSET_OK : ASSET_ERR_FORMAT;
 }
 
 asset_status_t
