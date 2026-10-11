@@ -62,7 +62,7 @@ mesh have different records.
 Run all device measurements on a diagnostics image with its demo assets:
 
 ```sh
-autana --wait 3600 suite skin_light_perf --flash
+autana --wait 3600 suite suite_skin_light_perf --flash
 ```
 
 Select one measurement with `--test test_direct_1`, `test_direct_2`,
