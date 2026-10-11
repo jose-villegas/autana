@@ -14,8 +14,8 @@ section a doc or C comment cites must be a heading of the doc it
 names. Under docs/plans/, which names what is not built yet, names are not
 checked; section citations still are.
 
-docs/Citations.md numbers the papers and specs the tree cites, one paragraph
-each, `<a id="N"></a>**[N]** ...<br>` followed by a "Cited by:" line.
+docs/Citations.md numbers the papers and specs the tree cites, one table row
+each, `| <a id="N"></a>[N] | ...<br>Cited by: ... |`.
 Entries ascend, and a deleted entry's number is not reused. Every
 `Citations.md#N` a tracked document or source file writes must name an entry,
 every entry must be cited, and its "Cited by" line must link exactly the files
@@ -44,9 +44,9 @@ FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake
 PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 CITATIONS = "docs/Citations.md"
-CITED_BY = re.compile(r"^Cited by: (.*)$")
+CITED_BY = re.compile(r"<br>Cited by: ([^|\n]*) \|$")
 CITATION_ROW = re.compile(
-    r'^<a id="([^"\n]*)"></a>\*\*\[(\d+)\]\*\* [^\n]+(?:<br>|\\)\n'
+    r'^\| <a id="([^"\n]*)"></a>\[(\d+)\] \| [^|\n]+'
     + CITED_BY.pattern, re.MULTILINE)
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
