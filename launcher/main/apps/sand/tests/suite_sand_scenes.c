@@ -2488,17 +2488,6 @@ test_the_plant_ruin_scene_eats_roots_and_burns_a_canopy(void) {
                                          "what it claims");
 }
 
-/* Settles the bed the way the frame-budget test beside it does and hands back
- * the board, so neither can drift from the other's idea of "finished". */
-static void
-mature_tree_settle(sand_t* s, uint8_t* big, uint8_t* blocks) {
-    sand_init(s, big, REAL_W, REAL_H, 11u);
-    sand_enable_sleeping(s, blocks);
-    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
-    build_plant_bed_scene(s);
-    run_steps(s, MATURE_TREE_SETTLE_STEPS, 0, 1000);
-}
-
 /* THE SCENE'S OWN CLAIM, and the one a cheap number here could be hiding: a
  * tree that has stopped because the pass stopped looking is indistinguishable
  * from a tree that has stopped because there is nothing left to drink, right
@@ -2508,26 +2497,27 @@ static void
 test_the_mature_tree_scene_is_finished_but_can_be_restarted(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
-
-    sand_t s2;
-    mature_tree_settle(&s2, big, blocks);
+    sand_t* const s2 = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 11u);
+    sand_set_soak(s2, SAND_SOAK_PER_MATERIAL);
+    build_plant_bed_scene(s2);
+    run_steps(s2, MATURE_TREE_SETTLE_STEPS, 0, 1000);
 
     greenery_t grown;
-    count_greenery(&s2, 0, REAL_W, &grown);
-    const bool moisture_flag = s2.may_have_moisture;
+    count_greenery(s2, 0, REAL_W, &grown);
+    const bool moisture_flag = s2->may_have_moisture;
 
-    run_steps(&s2, 60, 0, 1000);
+    run_steps(s2, 60, 0, 1000);
     greenery_t still;
-    count_greenery(&s2, 0, REAL_W, &still);
+    count_greenery(s2, 0, REAL_W, &still);
 
-    mature_tree_replant(&s2);
-    run_steps(&s2, MATURE_TREE_REPLANT_STEPS, 0, 1000);
+    mature_tree_replant(s2);
+    run_steps(s2, MATURE_TREE_REPLANT_STEPS, 0, 1000);
     greenery_t again;
-    count_greenery(&s2, 0, REAL_W, &again);
+    count_greenery(s2, 0, REAL_W, &again);
 
     free(big);
     free(blocks);
+    free(s2);
 
     char why[240];
     snprintf(why, sizeof why,
