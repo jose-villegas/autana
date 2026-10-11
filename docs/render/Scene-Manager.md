@@ -18,7 +18,7 @@ output mesh together in internal RAM.
 | `locals[]` | entity | canonical local position, quaternion rotation and scale; loaded placements must decompose without shear or reflection |
 | `animators[]` | entity | optional clip configuration, layer, independent slot clocks and pose buffers |
 | `skinned_renderers[]` | entity | optional SKIN and bind-mesh views, output positions, bounds and lit colours; bind-colour pointers without runtime lights |
-| `lights[]` | entity | optional directional light, linear colour and intensity; capacity is `R3D_SKIN_LIGHT_MAX` |
+| `lights[]` | entity | optional directional light, linear color and intensity; at most `R3D_SKIN_LIGHT_MAX` attached per scene |
 | `flags[]` | entity | enabled, and moved since the last draw |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
 | `cameras[]` | camera | lens, entity TRS pose, clear colour, its entity id |
@@ -56,7 +56,7 @@ A new light starts white with zero intensity. Its world direction is its
 entity's rotated +Y axis; moving its rotation changes skin shading next frame,
 including while the pose is paused. Scene ambient and tone map are private;
 SCNE v1 uses zero ambient contribution and an identity tone map. The shared
-encode table is allocated in internal RAM with the first light.
+decode and encode transfer tables are allocated in internal RAM at the first light.
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's
