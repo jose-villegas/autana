@@ -35,10 +35,12 @@ in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
 The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
 power-cycles the SoC: USB drops and comes back, possibly on a **different
-COM number**. Nothing depends on the number; `device.py` finds the board by
-its USB serial number and looks the port up again before every open. The
-first open after the drop can get the old handle, which reads nothing; only
-`reset --capture` and `selftest` reopen a silent handle, and `selftest` and
+COM number**. Nothing depends on the number: after every reset `device.py`
+waits for the board's USB serial number to leave the port list and come
+back, then opens the port it is listed under, so no open gets the dying
+handle. Every open `device.py` makes leaves DTR and RTS low without passing
+through the USB Serial/JTAG reset state (DTR low, RTS high); `open_serial`
+in [device.py](../../scripts/device/device.py) says how on each OS. `selftest` and
 `batch` check the console `BUILD_ID` against the flashed image.
 
 If it vanishes from USB entirely (no COM port, no device at vendor ID
@@ -132,21 +134,24 @@ remaining calls and register spills. `always_inline`, used by
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 
-Every compiled source in `launcher/main/render/` receives
+The direct C sources in `launcher/main/render/` receive
 `-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}` from
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
-stabilizes timing; it does not select the fastest loop offsets. Hot functions
-also carry `RENDER_ENTRY_OFFSET` from `launcher/main/render/code_layout.h`:
+stabilizes timing; it does not select the fastest loop offsets. Explicit function
+alignment attributes take precedence and their offsets are baseline-checked. Hot functions
+in `launcher/main/render/` also carry `RENDER_ENTRY_OFFSET` from
+`launcher/main/render/code_layout.h`:
 never-executed `nop.n` padding ahead of the entry places their loops at the
 offsets measured fastest on the board. The diagnostics build gate in
 `launcher/tools/build/build_diag_check.sh` runs
 `launcher/tools/render/code_layout.py --check` against
-`launcher/main/render/code_layout.txt`, checking function and machine-loop
+source-local `code_layout.txt` baselines for the selected build configuration,
+including `launcher/main/render/code_layout.txt`, checking function and machine-loop
 offsets, sizes and cache-line spans. When a row changes, compare revisions
 with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
 If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write launcher/build.diag`.
+table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a

@@ -12,7 +12,7 @@ home when the app exits. Each frame has one owner per step:
 | Step | Owner | Job |
 |---|---|---|
 | Read touch and motion | shell (`shell/`) | Make one `input_t` for the frame. |
-| Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
+| Update and draw | current app, or the launcher | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
 ![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
@@ -59,7 +59,7 @@ flowchart TB
         Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end
     subgraph R4["UI, console and scenes"]
-        Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
+        Ui["ui/<br/><i>microui, launcher</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
@@ -218,6 +218,7 @@ become a goal.
 the order is most of the point:
 
 ```
+ui_ridge_load()             the curve from the engine pack, mounted for good; none: a level ridge
 shell_init()                the shell's own state, which the self-tests
                             step before the loop runs
 post_run_before_display()   the SD card, on its own SDMMC bus
@@ -232,10 +233,8 @@ shell_check_console_prefixes()
                             prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
-boot_anim_run()             the startup animation, 5.5 s; it mounts the
-                            first pack (its clip's), which first reads
-                            the asset directory; with no pack it holds a
-                            rest pose
+boot_anim_run()             the startup animation, 5.5 s; it mounts its
+                            clip's pack; with no pack it holds a rest pose
 gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no
                             sensor: the display stays upright
@@ -259,9 +258,8 @@ described in `boot/boot_anim.h`.
 
 ## The frame loop
 
-The shell is a two-state machine. `current == NULL` means a system screen is
-showing; anything else is the running app. Which system screen, the
-launcher or Control Center, is `system_navigation_t`'s one field.
+The shell is a two-state machine. `current == NULL` means the launcher is
+showing; anything else is the running app.
 
 ```mermaid
 stateDiagram-v2
@@ -270,12 +268,9 @@ stateDiagram-v2
 
     Running : Running<br/>one pass per frame
     Launcher : Launcher<br/>ui_launcher_frame()<br/>draws the app list
-    ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
     Running --> Launcher: home swipe or<br/>PWR long-press,<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
-    Launcher --> ControlCenter: swipe in from<br/>the logical top
-    ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
 
 An app gets exactly one way home by gesture: the home swipe when it sets
@@ -355,10 +350,9 @@ manager at `SHELL_ORDER_SCENE`.
 flag ([Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
-`invalidate()`, the launcher gets `ui_invalidate()`, and Control Center
-repaints its dimmed backdrop. Clearing the flag before the draw rather than
-after is what lets a request made inside that very `frame()` reach the next
-pass. The app's side is in
+`invalidate()` and the launcher gets `ui_invalidate()`. Clearing the flag
+before the draw rather than after is what lets a request made inside that
+very `frame()` reach the next pass. The app's side is in
 [Building-an-App.md](Building-an-App.md#full-redraw).
 
 ### The frame watch: no allocating or logging in steady state
@@ -414,8 +408,8 @@ visit gets the same block, and taking from it is no dynamic-memory call
 
 ## Drawing a UI, in the shell or in an app
 
-`ui/ui.c` owns the microui integration; the launcher and Control Center are
-callers like any app. The controls and helpers are catalogued in
+`ui/ui.c` owns the microui integration; the launcher is a caller like any
+app. The controls and helpers are catalogued in
 [UI-Toolkit.md](UI-Toolkit.md), and how to put a screen together is
 [Building-a-Screen.md](Building-a-Screen.md). What follows is how the
 integration underneath them works.
@@ -475,9 +469,7 @@ be: everything in the command list is re-emitted on every repaint, and a
 blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
 underneath**: when the panel opens, and again whenever the backdrop itself
-is redrawn (a full-redraw request, a turn). The shell's own Control Center is
-the reference implementation: `paint_control_center_backdrop()` in
-`shell/shell_apps.c`.
+is redrawn (a full-redraw request, a turn).
 `suite_gfx_color.c` pins the arithmetic; the recipe for an app is in
 [Building-a-Screen.md](Building-a-Screen.md#a-panel-over-a-paused-app).
 
@@ -556,9 +548,9 @@ different from the root found; the DOWN then waits, frame by frame, and the
 tap is never lost. Ship the press with no hover frame and nothing takes focus:
 every button draws its pressed look while returning 0. A press and release
 inside one frame resolves at once, so on an unsettled root it is lost.
-A repaint-only frame (`ui_begin(NULL)`, the Control Center's backdrop) leaves
-no trace: it neither steps nor reports to the pointer, and microui's focus and
-hover root are as it found them. `ui/ui_pointer.c` also owns the held `DOWN` a
+A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input
+and neither steps nor reports to the pointer. It runs before `input_start()`,
+with no touch in progress. `ui/ui_pointer.c` also owns the held `DOWN` a
 slider needs to track a drag and the UP owed when a lift never reached the UI
 (`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list

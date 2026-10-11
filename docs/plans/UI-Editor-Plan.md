@@ -1,9 +1,8 @@
 # Plan: a UI editor, and the layout format underneath it
 
-**Status**: phases 1 to 4 exist for one screen. The editor is
-[`editor/`](../../editor/README.md); Control Center is its one authored
-document and the launcher a preview beside it. The brush screen is not yet a
-document.
+**Status**: the document model, validation, editing controls and layout baker
+exist in [`editor/`](../../editor/README.md). The launcher is a preview;
+no firmware screen has an authored document.
 
 The objective is a tool where a screen is **authored visually and edited
 again later**, not screenshotted and re-typed. The brush screen should open
@@ -19,21 +18,20 @@ proposes a separate level editor that previews through the simulation.
 |---|---|
 | authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
 | generator | `bake_header()` in `editor/src/layout_document.cpp`, exposed by `editor_layout_bake`; every C identifier derives from the JSON's `screen` |
-| baked table | `<screen>_layout_generated.h`, the only form the device links |
+| baked table | `<screen>_layout_generated.h`, the only form a device screen links |
 | document | `editor/src/layout_document.{h,cpp}`, one type for every screen, owning the rules and header emission |
 | renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
 | shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
 
 A screen becomes editable with three things: its JSON, a draw function taking
-the baked struct (`ui_control_center_draw()` is the model), and an entry in
-`runtime.c` and in `load_system_screens()`. Nothing else in the editor names a
-screen.
+the baked struct plus a frame entry that accepts a layout in its place, and
+an entry in `runtime.c` (with a layout argument on `editor_runtime_render()`)
+and in the screen list in `main.cpp`.
 
 The format holds **rects and nothing else**. Of the six layout concepts and
 the text constraint described below, none is expressed yet; every rect is
-absolute per orientation. That was enough for Control Center and will not be
-for a flowed list such as the launcher, which is why the launcher is only
-previewed.
+absolute per orientation. A flowed list such as the launcher needs more
+than fixed rects, so the launcher is only previewed.
 
 ## The render half already runs in this repo
 
@@ -162,8 +160,8 @@ run by `.github/workflows/host-tests.yml`.
 ## Phases
 
 1. **Layout as authored data.** A screen's JSON, a generator, a baked header,
-   and the screen's draw function reading the table. *Exists for Control
-   Center.*
+   and the screen's draw function reading the table. *Not built for any
+   screen; the generator and baker exist.*
 
    For a screen that already computes its rects, the acceptance is that its
    suite passes untouched and **the baked rects are identical to what the
@@ -173,9 +171,9 @@ run by `.github/workflows/host-tests.yml`.
 
 2. **Validation in the generator.** It refuses, at bake time and for every
    orientation, a layout that overlaps, leaves the canvas or drops an
-   interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document so the
-   editor reports the same problems while dragging. **Not yet: a string in a
-   box it does not fit**, the defect this plan cares most about. The host
+   interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document
+   so the editor reports the same problems while dragging. **Not yet: a string
+   in a box it does not fit**, the defect this plan cares most about. The host
    suite keeps its own assertions as the independent witness: the generator
    checking itself is not a test.
 
@@ -189,10 +187,10 @@ run by `.github/workflows/host-tests.yml`.
    the rects that moved: a format only a GUI can produce is a format nobody
    can review.
 
-5. **A second screen proves the model.** The brush screen, then the palette.
-   A format that has only ever expressed one screen has proven nothing about
-   being a format, and these two need the stack, fill and text concepts the
-   format still lacks.
+5. **A second screen proves the model.** After the brush screen, the palette:
+   a format that has expressed one screen has proven nothing about being a
+   format, and both need the stack, fill and text concepts the format still
+   lacks.
 
 6. **Cost overlays.** The panel's bands and dirty cells drawn over the canvas
    in the user's orientation, optional snapping to them, and a per-element
