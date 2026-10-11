@@ -59,52 +59,53 @@
         return V##_add(V##_add(v, V##_scale(t, q.w)), V##_cross(u, t));                                                \
     }
 
-#define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                                   \
-    /* normalize = q * (1 / sqrt(qx*qx + qy*qy + qz*qz + qw*qw)). Precondition: `q` is not zero. */                                \
-    static inline P##_t P##_normalize(P##_t q) {                                                                                   \
-        const T k = OPS##_div(                                                                                                     \
-            OPS##_one(),                                                                                                           \
-            OPS##_sqrt(OPS##_add(OPS##_add(OPS##_add(OPS##_mul(q.x, q.x), OPS##_mul(q.y, q.y)), OPS##_mul(q.z, q.z)),              \
-                                 OPS##_mul(q.w, q.w))));                                                                           \
-        return (P##_t){OPS##_mul(q.x, k), OPS##_mul(q.y, k), OPS##_mul(q.z, k), OPS##_mul(q.w, k)};                                \
-    }                                                                                                                              \
-                                                                                                                                   \
-    /* normalize(a (1 - t) + b t); b is negated when a . b < 0, since q and -q are one rotation and that takes the shorter arc. */ \
-    static inline P##_t P##_nlerp(P##_t a, P##_t b, T t) {                                                                         \
-        const T dot = OPS##_add(OPS##_add(OPS##_add(OPS##_mul(a.x, b.x), OPS##_mul(a.y, b.y)), OPS##_mul(a.z, b.z)),               \
-                                OPS##_mul(a.w, b.w));                                                                              \
-        if (dot < OPS##_zero()) {                                                                                                  \
-            b = (P##_t){OPS##_neg(b.x), OPS##_neg(b.y), OPS##_neg(b.z), OPS##_neg(b.w)};                                           \
-        }                                                                                                                          \
-        const T wa = OPS##_sub(OPS##_one(), t);                                                                                    \
-        return P##_normalize((P##_t){                                                                                              \
-            OPS##_add(OPS##_mul(a.x, wa), OPS##_mul(b.x, t)), OPS##_add(OPS##_mul(a.y, wa), OPS##_mul(b.y, t)),                    \
-            OPS##_add(OPS##_mul(a.z, wa), OPS##_mul(b.z, t)), OPS##_add(OPS##_mul(a.w, wa), OPS##_mul(b.w, t))});                  \
-    }                                                                                                                              \
-                                                                                                                                   \
-    /* Axes r, u, f as columns. If rx + uy + fz > 0: s = 2 sqrt(1 + rx + uy + fz), */                                              \
-    /*   q = ((uz - fy)/s, (fx - rz)/s, (ry - ux)/s, s/4). */                                                                      \
-    /* Else s is from the largest diagonal, e.g. s = 2 sqrt(1 + rx - uy - fz), */                                                  \
-    /*   q = (s/4, (ux + ry)/s, (fx + rz)/s, (uz - fy)/s): a small s loses precision. */                                           \
-    static inline P##_t P##_from_basis(V##_t r, V##_t u, V##_t f) {                                                                \
-        const T trace = OPS##_add(OPS##_add(r.x, u.y), f.z);                                                                       \
-        T s;                                                                                                                       \
-        if (trace > OPS##_zero()) {                                                                                                \
-            s = OPS##_mul(OPS##_sqrt(OPS##_add(trace, OPS##_one())), OPS##_two());                                                 \
-            return (P##_t){OPS##_div(OPS##_sub(u.z, f.y), s), OPS##_div(OPS##_sub(f.x, r.z), s),                                   \
-                           OPS##_div(OPS##_sub(r.y, u.x), s), OPS##_div(s, OPS##_four())};                                         \
-        }                                                                                                                          \
-        if (r.x > u.y && r.x > f.z) {                                                                                              \
-            s = OPS##_mul(OPS##_sqrt(OPS##_sub(OPS##_sub(OPS##_add(OPS##_one(), r.x), u.y), f.z)), OPS##_two());                   \
-            return (P##_t){OPS##_div(s, OPS##_four()), OPS##_div(OPS##_add(u.x, r.y), s),                                          \
-                           OPS##_div(OPS##_add(f.x, r.z), s), OPS##_div(OPS##_sub(u.z, f.y), s)};                                  \
-        }                                                                                                                          \
-        if (u.y > f.z) {                                                                                                           \
-            s = OPS##_mul(OPS##_sqrt(OPS##_sub(OPS##_sub(OPS##_add(OPS##_one(), u.y), r.x), f.z)), OPS##_two());                   \
-            return (P##_t){OPS##_div(OPS##_add(u.x, r.y), s), OPS##_div(s, OPS##_four()),                                          \
-                           OPS##_div(OPS##_add(f.y, u.z), s), OPS##_div(OPS##_sub(f.x, r.z), s)};                                  \
-        }                                                                                                                          \
-        s = OPS##_mul(OPS##_sqrt(OPS##_sub(OPS##_sub(OPS##_add(OPS##_one(), f.z), r.x), u.y)), OPS##_two());                       \
-        return (P##_t){OPS##_div(OPS##_add(f.x, r.z), s), OPS##_div(OPS##_add(f.y, u.z), s),                                       \
-                       OPS##_div(s, OPS##_four()), OPS##_div(OPS##_sub(r.y, u.x), s)};                                             \
+#define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                       \
+    /* normalize = q * (1 / sqrt(qx*qx + qy*qy + qz*qz + qw*qw)). Precondition: `q` is not zero. */                    \
+    static inline P##_t P##_normalize(P##_t q) {                                                                       \
+        const T k = OPS##_div(                                                                                         \
+            OPS##_one(),                                                                                               \
+            OPS##_sqrt(OPS##_add(OPS##_add(OPS##_add(OPS##_mul(q.x, q.x), OPS##_mul(q.y, q.y)), OPS##_mul(q.z, q.z)),  \
+                                 OPS##_mul(q.w, q.w))));                                                               \
+        return (P##_t){OPS##_mul(q.x, k), OPS##_mul(q.y, k), OPS##_mul(q.z, k), OPS##_mul(q.w, k)};                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* normalize(a (1 - t) + b t). b is negated when a . b < 0: q and -q are one */                                    \
+    /* rotation, and that takes the shorter arc. */                                                                    \
+    static inline P##_t P##_nlerp(P##_t a, P##_t b, T t) {                                                             \
+        const T dot = OPS##_add(OPS##_add(OPS##_add(OPS##_mul(a.x, b.x), OPS##_mul(a.y, b.y)), OPS##_mul(a.z, b.z)),   \
+                                OPS##_mul(a.w, b.w));                                                                  \
+        if (dot < OPS##_zero()) {                                                                                      \
+            b = (P##_t){OPS##_neg(b.x), OPS##_neg(b.y), OPS##_neg(b.z), OPS##_neg(b.w)};                               \
+        }                                                                                                              \
+        const T wa = OPS##_sub(OPS##_one(), t);                                                                        \
+        return P##_normalize((P##_t){                                                                                  \
+            OPS##_add(OPS##_mul(a.x, wa), OPS##_mul(b.x, t)), OPS##_add(OPS##_mul(a.y, wa), OPS##_mul(b.y, t)),        \
+            OPS##_add(OPS##_mul(a.z, wa), OPS##_mul(b.z, t)), OPS##_add(OPS##_mul(a.w, wa), OPS##_mul(b.w, t))});      \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* Axes r, u, f as columns. If rx + uy + fz > 0: s = 2 sqrt(1 + rx + uy + fz), */                                  \
+    /*   q = ((uz - fy)/s, (fx - rz)/s, (ry - ux)/s, s/4). */                                                          \
+    /* Else s is from the largest diagonal, e.g. s = 2 sqrt(1 + rx - uy - fz), */                                      \
+    /*   q = (s/4, (ux + ry)/s, (fx + rz)/s, (uz - fy)/s): a small s loses precision. */                               \
+    static inline P##_t P##_from_basis(V##_t r, V##_t u, V##_t f) {                                                    \
+        const T trace = OPS##_add(OPS##_add(r.x, u.y), f.z);                                                           \
+        T s;                                                                                                           \
+        if (trace > OPS##_zero()) {                                                                                    \
+            s = OPS##_mul(OPS##_sqrt(OPS##_add(trace, OPS##_one())), OPS##_two());                                     \
+            return (P##_t){OPS##_div(OPS##_sub(u.z, f.y), s), OPS##_div(OPS##_sub(f.x, r.z), s),                       \
+                           OPS##_div(OPS##_sub(r.y, u.x), s), OPS##_div(s, OPS##_four())};                             \
+        }                                                                                                              \
+        if (r.x > u.y && r.x > f.z) {                                                                                  \
+            s = OPS##_mul(OPS##_sqrt(OPS##_sub(OPS##_sub(OPS##_add(OPS##_one(), r.x), u.y), f.z)), OPS##_two());       \
+            return (P##_t){OPS##_div(s, OPS##_four()), OPS##_div(OPS##_add(u.x, r.y), s),                              \
+                           OPS##_div(OPS##_add(f.x, r.z), s), OPS##_div(OPS##_sub(u.z, f.y), s)};                      \
+        }                                                                                                              \
+        if (u.y > f.z) {                                                                                               \
+            s = OPS##_mul(OPS##_sqrt(OPS##_sub(OPS##_sub(OPS##_add(OPS##_one(), u.y), r.x), f.z)), OPS##_two());       \
+            return (P##_t){OPS##_div(OPS##_add(u.x, r.y), s), OPS##_div(s, OPS##_four()),                              \
+                           OPS##_div(OPS##_add(f.y, u.z), s), OPS##_div(OPS##_sub(f.x, r.z), s)};                      \
+        }                                                                                                              \
+        s = OPS##_mul(OPS##_sqrt(OPS##_sub(OPS##_sub(OPS##_add(OPS##_one(), f.z), r.x), u.y)), OPS##_two());           \
+        return (P##_t){OPS##_div(OPS##_add(f.x, r.z), s), OPS##_div(OPS##_add(f.y, u.z), s),                           \
+                       OPS##_div(s, OPS##_four()), OPS##_div(OPS##_sub(r.y, u.x), s)};                                 \
     }

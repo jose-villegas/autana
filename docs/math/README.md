@@ -88,8 +88,9 @@ use (its scale is zero, so its matrix sends every point to the origin). Code nev
 ## Scalar helpers
 
 Each scalar header also holds the arithmetic the templates call (`OPS_add`,
-`OPS_mul`, `mathx_sqrt`, `mathx_sin_turns`, ...); the tables below list the range, lerp and rounding helpers; the header itself, or the
-[catalogue](../Shared-Helpers.md), lists the rest.
+`OPS_mul`, `mathx_sqrt`, `mathx_sin_turns`, ...). The tables below list the range,
+lerp and rounding helpers; the header itself, or the [catalogue](../Shared-Helpers.md),
+lists the rest.
 
 ### mathi.h
 

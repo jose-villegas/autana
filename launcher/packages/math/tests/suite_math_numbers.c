@@ -869,6 +869,20 @@ DEFINE_SCALAR_INTEGER_RANGE_TESTS(maths, INT16_MIN, INT16_MAX)
 DEFINE_SCALAR_INTEGER_RANGE_TESTS(mathx, INT32_MIN, INT32_MAX)
 
 static void
+test_mathf_repeat_preserves_decimal_remainders(void) {
+    static const float values[] = {20561.0F, -20561.0F, 3.3F, -3.3F};
+    const float len = 0.001F, tiny = -0.0000001F;
+    TEST_ASSERT_TRUE(mathf_repeat(tiny, len) == tiny + len);
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        const float remainder = fmodf(values[i], len);
+        const float expected = remainder < 0 ? remainder + len : remainder;
+        const float got = mathf_repeat(values[i], len);
+        TEST_ASSERT_TRUE(got >= 0 && got < len);
+        TEST_ASSERT_TRUE(got == expected);
+    }
+}
+
+static void
 test_float_ranges_with_decimal_lengths(void) {
     static const float values[] = {3.3F, -3.3F, 6.6F, -6.6F};
     const float len = 1.1F, lo = 0, hi = len;
@@ -888,6 +902,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_mathx_lerp);
     RUN_TEST(test_float_ranges_with_decimal_lengths);
     RUN_TEST(test_mathf_repeat);
+    RUN_TEST(test_mathf_repeat_preserves_decimal_remainders);
     RUN_TEST(test_mathf_wrap);
     RUN_TEST(test_mathf_min);
     RUN_TEST(test_mathf_max);

@@ -136,7 +136,7 @@ mathf_max(float a, float b) {
 static inline float
 mathf_repeat(float v, float len) {
     assert(len > 0.0F);
-    float r = v - floorf(v / len) * len;
+    float r = fmodf(v, len);
     if (r < 0.0F) {
         r += len;
     }

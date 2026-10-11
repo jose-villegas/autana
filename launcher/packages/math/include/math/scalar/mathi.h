@@ -1,6 +1,9 @@
-/* mathi: plain integer scalars. Templates call its sums and products (int32
- * wrap); dot widens to int64. No div, sqrt or angle means an `i` vector has no
- * normalize or rotation. Range helpers and lerp serve scalars and vectors alike. */
+/* mathi: plain integer scalars. Template sums and products wrap like any int32,
+ * so a caller keeps coordinates small; a dot product widens to int64. No div,
+ * sqrt or angle op, so an `i` vector has no normalize or rotation.
+ *
+ * `static inline`: some run in an innermost loop, where a cross-file call is
+ * not free. abs and sign are prefixed, which keeps them clear of <stdlib.h>. */
 #pragma once
 
 #include <assert.h>
