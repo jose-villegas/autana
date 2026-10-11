@@ -211,8 +211,9 @@ renderer.
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
-`launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
-directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
+`launcher/tools/asset/asset_pack.py` writes the pack,
+`launcher/tools/asset/asset_directory.py` the directory,
+`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
