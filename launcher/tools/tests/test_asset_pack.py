@@ -18,7 +18,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset  # noqa: E402
 from asset import asset_pack  # noqa: E402
-from asset.asset_pack import PackError, build_directory, build_pack as make_pack, parse_directory, parse_pack  # noqa: E402
+from asset.asset_directory import build_directory, parse_directory  # noqa: E402
+from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset
 from asset.engine_frame import to_engine
 from test_engine_frame import mesh_entry  # noqa: E402
@@ -113,66 +114,6 @@ class RejectionTests(unittest.TestCase):
         struct.pack_into("<I", crooked, asset_pack.HEADER.size + 36, 98)
         with self.assertRaisesRegex(PackError, "outside"):
             parse_pack(seal(bytes(crooked)))
-
-
-class DirectoryTests(unittest.TestCase):
-    def image(self):
-        return build_directory([("one", make_pack([("a", LIT_MESH, b"1")])), ("two", make_pack([("b", LIT_MESH, b"22" * 3000)]))])
-
-    @staticmethod
-    def row(index):
-        return asset_pack.DIRECTORY_HEADER.size + asset_pack.DIRECTORY_ROW.size * index
-
-    def reseal(self, image):
-        """`image` with its directory CRC-32 recomputed after an edit to a row."""
-        count = struct.unpack_from("<I", image, 12)[0]
-        struct.pack_into("<I", image, 4, asset_pack.zlib.crc32(bytes(image[8:self.row(count)])))
-        return bytes(image)
-
-    def test_each_pack_parses_back_on_its_own_sector(self):
-        image = self.image()
-        packs = parse_directory(image)
-        self.assertEqual(list(packs), ["one", "two"])
-        self.assertEqual(parse_pack(packs["one"]), {"a": (LIT_MESH, b"1")})
-        self.assertEqual(parse_pack(packs["two"]), {"b": (LIT_MESH, b"22" * 3000)})
-        for index in range(2):
-            _, offset, _ = asset_pack.DIRECTORY_ROW.unpack_from(image, self.row(index))
-            self.assertEqual(offset % asset_pack.SECTOR, 0)
-
-    def test_the_same_packs_make_the_same_image(self):
-        self.assertEqual(self.image(), self.image())
-
-    def test_a_pack_name_that_is_empty_too_long_or_repeated_is_refused(self):
-        pack = make_pack([])
-        for packs in ([("", pack)], [("x" * 32, pack)], [("a", pack), ("a", pack)]):
-            with self.assertRaises(PackError):
-                build_directory(packs)
-
-    def test_a_bad_magic_version_or_checksum_is_refused(self):
-        for at, value, pattern in ((0, b"NOPE", "magic"), (8, struct.pack("<I", 2), "version"), (20, b"x", "CRC")):
-            image = bytearray(self.image())
-            image[at:at + len(value)] = value
-            with self.assertRaisesRegex(PackError, pattern):
-                parse_directory(bytes(image))
-
-    def test_a_row_out_of_range_misaligned_or_repeated_is_refused_even_with_a_good_checksum(self):
-        base = self.image()
-        cases = ((self.row(1) + 32, asset_pack.SECTOR, "overlaps"),                     # over the first pack
-                 (self.row(1) + 36, len(base), "outside"),                      # ends past the image
-                 (self.row(1) + 32, asset_pack.SECTOR * 2 + 16, "sector"),
-                 (self.row(0) + 32, 0, "outside"))                              # over the directory itself
-        for at, value, pattern in cases:
-            image = bytearray(base)
-            struct.pack_into("<I", image, at, value)
-            with self.assertRaisesRegex(PackError, pattern):
-                parse_directory(self.reseal(image))
-        repeated = bytearray(base)
-        repeated[self.row(1):self.row(1) + 3] = b"one"
-        with self.assertRaisesRegex(PackError, "repeated"):
-            parse_directory(self.reseal(repeated))
-        repeated[self.row(1):self.row(1) + 32] = b"n" * 32
-        with self.assertRaisesRegex(PackError, "fills"):
-            parse_directory(self.reseal(repeated))
 
 
 def write(path, text):
