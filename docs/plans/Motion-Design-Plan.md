@@ -75,10 +75,10 @@ Ruled out:
    core 1 is presenting: is it band-ring bound or PSRAM bound?
 2. At what scrim alpha a 1/4-resolution RGB565 blur reads as blur, rather
    than mush or banding, on this AMOLED.
-
 3. The real cost per frame of a full-screen translated sheet in portrait and
-   landscape, from the frame-cost report (`docs/tools/Frame-Cost.md`); that
-   number sets the budget for every piece after the motion module.
+   landscape, from the frame-cost report
+   ([Frame-Cost.md](../tools/Frame-Cost.md)); that number sets the budget for
+   every piece after the motion module.
 
 ## Sources, read first
 

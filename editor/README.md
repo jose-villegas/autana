@@ -77,9 +77,9 @@ python tools/gen/bake_ui_layout.py main/ui/<screen>_layout.json main/ui/<screen>
 `bake_ui_layout.py` configures its headless tree in `editor/build-bake` once and
 builds `editor_layout_bake` incrementally on every run. Validation and emission
 belong to C++. The generated-file drift gate checks each layout header against
-its JSON through this launcher. Panel dimensions and tap constraints come
-from the firmware through `editor_runtime_*`. Invalid-document fixtures pair a
-document with the error substring its rule must report.
+its JSON through `bake_ui_layout.py`. Panel dimensions and tap constraints
+come from the firmware through `editor_runtime_*`. Invalid-document fixtures
+pair a document with the error substring its rule must report.
 
 The executable is `editor/build/autana_editor`. SDL2, Dear ImGui,
 nlohmann/json and GoogleTest are fetched by git at pinned tags into the
