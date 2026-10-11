@@ -69,6 +69,17 @@ class CurveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "column 0 has no line"):
             curve_asset.heights(read_png(png(curve_asset.VIEW_W, curve_asset.VIEW_H, rows)))
 
+    def test_half_brightness_column_is_a_line(self):
+        from render_diff import read_png
+        peak = 254
+        half = peak // curve_asset.PEAK_DIVISOR
+        height = curve_asset.VIEW_H // 2
+        rows = [[((half if x == 0 else peak),) * 3 + (255,)
+                 for x in range(curve_asset.VIEW_W)] if y == height
+                else [(0, 0, 0, 255)] * curve_asset.VIEW_W for y in range(curve_asset.VIEW_H)]
+        image = read_png(png(curve_asset.VIEW_W, curve_asset.VIEW_H, rows))
+        self.assertEqual(curve_asset.heights(image), [height] * curve_asset.VIEW_W)
+
     def test_longest_row_name(self):
         name = "x" * (table_asset.NAME_SIZE - 1)
         rows = {name: [0]}

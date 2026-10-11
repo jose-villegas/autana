@@ -519,23 +519,7 @@ else
     "$OUT"
 fi
 
-"$PYTHON" - "$BUILD_DIR" "$TEST_DIR/../tools" <<'PY_CURVE'
-import pathlib
-import sys
-sys.path.insert(0, sys.argv[2])
-from asset import table_asset
-from asset.asset_pack import build_pack
-from gfx import curve_asset
-out = pathlib.Path(sys.argv[1])
-columns, shift = curve_asset.VIEW_W, curve_asset.Q_SHIFT
-for case, count, frac, name in (("frac-bits", columns, shift + 1, curve_asset.ROW),
-                                ("columns", columns - 1, shift, curve_asset.ROW),
-                                ("row", columns, shift, "absent")):
-    folder = out / ("ridge-invalid-" + case)
-    folder.mkdir(exist_ok=True)
-    table = table_asset.encode({name: [0] * count}, frac)
-    (folder / "engine.apak").write_bytes(build_pack([("ridge", table_asset.TYPE, table)]))
-PY_CURVE
+"$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
 
 EMPTY_ASSETS="$BUILD_DIR/no-packs"
 mkdir -p "$EMPTY_ASSETS"
