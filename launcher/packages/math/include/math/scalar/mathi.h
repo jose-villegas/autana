@@ -1,15 +1,6 @@
-/*
- * mathi: plain integer scalar operations, for grid, pixel and cell
- * coordinates. The first group serves the math templates (math_template.h):
- * sums and products wrap like any int32, so a caller keeps its coordinates
- * small, and a dot product widens to int64. The template group has no div,
- * sqrt or angle op, so an `i` vector gets no normalize or rotation. The rest are the shared integer helpers: abs, min,
- * max, clamp, repeat, wrap, an approximate length, an integer square root, even rounding.
- *
- * `static inline`: some are called tens of thousands of times a second from
- * an innermost loop, where a cross-file call is not free. abs and sign are
- * prefixed like the rest, which also keeps them clear of <stdlib.h>.
- */
+/* mathi: plain integer scalars. Templates call its sums and products (int32
+ * wrap); dot widens to int64. No div, sqrt or angle means an `i` vector has no
+ * normalize or rotation. Range helpers and lerp serve scalars and vectors alike. */
 #pragma once
 
 #include <assert.h>
@@ -184,7 +175,11 @@ mathi_isqrt64(uint64_t value) {
 static inline int32_t
 mathi_lerp(int32_t a, int32_t b, int32_t t, int32_t n) {
     assert(n > 0 && t >= 0 && t <= n);
-    return (int32_t)((int64_t)a + (((int64_t)b - a) * t) / n);
+    const int64_t step = ((int64_t)b - a) * t;
+    if (step >= INT32_MIN && step <= INT32_MAX) {
+        return a + (int32_t)step / n;
+    }
+    return (int32_t)((int64_t)a + step / n);
 }
 
 static inline int32_t

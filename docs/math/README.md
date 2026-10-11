@@ -87,69 +87,60 @@ use (its scale is zero, so its matrix sends every point to the origin). Code nev
 
 ## Scalar helpers
 
+Each scalar header also holds the arithmetic the templates call (`OPS_add`,
+`OPS_mul`, `mathx_sqrt`, `mathx_sin_turns`, ...); the tables below list the
+helpers a caller uses directly.
+
 ### mathi.h
 
 These take and return plain integers, not structs.
 
-| Function | Range and contract |
-|---|---|
-| `mathi_repeat(v, len)` | Floored modulo into `[0, len)`; `len > 0`, any `int` value |
-| `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, any `int` value |
-| `mathi_repeat_u32(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint32_t` value |
-| `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range |
-| `mathi_repeat_u64(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint64_t` value |
-| `mathi_clamp_u64(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint64_t` range |
-| `mathi_min(a, b)`, `mathi_max(a, b)` | Smaller or larger integer by comparison |
-| `mathi_clamp(v, lo, hi)` | Inclusive bounds |
-| `mathi_lerp(a, b, t, n)` | `a + (b - a) * t / n`, truncating the step toward `a`; `n > 0`, `0 <= t <= n`; full int32 endpoints |
-| `mathi_lerp_u8(a, b, w)` | Integer lerp with `n = UINT8_MAX` |
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathi_repeat(v, len)` | floored modulo into `[0, len)`; `len > 0`, any `int` value | $`v - \lfloor v/len\rfloor\,len`$ |
+| `mathi_wrap(v, lo, hi)` | into `[lo, hi)`; `lo < hi`, any `int` value | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
+| `mathi_repeat_u32(v, len)`, `mathi_repeat_u64(v, len)` | into `[0, len)`; `len > 0`, full unsigned range | $`v \bmod len`$ |
+| `mathi_clamp_u32(v, lo, hi)`, `mathi_clamp_u64(v, lo, hi)` | inclusive bounds, full unsigned range | $`\min(\max(v,lo),hi)`$ |
+| `mathi_min(a, b)`, `mathi_max(a, b)` | smaller or larger value by comparison | $`\min(a,b)`$, $`\max(a,b)`$ |
+| `mathi_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
+| `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
+| `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
 
 ### mathf.h
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `mathf_lerp(a, b, t)` | Single-precision interpolation | $`a + (b - a)t`$ |
-| `mathf_min(a, b)` | Smaller value by comparison | $`\min(a,b)`$ |
-| `mathf_max(a, b)` | Larger value by comparison | $`\max(a,b)`$ |
-| `mathf_clamp(v, lo, hi)` | Inclusive bounds | $`\min(\max(v,lo),hi)`$ |
-| `mathf_repeat(v, len)` | Into `[0, len)`; `len > 0`; a remainder rounded to `len` maps to zero | $`v - \lfloor v/len\rfloor len`$ |
-| `mathf_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
+| `mathf_lerp(a, b, t)` | single-precision interpolation | $`a + (b - a)t`$ |
+| `mathf_min(a, b)` | smaller value by comparison | $`\min(a,b)`$ |
+| `mathf_max(a, b)` | larger value by comparison | $`\max(a,b)`$ |
+| `mathf_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
+| `mathf_repeat(v, len)` | into `[0, len)`; `len > 0`; a remainder rounded to `len` maps to zero | $`v - \lfloor v/len\rfloor len`$ |
+| `mathf_wrap(v, lo, hi)` | into `[lo, hi)`; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
 
 ### maths.h
 
-Int16 helpers delegate to `mathi.h`; integer lerp has int32 weights and truncates toward `a`.
+Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step truncates toward `a`.
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `maths_lerp(a, b, t, n)` | Interpolation across the int16 range | $`a + \mathrm{trunc}((b-a)t/n)`$ |
-| `maths_min(a, b)` | Smaller component | $`\min(a,b)`$ |
-| `maths_max(a, b)` | Larger component | $`\max(a,b)`$ |
-| `maths_clamp(v, lo, hi)` | Inclusive bounds | $`\min(\max(v,lo),hi)`$ |
-| `maths_repeat(v, len)` | Floored modulo; `len > 0` | $`v \bmod len`$ |
-| `maths_wrap(v, lo, hi)` | Half-open bounds; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
+| `maths_lerp(a, b, t, n)` | interpolation across the int16 range | $`a + \mathrm{trunc}((b-a)t/n)`$ |
+| `maths_min(a, b)`, `maths_max(a, b)`, `maths_clamp(v, lo, hi)`, `maths_repeat(v, len)`, `maths_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
 
 ### mathx.h
 
-Q16.16 arithmetic saturates at each operation. Range helpers delegate to `mathi.h` on raw values.
+`mathx_lerp` saturates as `mathx_add` and `mathx_mul` do; the range helpers apply `mathi.h` to the raw Q16.16 value.
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `mathx_lerp(a, b, t)` | Q16.16 weight | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
-| `mathx_min(a, b)` | Smaller value | $`\min(a,b)`$ |
-| `mathx_max(a, b)` | Larger value | $`\max(a,b)`$ |
-| `mathx_clamp(v, lo, hi)` | Inclusive bounds | $`\min(\max(v,lo),hi)`$ |
-| `mathx_repeat(v, len)` | Floored modulo; `len > 0` | $`v \bmod len`$ |
-| `mathx_wrap(v, lo, hi)` | Half-open bounds; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
+| `mathx_lerp(a, b, t)` | interpolation by a Q16.16 weight `t` | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
+| `mathx_min(a, b)`, `mathx_max(a, b)`, `mathx_clamp(v, lo, hi)`, `mathx_repeat(v, len)`, `mathx_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
 
 ### mathf_round.h
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `mathf_clamp_finite(v, lo, hi)` | Finite ordered bounds; NaN maps to `lo`, infinities to the corresponding bound | $`\min(\max(v,lo),hi)`$ for finite inputs |
-| `mathf_round_i32(v)` | Nearest int32, ties away from zero; saturates | $`\mathrm{round}(v)`$ |
-| `mathf_round_s(v, scale)` | Int16 conversion in `vec_convert.h`, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
-| `mathf_to_x(v)` | Q16.16 conversion in `vec_convert.h`, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
-| `mathx_to_f(v)` | Float conversion in `vec_convert.h` | $`v/2^{16}`$ |
+| `mathf_clamp_finite(v, lo, hi)` | finite ordered bounds; NaN maps to `lo`, infinities to the corresponding bound | $`\min(\max(v,lo),hi)`$ for finite inputs |
+| `mathf_round_i32(v)` | nearest int32, ties away from zero; saturates | $`\mathrm{round}(v)`$ |
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
@@ -167,12 +158,12 @@ modified through a pointer except the transform's own `t`.
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `P_min(a, b)` | Component-wise min | $`\min(a_k,b_k)`$ |
-| `P_max(a, b)` | Component-wise max | $`\max(a_k,b_k)`$ |
-| `P_clamp(v, lo, hi)` | Component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
-| `P_repeat(v, len)` | Component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
-| `P_wrap(v, lo, hi)` | Component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
-| `P_lerp(a, b, t)` | Component-wise lerp; `f x` weights; `i s` use `P_lerp(a, b, t, n)` | $`\mathrm{lerp}(a_k,b_k,t)`$ |
+| `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
+| `P_max(a, b)` | component-wise max | $`\max(a_k,b_k)`$ |
+| `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
+| `P_repeat(v, len)` | component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
+| `P_wrap(v, lo, hi)` | component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
+| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ |
 | `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y)`$ |
 | `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y)`$ |
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y)`$ |
@@ -185,12 +176,12 @@ modified through a pointer except the transform's own `t`.
 
 | Function | Purpose | Formula |
 |---|---|---|
-| `P_min(a, b)` | Component-wise min | $`\min(a_k,b_k)`$ |
-| `P_max(a, b)` | Component-wise max | $`\max(a_k,b_k)`$ |
-| `P_clamp(v, lo, hi)` | Component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
-| `P_repeat(v, len)` | Component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
-| `P_wrap(v, lo, hi)` | Component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
-| `P_lerp(a, b, t)` | Component-wise lerp; `f x` weights; `i s` use `P_lerp(a, b, t, n)` | $`\mathrm{lerp}(a_k,b_k,t)`$ |
+| `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
+| `P_max(a, b)` | component-wise max | $`\max(a_k,b_k)`$ |
+| `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
+| `P_repeat(v, len)` | component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
+| `P_wrap(v, lo, hi)` | component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
+| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ |
 | `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y,\ a_z + b_z)`$ |
 | `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y,\ a_z - b_z)`$ |
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
@@ -220,7 +211,7 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#53)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
-| `P_nlerp(a, b, t)` | Unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
+| `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$ |
 
 ### mat4 (`f x`)
@@ -267,6 +258,14 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3x_from_vec3f(v)`, `vec2x_from_vec2f(v)` | `v * 65536`, rounded, saturated |
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
+
+The scalar steps behind them, in `vec_convert.h`:
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_round_s(v, scale)` | int16 conversion in `vec_convert.h`, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
+| `mathf_to_x(v)` | q16.16 conversion in `vec_convert.h`, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
+| `mathx_to_f(v)` | float conversion in `vec_convert.h` | $`v/2^{16}`$ |
 
 ## Examples
 

@@ -144,5 +144,6 @@ mathf_repeat(float v, float len) {
 static inline float
 mathf_wrap(float v, float lo, float hi) {
     assert(lo < hi);
-    return lo + mathf_repeat(v - lo, hi - lo);
+    const float wrapped = lo + mathf_repeat(v - lo, hi - lo);
+    return wrapped < hi ? wrapped : lo;
 }

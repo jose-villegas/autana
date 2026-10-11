@@ -10,10 +10,6 @@
 #include "math/linear/math_template.h"
 #include "math/linear/vec_swizzle_template.h"
 
-#define MATH_VEC2_COMPONENTS2(OP, a, b)           OP(a.x, b.x), OP(a.y, b.y)
-#define MATH_VEC2_COMPONENTS3(OP, a, b, c)        OP(a.x, b.x, c.x), OP(a.y, b.y, c.y)
-#define MATH_VEC2_LERP_COMPONENTS(OPS, a, b, ...) OPS##_lerp(a.x, b.x, __VA_ARGS__), OPS##_lerp(a.y, b.y, __VA_ARGS__)
-
 #define MATH_DEFINE_VEC2(P, T, W, OPS)                                                                                 \
                                                                                                                        \
     typedef struct {                                                                                                   \
@@ -26,7 +22,26 @@
     /* a - b = (ax - bx, ay - by) */                                                                                   \
     static inline P##_t P##_sub(P##_t a, P##_t b) { return (P##_t){OPS##_sub(a.x, b.x), OPS##_sub(a.y, b.y)}; }        \
                                                                                                                        \
-    MATH_DEFINE_VECTOR_RANGES(P, OPS, MATH_VEC2_COMPONENTS2, MATH_VEC2_COMPONENTS3)                                    \
+    /* min = (min(ax, bx), min(ay, by)). */                                                                            \
+    static inline P##_t P##_min(P##_t a, P##_t b) { return (P##_t){OPS##_min(a.x, b.x), OPS##_min(a.y, b.y)}; }        \
+                                                                                                                       \
+    /* max = (max(ax, bx), max(ay, by)). */                                                                            \
+    static inline P##_t P##_max(P##_t a, P##_t b) { return (P##_t){OPS##_max(a.x, b.x), OPS##_max(a.y, b.y)}; }        \
+                                                                                                                       \
+    /* clamp = (clamp(vx, lox, hix), clamp(vy, loy, hiy)). */                                                          \
+    static inline P##_t P##_clamp(P##_t v, P##_t lo, P##_t hi) {                                                       \
+        return (P##_t){OPS##_clamp(v.x, lo.x, hi.x), OPS##_clamp(v.y, lo.y, hi.y)};                                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* repeat = (repeat(vx, lenx), repeat(vy, leny)). */                                                               \
+    static inline P##_t P##_repeat(P##_t v, P##_t len) {                                                               \
+        return (P##_t){OPS##_repeat(v.x, len.x), OPS##_repeat(v.y, len.y)};                                            \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* wrap = (wrap(vx, lox, hix), wrap(vy, loy, hiy)). */                                                             \
+    static inline P##_t P##_wrap(P##_t v, P##_t lo, P##_t hi) {                                                        \
+        return (P##_t){OPS##_wrap(v.x, lo.x, hi.x), OPS##_wrap(v.y, lo.y, hi.y)};                                      \
+    }                                                                                                                  \
                                                                                                                        \
     /* a * s = (ax*s, ay*s), in the number type's own units (Q16.16 for fixed). */                                     \
     static inline P##_t P##_scale(P##_t a, T s) { return (P##_t){OPS##_mul(a.x, s), OPS##_mul(a.y, s)}; }              \
@@ -40,5 +55,14 @@
     /* P_c1c2(v) = (v.c1, v.c2), each c one of x, y. */                                                                \
     MATH_DEFINE_SWIZZLE2(P, P, 2)
 
-#define MATH_DEFINE_VEC2_LERP(P, T, OPS)    MATH_DEFINE_VECTOR_LERP(P, T, OPS, MATH_VEC2_LERP_COMPONENTS)
-#define MATH_DEFINE_VEC2_LERP_RATIO(P, OPS) MATH_DEFINE_VECTOR_LERP_RATIO(P, OPS, MATH_VEC2_LERP_COMPONENTS)
+#define MATH_DEFINE_VEC2_LERP(P, T, OPS)                                                                               \
+    /* lerp = a + (b - a) * t, per component. */                                                                       \
+    static inline P##_t P##_lerp(P##_t a, P##_t b, T t) {                                                              \
+        return (P##_t){OPS##_lerp(a.x, b.x, t), OPS##_lerp(a.y, b.y, t)};                                              \
+    }
+
+#define MATH_DEFINE_VEC2_LERP_RATIO(P, OPS)                                                                            \
+    /* lerp = a + (b - a) * t / n; truncates toward a, per component. */                                               \
+    static inline P##_t P##_lerp(P##_t a, P##_t b, int32_t t, int32_t n) {                                             \
+        return (P##_t){OPS##_lerp(a.x, b.x, t, n), OPS##_lerp(a.y, b.y, t, n)};                                        \
+    }

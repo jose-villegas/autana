@@ -85,6 +85,37 @@ test_transition_blend_endpoints_midpoint_and_hemisphere(void) {
 }
 
 static void
+test_rotation_blend_preserves_float_bits(void) {
+    fixture_t a = fixture(), b = fixture(), out = fixture();
+    anim_pose_rest(&SKELETON, &a.pose);
+    anim_pose_rest(&SKELETON, &b.pose);
+    const quatf_t av = quatf_normalize((quatf_t){1, 2, 3, 4});
+    static const quatf_t targets[] = {{4, -3, -2, 1}, {-4, 3, 2, -1}, {4, 3, -2, -1}};
+    static const float weights[] = {-1, 0, 1.0F / 256, 0.25F, 0.5F, 1, 2};
+    transformf_set_rotation(&a.local[0], av);
+    for (size_t i = 0; i < sizeof targets / sizeof targets[0]; i++) {
+        const quatf_t bv = quatf_normalize(targets[i]);
+        transformf_set_rotation(&b.local[0], bv);
+        for (size_t j = 0; j < sizeof weights / sizeof weights[0]; j++) {
+            const float weight = mathf_clamp(weights[j], 0, 1);
+            const float dot = av.x * bv.x + av.y * bv.y + av.z * bv.z + av.w * bv.w;
+            const float from = 1 - weight, to = weight * (dot < 0 ? -1.0F : 1.0F);
+            const float ac[] = {av.x, av.y, av.z, av.w}, bc[] = {bv.x, bv.y, bv.z, bv.w};
+            float blended[sizeof ac / sizeof ac[0]];
+            for (size_t k = 0; k < sizeof ac / sizeof ac[0]; k++) {
+                blended[k] = from * ac[k] + to * bc[k];
+            }
+            const quatf_t expected = quatf_normalize((quatf_t){blended[0], blended[1], blended[2], blended[3]});
+            anim_pose_blend(&a.pose, &b.pose, weights[j], &out.pose);
+            TEST_ASSERT_EQUAL_MEMORY(&expected, &out.local[0].rotation, sizeof expected);
+        }
+    }
+    release(&out);
+    release(&b);
+    release(&a);
+}
+
+static void
 test_skeleton_binding_failure_index_and_sampling(void) {
     fixture_t f = fixture();
     uint8_t* entry = calloc(1, ENTRY_BYTES);
@@ -139,6 +170,7 @@ test_skeleton_binding_failure_index_and_sampling(void) {
 
 void
 suite_anim_pose(void) {
+    RUN_TEST(test_rotation_blend_preserves_float_bits);
     RUN_TEST(test_rest_and_multiple_roots);
     RUN_TEST(test_transition_blend_endpoints_midpoint_and_hemisphere);
     RUN_TEST(test_skeleton_binding_failure_index_and_sampling);

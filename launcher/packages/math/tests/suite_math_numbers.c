@@ -738,10 +738,7 @@ test_lerp_works_the_same_shrinking_as_growing(void) {
 
 static void
 test_lerp_handles_a_span_too_wide_for_int32_untouched(void) {
-    /* (b - a) * 255 alone would already be close to overflowing int32_t for
-     * a span in the tens of millions, not a shape any call site here
-     * actually needs, but the (int64_t) widening exists specifically so a
-     * future one does not have to rediscover that the hard way. */
+    /* (b - a) * t overflows int32 for a wide span; the int64 step keeps the result strictly between the endpoints. */
     const int32_t a = -1000000000;
     const int32_t b = 1000000000;
     TEST_ASSERT_EQUAL_INT32(a, mathi_lerp_u8(a, b, 0));
@@ -760,6 +757,15 @@ test_mathf_lerp(void) {
 
 static void
 test_mathi_lerp(void) {
+    static const int32_t endpoints[][2] = {
+        {0, INT32_MAX - 1}, {0, INT32_MAX}, {-1, INT32_MAX}, {0, INT32_MIN + 1}, {0, INT32_MIN}, {1, INT32_MIN},
+    };
+    const int32_t steps = 3;
+    for (size_t i = 0; i < sizeof endpoints / sizeof endpoints[0]; i++) {
+        const int32_t a = endpoints[i][0], b = endpoints[i][1];
+        const int32_t expected = (int32_t)((int64_t)a + ((int64_t)b - a) / steps);
+        TEST_ASSERT_EQUAL_INT32(expected, mathi_lerp(a, b, 1, steps));
+    }
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathi_lerp(INT32_MIN, INT32_MAX, 0, INT32_MAX));
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathi_lerp(INT32_MIN, INT32_MAX, INT32_MAX, INT32_MAX));
     TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathi_lerp(INT32_MAX, INT32_MIN, INT32_MAX, INT32_MAX));
@@ -785,6 +791,12 @@ test_maths_lerp(void) {
 
 static void
 test_mathx_lerp(void) {
+    const int32_t span = 3;
+    const int32_t weight = MATHX_ONE / 4;
+    TEST_ASSERT_EQUAL_INT32(1, mathx_lerp(0, span, weight));
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_lerp(0, -span, weight));
+    TEST_ASSERT_EQUAL_INT32(-2, mathx_lerp(0, -span, MATHX_ONE - weight));
+    TEST_ASSERT_EQUAL_INT32(span - 1, mathx_lerp(span, 0, weight));
     TEST_ASSERT_EQUAL_INT32(0, mathx_lerp(0, MATHX_ONE, 0));
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, mathx_lerp(0, MATHX_ONE, MATHX_ONE));
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE / 2, mathx_lerp(MATHX_ONE, 0, MATHX_ONE / 2));
@@ -805,6 +817,11 @@ test_mathf_repeat(void) {
 
 static void
 test_mathf_wrap(void) {
+    const float lo = 1.5F, hi = 4.0F;
+    TEST_ASSERT_EQUAL_FLOAT(3.5F, mathf_wrap(1.0F, lo, hi));
+    const float rounded = mathf_wrap(nextafterf(1.0F, 0.0F), 1.0F, 2.0F);
+    TEST_ASSERT_TRUE(rounded < 2.0F);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, rounded);
     TEST_ASSERT_EQUAL_FLOAT(-4.0F, mathf_wrap(0.0F, -4.0F, -2.0F));
     TEST_ASSERT_EQUAL_FLOAT(-3.0F, mathf_wrap(-5.0F, -4.0F, -2.0F));
     TEST_ASSERT_EQUAL_FLOAT(-4.0F, mathf_wrap(-2.0F, -4.0F, -2.0F));

@@ -101,25 +101,10 @@ def instantiations(root):
     patterns = {f: set() for f in FAMILIES}
     names = set()
     problems = []
-
-    def nested_functions(name, args, active=()):
-        if name not in macros or name in active:
-            return set()
-        params, body, _ = macros[name]
-        bind = dict(zip(params, args))
-        for param, value in bind.items():
-            body = body.replace("##" + param, "##" + value)
-        body = body.replace("##_##", "##_")
-        found = set(TEMPLATE_FUNCTION.findall(body))
-        for nested, arguments in re.findall(r"\b(MATH_DEFINE_\w+)\(([^)]*)\)", body):
-            found |= nested_functions(nested, [bind.get(a, a) for a in split_args(arguments)], active + (name,))
-        return found
-
     for name, args in calls:
         if name not in macros or args[0] not in family_of:
             continue
         params, body, own_family = macros[name]
-        functions[family_of[args[0]]].update(nested_functions(name, args))
         if not own_family:
             functions[family_of[args[0]]].update(TEMPLATE_FUNCTION.findall(body))
         bind = dict(zip(params, args))

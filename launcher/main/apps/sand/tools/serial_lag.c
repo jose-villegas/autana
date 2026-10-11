@@ -45,11 +45,6 @@ typedef struct {
     int gx1, gy1;
 } lag_case_t;
 
-static int
-lerp_step(int from, int to, int step, int steps) {
-    return mathi_lerp(from, to, step, steps - 1);
-}
-
 static uint8_t cells_before[LAG_W * LAG_H];
 static uint8_t cells_split[LAG_W * LAG_H];
 static uint8_t cells_serial[LAG_W * LAG_H];
@@ -229,8 +224,8 @@ measure(const lag_case_t* c) {
         split.step_phase = serial.step_phase;
 
         sand_set_two_core_step(true);
-        const int gx = lerp_step(c->gx0, c->gx1, step, LAG_STEPS);
-        const int gy = lerp_step(c->gy0, c->gy1, step, LAG_STEPS);
+        const int gx = mathi_lerp(c->gx0, c->gx1, step, LAG_STEPS - 1);
+        const int gy = mathi_lerp(c->gy0, c->gy1, step, LAG_STEPS - 1);
         sand_step(&split, gx, gy, 0);
         sand_set_two_core_step(false);
         sand_step(&serial, gx, gy, 0);
