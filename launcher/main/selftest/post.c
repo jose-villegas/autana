@@ -10,9 +10,6 @@
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_mac.h"
-#include "esp_psram.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 #include "board/board.h"
 #include "core/memory.h"
@@ -185,7 +182,7 @@ check_memory(void) {
     /* This board always has octal PSRAM; its absence means the code is
      * running on hardware other than what it assumes, which is worth
      * knowing. */
-    const size_t psram = esp_psram_get_size();
+    const size_t psram = memory_psram_bytes();
 
     char psram_detail[64];
     if (psram != 0) {
@@ -288,7 +285,7 @@ check_audio_codec(void) {
      * as missing. This only powers the rail; it makes no sound and
      * configures nothing. */
     const bool powered = board_audio_amp_enable(true) == ESP_OK;
-    vTaskDelay(pdMS_TO_TICKS(10)); /* let the rail settle before probing */
+    timing_sleep_ms(10); /* let the rail settle before probing */
 
     const bool present = i2c_master_probe(bus, ES8311_I2C_7BIT_ADDR, 100) == ESP_OK;
 

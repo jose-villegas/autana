@@ -2,6 +2,8 @@
 
 #include "core/memory.h"
 
+#include "esp_psram.h"
+
 size_t
 memory_free_bytes(memory_kind_t kind) {
     return heap_caps_get_free_size(memory_caps(kind));
@@ -20,6 +22,11 @@ memory_largest_block(memory_kind_t kind) {
 size_t
 memory_total_bytes(memory_kind_t kind) {
     return heap_caps_get_total_size(memory_caps(kind));
+}
+
+size_t
+memory_psram_bytes(void) {
+    return esp_psram_get_size();
 }
 
 void

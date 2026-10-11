@@ -43,6 +43,7 @@
 #include "app/app_arena.h"
 
 #include "stubs/esp_heap_caps.h"
+#include "stubs/esp_psram.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,7 +138,8 @@ typedef struct {
     size_t cur_bytes;
     size_t cur_blocks;
     size_t peak_bytes;
-    size_t most_bytes; /* peak_bytes since start, never reset */
+    size_t free_bytes;     /* what arena_pool_scan() would total */
+    size_t low_free_bytes; /* free_bytes at its lowest since start */
     int initialized;
 } arena_pool_t;
 
@@ -247,6 +249,8 @@ arena_pool_init_once(arena_pool_t* p) {
     p->head->prev = NULL;
     p->head->next = NULL;
     p->head->size = p->cap > ARENA_HEADER_SIZE ? p->cap - ARENA_HEADER_SIZE : 0;
+    p->free_bytes = p->head->size;
+    p->low_free_bytes = p->free_bytes;
     p->head->in_use = 0;
     p->head->magic = 0;
     arena_poison_block(p->head);
@@ -274,6 +278,11 @@ arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
         b->next = nb;
         b->size = need;
         arena_poison_block(nb);
+        p->free_bytes -= ARENA_HEADER_SIZE;
+    }
+    p->free_bytes -= b->size;
+    if (p->free_bytes < p->low_free_bytes) {
+        p->low_free_bytes = p->free_bytes;
     }
     b->in_use = 1;
     b->magic = ARENA_MAGIC_LIVE;
@@ -281,9 +290,6 @@ arena_pool_take_block(arena_pool_t* p, arena_block_t* b, size_t need) {
     p->cur_blocks += 1;
     if (p->cur_bytes > p->peak_bytes) {
         p->peak_bytes = p->cur_bytes;
-    }
-    if (p->cur_bytes > p->most_bytes) {
-        p->most_bytes = p->cur_bytes;
     }
     return (unsigned char*)b + ARENA_HEADER_SIZE;
 }
@@ -366,6 +372,7 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
     b->magic = 0;
     p->cur_bytes -= b->size;
     p->cur_blocks -= 1;
+    p->free_bytes += b->size;
 
     if (b->next) {
         arena_unpoison_header(b->next);
@@ -373,6 +380,7 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
     if (b->next && !b->next->in_use) {
         arena_block_t* n = b->next;
         b->size += ARENA_HEADER_SIZE + n->size;
+        p->free_bytes += ARENA_HEADER_SIZE;
         b->next = n->next;
         if (b->next) {
             b->next->prev = b;
@@ -384,6 +392,7 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
     if (b->prev && !b->prev->in_use) {
         arena_block_t* pr = b->prev;
         pr->size += ARENA_HEADER_SIZE + b->size;
+        p->free_bytes += ARENA_HEADER_SIZE;
         pr->next = b->next;
         if (pr->next) {
             pr->next->prev = pr;
@@ -640,25 +649,26 @@ heap_caps_get_largest_free_block(uint32_t caps) {
     return best;
 }
 
-/* The free bytes at the pool's fullest since start, payloads only: the
- * headers its splits took then are not modelled. */
-static size_t
-arena_pool_low_free(arena_pool_t* p) {
-    arena_pool_init_once(p);
-    const size_t start_free = p->cap > ARENA_HEADER_SIZE ? p->cap - ARENA_HEADER_SIZE : 0;
-    return start_free > p->most_bytes ? start_free - p->most_bytes : 0;
-}
-
 size_t
 heap_caps_get_minimum_free_size(uint32_t caps) {
     size_t total = 0;
     if (caps_matches_internal(caps)) {
-        total += arena_pool_low_free(&s_internal);
+        arena_pool_init_once(&s_internal);
+        total += s_internal.low_free_bytes;
     }
     if (caps_matches_psram(caps)) {
-        total += arena_pool_low_free(&s_psram);
+        arena_pool_init_once(&s_psram);
+        total += s_psram.low_free_bytes;
     }
     return total;
+}
+
+/* The modelled chip: the PSRAM pool's heap and what the board reserves ahead
+ * of it. */
+size_t
+esp_psram_get_size(void) {
+    arena_pool_init_once(&s_psram);
+    return s_psram.cap + s_psram.reserved;
 }
 
 size_t

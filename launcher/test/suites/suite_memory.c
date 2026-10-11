@@ -197,9 +197,37 @@ test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole(void) {
     }
 }
 
+/* The low-water mark keeps a block freed again, never rises, and never
+ * reads above the free space now. */
+static void
+test_the_lowest_free_space_remembers_a_block_freed_again(void) {
+    for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
+        const memory_kind_t kind = SEPARATE_POOLS[i].kind;
+        const char* name = SEPARATE_POOLS[i].name;
+        const size_t free_before = memory_free_bytes(kind);
+        const size_t low_before = memory_min_free_bytes(kind);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(free_before, low_before, name);
+
+        void* block = memory_alloc(memory_largest_block(kind) / 2, kind);
+        TEST_ASSERT_NOT_NULL_MESSAGE(block, name);
+        const size_t free_held = memory_free_bytes(kind);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(free_held, memory_min_free_bytes(kind), name);
+
+        memory_free(block);
+        TEST_ASSERT_EQUAL_size_t_MESSAGE(free_before, memory_free_bytes(kind), name);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(free_held, memory_min_free_bytes(kind), name);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(low_before, memory_min_free_bytes(kind), name);
+    }
+    for (size_t i = 0; i < sizeof EVERY_KIND / sizeof EVERY_KIND[0]; i++) {
+        const memory_case_t* c = &EVERY_KIND[i];
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(memory_free_bytes(c->kind), memory_min_free_bytes(c->kind), c->name);
+    }
+}
+
 void
 suite_memory(void) {
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
+    RUN_TEST(test_the_lowest_free_space_remembers_a_block_freed_again);
     RUN_TEST(test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole);
     RUN_TEST(test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool);
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);

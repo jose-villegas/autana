@@ -22,8 +22,8 @@ patterns themselves, not by a list. Comments and string literals are not
 code. There is no exemption list: a reason for the shell to touch the vendor
 code is a missing module, so add one.
 
-The vendor timer and heap have owners: esp_timer_* belongs to
-core/timing, and heap_caps_*, MALLOC_CAP_*, multi_heap_* and the
+The vendor timer and heap have owners: esp_timer_* and vTaskDelay belong to
+core/timing, and heap_caps_*, MALLOC_CAP_*, multi_heap_*, esp_psram_* and the
 esp_get_*heap_size queries to core/memory.
 In the firmware, its suites and its tools, a name of either is code only in
 its owner's own files (core/timing.* and core/timing_*.*, the
@@ -97,8 +97,8 @@ def problems(root="."):
     return found
 
 
-OWNED_NAME_RE = re.compile(r"\b(?:(?P<timing>esp_timer_\w*)"
-                           r"|(?P<memory>(?:heap_caps_|MALLOC_CAP_|multi_heap_)\w*|esp_get_\w*heap_size\b))")
+OWNED_NAME_RE = re.compile(r"\b(?:(?P<timing>esp_timer_\w*|vTaskDelay\b)"
+                           r"|(?P<memory>(?:heap_caps_|MALLOC_CAP_|multi_heap_|esp_psram_)\w*|esp_get_\w*heap_size\b))")
 CHECKED = (*FIRST_PARTY, "launcher/test/suites/", "launcher/tools/")
 CORE = "launcher/main/core/"
 

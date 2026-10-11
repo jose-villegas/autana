@@ -37,8 +37,9 @@ typedef enum {
 
 size_t memory_free_bytes(memory_kind_t kind);
 
-/* The low-water mark of memory_free_bytes() since boot: shows a transient
- * allocation that has already been freed again. */
+/* Each heap's own low-water mark since boot, summed: at or below the lowest
+ * memory_free_bytes() ever was, since the heaps need not bottom out together.
+ * Shows a transient allocation already freed again. */
 size_t memory_min_free_bytes(memory_kind_t kind);
 
 /* The largest single block an allocation of this kind could still get: free
@@ -47,6 +48,10 @@ size_t memory_largest_block(memory_kind_t kind);
 
 /* Everything this kind's heap regions hold, free or not. */
 size_t memory_total_bytes(memory_kind_t kind);
+
+/* The external RAM chip's size, what the heap holds of it or not; 0 when the
+ * board has none. */
+size_t memory_psram_bytes(void);
 
 /* Prints every region of this kind and its blocks to the console. */
 void memory_dump(memory_kind_t kind);

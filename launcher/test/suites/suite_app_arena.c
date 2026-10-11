@@ -194,7 +194,7 @@ test_the_arena_is_reserved_whichever_source_gives_the_psram_size(void) {
 #ifdef DEVICE_BUILD
 static void
 test_the_psram_heap_starts_past_the_block(void) {
-    const size_t psram = esp_psram_get_size();
+    const size_t psram = memory_psram_bytes();
     const size_t heap = memory_total_bytes(MEMORY_PSRAM);
     TEST_ASSERT_LESS_OR_EQUAL_UINT(psram - APP_ARENA_BYTES, heap);
     TEST_ASSERT_GREATER_OR_EQUAL_UINT(psram / 2, heap); /* the block does not take the heap's share */

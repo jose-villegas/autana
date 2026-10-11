@@ -215,14 +215,27 @@ class OwnerProblemsTest(unittest.TestCase):
             with self.subTest(rel=rel):
                 self.assertEqual(self.problems({rel: text}), [f"{rel}:1: {reason}" for reason in reasons])
 
-    def test_a_free_heap_query_belongs_to_core_memory(self):
-        text = "size_t f(void) { return esp_get_free_heap_size() + esp_get_minimum_free_heap_size(); }\n"
+    def test_every_vendor_name_an_owner_holds_is_reported_with_that_owner(self):
+        cases = (
+            ("esp_get_free_heap_size", "memory"),
+            ("esp_get_minimum_free_heap_size", "memory"),
+            ("esp_get_free_internal_heap_size", "memory"),
+            ("multi_heap_free_size", "memory"),
+            ("esp_psram_get_size", "memory"),
+            ("vTaskDelay", "timing"),
+        )
         rel = "launcher/main/console/state.c"
-        self.assertEqual(self.problems({rel: text}), [
-            f"{rel}:1: uses esp_get_free_heap_size; only core/memory and a driver may",
-            f"{rel}:1: uses esp_get_minimum_free_heap_size; only core/memory and a driver may",
-        ])
-        self.assertEqual(self.problems({"launcher/main/core/memory.c": text}), [])
+        for name, owner in cases:
+            with self.subTest(name=name):
+                text = f"void f(void) {{ {name}(); }}\n"
+                self.assertEqual(self.problems({rel: text}),
+                                 [f"{rel}:1: uses {name}; only core/{owner} and a driver may"])
+                self.assertEqual(self.problems({f"launcher/main/core/{owner}.c": text}), [])
+
+    def test_a_vendor_name_only_starting_like_an_owned_one_is_left_alone(self):
+        text = ("void f(void) { esp_get_idf_version(); esp_get_free_heap_size_x(); vTaskDelayUntil(0, 1);"
+                " my_heap_caps_x(); }\n")
+        self.assertEqual(self.problems({"launcher/main/gfx/gfx.c": text}), [])
 
     def test_a_name_used_twice_on_a_line_is_reported_once(self):
         rel = "launcher/main/gfx/gfx.c"
