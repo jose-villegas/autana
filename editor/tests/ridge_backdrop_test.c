@@ -12,6 +12,7 @@
 #include "editor/runtime.h"
 
 #include "app/app.h"
+#include "gfx/draw/gfx_dither.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
@@ -81,6 +82,22 @@ main(void) {
     /* Still first: breathing and the wave never rest, and what follows is
      * about what the launcher costs when nothing moves. */
     ui_ridge_set_ambient(false);
+    frame(false, false);
+    gfx_color_t* reference = snapshot();
+    if (reference == NULL) {
+        return 1;
+    }
+    ui_ridge_paint_reference_for_test(reference);
+    const int phase_rows = gfx_dither_pattern(GFX_DITHER_SCANLINES4)->height;
+    bool shaped = false;
+    for (int y = phase_rows; y < GFX_HEIGHT; y++) {
+        shaped = shaped
+                 || memcmp(reference + (size_t)y * GFX_WIDTH, reference + (size_t)(y % phase_rows) * GFX_WIDTH,
+                           GFX_WIDTH * sizeof *reference)
+                        != 0;
+    }
+    expect(shaped, "the engine pack supplies the shaped ridge, not the level fallback");
+    free(reference);
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
