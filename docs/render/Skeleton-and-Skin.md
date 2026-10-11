@@ -131,7 +131,8 @@ The raster reads the output's `r3d_lit_mesh_t` view.
 One caller-owned buffer block holds positions, cluster bounds and
 node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
 `r3d_skin_output_init()` carves it. The scene allocates it together with model
-matrices and the palette in internal RAM. The same scene allocation adds three bytes per vertex for lit colours.
+matrices and the palette in internal RAM. The same allocation reserves `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex
+for lit colors and an internal `r3d_skin_lights_t`.
 Without runtime lights the mesh retains its bind-colour pointer, with no copy.
 With lights, `r3d_skin_clusters_lit()` skins positions and normals together,
 renormalises the normal, and shades the bind albedo into that colour buffer.
@@ -151,8 +152,9 @@ sequenceDiagram
     end
     S->>C0: apply property fields
     opt posed clusters present
-        S->>C1: skin second cluster range
-        S->>C0: skin first cluster range
+        S->>S: prepare world and object light directions
+        S->>C1: skin and light second cluster range
+        S->>C0: skin and light first cluster range
         C1-->>S: job_wait
         S->>S: refit node bounds
     end
@@ -168,8 +170,8 @@ Property clips use `anim_apply()` directly on core 0 after synchronization,
 then the active scene derives placements for renderers whose entities are dirty.
 Inactive scenes do no placement work. Scenes without skeleton animators skip
 the animation split, and no posed clusters means no skin split. Unchanged poses
-skip skinning and node refit when no runtime lights are attached. Lit skins
-run each frame so light and renderer rotations take effect with a paused pose. Skin jobs
+skip skinning and node refit. A lit skin runs when its pose changes,
+a light setter marks lighting dirty, or a light or skin entity is dirty. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
