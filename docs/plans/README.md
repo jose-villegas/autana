@@ -20,3 +20,4 @@ Designs written before or during the work they describe. Each plan's own
 | [Baker-Scalability-Design-Sketch.md](Baker-Scalability-Design-Sketch.md) | Where a fit's bake time goes, one reference set per set of inputs, the reference on the GPU, and what each change does to the bake keys. |
 | [Image-Kernels-Plan.md](Image-Kernels-Plan.md) | Real-time blur and edge detection over the framebuffer: packed-RGB565 tricks, box blurs, SIMD, and ranked first experiments, every cost an estimate. |
 | [Animation-System-Design-Sketch.md](Animation-System-Design-Sketch.md) | Property and character animation: the whole shape, and milestone 1, a skinned model playing, blending and picking its clips. |
+| [Engine-Layer-Design-Sketch.md](Engine-Layer-Design-Sketch.md) | The firmware as platform, engine and system bands: the shell UI as a client of the public UI toolkit, the ECS face per engine system, the folder moves and their order. |
