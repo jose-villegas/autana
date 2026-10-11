@@ -24,7 +24,7 @@ static const r3d_placement_t IDENTITY = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, transforms, flags, locals, animators, skins, total;
+    size_t renderers, cameras, instances, flags, locals, animators, skins, total;
 } layout_t;
 
 size_t
@@ -41,7 +41,6 @@ layout_for(const scene_asset_t* asset) {
     SCENE_STORAGE_RESERVE(l, end, renderers, scene_renderer_t, asset->renderer_count);
     SCENE_STORAGE_RESERVE(l, end, cameras, scene_camera_t, asset->camera_count);
     const int entities = asset->entity_count;
-    SCENE_STORAGE_RESERVE(l, end, transforms, scene_placement_t, entities);
     SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, entities);
     SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, entities);
     const int renderers = asset->renderer_count;
@@ -71,19 +70,16 @@ instantiate(const scene_asset_t* asset) {
     scene->renderers = (scene_renderer_t*)(void*)(block + l.renderers);
     scene->cameras = (scene_camera_t*)(void*)(block + l.cameras);
     scene->instances = (r3d_instance_t*)(void*)(block + l.instances);
-    scene->transforms = (scene_placement_t*)(void*)(block + l.transforms);
     scene->flags = block + l.flags;
     scene->locals = (transformf_t*)(void*)(block + l.locals);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
     scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
-    memcpy(scene->transforms, asset->transforms, sizeof(scene_placement_t) * asset->entity_count);
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_DIRTY, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
         scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
                                                       .near_z = c->near_z,
-                                                      .pose = &scene->locals[c->entity],
-                                                      .path = NULL},
+                                                      .pose = &scene->locals[c->entity]},
                                              .entity = c->entity,
                                              .clear = GFX_RGB(c->clear_rgb)};
     }
@@ -132,15 +128,6 @@ open_paths(scene_t* scene) {
         if (camera->clip[0] == '\0') {
             continue;
         }
-        anim_tracks_t tracks;
-        anim_node_tracks_t node;
-        asset_status_t status = anim_tracks_from_pack(scene->pack, camera->clip, &tracks);
-        if (status == ASSET_OK) {
-            status = anim_tracks_find_node(&tracks, camera->node, &node);
-        }
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, camera->clip);
-        }
         const char* clips[] = {camera->clip};
         scene_failure_t why;
         if (!scene_animator_set_clips(scene, camera->entity, NULL, clips, 1, &why)) {
@@ -168,7 +155,7 @@ local_from_placement(const scene_placement_t* placement, transformf_t* out) {
 static scene_failure_t
 open_transforms(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        if (!local_from_placement(&scene->transforms[e], &scene->locals[e])) {
+        if (!local_from_placement(&scene->asset.transforms[e], &scene->locals[e])) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e]);
         }
     }
@@ -358,7 +345,6 @@ void
 scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform) {
     assert(entity < scene->asset.entity_count);
     scene->locals[entity] = *transform;
-    scene->transforms[entity] = r3d_placement_from(transform);
     scene->flags[entity] |= SCENE_FLAG_DIRTY;
 }
 

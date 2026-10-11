@@ -33,7 +33,6 @@ bool job_wait(unsigned timeout_ms);
 /* The second context is copied on dispatch. Both ranges finish before the next stage reads. */
 static inline __attribute__((always_inline)) void
 job_run_split(job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size) {
-    assert(ctx_size <= JOB_CTX_MAX);
     if (!job_try_core1(fn, second_half, ctx_size)) {
         fn((void*)second_half);
     }

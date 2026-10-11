@@ -101,7 +101,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, t);
-        const render_view_t view = r3d_scene_view_at(flythrough, t, viewport);
+        const render_view_t view = r3d_scene_view_at(flythrough, viewport);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
@@ -230,7 +230,7 @@ check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
         vec3f_t eye;
         vec3f_t forward;
         (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, t);
-        r3d_scene_camera_sample(flythrough, t, &eye, &forward);
+        r3d_scene_camera_sample(flythrough, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -314,11 +314,11 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
         vec3f_t previous;
         vec3f_t forward;
         (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, 0);
-        r3d_scene_camera_sample(flythrough, 0, &previous, &forward);
+        r3d_scene_camera_sample(flythrough, &previous, &forward);
         for (uint32_t t = 10; t <= period + 100; t += 10) {
             vec3f_t eye;
             (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, t);
-            r3d_scene_camera_sample(flythrough, t, &eye, &forward);
+            r3d_scene_camera_sample(flythrough, &eye, &forward);
             const vec3f_t step = vec3f_sub(eye, previous);
             TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, camera_name);
             TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)), camera_name);
@@ -332,7 +332,7 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){raster->width, raster->height, 0});
+    const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){raster->width, raster->height, 0});
     raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = raster_depth(raster);

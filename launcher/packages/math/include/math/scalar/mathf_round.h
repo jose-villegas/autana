@@ -1,4 +1,4 @@
-/* Scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. */
+/* mathf_round: Scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. */
 #pragma once
 
 #include <stdint.h>

@@ -20,7 +20,8 @@ typedef struct {
 void anim_pose_rest(const anim_skeleton_t* skeleton, anim_pose_t* out);
 void anim_pose_blend(const anim_pose_t* a, const anim_pose_t* b, float weight, anim_pose_t* out);
 void anim_pose_model(const anim_skeleton_t* skeleton, const anim_pose_t* pose, mat4f_t* model);
-/* failed is -1 on success or the rejected binding index; sample only a bound set onto a rest pose. */
+/* Sampling requires a bound set and a pose initialized to rest transforms.
+ * failed is -1 on success or the rejected binding index. */
 anim_bind_status_t anim_bind_skeleton(const anim_tracks_t* clip, const anim_skeleton_t* skeleton,
                                       anim_joint_bound_t* out, int count, int* failed);
 void anim_sample_pose(const anim_joint_bound_t* bound, int count, float seconds, anim_pose_t* pose);

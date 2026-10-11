@@ -97,7 +97,7 @@ bench_close(bench_t* b) {
 static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){render_width(), render_height(), 0});
+    const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){render_width(), render_height(), 0});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh->position_scale);
     return lens;
@@ -250,7 +250,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, scene_camera_entity(sponza, flythrough), SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+        const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         if (moving != NULL) {
             moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
         }

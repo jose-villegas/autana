@@ -19,8 +19,7 @@ static targets_t
 targets_for(scene_t* scene, scene_entity_t owner) {
     const int entities = scene->asset.entity_count;
     size_t end = 0;
-    const size_t targets = scene_storage_carve(
-        &end, sizeof(anim_target_t) * (size_t)(entities + scene->asset.camera_count), alignof(anim_target_t));
+    const size_t targets = scene_storage_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
     const size_t components =
         scene_storage_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * 2, alignof(anim_component_ref_t));
     uint8_t* block = memory_alloc(end, MEMORY_PSRAM);
@@ -35,22 +34,18 @@ targets_for(scene_t* scene, scene_entity_t owner) {
         fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
         out.targets[e] = (anim_target_t){scene->asset.names[e], fields, 1, &scene->flags[e], SCENE_FLAG_DIRTY};
     }
-    anim_target_t own_alias = {0};
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;
         out.components[(e * 2) + 1] = (anim_component_ref_t){&R3D_SCENE_CAMERA_FIELDS, &scene->cameras[c].lens};
         out.targets[e].component_count = 2;
         const char* alias = scene->asset.cameras[c].node;
         if (e == owner && alias[0] != '\0' && strcmp(alias, scene->asset.names[e]) != 0) {
-            own_alias = out.targets[e];
-            own_alias.name = alias;
+            out.targets[e].name = alias;
         }
     }
-    if (own_alias.name != NULL) {
-        memmove(out.targets + 1, out.targets, (size_t)out.count * sizeof *out.targets);
-        out.targets[0] = own_alias;
-        out.count++;
-    }
+    const anim_target_t first = out.targets[0];
+    out.targets[0] = out.targets[owner];
+    out.targets[owner] = first;
     return out;
 }
 
@@ -119,6 +114,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curv
         scene_animator_clip_t* clip = &a->clips[c];
         (void)anim_tracks_from_pack(scene->pack, ids[c], &clip->tracks);
         char* name = (char*)block + l.names + (c * ASSET_NAME_MAX);
+        /* The clip was opened from the pack, whose names fit ASSET_NAME_MAX. */
         const size_t length = strlen(ids[c]);
         assert(length < ASSET_NAME_MAX);
         memcpy(name, ids[c], length + 1);
@@ -197,7 +193,10 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
             r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
         }
     }
-    memory_free(scene->animators[entity].storage);
+    const scene_animator_t* old = &scene->animators[entity];
+    scene->skeleton_animator_count +=
+        (a.root == ANIM_ROOT_SKELETON) - (old->storage != NULL && old->root == ANIM_ROOT_SKELETON);
+    memory_free(old->storage);
     a.dirty = true;
     scene->animators[entity] = a;
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, scene->id));
@@ -314,7 +313,10 @@ scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
         memory_free(scene->animators[e].storage);
         memory_free(scene->skinned_renderers[e].internal_storage);
+        scene->animators[e] = (scene_animator_t){0};
+        scene->skinned_renderers[e] = (scene_skinned_renderer_t){0};
     }
+    scene->skeleton_animator_count = 0;
 }
 
 static bool
@@ -361,16 +363,6 @@ apply_property(scene_animator_t* a, uint32_t dt_ms) {
     anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead, &clip->tracks.clip));
 }
 
-static void
-rebuild_placements(scene_t* scene) {
-    for (int e = 0; e < scene->asset.entity_count; e++) {
-        if (scene->flags[e] & SCENE_FLAG_DIRTY) {
-            scene->locals[e].cached = false;
-            scene->transforms[e] = r3d_placement_from(&scene->locals[e]);
-        }
-    }
-}
-
 void
 scene_skin_range(scene_t* scene, int first, int count) {
     int offset = 0;
@@ -393,8 +385,6 @@ typedef struct {
     uint32_t dt_ms;
 } range_t;
 
-_Static_assert(sizeof(range_t) <= JOB_CTX_MAX, "scene ranges fit job context");
-
 static void
 animate_slice(void* ctx) {
     const range_t* r = ctx;
@@ -411,7 +401,10 @@ void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     const int entities = scene->asset.entity_count, half = entities / 2;
     range_t a = {scene, 0, half, dt_ms}, b = {scene, half, entities - half, dt_ms};
-    job_run_split(animate_slice, &a, &b, sizeof a);
+    if (scene->skeleton_animator_count != 0) {
+        _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
+        job_run_split(animate_slice, &a, &b, sizeof a);
+    }
     int clusters = 0;
     for (int e = 0; e < entities; e++) {
         scene_animator_t* animator = &scene->animators[e];
@@ -423,9 +416,12 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
                         ? 0
                         : scene->skinned_renderers[e].bind.cluster_count;
     }
-    rebuild_placements(scene);
+    if (clusters == 0) {
+        return;
+    }
     a = (range_t){scene, 0, clusters / 2, 0};
     b = (range_t){scene, clusters / 2, clusters - (clusters / 2), 0};
+    _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
     job_run_split(skin_slice, &a, &b, sizeof a);
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {

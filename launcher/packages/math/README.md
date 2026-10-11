@@ -68,7 +68,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/motion/spring_line.h](include/math/motion/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (math_template.h). |
-| [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | Scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. |
+| [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: Scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. |
 | [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalar operations, for grid, pixel and cell coordinates. |
 | [include/math/scalar/maths.h](include/math/scalar/maths.h) | maths: int16 scalar operations for the math templates (math_template.h), coordinates kept compact where memory is short. |
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (math_template.h). |

@@ -1,9 +1,8 @@
 /*
- * scene:
- * Storage is data-oriented: packed component arrays indexed by a small
- * entity id: a transform per entity, and a renderer, camera (lens, entity
- * pose), animator or skinned renderer only for the entities that have one.
- * Animator and skin buffers are allocated when they are attached.
+ * scene: the engine's scene manager. Packed component arrays indexed by a
+ * small entity id hold a transform per entity, and a renderer, camera,
+ * animator or skinned renderer only for entities that have one; animator
+ * and skin buffers are allocated when attached.
  */
 #pragma once
 
@@ -29,11 +28,11 @@ typedef enum {
     SCENE_ERR_UNKNOWN, /* the pack holds no scene of that id */
     SCENE_ERR_FULL,    /* as many scenes are loaded as the manager holds */
     SCENE_ERR_MEMORY,  /* the scene's block could not be allocated */
-    SCENE_ERR_ASSET,   /* no pack, or its entry, a mesh or its clip did not open: `asset` says why */
+    SCENE_ERR_ASSET, /* no pack, or its entry, a mesh, its clip or an entity's placement did not open: `asset` says why */
 } scene_status_t;
 
 /* What a load reports: its status, the pack's status when an entry failed,
- * and the id of the scene, mesh or clip it was about. A copy, since a failed
+ * and the id of the scene, mesh or clip, or the entity name, it was about. A copy, since a failed
  * load releases the pack the id came from. */
 typedef struct {
     scene_status_t status;

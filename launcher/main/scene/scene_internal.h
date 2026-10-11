@@ -93,9 +93,8 @@ struct scene {
     scene_asset_t asset;
     char id[ASSET_NAME_MAX];
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
-    uint32_t elapsed_ms;
-    scene_placement_t* transforms; /* one per entity */
-    uint8_t* flags;                /* one per entity: SCENE_FLAG_* */
+    int skeleton_animator_count;
+    uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
     const asset_pack_t* pack;

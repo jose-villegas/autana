@@ -110,7 +110,7 @@ typedef struct {
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, scene_camera_entity(scene, path), SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = r3d_scene_view_at(path, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    const render_view_t view = r3d_scene_view_at(path, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh.position_scale);
     r3d_lens_fit(&lens, raster->width, raster->height);
@@ -141,7 +141,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, scene_camera_entity(scene, path), SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = r3d_scene_view_at(path, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+        const render_view_t view = r3d_scene_view_at(path, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
         raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
@@ -237,7 +237,7 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
     const uint32_t period = scene_animator_clip_duration_ms(scene, scene_camera_entity(scene, path), 0);
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, scene_camera_entity(scene, path), SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = r3d_scene_view_at(path, t_ms, raster_viewport(raster, 0));
+        const render_view_t view = r3d_scene_view_at(path, raster_viewport(raster, 0));
         (void)raster_draw(raster, &view);
         raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
     }
@@ -332,7 +332,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
             raster->height = config->steps[step].height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 (void)scene_animator_seek(scene, scene_camera_entity(scene, path), SCENE_ANIMATOR_CURRENT, t_ms);
-                *view = r3d_scene_view_at(path, t_ms, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+                *view = r3d_scene_view_at(path, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();
