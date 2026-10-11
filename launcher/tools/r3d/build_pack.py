@@ -53,7 +53,8 @@ from bake import bake  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
 from gfx import icons_asset, image_asset  # noqa: E402
-from asset.asset_pack import PackError, build_directory, build_pack, parse_directory, parse_pack  # noqa: E402
+from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
+from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from r3d import scene_asset, skin_asset, skin_pack  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402

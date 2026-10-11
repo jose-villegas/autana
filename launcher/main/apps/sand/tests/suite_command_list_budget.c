@@ -23,6 +23,7 @@
 #include "apps/sand/ui/brush_screen.h"
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/palette_screen.h"
+#include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation, and what
@@ -30,6 +31,7 @@
  * fits inside. */
 static void
 fixture(void) {
+    TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
 }
@@ -38,7 +40,7 @@ static void
 test_palette_screen_command_list_fits_budget(void) {
     fixture();
 
-    static uint8_t modes[SAND_BRUSH_COUNT];
+    uint8_t modes[SAND_BRUSH_COUNT];
     memset(modes, BRUSH_SPAWN, sizeof modes);
 
     sand_ui_t ui = {
@@ -58,7 +60,7 @@ static void
 test_brush_screen_command_list_fits_budget(void) {
     fixture();
 
-    static uint8_t modes[SAND_BRUSH_COUNT];
+    uint8_t modes[SAND_BRUSH_COUNT];
     memset(modes, 0, sizeof modes);
 
     sand_ui_t ui = {
@@ -127,6 +129,7 @@ test_options_screen_command_list_fits_budget(void) {
  * Portrait, so a tap lands where the layout says with no turn between. */
 static void
 test_options_screen_with_its_dither_list_open_fits_budget(void) {
+    TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
     ui_init();
     ui_set_transform(ui_transform_identity());
 
@@ -177,6 +180,8 @@ run_sand_command_list_budget_suite(void) {
     RUN_TEST(test_title_screen_command_list_fits_budget);
     RUN_TEST(test_options_screen_command_list_fits_budget);
     RUN_TEST(test_options_screen_with_its_dither_list_open_fits_budget);
+    ui_icon_set_release(&sand_icon_set);
 }
 
 SUITE_REGISTER(run_sand_command_list_budget_suite);
+SUITE_READS(run_sand_command_list_budget_suite, SAND_PACK);
