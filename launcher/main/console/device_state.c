@@ -3,17 +3,18 @@
  */
 #include "console/device_state.h"
 
-#include "esp_system.h"
+#include "sdkconfig.h"
 
 #include "board/board.h"
+#include "core/memory.h"
 #include "core/timing.h"
 #include "display/display.h"
 
 void
 device_state_read(device_state_t* out) {
     out->uptime_us = timing_now_us();
-    out->heap_free_bytes = (uint32_t)esp_get_free_heap_size();
-    out->heap_min_free_bytes = (uint32_t)esp_get_minimum_free_heap_size();
+    out->heap_free_bytes = (uint32_t)memory_free_bytes(MEMORY_8BIT);
+    out->heap_min_free_bytes = (uint32_t)memory_min_free_bytes(MEMORY_8BIT);
 
     /* Not a runtime query: this project does not enable dynamic frequency
      * scaling (no CONFIG_PM_ENABLE), so the Kconfig value already IS the

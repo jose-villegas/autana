@@ -43,8 +43,6 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 static const char* TAG = "boot_anim";
 #endif
@@ -748,7 +746,7 @@ boot_anim_run(void) {
 
         /* The same yield the shell's loop makes, for the same reason: the
          * idle task feeds the watchdog. */
-        vTaskDelay(1);
+        timing_yield();
     }
     /* Boot plays once and nothing else reads its clip: releasing gives back the
      * pack and its mount slot. */

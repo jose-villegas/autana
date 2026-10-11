@@ -591,44 +591,42 @@ class DocCitationTest(unittest.TestCase):
 
 
 class PaperCitationTest(unittest.TestCase):
-    TABLE = "| [n] | Source | Cited by |\n|---|---|---|\n"
-
     def problems(self, rows, files):
-        with gate_tree.temporary_tree([("docs/Citations.md", self.TABLE + rows), *files]) as root:
+        with gate_tree.temporary_tree([("docs/Citations.md", rows), *files]) as root:
             return check_doc_citations.unresolved_papers(root)
 
     def test_cited_rows_listing_their_citers_pass(self):
         self.assertEqual(self.problems(
-            '| <a id="1"></a>[1] | Paper | [Guide.md](Guide.md), [tool.py](../scripts/tool.py) |\n',
+            '| <a id="1"></a>[1] | [Paper](https://example.org/paper)<br>Cited by: [Guide.md](Guide.md), [tool.py](../scripts/tool.py) |\n',
             [("docs/Guide.md", "Text<sup>[[1]](Citations.md#1)</sup>.\n"),
              ("scripts/tool.py", "# After the paper in docs/Citations.md#1.\n")]), [])
 
     def test_a_number_with_no_row_is_flagged_where_it_is_cited(self):
-        found = self.problems('| <a id="1"></a>[1] | Paper | [Guide.md](Guide.md) |\n',
+        found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1) [[2]](Citations.md#2)\n")])
         self.assertEqual(found, ["docs/Guide.md:1: cites [2], which docs/Citations.md has no row for"])
 
     def test_a_row_nothing_cites_is_flagged(self):
-        found = self.problems('| <a id="1"></a>[1] | Paper | [Guide.md](Guide.md) |\n',
+        found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "No citation.\n")])
-        self.assertEqual(found, ["docs/Citations.md:3: [1] is cited nowhere"])
+        self.assertEqual(found, ["docs/Citations.md:1: [1] is cited nowhere"])
 
     def test_a_cited_by_cell_must_match_the_citing_files(self):
-        found = self.problems('| <a id="1"></a>[1] | Paper | [Other.md](Other.md) |\n',
+        found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Other.md](Other.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1)\n"), ("docs/Other.md", "None.\n")])
-        self.assertEqual(found, ["docs/Citations.md:3: [1] cited by, not listed: docs/Guide.md; "
+        self.assertEqual(found, ["docs/Citations.md:1: [1] cited by, not listed: docs/Guide.md; "
                                  "listed, does not cite it: docs/Other.md"])
 
     def test_rows_ascend_may_skip_a_deleted_number_and_anchor_their_number(self):
-        found = self.problems('| <a id="1"></a>[1] | A | [Guide.md](Guide.md) |\n'
-                              '| <a id="3"></a>[3] | B | [Guide.md](Guide.md) |\n'
-                              '| <a id="4"></a>[2] | C | [Guide.md](Guide.md) |\n',
+        found = self.problems('| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
+                              '| <a id="3"></a>[3] | B<br>Cited by: [Guide.md](Guide.md) |\n'
+                              '| <a id="4"></a>[2] | C<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1) [[3]](Citations.md#3) [[2]](Citations.md#2)\n")])
-        self.assertEqual(found, ['docs/Citations.md:5: anchor "4" is not its number [2]',
-                                 "docs/Citations.md:5: [2] follows [3]; rows ascend"])
+        self.assertEqual(found, ['docs/Citations.md:3: anchor "4" is not its number [2]',
+                                 "docs/Citations.md:3: [2] follows [3]; rows ascend"])
 
     def test_the_gates_own_test_fixtures_cite_nothing(self):
-        found = self.problems('| <a id="1"></a>[1] | A | [Guide.md](Guide.md) |\n',
+        found = self.problems('| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
                                ("scripts/gates/tests/test_x.py", "FIXTURE = 'Citations.md#1 Citations.md#9'\n")])
         self.assertEqual(found, [])
