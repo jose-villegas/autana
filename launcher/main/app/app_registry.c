@@ -1,32 +1,21 @@
-/*
- * app_registry: the one app_t list, threaded through app_t.next.
- *
- * Apps register themselves, so an app is entirely contained in
- * main/apps/<name>/ and deleting that folder removes it: source, logic and
- * tests, without touching another file, CMakeLists.txt included.
- *
- * Portable: no hardware dependency, so the firmware, the host test runner,
- * the editor's runtime and every render-host harness link this one list
- * and call app_register() on whatever app_t they have.
- */
+/* app_registry: one app_t.next list, no hardware dependency; firmware, host test
+ * runner, editor runtime and every render-host harness share it. Apps self-register:
+ * adding or deleting main/apps/<name>/ (source, logic, tests) touches no other file, including CMakeLists.txt. */
 #include "app/app.h"
 
 #include <assert.h>
 #include <string.h>
 
+#include "core/registry.h"
+
 static app_t* apps_head;
 
 void
 app_register(app_t* app) {
-    app->next = NULL;
-
-    app_t** link = &apps_head;
-    while (*link != NULL && strcmp((*link)->name, app->name) < 0) {
-        link = &(*link)->next;
-    }
-    assert((*link == NULL || strcmp((*link)->name, app->name) != 0) && "two apps share a name");
-    app->next = *link;
-    *link = app;
+    static const registry_rule_t rule = REGISTRY_RULE(app_t, strcmp, NULL);
+    const registry_add_t result = registry_add(&apps_head, &rule, app);
+    assert(result == REGISTRY_ADDED && "app registered twice or name taken");
+    (void)result;
 }
 
 const app_t*
