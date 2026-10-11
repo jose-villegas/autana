@@ -216,7 +216,7 @@ render_scene_build() {
     done
     _rs_asset_flags=
     if [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; then
-        for _rs_src in asset/asset_pack.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
+        for _rs_src in asset/asset_pack.c asset/asset_table.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
             _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
         done
         if [ "$_rs_deps" = 0 ]; then
