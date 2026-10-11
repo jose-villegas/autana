@@ -1,10 +1,7 @@
 """Checks the source-reference renderer on a one-triangle lit mesh: its light, its pixels and its normal buffer."""
 
-import contextlib
-import io
 import pathlib
 import sys
-import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -287,6 +284,9 @@ class TraceDeviceTests(unittest.TestCase):
             self.assertEqual(mi.now, "scalar_rgb", "the probe leaves Mitsuba on the variant it was on")
 
     def test_a_set_on_the_gpu_renders_in_this_process_and_frees_the_device_after(self):
+        import contextlib
+        import io
+        import tempfile
         from unittest.mock import patch
         from r3d import ray_query, reference_render
         from r3d.fitted_variant import poses_text
@@ -309,6 +309,9 @@ class TraceDeviceTests(unittest.TestCase):
             self.assertEqual(release.call_count, freed, variant)
 
     def test_the_device_is_freed_with_the_bounced_light_cache_empty_even_when_a_pose_fails(self):
+        import contextlib
+        import io
+        import tempfile
         from unittest.mock import patch
         from r3d import mesh_import, ray_query, reference_render
         from r3d.fitted_variant import poses_text
