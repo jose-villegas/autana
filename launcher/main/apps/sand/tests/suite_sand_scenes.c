@@ -2488,15 +2488,6 @@ test_the_plant_ruin_scene_eats_roots_and_burns_a_canopy(void) {
                                          "what it claims");
 }
 
-/* Settles the bed the way the frame-budget test beside it does and hands back
- * the board, so neither can drift from the other's idea of "finished". */
-static void
-mature_tree_settle(sand_t* s) {
-    sand_set_soak(s, SAND_SOAK_PER_MATERIAL);
-    build_plant_bed_scene(s);
-    run_steps(s, MATURE_TREE_SETTLE_STEPS, 0, 1000);
-}
-
 /* THE SCENE'S OWN CLAIM, and the one a cheap number here could be hiding: a
  * tree that has stopped because the pass stopped looking is indistinguishable
  * from a tree that has stopped because there is nothing left to drink, right
@@ -2507,7 +2498,9 @@ test_the_mature_tree_scene_is_finished_but_can_be_restarted(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t* const s2 = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 11u);
-    mature_tree_settle(s2);
+    sand_set_soak(s2, SAND_SOAK_PER_MATERIAL);
+    build_plant_bed_scene(s2);
+    run_steps(s2, MATURE_TREE_SETTLE_STEPS, 0, 1000);
 
     greenery_t grown;
     count_greenery(s2, 0, REAL_W, &grown);
