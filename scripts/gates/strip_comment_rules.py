@@ -9,7 +9,7 @@ lines and the leading and trailing rule runs go. A comment that was nothing but
 rule is deleted outright.
 
 The rewrite is proved rather than read: each file must agree with its original
-under check_comment_length.code_only(), and each comment's prose must come back
+under c_lexer.c_code(), and each comment's prose must come back
 character for character.
 """
 import argparse
@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import RULE_RUN, scan, sources
-from check_comment_length import code_only  # noqa: E402
+from c_lexer import c_code  # noqa: E402
 
 ONE_LINE_MAX = 78
 
@@ -112,7 +112,7 @@ def main():
         new = rewrite(p.as_posix(), src)
         if new is None or new == src:
             continue
-        if code_only(new) != code_only(src):
+        if c_code(new) != c_code(src):
             print(f"REFUSED (code moved): {p}", file=sys.stderr)
             return 1
         before = [w for t in prose_of(p.as_posix(), src) for w in t]

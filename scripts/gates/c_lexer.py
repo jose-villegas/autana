@@ -1,4 +1,7 @@
-"""C comment and literal spans and normalized code for source comparisons."""
+"""C comment and literal spans and normalized code for source comparisons.
+
+The output of c_code is part of every bake key, so changing it requires a rebake.
+"""
 
 
 def tokens(source, literals=True):
@@ -33,11 +36,7 @@ def tokens(source, literals=True):
 
 
 def c_code(text) -> str:
-    """Code with comments removed and outside-literal line spacing normalized.
-
-    A C23 digit separator (1'000) opens a char literal, which can hide a
-    comment inside a later string on that line.
-    """
+    """Code with comments removed and outside-literal line spacing normalized."""
     content = []
     space = False
     line_start = True

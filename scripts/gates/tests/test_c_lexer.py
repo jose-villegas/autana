@@ -7,16 +7,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from c_lexer import c_code, tokens
 from c_comments import scan
-from check_comment_length import code_only
 
 
 class LexerTests(unittest.TestCase):
-    def test_code_only_ignores_comments_but_preserves_literal_spacing(self):
+    def test_c_code_ignores_comments_but_preserves_literal_spacing(self):
         plain = 'char *s = "a  b";\nint x;\n'
         edited = '/* p */ char *s = "a  b"; // q\n  int x;\n'
         self.assertEqual(c_code(plain), c_code(edited))
-        self.assertEqual(code_only(plain), code_only(edited))
-        self.assertNotEqual(code_only(plain), code_only('char *s = "a b";\nint x;\n'))
+        self.assertNotEqual(c_code(plain), c_code('char *s = "a b";\nint x;\n'))
 
     def test_unescaped_newline_ends_a_literal(self):
         text = "#error don't\n/* p */\n"
@@ -35,8 +33,28 @@ class LexerTests(unittest.TestCase):
         self.assertEqual(comments[1].line, 3)
 
     def test_escaped_literal_newline_counts_in_comment_location(self):
-        text = '"p\\\nq";\n/* r */\n'
-        self.assertEqual(scan("test.c", text)[0].line, 3)
+        text = '"p\\\n/* q */";\n/* r */\n'
+        comments = scan("test.c", text)
+        self.assertEqual([comment.text for comment in comments], ["r"])
+        self.assertEqual(comments[0].line, 3)
+
+    def test_spliced_literal_comment_bytes_change_code(self):
+        plain = '"p\\\n/* p */";\n/* r */\n'
+        edited = plain.replace("/* p */", "/* q */")
+        self.assertNotEqual(c_code(plain), c_code(edited))
+
+    def test_literal_at_line_start_retains_newline(self):
+        plain = '#define M \\\n"a"\nint x;\n'
+        joined = '#define M \\\n"a" int x;\n'
+        self.assertNotEqual(c_code(plain), c_code(joined))
+
+    def test_merged_continued_line_comment_retains_physical_lines(self):
+        text = '// p\n// q\\\ncontinued\n// r\n'
+        comments = scan("test.c", text)
+        self.assertEqual(len(comments), 1)
+        self.assertEqual(comments[0].raw_lines,
+                         ["// p", "// q\\", "continued", "// r"])
+        self.assertEqual(comments[0].line, 1)
 
 
 if __name__ == "__main__":

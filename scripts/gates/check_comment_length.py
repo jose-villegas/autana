@@ -47,10 +47,6 @@ def tracked_sources():
     return [p.as_posix() for p in sources(".", tracked=True,
             extensions=(".c", ".h", ".cpp", ".hpp"), excluded=False)]
 
-def code_only(source):
-    """Normalized code for comment-only diffs, preserving literal bytes."""
-    return c_code(source)
-
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
     args = ["git", "diff", "--name-only", "--diff-filter=ACMR"]
@@ -118,7 +114,7 @@ def verify_comments_only(ref, paths):
             print(f"new file, nothing to compare: {path}")
             continue
         after = open(path, encoding="utf-8", errors="replace").read()
-        if code_only(before) != code_only(after):
+        if c_code(before) != c_code(after):
             bad.append(path)
     for path in bad:
         print(f"CODE CHANGED: {path}")
