@@ -147,6 +147,19 @@ mathi_clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+/* Unsigned modulo into [0, len); len must be positive. */
+static inline uint64_t
+mathi_repeat_u64(uint64_t v, uint64_t len) {
+    assert(len > 0);
+    return v % len;
+}
+
+/* Inclusive clamp over the full uint64_t range. */
+static inline uint64_t
+mathi_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
 /* Floor of the square root over the whole uint64_t range. */
 static inline uint32_t
 mathi_isqrt64(uint64_t value) {

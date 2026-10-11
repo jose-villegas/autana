@@ -21,6 +21,7 @@
 #include "gfx/present/gfx_present.h"
 #include "input/orbit_motion_touch.h"
 #include "math/motion/orbit_motion.h"
+#include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
@@ -50,7 +51,6 @@ static const char* TAG = "capybara";
 #define CAPYBARA_ZOOM_OUT       3.0F
 #define CAPYBARA_NEAR_CLEARANCE 2.0F
 
-#define MS_PER_SECOND           1000.0F
 #define DEGREES_PER_RADIAN      (180.0F / MATH_PI)
 
 static scene_t* capybara;
@@ -72,8 +72,7 @@ fail(const char* what) {
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    const scene_transform_t placement = r3d_placement_from(&pose);
-    scene_entity_set_transform(capybara, camera_entity, &placement);
+    scene_set_transform(capybara, camera_entity, &pose);
 }
 
 /* Home and limits from the subject's sphere and the scene camera's lens. */
@@ -136,7 +135,7 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
     }
     const viewport_t panel = {GFX_WIDTH, GFX_HEIGHT, display_quarter_now()};
     const orbit_motion_input_t steering = orbit_motion_touch_step(&touch, input, dt_ms, panel, shell_home_edge());
-    orbit_motion_update(&orbit, &steering, (float)dt_ms / MS_PER_SECOND);
+    orbit_motion_update(&orbit, &steering, (float)dt_ms / (float)MATH_MS_PER_S);
     place_camera();
 }
 
