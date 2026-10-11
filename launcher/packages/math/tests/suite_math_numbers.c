@@ -570,6 +570,15 @@ test_integer_repeat_and_wrap_cover_negative_values_and_int_limits(void) {
     TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(hi, lo, hi));
     TEST_ASSERT_EQUAL_INT(negative, mathi_wrap(negative, lo, hi));
     TEST_ASSERT_EQUAL_INT(hi - 1, mathi_wrap(lo - 1, lo, hi));
+    const int several_widths = 4;
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(lo - length, lo, hi));
+    TEST_ASSERT_EQUAL_INT(lo, mathi_wrap(lo - several_widths * length, lo, hi));
+    const int crossing_lo = -3;
+    const int crossing_hi = 5;
+    const int crossing_width = crossing_hi - crossing_lo;
+    TEST_ASSERT_EQUAL_INT(crossing_lo, mathi_wrap(crossing_lo - crossing_width, crossing_lo, crossing_hi));
+    TEST_ASSERT_EQUAL_INT(crossing_lo,
+                          mathi_wrap(crossing_lo - several_widths * crossing_width, crossing_lo, crossing_hi));
     const int extremes[] = {INT_MIN, INT_MAX};
     const int below_negative_range = -20;
     const int above_negative_range = 8;
