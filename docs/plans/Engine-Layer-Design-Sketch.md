@@ -1,9 +1,7 @@
 # Engine layer: design sketch
 
-**Status:** in review. Sections 1 and 2 and the `r3d_project` destination
-are approved; sections 3 and 4 are being walked. Nothing has moved. `[M]` marks
-the maintainer's decision or constraint, `[A]` a proposal of this sketch not
-yet approved.
+**Status:** every section approved; a final read before it merges.
+Nothing has moved yet. `[M]` marks the maintainer's decision or constraint.
 
 The firmware becomes three bands over the shared packages: the **platform**
 (board, panel, input, present, core), the **engine** (scene, render, anim,
@@ -169,6 +167,11 @@ Decided `[M]`:
 | game-defined components and systems | later: game logic stays in the app's `update()` and talks through engine components and entity calls | engine systems run from a table, not a hard-coded call chain, so registration can be added without rework; it comes with the first game that needs behaviour over many entities |
 | immediate-mode 2D drawing and the UI toolkit | outside the rule: a per-frame API called from `frame()` | UI attached to something in the 3D world (a health bar, a name tag) is a scene component the scene draws; it comes with the first game that needs it |
 
+The toolkit's direction is a reactive layer over baked layouts, to be
+sketched; immediate mode stays the drawing layer beneath it `[M]`. Not
+everything fits the ECS paradigm, so a translation layer sits between them
+`[M]`.
+
 ---
 
 ## 3. Folder layout and moves
@@ -178,7 +181,7 @@ Decided `[M]`:
 | **L1** | **bands named in the tier table; folders stay under `launcher/main/`; only the splits move (UI, draw)** | **the include path stays one root; bake keys unchanged after S0** |
 | L2 | a new root `launcher/engine/` with its own include root | about fifteen build scripts, gates and the editor spell `launcher/main` as the include path; the bake closure resolves headers through it, so the move re-keys; done once more when the platform splits into components |
 
-**Recommendation: L1 now** `[A]`. The physical move to separate roots
+**Decision: L1 now** `[M]`. The physical move to separate roots
 happens once, when the platform and engine become their own ESP-IDF
 components, after one function owns the include path that every build
 script calls.
@@ -215,7 +218,7 @@ system icons), not code; it keeps its place under L1.
 
 Draw and present share state through `gfx/gfx_internal.h` (the framebuffer,
 the band target, the clip), and present calls `gfx_rgb()` and
-`gfx_clear_clip()`. Before draw can sit in a band above present `[A]`:
+`gfx_clear_clip()`. Before draw can sit in a band above present `[M]`:
 
 ```c
 /* gfx/gfx_present.h: present's face to draw */
@@ -238,7 +241,7 @@ The tier key stays the first path part; each row group gets a band label.
 | platform | `input` · `display` · `gfx` · `services` · `profile` · `core` · `board` · `build` |
 | packages | `math` (PACKAGE-INCLUDE, unchanged) |
 
-`input` sits above `display` `[A]`: once `viewport.h` is in `display/`,
+`input` sits above `display` `[M]`: once `viewport.h` is in `display/`,
 `input/orbit_motion_touch.h` includes it, and two folders in one row cannot.
 With today's includes and these moves, only the three present-to-draw edges
 S1 removes go upward.
@@ -246,7 +249,7 @@ S1 removes go upward.
 ### What the engine may include from the platform
 
 `[M]` a narrow face, never drivers; apps never reach drivers either. The
-rule names only what is refused, derived from the source `[A]`:
+rule names only what is refused, derived from the source `[M]`:
 
 | Never, from the engine or an app |
 |---|
@@ -262,7 +265,7 @@ Everything else in the platform is its face.
 
 ```mermaid
 flowchart LR
-    S0["S0 docstrings<br/>out of the bake key<br/><i>one agreed rebake</i>"] --> S2
+    S0["S0 docstrings<br/>out of the bake key<br/><i>rebaked with #835</i>"] --> S2
     S1["S1 untangle<br/>gfx state, r3d.h,<br/>scene camera, IMU"] --> S2
     S2["S2 the moves<br/>alone, no other PR open"] --> S3["S3 face gate<br/>engine and apps"]
     S3 --> S4["S4 ECS gaps<br/>one sketch per system"]
@@ -270,10 +273,10 @@ flowchart LR
 
 | Slice | What | Proof |
 |---|---|---|
-| S0 | the bake key stops hashing docstrings (`code_tokens()` in `launcher/tools/bake/bake.py`) | mesh, reference and fit re-key once, rebaked with the maintainer's agreement |
+| S0 | the bake key stops hashing docstrings (`code_tokens()` in `launcher/tools/bake/bake.py`) | mesh, reference and fit re-key once; S0 rides the same Sponza refit as [#835](https://github.com/jose-villegas/autana/pull/835), so one GPU run rebakes both `[M]` |
 | S1 | gfx untangle above; `r3d.h` gone; scene camera component; apps read motion through `input/` | suites green, boot pixels byte-identical |
-| S2 | every move above, CMake, the tier table, the editor's CMake, doc paths, UI-Editor-Plan.md rewrite `[A]` | all variants build, host suites, boot pixels byte-identical, `bake.py check` keys unchanged, perf same |
-| S3 | the face rule and "apps never include the system band" over app sources `[A]`; app tests on the board follow | the gate fails a scratch copy that breaks it |
+| S2 | every move above, CMake, the tier table, the editor's CMake, doc paths, UI-Editor-Plan.md rewrite `[M]` | all variants build, host suites, boot pixels byte-identical, `bake.py check` keys unchanged, perf same |
+| S3 | the face rule and "apps never include the system band" over app sources `[M]`; app tests on the board follow | the gate fails a scratch copy that breaks it |
 | S4 | the section 2 gaps | per system |
 
 ### The bake closure
@@ -283,7 +286,7 @@ closure; a C file counts without its `#include` lines, and comments never
 count. Docstrings do, and closure docstrings under `launcher/tools/` name
 firmware paths (`device/gfx_color.py` names `main/gfx/draw/gfx_color.h`),
 so S2 would re-key all three stages. S0 drops docstrings from the key once
-`[A]`; after it no doc-path edit re-keys. L1 changes no include root and no
+`[M]`; after it no doc-path edit re-keys. L1 changes no include root and no
 path in closure code, so S2 keys the same.
 
 ### Merge order
