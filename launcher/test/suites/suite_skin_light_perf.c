@@ -5,11 +5,12 @@
 #include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include "anim/pose/anim_pose.h"
 #include "asset/asset_store.h"
+#include "core/memory.h"
 #include "core/timing.h"
 #include "esp_cpu.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "perf_stats.h"
 #include "render/skin/r3d_skin_light.h"
@@ -55,34 +56,34 @@ release(void) {
     if (active == NULL) {
         return;
     }
-    free(active->local);
-    free(active->curves);
-    free(active->model);
-    free(active->palette);
-    free(active->positions);
-    free(active->light);
-    free(active->table);
-    free(active->directions);
-    free(active->samples);
-    free(active->micros);
+    memory_free(active->local);
+    memory_free(active->curves);
+    memory_free(active->model);
+    memory_free(active->palette);
+    memory_free(active->positions);
+    memory_free(active->light);
+    memory_free(active->table);
+    memory_free(active->directions);
+    memory_free(active->samples);
+    memory_free(active->micros);
     if (active->pack != NULL) {
         asset_store_release(PACK_ID);
     }
-    free(active);
+    memory_free(active);
     active = NULL;
 }
 
 static void
 heap_report(const char* stage) {
-    ESP_LOGI(TAG, "HEAP %s internal_free=%u largest=%u", stage,
-             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    ESP_LOGI(TAG, "HEAP %s internal_free=%u largest=%u", stage, (unsigned)memory_free_bytes(MEMORY_INTERNAL),
+             (unsigned)memory_largest_block(MEMORY_INTERNAL));
 }
 
 static void*
-allocate(size_t bytes) {
-    void* block = heap_caps_calloc(1, bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+fixture_block(size_t bytes) {
+    void* block = memory_alloc(bytes, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL_MESSAGE(block, "skin_light_perf: insufficient internal RAM");
+    memset(block, 0, bytes);
     return block;
 }
 
@@ -105,7 +106,7 @@ static fixture_t*
 fixture(int lights) {
     heap_report("before");
     suite_set_test_cleanup(release);
-    active = allocate(sizeof *active);
+    active = fixture_block(sizeof *active);
     fixture_t* f = active;
     f->pack = asset_store_pack(PACK_ID);
     TEST_ASSERT_NOT_NULL_MESSAGE(f->pack, "skin_light_perf: capybara pack missing; flash demo assets");
@@ -118,16 +119,16 @@ fixture(int lights) {
     TEST_ASSERT_EQUAL_INT(f->skeleton.joint_count, f->skin.joint_count);
     TEST_ASSERT_EQUAL_INT(f->bind.vertex_count, f->skin.vertex_count);
     const int joints = f->skeleton.joint_count;
-    f->local = allocate((size_t)joints * sizeof *f->local);
-    f->curves = allocate((size_t)f->clip.count * sizeof *f->curves);
-    f->model = allocate((size_t)joints * sizeof *f->model);
-    f->palette = allocate((size_t)joints * sizeof *f->palette);
-    f->positions = allocate(r3d_skin_output_bytes(&f->bind));
-    f->light = allocate((size_t)f->bind.vertex_count * sizeof *f->light);
-    f->table = allocate(sizeof *f->table);
-    f->directions = allocate(TABLE_CELLS * sizeof *f->directions);
-    f->samples = allocate(SAMPLES * sizeof *f->samples);
-    f->micros = allocate(SAMPLES * sizeof *f->micros);
+    f->local = fixture_block((size_t)joints * sizeof *f->local);
+    f->curves = fixture_block((size_t)f->clip.count * sizeof *f->curves);
+    f->model = fixture_block((size_t)joints * sizeof *f->model);
+    f->palette = fixture_block((size_t)joints * sizeof *f->palette);
+    f->positions = fixture_block(r3d_skin_output_bytes(&f->bind));
+    f->light = fixture_block((size_t)f->bind.vertex_count * sizeof *f->light);
+    f->table = fixture_block(sizeof *f->table);
+    f->directions = fixture_block(TABLE_CELLS * sizeof *f->directions);
+    f->samples = fixture_block(SAMPLES * sizeof *f->samples);
+    f->micros = fixture_block(SAMPLES * sizeof *f->micros);
     TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, f->positions, r3d_skin_output_bytes(&f->bind), &f->posed));
     anim_pose_t pose = {.local = f->local, .joint_count = joints};
     anim_pose_rest(&f->skeleton, &pose);
