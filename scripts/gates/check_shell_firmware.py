@@ -22,9 +22,9 @@ patterns themselves, not by a list. Comments and string literals are not
 code. There is no exemption list: a reason for the shell to touch the vendor
 code is a missing module, so add one.
 
-The vendor clock, pause and heap have owners: esp_timer_* and vTaskDelay belong to
-core/timing, and heap_caps_*, MALLOC_CAP_*, multi_heap_*, esp_psram_* and the
-esp_get_*heap_size queries to core/memory.
+The vendor clock, pause and heap have owners: esp_timer_* and vTaskDelay
+belong to core/timing, and heap_caps_*, MALLOC_CAP_*, multi_heap_*,
+esp_psram_* and the esp_get_*heap_size queries to core/memory.
 In the firmware, its suites and its tools, a name of any is code only in
 its owner's own files (core/timing.* and core/timing_*.*, the
 same for memory) or in a driver: anything under board/, or a *_device.c in

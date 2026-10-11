@@ -162,7 +162,7 @@ check_flash(void) {
 static void
 check_memory(void) {
     /* free and largest must come from the SAME pool or their difference
-     * is meaningless: esp_get_free_heap_size() sums a second, physically
+     * is meaningless: memory_free_bytes(MEMORY_8BIT) sums a second, physically
      * separate ~11 KiB DMA region (the ROM-stack area) that is never
      * contiguous with the main heap, so comparing it against
      * memory_largest_block()'s single-region answer invents a

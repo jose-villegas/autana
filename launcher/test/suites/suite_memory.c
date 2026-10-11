@@ -198,10 +198,8 @@ test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole(void) {
 }
 
 /* The low-water mark keeps a block freed again, never rises, and never
- * reads above the free space now. The harness restarts the mark with each
- * test, so a block of almost all of a pool's largest free space sets a new
- * low, which the host model reports exactly; one kind per pool, since a
- * second kind on the same pool cannot go lower. */
+ * reads above the free space now. The harness restarts it each test, so one
+ * near-largest block per pool sets an exact new low. */
 static void
 test_the_lowest_free_space_remembers_a_block_freed_again(void) {
     static const memory_case_t ONE_KIND_PER_POOL[] = {{MEMORY_INTERNAL, "internal"}, {MEMORY_PSRAM, "psram"}};

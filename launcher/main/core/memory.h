@@ -49,8 +49,8 @@ size_t memory_largest_block(memory_kind_t kind);
 /* Everything this kind's heap regions hold, free or not. */
 size_t memory_total_bytes(memory_kind_t kind);
 
-/* The external RAM chip's size, what the heap holds of it or not; 0 when the
- * board has none. */
+/* The external RAM chip's whole size, the part the board reserves ahead of
+ * the heap included; 0 when the board has none. */
 size_t memory_psram_bytes(void);
 
 /* Prints every region of this kind and its blocks to the console. */
