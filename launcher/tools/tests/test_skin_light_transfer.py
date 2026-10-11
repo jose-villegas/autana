@@ -51,7 +51,7 @@ int min_exp(void) { return R3D_SKIN_LIGHT_RADIANCE_MIN_EXP; }
 int max_exp(void) { return R3D_SKIN_LIGHT_RADIANCE_MAX_EXP; }
 int decode_size(void) { return R3D_SKIN_LIGHT_DECODE_SIZE; }
 int encode_size(void) { return R3D_SKIN_LIGHT_RADIANCE_SIZE; }
-float gamma(void) { return R3D_SKIN_LIGHT_GAMMA; }
+float transfer_gamma(void) { return R3D_SKIN_LIGHT_GAMMA; }
 float byte_scale(void) { return R3D_SKIN_LIGHT_BYTE_SCALE; }
 ''')
             library = build_shared("transfer", cache, [source, ROOT / "launcher/main/render/skin/r3d_skin_light.c"],
@@ -61,7 +61,7 @@ float byte_scale(void) { return R3D_SKIN_LIGHT_BYTE_SCALE; }
                                    libraries=["-lm"], log=lambda _: None)
             if sys.platform == "win32":
                 stack.callback(_ctypes.FreeLibrary, library._handle)
-            library.gamma.restype = library.byte_scale.restype = ctypes.c_float
+            library.transfer_gamma.restype = library.byte_scale.restype = ctypes.c_float
             decode = np.empty(library.decode_size(), dtype=np.float32)
             encode = np.empty(library.encode_size(), dtype=np.uint8)
             radiance = np.empty_like(encode, dtype=np.float32)
@@ -70,7 +70,7 @@ float byte_scale(void) { return R3D_SKIN_LIGHT_BYTE_SCALE; }
             sweep = np.geomspace(2.0 ** library.min_exp(), 2.0 ** library.max_exp(), 32768).astype(np.float32)
             got = np.empty(len(sweep), dtype=np.uint8)
             albedo = np.arange(len(decode)) / library.byte_scale()
-            exact_decode = albedo ** library.gamma()
+            exact_decode = albedo ** library.transfer_gamma()
             np.testing.assert_array_equal(encode_srgb8(exact_decode), np.arange(len(decode)))
             for white in (0, 0.25, 0.5, 1, 2, 4, 16):
                 library.sweep(white, sweep.ctypes.data, len(sweep), got.ctypes.data)
