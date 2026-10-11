@@ -32,7 +32,8 @@ import sys
 import time
 import tokenize
 
-from c_comments import EXCLUDED, balanced_end, blank_comments, tokens
+from c_comments import EXCLUDED, balanced_end, blank_comments
+from c_lexer import tokens
 from c_constants import ConstantIndex, DEFINE, ENUM, INTEGER, SCALAR, file_scope
 from check_clones import C_TOKENS, INCLUDE_DIRECTIVE, ROOT, changed_paths, comparison_base, git
 from tracked import revision_contents

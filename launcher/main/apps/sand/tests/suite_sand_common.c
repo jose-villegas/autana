@@ -571,7 +571,11 @@ sand_test_grid_open(uint8_t** grid, uint8_t** blocks, int w, int h, uint32_t see
     sand_test_grid_buffers_open(grid, blocks, w, h);
 
     sand_t* const real = malloc(sizeof *real);
-    TEST_ASSERT_NOT_NULL(real);
+    if (real == NULL) {
+        free(*grid);
+        free(*blocks);
+        TEST_FAIL_MESSAGE("board failed to allocate");
+    }
     init_sleeping(real, *grid, *blocks, w, h, seed);
     return real;
 }

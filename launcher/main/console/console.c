@@ -33,6 +33,8 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
+#include "core/timing.h"
+
 static const char* TAG = "console";
 
 static console_registry_t shared;
@@ -180,7 +182,7 @@ console_task(void* arg) {
             /* Should not happen once the driver is installed (fgetc blocks
              * until a byte arrives); guarded anyway so a console detached
              * mid-run degrades to a slow poll instead of a spin loop. */
-            vTaskDelay(pdMS_TO_TICKS(50));
+            timing_sleep_ms(50);
             continue;
         }
         const bool was_overflowed = overflowed;
