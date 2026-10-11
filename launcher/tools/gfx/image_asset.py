@@ -113,7 +113,10 @@ def load_source(path, allowed_keys=("source", "quarter_turns")):
     source, turns = values.get("source"), values.get("quarter_turns", 0)
     if set(values) - set(allowed_keys) or not isinstance(source, str) \
             or type(turns) is not int or not 0 <= turns <= 3:
-        raise ImageError("%s: holds source = \"x.png\" and optionally quarter_turns = 0 to 3" % path)
+        expected = 'source = "x.png"'
+        if "quarter_turns" in allowed_keys:
+            expected += " and optionally quarter_turns = 0 to 3"
+        raise ImageError(f"{path}: holds {expected}; allowed keys: {', '.join(allowed_keys)}")
     # Beside it, so whatever finds the .image.toml finds its source too.
     if pathlib.PurePath(source).name != source or ":" in source or not source.lower().endswith(".png"):
         raise ImageError("%s: source %r is not a .png in the same folder" % (path, source))

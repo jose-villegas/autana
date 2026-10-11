@@ -1,4 +1,4 @@
-# The soft line records where the mountain ends: pale cloud behind pale rock
-# makes that boundary a judgement rather than a brightness edge in the photo.
-# The drawing's brightness and width are not baked.
+# The line marks where the mountain ends in the boot photograph: pale cloud
+# behind pale rock makes that boundary a judgement, not a brightness edge.
+# Only the line's brightness-weighted centre in each column is baked.
 source = "ridge.png"

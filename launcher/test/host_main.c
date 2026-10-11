@@ -84,7 +84,7 @@ main(int argc, char** argv) {
     /* The engine pack, as the shell loads it before any app: kept for the
      * run, so no suite reads it first and none names it. */
     ui_icons_init();
-    ui_ridge_set_ambient(true);
+    ui_ridge_load();
     pack_reads_begin();
     UNITY_BEGIN();
 

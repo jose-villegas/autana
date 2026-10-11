@@ -216,7 +216,7 @@ become a goal.
 the order is most of the point:
 
 ```
-ui_ridge_load()             the curve from the engine pack, held mounted
+ui_ridge_load()             the curve from the engine pack, mounted for good; none: a level ridge
 shell_init()                the shell's own state, which the self-tests
                             step before the loop runs
 post_run_before_display()   the SD card, on its own SDMMC bus

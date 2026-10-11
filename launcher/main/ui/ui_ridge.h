@@ -10,8 +10,7 @@
 
 #define RIDGE_CURVE_POINTS GFX_HEIGHT
 
-/* Read the curve from the engine pack, which stays mounted. Called early at boot; building the ridge calls it too, so it is never built untried.
- * An unavailable or invalid curve draws a level ridge. */
+/* Read the curve from the engine pack and keep that pack mounted; only the first call reads. An unavailable or invalid curve releases the pack and draws a level ridge. */
 void ui_ridge_load(void);
 
 /* Which way is down in the screen plane, as input/tilt.h reports it: `gx`

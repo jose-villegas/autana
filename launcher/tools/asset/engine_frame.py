@@ -42,7 +42,7 @@ def _mirror_matrix(matrix, column_signs):
 
 
 def to_engine(kind, entry):
-    """An LMSH, SCNE, TRCK, SKEL or SKIN source entry mirrored once, preserving its layout."""
+    """A source entry mirrored once into the engine frame, preserving its layout; an image or table entry has no frame and comes back as it is."""
     if kind in FRAMELESS:
         return entry
     out = bytearray(entry)

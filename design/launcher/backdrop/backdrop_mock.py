@@ -19,9 +19,9 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from asset import table_asset
-from gfx import ridge_curve
+from gfx import curve_asset
 
-W, H = ridge_curve.VIEW_W, ridge_curve.VIEW_H
+W, H = curve_asset.VIEW_W, curve_asset.VIEW_H
 FPS, SECONDS = 25, 6.0
 SEED = 0x1199C8
 LIP_PX = 12
@@ -89,8 +89,8 @@ amount = along * 100 // (2 * half)
 SKY = np.stack([SKY_TOP[i] + (SKY_BOTTOM[i] - SKY_TOP[i]) * amount // 100 for i in range(3)], -1)
 SKY = np.broadcast_to(SKY[:, None, :], (H, W, 3))
 
-rows, frac_bits = table_asset.decode(ridge_curve.bake(ROOT / "launcher/main/engine/ridge/ridge.curve.toml"))
-ridge = np.array(rows[ridge_curve.ROW]) / (1 << frac_bits)
+rows, frac_bits = table_asset.decode(curve_asset.bake(ROOT / "launcher/main/engine/ridge/ridge.curve.toml"))
+ridge = np.array(rows[curve_asset.ROW]) / (1 << frac_bits)
 X = np.arange(W)
 YY = np.arange(H)[:, None]
 PHASE = CUTOFF[X % 4][None, :]

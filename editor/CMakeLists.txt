@@ -5,7 +5,7 @@ project(autana_editor LANGUAGES C CXX)
 
 include(CTest)
 
-find_package(Python3 COMPONENTS Interpreter)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -91,16 +91,13 @@ if(NOT WIN32)
     target_link_libraries(editor_runtime PUBLIC m)
 endif()
 set(engine_assets "${CMAKE_BINARY_DIR}/assets")
-file(GLOB_RECURSE engine_sources CONFIGURE_DEPENDS ${LAUNCHER_DIR}/main/engine/*)
-add_custom_command(
-    OUTPUT "${engine_assets}/engine.apak"
+add_custom_target(editor_engine_assets ALL
     COMMAND ${Python3_EXECUTABLE} "${LAUNCHER_DIR}/tools/r3d/build_pack.py"
         -o "${engine_assets}" "${LAUNCHER_DIR}/main/engine"
-    DEPENDS ${engine_sources}
+    BYPRODUCTS "${engine_assets}/engine.apak"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
     VERBATIM
 )
-add_custom_target(editor_engine_assets DEPENDS "${engine_assets}/engine.apak")
 add_dependencies(editor_runtime editor_engine_assets)
 target_compile_definitions(editor_runtime PRIVATE
     CONFIG_LAUNCHER_DEVELOPMENT=0
