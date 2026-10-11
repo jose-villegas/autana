@@ -3,10 +3,10 @@
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "43e8a2995f168d64879b5ebbb16b1d5289980566d4bdc39ae40e174fcad68207"
+key = "324d30a31a4607c6711703519ff167583e66320362e614f1574f31ab503a4d84"
 sha256 = "9024a2f573fdc2a0435c095cdf0ccd4b695b97d266abe512467e33157ae848b8"
 size = 15872
-run = 38062931735
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
@@ -20,89 +20,62 @@ seeded = true
 [[bake]]
 output = "capybara.meadow.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "7adafb502b146adfffb4cc91938988d1e5bf86c128796a8033259e4406fabcf5"
+key = "e9d5a341aef78a610b4e5e4e8eb8ae5e1c646b651f8a19f2f15c2721b6a46170"
 sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
 size = 132
-run = 38062931735
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "c4a1905d2ffcce7571922176426543f3d8749cfe3480ca589f5cc6627f2ba2c4"
+key = "65052a630e3f56ed34508c5d9242fd78e6c1962e021bb0e7829b17f257fa2409"
 sha256 = "649d221759b9424a8f52260088ec7ceb25e3b6a808ff2fd15a041e396311b0ef"
 size = 264924
-run = 38062931735
-host = "Linux x86_64"
-
-[[bake]]
-output = "sponza.atrium_fitted.mesh"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "b58c6fe0a7c47369006b3ddaf4691edce4404b8df130988e0d3a3b6620ab37c5"
-sha256 = "5bb8c67c30034e8cd2a5971de313a10f266776a740099e28f6a720aff9102b57"
-size = 143768
-run = 38065210608
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "955f89039fb0b9661f4127fccbfe56257d06f23a73c500b938d8c43f3075bb91"
+key = "c7a4bc358ef79c0ba9dbf46f0b9264ef6221487f66a97dd3f91e57145fe5575c"
 sha256 = "d41c3138102796c8b32209b4c4a5cd3a700decfdc89215bfff448e0077c3c133"
 size = 160408
-run = 38062931735
-host = "Linux x86_64"
-
-[[bake]]
-output = "sponza.atrium_fitted_full.mesh"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "088334aa9a7253a5487e6d89a6f1f99eecf3c75e2627ca64711b7acc2c51478f"
-sha256 = "55f4806a9a6b3b7906a2e1edc8abbd5798b751e33ab65230f53991cb15e2d2c8"
-size = 278360
-run = 38065210608
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "f066840524be5ce2f974436dc4363ef09e5be904acd36f2b8d112d8d8069edd5"
+key = "a82d97936901570c53c5ee7c2ab56ee4cf1ad67108848bcdd656b6d9431d2b0b"
 sha256 = "e72b3f8f92aae6d49dfd93e49ef98c15b3e7d947f5edb886fb894e009ff551e6"
 size = 312704
-run = 38062931735
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "5fd999cabc9611f961b2bd7ffb9aae131a8ccf0bc34a9613b8145c4f2808545d"
+key = "df9edf2bc5173af27336d9448e3b2c94a7fb226cf640eee8b53d729eb5ef86ae"
 sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
 size = 243452
-run = 38062931735
-host = "Linux x86_64"
-
-[[bake]]
-output = "sponza.atrium_flat_fitted.mesh"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "fa18b44d5af1bad8f2fe9bd72b27e83a27b1fb2da1c894133619d2be5fb99ac3"
-sha256 = "d84665e9f76e14b3887e14c0fa2705c39111ac07a70a088fd8b11826c0f019e0"
-size = 250864
-run = 38065210608
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "4ceac21593d8ebaa8add5daa2ef0a3e0d4861f07a7dc722a678e8eba430b35fe"
+key = "cb73c48a919b98294732a576849204c625bfb69c9123522b96afa42acae9ca20"
 sha256 = "9c7ac61ce87ea700bd199d8e1f87e96cf0f6a17835335261e5080c0714065955"
 size = 285732
-run = 38062931735
+run = 38115198151
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_lite.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "287f75172c7fb42f0bebdb2f386cc9fbe3869e5b5d07d4b926c6aab4345495c6"
+key = "7b426478ffe134ab7a9209adc23d7f0f0b34205b997ed227587f2c75841c9a9d"
 sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
 size = 130140
-run = 38062931735
+run = 38115198151
 host = "Linux x86_64"
