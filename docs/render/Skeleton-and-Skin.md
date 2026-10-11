@@ -131,8 +131,12 @@ The raster reads the output's `r3d_lit_mesh_t` view.
 One caller-owned buffer block holds positions, cluster bounds and
 node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
 `r3d_skin_output_init()` carves it. The scene allocates it together with model
-matrices and the palette in internal RAM. The mesh retains its bind-colour
-pointers; no colours are copied per frame.
+matrices and the palette in internal RAM. The same scene allocation adds three bytes per vertex for lit colours.
+Without runtime lights the mesh retains its bind-colour pointer, with no copy.
+With lights, `r3d_skin_clusters_lit()` skins positions and normals together,
+renormalises the normal, and shades the bind albedo into that colour buffer.
+Scene light directions are rotated into renderer object space before cluster
+jobs run; baked renderers keep their pack colours. See [Skinned lighting](Skinned-Lighting.md).
 Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
 
 ```mermaid
@@ -164,7 +168,8 @@ Property clips use `anim_apply()` directly on core 0 after synchronization,
 then the active scene derives placements for renderers whose entities are dirty.
 Inactive scenes do no placement work. Scenes without skeleton animators skip
 the animation split, and no posed clusters means no skin split. Unchanged poses
-skip skinning and node refit. Skin jobs
+skip skinning and node refit when no runtime lights are attached. Lit skins
+run each frame so light and renderer rotations take effect with a paused pose. Skin jobs
 write disjoint cluster vertex ranges. Node refit runs after the skin sync.
 Job contexts are checked against `JOB_CTX_MAX` at compile time.
 

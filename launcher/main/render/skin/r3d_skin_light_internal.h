@@ -1,80 +1,64 @@
-/* Inline lighting operations shared by separate and fused cluster passes. */
+/* Transfer tables avoid powers and divisions in the vertex loop. */
 #pragma once
-#include <assert.h>
-#include "math/linear/vec3f_octahedral_recip.h"
-#include "math/scalar/mathf_round.h"
+#include <string.h>
+#include "math/scalar/mathf_rsqrt_approx.h"
 #include "render/skin/r3d_skin_light.h"
 
 static inline __attribute__((always_inline)) vec3f_t
-light_normal(const mat4f_t* palette, const uint8_t* joints, const float* weights, int influences, vec3f_t normal) {
-    vec3f_t rows[R3D_SKIN_NORMAL_WIDTH];
-    for (int axis = 0; axis < R3D_SKIN_NORMAL_WIDTH; axis++) {
-        const float* r = palette[joints[0]].m[axis];
-        rows[axis] = vec3f_scale((vec3f_t){r[0], r[1], r[2]}, weights[0]);
-        for (int i = 1; i < influences; i++) {
-            r = palette[joints[i]].m[axis];
-            rows[axis] = vec3f_add(rows[axis], vec3f_scale((vec3f_t){r[0], r[1], r[2]}, weights[i]));
-        }
-    }
-    return (vec3f_t){vec3f_dot(rows[0], normal), vec3f_dot(rows[1], normal), vec3f_dot(rows[2], normal)};
-}
-
-static inline __attribute__((always_inline)) vec3f_t
 light_renormalise(vec3f_t normal) {
-    return vec3f_scale(normal, mathf_recip(mathf_sqrt(vec3f_dot(normal, normal))));
+    const float length_squared = vec3f_dot(normal, normal);
+    return length_squared > 0.0F ? vec3f_scale(normal, mathf_rsqrt_approx(length_squared)) : (vec3f_t){0};
 }
 
 static inline __attribute__((always_inline)) uint8_t
-light_byte(float value) {
-    value = value * R3D_SKIN_LIGHT_BYTE_SCALE + 0.5F;
-    return (uint8_t)mathf_clamp_finite(value, 0.0F, R3D_SKIN_LIGHT_BYTE_SCALE);
+light_encode(float radiance, const r3d_skin_light_transfer_t* transfer) {
+    if (!(radiance > 0.0F)) {
+        return 0;
+    }
+    uint32_t bits;
+    memcpy(&bits, &radiance, sizeof bits);
+    const int index = (int)(bits >> R3D_SKIN_LIGHT_RADIANCE_SHIFT) - R3D_SKIN_LIGHT_RADIANCE_FIRST;
+    if (index < 0) {
+        return 0;
+    }
+    if (index >= R3D_SKIN_LIGHT_RADIANCE_SIZE - 1) {
+        return transfer->encode[R3D_SKIN_LIGHT_RADIANCE_SIZE - 1];
+    }
+    const unsigned weight = (bits >> (R3D_SKIN_LIGHT_RADIANCE_SHIFT - R3D_SKIN_LIGHT_TRANSFER_WEIGHT_BITS))
+                            & (R3D_SKIN_LIGHT_TRANSFER_WEIGHT_ONE - 1U);
+    const unsigned a = transfer->encode[index];
+    const unsigned b = transfer->encode[index + 1];
+    return (uint8_t)((a * (R3D_SKIN_LIGHT_TRANSFER_WEIGHT_ONE - weight) + b * weight
+                      + R3D_SKIN_LIGHT_TRANSFER_WEIGHT_ONE / 2U)
+                     >> R3D_SKIN_LIGHT_TRANSFER_WEIGHT_BITS);
 }
 
-static inline __attribute__((always_inline)) void
-light_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, uint8_t out[3]) {
+static inline __attribute__((always_inline)) float
+light_decode(uint8_t albedo, const r3d_skin_light_transfer_t* transfer) {
+    const uint32_t bits = (uint32_t)transfer->decode[albedo] << R3D_SKIN_LIGHT_DECODE_SHIFT;
+    float linear;
+    memcpy(&linear, &bits, sizeof linear);
+    return linear;
+}
+
+static inline __attribute__((always_inline)) vec3f_t
+light_irradiance(vec3f_t normal, const r3d_skin_lights_t* lights) {
     vec3f_t sum = lights->ambient;
     for (int i = 0; i < lights->count; i++) {
-        const float d = vec3f_dot(normal, lights->direction[i]);
-        if (d > 0.0F) {
-            sum = vec3f_add(sum, vec3f_scale(lights->colour[i], d));
+        const float facing = vec3f_dot(normal, lights->direction[i]);
+        if (facing > 0.0F) {
+            sum = vec3f_add(sum, vec3f_scale(lights->colour[i], facing));
         }
     }
-    out[0] = light_byte(sum.x);
-    out[1] = light_byte(sum.y);
-    out[2] = light_byte(sum.z);
-}
-
-static inline __attribute__((always_inline)) int
-axis_cell(int size, float u, unsigned* weight) {
-    const float centres = 0.5F * (float)size;
-    const float x = mathf_clamp_finite(u * centres + centres - 0.5F, 0.0F, (float)(size - 1));
-    const int cell = (int)x < size - 2 ? (int)x : size - 2;
-    *weight = (unsigned)((x - (float)cell) * R3D_SKIN_LIGHT_WEIGHT_ONE);
-    return cell;
+    return sum;
 }
 
 static inline __attribute__((always_inline)) void
-light_bilinear(int size, const uint8_t (*rgb)[R3D_SKIN_LIGHT_CELL_BYTES], vec3f_t normal, uint8_t out[3]) {
-    const vec2f_t p = vec3f_octahedral_recip(normal);
-    unsigned wx, wy;
-    const int x = axis_cell(size, p.x, &wx);
-    const int y = axis_cell(size, p.y, &wy);
-    const uint8_t* a = rgb[y * size + x];
-    const uint8_t* b = rgb[y * size + x + 1];
-    const uint8_t* c = rgb[(y + 1) * size + x];
-    const uint8_t* d = rgb[(y + 1) * size + x + 1];
-    const unsigned rounding = 1U << (2 * R3D_SKIN_LIGHT_WEIGHT_BITS - 1);
+light_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t albedo[3], uint8_t out[3]) {
+    const vec3f_t sum = light_irradiance(normal, lights);
+    const float channels[] = {sum.x, sum.y, sum.z};
     for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-        const unsigned top = a[k] * (R3D_SKIN_LIGHT_WEIGHT_ONE - wx) + b[k] * wx;
-        const unsigned bottom = c[k] * (R3D_SKIN_LIGHT_WEIGHT_ONE - wx) + d[k] * wx;
-        out[k] = (uint8_t)((top * (R3D_SKIN_LIGHT_WEIGHT_ONE - wy) + bottom * wy + rounding)
-                           >> (2 * R3D_SKIN_LIGHT_WEIGHT_BITS));
+        const float decoded = light_decode(albedo[k], lights->transfer);
+        out[k] = light_encode(decoded * channels[k], lights->transfer);
     }
-}
-
-static void
-check_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, int first, int count) {
-    assert(skin->vertex_count == (uint32_t)bind->vertex_count);
-    assert(first >= 0 && count >= 0 && first <= bind->cluster_count && count <= bind->cluster_count - first);
-    assert(skin->influences == R3D_SKIN_INFLUENCES_MIN || skin->influences == R3D_SKIN_INFLUENCES_MAX);
 }

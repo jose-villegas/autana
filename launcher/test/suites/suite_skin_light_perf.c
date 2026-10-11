@@ -52,13 +52,12 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "perf_stats.h"
-#include "render/skin/r3d_skin_light.h"
+#include "render/skin/r3d_skin_light_internal.h"
 
 #define CLIP_ID      "gallop"
 #define POSE_SECONDS 0.2F
 #define SAMPLES      100
 #define WARMUP       8
-#define TABLE_CELLS  (R3D_SKIN_LIGHT_TABLE_SIZE * R3D_SKIN_LIGHT_TABLE_SIZE)
 static const char* TAG = "skin_light_perf";
 static const vec3f_t DIRECTIONS[] = {
     {0.45F, 0.80F, 0.40F}, {-0.70F, 0.35F, 0.30F}, {0.10F, 0.40F, -0.90F}, {0, -1, 0.15F}};
@@ -78,8 +77,7 @@ typedef struct {
     void* positions;
     r3d_skin_output_t posed;
     uint8_t (*light)[3];
-    r3d_skin_light_table_t* table;
-    vec3f_t* directions;
+    r3d_skin_light_transfer_t* transfer;
     int32_t* samples;
     int32_t* micros;
     r3d_skin_lights_t lights;
@@ -98,8 +96,7 @@ release(void) {
     memory_free(active->palette);
     memory_free(active->positions);
     memory_free(active->light);
-    memory_free(active->table);
-    memory_free(active->directions);
+    memory_free(active->transfer);
     memory_free(active->samples);
     memory_free(active->micros);
     if (active->pack != NULL) {
@@ -143,8 +140,7 @@ fixture(int lights) {
     f->palette = fixture_block((size_t)joints * sizeof *f->palette);
     f->positions = fixture_block(r3d_skin_output_bytes(&f->bind));
     f->light = fixture_block((size_t)f->bind.vertex_count * sizeof *f->light);
-    f->table = fixture_block(sizeof *f->table);
-    f->directions = fixture_block(TABLE_CELLS * sizeof *f->directions);
+    f->transfer = fixture_block(sizeof *f->transfer);
     f->samples = fixture_block(SAMPLES * sizeof *f->samples);
     f->micros = fixture_block(SAMPLES * sizeof *f->micros);
     TEST_ASSERT_TRUE(r3d_skin_output_init(&f->bind, f->positions, r3d_skin_output_bytes(&f->bind), &f->posed));
@@ -160,8 +156,8 @@ fixture(int lights) {
         f->lights.direction[i] = vec3f_normalize(DIRECTIONS[i]);
         f->lights.colour[i] = COLOURS[i];
     }
-    r3d_skin_light_directions(R3D_SKIN_LIGHT_TABLE_SIZE, f->directions);
-    r3d_skin_light_build(f->directions, &f->lights, f->table);
+    r3d_skin_light_transfer_build(0.0F, f->transfer);
+    f->lights.transfer = f->transfer;
     heap_report("allocated");
     ESP_LOGI(TAG, "POSE clip=%s seconds=%.3f vertices=%d influences=%d lights=%d", CLIP_ID, (double)POSE_SECONDS,
              f->bind.vertex_count, f->skin.influences, lights);
@@ -186,83 +182,54 @@ reference_normal(const fixture_t* f, int vertex) {
 }
 
 static void
-reference_light(vec3f_t n, const r3d_skin_lights_t* lights, uint8_t out[3]) {
-    float sum[] = {lights->ambient.x, lights->ambient.y, lights->ambient.z};
-    for (int i = 0; i < lights->count; i++) {
-        const vec3f_t d = lights->direction[i];
-        const float facing = fmaxf(0, n.x * d.x + n.y * d.y + n.z * d.z);
-        sum[0] += lights->colour[i].x * facing;
-        sum[1] += lights->colour[i].y * facing;
-        sum[2] += lights->colour[i].z * facing;
-    }
-    for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-        out[k] = (uint8_t)fminf(R3D_SKIN_LIGHT_BYTE_SCALE, fmaxf(0, sum[k] * R3D_SKIN_LIGHT_BYTE_SCALE + 0.5F));
-    }
+reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
+    const vec3f_t n = reference_normal(f, vertex);
+    light_evaluate(n, &f->lights, f->bind.colors[vertex], out);
 }
 
-typedef enum { SKIN, DIRECT, RENORMALISED, LOOKUP, BUILD, FUSED_DIRECT, FUSED_RENORMALISED } kernel_t;
+typedef enum { SKIN, FUSED, EXACT_SEPARATE } kernel_t;
 
 static void
 kernel(fixture_t* f, kernel_t kind) {
-    switch (kind) {
-        case SKIN: r3d_skin_clusters(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed); break;
-        case FUSED_DIRECT:
-        case FUSED_RENORMALISED:
-            r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights,
-                                  kind == FUSED_RENORMALISED, f->light);
-            break;
-        case DIRECT:
-        case RENORMALISED:
-            r3d_skin_light_direct(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->lights,
-                                  kind == RENORMALISED, f->light);
-            break;
-        case LOOKUP:
-            r3d_skin_light_table(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, f->table, f->light);
-            break;
-        case BUILD: r3d_skin_light_build(f->directions, &f->lights, f->table); break;
+    if (kind == FUSED) {
+        r3d_skin_clusters_lit(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed, &f->lights,
+                              f->light);
+        return;
+    }
+    r3d_skin_clusters(&f->skin, &f->bind, f->palette, 0, f->bind.cluster_count, &f->posed);
+    if (kind == EXACT_SEPARATE) {
+        for (int v = 0; v < f->bind.vertex_count; v++) {
+            reference_light(f, v, f->light[v]);
+        }
     }
 }
 
 static void
 quality(fixture_t* f, kernel_t kind) {
-    if (kind == FUSED_DIRECT || kind == FUSED_RENORMALISED) {
-        const size_t position_bytes = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
-        const size_t light_bytes = (size_t)f->bind.vertex_count * sizeof *f->light;
-        const uint32_t position_crc = asset_crc32(f->posed.positions, position_bytes);
-        const uint32_t light_crc = asset_crc32(f->light, light_bytes);
-        kernel(f, SKIN);
-        TEST_ASSERT_EQUAL_HEX32(position_crc, asset_crc32(f->posed.positions, position_bytes));
-        kernel(f, kind == FUSED_RENORMALISED ? RENORMALISED : DIRECT);
-        TEST_ASSERT_EQUAL_HEX32(light_crc, asset_crc32(f->light, light_bytes));
-        ESP_LOGI(TAG, "CHECK fused_positions=%08" PRIx32 " fused_light=%08" PRIx32, position_crc, light_crc);
-    }
+    const size_t positions = (size_t)f->bind.vertex_count * sizeof *f->posed.positions;
+    const uint32_t position_crc = asset_crc32(f->posed.positions, positions);
     if (kind == SKIN) {
-        ESP_LOGI(TAG, "CHECK positions=%08" PRIx32,
-                 asset_crc32(f->posed.positions, (size_t)f->bind.vertex_count * sizeof *f->posed.positions));
+        ESP_LOGI(TAG, "CHECK positions=%08" PRIx32, position_crc);
         return;
     }
-    const int count = kind == BUILD ? TABLE_CELLS : f->bind.vertex_count;
+    const uint32_t checksum = asset_crc32(f->light, (size_t)f->bind.vertex_count * sizeof *f->light);
+    kernel(f, SKIN);
+    TEST_ASSERT_EQUAL_HEX32(position_crc, asset_crc32(f->posed.positions, positions));
     uint64_t error_sum = 0;
     int error_max = 0;
-    for (int v = 0; v < count; v++) {
+    for (int v = 0; v < f->bind.vertex_count; v++) {
         uint8_t reference[3];
-        reference_light(kind == BUILD ? f->directions[v] : reference_normal(f, v), &f->lights, reference);
-        const uint8_t* got = kind == BUILD ? f->table->rgb[v] : f->light[v];
+        reference_light(f, v, reference);
         for (int k = 0; k < R3D_SKIN_LIGHT_CHANNELS; k++) {
-            const int error = abs((int)got[k] - reference[k]);
+            const int error = abs((int)f->light[v][k] - reference[k]);
             error_sum += error;
             error_max = error > error_max ? error : error_max;
         }
     }
-    uint32_t checksum;
-    if (kind == BUILD) {
-        /* Padding is defined zero, so the table checksum is reproducible. */
-        checksum = asset_crc32(f->table->rgb, sizeof f->table->rgb);
-    } else {
-        checksum = asset_crc32(f->light, (size_t)count * sizeof *f->light);
-    }
+    TEST_ASSERT_LESS_OR_EQUAL_INT(1, error_max);
+    ESP_LOGI(TAG, "CHECK fused_positions=%08" PRIx32, position_crc);
     ESP_LOGI(TAG, "QUALITY max=%d mean=%.6f checksum=%08" PRIx32, error_max,
-             (double)error_sum / (count * R3D_SKIN_LIGHT_CHANNELS), checksum);
+             (double)error_sum / (f->bind.vertex_count * R3D_SKIN_LIGHT_CHANNELS), checksum);
 }
 
 static void
@@ -286,8 +253,7 @@ measure(kernel_t kind, int lights, const char* label) {
     ESP_LOGI(TAG, "%s min=%lldcycles max=%lldcycles avg=%lldcycles med=%lldcycles p95=%lldcycles", label,
              (long long)stats.min, (long long)stats.max, (long long)stats.avg, (long long)stats.med,
              (long long)stats.p95);
-    ESP_LOGI(TAG, "COST cycles_per_%s=%.3f", kind == BUILD ? "build" : "vertex",
-             (double)stats.med / (kind == BUILD ? 1 : f->bind.vertex_count));
+    ESP_LOGI(TAG, "COST cycles_per_%s=%.3f", "vertex", (double)stats.med / f->bind.vertex_count);
     quality(f, kind);
     release();
     suite_clear_test_cleanup();
@@ -301,32 +267,20 @@ measure(kernel_t kind, int lights, const char* label) {
     PERF_TEST(test_##prefix##_2, kind, 2)                                                                              \
     PERF_TEST(test_##prefix##_4, kind, 4)
 PERF_TEST(test_skin_only, SKIN, 1)
-LIGHT_COUNT_TESTS(direct, DIRECT)
-LIGHT_COUNT_TESTS(fused_direct, FUSED_DIRECT)
-PERF_TEST(test_fused_renormalised_4, FUSED_RENORMALISED, 4)
-LIGHT_COUNT_TESTS(renormalised, RENORMALISED)
-PERF_TEST(test_table_lookup, LOOKUP, 4)
-LIGHT_COUNT_TESTS(table_build, BUILD)
+LIGHT_COUNT_TESTS(fused_renormalised, FUSED)
+LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 #undef LIGHT_COUNT_TESTS
 #undef PERF_TEST
 
 void
 suite_skin_light_perf(void) {
     RUN_TEST(test_skin_only);
-    RUN_TEST(test_fused_direct_1);
-    RUN_TEST(test_fused_direct_2);
-    RUN_TEST(test_fused_direct_4);
+    RUN_TEST(test_fused_renormalised_1);
+    RUN_TEST(test_fused_renormalised_2);
     RUN_TEST(test_fused_renormalised_4);
-    RUN_TEST(test_direct_1);
-    RUN_TEST(test_direct_2);
-    RUN_TEST(test_direct_4);
-    RUN_TEST(test_renormalised_1);
-    RUN_TEST(test_renormalised_2);
-    RUN_TEST(test_renormalised_4);
-    RUN_TEST(test_table_lookup);
-    RUN_TEST(test_table_build_1);
-    RUN_TEST(test_table_build_2);
-    RUN_TEST(test_table_build_4);
+    RUN_TEST(test_exact_separate_1);
+    RUN_TEST(test_exact_separate_2);
+    RUN_TEST(test_exact_separate_4);
 }
 #else
 static void

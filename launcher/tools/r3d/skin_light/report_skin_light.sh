@@ -38,7 +38,7 @@ mkdir -p "$BUILD_DIR/tables"
 OUT_BIN="$BUILD_DIR/skin_light_bench"
 # -fno-tree-vectorize: the board's FPU is scalar, so the host stays scalar too.
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2 -fno-tree-vectorize \
-    -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") "$SCRIPT_DIR/skin_light_bench.c" "$LAUNCHER_DIR/main/render/skin/r3d_skin_light.c" "$LAUNCHER_DIR/main/asset/asset_pack.c" -lm -o "$OUT_BIN"
+    -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") "$SCRIPT_DIR/skin_light_bench.c" "$SCRIPT_DIR/skin_light_baseline.c" "$LAUNCHER_DIR/main/asset/asset_pack.c" -lm -o "$OUT_BIN"
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"
 
 cd "$LAUNCHER_DIR"

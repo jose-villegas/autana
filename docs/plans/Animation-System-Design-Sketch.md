@@ -1,7 +1,7 @@
 # Animation system: design sketch
 
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning and the scene
-animator and skinned-renderer components are implemented; lighting, SCNE v2 and
+animator, skinned-renderer and lighting components are implemented; SCNE v2 and
 the clip picker are proposed. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
@@ -95,9 +95,12 @@ bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 | header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient_colour[3]` (linear RGB), `f32 ambient_intensity`, `f32 tonemap_white` |
 
 The lights, ambient and tone map are read by one runtime system: the skinned
-renderers' lighting (`r3d_skin_light_t`, built per skinned renderer from the
+renderers' lighting (`r3d_skin_lights_t`, built per skinned renderer from the
 scene's lights in its object space), so a skinned mesh is lit by the same
-numbers the static bake used. SCNE v1 is the scene format. The proposed version adds authored
+numbers the static bake used. Direct N.L is selected by the
+[board measurement](../render/Skinned-Lighting.md#board-measurement), with
+normal renormalisation and bake-matched albedo decode, tone map and gamma.
+SCNE v1 is the scene format. The proposed version adds authored
 animator and lighting rows; runtime attachment uses asset ids without these
 rows. TRCK v1 is refused (`ASSET_ERR_VERSION`).
 

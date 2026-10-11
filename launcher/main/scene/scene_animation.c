@@ -228,16 +228,18 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     size_t end = size;
 
     struct {
-        size_t model, palette;
+        size_t model, palette, colors;
     } layout;
 
     SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, next.skin.joint_count);
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, next.skin.joint_count);
+    SCENE_STORAGE_RESERVE(layout, end, colors, uint8_t, next.bind.vertex_count* R3D_SKIN_LIGHT_CHANNELS);
     next.internal_storage = memory_alloc(end, MEMORY_INTERNAL);
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
+    next.colors = (uint8_t(*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)next.internal_storage + layout.colors);
     next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
     next.palette = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.palette);
     anim_pose_model(&animator->skeleton, &animator->layer.shown, next.model);
@@ -382,7 +384,12 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int clusters = skin->bind.cluster_count;
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
-        r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
+        if (scene->light_count > 0) {
+            r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
+                                  &skin->lights, skin->colors);
+        } else {
+            r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
+        }
         offset += clusters;
     }
 }
@@ -423,12 +430,8 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
     }
 }
 
-void
-scene_animation_step(scene_t* scene, uint32_t dt_ms) {
-    if (scene->animator_count == 0) {
-        return;
-    }
-    animate_entities(scene, dt_ms);
+static int
+skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
     for (int e = 0; e < entities; e++) {
@@ -437,13 +440,32 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
             && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ENABLED)) {
             apply_property(scene, animator, dt_ms);
         }
-        clusters += scene->skinned_renderers[e].internal_storage == NULL || !animator->posed
-                        ? 0
-                        : scene->skinned_renderers[e].bind.cluster_count;
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        if (skin->internal_storage != NULL && scene->light_count > 0 && (scene->flags[e] & SCENE_FLAG_ENABLED)) {
+            animator->posed = true;
+            skin->output.mesh.colors = skin->colors;
+            const int renderer = scene_renderer_index(scene, (scene_entity_t)e);
+            scene->renderers[renderer].mesh.colors = skin->colors;
+        }
+        if (skin->internal_storage != NULL && animator->posed) {
+            clusters += skin->bind.cluster_count;
+        }
     }
+    return clusters;
+}
+
+void
+scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+    if (scene->animator_count == 0) {
+        return;
+    }
+    animate_entities(scene, dt_ms);
+    const int clusters = skin_stage_prepare(scene, dt_ms);
+    const int entities = scene->asset.entity_count;
     if (clusters == 0) {
         return;
     }
+    scene_lights_prepare(scene);
     range_t a = {scene, 0, clusters / 2, 0};
     range_t b = {scene, clusters / 2, clusters - (clusters / 2), 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
