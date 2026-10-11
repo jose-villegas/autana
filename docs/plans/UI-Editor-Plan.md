@@ -2,8 +2,7 @@
 
 **Status**: the document model, validation, editing controls and layout baker
 exist in [`editor/`](../../editor/README.md). The launcher is a preview;
-no firmware screen has an authored document. The brush screen is not yet a
-document.
+no firmware screen has an authored document.
 
 The objective is a tool where a screen is **authored visually and edited
 again later**, not screenshotted and re-typed. The brush screen should open
@@ -19,15 +18,15 @@ proposes a separate level editor that previews through the simulation.
 |---|---|
 | authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
 | generator | `bake_header()` in `editor/src/layout_document.cpp`, exposed by `editor_layout_bake`; every C identifier derives from the JSON's `screen` |
-| baked table | `<screen>_layout_generated.h`, the only form the device links |
+| baked table | `<screen>_layout_generated.h`, the only form a device screen links |
 | document | `editor/src/layout_document.{h,cpp}`, one type for every screen, owning the rules and header emission |
 | renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
 | shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
 
 A screen becomes editable with three things: its JSON, a draw function taking
-the baked struct with a runtime layout override, and an entry in
-`runtime.c` and the screen list in `main.cpp`. Nothing else in the editor names a
-screen.
+the baked struct plus a frame entry that accepts a layout in its place, and
+an entry in `runtime.c` (with a layout argument on `editor_runtime_render()`)
+and in the screen list in `main.cpp`.
 
 The format holds **rects and nothing else**. Of the six layout concepts and
 the text constraint described below, none is expressed yet; every rect is
@@ -161,7 +160,8 @@ run by `.github/workflows/host-tests.yml`.
 ## Phases
 
 1. **Layout as authored data.** A screen's JSON, a generator, a baked header,
-   and the screen's draw function reading the table. *Planned for firmware screens.*
+   and the screen's draw function reading the table. *Not built for any
+   screen; the generator and baker exist.*
 
    For a screen that already computes its rects, the acceptance is that its
    suite passes untouched and **the baked rects are identical to what the
@@ -171,9 +171,9 @@ run by `.github/workflows/host-tests.yml`.
 
 2. **Validation in the generator.** It refuses, at bake time and for every
    orientation, a layout that overlaps, leaves the canvas or drops an
-   interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document so the
-   editor reports the same problems while dragging. **Not yet: a string in a
-   box it does not fit**, the defect this plan cares most about. The host
+   interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document
+   so the editor reports the same problems while dragging. **Not yet: a string
+   in a box it does not fit**, the defect this plan cares most about. The host
    suite keeps its own assertions as the independent witness: the generator
    checking itself is not a test.
 
@@ -187,9 +187,10 @@ run by `.github/workflows/host-tests.yml`.
    the rects that moved: a format only a GUI can produce is a format nobody
    can review.
 
-5. **App screens prove the model.** The brush screen, then the palette.
-   These screens need the stack, fill and text concepts the
-   format still lacks.
+5. **A second screen proves the model.** After the brush screen, the palette:
+   a format that has expressed one screen has proven nothing about being a
+   format, and both need the stack, fill and text concepts the format still
+   lacks.
 
 6. **Cost overlays.** The panel's bands and dirty cells drawn over the canvas
    in the user's orientation, optional snapping to them, and a per-element

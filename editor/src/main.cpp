@@ -78,8 +78,10 @@ struct SystemScreen {
 
 bool
 render_preview(Preview& preview, const SystemScreen& screen) {
+    std::string error;
     return editor_runtime_render(screen.runtime_screen, preview.surface.pixels(), preview.surface.width(),
-                                 preview.surface.height());
+                                 preview.surface.height())
+           && preview.surface.upload(error);
 }
 
 std::filesystem::path
@@ -293,7 +295,7 @@ void
 draw_hierarchy(EditorState& state) {
     ImGui::SetNextWindowSize(ImVec2(220, 540), ImGuiCond_FirstUseEver);
     ImGui::Begin("Hierarchy");
-    ImGui::TextDisabled("System screens");
+    ImGui::TextDisabled("Screens");
     for (std::size_t index = 0; index < state.screens.size(); index++) {
         if (ImGui::Selectable(state.screens[index].title, state.active == index)) {
             state.active = index;

@@ -157,9 +157,6 @@ TEST(LayoutDocument, RejectsSharedBadDocuments) {
             continue;
         }
         SCOPED_TRACE(fixture.path().filename().string());
-        if (fixture.path() == std::filesystem::path(EDITOR_TEST_LAYOUT_PATH)) {
-            continue;
-        }
         const auto source = nlohmann::json::parse(read_bytes(fixture.path()));
         TemporaryLayout document;
         {

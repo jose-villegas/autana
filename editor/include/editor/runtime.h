@@ -20,8 +20,7 @@ int editor_runtime_panel_height(void);
 int editor_runtime_tap_min(void);
 
 /* Renders `screen` through the firmware's own UI and gfx code into a
- * width x height buffer of native-endian RGB565, 368 x 448 or 448 x 368.
- */
+ * width x height buffer of native-endian RGB565, 368 x 448 or 448 x 368. */
 bool editor_runtime_render(editor_screen_t screen, uint16_t* pixels, int width, int height);
 
 #ifdef __cplusplus
