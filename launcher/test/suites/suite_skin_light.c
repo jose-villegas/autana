@@ -541,7 +541,43 @@ test_table_extreme_finite_intensities(void) {
                 TEST_ASSERT_EQUAL_UINT32(0, table->cells[cell]);
             }
         } else {
+            for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
+                TEST_ASSERT_EQUAL_UINT32(0,
+                                         table->cells[cell] >> (R3D_SKIN_LIGHT_CHANNELS * R3D_SKIN_LIGHT_TABLE_BITS));
+            }
+            const int up = (R3D_SKIN_LIGHT_TABLE_SIDE / 2) * R3D_SKIN_LIGHT_TABLE_SIDE + R3D_SKIN_LIGHT_TABLE_SIDE / 2;
+            for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
+                TEST_ASSERT_EQUAL_UINT32(R3D_SKIN_LIGHT_TABLE_MASK,
+                                         (table->cells[up] >> (channel * R3D_SKIN_LIGHT_TABLE_BITS))
+                                             & R3D_SKIN_LIGHT_TABLE_MASK);
+            }
             TEST_ASSERT_GREATER_THAN_FLOAT(1, sampled.x);
+        }
+    }
+    free(table);
+}
+
+static void
+test_table_irradiance_floor_boundary(void) {
+    r3d_skin_light_table_t* table = malloc(sizeof *table);
+    TEST_ASSERT_NOT_NULL(table);
+    r3d_skin_lights_t lights = {.table = table};
+    const float below = nextafterf(R3D_SKIN_LIGHT_IRRADIANCE_MIN, 0.0F);
+    const float above = nextafterf(R3D_SKIN_LIGHT_IRRADIANCE_MIN, INFINITY);
+    lights.ambient = (vec3f_t){below, below, below};
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, r3d_skin_light_table_build(&lights, table));
+    for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
+        TEST_ASSERT_EQUAL_UINT32(0, table->cells[cell]);
+    }
+    lights.ambient = (vec3f_t){above, above, above};
+    const float scale = r3d_skin_light_table_build(&lights, table);
+    TEST_ASSERT_TRUE(isfinite(scale));
+    TEST_ASSERT_EQUAL_FLOAT(above / R3D_SKIN_LIGHT_TABLE_MASK, scale);
+    for (int cell = 0; cell < R3D_SKIN_LIGHT_TABLE_CELLS; cell++) {
+        for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
+            TEST_ASSERT_EQUAL_UINT32(R3D_SKIN_LIGHT_TABLE_MASK,
+                                     (table->cells[cell] >> (channel * R3D_SKIN_LIGHT_TABLE_BITS))
+                                         & R3D_SKIN_LIGHT_TABLE_MASK);
         }
     }
     free(table);
@@ -551,6 +587,7 @@ void
 suite_skin_light(void) {
     RUN_TEST(test_reference_decodes_packed_normal_length);
     RUN_TEST(test_table_extreme_finite_intensities);
+    RUN_TEST(test_table_irradiance_floor_boundary);
     RUN_TEST(test_table_scale_tracks_sampled_maximum_and_cells);
     RUN_TEST(test_irradiance_table_preserves_range_and_matches_float);
     RUN_TEST(test_default_direct_preserves_blended_normal_length);

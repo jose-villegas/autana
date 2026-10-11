@@ -105,9 +105,10 @@ allocates its shared irradiance table<sup>[[58]](../Citations.md#58)</sup> in
 internal RAM only while at least one renderer uses table mode. Cells store
 packed 8-bit RGB with one scale per table, kept in the scene's
 `r3d_skin_lights_t`. The scale covers the grid's maximum irradiance, preserving irradiance above one.
-Directions come from flash because recomputing them per build costs more
-than the table itself. The host C generator calls `vec3f_from_octahedral()`
-from the math package. The builder uses two irradiance passes to avoid a
+Cell directions are a generated flash table,
+`r3d_skin_light_directions.h`, so a build does not decode them per cell;
+`gen_skin_light_directions.sh` produces it with the math package's
+`vec3f_from_octahedral()`. The builder uses two irradiance passes to avoid a
 scratch allocation. Its irradiance
 range is `R3D_SKIN_LIGHT_IRRADIANCE_MIN` through `R3D_SKIN_LIGHT_IRRADIANCE_MAX`;
 a table below the floor has zero cells and unit scale, and larger values clamp
@@ -128,14 +129,15 @@ lights and scene table.
 
 The generated table reports fused cycles per vertex at each light count,
 worst and mean light-byte error against independently evaluated float
-lighting, table and normal-palette build cycles per frame, and RAM per
+lighting, table build cycles per light change, normal-palette build cycles
+per frame, and RAM per
 renderer and per scene. Scene bytes are shared across renderers. The table is
 generated from the [board capture](#board-measurement).
 
-<!-- generated: skin-light-modes sha256=24c545801789b5bdfade96adaf9b08dbe4626761850f4acddac0b13f27ef6211 -->
+<!-- generated: skin-light-modes sha256=2a0381bc63b7442c9595ecfa9cf9496eb9ea33e9e1b7ca431e7cdcbe7866fd40 -->
 Build `95e6c074f9ed-diag`.
 
-| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / frame | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
+| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | direct | 1 | 640.509 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
 | direct | 2 | 663.720 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |

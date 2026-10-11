@@ -17,7 +17,7 @@ sys.path.insert(0, str(REPO / "scripts/lib"))
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
-MEAN_RE = re.compile(r"\b(?P<name>\S+) both cores: mean\s+(?P<value>\d+)us\b")
+MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
 def cell(text):
     return text.strip().strip("`").replace("**", "")
