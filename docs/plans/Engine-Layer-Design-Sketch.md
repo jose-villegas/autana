@@ -1,8 +1,9 @@
 # Engine layer: design sketch
 
-**Status:** a sketch for review. Only `[M]` items are decided; nothing has
-moved. `[M]` marks the maintainer's decision or constraint, `[A]` a proposal
-of this sketch that nobody asked for.
+**Status:** in review. Section 1 and the `r3d_project` destination are
+approved; sections 2 to 4 are being walked. Nothing has moved. `[M]` marks
+the maintainer's decision or constraint, `[A]` a proposal of this sketch not
+yet approved.
 
 The firmware becomes three bands over the shared packages: the **platform**
 (board, panel, input, present, core), the **engine** (scene, render, anim,
@@ -50,7 +51,7 @@ authored document left.
 | B | shell UI stays code, editor is games-only | names no firmware | hand-written C, as the launcher is today | shell screens never get the editor |
 | **C** | **the shell is one more project on the public toolkit, a privileged client** | **opens a project folder, names no firmware** | **a project at `shell/ui/`, opened internally** | **the toolkit must cover what the shell needs** |
 
-**Decision: C, with B until the editor is mature** `[M]`.
+**Decision: C, with B until the editor is mature** `[M]`, and every item in this section is approved.
 
 ### What C separates that today's tree does not
 
@@ -65,7 +66,7 @@ authored document left.
 
 | Need | Becomes | Why |
 |---|---|---|
-| a scrim behind a panel over a paused screen | toolkit feature `ui_scrim_*` `[A]` | a game's pause menu needs the same |
+| a scrim behind a panel over a paused screen | toolkit feature `ui_scrim_*` `[M]` | a game's pause menu needs the same |
 | scroll with snap and momentum | toolkit (already `ui_scroll`, `ui_snap`) | an app already uses it |
 | `ui_invalidate()` | toolkit (already) | any client whose screen another drawer overwrote calls it |
 | baked layout tables | toolkit (already `ui_layout.h`) | the editor's output, the same for every project |
@@ -77,17 +78,17 @@ authored document left.
 
 | Hook | Where it lives | Who may call it |
 |---|---|---|
-| overlay: a system draw after the app's `frame()` | a new phase after `frame()` in `shell/shell_system.h` `[A]` | system band only |
+| overlay: a system draw after the app's `frame()` | a new phase after `frame()` in `shell/shell_system.h` `[M]` | system band only |
 | boot handoff: the home painter under boot's last frames | `boot_anim_set_ending_backdrop()` (exists) | system band only |
 | app switching, exit | `shell/`; apps reach it only through `app/app.h` callbacks and `shell_request_exit()` | as today |
 
-They stay out of the SDK by one tier rule, no list `[A]`: an app may include
+They stay out of the SDK by one tier rule, no list `[M]`: an app may include
 the engine, the app contract and the platform's face, never `shell/`,
 `boot/`, `selftest/` or `console/`.
 
 ### What UI-Editor-Plan.md becomes, and what the shell keeps
 
-- **The plan** is retitled "UI editor: authoring a project's screens" `[A]`.
+- **The plan** is retitled "UI editor: authoring a project's screens" `[M]`.
   Control Center leaves it; its first document becomes a game screen (the
   brush screen, already its phase 5); the editor links `ui/` and `gfx/` and no
   shell or app file, so the launcher preview leaves it until the shell opens
@@ -196,7 +197,7 @@ system icons), not code; it keeps its place under L1.
 | `gfx/draw/*`, `gfx/image/*` | `draw/` | S2 |
 | `gfx/draw/gfx_color.h`, `gfx_target.h`, `gfx_box.h` | `gfx/` (present's face: pixel format, target) | S2 |
 | `render/viewport.h` | `display/` | S2 |
-| `render/r3d_project.h`, `r3d_project_x.h` | stay in `render/` `[A]`: they include `render/render_view.h`, so the maths package cannot take them until they take plain values | |
+| `render/r3d_project.h`, `r3d_project_x.h` | stay in `render/` for now `[M]`: they include `render/render_view.h`, so the maths package cannot take them until they take plain values | |
 | `render/r3d.h` | deleted, its six includers name what they use | S1 |
 | scene camera types in `render/r3d_scene.h` | `scene/camera/` | S1 |
 
