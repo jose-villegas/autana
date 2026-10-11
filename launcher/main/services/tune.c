@@ -24,13 +24,6 @@ tune_handle_line(const char* line, tune_reply_fn reply) {
     return tune_registry_handle_line(&shared, line, reply);
 }
 
-static int
-entry_order(const void* a, const void* b) {
-    const tune_entry_t* first = a;
-    const tune_entry_t* second = b;
-    return strcmp(first->name, second->name);
-}
-
 const tune_entry_t*
 tune_find(const tune_registry_t* registry, const char* name) {
     for (const tune_entry_t* entry = registry->first; entry != NULL; entry = entry->next) {
@@ -43,7 +36,7 @@ tune_find(const tune_registry_t* registry, const char* name) {
 
 bool
 tune_register(tune_registry_t* registry, tune_entry_t* entry) {
-    static const registry_rule_t rule = {offsetof(tune_entry_t, next), entry_order, NULL};
+    static const registry_rule_t rule = REGISTRY_RULE(tune_entry_t, strcmp, NULL);
     if (registry_contains(registry->clashed, rule.link, entry)) {
         return false;
     }
