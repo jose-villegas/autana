@@ -229,7 +229,8 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         except bake.BakeMissing as error:
             errors.append(error)
     if errors:
-        raise bake.BakeMissing("\n".join(map(str, errors)))
+        error = bake.BakeUnlocked if all(isinstance(item, bake.BakeUnlocked) for item in errors) else bake.BakeMissing
+        raise error("\n".join(map(str, errors)))
     packs = {name: entries for name, entries in packs.items() if name not in (unlocked or ())}
     unkeyed = [f"{name}/{entry}" for name, entries in packs.items() for entry, source in entries.items()
                if not source.name.endswith(BAKED_HERE) and entry not in replaced
@@ -345,7 +346,9 @@ def main(argv=None):
             image_asset.ImageError, icons_asset.IconsError) as error:
         parser.error(str(error))
     except Exception as error:
-        if type(error).__name__ != "BakeMissing":
+        from bake import bake
+
+        if not isinstance(error, bake.BakeMissing):
             raise
         print(f"build_pack.py: {error}", file=sys.stderr)
         return 2

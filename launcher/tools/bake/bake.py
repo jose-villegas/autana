@@ -31,13 +31,20 @@ there, the folder a CI run uploads; `--only` limits it to the named outputs and
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new row is written; it repeats, so the meshes of a Bakes run and the
+way a new bake row is written; it repeats, so the meshes of a Bakes run and the
 fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
 and each new row is marked `seeded`: its bytes
 were carried over, not made by the code its key names. `check` fails when LOCK lacks a
-needed key or holds one nothing needs. `fetch` puts every
+needed key or holds one nothing needs, and samples every needed poses row again, failing on one
+missing, unneeded or different, exactly.
+
+LOCK's `[[poses]]` rows hold the digest and count of each camera-path sampling, keyed on its clip bytes,
+sampling arguments and sampler code. `lock` samples and writes them. A key computed from a held row needs
+no host C compiler.
+
+`fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
 never downloads; `path` fetches one bake by its output's name (`NAME.glb`)
 and prints where it is, for a tool that reads it. `publish`, on main in CI only, uploads each locked file the
@@ -56,6 +63,7 @@ import io
 import json
 import os
 import pathlib
+import platform
 import re
 import shutil
 import subprocess
@@ -91,9 +99,11 @@ CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
 # bake is reproducible only on one kind of host; a seeded row has none.
 ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "seeded")
+POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them.
 STAGES = {
+    "poses": ("anim/track_host.py",),
     "mesh": ("r3d/mesh_import.py",),
     "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
     "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
@@ -314,7 +324,7 @@ def c_content(path):
 @functools.cache
 def stage_files(stage):
     """The files whose code makes `stage`'s output: its entries' closure, stopping at another stage's
-    entry script, whose key the stage already chains in."""
+    entry script, whose key or output the stage already names."""
     own = {(TOOLS / entry).resolve() for entry in STAGES[stage]}
     stop = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries} - own
     return closure(STAGES[stage], stop)
@@ -418,14 +428,53 @@ def canonical(value):
     return parsed(value)
 
 
-def camera_inputs(scene):
-    """The camera a look reads: its lens and region, and its clip's baked bytes, not its file path."""
-    from r3d.fitted_variant import camera_clip
+class Poses:
+    """Sampled-poses digests read from held lock rows or sampled this run; `used` holds their rows."""
+    def __init__(self, held, resample=False):
+        self.held, self.resample = held, resample
+        self.used, self.missing = {}, {}
 
+    def digest(self, camera, every_ms, size, tools, unavailable=None):
+        """The digest of parsed camera rows, or None when the sampler cannot supply a missing row."""
+        from anim import tracks_asset
+        from anim.track_host import TrackHostError
+        from r3d.poses import sample_camera_path
+
+        path = camera.path
+        if path is None or size is None:
+            raise SettingsError("camera poses need camera_path visibility and a camera path")
+        if not path.animation.is_file():
+            raise SettingsError(f"camera path animation is missing: {path.animation}")
+        clip = hashlib.sha256(tracks_asset.bake(path.animation)).hexdigest()
+        key = digest(["poses", clip, path.node, every_ms, list(size), camera.half_fov_short_tan,
+                      camera.near_z, tools["poses"]])
+        row = self.used.get(key) or (None if self.resample else self.held.get(key))
+        if row is None and key not in self.missing:
+            try:
+                width, height, lens, near, rows = sample_camera_path(
+                    path.animation, path.node, every_ms, *size, camera.half_fov_short_tan, camera.near_z)
+            except TrackHostError:
+                self.missing[key] = (f"poses clip {relative(path.animation)}, node {path.node}, "
+                                     f"every_ms {every_ms}, size {tuple(size)} is not available")
+            else:
+                row = {"key": key, "poses": digest([width, height, lens, near, [list(map(float, r)) for r in rows]]),
+                       "count": len(rows), "clip": relative(path.animation),
+                       "host": f"{platform.system()} {platform.machine()}"}
+        if row is None:
+            if unavailable is not None:
+                unavailable.add(key)
+            return None
+        self.used[key] = row
+        return row["poses"]
+
+    def reason(self, keys):
+        return "; ".join(self.missing[key] for key in sorted(keys))
+
+
+def camera_inputs(scene):
+    """The camera lens recipe; sampled-poses digests are supplied by Poses."""
     camera = scene.camera.component
-    lens = {name: canonical(value) for name, value in vars(camera).items() if name != "path"}
-    clip = hashlib.sha256(camera_clip(scene)).hexdigest() if camera.path else None
-    return {"lens": lens, "clip": clip}
+    return {"lens": {name: canonical(value) for name, value in vars(camera).items() if name != "path"}}
 
 
 def is_blend(settings):
@@ -446,7 +495,7 @@ def import_recipe(settings, tools):
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
-def mesh_recipe(job, scene, tools):
+def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     """What a lit or albedo mesh is made from, without its fit and without paths."""
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
@@ -455,7 +504,10 @@ def mesh_recipe(job, scene, tools):
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,
                            "bake": canonical(job.bake), "indirect": canonical(scene.indirect) if job.bake.indirect else None}
         if job.renderer.visibility is not None:
-            recipe["camera"] = camera_inputs(scene)
+            visibility = job.renderer.visibility
+            camera = recipe["camera"] = camera_inputs(scene)
+            if visibility.source == "camera_path":
+                camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
     return recipe
 
 
@@ -463,43 +515,55 @@ def fit_recipe(fit):
     return dict(vars(fit))
 
 
-def reference_recipe(inputs, tools):
+def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its fitted_variant.ReferenceInputs: the import as a mesh counts
-    it, the camera by its lens and clip bytes, the rest as parsed."""
+    it, the camera by its lens and sampled poses, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
         if field.name == "settings":
             recipe["settings"], recipe["sources"] = import_recipe(value, tools)
         elif field.name == "camera":
-            recipe["camera"] = camera_inputs(inputs.scene())
+            scene = inputs.scene()
+            camera = camera_inputs(scene)
+            camera["poses"] = {name: poses.digest(scene.camera.component, inputs.poses[field], inputs.size, tools, unavailable)
+                               for name, field in (("train", "train_every_ms"),
+                                                   ("coverage", "coverage_every_ms"))}
+            recipe["camera"] = camera
         else:
             recipe[field.name] = canonical(value)
     return recipe
 
 
-def stage_keys(job, scene, tools, starts=None):
+def stage_keys(job, scene, tools, starts=None, poses=None):
     """{stage: key} of one job: a mesh alone, or a fit's start, references and fit. The references are keyed
     on what they read, not on the start, so fits that differ only in their start share them; the fit is
     keyed on its references and on its start's bytes, which `starts` ({start key: sha256}) gives, and is
-    None while they are unknown."""
-    start = digest(["mesh", mesh_recipe(job, scene, tools), tools["mesh"]])
-    if job.renderer.fit is None:
-        return {"mesh": start}
-    from r3d.fitted_variant import reference_inputs
+    None while they are unknown. A key is None while a poses digest it needs cannot be had."""
+    poses = Poses({}) if poses is None else poses
+    unavailable = set()
+    recipe = mesh_recipe(job, scene, tools, poses, unavailable)
+    start = None if unavailable else digest(["mesh", recipe, tools["mesh"]])
+    keys = {"mesh": start}
+    if job.renderer.fit is not None:
+        from r3d.fitted_variant import reference_inputs
 
-    reference = digest(["reference", reference_recipe(reference_inputs(job, scene), tools), tools["reference"]])
-    start_sha256 = None if starts is None else starts.get(start)
-    fit = None if start_sha256 is None else digest(["fit", reference, start_sha256, fit_recipe(job.renderer.fit),
-                                                    tools["fit"]])
-    return {"start": start, "start_sha256": start_sha256, "reference": reference, "fit": fit}
+        recipe = reference_recipe(reference_inputs(job, scene), tools, poses, unavailable)
+        reference = None if unavailable else digest(["reference", recipe, tools["reference"]])
+        start_sha256 = None if starts is None else starts.get(start)
+        fit = None if start_sha256 is None or reference is None else digest(
+            ["fit", reference, start_sha256, fit_recipe(job.renderer.fit), tools["fit"]])
+        keys = {"start": start, "start_sha256": start_sha256, "reference": reference, "fit": fit}
+    if unavailable:
+        keys["reason"] = poses.reason(unavailable)
+    return keys
 
 
-def bakes(paths, starts=None):
+def bakes(paths, starts=None, poses=None):
     """Every bake the packs under `paths` hold, in pack and entry order."""
     from r3d.build_pack import pack_jobs
 
-    return bakes_in(*pack_jobs(paths), starts)
+    return bakes_in(*pack_jobs(paths), starts, poses)
 
 
 def blend_export(settings, tools):
@@ -523,10 +587,14 @@ def locked_starts(lock, *made):
     return starts
 
 
-def bakes_in(packs, jobs, starts=None):
+def bakes_in(packs, jobs, starts=None, poses=None):
     """The bakes of build_pack.pack_jobs()'s packs. A fit's start is a mesh bake of its own, which no pack
     holds; the fit's key reads the start's bytes from `starts` ({key: sha256}, the lock's when None)."""
-    starts = locked_starts(read_lock()) if starts is None else starts
+    if starts is None or poses is None:
+        tables = read_lock_tables()
+        held, rows = tables["bake"], tables["poses"]
+        starts = locked_starts(held) if starts is None else starts
+        poses = Poses(rows) if poses is None else poses
     tools = {stage: tool_digest(stage) for stage in STAGES}
     found, exports, fit_starts = [], {}, {}
     for name, entries in sorted(packs.items()):
@@ -537,7 +605,7 @@ def bakes_in(packs, jobs, starts=None):
             if is_blend(job.settings):
                 export = blend_export(job.settings, tools)
                 exports.setdefault(export.key, export)
-            keys = stage_keys(job, scene, tools, starts)
+            keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name
             start = None
@@ -545,7 +613,7 @@ def bakes_in(packs, jobs, starts=None):
                 start = fit_starts.setdefault(keys["start"], Bake(
                     output=f"{entry}{START_SUFFIX}", source=asker, holder=holder, kind="mesh", key=keys["start"],
                     suffix=MESH_SUFFIX, tree=source.with_name(f"{entry}{START_SUFFIX}"), job=job, scene=scene,
-                    stages={"mesh": keys["start"]}, packed=False))
+                    stages={"mesh": keys["start"], **({"reason": keys["reason"]} if "reason" in keys else {})}, packed=False))
             found.append(Bake(output=f"{entry}{MESH_SUFFIX}", source=asker, holder=holder, kind=kind, key=keys[kind],
                               suffix=MESH_SUFFIX, tree=source, job=job, scene=scene, stages=keys, start=start))
     return list(exports.values()) + list(fit_starts.values()) + found
@@ -556,13 +624,18 @@ def relative(path):
     return path.relative_to(REPO).as_posix() if path.is_relative_to(REPO) else str(path)
 
 
-def read_lock(path=LOCK):
-    """{key: row} of LOCK; empty when there is none."""
-    if not path.is_file():
-        return {}
-    with path.open("rb") as source:
-        rows = tomllib.load(source).get("bake", [])
-    return {row["key"]: row for row in rows}
+def read_lock_tables(path=LOCK):
+    """The bake and poses tables, each as {key: row}; empty when absent."""
+    rows = {}
+    if path.is_file():
+        with path.open("rb") as source:
+            rows = tomllib.load(source)
+    return {name: {row["key"]: row for row in rows.get(name, [])} for name in ("bake", "poses")}
+
+
+def read_lock(path=LOCK, table="bake"):
+    """{key: row} of a lock table; empty when absent."""
+    return read_lock_tables(path)[table]
 
 
 def toml_value(value):
@@ -571,13 +644,19 @@ def toml_value(value):
     return json.dumps(value) if isinstance(value, str) else str(value)
 
 
-def write_lock(rows, path=LOCK):
-    """LOCK from `rows`, one table per key, sorted by output then key."""
+def write_lock(rows, path=LOCK, poses=()):
+    """LOCK from `rows`, one table per key sorted by output then key, then the `poses` rows sorted by key."""
     lines = ["# Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.", ""]
     for row in sorted(rows, key=lambda row: (row["output"], row["key"])):
         lines.append("[[bake]]")
         lines += [f"{name} = {toml_value(row[name])}" for name in ROW_FIELDS
                   if name in row]
+        lines.append("")
+    lines += ["# [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments",
+              "# and sampler code. bake.py lock writes them; bake.py check samples them again.", ""]
+    for row in sorted(poses, key=lambda row: row["key"]):
+        lines.append("[[poses]]")
+        lines += [f"{name} = {toml_value(row[name])}" for name in POSE_FIELDS]
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
@@ -628,6 +707,8 @@ def describe(bake, why, again):
 
 def unlocked(bake):
     """Why LOCK has no row for `bake`."""
+    if bake.stages and bake.stages.get("reason"):
+        return bake.stages["reason"]
     if bake.key is None:
         return (f"its start {bake.stages['start']} is not locked, so its key, which names the start's bytes, "
                 "is not known yet")
@@ -635,6 +716,9 @@ def unlocked(bake):
 
 
 def bake_again(bake):
+    if bake.stages and bake.stages.get("reason"):
+        return ("run bake.py lock on a host with a C compiler (track_host.py builds the device sampler), "
+                "or the CI Bakes check")
     if bake.key is None:
         return ("lock its start first: bake.py lock --from-run N with the Bakes run that made it, then run the "
                 "Bakes GPU workflow on this branch")
@@ -703,6 +787,25 @@ def check(found, lock):
     problems = [describe(bake, unlocked(bake), bake_again(bake)) for bake in found if bake.key not in lock]
     problems += [f"  {row['output']}  key {key}: locked, but nothing needs it; run bake.py lock"
                  for key, row in sorted(lock.items()) if key not in needed]
+    return problems
+
+
+def check_poses(found, held):
+    """Problems of re-sampled digests and counts against held rows: missing, unneeded or different, exactly."""
+    poses = Poses(held, resample=True)
+    tools = {stage: tool_digest(stage) for stage in STAGES}
+    for item in found:
+        if item.job is not None and item.scene is not None:
+            stage_keys(item.job, item.scene, tools, poses=poses)
+    problems = [f"{reason}; run bake.py lock on a host with a C compiler or the CI Bakes check"
+                for reason in poses.missing.values()]
+    for key, row in sorted(poses.used.items()):
+        previous = held.get(key)
+        if previous is None:
+            problems.append(f"  poses {key}: missing; run bake.py lock")
+        elif (previous["poses"], previous["count"]) != (row["poses"], row["count"]):
+            problems.append(f"  poses {key}: sampled digest or count differs; run bake.py lock")
+    problems += [f"  poses {key}: nothing needs it; run bake.py lock" for key in sorted(held.keys() - poses.used.keys())]
     return problems
 
 
@@ -909,10 +1012,12 @@ def main(argv=None):
                 print(tool_digest(stage))
             return 0
         paths = args.paths or [DEFAULT_SEARCH]
-        lock = read_lock()
+        tables = read_lock_tables()
+        lock, held = tables["bake"], tables["poses"]
         made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
         starts = locked_starts(lock, made)
-        found = [] if args.command == "path" else bakes(paths, starts)
+        poses = Poses(held, resample=args.command == "lock")
+        found = [] if args.command == "path" else bakes(paths, starts, poses)
         if args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in lock) or args.kind not in (None, bake.kind):
@@ -930,7 +1035,7 @@ def main(argv=None):
                     continue
                 if kind == "fit" and made_starts:
                     # A fit's key names its start's bytes: the lock's, else those this run just made.
-                    found = bakes(paths, {**made_starts, **starts})
+                    found = bakes(paths, {**made_starts, **starts}, poses)
                 for bake in found:
                     if (bake.kind != kind or not (args.again or bake.key not in lock)
                             or (args.only and bake.output not in args.only)):
@@ -957,12 +1062,12 @@ def main(argv=None):
                 # A fit waits for its start's row: what is made locks now, and the rest is named.
                 missing = []
                 rows = lock_rows(found, lock, made, missing)
-            write_lock(rows)
+            write_lock(rows, path=LOCK, poses=poses.used.values())
             print(f"locked {len(rows)} bakes in {relative(LOCK)}")
             if not args.seed and missing:
                 raise BakeMissing("still to lock:\n" + "\n".join(missing))
         elif args.command == "check":
-            problems = check(found, lock)
+            problems = check(found, lock) + check_poses(found, held)
             if problems:
                 run = os.environ.get("GITHUB_RUN_ID")
                 after = (f"\nThis run made the mesh bakes: bake.py lock --from-run {run}, then commit {relative(LOCK)}."
@@ -975,7 +1080,7 @@ def main(argv=None):
         elif args.command == "path":
             if len(args.paths) != 1:
                 parser.error("path takes one output name")
-            named = [bake for bake in bakes([DEFAULT_SEARCH]) if bake.output == args.paths[0]]
+            named = [bake for bake in bakes([DEFAULT_SEARCH], starts, poses) if bake.output == args.paths[0]]
             if not named:
                 parser.error(f"path: no bake makes {args.paths[0]}")
             print(fetch_all(named, lock, cache, args.offline)[named[0]])

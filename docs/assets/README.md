@@ -255,6 +255,15 @@ names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
 
+The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
+
+| Who | Does |
+|---|---|
+| a build whose poses rows are all locked | reads them; never builds or runs `track_host`, so needs no host C compiler |
+| a key whose row is missing | samples through `track_host` (a host C compiler), or leaves the bake unlocked, naming `bake.py lock` |
+| `bake.py lock` | samples every needed row again and writes it with its `host`, dropping the rest; the only writer |
+| `bake.py check` | samples every needed row again; a missing, unneeded or differing row fails, exactly |
+
 ### Flashing
 
 The firmware build writes the packs to `assets/` in its build directory and
