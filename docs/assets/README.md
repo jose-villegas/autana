@@ -236,8 +236,9 @@ renderer.
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
-`launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
-directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
+`launcher/tools/asset/asset_pack.py` writes the pack,
+`launcher/tools/asset/asset_directory.py` the directory,
+`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
@@ -280,6 +281,15 @@ held: its bytes were carried over, not made by the code its key names, and
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
+
+The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
+
+| Who | Does |
+|---|---|
+| a build whose poses rows are all locked | reads them; never builds or runs `track_host`, so needs no host C compiler |
+| a key whose row is missing | samples through `track_host` (a host C compiler), or leaves the bake unlocked, naming `bake.py lock` |
+| `bake.py lock` | samples every needed row again and writes it with its `host`, dropping the rest; the only writer |
+| `bake.py check` | samples every needed row again; a missing, unneeded or differing row fails, exactly |
 
 ### Flashing
 

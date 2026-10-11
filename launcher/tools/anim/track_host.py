@@ -115,7 +115,10 @@ def program():
 
 def run(args):
     """track_host's output for `args`, as text."""
-    done = subprocess.run([str(program()), *map(str, args)], capture_output=True, text=True)
+    try:
+        done = subprocess.run([str(program()), *map(str, args)], capture_output=True, text=True)
+    except OSError as error:
+        raise TrackHostError(f"cannot build or run track_host: {error}") from error
     if done.returncode != 0:
         raise TrackHostError(f"track_host {' '.join(map(str, args))}: {done.stderr.strip()}")
     return done.stdout

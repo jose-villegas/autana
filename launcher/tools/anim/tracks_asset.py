@@ -21,10 +21,10 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf import gltf_read  # noqa: E402
+from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 
 TYPE = b"TRCK"
 VERSION = 2
-SUFFIX = ".anim.toml"
 HEADER = struct.Struct("<HHIIIB3x")
 ROW = struct.Struct("<HHIIIHBB4x")
 HEADER_SIZE = 20
@@ -269,11 +269,6 @@ def sample(track, seconds):
     """A decoded track at `seconds` by the Python sampler in gltf/gltf_read.py."""
     return gltf_read.sample_keys(track["times"], track["values"], seconds, track["interpolation"],
                                  track["quaternion"])
-
-
-def clip_id(path):
-    """The pack id of a .anim.toml: its stem."""
-    return pathlib.Path(path).name.removesuffix(SUFFIX)
 
 
 def load_source(path):
