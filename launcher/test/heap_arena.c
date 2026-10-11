@@ -367,18 +367,8 @@ arena_pool_alloc(arena_pool_t* p, size_t n) {
     return NULL;
 }
 
-/* Merges b with a free neighbour on either side. Address-ordered list, so
- * "neighbour" here means adjacent in the list, which is also adjacent in
- * memory by construction (every split creates its remainder immediately
- * after the block it came from). */
 static void
-arena_pool_release(arena_pool_t* p, arena_block_t* b) {
-    b->in_use = 0;
-    b->magic = 0;
-    p->cur_bytes -= b->size;
-    p->cur_blocks -= 1;
-    p->free_bytes += b->size;
-
+arena_pool_merge_next(arena_pool_t* p, arena_block_t* b) {
     if (b->next) {
         arena_unpoison_header(b->next);
     }
@@ -391,18 +381,27 @@ arena_pool_release(arena_pool_t* p, arena_block_t* b) {
             b->next->prev = b;
         }
     }
+}
+
+/* Merges b with a free neighbour on either side. Address-ordered list, so
+ * "neighbour" here means adjacent in the list, which is also adjacent in
+ * memory by construction (every split creates its remainder immediately
+ * after the block it came from). */
+static void
+arena_pool_release(arena_pool_t* p, arena_block_t* b) {
+    b->in_use = 0;
+    b->magic = 0;
+    p->cur_bytes -= b->size;
+    p->cur_blocks -= 1;
+    p->free_bytes += b->size;
+
+    arena_pool_merge_next(p, b);
     if (b->prev) {
         arena_unpoison_header(b->prev);
     }
     if (b->prev && !b->prev->in_use) {
-        arena_block_t* pr = b->prev;
-        pr->size += ARENA_HEADER_SIZE + b->size;
-        p->free_bytes += ARENA_HEADER_SIZE;
-        pr->next = b->next;
-        if (pr->next) {
-            pr->next->prev = pr;
-        }
-        b = pr;
+        arena_pool_merge_next(p, b->prev);
+        b = b->prev;
     }
     arena_poison_block(b);
 }
