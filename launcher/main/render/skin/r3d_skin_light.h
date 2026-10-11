@@ -4,8 +4,10 @@
 #include "math/linear/mat3f.h"
 #include "render/skin/r3d_skinning.h"
 
-#define R3D_SKIN_LIGHT_MAX                 4
-#define R3D_SKIN_LIGHT_CHANNELS            3
+#define R3D_SKIN_LIGHT_MAX 4
+
+enum { R3D_SKIN_LIGHT_CHANNELS = 3 };
+
 #define R3D_SKIN_LIGHT_BYTE_SCALE          255
 #define R3D_SKIN_LIGHT_DECODE_SIZE         256
 #define R3D_SKIN_LIGHT_DECODE_SHIFT        16
@@ -41,7 +43,9 @@ typedef struct {
 #define R3D_SKIN_LIGHT_TABLE_CELLS          (R3D_SKIN_LIGHT_TABLE_SIDE * R3D_SKIN_LIGHT_TABLE_SIDE)
 #define R3D_SKIN_LIGHT_TABLE_ERROR_BOUND    43
 #define R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND 2
-#define R3D_SKIN_LIGHT_TABLE_BITS           10
+#define R3D_SKIN_LIGHT_TABLE_BITS           8
+#define R3D_SKIN_LIGHT_TABLE_WEIGHT_BITS    8
+#define R3D_SKIN_LIGHT_TABLE_WEIGHT_ONE     (1 << R3D_SKIN_LIGHT_TABLE_WEIGHT_BITS)
 #define R3D_SKIN_LIGHT_TABLE_MASK           ((1U << R3D_SKIN_LIGHT_TABLE_BITS) - 1U)
 
 typedef struct {

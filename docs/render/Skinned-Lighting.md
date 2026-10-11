@@ -113,9 +113,11 @@ Runtime tests and device suites select the mode through `scene_internal.h`.
 Normal palettes carry inverse-transpose correctness in every mode. A scene
 allocates its shared irradiance table<sup>[[58]](../Citations.md#58)</sup> in
 internal RAM only while at least one renderer uses table mode. Cells store
-packed fixed-point RGB with a per-table scale in scene metadata. The scale
-covers ambient plus every directional light's color and intensity, preserving
-irradiance above one. Bilinear lookup blends those fixed-point channels before
+packed 8-bit RGB with a per-table scale in scene metadata. The scale
+covers the grid's maximum irradiance, preserving irradiance above one.
+The builder reads unit directions from a generated flash table and evaluates
+ambient plus directional lighting without normalising cell directions.
+Integer bilinear lookup blends those fixed-point channels before
 albedo multiplication, tone mapping and encoding, using multiplication by the
 shared scale. `vec3f_octahedral()` pays a reciprocal division; interpolation
 adds no divides. The host angular sweep in `suite_skin_light.c` checks this
