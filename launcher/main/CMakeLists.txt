@@ -325,17 +325,9 @@ idf_component_register(
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
-    # Required by self-registration, and easy to get wrong.
-    #
-    # This component becomes libmain.a, and a linker only extracts an archive
-    # member if it resolves an undefined symbol. Nothing references an app by
-    # name any more (that is the entire point), so app_sand.o would never be
-    # extracted, its constructor would never enter .init_array, and the app
-    # would silently vanish from the menu. Not a link error: a smaller binary
-    # and a shorter list.
-    #
-    # WHOLE_ARCHIVE links every member regardless. Section garbage collection
-    # still runs, so genuinely unreachable code is still dropped.
+    # Constructors self-register entries without a referenced symbol pulling
+    # their archive members into the link. Keep those constructors while
+    # section garbage collection drops unreachable code.
     WHOLE_ARCHIVE
 )
 
