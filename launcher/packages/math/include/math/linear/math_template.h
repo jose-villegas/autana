@@ -21,28 +21,3 @@
  * Header-only, static inline and ESP-IDF-free.
  */
 #pragma once
-
-#define MATH_DEFINE_VECTOR_BINARY(P, OPS, OP, APPLY)                                                                   \
-    static inline P##_t P##_##OP(P##_t a, P##_t b) { return (P##_t){APPLY(OPS##_##OP, a, b)}; }
-
-#define MATH_DEFINE_VECTOR_TERNARY(P, OPS, OP, APPLY)                                                                  \
-    static inline P##_t P##_##OP(P##_t v, P##_t lo, P##_t hi) { return (P##_t){APPLY(OPS##_##OP, v, lo, hi)}; }
-
-#define MATH_DEFINE_VECTOR_RANGES(P, OPS, BINARY, TERNARY)                                                             \
-    /* min/max = (op(ax, bx), ...); clamp/wrap = (op(vx, lox, hix), ...). */                                           \
-    MATH_DEFINE_VECTOR_BINARY(P, OPS, min, BINARY)                                                                     \
-    MATH_DEFINE_VECTOR_BINARY(P, OPS, max, BINARY)                                                                     \
-    MATH_DEFINE_VECTOR_TERNARY(P, OPS, clamp, TERNARY)                                                                 \
-    /* repeat = (repeat(vx, lenx), ...). */                                                                            \
-    MATH_DEFINE_VECTOR_BINARY(P, OPS, repeat, BINARY)                                                                  \
-    MATH_DEFINE_VECTOR_TERNARY(P, OPS, wrap, TERNARY)
-
-#define MATH_DEFINE_VECTOR_LERP(P, T, OPS, COMPONENTS)                                                                 \
-    /* lerp = a + (b - a) * t, per component. */                                                                       \
-    static inline P##_t P##_lerp(P##_t a, P##_t b, T t) { return (P##_t){COMPONENTS(OPS, a, b, t)}; }
-
-#define MATH_DEFINE_VECTOR_LERP_RATIO(P, OPS, COMPONENTS)                                                              \
-    /* lerp = a + (b - a) * t / n; truncates toward a, per component. */                                               \
-    static inline P##_t P##_lerp(P##_t a, P##_t b, int32_t t, int32_t n) {                                             \
-        return (P##_t){COMPONENTS(OPS, a, b, t, n)};                                                                   \
-    }

@@ -1,5 +1,6 @@
-/* Millisecond timelines return byte weights: choreography needs no sub-millisecond precision.
- * Inline easing keeps per-point animation calls cheap. */
+/* tween: timeline ramps and easing. Time is plain milliseconds, since nothing
+ * here needs finer; the fraction is a byte (0..255), since it only ever scales
+ * a value and is divided by 255 again. Inline: some run once per drawn point. */
 #pragma once
 
 #include <stdint.h>

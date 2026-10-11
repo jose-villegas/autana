@@ -69,7 +69,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (math_template.h). |
 | [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. |
-| [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalar operations, for grid, pixel and cell coordinates. |
+| [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalars. |
 | [include/math/scalar/maths.h](include/math/scalar/maths.h) | maths: int16 scalar operations for the math templates (math_template.h), coordinates kept compact where memory is short. |
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (math_template.h). |
 | [include/math/scalar/rng.h](include/math/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. |

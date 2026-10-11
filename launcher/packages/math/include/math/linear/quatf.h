@@ -24,16 +24,13 @@ quatf_slerp(quatf_t a, quatf_t b, float t) {
         cosine = -cosine;
     }
 
-    float wa = 1.0F - t;
-    float wb = t;
-    if (cosine < 0.9995F) {
-        const float angle = acosf(cosine);
-        const float inv_sine = 1.0F / sinf(angle);
-        wa = sinf((1.0F - t) * angle) * inv_sine;
-        wb = sinf(t * angle) * inv_sine;
-    } else {
+    if (cosine >= 0.9995F) {
         return quatf_nlerp(a, b, t);
     }
+    const float angle = acosf(cosine);
+    const float inv_sine = 1.0F / sinf(angle);
+    const float wa = sinf((1.0F - t) * angle) * inv_sine;
+    const float wb = sinf(t * angle) * inv_sine;
     return quatf_normalize(
         (quatf_t){(a.x * wa) + (b.x * wb), (a.y * wa) + (b.y * wb), (a.z * wa) + (b.z * wb), (a.w * wa) + (b.w * wb)});
 }

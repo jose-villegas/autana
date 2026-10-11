@@ -399,6 +399,43 @@ DEFINE_VECTOR_RANGE_TESTS(vec3x, MATHX_ONE, TEST_ASSERT_EQUAL_INT32, MAKE_VEC3, 
     A(S, (want).w, (got).w)
 
 static void
+test_vecf_wrap_offset_bounds(void) {
+    const vec3f_t v = {1.0F, 4.0F, -1.0F};
+    const vec3f_t lo = {1.5F, 1.5F, 1.5F}, hi = {4.0F, 4.0F, 4.0F};
+    const vec2f_t got2 = vec2f_wrap(vec3f_xy(v), vec3f_xy(lo), vec3f_xy(hi));
+    const vec3f_t got3 = vec3f_wrap(v, lo, hi);
+    CHECK_VEC2(TEST_ASSERT_EQUAL_FLOAT, 1, got2, 3.5F, 1.5F, 0);
+    CHECK_VEC3(TEST_ASSERT_EQUAL_FLOAT, 1, got3, 3.5F, 1.5F, 1.5F);
+}
+
+static void
+test_quatf_nlerp_components_and_zero_dot(void) {
+    const quatf_t a = {1.0F / 8, 2.0F / 8, 3.0F / 8, 4.0F / 8};
+    const quatf_t b = {4.0F / 8, -3.0F / 8, -2.0F / 8, 1.0F / 8};
+    const quatf_t expected = quatf_normalize((quatf_t){-3, 5, 5, 3});
+    const quatf_t got = quatf_nlerp(a, b, 0.5F);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, expected, got);
+    const quatf_t orthogonal = {4.0F / 8, 3.0F / 8, -2.0F / 8, -1.0F / 8};
+    const quatf_t zero_expected = quatf_normalize((quatf_t){5, 5, 1, 3});
+    const quatf_t zero_got = quatf_nlerp(a, orthogonal, 0.5F);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, zero_expected, zero_got);
+}
+
+static void
+test_quatx_nlerp_components_and_zero_dot(void) {
+    const int32_t unit = MATHX_ONE / 8;
+    const quatx_t a = {unit, 2 * unit, 3 * unit, 4 * unit};
+    const quatx_t b = {4 * unit, -3 * unit, -2 * unit, unit};
+    const quatx_t expected = quatx_normalize((quatx_t){-3 * unit, 5 * unit, 5 * unit, 3 * unit});
+    const quatx_t got = quatx_nlerp(a, b, MATHX_ONE / 2);
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, expected, got);
+    const quatx_t orthogonal = {4 * unit, 3 * unit, -2 * unit, -unit};
+    const quatx_t zero_expected = quatx_normalize((quatx_t){5 * unit, 5 * unit, unit, 3 * unit});
+    const quatx_t zero_got = quatx_nlerp(a, orthogonal, MATHX_ONE / 2);
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, zero_expected, zero_got);
+}
+
+static void
 test_quatf_nlerp(void) {
     const quatf_t a = quatf_identity();
     const quatf_t b = {0.5F, 0.5F, 0.5F, 0.5F};
@@ -523,6 +560,9 @@ suite_math(void) {
     RUN_TEST(test_vec3x_repeat);
     RUN_TEST(test_vec3x_wrap);
     RUN_TEST(test_vec3x_lerp);
+    RUN_TEST(test_vecf_wrap_offset_bounds);
+    RUN_TEST(test_quatf_nlerp_components_and_zero_dot);
+    RUN_TEST(test_quatx_nlerp_components_and_zero_dot);
     RUN_TEST(test_quatf_nlerp);
     RUN_TEST(test_quatx_nlerp);
 
