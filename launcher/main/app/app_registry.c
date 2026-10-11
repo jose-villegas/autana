@@ -14,19 +14,23 @@
 #include <assert.h>
 #include <string.h>
 
+#include "core/registry.h"
+
 static app_t* apps_head;
+
+static int
+entry_order(const void* a, const void* b) {
+    const app_t* first = a;
+    const app_t* second = b;
+    return strcmp(first->name, second->name);
+}
 
 void
 app_register(app_t* app) {
-    app->next = NULL;
-
-    app_t** link = &apps_head;
-    while (*link != NULL && strcmp((*link)->name, app->name) < 0) {
-        link = &(*link)->next;
-    }
-    assert((*link == NULL || strcmp((*link)->name, app->name) != 0) && "two apps share a name");
-    app->next = *link;
-    *link = app;
+    static const registry_rule_t rule = {offsetof(app_t, next), entry_order, NULL};
+    const registry_add_t result = registry_add(&apps_head, &rule, app);
+    assert(result == REGISTRY_ADDED && "two apps share a name");
+    (void)result;
 }
 
 const app_t*
