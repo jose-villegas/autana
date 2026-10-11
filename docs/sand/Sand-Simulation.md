@@ -1074,12 +1074,12 @@ below it before the tree it belongs to can use any.
 
 ## Performance discipline
 
-The plain release sweep's function sizes and cache-line offsets are checked
+The plain release step entry's function size and cache-line offsets are checked
 against `launcher/main/apps/sand/code_layout.txt` by the release build gate.
-Its function manifest covers the gravity sweep and two-core scheduler without
-adding entry padding. The folder's `align_functions.cmake` opts its sources into
-instruction-cache-line function alignment in flash. The step entry keeps its
-explicit 16-byte alignment; the baseline checks its offset within the cache line.
+The step entry keeps its explicit 16-byte alignment. Its immediately preceding
+flash function, `sand_chunk_pass_run`, is instruction-cache-line aligned so the
+step entry stays at offset 16 when unrelated code ahead of it changes. The
+baseline checks both functions and their machine loops. Neither uses IRAM.
 Device performance suites remain the check on the resulting timings.
 
 Every number below came from `timing_now_us()` on real hardware, via

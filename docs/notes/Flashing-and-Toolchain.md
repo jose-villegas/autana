@@ -132,8 +132,7 @@ remaining calls and register spills. `always_inline`, used by
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 
-A source folder opts into cache-line function alignment with its own
-`align_functions.cmake` marker. Its direct C sources receive
+The direct C sources in `launcher/main/render/` receive
 `-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}` from
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
