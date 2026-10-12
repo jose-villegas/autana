@@ -25,6 +25,7 @@ static clip_fixture_t* shown;
 
 static void
 release_fixture(void) {
+    render_lab_clips_destroy(&shown->choice);
     memory_free(shown);
     shown = NULL;
 }
@@ -69,6 +70,23 @@ test_console_clip_selection_and_validation(void) {
     TEST_ASSERT_EQUAL_INT(TEST_BLEND_MS, f->animator.layer.blend_ms);
     TEST_ASSERT_FALSE(render_lab_clips_console(&f->scene, 0, &f->choice, "scene capybara"));
     TEST_ASSERT_FALSE(render_lab_clips_play(&f->scene, 0, &f->choice, 1, RENDER_LAB_BLEND_MAX_MS + 1));
+}
+
+static void
+test_picker_items_live_until_scene_exit(void) {
+    clip_fixture_t* f = fixture();
+    const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->scene, 0, &f->choice));
+    TEST_ASSERT_EQUAL_INT(TEST_CLIP_COUNT, f->choice.count);
+    TEST_ASSERT_NOT_NULL(f->choice.items);
+    for (int i = 0; i < TEST_CLIP_COUNT; i++) {
+        TEST_ASSERT_EQUAL_STRING(f->clips[i].id, f->choice.items[i].label);
+    }
+    TEST_ASSERT_LESS_THAN(free_before, memory_free_bytes(MEMORY_PSRAM));
+    render_lab_clips_destroy(&f->choice);
+    TEST_ASSERT_NULL(f->choice.items);
+    TEST_ASSERT_EQUAL_INT(0, f->choice.count);
+    TEST_ASSERT_EQUAL(free_before, memory_free_bytes(MEMORY_PSRAM));
 }
 
 static int controls_drawn;
@@ -133,6 +151,9 @@ static void
 test_menu_dropdown_plays_with_selected_blend(void) {
     clip_fixture_t* f = fixture();
     f->choice.blend_ms = TEST_BLEND_MS;
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->scene, 0, &f->choice));
+    const ui_dropdown_item_t* items = f->choice.items;
+    const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
     ui_init();
     menu_frame(NULL);
     menu_frame(NULL);
@@ -146,10 +167,13 @@ test_menu_dropdown_plays_with_selected_blend(void) {
     TEST_ASSERT_EQUAL_INT(1, f->choice.selected);
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     TEST_ASSERT_EQUAL_INT(TEST_BLEND_MS, f->animator.layer.blend_ms);
+    TEST_ASSERT_EQUAL_PTR(items, f->choice.items);
+    TEST_ASSERT_EQUAL(free_before, memory_free_bytes(MEMORY_PSRAM));
 }
 
 void
 run_render_lab_clips_suite(void) {
+    RUN_TEST(test_picker_items_live_until_scene_exit);
     RUN_TEST(test_console_clip_selection_and_validation);
     RUN_TEST(test_menu_calls_optional_controls);
     RUN_TEST(test_menu_dropdown_plays_with_selected_blend);

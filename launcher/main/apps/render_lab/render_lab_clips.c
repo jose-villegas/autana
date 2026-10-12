@@ -9,6 +9,31 @@
 #include "ui/ui.h"
 #include "ui/ui_widgets.h"
 
+bool
+render_lab_clips_init(const scene_t* scene, scene_entity_t subject, render_lab_clips_t* choice) {
+    const int count = scene == NULL ? 0 : scene_animator_clip_count(scene, subject);
+    if (count == 0) {
+        return true;
+    }
+    ui_dropdown_item_t* items = memory_alloc((size_t)count * sizeof *items, MEMORY_PSRAM);
+    if (items == NULL) {
+        return false;
+    }
+    for (int i = 0; i < count; i++) {
+        items[i] = (ui_dropdown_item_t){.label = scene_animator_clip_name(scene, subject, i)};
+    }
+    choice->items = items;
+    choice->count = count;
+    return true;
+}
+
+void
+render_lab_clips_destroy(render_lab_clips_t* choice) {
+    memory_free(choice->items);
+    choice->items = NULL;
+    choice->count = 0;
+}
+
 int
 render_lab_clips_find(const scene_t* scene, scene_entity_t subject, const char* name) {
     if (scene == NULL) {
@@ -92,16 +117,8 @@ render_lab_clips_console(scene_t* scene, scene_entity_t subject, render_lab_clip
 void
 render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, scene_t* scene, scene_entity_t subject,
                       render_lab_clips_t* choice) {
-    const int count = scene == NULL ? 0 : scene_animator_clip_count(scene, subject);
-    if (count == 0) {
+    if (choice->count == 0) {
         return;
-    }
-    ui_dropdown_item_t* items = memory_alloc((size_t)count * sizeof *items, MEMORY_PSRAM);
-    if (items == NULL) {
-        return;
-    }
-    for (int i = 0; i < count; i++) {
-        items[i] = (ui_dropdown_item_t){.label = scene_animator_clip_name(scene, subject, i)};
     }
     const ui_theme_t theme = {.button_face = ctx->style->colors[MU_COLOR_BUTTON],
                               .accent_face = ctx->style->colors[MU_COLOR_BUTTONFOCUS],
@@ -112,8 +129,7 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, scene_t* scen
     mu_label(ctx, "CLIP");
     ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);
     const mu_Rect anchor = mu_layout_next(ctx);
-    const int picked = ui_dropdown(ctx, "clip", anchor, items, count, choice->selected, &theme);
-    memory_free(items);
+    const int picked = ui_dropdown(ctx, "clip", anchor, choice->items, choice->count, choice->selected, &theme);
     if (picked >= 0) {
         (void)render_lab_clips_play(scene, subject, choice, picked, choice->blend_ms);
     }

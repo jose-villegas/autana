@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "apps/render_lab/render_lab_clips.h"
 #include "build/build_variant.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
@@ -322,7 +323,10 @@ render_lab_console(const char* args) {
         (void)fflush(stdout);
         return true;
     }
-    return render_lab_capybara_console(args, current_scene() == &scene_capybara);
+    if (current_scene()->console != NULL) {
+        return current_scene()->console(args);
+    }
+    return render_lab_clips_console(NULL, SCENE_ENTITY_NONE, NULL, args);
 }
 
 APP_CONSOLE("render", render_lab_console);

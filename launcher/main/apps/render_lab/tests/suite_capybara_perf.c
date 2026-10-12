@@ -1,5 +1,6 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
+#include <stdio.h>
 #include <string.h>
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/job.h"
@@ -15,6 +16,8 @@
 
 #define PERF_SAMPLES  100
 #define CLIP_BLEND_MS 300
+#define CLIP_CUT_MS   0
+#define CLIP_COMMAND  "clip gallop %d"
 
 static const char* TAG = "capybara_perf";
 
@@ -85,7 +88,9 @@ static void
 test_console_gallop_blends_and_skins(void) {
     fixture_t* f = fixture();
     render_lab_test_frame(false);
-    TEST_ASSERT_TRUE(app_render_lab.console->handle("clip gallop 300"));
+    char command[ASSET_NAME_MAX];
+    (void)snprintf(command, sizeof command, CLIP_COMMAND, CLIP_BLEND_MS);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     const scene_animator_t* a = &f->scene->animators[f->subject];
     TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blend_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
@@ -178,7 +183,9 @@ frame_cost(fixture_t* f, bool paused) {
 static void
 test_animation_and_frame_cost(void) {
     fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(app_render_lab.console->handle("clip gallop 0"));
+    char command[ASSET_NAME_MAX];
+    (void)snprintf(command, sizeof command, CLIP_COMMAND, CLIP_CUT_MS);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     assert_skin_changes(f);
     heap_report("playing");
     const int clusters = scene_entity_mesh(f->scene, f->subject)->cluster_count;
