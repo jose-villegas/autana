@@ -39,20 +39,18 @@ env:
 jobs:
   comment-rules:
     name: Comment rules and tool tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/host-tools
 
       # Every install comes before the first gate: Tool tests runs after a
       # failed gate too, and a skipped install would fail it for nothing.
+      # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
-        run: pip install -r scripts/gates/requirements.txt
-
-      # The exclusive-open tests drive the real serial library on a pty.
-      - name: pyserial
-        run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
+        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
@@ -148,6 +146,9 @@ jobs:
       - name: Simulation skip facts are read through the forced-work gate
         run: python3 scripts/gates/check_skip_facts.py
 
+      - name: Each vendored copy is taken from its submodule's pinned commit
+        run: python3 scripts/deps/vendored.py check
+
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
@@ -158,9 +159,10 @@ jobs:
   # or two, and every pull request runs it, since the banners are the list.
   generated-files:
     name: Every generated file is what its banner's command makes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
 
       - name: Generator dependencies
         run: pip install -r launcher/tools/render/requirements.txt
@@ -176,17 +178,17 @@ jobs:
     outputs:
       image: ${{ steps.pin.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: pin
         run: python3 -c 'import sys; sys.path.insert(0, "launcher/tools"); from build.espressif import idf_pin; print("image=" + idf_pin()["image"])' >> "$GITHUB_OUTPUT"
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: idf-image
     container: ${{ needs.idf-image.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The container runs as another user than the checkout's owner.
       - name: Trust the checkout

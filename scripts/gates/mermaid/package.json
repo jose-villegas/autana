@@ -1,0 +1,8 @@
+{
+  "name": "autana-mermaid-gate",
+  "private": true,
+  "description": "Pinned mermaid-cli for scripts/gates/check-mermaid.mjs. Install with npm ci --prefix scripts/gates/mermaid.",
+  "dependencies": {
+    "@mermaid-js/mermaid-cli": "12.0.0"
+  }
+}
