@@ -130,6 +130,11 @@ print(m.render(builds, []))
         outputs = [subprocess.check_output([sys.executable, "-c", program, str(memory.ROOT / "launcher/tools/build"), str(fixture)], env=dict(os.environ, PYTHONHASHSEED=seed)) for seed in ("1", "53")]
         self.assertEqual(outputs[0], outputs[1])
 
+    def test_documentation_needs_release_build(self):
+        build = self.build({"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, 8)
+        with self.assertRaisesRegex(ValueError, "release build"):
+            memory.render([build], [])
+
     def test_render_app_and_engine(self):
         build = self.build({"CONFIG_LAUNCHER_RELEASE": "y"}, 4)
         sites = self.source("/* Interrupt latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR bar(void) {}", "launcher/main/bar.c")
@@ -204,6 +209,13 @@ print(m.render(builds, []))
         self.assertIsNone(memory.parse_budget("Cache latency."))
         with self.assertRaisesRegex(ValueError, "duplicate"):
             memory.parse_budget("IRAM budget: release 4 B, release 8 B")
+
+    def test_zero_budget_is_not_missing(self):
+        sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
+        self.assertEqual(sites[0].budget, 0)
+        self.assertEqual(self.check(sites, [], active=lambda site: False)[0][1], 0)
+        with self.assertRaisesRegex(ValueError, "placed nothing"):
+            self.check(sites, [])
 
     def test_symbol_reader_preserves_duplicate_names(self):
         import code_layout
