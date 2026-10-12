@@ -20,6 +20,7 @@
 #include "esp_rom_gpio.h"
 #include "esp_rom_sys.h"
 #include "hal/gpio_ll.h"
+#include "soc/gpio_sig_map.h"
 #include "soc/gpio_struct.h"
 #include "soc/reset_reasons.h"
 
@@ -157,8 +158,8 @@ bootloader_after_init(void) {
     ESP_LOGI("pmic_boot", "Reset reason %d: requesting PMIC cold restart", reason);
     esp_rom_gpio_pad_select_gpio(PMIC_SDA_GPIO);
     esp_rom_gpio_pad_select_gpio(PMIC_SCL_GPIO);
-    gpio_ll_matrix_out_default(&GPIO, PMIC_SDA_GPIO);
-    gpio_ll_matrix_out_default(&GPIO, PMIC_SCL_GPIO);
+    gpio_ll_set_output_signal_matrix_source(&GPIO, PMIC_SDA_GPIO, SIG_GPIO_OUT_IDX, false);
+    gpio_ll_set_output_signal_matrix_source(&GPIO, PMIC_SCL_GPIO, SIG_GPIO_OUT_IDX, false);
     gpio_ll_input_enable(&GPIO, PMIC_SDA_GPIO);
     gpio_ll_input_enable(&GPIO, PMIC_SCL_GPIO);
     gpio_ll_set_level(&GPIO, PMIC_SDA_GPIO, 0);
