@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <assert.h>
 #include <math.h>
 
 #ifdef __XTENSA__
@@ -115,4 +116,37 @@ mathf_wadd(float a, float b) {
 static inline float
 mathf_wmul(float a, float b) {
     return a * b;
+}
+
+static inline float
+mathf_lerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
+static inline float
+mathf_min(float a, float b) {
+    return a < b ? a : b;
+}
+
+static inline float
+mathf_max(float a, float b) {
+    return a < b ? b : a;
+}
+
+static inline float
+mathf_repeat(float v, float len) {
+    assert(len > 0.0F);
+    float r = fmodf(v, len);
+    if (r < 0.0F) {
+        r += len;
+    }
+    /* A tiny negative input can round the remainder up to the excluded endpoint. */
+    return r < len ? r : 0.0F;
+}
+
+static inline float
+mathf_wrap(float v, float lo, float hi) {
+    assert(lo < hi);
+    const float wrapped = lo + mathf_repeat(v - lo, hi - lo);
+    return wrapped < hi ? wrapped : lo;
 }
