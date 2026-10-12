@@ -14,7 +14,7 @@ from doc_tables import markdown
 
 
 def chart_documents(doc):
-    tiers = doc.parent / memory.TIERS_DOC
+    tiers = doc.parent / 'tiers.md'
     tiers.parent.mkdir(parents=True, exist_ok=True)
     for path, block in ((doc, memory.BLOCK), (tiers, memory.TIERS_BLOCK)):
         path.write_text(f'<!-- generated: {block} -->\n<!-- /generated: {block} -->\n', encoding='utf-8')
@@ -22,7 +22,7 @@ def chart_documents(doc):
 
 @contextlib.contextmanager
 def chart_cli(doc, build):
-    replacements = dict(render_tiers=lambda builds, root: 'tier fixture', DOC=doc, ROOT=doc.parent, TIERS_DOC=doc.parent / memory.TIERS_DOC,
+    replacements = dict(render_tiers=lambda builds, root: 'tier fixture', ROOT=doc.parent,
                         read_build=lambda *args: build, build_sites=lambda *args: ([], lambda site: True),
                         check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'})
     with contextlib.ExitStack() as stack:
@@ -124,7 +124,7 @@ class MemoryChartTests(unittest.TestCase):
                 self.assertNotIn(b'\r', svg)
                 ET.fromstring(svg)
             self.assertIn('Placement', doc.read_text())
-            self.assertIn('tier fixture', (doc.parent / memory.TIERS_DOC).read_text())
+            self.assertIn('tier fixture', (doc.parent / 'tiers.md').read_text())
 
     def test_tables_charts_match_chart_mode(self):
         build = dict(variant='release', build_id='abc-release', idf_commit='fixture',
@@ -160,7 +160,10 @@ class MemoryTierTests(unittest.TestCase):
             for path in (arena, gfx):
                 path.parent.mkdir(parents=True)
             arena.write_text('#define APP_ARENA_BYTES (2u * 1024u * 1024u)\n')
-            gfx.write_text('#define GFX_WIDTH 128\n#define GFX_HEIGHT 256\n')
+            gfx.write_text('#define GFX_WIDTH 128\n#define GFX_HEIGHT 256\n#define GFX_FRAMEBUFFER_BYTES (GFX_WIDTH * GFX_HEIGHT * 2u)\n')
+            profile = root / 'launcher/tools/device/device_profiles/esp32s3.sh'
+            profile.parent.mkdir(parents=True)
+            profile.write_text('DP_SRAM_BYTES=524288\nDP_PSRAM_BYTES=8388608\n')
             partitions = root / 'launcher/fixture.csv'
             partitions.write_text('# Name, Type, SubType, Offset, Size\nfactory,app,factory,,0x200000,\nassets,data,0x40,,0x300000,\n')
             config = {'CONFIG_ESPTOOLPY_FLASHSIZE': '"16MB"',
@@ -173,23 +176,31 @@ class MemoryTierTests(unittest.TestCase):
             sizes = {row['Tier']: row['Size'] for row in rows}
             chart = ET.fromstring(memory.chart('pool', MemoryChartTests().body()))
             heap = chart.find('.//{*}rect[@data-label="Internal heap"]')
-            expected = int(heap.attrib['data-bytes']) / memory.svg_bars.KB_BYTES
+            expected = memory.size_label(int(heap.attrib['data-bytes']))
             for variant in memory.VARIANTS:
-                self.assertIn(f'{variant} {expected:.1f} KB', sizes['Internal SRAM'])
-            self.assertIn('1024 B', sizes['Internal SRAM'])
+                self.assertIn(f'{variant} {expected}', sizes['Internal SRAM'])
+            self.assertIn('1 KB (1024 B) shared IRAM/DRAM pool', sizes['Internal SRAM'])
             self.assertIn('2 MB app arena', sizes['PSRAM'])
             self.assertIn('64 KB full framebuffer', sizes['PSRAM'])
-            self.assertIn('5.9 MB PSRAM heap upper bound', sizes['PSRAM'])
+            self.assertIn('5.9 MB at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)', sizes['PSRAM'])
             self.assertIn('16 MB total', sizes['Flash'])
             self.assertIn('2 MB app partition', sizes['Flash'])
             self.assertIn('3 MB assets partition', sizes['Flash'])
             arena.write_text('#define APP_ARENA_BYTES (3u * 1024u * 1024u)\n')
-            gfx.write_text('#define GFX_WIDTH 256\n#define GFX_HEIGHT 256\n')
+            gfx.write_text('#define GFX_FRAMEBUFFER_BYTES (128u * 1024u)\n')
+            profile.write_text('DP_SRAM_BYTES=262144\nDP_PSRAM_BYTES=16777216\n')
             changed = memory.render_tiers(builds, root)
+            self.assertIn('256 KB chip total', changed)
+            self.assertIn('16 MB octal total', changed)
             self.assertIn('3 MB app arena', changed)
             self.assertIn('128 KB full framebuffer', changed)
-            self.assertIn('4.9 MB PSRAM heap upper bound', changed)
+            self.assertIn('12.9 MB at most left for other PSRAM allocations', changed)
             partitions.write_text('factory,app,factory,,0x400000,\nassets,data,0x40,,0x100000,\n')
             changed = memory.render_tiers(builds, root)
             self.assertIn('4 MB app partition', changed)
             self.assertIn('1 MB assets partition', changed)
+
+            builds[1]['regions']['dram0_0_seg'] = (0x3fc88000, 2048)
+            builds[2]['regions']['dram0_0_seg'] = (0x3fc88000, 3072)
+            changed = memory.render_tiers(builds, root)
+            self.assertIn('release 1 KB (1024 B); dev 2 KB (2048 B); diag 3 KB (3072 B) shared IRAM/DRAM pool', changed)

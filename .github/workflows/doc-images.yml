@@ -154,7 +154,7 @@ jobs:
           name: memory-tables
           path: launcher/tools/results/doc_images/out/cpu/tables
 
-      - name: Compare the internal-memory table
+      - name: Compare the generated memory tables and charts
         id: memory
         run: |
           set +e

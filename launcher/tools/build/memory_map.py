@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +31,11 @@ from code_layout import LayoutError, find_tool, run, symbols
 from doc_tables import markdown, parse_table, collapsed
 import svg_bars
 from compile_db import compile_flags
-from generated_blocks import replace_block, blocks
+from generated_blocks import apply_tables, block_owners, blocks
+from byte_sizes import MB_BYTES, size_label
+from svg_bars import IDF_FILL, OURS_FILL, SLACK_FILL, DRAM_FILL, HEAP_FILL
+sys.path.insert(0, str(ROOT / "launcher/tools/device"))
+from device_profile import load, require
 from espressif import idf_python, idf_pin, idf_drift
 from layout_pad import placed_sections
 sys.path.insert(0, str(ROOT / "scripts/gates"))
@@ -44,28 +49,15 @@ PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
 CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
 BLOCK = "internal-memory-map"
 TIERS_BLOCK = "memory-tiers"
-TIERS_DOC = "docs/notes/Board-and-Memory.md"
-MB_BYTES = svg_bars.KB_BYTES * svg_bars.KB_BYTES
-# ESP32-S3 Series Datasheet v2.2, sections 4.1.2.1 and 1.2; docs/Citations.md#66.
-CHIP_SRAM_BYTES = 512 * svg_bars.KB_BYTES
-CHIP_PSRAM_BYTES = 8 * MB_BYTES
-# The full framebuffer stores RGB565 pixels.
-FRAMEBUFFER_PIXEL_BYTES = 2
 CHIP_CITATION = '<sup>[[66]](../Citations.md#66)</sup>'
 TIER_POLICY = (
     ("Internal SRAM", "stacks, ordinary mutable statics, DMA gather and bounce buffers, hot working data", "budget static storage and the largest allocation together"),
     ("PSRAM", "full framebuffer (`MEMORY_PSRAM`) and app arena", "keep frequently accessed working data internal where it fits"),
     ("Flash", "executable code, ordinary `static const` tables and mapped assets", "account for cache misses on bulk or scattered reads"),
 )
-DOC = ROOT / "docs/memory/Internal-Memory-Map.md"
 CHARTS = {"pool": "docs/memory/images/internal-pool.svg", "components": "docs/memory/images/iram-components.svg"}
 DIFFERENCES_HEADING = "### Differs between variants"
 COMPONENT_TOP_COUNT = 8
-IDF_FILL = '#8c959f'
-OURS_FILL = '#e36209'
-SLACK_FILL = '#b1bac4'
-DRAM_FILL = '#4c8bf5'
-HEAP_FILL = '#2da44e'
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
 UPDATE_BUDGETS = REGENERATE.rsplit(" ", 1)[0] + " --update-budgets"
 
@@ -490,11 +482,6 @@ def pool_range(start, size, heap_start):
     return size, start + size - heap_start
 
 
-def memory_size(size):
-    unit, name = (MB_BYTES, "MB") if size >= MB_BYTES else (svg_bars.KB_BYTES, "KB")
-    return f"{size // unit} {name}" if size % unit == 0 else f"{size / unit:.1f} {name}"
-
-
 def render_tiers(builds, root):
     builds = sorted(builds, key=lambda build: VARIANTS.index(build["variant"]))
     release = next(build for build in builds if build["variant"] == MAIN_VARIANT)
@@ -502,14 +489,17 @@ def render_tiers(builds, root):
     texts = {path: (root / path).read_text(encoding="utf-8") for path in paths}
     values = {record.name: value for record, value in ConstantIndex(texts).visible(texts)}
     arena = values["APP_ARENA_BYTES"]
-    framebuffer = values["GFX_WIDTH"] * values["GFX_HEIGHT"] * FRAMEBUFFER_PIXEL_BYTES
+    framebuffer = values["GFX_FRAMEBUFFER_BYTES"]
+    profile = load("esp32s3", root / "launcher/tools/device/device_profiles")
+    sram = require(profile, "DP_SRAM_BYTES", int)
+    psram = require(profile, "DP_PSRAM_BYTES", int)
     pools, heaps = [], []
     for build in builds:
         size, heap = pool_range(*build["regions"]["dram0_0_seg"], build["constants"]["_heap_start"])
-        pools.append(f"{build['variant']} {size} B")
-        heaps.append(f"{build['variant']} {memory_size(heap)}")
+        pools.append(f"{build['variant']} {size_label(size)} ({size} B)")
+        heaps.append(f"{build['variant']} {size_label(heap)}")
     shared = release["regions"]["dram0_0_seg"][1]
-    pool = f"{shared} B" if all(build["regions"]["dram0_0_seg"][1] == shared for build in builds) else "; ".join(pools)
+    pool = f"{size_label(shared)} ({shared} B)" if all(build["regions"]["dram0_0_seg"][1] == shared for build in builds) else "; ".join(pools)
     config = release["config"]
     flash = config["CONFIG_ESPTOOLPY_FLASHSIZE"].strip('"')
     partition_path = root / "launcher" / config["CONFIG_PARTITION_TABLE_CUSTOM_FILENAME"].strip('"')
@@ -519,16 +509,17 @@ def render_tiers(builds, root):
     app = sum(size for kind, size in partitions.values() if kind == "app")
     assets = partitions["assets"][1]
     sizes = (
-        f"{memory_size(CHIP_SRAM_BYTES)} chip total {CHIP_CITATION}; {pool} shared IRAM/DRAM pool; "
+        f"{size_label(sram)} chip total {CHIP_CITATION}; {pool} shared IRAM/DRAM pool; "
         f"[internal heap](../memory/images/internal-pool.svg) {', '.join(heaps)}",
-        f"{memory_size(CHIP_PSRAM_BYTES)} octal total {CHIP_CITATION}; {memory_size(arena)} app arena; "
-        f"{memory_size(framebuffer)} full framebuffer; "
-        f"{memory_size(CHIP_PSRAM_BYTES - arena - framebuffer)} PSRAM heap upper bound (other PSRAM allocations and IDF use reduce it)",
-        f"{memory_size(int(flash.removesuffix('MB')) * MB_BYTES)} total; {memory_size(app)} app partition; {memory_size(assets)} assets partition",
+        f"{size_label(psram)} octal total {CHIP_CITATION}; {size_label(arena)} app arena; "
+        f"{size_label(framebuffer)} full framebuffer; "
+        f"{size_label(psram - arena - framebuffer)} at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)",
+        f"{size_label(int(flash.removesuffix('MB')) * MB_BYTES)} total; {size_label(app)} app partition; {size_label(assets)} assets partition",
     )
     rows = [(tier, size, placement, rule) for (tier, placement, rule), size in zip(TIER_POLICY, sizes)]
     return (f"> Generated by: `{REGENERATE}`\n\n" + markdown(["Tier", "Size", "Current placement", "Rule"], rows)
-            + "\nKB = 1024 B; MB = 1024 KB. Internal heap is a linked range, not runtime free memory.\n")
+            + "\nKB = 1024 B; MB = 1024 KB. Internal heap is a linked range, not runtime free memory.\n"
+            + "Arena and framebuffer sizes come from source headers, flash partitions from the partition table named by the build's sdkconfig, chip totals from the device profile (datasheet), and pool/heap from the build.\n")
 
 
 def render(builds):
@@ -572,7 +563,7 @@ def render(builds):
     component_rows = [(name, placement, *(c[(name, placement)] for c in placements))
                       for name in names for placement in ("our sites", "IDF")
                       if any(c[(name, placement)] for c in placements)]
-    component_rows.append(("Linker fill / split slack", "unattributed", *(sum(size for key, (_, size) in b["sections"].items() if key.startswith(".iram")) - sum(c.values()) for b, c in zip(builds, components))))
+    component_rows.append(("Linker fill / split slack", "unattributed", *(sum(size for key, (_, size) in b["sections"].items() if key.startswith(".iram") and key != ".iram0.text_end") - sum(c.values()) for b, c in zip(builds, components))))
     lines += [collapsed("IRAM components by placement", markdown(["IRAM component", "Placement", *labels], component_rows))]
     reports = [b["report"] for b in builds]
     rows = []
@@ -658,7 +649,7 @@ def chart(kind, body):
             if sum(counts) != size:
                 raise ValueError(f"{variant}: pool segments do not sum to shared alias")
             rows.append((variant, [(label, count, fill) for (label, fill), count in zip(legend, counts)],
-                         f"{heap / svg_bars.KB_BYTES:.1f} KB heap"))
+                         f"{size_label(heap)} heap"))
             scales.append(size)
         start, end, _ = alias("dram0_0_seg", MAIN_VARIANT)
         iram_start, _, _ = alias("iram0_0_seg", MAIN_VARIANT)
@@ -706,7 +697,7 @@ def main():
     try:
         if args.chart:
             kind, out = args.chart
-            write_chart(kind, blocks(DOC.read_text(encoding="utf-8"))[BLOCK][2], out)
+            write_chart(kind, blocks((args.root / block_owners(args.root)[BLOCK]).read_text(encoding="utf-8"))[BLOCK][2], out)
             return 0
         if args.source_only:
             placements = sites(args.root)
@@ -743,10 +734,13 @@ def main():
         body = render(builds)
         tiers = render_tiers(builds, args.root)
         if args.write:
-            replace_block(DOC, BLOCK, body)
-            replace_block(args.root / TIERS_DOC, TIERS_BLOCK, tiers)
+            with tempfile.TemporaryDirectory() as directory:
+                tables = Path(directory)
+                (tables / (BLOCK + ".md")).write_text(body, encoding="utf-8")
+                (tables / (TIERS_BLOCK + ".md")).write_text(tiers, encoding="utf-8")
+                apply_tables(args.root, tables)
             for kind, name in CHARTS.items():
-                write_chart(kind, body, ROOT / name)
+                write_chart(kind, body, args.root / name)
         elif args.tables:
             args.tables.mkdir(parents=True, exist_ok=True)
             (args.tables / (BLOCK + ".md")).write_text(body, encoding="utf-8")

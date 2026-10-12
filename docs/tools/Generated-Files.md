@@ -2,8 +2,8 @@
 
 Some files in this repository are written by a script rather than by hand:
 C headers (icon tables, palettes, curves, baked layouts) and SVG charts. Each
-one is checked in beside the code or document that reads it, and opens with a banner saying so and giving
-the command that writes it:
+one is checked in beside the code or document that reads it, and opens with
+a banner saying so and giving the command that writes it:
 
 ```c
 /*

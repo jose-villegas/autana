@@ -10,10 +10,11 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from memory_map import ROOT, DOC, read_build, VARIANTS, MAIN_VARIANT, OURS_FILL, build_variant
-from generated_blocks import replace_block, blocks
+from memory_map import ROOT, read_build, VARIANTS, MAIN_VARIANT, build_variant
+from generated_blocks import replace_block, block_owners, blocks
 from doc_tables import markdown, parse_table, collapsed
 import svg_bars
+from svg_bars import OURS_FILL
 from scratch import scratch_tree
 from code_layout import LayoutError
 
@@ -188,6 +189,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("builds", nargs="*", type=Path)
     parser.add_argument("--work", type=Path)
+    parser.add_argument("--root", type=Path, default=ROOT)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--chart", type=Path)
     parser.add_argument("--experiment", action="append", choices=OPTIONS)
@@ -199,15 +201,15 @@ def main():
         parser.error("--jobs must be positive")
     try:
         if args.chart:
-            write_chart(blocks(DOC.read_text(encoding="utf-8"))[WHAT_IF_BLOCK][2], args.chart)
+            write_chart(blocks((args.root / block_owners(args.root)[WHAT_IF_BLOCK]).read_text(encoding="utf-8"))[WHAT_IF_BLOCK][2], args.chart)
             return 0
         if not args.builds or args.work is None:
             parser.error("builds and --work required unless --chart")
         builds = [dict(build=build, metadata=json.loads((build / "project_description.json").read_text(encoding="utf-8")),
                        variant=build_variant(build)[1]) for build in args.builds]
         (args.work / (WHAT_IF_BLOCK + ".md")).unlink(missing_ok=True)
-        project = scratch_tree(args.work, ROOT, fresh=True)
-        shutil.copytree(ROOT / "launcher/managed_components", project / "launcher/managed_components", dirs_exist_ok=True)
+        project = scratch_tree(args.work, args.root, fresh=True)
+        shutil.copytree(args.root / "launcher/managed_components", project / "launcher/managed_components", dirs_exist_ok=True)
         baselines, rows = [], []
         for build in builds:
             baseline, measured = what_if(build, args.work, project, args.experiment, args.before_build, args.jobs)
@@ -216,8 +218,8 @@ def main():
         body = render_results(baselines, rows)
         (args.work / (WHAT_IF_BLOCK + ".md")).write_text(body, encoding="utf-8")
         if args.write:
-            replace_block(DOC, WHAT_IF_BLOCK, body)
-            write_chart(body, ROOT / CHART_PATH)
+            replace_block(args.root / block_owners(args.root)[WHAT_IF_BLOCK], WHAT_IF_BLOCK, body)
+            write_chart(body, args.root / CHART_PATH)
         return 0
     except (ValueError, OSError, LayoutError, subprocess.SubprocessError) as error:
         print(f"FAIL IRAM what-if: {error}")

@@ -144,7 +144,7 @@ class MemoryMapTests(unittest.TestCase):
         self.assertIn("\u2013", body)
         self.assertNotIn('```mermaid', body)
         release["sections"][".iram0.text_end"] = (0, 100)
-        self.assertNotIn('```mermaid', memory.render([release, dev]))
+        self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", memory.render([release, dev]))
         del release["sections"][".iram0.text_end"]
         for build in (release, dev):
             build["inputs"].reverse()

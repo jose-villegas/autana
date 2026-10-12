@@ -83,7 +83,8 @@ def replace_block(path, name, body, check=False, command=None):
     return changed
 
 
-def apply_tables(root, tables, check=False):
+def block_owners(root):
+    """Document paths by generated block name, rejecting duplicate owners."""
     listing = tracked_files(root, ("*.md",))
     owners = {}
     for name in listing:
@@ -91,6 +92,11 @@ def apply_tables(root, tables, check=False):
             if block in owners:
                 raise ValueError(f"generated name has multiple owners: {block}")
             owners[block] = name
+    return owners
+
+
+def apply_tables(root, tables, check=False):
+    owners = block_owners(root)
     changed = False
     for table in sorted(tables.glob("*.md")):
         name = table.stem
