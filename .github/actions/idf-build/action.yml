@@ -13,7 +13,7 @@ inputs:
     description: Names this build's ccache, one per variant.
     required: true
   command:
-    description: Shell command run from launcher/; no single quotes.
+    description: Shell command run from launcher/.
     required: true
 
 runs:

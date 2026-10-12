@@ -283,6 +283,7 @@ print(m.render(builds))
 
     def test_non_iram_mapping(self):
         self.assertEqual(self.source("[mapping:patch]\narchive: libmain.a\nentries:\n    * (patchable_entries)", "launcher/main/linker.lf"), [])
+        self.assertEqual(self.source("[mapping:patch]\narchive: libmain.a\nentries:\n    # foo:foo (noflash)\n    * (patchable_entries)", "launcher/main/linker.lf"), [])
 
     def test_preprocessor_guards(self):
         compiler = shutil.which("gcc") or shutil.which("clang")
@@ -562,6 +563,71 @@ print(m.render(builds))
         with patch.object(Path, "is_symlink", lambda path: path == tree), patch.object(scratch, "tracked_files", return_value=[]):
             with self.assertRaisesRegex(ValueError, "outside the scratch directory"):
                 scratch.scratch_tree(self.root, self.root, fresh=True)
+
+    def budget_builds(self):
+        (self.root / "launcher/idf-pin.json").write_text(json.dumps({"commit": "pinned"}))
+        sites = self.source("/* Keep the exact reason. IRAM budget: 1 B */\nvoid IRAM_ATTR foo(void) {}\n/* Development interrupt latency. IRAM budget: release 1 B, dev 2 B, diag 2 B */\nvoid IRAM_ATTR bar(void) {}")
+        builds = []
+        for variant, size in (("release", 4), ("dev", 8), ("diag", 8)):
+            inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", size)]
+            if variant != "release":
+                inputs.append(memory.Input("libmain.a", "foo.c.obj", "bar", 7))
+            builds.append({"variant": variant, "idf_commit": "pinned", "inputs": inputs,
+                           "owned": memory.components(self.root), "report": [(sites[0], size, ["foo"]), (sites[1], 0 if variant == "release" else 7, ["bar"])]})
+        return builds
+
+    def test_update_budgets_rewrites_clauses_then_exact_check_passes(self):
+        builds = self.budget_builds()
+        memory.update_budgets(self.root, builds)
+        expected = "/* Keep the exact reason. IRAM budget: release 4 B, dev 8 B, diag 8 B */\nvoid IRAM_ATTR foo(void) {}\n/* Development interrupt latency. IRAM budget: 7 B */\nvoid IRAM_ATTR bar(void) {}"
+        self.assertEqual((self.root / "launcher/main/foo.c").read_text(), expected)
+        for build in builds:
+            sites = memory.sites(self.root)
+            active = lambda site: site.entries[0][1] == "foo" or build["variant"] != "release"
+            report = memory.check(sites, build["inputs"], build["variant"], build["owned"], active)
+            self.assertEqual([size for _, size, _ in report], [record[1] for record in build["report"]])
+        before = (self.root / "launcher/main/foo.c").read_bytes()
+        memory.update_budgets(self.root, builds)
+        self.assertEqual((self.root / "launcher/main/foo.c").read_bytes(), before)
+
+    def test_update_budgets_preserves_linker_fragment_reasons(self):
+        builds = self.budget_builds()
+        original = "# Keep dispatch cache independent. IRAM budget: 1 B\n[mapping:hot]\narchive: libdriver.a\nentries:\n    driver:dispatch (noflash)\n"
+        site = next(site for site in self.source(original, "launcher/main/linker.lf") if site.path.endswith(".lf"))
+        for build in builds:
+            build["report"].append((site, 3, ["dispatch"]))
+        memory.update_budgets(self.root, builds)
+        self.assertEqual((self.root / site.path).read_text(), original.replace("IRAM budget: 1 B", "IRAM budget: 3 B"))
+
+    def test_update_budgets_refuses_unpinned_or_partial_builds_before_writing(self):
+        builds = self.budget_builds()
+        source = self.root / "launcher/main/foo.c"
+        before = source.read_bytes()
+        for records, error in ((builds[:1], "missing.*dev.*diag"), (builds + [builds[0]], "duplicate")):
+            with self.assertRaisesRegex(ValueError, error):
+                memory.update_budgets(self.root, records)
+            self.assertEqual(source.read_bytes(), before)
+        builds[-1]["idf_commit"] = "local"
+        with self.assertRaisesRegex(ValueError, "local.*pinned"):
+            memory.update_budgets(self.root, builds)
+        self.assertEqual(source.read_bytes(), before)
+
+    def test_update_budgets_cli_uses_accounting_and_preserves_crlf(self):
+        import contextlib
+        import io
+        builds = self.budget_builds()
+        source = self.root / "launcher/main/foo.c"
+        source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.assertNotIn(b"\r\r\n", source.read_bytes())
+        def build_sites(root, build):
+            return memory.sites(root), lambda site: site.entries[0][1] == "foo" or build["variant"] != "release"
+        arguments = ["memory_map.py", "--root", str(self.root), "--update-budgets", "release", "dev", "diag"]
+        with patch.object(sys, "argv", arguments), patch.object(memory, "read_build", side_effect=lambda path, root: next(b for b in builds if b["variant"] == str(path))), patch.object(memory, "build_sites", side_effect=build_sites), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(memory.main(), 0)
+        content = source.read_bytes()
+        self.assertEqual(content.count(b"\n"), content.count(b"\r\n"))
+        with patch.object(sys, "argv", [arguments[0], "--root", str(self.root), "--check", *arguments[-3:]]), patch.object(memory, "read_build", side_effect=lambda path, root: next(b for b in builds if b["variant"] == str(path))), patch.object(memory, "build_sites", side_effect=build_sites), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(memory.main(), 0)
 
     def test_cli_exit_status(self):
         script=str(memory.ROOT / "launcher/tools/build/memory_map.py")

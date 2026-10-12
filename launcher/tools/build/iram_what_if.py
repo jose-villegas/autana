@@ -10,27 +10,27 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from memory_map import ROOT, DOC, read_build
+from memory_map import ROOT, DOC, read_build, VARIANTS
 from generated_blocks import replace_block
 from doc_tables import markdown
 from scratch import scratch_tree
 from code_layout import LayoutError
 
 WHAT_IF_BLOCK = "internal-memory-what-if"
-WHAT_IF_COMMAND = "python launcher/tools/build/iram_what_if.py launcher/build launcher/build.dev launcher/build.diag --work launcher/test/build/memory-experiments --write"
+WHAT_IF_COMMAND = "python launcher/tools/build/iram_what_if.py launcher/build launcher/build.dev launcher/build.diag --work launcher/build/iram-what-if --jobs 6 --write"
 DEFAULT_JOBS = 2
 OPTIONS = {
-    "ringbuf-to-flash": {"variants": ("release", "dev", "diag"), "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
+    "ringbuf-to-flash": {"variants": VARIANTS, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
     "silent-assertions": {"variants": ("release",), "config": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"}},
     "unused-flash-chips": {"variants": ("release",), "config": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")}},
     "encrypted-read-write": {"variants": ("release",), "config": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"}},
     "libc-locks": {"variants": ("release",), "config": {"CONFIG_LIBC_LOCKS_PLACE_IN_IRAM": "n"}},
     "i2c-isr": {"variants": ("release",), "config": {"CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM": "n"}},
-    "dynamic-log-level": {"variants": ("release", "dev", "diag"), "config": {"CONFIG_LOG_TAG_LEVEL_IMPL_NONE": "y", "CONFIG_LOG_DYNAMIC_LEVEL_CONTROL": "n"}},
-    "heap-to-flash": {"variants": ("release", "dev", "diag"), "config": {"CONFIG_SPI_MASTER_IN_IRAM": "n", "CONFIG_SPI_MASTER_ISR_IN_IRAM": "n", "CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH": "y"}},
-    "noflash-text": {"variants": ("release", "dev", "diag"), "config": {}},
+    "dynamic-log-level": {"variants": VARIANTS, "config": {"CONFIG_LOG_TAG_LEVEL_IMPL_NONE": "y", "CONFIG_LOG_DYNAMIC_LEVEL_CONTROL": "n"}},
+    "heap-to-flash": {"variants": VARIANTS, "config": {"CONFIG_SPI_MASTER_IN_IRAM": "n", "CONFIG_SPI_MASTER_ISR_IN_IRAM": "n", "CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH": "y"}},
+    "noflash-text": {"variants": VARIANTS, "config": {}},
     "gpspi-flash-hal": {"variants": ("release",), "config": {}},
-    "freertos-non-isr": {"variants": ("release", "dev", "diag"), "config": {}},
+    "freertos-non-isr": {"variants": VARIANTS, "config": {}},
 }
 
 def scratch_fragment(name, original, idf, baseline):
