@@ -38,11 +38,11 @@ class IdfPinTests(unittest.TestCase):
 
     def check(self, pin):
         with contextlib.redirect_stderr(io.StringIO()) as err:
-            code = idf_pin.check(pin, idf_pin.facts(self.idf))
+            code = idf_pin.check(pin, idf_pin.idf_facts(self.idf))
         return code, err.getvalue()
 
     def test_the_recommended_esp_clang_names_its_llvm_release(self):
-        self.assertEqual(idf_pin.esp_clang(self.idf / "tools" / "tools.json"), "19.1.2")
+        self.assertEqual(idf_pin.idf_facts(self.idf)["esp_clang"], "19.1.2")
 
     def test_a_pin_matching_the_image_passes(self):
         self.assertEqual(self.check({"commit": self.commit, "esp_clang": "19.1.2"}), (0, ""))
@@ -50,14 +50,14 @@ class IdfPinTests(unittest.TestCase):
     def test_each_stale_field_is_named_with_both_values(self):
         code, message = self.check({"commit": "", "esp_clang": "19.1.7"})
         self.assertEqual(code, 1)
-        self.assertIn(f"records commit (none), the image has {self.commit}", message)
-        self.assertIn("records esp_clang 19.1.7, the image has 19.1.2", message)
+        self.assertIn(f"commit {self.commit} here, (none) pinned", message)
+        self.assertIn("esp_clang 19.1.2 here, 19.1.7 pinned", message)
         self.assertIn("idf_pin.py write", message)
 
     def test_write_takes_the_image_and_reads_the_rest(self):
         path = self.idf / "pin.json"
         pin = {"image": "old", "commit": "", "image_date": "2026-01-01", "esp_clang": "1.0.0"}
-        idf_pin.write(pin, idf_pin.facts(self.idf), "espressif/idf:release-v5.5@sha256:abc", "2026-10-12", path)
+        idf_pin.write(pin, idf_pin.idf_facts(self.idf), "espressif/idf:release-v5.5@sha256:abc", "2026-10-12", path)
         self.assertEqual(json.loads(path.read_text()), {
             "image": "espressif/idf:release-v5.5@sha256:abc", "commit": self.commit,
             "image_date": "2026-10-12", "esp_clang": "19.1.2"})

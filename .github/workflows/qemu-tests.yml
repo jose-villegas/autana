@@ -16,6 +16,9 @@ on:
       - 'launcher/test/qemu/**'
       - 'launcher/test/run_qemu_tests.sh'
       - 'launcher/sdkconfig.defaults.qemu'
+      - '.python-version'
+      - 'launcher/idf-pin.json'
+      - '.github/actions/**'
   workflow_dispatch:
 
 concurrency:

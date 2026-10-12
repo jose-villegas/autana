@@ -16,12 +16,16 @@ on:
       - 'scripts/gates/check-mermaid.mjs'
       - 'scripts/gates/mermaid/**'
       - '.github/workflows/mermaid.yml'
+      - '.node-version'
+      - '.github/actions/host-tools/**'
   pull_request:
     paths:
       - '**/*.md'
       - 'scripts/gates/check-mermaid.mjs'
       - 'scripts/gates/mermaid/**'
       - '.github/workflows/mermaid.yml'
+      - '.node-version'
+      - '.github/actions/host-tools/**'
   workflow_dispatch:
 
 concurrency:

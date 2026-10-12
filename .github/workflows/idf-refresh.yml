@@ -2,13 +2,13 @@ name: ESP-IDF refresh
 
 # Everything that moves with ESP-IDF, refreshed where ESP-IDF is: once a week
 # this pins the newest image of launcher/idf-pin.json's tag (its commit and
-# esp-clang read from inside it), re-solves launcher/dependencies.lock to the
-# newest components its manifests allow, rebuilds the three variants and
-# rewrites the IRAM budgets they measure, then opens one pull request with all
-# of it. Anything else a check finds is named by that check. A release line
+# esp-clang read from inside it) and mirrors it to GHCR, re-solves
+# launcher/dependencies.lock to the newest components its manifests allow,
+# rebuilds the three variants and rewrites the IRAM budgets they measure, then
+# opens one pull request with all of it. Anything else a check finds is named by that check. A release line
 # newer than the pin's tag is a migration: the run warns and stays on the
 # pinned line. Every other framework's bump comes from Renovate
-# (.github/renovate.json5); docs/tools/Framework-Versions.md has both.
+# (.github/renovate.json5); docs/tools/Framework-Versions.md draws both.
 
 on:
   schedule:
@@ -21,6 +21,7 @@ concurrency:
 
 permissions:
   contents: write
+  packages: write
   pull-requests: write
 
 env:
@@ -56,6 +57,23 @@ jobs:
             "espressif/idf:$tag@${digest#*@}" "$date"
           echo "after=$(python3 scripts/deps/idf_pin.py show commit)" >> "$GITHUB_OUTPUT"
 
+      # CI pulls the pinned image from here (scripts/ci/idf_image.sh), not Docker Hub's anonymous
+      # quota. crane copies the manifests byte for byte, so the mirror keeps the pinned digest.
+      - name: Mirror the pinned image to GHCR
+        env:
+          # renovate: datasource=github-releases depName=google/go-containerregistry
+          CRANE_VERSION: v0.22.1
+        run: |
+          release="https://github.com/google/go-containerregistry/releases/download/$CRANE_VERSION"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$release/go-containerregistry_Linux_x86_64.tar.gz"
+          curl -fsSL "$release/checksums.txt" | grep ' go-containerregistry_Linux_x86_64.tar.gz$' | sha256sum -c -
+          tar -xzf go-containerregistry_Linux_x86_64.tar.gz crane
+          cd "$GITHUB_WORKSPACE"
+          image=$(python3 scripts/deps/idf_pin.py show image)
+          echo "$GH_TOKEN" | "$RUNNER_TEMP/crane" auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          "$RUNNER_TEMP/crane" copy "$image" "ghcr.io/$GITHUB_REPOSITORY_OWNER/esp-idf:$(python3 scripts/deps/idf_pin.py show tag)"
+
       - uses: ./.github/actions/idf-build
         with:
           cache-name: idf-refresh
@@ -68,27 +86,23 @@ jobs:
             && cd ..
             && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write
 
-      - name: Nothing moved, close a stale refresh PR
-        id: changed
-        run: |
-          if git diff --quiet; then
-            python scripts/ci/refresh_pr.py close "ESP-IDF, its components and the budgets they measure already match main."
-            echo "any=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "any=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Commit the refresh and open or update the PR
-        if: steps.changed.outputs.any == 'true'
+      # refresh_branch.py rebuilds the branch on the current main from the changed files, so a
+      # main that moved meanwhile (a workflow file, above all) never blocks the push.
+      - name: Commit the refresh and open or update the PR, or close a stale one
         env:
           BEFORE: ${{ steps.pin.outputs.before }}
           AFTER: ${{ steps.pin.outputs.after }}
+          TITLE: 'build: refresh ESP-IDF, its components and the budgets they measure'
         run: |
-          git switch -c "$REFRESH_BRANCH"
-          git -c user.name='github-actions[bot]' \
-              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              commit -qam 'build: refresh ESP-IDF, its components and the budgets they measure'
-          git push -q --force origin "$REFRESH_BRANCH"
+          set +e
+          python scripts/ci/refresh_branch.py "$REFRESH_BRANCH" "$TITLE" $(git diff --name-only)
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            python scripts/ci/refresh_pr.py close "ESP-IDF, its components and the budgets they measure already match main."
+            exit 0
+          fi
+          [ "$code" -eq 0 ] || exit "$code"
           {
             echo "The newest \`$(python3 scripts/deps/idf_pin.py show tag)\` image and the newest components its manifests allow, made by \`.github/workflows/idf-refresh.yml\` on ${GITHUB_SHA::7}."
             echo
@@ -104,4 +118,4 @@ jobs:
             echo
             echo "Ticket: xwxi"
           } > "$RUNNER_TEMP/body.md"
-          python scripts/ci/refresh_pr.py sync 'build: refresh ESP-IDF, its components and the budgets they measure' "$RUNNER_TEMP/body.md"
+          python scripts/ci/refresh_pr.py sync "$TITLE" "$RUNNER_TEMP/body.md"

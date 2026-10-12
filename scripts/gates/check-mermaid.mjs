@@ -6,6 +6,7 @@
 //   node scripts/gates/check-mermaid.mjs                 # every git-tracked *.md
 //   node scripts/gates/check-mermaid.mjs path/to/file.md # one file or directory
 //   node scripts/gates/check-mermaid.mjs --verbose       # also list the blocks that passed
+//   node scripts/gates/check-mermaid.mjs --probe         # exit 0 when an mmdc runs, else 1
 //   node scripts/gates/check-mermaid.mjs --stdin <label> # one file's content from stdin,
 //                                                         # reported under <label>
 //
@@ -266,6 +267,10 @@ async function validate(block, label, workDir, index) {
 
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv.includes('--probe')) {
+    await runMmdc(['--version']).catch(() => { process.exitCode = 1; });
+    return;
+  }
   const verbose = argv.includes('--verbose');
   const stdinIndex = argv.indexOf('--stdin');
   const stdinLabel = stdinIndex !== -1 ? argv[stdinIndex + 1] : null;
