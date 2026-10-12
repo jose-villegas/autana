@@ -2,8 +2,9 @@
 
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
 animator and skinned-renderer components, and per-renderer lighting (direct
-by default), mode selection from the SKIN entry and SCNE v2 are implemented.
-The clip picker is proposed. `[A]` marks a proposal of this sketch.
+by default), mode selection from the SKIN entry, SCNE v2 and the clip
+picker are implemented; [Skinned Meshes](../render/Skinned-Meshes.md) is
+the user guide. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
 
@@ -120,8 +121,9 @@ int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 ```
 
-An animated scene: a dropdown of clip names (`ui_dropdown`) and a
-blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
+An animated scene's picker: a dropdown of clip names (`ui_dropdown`) and a
+blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets,
+and a console command making the same `scene_animator_play()` call.
 
 ## 5. Where the later pieces plug in
 
