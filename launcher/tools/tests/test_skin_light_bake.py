@@ -14,7 +14,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 ROOT = TOOLS.parents[1]
 sys.path.insert(0, str(TOOLS))
 from native.shared_library import build_shared
-from r3d.light import face_colours, LIGHT_GAMMA
+from r3d.light import albedo_from_uv, face_colours, LIGHT_GAMMA
 from anim import track_host
 from build import packages
 from build.c_header import read_define
@@ -23,6 +23,12 @@ NORMAL_SCALE = read_define(SKIN_OWNER, "R3D_SKIN_NORMAL_SCALE")
 
 
 class PatchEquality(unittest.TestCase):
+    def test_untextured_albedo_decodes_material_gamma(self):
+        uv = np.array([[0.0, 0.0], [0.25, 0.75], [1.0, 1.0]])
+        kd = np.array([0.125, 0.5, 0.875])
+        albedo = albedo_from_uv(None, kd, uv, None)
+        np.testing.assert_allclose(albedo, np.tile(kd ** LIGHT_GAMMA, (len(uv), 1)))
+
     def test_baked_patch_matches_runtime_per_vertex_bytes(self):
         compiler = track_host.compiler()
         if sys.platform == "win32":

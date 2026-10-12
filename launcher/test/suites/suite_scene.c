@@ -197,9 +197,10 @@ typedef struct {
     uint16_t default_clip;
     vec3f_t ambient;
     float intensity;
+    float tonemap_white;
 } skin_fixture_options_t;
 
-static const skin_fixture_options_t SKIN_OPTIONS = {R3D_SKIN_LIGHT_DIRECT, 0, {0.25F, 0.5F, 0.75F}, 0.3F};
+static const skin_fixture_options_t SKIN_OPTIONS = {R3D_SKIN_LIGHT_DIRECT, 0, {0.25F, 0.5F, 0.75F}, 0.3F, 0.4F};
 
 static const scene_spec_t SCENES[] = {
     /* a camera, a red quad at the origin and a green one 4 units right */
@@ -246,9 +247,9 @@ static const scene_spec_t SCENES[] = {
      .renderers = {{1, "red"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
     {.id = "test_skin",
-     .entity_count = 1,
+     .entity_count = 2,
      .renderer_count = 1,
-     .entities = {{"red", IDENTITY}},
+     .entities = {{"red", IDENTITY}, {"lamp", IDENTITY}},
      .renderers = {{0, "red"}}},
 };
 
@@ -351,7 +352,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
     }
     const scene_asset_settings_t settings = {.ambient_color = options->ambient,
                                              .ambient_intensity = skins != 0 ? options->intensity : 0.0F,
-                                             .tonemap_white = skins != 0 ? 0.4F : 0.0F};
+                                             .tonemap_white =
+                                                 skins != 0 ? options->tonemap_white : SCENE_TONEMAP_WHITE_NONE};
     memcpy(entry + offsets[SCENE_ASSET_SETTINGS], &settings, sizeof settings);
 }
 
@@ -847,9 +849,61 @@ test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
     test_free_aligned(raw);
 }
 
+static void
+assert_load_failures_release(const asset_pack_t* pack, const char* id) {
+    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
+    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+
+    enum { ALLOCATION_LIMIT = 16 };
+
+    bool succeeded = false;
+    for (int allocation = 0; allocation < ALLOCATION_LIMIT; allocation++) {
+        scene_fail_allocation_after = allocation;
+        scene_failure_t why;
+        scene_t* scene = scene_load_from(pack, id, &why);
+        scene_fail_allocation_after = -1;
+        if (scene != NULL) {
+            scene_unload(scene);
+            succeeded = true;
+        } else {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_MEMORY, why.status, why.what);
+        }
+        TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        if (succeeded) {
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(succeeded);
+}
+
 #ifndef DEVICE_BUILD
-/* The scene tools/tests/scene_probe.py bakes with the tools' own writer,
- * loaded beside quads for its two meshes: what the scene file says arrives. */
+static void
+test_authored_clip_ids_require_nonempty_terminated_text(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    asset_view_t entry;
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "authored", SCENE_ASSET, &entry));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
+    uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
+    const uint32_t size = entry.size;
+    for (int i = 0; i < asset.clip_count; i++) {
+        char* clip = (char*)(uintptr_t)asset.clips[i];
+        char saved[ASSET_NAME_MAX];
+        memcpy(saved, clip, sizeof saved);
+        memset(clip, 'x', sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, size));
+        memset(clip, 0, sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, size));
+        memcpy(clip, saved, sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, size));
+    }
+    asset_file_release(buffer);
+}
+
 static void
 check_authored_colors(uint8_t* bytes, uint32_t size, uint32_t light, uint32_t settings) {
     const float invalid[] = {-1.0F, INFINITY, NAN};
@@ -989,6 +1043,18 @@ test_encoder_authored_components_load_and_reach_runtime(void) {
     asset_file_release(buffer);
 }
 
+static void
+test_encoder_authored_two_skin_allocation_failures_release_lighting(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    assert_load_failures_release(&pack, "authored");
+    asset_file_release(buffer);
+}
+
+/* The scene tools/tests/scene_probe.py bakes with the tools' own writer,
+ * loaded beside quads for its two meshes: what the scene file says arrives. */
 static void
 test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     fixture();
@@ -2160,6 +2226,45 @@ test_authored_skin_modes_animation_and_ambient(void) {
 }
 
 static void
+test_authored_tonemap_changes_skin_colors_in_both_attachment_orders(void) {
+    enum { BYTE_TOLERANCE = 2, MINIMUM_TONEMAP_CHANGE = 32 };
+
+    const float intensity = 4.0F, white = 4.0F;
+    for (int runtime = 0; runtime < 2; runtime++) {
+        uint8_t colors[2];
+        for (int mapped = 0; mapped < 2; mapped++) {
+            skin_fixture_options_t options = SKIN_OPTIONS;
+            options.ambient = SCENE_LIGHT_COLOR_DEFAULT;
+            options.intensity = runtime ? SCENE_AMBIENT_INTENSITY_NONE : intensity;
+            options.tonemap_white = mapped ? white : SCENE_TONEMAP_WHITE_NONE;
+            fixture_with_skin(&options);
+            scene_t* scene = load("test_skin");
+            const scene_entity_t entity = scene_find(scene, "red");
+            if (runtime) {
+                TEST_ASSERT_NULL(scene->light_transfer);
+                const scene_entity_t lamp = scene_find(scene, "lamp");
+                scene_transform_t pose = *scene_entity_transform(scene, lamp);
+                transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 0, 0}, MATH_PI / 2));
+                scene_set_transform(scene, lamp, &pose);
+                TEST_ASSERT_TRUE(scene_light_set_intensity(scene, lamp, intensity));
+            }
+            scene_animation_step(scene, 0);
+            const float albedo =
+                powf(scene->skinned_renderers[entity].bind.colors[0][0] / (float)R3D_SKIN_LIGHT_BYTE_SCALE,
+                     R3D_SKIN_LIGHT_GAMMA);
+            const float radiance = albedo * intensity;
+            const float toned = radiance / (1.0F + radiance * options.tonemap_white);
+            const int expected =
+                (int)lrintf(R3D_SKIN_LIGHT_BYTE_SCALE * powf(fminf(toned, 1.0F), 1 / R3D_SKIN_LIGHT_GAMMA));
+            colors[mapped] = scene_entity_mesh(scene, entity)->colors[0][0];
+            TEST_ASSERT_UINT8_WITHIN(BYTE_TOLERANCE, expected, colors[mapped]);
+            release_fixture();
+        }
+        TEST_ASSERT_GREATER_THAN_INT(MINIMUM_TONEMAP_CHANGE, colors[0] - colors[1]);
+    }
+}
+
+static void
 test_lighting_storage_requires_a_skin_and_light_in_both_orders(void) {
     fixture();
     scene_t* scene = load("test_pair");
@@ -2199,28 +2304,7 @@ test_authored_skin_load_allocation_failures_release_lighting(void) {
     skin_fixture_options_t options = SKIN_OPTIONS;
     options.mode = R3D_SKIN_LIGHT_TABLE;
     fixture_with_skin(&options);
-    const size_t before = memory_free_bytes(MEMORY_INTERNAL);
-
-    enum { ALLOCATION_LIMIT = 16 };
-
-    bool succeeded = false;
-    for (int allocation = 0; allocation < ALLOCATION_LIMIT; allocation++) {
-        scene_fail_allocation_after = allocation;
-        scene_failure_t why;
-        scene_t* scene = scene_load_from(&fx.pack, "test_skin", &why);
-        scene_fail_allocation_after = -1;
-        if (scene != NULL) {
-            scene_unload(scene);
-            succeeded = true;
-        } else {
-            TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-        }
-        TEST_ASSERT_EQUAL_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
-        if (succeeded) {
-            break;
-        }
-    }
-    TEST_ASSERT_TRUE(succeeded);
+    assert_load_failures_release(&fx.pack, "test_skin");
 }
 
 static void
@@ -2949,6 +3033,7 @@ run_scene_suite(void) {
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
     RUN_TEST(test_authored_skin_modes_animation_and_ambient);
     RUN_TEST(test_authored_light_preserves_static_mesh_colors);
+    RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);
     RUN_TEST(test_lighting_storage_requires_a_skin_and_light_in_both_orders);
     RUN_TEST(test_authored_skin_load_allocation_failures_release_lighting);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
@@ -2998,8 +3083,10 @@ run_scene_suite(void) {
     RUN_TEST(test_scene_header_counts_are_independent_of_components);
     RUN_TEST(test_an_id_too_long_for_a_pack_name_is_cut_where_the_failure_names_it);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_authored_clip_ids_require_nonempty_terminated_text);
     RUN_TEST(test_authored_rows_and_refusals);
     RUN_TEST(test_encoder_authored_components_load_and_reach_runtime);
+    RUN_TEST(test_encoder_authored_two_skin_allocation_failures_release_lighting);
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif
 #ifndef DEVICE_BUILD

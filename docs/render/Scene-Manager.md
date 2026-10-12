@@ -64,8 +64,7 @@ including while the pose is paused. Scene ambient and tone map are private;
 SCNE settings apply ambient and tone map before authored lights attach.
 All lit skins share world-space lights. Their normal palettes include entity
 and joint scale through an inverse-transpose transform. Skin dirty bits are
-consumed by the skin stage even when another scene is active. The shared
-decode and encode transfer tables are allocated in internal RAM at the first light.
+consumed by the skin stage even when another scene is active.
 
 Exactly one camera is active engine-wide, and it draws the enabled renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's
