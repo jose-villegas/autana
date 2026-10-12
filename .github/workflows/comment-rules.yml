@@ -175,10 +175,13 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       image: ${{ steps.pin.outputs.image }}
+      commit: ${{ steps.pin.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
       - id: pin
-        run: echo "image=$(jq -r .image launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "image=$(jq -r .image launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(jq -r .commit launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
@@ -193,8 +196,10 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Verify the pinned IDF commit
+        env:
+          IDF_PIN_COMMIT: ${{ needs.idf-image.outputs.commit }}
         run: |
-          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$(jq -r .commit launcher/idf-pin.json)" || { echo "image is not the pinned IDF commit"; exit 1; }
+          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$IDF_PIN_COMMIT" || { echo "image is not the pinned IDF commit"; exit 1; }
 
       - name: Every name, file and heading a comment cites exists
         env:
