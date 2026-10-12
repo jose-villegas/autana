@@ -294,7 +294,7 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
     const float keep = RHO * RHO;
     p->scale = 1.0F + (RHO * (p->scale - 1.0F));
     p->offset_us *= RHO;
-    float(*c)[2] = p->covariance;
+    float (*c)[2] = p->covariance;
     c[0][0] = (keep * c[0][0]) + ((1.0F - keep) * PRIOR_SCALE_SD * PRIOR_SCALE_SD);
     c[1][1] = (keep * c[1][1]) + ((1.0F - keep) * PRIOR_OFFSET_SD_US * PRIOR_OFFSET_SD_US);
     c[0][1] *= keep;

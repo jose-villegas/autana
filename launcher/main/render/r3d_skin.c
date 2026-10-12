@@ -32,7 +32,7 @@ read_header(asset_view_t entry, r3d_skin_t* out) {
         .joint_count = joints,
         .influences = influences,
         .vertex_count = vertices,
-        .inverse_binds = (const float(*)[R3D_SKIN_MATRIX_WIDTH])(const void*)(entry.data + inverse),
+        .inverse_binds = (const float (*)[R3D_SKIN_MATRIX_WIDTH])(const void*)(entry.data + inverse),
         .vertices = entry.data + records,
         .vertex_stride = stride,
     };
