@@ -12,7 +12,7 @@
 
 #include "asset/asset_pack.h"
 #include "render/r3d_instance.h"
-#include "render/r3d_scene.h"
+#include "scene/camera/camera.h"
 
 typedef struct scene scene_t;
 
@@ -64,9 +64,11 @@ const char* scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity);
 /* The mesh the entity draws, or NULL when it draws none. */
 const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t entity);
 
-/* The lens and entity pose of the scene's camera `camera` (NULL: its first), to
- * sample without drawing; NULL when the scene has no such camera. */
-const r3d_scene_camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
+/* The lens of the scene's camera `camera` (NULL: its first); NULL when the scene has no such camera. */
+const camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
+
+/* The transform of that camera's entity, which its path animates; NULL when the scene has no such camera. */
+const transformf_t* scene_camera_pose(const scene_t* scene, const char* camera);
 
 /* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
 bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);

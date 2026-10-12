@@ -8,8 +8,7 @@ in [Mesh-Import.md](Mesh-Import.md).
 span rasterizer, and a pipeline that draws a mesh whose light was baked
 offline. It sits above `gfx/`, whose render targets it draws into, and
 otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
-mesh from a pack), so boot and apps both call it. `r3d_scene.h` also declares the
-camera's animatable lens fields for `anim/` bindings. It
+mesh from a pack), so boot and apps both call it. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
@@ -29,7 +28,7 @@ Both use `render_view_t` for the per-frame perspective fit and picture basis.
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
-| `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
+| `camera_t` | A baked camera's lens; its pose is the camera entity's transform, from `scene/camera/camera.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
@@ -39,7 +38,7 @@ Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
 carries a colour per face and the raster draws what the mesh carries.
 
 A camera that moves is an [animation track](../Animation-Tracks.md), sampled
-into a look-at pose; `r3d_scene_view_at()` builds its frame view with
+into the camera entity's pose; `camera_view()` builds its frame view with
 `render_view_make()`, which folds in the panel's quarter turn, fits its lens
 to the shorter picture side, ignores the pose's scale and keeps its roll.
 Poses follow [math/linear's conventions](../math/README.md#conventions).
@@ -61,7 +60,6 @@ exactly.
 | `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
 | `render_view.h` | The frame view and its pose-and-lens builder |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
-| `r3d_scene.h` | The camera of a baked table: its lens, placement and path, and sampling it at a time; reads `anim/` |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
 | `raster_show.h` | Development views paint colour from the raster maps |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |

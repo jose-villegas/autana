@@ -217,7 +217,7 @@ system icons), not code; it keeps its place under L1.
 | `render/viewport.h` | `display/` | S2 |
 | `render/r3d_project.h`, `r3d_project_x.h` | stay in `render/` for now `[M]`: they include `render/render_view.h`, so the maths package cannot take them until they take plain values | |
 | `render/r3d.h` | deleted, its six includers name what they use | S1 |
-| scene camera types in `render/r3d_scene.h` | `scene/camera/` | S1 |
+| scene camera types (were `render/r3d_scene.h`) | `scene/camera/` | S1 |
 
 ### Untangling gfx first (S1)
 

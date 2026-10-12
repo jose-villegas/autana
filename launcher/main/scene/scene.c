@@ -92,9 +92,7 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
-                                                      .near_z = c->near_z,
-                                                      .pose = &scene->locals[c->entity]},
+        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
                                              .entity = c->entity,
                                              .clear = GFX_RGB(c->clear_rgb)};
     }
@@ -425,10 +423,16 @@ scene_camera_index(const scene_t* scene, const char* camera) {
     return -1;
 }
 
-const r3d_scene_camera_t*
+const camera_t*
 scene_camera_lens(const scene_t* scene, const char* camera) {
     const int index = scene_camera_index(scene, camera);
     return index < 0 ? NULL : &scene->cameras[index].lens;
+}
+
+const transformf_t*
+scene_camera_pose(const scene_t* scene, const char* camera) {
+    const int index = scene_camera_index(scene, camera);
+    return index < 0 ? NULL : &scene->locals[scene->cameras[index].entity];
 }
 
 const scene_transform_t*

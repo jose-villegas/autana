@@ -123,7 +123,7 @@ and its writer are documented in [Scene files](../render/Scene-Files.md#the-scen
 scene_t*       scene_load(const char* id, scene_failure_t* why);   /* opens SCNE and every mesh, skin, skeleton and clip it names */
 scene_entity_t scene_find(const scene_t*, const char* name);       /* exists; becomes THE way to get an id (setup time) */
 const char*    scene_entity_mesh_id(const scene_t*, scene_entity_t);                   /* new: tests open a scene's mesh */
-const r3d_scene_camera_t* scene_camera_lens(const scene_t*, const char* camera);       /* new: sample a path from a loaded scene */
+const camera_t* scene_camera_lens(const scene_t*, const char* camera);       /* new: sample a path from a loaded scene */
 /* r3d_scene_path_t holds { anim_clip_t clip; anim_track_t translation, rotation; } by value, pointing into the pack. */
 ```
 

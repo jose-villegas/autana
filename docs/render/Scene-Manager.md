@@ -46,7 +46,7 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_unload(scene)` | frees it and releases its pack; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
-| `scene_camera_lens(scene, camera)` | a camera's lens and current entity pose (NULL: the first), to sample without drawing |
+| `scene_camera_lens(scene, camera)`, `scene_camera_pose(scene, camera)` | a camera's lens and its entity's current transform (NULL: the first), to sample without drawing |
 | `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value, hide or show a renderer |
 | `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
@@ -139,8 +139,8 @@ flowchart LR
 ## Beneath it
 
 Host tools and tests pass a `const render_view_t*` to `raster_draw()`
-and compose its picture with `raster_upscale()`. `r3d_scene_view_at()` builds a
-frame view from a camera's pose; a scene camera's pose is its entity's,
+and compose its picture with `raster_upscale()`. `camera_view()` builds a
+frame view from a lens and a pose; a scene camera's pose is its entity's,
 which a property animator moves.
 
 The shell's half of the API (the two frame halves and the unload on exit) is

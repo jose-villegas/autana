@@ -13,20 +13,22 @@
 typedef struct {
     scene_t* scene;
     const asset_pack_t* pack;
-    const r3d_scene_camera_t* path;
+    const camera_t* lens;
+    const transformf_t* pose;
 } sponza_suite_t;
 
 /* Loads it, printing why when it cannot; every field is then NULL. */
 static inline sponza_suite_t
 sponza_suite_load(void) {
     scene_failure_t why;
-    sponza_suite_t s = {scene_load(SPONZA_SCENE, &why), NULL, NULL};
+    sponza_suite_t s = {scene_load(SPONZA_SCENE, &why), NULL, NULL, NULL};
     if (s.scene == NULL) {
         printf("scene %s: status %d, asset %s, about '%s'\n", SPONZA_SCENE, (int)why.status,
                asset_status_text(why.asset), why.what);
     } else {
         s.pack = asset_store_pack(SPONZA_SCENE);
-        s.path = scene_camera_lens(s.scene, NULL);
+        s.lens = scene_camera_lens(s.scene, NULL);
+        s.pose = scene_camera_pose(s.scene, NULL);
     }
     return s;
 }
@@ -37,5 +39,5 @@ sponza_suite_release(sponza_suite_t* s) {
         asset_store_release(SPONZA_SCENE);
     }
     scene_unload(s->scene);
-    *s = (sponza_suite_t){NULL, NULL, NULL};
+    *s = (sponza_suite_t){NULL, NULL, NULL, NULL};
 }

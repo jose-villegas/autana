@@ -570,7 +570,8 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     scene_t* scene = show("test_pair", NULL);
     fx.target.height = PICTURE_HEIGHT;
     scene_render(0, 0, fx.target.width, fx.target.height);
-    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, (viewport_t){SIZE, SIZE / 2, 0});
+    const render_view_t view =
+        camera_view(&scene->cameras[0].lens, scene_camera_pose(scene, NULL), (viewport_t){SIZE, SIZE / 2, 0});
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
         render_context_set_scale(c, scale);
@@ -721,14 +722,11 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
 
     scene_t* scene = load("test_flight");
     const scene_entity_t camera = scene_find(scene, "camera");
-    const r3d_scene_camera_t* flight = scene_camera_lens(scene, NULL);
+    const transformf_t* flight = scene_camera_pose(scene, NULL);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
-    vec3f_t eye;
-    vec3f_t forward;
-    r3d_scene_camera_sample(flight, &eye, &forward);
-    TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
-    TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.z);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, quatf_rotate(flight->rotation, (vec3f_t){0, 0, 1}).z);
 }
 
 /* Where the pair's entry puts its parts, as the pack holds it. */
@@ -1096,7 +1094,7 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_FLOAT(want.position.x, got->position.x);
     TEST_ASSERT_EQUAL_FLOAT(want.position.y, got->position.y);
     TEST_ASSERT_EQUAL_FLOAT(want.position.z, got->position.z);
-    const r3d_scene_camera_t* lens = scene_camera_lens(scene, "camera");
+    const camera_t* lens = scene_camera_lens(scene, "camera");
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
@@ -1536,7 +1534,8 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
     render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
-    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, (viewport_t){SIZE, SIZE, 0});
+    const render_view_t view =
+        camera_view(&scene->cameras[0].lens, scene_camera_pose(scene, NULL), (viewport_t){SIZE, SIZE, 0});
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
     const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
@@ -2341,10 +2340,10 @@ test_translation_only_camera_clip_retains_rotation(void) {
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, entity)->position.x);
     TEST_ASSERT_EQUAL_MEMORY(&pose.rotation, &scene_entity_transform(scene, entity)->rotation, sizeof pose.rotation);
-    vec3f_t eye, forward;
-    r3d_scene_camera_sample(scene_camera_lens(scene, NULL), &eye, &forward);
+    const transformf_t* camera = scene_camera_pose(scene, NULL);
     const vec3f_t wanted = quatf_rotate(pose.rotation, (vec3f_t){0, 0, 1});
-    TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
+    const vec3f_t forward = quatf_rotate(camera->rotation, (vec3f_t){0, 0, 1});
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, camera->position.x);
     TEST_ASSERT_EQUAL_MEMORY(&wanted, &forward, sizeof wanted);
 }
 
