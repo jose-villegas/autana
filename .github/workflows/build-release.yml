@@ -36,5 +36,6 @@ jobs:
             && tools/build/check_release_symbols.sh build/launcher.elf
             && cd ..
             && python3 launcher/tools/render/code_layout.py --check launcher/build
+            && python3 launcher/tools/build/memory_map.py launcher/build --tables launcher/build/memory-tables
             && grep -A1 .text.bootloader_after_init launcher/build/bootloader/bootloader.map
             | grep -q libpmic_cold_boot

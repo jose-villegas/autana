@@ -122,6 +122,9 @@ _Static_assert(GFX_BAND_SLOTS == STRIP_BOUNCE_SLOTS, "band_buf[] aliasing strip_
  * presents to one; see gfx_init()/gfx_present() for the host side of each.
  */
 
+/* Avoid callback cache misses on the SPI completion path; the bus ISR uses flags 0.
+ * SPI_MASTER_ISR_IN_IRAM alone does not require cache-off safety (docs/Citations.md#59).
+ * IRAM budget: 36 B */
 static bool IRAM_ATTR
 on_strip_sent(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t* event, void* user_context) {
     BaseType_t woken = pdFALSE;

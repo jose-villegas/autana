@@ -329,3 +329,11 @@ Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 - [`Testing-Guide.md`](Testing-Guide.md): suites and runners
 - [`Build-Variants.md`](Build-Variants.md): what release, dev and
   diagnostics builds carry, and which flag gates what
+
+## IRAM placement
+
+Declare a reason and `IRAM budget: <bytes> B` in the comment immediately
+above every IRAM attribute or linker mapping. Budgets use exact measured
+bytes and bound the largest variant that builds the site. The memory-map
+gate attributes app sites separately from engine sites and checks every
+variant. See [the internal memory map](notes/Board-and-Memory.md#internal-memory-map).
