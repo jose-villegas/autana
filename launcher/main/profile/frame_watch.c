@@ -124,7 +124,7 @@ heap_call_site(void) {
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
  * IRAM budget: 22 B */
-IRAM_ATTR void
+void
 esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
     (void)ptr;
     (void)size;
@@ -136,7 +136,7 @@ esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
  * IRAM budget: 22 B */
-IRAM_ATTR void
+void
 esp_heap_trace_free_hook(void* ptr) {
     (void)ptr;
     if (watching_this_task()) {
