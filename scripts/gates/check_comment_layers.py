@@ -120,7 +120,8 @@ def problems(root=".", context=False, files=None):
         if rp == CITATIONS:
             text = "\n".join(blank_cited_by(line) for line in lines)
         for marker in reversed(list(MARKER.finditer(text))):
-            if marker.group(1) == "generated" and marker.group(4):
+            if (marker.group(1) == "generated" and marker.group(4)
+                    and "<!--" not in marker.group(4) and "-->" not in marker.group(4)):
                 start, end = marker.span(4)
                 text = text[:start] + " " * (end - start) + text[end:]
         for m in hits(text):

@@ -96,6 +96,37 @@ test_listing_marks_default_and_fallback_playback(void) {
 }
 
 static void
+test_console_success_reports_applied_blend_and_end(void) {
+    clip_fixture_t* f = fixture();
+    char command[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
+    char expected[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=\nRENDER_END\n") + RENDER_LAB_BLEND_TEXT_SIZE];
+    (void)snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS);
+    (void)snprintf(expected, sizeof expected, "RENDER clip=gallop blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS);
+    request(f, command);
+    TEST_ASSERT_EQUAL_STRING(expected, f->reply);
+    (void)snprintf(expected, sizeof expected, "RENDER clip=idle blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS);
+    request(f, "clip idle");
+    TEST_ASSERT_EQUAL_STRING(expected, f->reply);
+    TEST_ASSERT_EQUAL_UINT32(TEST_BLEND_MS, f->animator.layer.blend_ms);
+}
+
+static void
+test_init_plays_without_blend_and_console_uses_default(void) {
+    clip_fixture_t* f = fixture();
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_EQUAL_UINT32(0, f->animator.layer.blend_ms);
+    request(f, "clip gallop");
+    TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_BLEND_DEFAULT_MS, f->animator.layer.blend_ms);
+}
+
+static void
+test_listing_rejects_extra_arguments(void) {
+    clip_fixture_t* f = fixture();
+    TEST_ASSERT_FALSE(render_lab_clips_reply(&f->choice, "clips extra", capture_reply));
+    TEST_ASSERT_EQUAL_STRING("", f->reply);
+}
+
+static void
 test_console_errors_leave_playback_unchanged(void) {
     clip_fixture_t* f = fixture();
     char selection[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
@@ -185,7 +216,21 @@ test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
     f->blocked_heap = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f->blocked_heap);
-    TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
+    TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
+    request(f, "clips");
+    TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
+    request(f, "clip idle");
+    TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
+    ui_init();
+    ui_begin(NULL);
+    ui_flow_t flow = ui_flow_start(ui_width(), UI_MARGIN, UI_MARGIN);
+    const ui_flow_t before = flow;
+    const int commands = ui_context()->command_list.idx;
+    render_lab_clips_draw(ui_context(), &flow, ui_width(), &f->choice);
+    TEST_ASSERT_EQUAL_INT(commands, ui_context()->command_list.idx);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &flow, sizeof flow);
+    ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_NULL(f->choice.items);
     TEST_ASSERT_EQUAL_INT(0, f->choice.count);
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_BLEND_DEFAULT_MS, f->choice.blend_ms);
@@ -322,6 +367,9 @@ test_draw_accepts_blend_boundaries_for_next_pick(void) {
 
 void
 run_render_lab_clips_suite(void) {
+    RUN_TEST(test_console_success_reports_applied_blend_and_end);
+    RUN_TEST(test_init_plays_without_blend_and_console_uses_default);
+    RUN_TEST(test_listing_rejects_extra_arguments);
     RUN_TEST(test_draw_accepts_blend_boundaries_for_next_pick);
     RUN_TEST(test_listing_marks_default_and_fallback_playback);
     RUN_TEST(test_console_errors_leave_playback_unchanged);

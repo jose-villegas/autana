@@ -75,25 +75,25 @@ static void
 assert_skin_changes(fixture_t* f) {
     const r3d_lit_mesh_t* mesh = scene_entity_mesh(f->scene, f->subject);
     memcpy(f->positions, mesh->positions, f->position_bytes);
-    render_lab_test_frame(false);
+    render_lab_test_frame(false, NULL);
     TEST_ASSERT_NOT_EQUAL(0, memcmp(f->positions, mesh->positions, f->position_bytes));
 }
 
 static void
 test_console_gallop_blends_and_skins(void) {
     fixture_t* f = fixture();
-    render_lab_test_frame(false);
+    render_lab_test_frame(false, NULL);
     char command[ASSET_NAME_MAX];
     (void)snprintf(command, sizeof command, CLIP_COMMAND, CLIP_BLEND_MS);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     const scene_animator_t* a = &f->scene->animators[f->subject];
     TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blend_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
-    render_lab_test_frame(false);
+    render_lab_test_frame(false, NULL);
     TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_TEST_FRAME_MS, a->layer.blended_ms);
     TEST_ASSERT_LESS_THAN_UINT32(CLIP_BLEND_MS, a->layer.blended_ms);
     for (int i = 0; i <= CLIP_BLEND_MS / RENDER_LAB_TEST_FRAME_MS; i++) {
-        render_lab_test_frame(false);
+        render_lab_test_frame(false, NULL);
     }
     TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blended_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
@@ -177,7 +177,7 @@ frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats) {
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, paused);
     for (int i = -1; i < PERF_SAMPLES; i++) {
         const int64_t start = timing_now_us();
-        const int64_t render_us = render_lab_test_frame(false);
+        const int64_t render_us = render_lab_test_frame(false, NULL);
         if (i >= 0) {
             f->render_us[i] = (int32_t)render_us;
             f->elapsed_us[i] = (int32_t)(timing_now_us() - start);

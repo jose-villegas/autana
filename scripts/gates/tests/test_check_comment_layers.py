@@ -28,6 +28,8 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(self.problems({"docs/Gfx.md": marker + "\n"}), [])
         cases = (
             "sand prose",
+            "<!-- generated: budget check: python gen.py --> <!-- sand comment -->",
+            "<!-- generated: budget check: python gen.py --> sand prose -->",
             "<!-- sand comment -->",
             "<!-- generated: Bad_Name check: python sand/report.py -->",
             "<!-- generated: budget check: sand",

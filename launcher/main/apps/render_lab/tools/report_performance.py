@@ -100,8 +100,9 @@ def parse_capture(text):
         if len(values) != 1:
             raise ValueError(f"inconsistent {field}")
         setup[field] = values.pop()
-    if setup["joints"] <= 0 or setup["influences"] <= 0 or setup["lights"] < 0:
-        raise ValueError("invalid skin setup")
+    for field in ("joints", "influences", "lights"):
+        if setup[field] < 0 or (field != "lights" and setup[field] == 0):
+            raise ValueError(f"invalid {field}")
     if setup["lighting"] not in LIGHTING_MODES:
         raise ValueError("invalid lighting")
     return {

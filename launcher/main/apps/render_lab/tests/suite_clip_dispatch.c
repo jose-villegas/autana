@@ -10,6 +10,7 @@
 #include "gfx/present/gfx_present_guard.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
+#include "ui/ui.h"
 #include "unity.h"
 
 #define DISPATCH_BLEND_MS 300
@@ -90,6 +91,34 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
 }
 
 static void
+test_boot_menu_draws_controls_only_for_animated_scene(void) {
+    dispatch_fixture_t* f = fixture();
+    static const char* const keys[] = {"capybara", "sponza"};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+        enter(f, keys[i]);
+        render_lab_test_frame(false, NULL);
+        const input_t boot = {.boot = {.pressed = true}};
+        render_lab_test_frame(false, &boot);
+        render_lab_test_frame(false, NULL);
+        bool clip = false;
+        bool blend = false;
+        bool close = false;
+        mu_Command* command = NULL;
+        while (mu_next_command(ui_context(), &command)) {
+            if (command->type == MU_COMMAND_TEXT) {
+                clip |= strcmp(command->text.str, "CLIP") == 0;
+                blend |= strncmp(command->text.str, "BLEND: ", sizeof("BLEND: ") - 1) == 0;
+                close |= strcmp(command->text.str, "BOOT to close") == 0;
+            }
+        }
+        TEST_ASSERT_TRUE(close);
+        TEST_ASSERT_EQUAL_INT(i == 0, clip);
+        TEST_ASSERT_EQUAL_INT(i == 0, blend);
+        leave(f);
+    }
+}
+
+static void
 test_cleanup_finishes_present_without_tripping_guard(void) {
     dispatch_fixture_t* f = fixture();
     enter(f, "capybara");
@@ -105,6 +134,7 @@ test_cleanup_finishes_present_without_tripping_guard(void) {
 void
 run_clip_dispatch_suite(void) {
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_boot_menu_draws_controls_only_for_animated_scene);
     RUN_TEST(test_scene_console_dispatch_and_repeated_exit_release_heap);
     RUN_TEST(test_cleanup_finishes_present_without_tripping_guard);
 #endif
