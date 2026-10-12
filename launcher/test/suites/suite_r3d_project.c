@@ -1,5 +1,6 @@
 /* Portable line projection reference, matrix composition and near clipping. */
 
+#include <float.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -278,6 +279,10 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
             const mat4f_t matrix = r3d_line_matrix(&view, &model);
             r3d_lens_t lens;
             r3d_lens_init(&lens, &view, 1);
+            const float coordinate_magnitude = 2.0F * fmaxf(view.center_x, view.center_y);
+            const int projection_roundings = 5 + 1 + 6 + 1 + 1;
+            /* Unfused dot, scale, affine apply, divide and center roundings bound both evaluation orders. */
+            const float lens_bound_px = FLT_EPSILON * coordinate_magnitude * (float)projection_roundings;
             for (int ix = -edge_steps; ix <= edge_steps; ix++) {
                 for (int iy = -edge_steps; iy <= edge_steps; iy++) {
                     const float dx = view.center_x * (float)ix / (float)edge_steps;
@@ -300,8 +305,8 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
                     const vec3f_t lp = mat4f_apply(&lens.m, point);
-                    TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_x, lens.center_x + lp.x / lp.z);
-                    TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_y, lens.center_y + lp.y / lp.z);
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, lens.center_x + lp.x / lp.z);
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, lens.center_y + lp.y / lp.z);
                 }
             }
         }

@@ -106,13 +106,16 @@ test_padding_alone_past_the_block_end_is_refused(void) {
     TEST_ASSERT_EQUAL_UINT(APP_ARENA_BYTES - 1, app_arena_mark());
 }
 
-/* An offset-aligned take passes this only when the block itself is aligned
- * to `align`, so it needs a block aligned below its own size. */
+/* Address and offset alignment differ observably only when the lowest set
+ * bit of the base is below APP_ARENA_BYTES; twice that bit may equal the size. */
 static void
 test_alignment_is_of_the_address_not_the_offset(void) {
     const uintptr_t base = block_base();
-    const size_t align = (size_t)(2u * lowest_set_bit(base));
-    TEST_ASSERT_LESS_THAN_UINT_MESSAGE(APP_ARENA_BYTES, align, "the block is aligned beyond its own size");
+    const uintptr_t base_alignment = lowest_set_bit(base);
+    if (base_alignment >= APP_ARENA_BYTES) {
+        TEST_IGNORE_MESSAGE("the base is aligned to the arena size; every fitting alignment also aligns offsets");
+    }
+    const size_t align = (size_t)(2u * base_alignment);
 
     TEST_ASSERT_NOT_NULL(app_arena_take(1, 1));
     const uintptr_t p = (uintptr_t)app_arena_take(1, align);
