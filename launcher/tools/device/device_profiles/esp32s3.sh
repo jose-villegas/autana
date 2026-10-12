@@ -17,8 +17,8 @@ DP_STATUS=measured
 # What a test fixture's locals actually live inside on device. The host's
 # stack is megabytes, which is why a 24 KB fixture array passed on a laptop
 # and panic-looped the board twice.
-DP_MAIN_TASK_STACK_BYTES=3584
-DP_MAIN_TASK_STACK_SOURCE="ESP-IDF esp32s3 default; not overridden in sdkconfig.defaults"
+DP_MAIN_TASK_STACK_BYTES=3648
+DP_MAIN_TASK_STACK_SOURCE="CONFIG_ESP_MAIN_TASK_STACK_SIZE in sdkconfig.defaults.diag, the build every suite runs in"
 
 # Per-function stack-frame ceiling the host checker enforces on test code.
 # Justified in launcher/test/check_stack_usage.py's header; short version:
