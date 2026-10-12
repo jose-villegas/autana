@@ -82,6 +82,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(REPO / "scripts/gates"))
 
 from build import packages  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
 
@@ -387,13 +388,36 @@ def native_inputs(files):
     def holder(item):
         return next((root for root in pinned if item == root or item.is_relative_to(root)), None)
 
+    defines = {}
     for path in files:
-        for value in module_facts(path)[1].values():
+        tree, constants, _ = module_facts(path)
+        headers = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "read_define":
+                try:
+                    header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
+                                               {"__builtins__": {}}, constants)).resolve()
+                    header_text = header.read_text(encoding="utf-8")
+                except (NameError, TypeError, ValueError, IndexError, OSError) as error:
+                    raise SettingsError(f"{path}:{node.lineno}: cannot resolve read_define header: {error}") from error
+                if header not in defines:
+                    values = {}
+                    for name in re.findall(r"^#define\s+(\w+)\s+[^\n]+", header_text, re.MULTILINE):
+                        try:
+                            values[name] = read_define(header, name)
+                        except RuntimeError:
+                            pass
+                    defines[header] = values
+                headers.add(header)
+        for value in constants.values():
             for item in path_constants(value):
                 if holder(item) is not None:
                     keyed[relative(holder(item))] = pinned[holder(item)]
-                elif item.suffix in C_SUFFIXES and item.is_file():
+                elif item not in headers and item.suffix in C_SUFFIXES and item.is_file():
                     sources.append(item)
+    # Literal defines are data inputs; their include chains are not compiled by the stage.
+    for header, values in defines.items():
+        keyed[relative(header)] = digest(sorted(values.items()))
     for item in c_includes(sources, packages.include_roots()):
         if holder(item) is not None:
             keyed[relative(holder(item))] = pinned[holder(item)]

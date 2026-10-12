@@ -308,9 +308,9 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
 /* Arms arrive together despite differing lengths. */
 static void
 draw_arm(int32_t re, int32_t im, int32_t t, uint8_t reach, uint8_t ink, const boot_anim_view_t* view) {
-    const int32_t fre = tween_lerp_i32(0, re, reach);
-    const int32_t fim = tween_lerp_i32(0, im, reach);
-    const int32_t ft = tween_lerp_i32(0, t, reach);
+    const int32_t fre = mathi_lerp_u8(0, re, reach);
+    const int32_t fim = mathi_lerp_u8(0, im, reach);
+    const int32_t ft = mathi_lerp_u8(0, t, reach);
 
     int ax, ay, bx, by;
     if (boot_anim_project_segment(0, 0, 0, fre, fim, ft, view, &ax, &ay, &bx, &by)) {
@@ -336,11 +336,11 @@ draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const uint8_t finale = boot_anim_finale_reach(now_ms);
     const int32_t short_arm = units(4);
     const int32_t long_arm = units(BOOT_ANIM_AXIS_FAR_UNITS);
-    const int32_t arm = tween_lerp_i32(short_arm, long_arm, finale);
+    const int32_t arm = mathi_lerp_u8(short_arm, long_arm, finale);
 
     const int32_t short_top = (BOOT_ANIM_T_MAX_PHASE1 + 1) << BOOT_ANIM_TQ;
     const int32_t long_top = boot_anim_zeta_to_t_q8(long_arm);
-    const int32_t top = tween_lerp_i32(short_top, long_top, finale);
+    const int32_t top = mathi_lerp_u8(short_top, long_top, finale);
 
     draw_arm(arm, 0, 0, reach, ink, view); /* real      */
     draw_arm(0, arm, 0, reach, ink, view); /* imaginary */

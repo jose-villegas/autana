@@ -19,8 +19,9 @@ WEIGHTS = [(128 / 255, 127 / 255, 0, 0), (64 / 255, 64 / 255, 64 / 255, 63 / 255
            (100 / 255, 80 / 255, 50 / 255, 25 / 255)]
 
 
-def rig():
-    nodes = [{'name': 'armature', 'children': [1, 3]}, {'name': 'a', 'children': [2]},
+def rig_glb(nodes=None):
+    if nodes is None:
+        nodes = [{'name': 'armature', 'children': [1, 3]}, {'name': 'a', 'children': [2]},
              {'name': 'child'}, {'name': 'b', 'children': [4]}, {'name': 'tip'},
              {'name': 'mesh', 'mesh': 0, 'skin': 0}]
     channels = [{'node': j, 'path': 'translation', 'times': [0, 1],
@@ -29,9 +30,13 @@ def rig():
                   'values': [(0, 0, 0, 1), (0.5, 0.5, 0.5, 0.5)]} for j in range(1, 5)]
     primitive = dict(positions=POSITIONS, indices=[0, 1, 2], normals=NORMALS,
                      joints=JOINTS, weights=WEIGHTS)
-    return gltf_read.parse_glb(gltf_write.build_glb(nodes, [{'name': 'move', 'channels': channels}],
+    return gltf_write.build_glb(nodes, [{'name': 'move', 'channels': channels}],
                meshes=[{'name': 'triangle', 'primitives': [primitive]}],
-               skins=[{'joints': [1, 2, 3, 4], 'inverse_binds': [IDENTITY] * 4}]))
+               skins=[{'joints': [1, 2, 3, 4], 'inverse_binds': [IDENTITY] * 4}])
+
+
+def rig():
+    return gltf_read.parse_glb(rig_glb())
 
 
 def mesh_entry():

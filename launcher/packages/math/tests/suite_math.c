@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "suites.h"
 #include "transform_cache.h"
@@ -13,6 +14,8 @@
 
 #include "math/linear/mat3f.h"
 #include "math/linear/transformf.h"
+#include "math/linear/transformx.h"
+#include "math/linear/vec_convert.h"
 #include "math/scalar/rng.h"
 
 #define HALF_PI 1.57079632679F
@@ -343,6 +346,164 @@ test_affine_inverse_preserves_small_and_large_scales(void) {
     }
 }
 
+#define CHECK_VEC2(A, U, got, X, Y, Z)                                                                                 \
+    A((X) * (U), (got).x);                                                                                             \
+    A((Y) * (U), (got).y)
+#define CHECK_VEC3(A, U, got, X, Y, Z)                                                                                 \
+    CHECK_VEC2(A, U, got, X, Y, Z);                                                                                    \
+    A((Z) * (U), (got).z)
+#define MAKE_VEC2(P, U, x, y, z) ((P##_t){(x) * (U), (y) * (U)})
+#define MAKE_VEC3(P, U, x, y, z) ((P##_t){(x) * (U), (y) * (U), (z) * (U)})
+
+#define VECTOR_RANGE_INPUTS(P, U, MAKE)                                                                                \
+    const P##_t a = MAKE(P, U, -1, 8, 3), b = MAKE(P, U, 5, 2, 9);                                                     \
+    const P##_t lo = MAKE(P, U, 0, 3, 4), hi = MAKE(P, U, 4, 6, 8), len = MAKE(P, U, 5, 3, 5);                         \
+    (void)a;                                                                                                           \
+    (void)b;                                                                                                           \
+    (void)lo;                                                                                                          \
+    (void)hi;                                                                                                          \
+    (void)len;
+
+#define DEFINE_VECTOR_RANGE_TEST(P, U, A, MAKE, CHECK, OP, X, Y, Z, ...)                                               \
+    static void test_##P##_##OP(void) {                                                                                \
+        VECTOR_RANGE_INPUTS(P, U, MAKE)                                                                                \
+        const P##_t got = P##_##OP(__VA_ARGS__);                                                                       \
+        CHECK(A, U, got, X, Y, Z);                                                                                     \
+    }
+
+#define DEFINE_VECTOR_RANGE_TESTS(P, U, A, MAKE, CHECK, HALF, END, ...)                                                \
+    DEFINE_VECTOR_RANGE_TEST(P, U, A, MAKE, CHECK, min, -1, 2, 3, a, b)                                                \
+    DEFINE_VECTOR_RANGE_TEST(P, U, A, MAKE, CHECK, max, 5, 8, 9, a, b)                                                 \
+    DEFINE_VECTOR_RANGE_TEST(P, U, A, MAKE, CHECK, clamp, 0, 6, 4, a, lo, hi)                                          \
+    DEFINE_VECTOR_RANGE_TEST(P, U, A, MAKE, CHECK, repeat, 4, 2, 3, a, len)                                            \
+    DEFINE_VECTOR_RANGE_TEST(P, U, A, MAKE, CHECK, wrap, 3, 5, 7, a, lo, hi)                                           \
+    static void test_##P##_lerp(void) {                                                                                \
+        VECTOR_RANGE_INPUTS(P, U, MAKE)                                                                                \
+        const P##_t got = P##_lerp(a, b, HALF __VA_ARGS__);                                                            \
+        CHECK(A, U, got, 2, 5, 6);                                                                                     \
+        TEST_ASSERT_TRUE(P##_equal(a, P##_lerp(a, b, 0 __VA_ARGS__)));                                                 \
+        TEST_ASSERT_TRUE(P##_equal(b, P##_lerp(a, b, END __VA_ARGS__)));                                               \
+    }
+
+DEFINE_VECTOR_RANGE_TESTS(vec2f, 1, TEST_ASSERT_EQUAL_FLOAT, MAKE_VEC2, CHECK_VEC2, 0.5F, 1.0F, )
+DEFINE_VECTOR_RANGE_TESTS(vec2i, 1, TEST_ASSERT_EQUAL_INT32, MAKE_VEC2, CHECK_VEC2, 1, 2, , 2)
+DEFINE_VECTOR_RANGE_TESTS(vec2s, 1, TEST_ASSERT_EQUAL_INT32, MAKE_VEC2, CHECK_VEC2, 1, 2, , 2)
+DEFINE_VECTOR_RANGE_TESTS(vec2x, MATHX_ONE, TEST_ASSERT_EQUAL_INT32, MAKE_VEC2, CHECK_VEC2, MATHX_ONE / 2, MATHX_ONE, )
+DEFINE_VECTOR_RANGE_TESTS(vec3f, 1, TEST_ASSERT_EQUAL_FLOAT, MAKE_VEC3, CHECK_VEC3, 0.5F, 1.0F, )
+DEFINE_VECTOR_RANGE_TESTS(vec3i, 1, TEST_ASSERT_EQUAL_INT32, MAKE_VEC3, CHECK_VEC3, 1, 2, , 2)
+DEFINE_VECTOR_RANGE_TESTS(vec3s, 1, TEST_ASSERT_EQUAL_INT32, MAKE_VEC3, CHECK_VEC3, 1, 2, , 2)
+DEFINE_VECTOR_RANGE_TESTS(vec3x, MATHX_ONE, TEST_ASSERT_EQUAL_INT32, MAKE_VEC3, CHECK_VEC3, MATHX_ONE / 2, MATHX_ONE, )
+
+#define CHECK_QUAT_NEAR(A, S, want, got)                                                                               \
+    A(S, (want).x, (got).x);                                                                                           \
+    A(S, (want).y, (got).y);                                                                                           \
+    A(S, (want).z, (got).z);                                                                                           \
+    A(S, (want).w, (got).w)
+
+static void
+test_vecf_wrap_offset_bounds(void) {
+    const vec3f_t v = {1.0F, 4.0F, -1.0F};
+    const vec3f_t lo = {1.5F, 1.5F, 1.5F}, hi = {4.0F, 4.0F, 4.0F};
+    const vec2f_t got2 = vec2f_wrap(vec3f_xy(v), vec3f_xy(lo), vec3f_xy(hi));
+    const vec3f_t got3 = vec3f_wrap(v, lo, hi);
+    CHECK_VEC2(TEST_ASSERT_EQUAL_FLOAT, 1, got2, 3.5F, 1.5F, 0);
+    CHECK_VEC3(TEST_ASSERT_EQUAL_FLOAT, 1, got3, 3.5F, 1.5F, 1.5F);
+}
+
+static void
+test_quatf_nlerp_components_and_zero_dot(void) {
+    const quatf_t a = {1.0F / 8, 2.0F / 8, 3.0F / 8, 4.0F / 8};
+    const quatf_t b = {4.0F / 8, -3.0F / 8, -2.0F / 8, 1.0F / 8};
+    const quatf_t expected = quatf_normalize((quatf_t){-3, 5, 5, 3});
+    const quatf_t got = quatf_nlerp(a, b, 0.5F);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, expected, got);
+    const quatf_t orthogonal = {4.0F / 8, 3.0F / 8, -2.0F / 8, -1.0F / 8};
+    const quatf_t zero_expected = quatf_normalize((quatf_t){5, 5, 1, 3});
+    const quatf_t zero_got = quatf_nlerp(a, orthogonal, 0.5F);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, zero_expected, zero_got);
+}
+
+static void
+test_quatx_nlerp_components_and_zero_dot(void) {
+    const int32_t unit = MATHX_ONE / 8;
+    const quatx_t a = {unit, 2 * unit, 3 * unit, 4 * unit};
+    const quatx_t b = {4 * unit, -3 * unit, -2 * unit, unit};
+    const quatx_t expected = quatx_normalize((quatx_t){-3 * unit, 5 * unit, 5 * unit, 3 * unit});
+    const quatx_t got = quatx_nlerp(a, b, MATHX_ONE / 2);
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, expected, got);
+    const quatx_t orthogonal = {4 * unit, 3 * unit, -2 * unit, -unit};
+    const quatx_t zero_expected = quatx_normalize((quatx_t){5 * unit, 5 * unit, unit, 3 * unit});
+    const quatx_t zero_got = quatx_nlerp(a, orthogonal, MATHX_ONE / 2);
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, zero_expected, zero_got);
+}
+
+static void
+test_quatf_nlerp(void) {
+    const quatf_t a = quatf_identity();
+    const quatf_t b = {0.5F, 0.5F, 0.5F, 0.5F};
+    const quatf_t neg = {-b.x, -b.y, -b.z, -b.w};
+    const quatf_t got = quatf_nlerp(a, b, 0.5F);
+    const quatf_t same = quatf_nlerp(a, neg, 0.5F);
+    const quatf_t start = quatf_nlerp(a, b, 0);
+    const quatf_t end = quatf_nlerp(a, b, 1.0F);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, got.x * got.x + got.y * got.y + got.z * got.z + got.w * got.w);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, got, same);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, a, start);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, b, end);
+}
+
+static void
+test_quatx_nlerp(void) {
+    const quatx_t a = quatx_identity();
+    const quatx_t b = {MATHX_ONE / 2, MATHX_ONE / 2, MATHX_ONE / 2, MATHX_ONE / 2};
+    const quatx_t neg = {-b.x, -b.y, -b.z, -b.w};
+    const quatx_t got = quatx_nlerp(a, b, MATHX_ONE / 2);
+    const quatx_t same = quatx_nlerp(a, neg, MATHX_ONE / 2);
+    const quatx_t start = quatx_nlerp(a, b, 0);
+    const quatx_t end = quatx_nlerp(a, b, MATHX_ONE);
+    TEST_ASSERT_INT32_WITHIN(4, MATHX_ONE,
+                             mathx_add(mathx_add(mathx_mul(got.x, got.x), mathx_mul(got.y, got.y)),
+                                       mathx_add(mathx_mul(got.z, got.z), mathx_mul(got.w, got.w))));
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, got, same);
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, a, start);
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, 4, b, end);
+}
+
+static void
+test_quatf_slerp_preserves_rotation_behaviour(void) {
+    const quatf_t a = quatf_identity(), b = {0.5F, 0.5F, 0.5F, 0.5F};
+    const quatf_t neg = {-b.x, -b.y, -b.z, -b.w};
+    const quatf_t midpoint = {1.0F / sqrtf(12.0F), 1.0F / sqrtf(12.0F), 1.0F / sqrtf(12.0F), sqrtf(3.0F) / 2};
+    const quatf_t start = quatf_slerp(a, b, 0), end = quatf_slerp(a, b, 1);
+    const quatf_t got = quatf_slerp(a, b, 0.5F), flipped = quatf_slerp(a, neg, 0.5F);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, a, start);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, b, end);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, midpoint, got);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, got, flipped);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 1, got.x * got.x + got.y * got.y + got.z * got.z + got.w * got.w);
+}
+
+static void
+test_quatf_slerp_threshold_branches(void) {
+    static const float cosines[] = {0.99951F, 0.99949F};
+    const float weight = 0.25F, branch_slack = 1e-7F;
+    const quatf_t a = quatf_identity();
+    for (size_t i = 0; i < sizeof cosines / sizeof cosines[0]; i++) {
+        const float cosine = cosines[i];
+        const quatf_t b = {sqrtf(1 - cosine * cosine), 0, 0, cosine};
+        const float angle = acosf(cosine);
+        const quatf_t spherical =
+            quatf_normalize((quatf_t){b.x * sinf(weight * angle) / sinf(angle), 0, 0,
+                                      (sinf((1 - weight) * angle) + b.w * sinf(weight * angle)) / sinf(angle)});
+        const quatf_t linear = quatf_nlerp(a, b, weight);
+        const quatf_t expected = i == 0 ? linear : spherical;
+        const quatf_t got = quatf_slerp(a, b, weight);
+        TEST_ASSERT_TRUE(fabsf(linear.x - spherical.x) > branch_slack);
+        CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, branch_slack, expected, got);
+        TEST_ASSERT_FLOAT_WITHIN(SLACK, 1, got.x * got.x + got.w * got.w);
+    }
+}
+
 static void
 assert_cofactor_identity(mat3f_t matrix) {
     const mat3f_t cof = mat3f_cofactor(matrix);
@@ -357,6 +518,46 @@ assert_cofactor_identity(mat3f_t matrix) {
             TEST_ASSERT_FLOAT_WITHIN(0.0001F, row == col ? det : 0, product);
         }
     }
+}
+
+static void
+test_vector_float_repeat_preserves_decimal_remainders(void) {
+    const float len = 0.001F, large = 20561.0F, tiny = -0.0000001F;
+    const float positive = fmodf(large, len), negative = len - positive;
+    const vec2f_t r2 = vec2f_repeat((vec2f_t){large, -large}, (vec2f_t){len, len});
+    const vec3f_t r3 = vec3f_repeat((vec3f_t){-large, large, tiny}, (vec3f_t){len, len, len});
+    TEST_ASSERT_TRUE(r3.z == tiny + len);
+    TEST_ASSERT_TRUE(r2.x == positive && r2.y == negative);
+    TEST_ASSERT_TRUE(r3.x == negative && r3.y == positive);
+}
+
+static void
+test_vector_float_ranges_with_decimal_lengths(void) {
+    const float len = 1.1F, lo = 0, hi = len;
+    const vec2f_t r2 = vec2f_repeat((vec2f_t){3.3F, -3.3F}, (vec2f_t){len, len});
+    const vec3f_t r3 = vec3f_repeat((vec3f_t){3.3F, -3.3F, 6.6F}, (vec3f_t){len, len, len});
+    const vec2f_t w2 = vec2f_wrap((vec2f_t){3.3F, -3.3F}, (vec2f_t){lo, lo}, (vec2f_t){hi, hi});
+    const vec3f_t w3 = vec3f_wrap((vec3f_t){3.3F, -3.3F, 6.6F}, (vec3f_t){lo, lo, lo}, (vec3f_t){hi, hi, hi});
+    const float repeats[] = {r2.x, r2.y, r3.x, r3.y, r3.z};
+    const float wraps[] = {w2.x, w2.y, w3.x, w3.y, w3.z};
+    for (size_t i = 0; i < sizeof repeats / sizeof repeats[0]; i++) {
+        TEST_ASSERT_TRUE(repeats[i] >= 0 && repeats[i] < len);
+        TEST_ASSERT_TRUE(wraps[i] >= lo && wraps[i] < hi);
+    }
+}
+
+#define CHECK_RATIO_THIRDS(P, MAKE, CHECK)                                                                             \
+    do {                                                                                                               \
+        const P##_t got = P##_lerp(MAKE(P, 1, 8, -8, 3), MAKE(P, 1, -2, 2, -7), 1, 3);                                 \
+        CHECK(TEST_ASSERT_EQUAL_INT32, 1, got, 5, -5, 0);                                                              \
+    } while (0)
+
+static void
+test_vector_ratio_lerp_uses_its_denominator(void) {
+    CHECK_RATIO_THIRDS(vec2i, MAKE_VEC2, CHECK_VEC2);
+    CHECK_RATIO_THIRDS(vec2s, MAKE_VEC2, CHECK_VEC2);
+    CHECK_RATIO_THIRDS(vec3i, MAKE_VEC3, CHECK_VEC3);
+    CHECK_RATIO_THIRDS(vec3s, MAKE_VEC3, CHECK_VEC3);
 }
 
 static void
@@ -410,6 +611,65 @@ test_mat3_product_applies_right_operand_first(void) {
 
 void
 suite_math(void) {
+    RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
+    RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
+    RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
+    RUN_TEST(test_quatf_slerp_preserves_rotation_behaviour);
+    RUN_TEST(test_quatf_slerp_threshold_branches);
+    RUN_TEST(test_vec2f_min);
+    RUN_TEST(test_vec2f_max);
+    RUN_TEST(test_vec2f_clamp);
+    RUN_TEST(test_vec2f_repeat);
+    RUN_TEST(test_vec2f_wrap);
+    RUN_TEST(test_vec2f_lerp);
+    RUN_TEST(test_vec2i_min);
+    RUN_TEST(test_vec2i_max);
+    RUN_TEST(test_vec2i_clamp);
+    RUN_TEST(test_vec2i_repeat);
+    RUN_TEST(test_vec2i_wrap);
+    RUN_TEST(test_vec2i_lerp);
+    RUN_TEST(test_vec2s_min);
+    RUN_TEST(test_vec2s_max);
+    RUN_TEST(test_vec2s_clamp);
+    RUN_TEST(test_vec2s_repeat);
+    RUN_TEST(test_vec2s_wrap);
+    RUN_TEST(test_vec2s_lerp);
+    RUN_TEST(test_vec2x_min);
+    RUN_TEST(test_vec2x_max);
+    RUN_TEST(test_vec2x_clamp);
+    RUN_TEST(test_vec2x_repeat);
+    RUN_TEST(test_vec2x_wrap);
+    RUN_TEST(test_vec2x_lerp);
+    RUN_TEST(test_vec3f_min);
+    RUN_TEST(test_vec3f_max);
+    RUN_TEST(test_vec3f_clamp);
+    RUN_TEST(test_vec3f_repeat);
+    RUN_TEST(test_vec3f_wrap);
+    RUN_TEST(test_vec3f_lerp);
+    RUN_TEST(test_vec3i_min);
+    RUN_TEST(test_vec3i_max);
+    RUN_TEST(test_vec3i_clamp);
+    RUN_TEST(test_vec3i_repeat);
+    RUN_TEST(test_vec3i_wrap);
+    RUN_TEST(test_vec3i_lerp);
+    RUN_TEST(test_vec3s_min);
+    RUN_TEST(test_vec3s_max);
+    RUN_TEST(test_vec3s_clamp);
+    RUN_TEST(test_vec3s_repeat);
+    RUN_TEST(test_vec3s_wrap);
+    RUN_TEST(test_vec3s_lerp);
+    RUN_TEST(test_vec3x_min);
+    RUN_TEST(test_vec3x_max);
+    RUN_TEST(test_vec3x_clamp);
+    RUN_TEST(test_vec3x_repeat);
+    RUN_TEST(test_vec3x_wrap);
+    RUN_TEST(test_vec3x_lerp);
+    RUN_TEST(test_vecf_wrap_offset_bounds);
+    RUN_TEST(test_quatf_nlerp_components_and_zero_dot);
+    RUN_TEST(test_quatx_nlerp_components_and_zero_dot);
+    RUN_TEST(test_quatf_nlerp);
+    RUN_TEST(test_quatx_nlerp);
+
     RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);

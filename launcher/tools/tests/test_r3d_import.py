@@ -175,6 +175,9 @@ class ImportTests(unittest.TestCase):
         self.rejects("process.typo", "[process.typo]\nx = 1\n")
         self.rejects("geometry.typo", "[geometry]\ntypo = 1\n")
 
+    def test_an_unknown_skin_key_is_rejected(self):
+        self.rejects(r"skin.*typo", '[skin]\nlighting = "direct"\ntypo = 1\n')
+
     def test_an_unknown_key_is_rejected_in_each_nested_group(self):
         self.rejects("geometry.alpha_mask.typo", "[geometry]\nalpha_mask = { keep_alpha = 0.5, typo = 1 }\n")
         self.rejects("geometry.thin.typo", '[geometry]\nthin = { material = "m", keep = 0.5, typo = 1 }\n')

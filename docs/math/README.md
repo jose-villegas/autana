@@ -16,7 +16,8 @@ and read the macros in `*_template.h` only to change an algorithm.
 - [Number types](#number-types)
 - [Conventions](#conventions)
 - [The transform cache](#the-transform-cache)
-- [Function reference](#function-reference): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth), [scalar ranges](#scalar-ranges-mathih)
+- [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
+- [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
 
@@ -84,7 +85,105 @@ model matrix with a `cached` flag.
 valid. A zero-initialized transform has `cached` false, so it builds on first
 use (its scale is zero, so its matrix sends every point to the origin). Code never edits `matrix`.
 
-## Function reference
+## Scalar
+
+The headers in `math/scalar/` provide per-type arithmetic, fixed-point
+operations, random draws, trigonometry and time units. The per-type headers
+also hold the arithmetic the linear templates call (`OPS_add`, `OPS_mul`,
+`mathx_sqrt`, `mathx_sin_turns`, ...). The tables below list the range, lerp and
+rounding helpers; the header itself, or the [catalogue](../Shared-Helpers.md),
+lists the rest.
+
+### mathi.h
+
+These take and return plain integers, not structs.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathi_repeat(v, len)` | floored modulo into `[0, len)`; `len > 0`, any `int` value | $`v - \lfloor v/len\rfloor\,len`$ |
+| `mathi_wrap(v, lo, hi)` | into `[lo, hi)`; `lo < hi`, any `int` value | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
+| `mathi_repeat_u32(v, len)`, `mathi_repeat_u64(v, len)` | into `[0, len)`; `len > 0`, full unsigned range | $`v \bmod len`$ |
+| `mathi_clamp_u32(v, lo, hi)`, `mathi_clamp_u64(v, lo, hi)` | inclusive bounds, full unsigned range | $`\min(\max(v,lo),hi)`$ |
+| `mathi_min(a, b)`, `mathi_max(a, b)` | smaller or larger value by comparison | $`\min(a,b)`$, $`\max(a,b)`$ |
+| `mathi_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
+| `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
+| `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
+
+### mathf.h
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_lerp(a, b, t)` | single-precision interpolation | $`a + (b - a)t`$ |
+| `mathf_min(a, b)` | smaller value by comparison | $`\min(a,b)`$ |
+| `mathf_max(a, b)` | larger value by comparison | $`\max(a,b)`$ |
+| `mathf_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
+| `mathf_repeat(v, len)` | into `[0, len)`; `len > 0`; a remainder rounded to `len` maps to zero | $`v - \lfloor v/len\rfloor len`$ |
+| `mathf_wrap(v, lo, hi)` | into `[lo, hi)`; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
+
+### maths.h
+
+Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step truncates toward `a`.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `maths_lerp(a, b, t, n)` | interpolation across the int16 range | $`a + \mathrm{trunc}((b-a)t/n)`$ |
+| `maths_min(a, b)`, `maths_max(a, b)`, `maths_clamp(v, lo, hi)`, `maths_repeat(v, len)`, `maths_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
+
+### mathx.h
+
+`mathx_lerp` saturates as `mathx_add` and `mathx_mul` do; the range helpers apply `mathi.h` to the raw Q16.16 value.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathx_lerp(a, b, t)` | interpolation by a Q16.16 weight `t` | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
+| `mathx_min(a, b)`, `mathx_max(a, b)`, `mathx_clamp(v, lo, hi)`, `mathx_repeat(v, len)`, `mathx_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
+
+### mathf_round.h
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_clamp_finite(v, lo, hi)` | finite ordered bounds; NaN maps to `lo`, infinities to the corresponding bound | $`\min(\max(v,lo),hi)`$ for finite inputs |
+| `mathf_round_i32(v)` | nearest int32, ties away from zero; saturates | $`\mathrm{round}(v)`$ |
+
+`MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
+
+### mathf_rsqrt.h
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_rsqrt(x)` | reciprocal square root for positive normal-range inputs; on the board the FPU's `rsqrt0.s` seed plus one Newton step, on host and QEMU the exact `1 / sqrt(x)` | $`y_0 = \mathrm{rsqrt0}(x)`$<br>$`y_1 = y_0\,(3 - x\,y_0^2) / 2`$ |
+
+The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
+
+### fixed.h
+
+`fixed.h` provides fixed-point multiplication, division and rounding at a
+caller-selected shift. Products widen before shifting; `fx_mul_floor` floors
+negative products, while `fx_mul_round` rounds to nearest with ties away from
+zero. Division requires a nonzero denominator; `fx_div_round_wide` keeps the
+wide result, while `fx_div_round` wraps a result outside int32.
+
+### rng.h
+
+`rng_t` holds an explicitly seeded xorshift32 generator. `rng_seed` substitutes
+a nonzero state for a zero seed; `rng_next` advances it. `rng_below` draws below
+a positive bound using modulo, with a small bias when the bound does not divide
+the generator's range. `rng_chance` handles never and always without consuming
+a draw. `rng_hash` provides deterministic counter-based draws without mutable
+state, using `rng_avalanche32` to mix its inputs.
+
+### trig.h
+
+`trig_sin` and `trig_cos` take a uint16 phase with `TRIG_TURN` per turn and
+return integers with `TRIG_SIN_SHIFT` fractional bits, bounded by
+`TRIG_SIN_MAX` in magnitude. `trig_sin_quadrant` interpolates the quarter-wave
+table; cosine offsets the phase by `TRIG_QUARTER_TURN`.
+
+### units.h
+
+`MATH_MS_PER_S` owns the integer milliseconds per second for time conversions.
+
+## Linear
 
 `P` stands for the type's prefix: `vec3f`, `vec3x`, ... The linear families take
 and return small structs by value. Inputs may alias outputs; nothing is
@@ -94,6 +193,12 @@ modified through a pointer except the transform's own `t`.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
+| `P_max(a, b)` | component-wise max | $`\max(a_k,b_k)`$ |
+| `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
+| `P_repeat(v, len)` | component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
+| `P_wrap(v, lo, hi)` | component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
+| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ or $`\mathrm{lerp}(a_k,b_k,t,n)`$ |
 | `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y)`$ |
 | `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y)`$ |
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y)`$ |
@@ -106,6 +211,12 @@ modified through a pointer except the transform's own `t`.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
+| `P_max(a, b)` | component-wise max | $`\max(a_k,b_k)`$ |
+| `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
+| `P_repeat(v, len)` | component-wise repeat | $`\mathrm{repeat}(v_k,len_k)`$ |
+| `P_wrap(v, lo, hi)` | component-wise wrap | $`\mathrm{wrap}(v_k,lo_k,hi_k)`$ |
+| `P_lerp(a, b, t)`, `P_lerp(a, b, t, n)` | per-component lerp: `f x` take one weight `t`; `i s` take `t` of `n`, truncating toward `a` | $`\mathrm{lerp}(a_k,b_k,t)`$ or $`\mathrm{lerp}(a_k,b_k,t,n)`$ |
 | `P_add(a, b)` | component sum | $`a + b = (a_x + b_x,\ a_y + b_y,\ a_z + b_z)`$ |
 | `P_sub(a, b)` | component difference | $`a - b = (a_x - b_x,\ a_y - b_y,\ a_z - b_z)`$ |
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
@@ -135,6 +246,7 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#53)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
+| `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$ |
 
 ### mat3 (`f`)
@@ -192,35 +304,13 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
 
-The scalar steps behind them, in `vec_convert.h` and `math/scalar/mathf_round.h`:
+The scalar steps behind them, in `vec_convert.h`:
 
-| Function | Rule |
-|---|---|
-| `mathf_clamp_finite(v, lo, hi)` | Inclusive finite ordered bounds; NaN maps to `lo`, infinities to the corresponding bound |
-| `mathf_round_i32(v)` | float to int32, nearest, ties away from zero, saturated at +-`MATH_FLOAT_INT_LIMIT` |
-| `mathf_round_s(v, scale)` | `v / scale` to int16, rounded and saturated |
-| `mathf_to_x(v)` | float to Q16.16, rounded and saturated |
-| `mathx_to_f(v)` | Q16.16 to float |
-
-Scalar operations live in `math/scalar/` (`mathf.h`, `mathi.h`, `maths.h`, `mathx.h`)
-(`mathx_add`, `mathx_mul`, `mathx_div`, `mathx_sqrt`, `mathx_sin_turns`, ...);
-a family names only the ones it uses.
-
-### Scalar ranges (`mathi.h`)
-
-These take and return plain integers, not structs.
-
-| Function | Range and contract |
-|---|---|
-| `mathi_repeat(v, len)` | Floored modulo into `[0, len)`; `len > 0`, any `int` value |
-| `mathi_wrap(v, lo, hi)` | Into `[lo, hi)`; `lo < hi`, any `int` value |
-| `mathi_repeat_u32(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint32_t` value |
-| `mathi_clamp_u32(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint32_t` range |
-| `mathi_repeat_u64(v, len)` | `v % len`, into `[0, len)`; `len > 0`, any `uint64_t` value |
-| `mathi_clamp_u64(v, lo, hi)` | Inclusive `[lo, hi]`, over the full `uint64_t` range |
-
-`math/scalar/units.h` owns `MATH_MS_PER_S`, the integer milliseconds per
-second for time conversions.
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_round_s(v, scale)` | int16, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
+| `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
+| `mathx_to_f(v)` | float | $`v/2^{16}`$ |
 
 ## Examples
 
@@ -253,7 +343,3 @@ and the rules are in [Build-Variants.md](../Build-Variants.md):
 | `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
-
-| Helper | Contract |
-|---|---|
-| `mathf_rsqrt()` (`math/scalar/mathf_rsqrt.h`) | reciprocal square root for positive normal-range inputs; S3 FPU seed plus one Newton correction, exact sqrt on host/QEMU; device sweep gates `MATHF_RSQRT_RELATIVE_LIMIT` |
