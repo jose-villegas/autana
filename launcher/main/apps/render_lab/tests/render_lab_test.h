@@ -2,6 +2,7 @@
 #pragma once
 #ifdef DEVICE_BUILD
 #include <stdbool.h>
+#include <stdint.h>
 #include "app/app.h"
 
 #define RENDER_LAB_TEST_FRAME_MS 16
@@ -16,5 +17,5 @@ typedef struct {
 extern app_t app_render_lab;
 void render_lab_test_enter(render_lab_test_t* saved, const char* scene);
 void render_lab_test_exit(const render_lab_test_t* saved);
-void render_lab_test_frame(bool switching);
+int64_t render_lab_test_frame(bool switching);
 #endif

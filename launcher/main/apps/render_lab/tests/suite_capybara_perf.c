@@ -95,7 +95,7 @@ test_console_gallop_blends_and_skins(void) {
     TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blend_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
     render_lab_test_frame(false);
-    TEST_ASSERT_GREATER_THAN_UINT32(0, a->layer.blended_ms);
+    TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_TEST_FRAME_MS, a->layer.blended_ms);
     TEST_ASSERT_LESS_THAN_UINT32(CLIP_BLEND_MS, a->layer.blended_ms);
     for (int i = 0; i <= CLIP_BLEND_MS / RENDER_LAB_TEST_FRAME_MS; i++) {
         render_lab_test_frame(false);
@@ -135,18 +135,21 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     range_t a = {f->scene, 0, split ? half : count};
     range_t b = {f->scene, half, count - half};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "perf range fits worker context");
+    int worker_samples = 0;
     for (int i = -1; i < PERF_SAMPLES; i++) {
         scene_animation_step(f->scene, RENDER_LAB_TEST_FRAME_MS);
         const int64_t start_us = timing_now_us();
         const uint32_t start_cycles = esp_cpu_get_cycle_count();
+        bool dispatched = false;
         if (split && half > 0) {
-            job_run_split(fn, &a, &b, sizeof a);
+            dispatched = job_run_split(fn, &a, &b, sizeof a);
         } else {
             fn(&a);
         }
         const uint32_t cycles = esp_cpu_get_cycle_count() - start_cycles;
         const int64_t us = timing_now_us() - start_us;
         if (i >= 0) {
+            worker_samples += dispatched;
             f->micros[i] = (int32_t)us;
             f->cycles[i] = (int32_t)cycles;
         }
@@ -156,23 +159,33 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     const int vertices = scene_entity_mesh(f->scene, f->subject)->vertex_count;
     TEST_ASSERT_GREATER_THAN_INT64(0, us.avg);
     ESP_LOGI(TAG,
-             "capybara_perf: stage=%s cores=%d samples=%d vertices=%d mean_us=%lld p95_us=%lld us_per_vertex=%.3f "
+             "capybara_perf: stage=%s cores=%s worker_samples=%d samples=%d vertices=%d mean_us=%lld p95_us=%lld "
+             "us_per_vertex=%.3f "
              "cycles_per_vertex=%.3f",
-             stage, split || fn == step ? 2 : 1, PERF_SAMPLES, vertices, (long long)us.avg, (long long)us.p95,
-             (double)us.avg / vertices, (double)cycles.avg / vertices);
+             stage,
+             fn == step                       ? "unknown"
+             : worker_samples == PERF_SAMPLES ? "2"
+             : worker_samples == 0            ? "1"
+                                              : "mixed",
+             worker_samples, PERF_SAMPLES, vertices, (long long)us.avg, (long long)us.p95, (double)us.avg / vertices,
+             (double)cycles.avg / vertices);
 }
 
 static perf_stats_t
-frame_cost(fixture_t* f, bool paused) {
+frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats) {
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, paused);
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, paused);
     for (int i = -1; i < PERF_SAMPLES; i++) {
         const int64_t start = timing_now_us();
-        render_lab_test_frame(false);
+        const int64_t render_us = render_lab_test_frame(false);
         if (i >= 0) {
+            f->cycles[i] = (int32_t)render_us;
             f->micros[i] = (int32_t)(timing_now_us() - start);
         }
     }
+    *render_stats = perf_stats_compute(f->cycles, PERF_SAMPLES);
+    ESP_LOGI(TAG, "capybara_perf: stage=render paused=%d samples=%d mean_us=%lld p95_us=%lld", paused, PERF_SAMPLES,
+             (long long)render_stats->avg, (long long)render_stats->p95);
     const perf_stats_t stats = perf_stats_compute(f->micros, PERF_SAMPLES);
     TEST_ASSERT_GREATER_THAN_INT64(0, stats.avg);
     ESP_LOGI(TAG, "capybara_perf: stage=frame paused=%d samples=%d mean_us=%lld p95_us=%lld", paused, PERF_SAMPLES,
@@ -195,8 +208,11 @@ test_animation_and_frame_cost(void) {
     report_stage(f, "animate", animate_slice, f->scene->asset.entity_count, false);
     report_stage(f, "animate", animate_slice, f->scene->asset.entity_count, true);
     report_stage(f, "animation_step", step, 1, false);
-    const perf_stats_t playing = frame_cost(f, false);
-    const perf_stats_t paused = frame_cost(f, true);
+    perf_stats_t playing_render, paused_render;
+    const perf_stats_t playing = frame_cost(f, false, &playing_render);
+    const perf_stats_t paused = frame_cost(f, true, &paused_render);
+    ESP_LOGI(TAG, "capybara_perf: stage=render_delta mean_us=%lld p95_us=%lld",
+             (long long)(playing_render.avg - paused_render.avg), (long long)(playing_render.p95 - paused_render.p95));
     ESP_LOGI(TAG, "capybara_perf: stage=frame_delta mean_us=%lld p95_us=%lld", (long long)(playing.avg - paused.avg),
              (long long)(playing.p95 - paused.p95));
 }
