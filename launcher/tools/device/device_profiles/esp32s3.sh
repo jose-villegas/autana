@@ -47,8 +47,9 @@ DP_LARGEST_FREE_BLOCK_SOURCE="HEAPMARK after gfx_init, full-scope diag build 05b
 DP_LARGEST_ALLOC_BYTES=41216
 DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 
+# Total on-chip SRAM; the IRAM/DRAM pool is part of it. Not a free figure.
 DP_SRAM_BYTES=524288
-DP_SRAM_SOURCE="ESP32-S3 Series Datasheet v2.2 section 4.1.2.1; docs/Citations.md#66"
+DP_SRAM_SOURCE="docs/Citations.md#66 section 4.1.2.1"
 
 # Total PSRAM capacity, not a post-boot free figure the way DP_FREE_HEAP_BYTES
 # is. No post-init free-PSRAM measurement is recorded anywhere in this file, so

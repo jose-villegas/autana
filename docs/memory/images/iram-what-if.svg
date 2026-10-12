@@ -41,7 +41,6 @@ python launcher/tools/build/iram_what_if.py &#45;&#45;chart docs/memory/images/i
 <text x="218.67" y="509" text-anchor="start">160 B; heap +256 B</text>
 <text x="218.67" y="526" text-anchor="start" class="note">dev 4132 (heap +4096 B), diag 4132 (heap +4096 B)</text>
 <text x="188" y="553" text-anchor="end">noflash-text</text>
-<rect x="200.00" y="536" width="0.00" height="24" fill="#e36209" data-label="noflash-text" data-bytes="0"><title>noflash-text: 0 B</title></rect>
 <text x="212.00" y="553" text-anchor="start">0 B; heap +664 B</text>
 <text x="212.00" y="570" text-anchor="start" class="note">diag 0 (heap +672 B)</text>
 <text x="16" y="604" text-anchor="start">Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.</text>

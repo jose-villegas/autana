@@ -11,7 +11,7 @@ import re
 import shutil
 import subprocess
 from memory_map import ROOT, read_build, VARIANTS, MAIN_VARIANT, build_variant
-from generated_blocks import replace_block, block_owners, blocks
+from generated_blocks import replace_block, block_owners, block_body
 from doc_tables import markdown, parse_table, collapsed
 import svg_bars
 from svg_bars import OURS_FILL
@@ -152,29 +152,37 @@ def chart(body):
             raise ValueError(f"duplicate experiment: {key}")
         experiments_by_name[key] = row
     selected = [row for row in table if row["Variant"] == MAIN_VARIANT or (row["Experiment"], MAIN_VARIANT) not in experiments_by_name]
-    selected.sort(key=lambda row: (-int(row["IRAM freed B"]), row["Experiment"], row["Variant"]))
+    def freed_bytes(row):
+        value = row["IRAM freed B"]
+        return int(value) if value not in {"config rejected", "build failed"} else 0
+
+    selected.sort(key=lambda row: (-max(0, freed_bytes(row)), row["Experiment"], row["Variant"]))
     if not selected:
         raise ValueError("Experiment: no measured rows")
     rows = []
     for row in selected:
         name, variant = row["Experiment"], row["Variant"]
-        freed = int(row["IRAM freed B"])
-        heap = -int(row["Heap-start delta B"])
+        freed = freed_bytes(row)
+        measured = row["IRAM freed B"] not in {"config rejected", "build failed"}
+        if measured:
+            heap = -int(row["Heap-start delta B"])
+            end = f"IRAM grew {-freed} B; heap {heap:+d} B" if freed < 0 else f"{freed} B; heap {heap:+d} B"
+        else:
+            end = row["IRAM freed B"]
         extra = []
         if variant == MAIN_VARIANT:
             for other in VARIANTS[1:]:
                 measured = experiments_by_name.get((name, other))
                 if measured and (measured['IRAM freed B'], measured['Heap-start delta B']) != (row['IRAM freed B'], row['Heap-start delta B']):
                     suffix = f"{other} {measured['IRAM freed B']}"
-                    if measured['Heap-start delta B'] != row['Heap-start delta B']:
+                    if measured['Heap-start delta B'] != row['Heap-start delta B'] and measured['Heap-start delta B'] != 'not measured':
                         suffix += f" (heap {-int(measured['Heap-start delta B']):+d} B)"
                     extra.append(suffix)
         label = name if variant == MAIN_VARIANT else f"{name} ({variant})"
-        end = f"{freed} B; heap {heap:+d} B"
-        rows.append((label, [(name, freed, OURS_FILL)], end, ", ".join(extra)))
+        rows.append((label, [(name, freed, OURS_FILL)] if freed > 0 else [], end, ", ".join(extra)))
     return svg_bars.bars(chart_command(),
                          "IRAM freed per experiment", f"{MAIN_VARIANT.capitalize()} unless marked; each experiment isolated; savings are not additive", rows,
-                         max(1, max(int(row['IRAM freed B']) for row in selected)), ("Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.",))
+                         max(1, max(freed_bytes(row) for row in selected)), ("Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.",))
 
 
 def chart_command():
@@ -201,7 +209,7 @@ def main():
         parser.error("--jobs must be positive")
     try:
         if args.chart:
-            write_chart(blocks((args.root / block_owners(args.root)[WHAT_IF_BLOCK]).read_text(encoding="utf-8"))[WHAT_IF_BLOCK][2], args.chart)
+            write_chart(block_body(args.root, WHAT_IF_BLOCK), args.chart)
             return 0
         if not args.builds or args.work is None:
             parser.error("builds and --work required unless --chart")
@@ -218,8 +226,9 @@ def main():
         body = render_results(baselines, rows)
         (args.work / (WHAT_IF_BLOCK + ".md")).write_text(body, encoding="utf-8")
         if args.write:
+            svg = chart(body)
             replace_block(args.root / block_owners(args.root)[WHAT_IF_BLOCK], WHAT_IF_BLOCK, body)
-            write_chart(body, args.root / CHART_PATH)
+            svg_bars.write(args.root / CHART_PATH, svg)
         return 0
     except (ValueError, OSError, LayoutError, subprocess.SubprocessError) as error:
         print(f"FAIL IRAM what-if: {error}")

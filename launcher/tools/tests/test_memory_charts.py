@@ -50,11 +50,16 @@ class MemoryChartTests(unittest.TestCase):
 
     def test_pool_width_order_and_labels(self):
         from svg_bars import BAR_WIDTH
-        tree = ET.fromstring(memory.chart('pool', self.body()))
+        body = self.body()
+        from doc_tables import parse_table
+        _, regions = parse_table(body, 'Region / boundary')
+        pool = next(row for row in regions if row['Region / boundary'] == 'dram0_0_seg shared alias')
+        scale = int(pool['release'].split('(')[1].split()[0])
+        tree = ET.fromstring(memory.chart('pool', body))
         segments = tree.findall('.//{*}rect[@data-bytes]')
         self.assertEqual([int(s.attrib['data-bytes']) for s in segments], [224, 32, 16, 96, 656])
         for segment in segments:
-            self.assertAlmostEqual(float(segment.attrib['width']), int(segment.attrib['data-bytes']) * BAR_WIDTH / 1024, delta=0.01)
+            self.assertAlmostEqual(float(segment.attrib['width']), int(segment.attrib['data-bytes']) * BAR_WIDTH / scale, delta=0.01)
         text = ''.join(tree.itertext())
         for label in ('0.6 KB', '0x3fc88000', '0x3fc88400', '0x40378000', '1 KB = 1024 B'):
             self.assertIn(label, text)
@@ -85,6 +90,65 @@ class MemoryChartTests(unittest.TestCase):
         text = ''.join(tree.itertext())
         for label in ('not additive', 'dev 120', 'heap +128 B', 'only-diag (diag)'):
             self.assertIn(label, text)
+
+    def test_what_if_unmeasured_rows(self):
+        for status in ('config rejected', 'build failed'):
+            with self.subTest(status=status):
+                body = probe.render_results([], [
+                    ('release', 'failed', status, 'not measured', 'not measured', 'a'),
+                    ('release', 'positive', 20, 0, -32, 'b'),
+                    ('dev', 'positive', status, 'not measured', 'not measured', 'c')])
+                tree = ET.fromstring(probe.chart(body))
+                self.assertEqual([int(s.attrib['data-bytes']) for s in tree.findall('.//{*}rect[@data-bytes]')], [20])
+                text = ''.join(tree.itertext())
+                self.assertIn(status, text)
+                self.assertLess(text.index('positive'), text.index('failed'))
+                failed_only = probe.render_results([], [
+                    ('release', 'failed', status, 'not measured', 'not measured', 'a')])
+                self.assertEqual(ET.fromstring(probe.chart(failed_only)).findall('.//{*}rect[@data-bytes]'), [])
+
+    def test_what_if_non_positive_rows(self):
+        body = probe.render_results([], [
+            ('release', 'grew', -20, 0, 32, 'a'),
+            ('release', 'zero', 0, 0, 0, 'b')])
+        tree = ET.fromstring(probe.chart(body))
+        self.assertEqual(tree.findall('.//{*}rect[@data-bytes]'), [])
+        self.assertIn('IRAM grew 20 B; heap -32 B', ''.join(tree.itertext()))
+        self.assertIn('0 B; heap +0 B', ''.join(tree.itertext()))
+        from svg_bars import BAR_WIDTH
+        mixed = probe.render_results([], [
+            ('release', 'grew', -20, 0, 32, 'a'),
+            ('release', 'positive', 10, 0, -16, 'b')])
+        tree = ET.fromstring(probe.chart(mixed))
+        segments = tree.findall('.//{*}rect[@data-bytes]')
+        self.assertEqual([int(segment.attrib['data-bytes']) for segment in segments], [10])
+        self.assertAlmostEqual(float(segments[0].attrib['width']), BAR_WIDTH, delta=0.01)
+        text = ''.join(tree.itertext())
+        self.assertLess(text.index('positive'), text.index('grew'))
+
+    def test_what_if_write_render_failure_preserves_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            doc = root / 'map.md'
+            doc.write_text(f'<!-- generated: {probe.WHAT_IF_BLOCK} -->\nold\n<!-- /generated: {probe.WHAT_IF_BLOCK} -->\n')
+            output = root / probe.CHART_PATH
+            output.parent.mkdir(parents=True)
+            output.write_text('old svg')
+            build = root / 'build'
+            build.mkdir()
+            (build / 'project_description.json').write_text('{}')
+            before = doc.read_bytes(), output.read_bytes()
+            with patch.object(probe, 'block_owners', return_value={probe.WHAT_IF_BLOCK: 'map.md'}), \
+                 patch.object(probe, 'build_variant', return_value=('', 'release')), \
+                 patch.object(probe, 'scratch_tree', return_value=root), \
+                 patch.object(probe.shutil, 'copytree'), \
+                 patch.object(probe, 'what_if', return_value=(None, [])), \
+                 patch.object(probe, 'render_results', return_value='new body'), \
+                 patch.object(probe, 'chart', side_effect=ValueError('render failure')), \
+                 patch.object(sys, 'argv', ['iram_what_if.py', str(build), '--root', str(root), '--work', str(root), '--write']), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(probe.main(), 1)
+            self.assertEqual((doc.read_bytes(), output.read_bytes()), before)
 
     def test_render_external_archive_placement_and_site_sum(self):
         site = memory.Site('launcher/main/linker.lf', 1, 'engine', 'Interrupt latency.', 12,
@@ -191,7 +255,7 @@ class MemoryTierTests(unittest.TestCase):
             profile.write_text('DP_SRAM_BYTES=262144\nDP_PSRAM_BYTES=16777216\n')
             changed = memory.render_tiers(builds, root)
             self.assertIn('256 KB chip total', changed)
-            self.assertIn('16 MB octal total', changed)
+            self.assertIn('16 MB total', changed)
             self.assertIn('3 MB app arena', changed)
             self.assertIn('128 KB full framebuffer', changed)
             self.assertIn('12.9 MB at most left for other PSRAM allocations', changed)

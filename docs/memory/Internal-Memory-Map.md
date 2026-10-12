@@ -20,8 +20,9 @@ python launcher/tools/build/memory_map.py launcher/build launcher/build.dev laun
 ![ESP-IDF IRAM by component](images/iram-components.svg)
 
 The chart names the largest archives in the release build and sums the
-remaining archives as other, with unattributed linker fill as its own bar. Engine placement sites are separate from
-IDF placement, including sites that place code from external archives.
+remaining archives as other, with unattributed linker fill as its own bar.
+Engine placement sites are separate from IDF placement, including sites that
+place code from external archives.
 
 ## Placement rules and gate
 

@@ -1264,7 +1264,7 @@ test_memory_throughput_psram_against_internal(void) {
 #endif
     /* CONFIG_ESP32S3_DATA_CACHE_32KB can hold a sample; rotate PSRAM windows between repetitions. */
     const size_t sample = (size_t)GFX_WIDTH * 16 * sizeof(gfx_color_t);
-    const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    const size_t frame = GFX_FRAMEBUFFER_BYTES;
     const size_t psram_step = (frame - sample) / (MEMTP_REPS - 1);
 
     uint8_t* int_a = memory_alloc(sample, MEMORY_INTERNAL);

@@ -95,6 +95,11 @@ def block_owners(root):
     return owners
 
 
+def block_body(root, name):
+    """Read the body of a generated block from its owning document."""
+    return blocks((root / block_owners(root)[name]).read_text(encoding="utf-8"))[name][2]
+
+
 def apply_tables(root, tables, check=False):
     owners = block_owners(root)
     changed = False

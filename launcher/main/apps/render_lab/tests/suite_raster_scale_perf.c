@@ -202,7 +202,7 @@ test_raster_stage_split_by_size(void) {
     raster.height = ladders[0].steps[0].height;
     const size_t scratch_bytes = raster_scratch_bytes(&raster);
     raster.scratch = memory_alloc(scratch_bytes, MEMORY_PSRAM);
-    gfx_color_t* destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(int32_t) * POSES_MAX);
     char* report = malloc(FRAME_COST_REPORT_MAX); /* too big for the frame task's stack */
     TEST_ASSERT_NOT_NULL(report);
@@ -265,7 +265,7 @@ test_raster_counters(void) {
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
-    gfx_color_t* destination = memory_alloc(sizeof(*destination) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
     char* report = malloc(FRAME_COST_REPORT_MAX);
     TEST_ASSERT_NOT_NULL(raster.scratch);
@@ -320,7 +320,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
     const int poses = (int)((period + POSE_EVERY_MS - 1) / POSE_EVERY_MS);
     raster->scratch = memory_alloc(raster_scratch_bytes(raster), MEMORY_PSRAM);
-    gfx_color_t* destination = memory_alloc(sizeof(gfx_color_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
     resolution_sample_t* samples = memory_alloc(sizeof(*samples) * (size_t)(poses * config->step_count), MEMORY_PSRAM);
     render_view_t* view = memory_alloc(sizeof(*view), MEMORY_INTERNAL);
@@ -471,7 +471,7 @@ test_dynamic_resolution_policies_along_the_path(void) {
     } fitted_t;
 
     fitted_t* fitted = memory_alloc(sizeof(*fitted) * LADDER_COUNT, MEMORY_PSRAM);
-    uint16_t* picture = memory_alloc(sizeof(uint16_t) * (size_t)GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    uint16_t* picture = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     frame_record_t* records = memory_alloc(sizeof(*records) * FRAMES_MAX, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(fitted);
     TEST_ASSERT_NOT_NULL(picture);
