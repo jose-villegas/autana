@@ -19,6 +19,7 @@ entries:
 # test_narrow_present_counters). Only what every present runs; setup, the
 # other present modes and the SPI driver's own queue (SPI_MASTER_IN_IRAM)
 # stay where they are.
+# IRAM budget: 3926 B
 [mapping:present_gfx]
 archive: libmain.a
 entries:
@@ -30,6 +31,8 @@ entries:
     gfx_present:send_fb_rows (noflash)
     gfx_present:present_task_fn (noflash)
 
+# Avoid cache misses in the LCD dispatch and SPI completion path used by every present.
+# IRAM budget: 1549 B
 [mapping:present_lcd]
 archive: libesp_lcd.a
 entries:
@@ -40,6 +43,8 @@ entries:
     esp_lcd_panel_io_spi:panel_io_spi_tx_color (noflash)
     esp_lcd_panel_io_spi:lcd_spi_post_trans_color_cb (noflash)
 
+# Avoid cache misses in the panel draw dispatch used by every present.
+# IRAM budget: 339 B
 [mapping:present_sh8601]
 archive: libwaveshare__esp_lcd_sh8601.a
 entries:

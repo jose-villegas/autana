@@ -98,6 +98,9 @@ jobs:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
 
+      - name: IRAM placement sites declare reasons and budgets
+        run: python3 launcher/tools/build/memory_map.py --source-only
+
       - name: Documentation constants match source
         env:
           STAGED_TEXT_GATE: "snapshot"
