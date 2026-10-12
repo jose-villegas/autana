@@ -254,7 +254,7 @@ test_a_poses_file_gives_its_size_lens_and_poses(void) {
 }
 
 static void
-test_source_poses_and_the_engine_camera_make_the_same_asymmetric_view(void) {
+test_a_poses_line_and_its_rotated_pose_make_the_same_asymmetric_view(void) {
     const transformf_t camera_pose = {.position = {3.0F, 2.0F, -400.0F},
                                       .rotation = {0.0F, -0.31622777F, 0.0F, 0.9486833F},
                                       .scale = {1.0F, 1.0F, 1.0F}};
@@ -318,7 +318,7 @@ run_r3d_triangle_sizes_suite(void) {
     RUN_TEST(test_a_triangle_counts_by_its_whole_box_and_shading_mode);
     RUN_TEST(test_the_box_table_shares_are_within_each_square);
     RUN_TEST(test_a_poses_file_gives_its_size_lens_and_poses);
-    RUN_TEST(test_source_poses_and_the_engine_camera_make_the_same_asymmetric_view);
+    RUN_TEST(test_a_poses_line_and_its_rotated_pose_make_the_same_asymmetric_view);
     RUN_TEST(test_a_poses_file_missing_a_part_or_a_number_is_refused);
     RUN_TEST(test_poses_read_from_standard_input_when_the_path_is_a_dash);
 }

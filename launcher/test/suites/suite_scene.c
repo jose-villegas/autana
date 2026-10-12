@@ -1,7 +1,8 @@
 /*
  * Portable scene-manager tests use small packs with distinct quad colours
- * so pixels identify the drawn entry. A camera at z = -10 with half field
- * of view 1 projects each x unit 3.2 pixels from the centre of a 64-pixel view.
+ * so pixels identify the drawn entry. Each camera stands CAMERA_DISTANCE in
+ * front of the quads' plane with a half-field tangent of 1, so a unit across
+ * is PIXELS_PER_UNIT pixels from the centre.
  */
 
 #include <limits.h>
@@ -50,7 +51,8 @@
 #define CENTER             (SIZE / 2)
 #define PICTURE_HEIGHT     (SIZE / 2)
 #define GREEN_PIXEL_OFFSET 6
-#define PIXELS_PER_UNIT    3.2F /* the camera at z = -10, half field of view 1 */
+#define CAMERA_DISTANCE    10
+#define PIXELS_PER_UNIT    ((float)CENTER / CAMERA_DISTANCE)
 #define CLEAR_RGB          0x336699
 #define QUAD_BYTES         132
 #define PACK_MAX           16384
@@ -169,6 +171,7 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     {                                                                                                                  \
         {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, { x, y, z }                                                                 \
     }
+#define CAMERA_AT(x) AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
 
 /* What a scene entry holds, written out as tools/r3d/scene_asset.py would.
  * Every camera has a half field of view and a near plane of 1. */
@@ -209,13 +212,13 @@ static const scene_spec_t SCENES[] = {
      3,
      2,
      1,
-     {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
+     {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
      {{1, "red"}, {2, "green"}},
      {{0, CLEAR_RGB, ""}}},
     /* its own camera and one blue quad at the origin */
-    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
+    {"test_solo", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
     /* the same as solo, its camera clearing to a colour of its own */
-    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
+    {"test_sky", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
     /* names a mesh the pack does not hold */
     {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
     /* a camera that flies the clip "flight", and a red quad */
@@ -225,13 +228,13 @@ static const scene_spec_t SCENES[] = {
      3,
      1,
      2,
-     {{"left", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}, {"red", IDENTITY}},
+     {{"left", CAMERA_AT(0)}, {"right", CAMERA_AT(4)}, {"red", IDENTITY}},
      {{2, "red"}},
      {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}}},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
-     .entities = {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
+     .entities = {{"camera", CAMERA_AT(0)}, {"right", CAMERA_AT(4)}},
      .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight"},
                  {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight"}}},
     /* a camera flying a clip the pack does not hold */
@@ -244,7 +247,7 @@ static const scene_spec_t SCENES[] = {
      .entity_count = 3,
      .renderer_count = 1,
      .camera_count = 1,
-     .entities = {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"sun", IDENTITY}},
+     .entities = {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"sun", IDENTITY}},
      .renderers = {{1, "red"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
     {.id = "test_skin",
@@ -591,8 +594,14 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
 }
 
 static uint16_t
+pixel_at(float right_units, float down_units) {
+    return fx.pixels[((CENTER + (int)(down_units * PIXELS_PER_UNIT)) * SIZE) + CENTER
+                     + (int)(right_units * PIXELS_PER_UNIT)];
+}
+
+static uint16_t
 pixel(float units_from_center) {
-    return fx.pixels[(CENTER * SIZE) + CENTER + (int)(units_from_center * PIXELS_PER_UNIT)];
+    return pixel_at(units_from_center, 0.0F);
 }
 
 static const uint16_t CLEAR = GFX_RGB(CLEAR_RGB);
@@ -1259,20 +1268,20 @@ test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned(void) {
     const uint16_t green = GFX_RGB(0x00FF00);
     const scene_entity_t camera = scene_find(scene, "camera");
     const float beside = scene_entity_transform(scene, scene_find(scene, "green"))->position.x;
-    const int along = (int)(beside * PIXELS_PER_UNIT);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(green, pixel(beside));
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[((CENTER - along) * SIZE) + CENTER]);
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[((CENTER + along) * SIZE) + CENTER]);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel_at(0.0F, -beside));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel_at(0.0F, beside));
 
     scene_transform_t rolled = *scene_entity_transform(scene, camera);
-    transformf_set_rotation(&rolled, quatf_from_axis_angle((vec3f_t){0, 0, 1}, MATH_PI / 2));
+    transformf_set_rotation(&rolled,
+                            quatf_mul(rolled.rotation, quatf_from_axis_angle((vec3f_t){0, 0, 1}, MATH_PI / 2)));
     scene_set_transform(scene, camera, &rolled);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(beside));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-beside));
-    const bool above = fx.pixels[((CENTER - along) * SIZE) + CENTER] == green;
-    const bool below = fx.pixels[((CENTER + along) * SIZE) + CENTER] == green;
+    const bool above = pixel_at(0.0F, -beside) == green;
+    const bool below = pixel_at(0.0F, beside) == green;
     TEST_ASSERT_TRUE(above != below);
 }
 

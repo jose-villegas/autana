@@ -1,6 +1,6 @@
 # Mesh Rendering
 
-How the runtime draws a baked lit-mesh: cameras, culling, the rasterizer, the
+How the runtime draws a baked lit-mesh: the frame view, culling, the rasterizer, the
 two-core frame and the view modes. The mesh's format and how it is made are
 in [Mesh-Import.md](Mesh-Import.md).
 
