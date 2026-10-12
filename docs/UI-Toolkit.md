@@ -380,3 +380,41 @@ pixel fails until the new picture is looked at and re-pinned with
 `--update-baseline`. `launcher/tools/render/render_doc_images.sh` turns those
 renders into `docs/images/ui/`; see "Images in these docs" in
 [`tools/Render-Harness.md`](tools/Render-Harness.md).
+
+### Band replay measurements
+
+The band bin has a fixed capacity at `UI_BAND_BIN_MAX` in `ui/ui.c`.
+Bands touched by drawing that does not fit replay the complete UI in painter's
+order and remain dirty. Other bands replay the retained entries.
+`ui_band_fallback_count()` reports full band replays in the current frame.
+
+On a development build, `autana tune ui.band_stats_frames N` requests the next
+N UI frame reports. Capture them with `autana monitor 30`. Repeat on launcher
+home, an options screen, and a busy menu with its dropdown open:
+
+```text
+ui: band stats: fallbacks=<bands> ui_us=<microseconds> commands=<bytes> roots=<canvases>
+```
+
+`ui_us` measures UI finalization and painting, including binning and band replay;
+it excludes command construction, application drawing, panel transfer and the
+report itself. Band-frame reports appear at the next UI finalization, even
+when unchanged bands skip painting. Full-frame painting reports zero fallbacks.
+Compare frames with zero and positive fallback counts on the same screen to measure the fallback
+cost. The request expires after N reports; zero disables it. Check the running
+build id before and after each capture.
+
+In a self-test build, the on-request suite `run_ui_band_perf_suite` replays the
+shared dropdown-menu fixture through the real band ring with and without dense
+drawing. Run it with `autana suite run_ui_band_perf_suite --flash`. Each case
+reports the frame range owned by `MENU_FRAMES` in `suite_ui_widgets.c`:
+
+```text
+ui_band_perf: dense=<0|1> frame=<index> fallbacks=<bands> frame_us=<microseconds>
+```
+
+`frame_us` includes command construction, finalization, drawing and band
+submission; it excludes the log itself. The suite asserts zero fallbacks in
+the sparse case and positive fallbacks in the dense case. It complements the
+live-screen reports above: launcher home and the options screen use their real
+application drawing, while this suite forces a busy dropdown through band replay.
