@@ -5,13 +5,26 @@ import re
 import statistics
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
+from build.c_header import read_define
 from generated_blocks import replace_block
 
-STAGES = (("animate", "1"), ("animate", "2"), ("skin", "1"), ("skin", "2"),
-          ("animation_step", "unknown"))
-PHASES = ("before_enter", "loaded", "playing")
-RENDER_KEYS = (("render", "0"), ("render", "1"), ("render_delta", ""))
+LOG_HEADER = pathlib.Path(__file__).resolve().parents[3] / "main/apps/render_lab/tests/capybara_perf_log.h"
+PREFIX = read_define(LOG_HEADER, "CAPYBARA_PERF_PREFIX")
+PHASE_BEFORE_ENTER = read_define(LOG_HEADER, "CAPYBARA_PERF_PHASE_BEFORE_ENTER")
+PHASE_LOADED = read_define(LOG_HEADER, "CAPYBARA_PERF_PHASE_LOADED")
+PHASE_PLAYING = read_define(LOG_HEADER, "CAPYBARA_PERF_PHASE_PLAYING")
+STAGE_ANIMATE = read_define(LOG_HEADER, "CAPYBARA_PERF_STAGE_ANIMATE")
+STAGE_SKIN = read_define(LOG_HEADER, "CAPYBARA_PERF_STAGE_SKIN")
+STAGE_ANIMATION_STEP = read_define(LOG_HEADER, "CAPYBARA_PERF_STAGE_ANIMATION_STEP")
+STAGE_RENDER = read_define(LOG_HEADER, "CAPYBARA_PERF_STAGE_RENDER")
+STAGE_RENDER_DELTA = read_define(LOG_HEADER, "CAPYBARA_PERF_STAGE_RENDER_DELTA")
+
+STAGES = ((STAGE_ANIMATE, "1"), (STAGE_ANIMATE, "2"), (STAGE_SKIN, "1"), (STAGE_SKIN, "2"),
+          (STAGE_ANIMATION_STEP, "unknown"))
+PHASES = (PHASE_BEFORE_ENTER, PHASE_LOADED, PHASE_PLAYING)
+RENDER_KEYS = ((STAGE_RENDER, "0"), (STAGE_RENDER, "1"), (STAGE_RENDER_DELTA, ""))
 
 def parse_capture(text):
     build = ""
@@ -28,7 +41,7 @@ def parse_capture(text):
             if number in runs:
                 raise ValueError(f"duplicate run {number}")
             current = runs[number] = {}
-        elif "capybara_perf:" in line:
+        elif PREFIX in line:
             if current is None:
                 raise ValueError("measurement has no run")
             fields = dict(re.findall(r"(\w+)=([^\s]+)", line))
@@ -80,10 +93,10 @@ def budget(text):
     table = ["The skin stage's budget is about 1 Âµs per vertex. The board capture",
              "measures the animated subject playing, including runtime lighting.", "",
              "| Stage, per frame | One core | Two cores |", "|---|---:|---:|"]
-    for stage, label in (("animate", "Animate: sample, blend, palette"), ("skin", "Skin and light")):
+    for stage, label in ((STAGE_ANIMATE, "Animate: sample, blend, palette"), (STAGE_SKIN, "Skin and light")):
         cells = [f"{stages[(stage, core)]:g} Âµs ({costs[(stage, core)]:.3f} Âµs / vertex)" for core in ("1", "2")]
         table.append(f"| {label} | {' | '.join(cells)} |")
-    step = ("animation_step", "unknown")
+    step = (STAGE_ANIMATION_STEP, "unknown")
     table.append(f"| Whole animation step (cores not recorded) | {stages[step]:g} Âµs ({costs[step]:.3f} Âµs / vertex) | |")
     playing, paused, delta = data["render"]
     table.append(f"| Scene render, playing vs paused | | +{delta:g} Âµs ({playing:g} vs {paused:g} Âµs) |")
