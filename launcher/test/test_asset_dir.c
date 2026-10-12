@@ -2,14 +2,17 @@
 
 #include "test_asset_dir.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "asset/asset_store.h"
+#include "test_cleanup.h"
 #include "unity.h"
 
 static char* saved;
+static bool active;
 
 static void
 set_dir(const char* dir) {
@@ -21,18 +24,25 @@ set_dir(const char* dir) {
 }
 
 void
-test_asset_dir_use(const char* dir) {
-    const char* runner = getenv(ASSET_STORE_DIR_ENV);
-    free(saved);
-    saved = runner == NULL ? NULL : strdup(runner);
-    set_dir(dir);
+test_asset_dir_restore(void) {
+    if (!active) {
+        return;
+    }
+    active = false;
+    char* const runner = saved;
+    saved = NULL;
+    set_dir(runner);
+    free(runner);
 }
 
 void
-test_asset_dir_restore(void) {
-    set_dir(saved);
-    free(saved);
-    saved = NULL;
+test_asset_dir_use(const char* dir) {
+    test_asset_dir_restore();
+    const char* runner = getenv(ASSET_STORE_DIR_ENV);
+    saved = runner == NULL ? NULL : strdup(runner);
+    active = true;
+    suite_add_test_cleanup(test_asset_dir_restore);
+    set_dir(dir);
 }
 
 void
