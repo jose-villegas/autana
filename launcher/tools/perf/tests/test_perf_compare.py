@@ -93,6 +93,17 @@ def record_for_rows(args, seed, values):
 
 
 class SeedInferenceTest(unittest.TestCase):
+    def test_raw_rows_accept_single_dual_and_unspecified_cores(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = pathlib.Path(root) / 'capture.log'
+            capture.write_text('dual both cores: mean 10us\n'
+                               'single one core: mean 20us\n'
+                               'neutral mean 30us\n:1:test_timing:PASS\n')
+            rows = parse_report(capture)
+            self.assertEqual(rows, {'dual': 10, 'single': 20, 'neutral': 30})
+            owners, _ = capture_metadata(capture, rows)
+            self.assertEqual(owners, {row: 'test_timing' for row in rows})
+
     def test_parsers_pool_tables_and_ignore_capture_worst(self):
         self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza'], 51000)
         self.assertIn('hot', parse_report(FIXTURES/'sand_a.md'))

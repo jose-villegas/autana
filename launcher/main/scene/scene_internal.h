@@ -8,12 +8,32 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
-#include "render/skin/r3d_skinning.h"
+#include "core/memory.h"
+#include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 
-#define SCENE_FLAG_ENABLED 1U
-#define SCENE_FLAG_DIRTY   2U
+/* Absent ambient contributes zero; SCNE v1 carries no tone map. */
+#define SCENE_AMBIENT_INTENSITY_NONE  0.0F
+#define SCENE_TONEMAP_WHITE_NONE      0.0F
+#define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
+#define SCENE_LIGHT_COLOR_DEFAULT     ((vec3f_t){1.0F, 1.0F, 1.0F})
+#define SCENE_LIGHT_AXIS              ((vec3f_t){0.0F, 1.0F, 0.0F})
+
+typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
+
+typedef struct {
+    scene_light_kind_t kind;
+    vec3f_t color;
+    float intensity;
+} scene_light_t;
+
+#define SCENE_FLAG_ENABLED         1U
+#define SCENE_FLAG_DIRTY           2U
+#define SCENE_FLAG_SKIN_DIRTY      4U
+#define SCENE_FLAG_CHANGED         (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
+#define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
+#define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
 
 typedef r3d_placement_t scene_placement_t;
 
@@ -81,6 +101,8 @@ typedef struct {
     bool dirty, posed;
 } scene_animator_t;
 
+typedef enum { SCENE_SKIN_LIGHT_DIRECT, SCENE_SKIN_LIGHT_RENORMALISED, SCENE_SKIN_LIGHT_TABLE } scene_skin_light_mode_t;
+
 typedef struct {
     r3d_skin_t skin;
     r3d_lit_mesh_t bind;
@@ -88,6 +110,11 @@ typedef struct {
     mat4f_t* model;
     mat4f_t* palette;
     void* internal_storage;
+    uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
+    mat3f_t* normal_palette;
+    void* light_storage;
+    bool lighting_valid;
+    scene_skin_light_mode_t light_mode;
 } scene_skinned_renderer_t;
 
 struct scene {
@@ -95,6 +122,15 @@ struct scene {
     char id[ASSET_NAME_MAX];
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
     int animator_count, skeleton_animator_count;
+    int light_count;
+    r3d_skin_lights_t world_lights;
+    scene_light_t* lights;
+    vec3f_t ambient_color;
+    float ambient_intensity, tonemap_white;
+    r3d_skin_light_transfer_t* light_transfer;
+    r3d_skin_light_table_t* light_table;
+    int light_table_users;
+    bool light_table_dirty;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -106,10 +142,11 @@ struct scene {
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-/* A suite sets it to make the next scene allocation fail once, so an out of
- * memory load is shown without emptying the heap. */
-extern bool scene_fail_next_allocation;
+/* Fault injection exercises allocation rollback without exhausting the heap. */
+extern int scene_fail_allocation_after;
 #endif
+
+void* scene_allocate(size_t bytes, memory_kind_t kind);
 
 /* The loaded scenes, in load order. */
 int scene_loaded_count(void);
@@ -132,6 +169,11 @@ int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
 void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
+bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
+void scene_skin_light_table_release(scene_t* scene, scene_entity_t entity);
+bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
+void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
+void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
