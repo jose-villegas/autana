@@ -114,8 +114,6 @@ def instantiations(root):
         for length, _, source, count in SWIZZLE_CALL.findall(body):
             prefix = bind.get(source, source)
             source_family = family_of.get(prefix)
-            if source_family is None:
-                continue
             letters = fields.get(source_family, [])
             if int(count) != len(letters):
                 problems.append(
