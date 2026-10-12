@@ -57,7 +57,7 @@ static frame_watch_t watch;
 static vprintf_like_t forward_vprintf;
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 78 B */
+ * IRAM budget: 86 B */
 static IRAM_ATTR bool
 watching_this_task(void) {
     if (!armed || xPortInIsrContext()) {
@@ -73,7 +73,7 @@ watching_this_task(void) {
 }
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 129 B */
+ * IRAM budget: 130 B */
 static IRAM_ATTR void
 record(frame_watch_kind_t kind, uintptr_t site) {
     uint32_t index = __atomic_load_n(&pending_head, __ATOMIC_RELAXED);
@@ -107,7 +107,7 @@ record(frame_watch_kind_t kind, uintptr_t site) {
 #pragma GCC diagnostic ignored "-Wframe-address"
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 378 B */
+ * IRAM budget: 419 B */
 static IRAM_ATTR __attribute__((noinline)) uintptr_t
 heap_call_site(void) {
     _Static_assert(CALLER_DEPTH_MAX == 6, "the walk below is unrolled to CALLER_DEPTH_MAX");

@@ -18,7 +18,7 @@ entries:
 # present modes and the SPI driver's own queue keep their configured placement.
 # CONFIG_LAUNCHER_DEVELOPMENT adds overlays, send auditing and raw-full dispatch,
 # so dev and diag are larger.
-# IRAM budget: release 784 B, dev 3926 B, diag 3926 B
+# IRAM budget: release 833 B, dev 4033 B, diag 4033 B
 [mapping:present_gfx]
 archive: libmain.a
 entries:
@@ -31,7 +31,7 @@ entries:
     gfx_present:present_task_fn (noflash)
 
 # Avoid cache misses in the LCD dispatch and SPI completion path used by every present.
-# IRAM budget: 1561 B
+# IRAM budget: 1594 B
 [mapping:present_lcd]
 archive: libesp_lcd.a
 entries:
@@ -43,7 +43,7 @@ entries:
     esp_lcd_panel_io_spi:lcd_spi_post_trans_color_cb (noflash)
 
 # Avoid cache misses in the panel draw dispatch used by every present.
-# IRAM budget: 339 B
+# IRAM budget: 327 B
 [mapping:present_sh8601]
 archive: libwaveshare__esp_lcd_sh8601.a
 entries:
