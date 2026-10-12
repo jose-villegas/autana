@@ -1,5 +1,6 @@
 #include "apps/render_lab/render_lab_clips.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,8 +26,7 @@ render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_entity_t
         choice->selected = 0;
         ESP_LOGW("render_clips", "default clip missing");
     }
-    (void)render_lab_clips_play(choice, choice->selected, 0);
-    choice->blend_ms = RENDER_LAB_BLEND_DEFAULT_MS;
+    (void)scene_animator_play(scene, subject, choice->selected, 0);
     ui_dropdown_item_t* items = memory_alloc((size_t)count * sizeof *items, MEMORY_PSRAM);
     if (items == NULL) {
         return false;
@@ -73,7 +73,7 @@ static bool
 parse_blend(const char* text, int* blend_ms) {
     char* end;
     const long value = strtol(text, &end, 10);
-    if (end == text || *end != '\0' || value < 0 || value > RENDER_LAB_BLEND_MAX_MS) {
+    if (end == text || *end != '\0' || value < INT_MIN || value > INT_MAX) {
         return false;
     }
     *blend_ms = (int)value;
@@ -97,9 +97,13 @@ play_request(render_lab_clips_t* choice, const char* args, console_reply_fn repl
         return;
     }
     const int clip = render_lab_clips_find(choice->scene, choice->subject, name);
-    char line[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=1000")];
+    char line[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=") + RENDER_LAB_BLEND_TEXT_SIZE];
     if (!render_lab_clips_play(choice, clip, blend_ms)) {
-        (void)snprintf(line, sizeof line, "RENDER_ERR unknown clip '%s'", name);
+        if (clip < 0) {
+            (void)snprintf(line, sizeof line, "RENDER_ERR unknown clip '%s'", name);
+        } else {
+            (void)snprintf(line, sizeof line, "RENDER_ERR bad blend");
+        }
         reply(line);
         return;
     }
@@ -133,12 +137,6 @@ render_lab_clips_reply(render_lab_clips_t* choice, const char* args, console_rep
     return true;
 }
 
-bool
-render_lab_clips_console(render_lab_clips_t* choice, const char* args) {
-    const bool handled = render_lab_clips_reply(choice, args, console_reply_stdio);
-    return handled;
-}
-
 void
 render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_clips_t* choice) {
     if (choice->count == 0) {
@@ -153,7 +151,7 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_cl
     if (picked >= 0) {
         (void)render_lab_clips_play(choice, picked, choice->blend_ms);
     }
-    char label[sizeof("BLEND: 1000 ms")];
+    char label[sizeof("BLEND:  ms") + RENDER_LAB_BLEND_TEXT_SIZE];
     (void)snprintf(label, sizeof label, "BLEND: %d ms", choice->blend_ms);
     ui_flow_row(ctx, flow, width, gfx_text_height());
     mu_label(ctx, label);

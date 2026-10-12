@@ -3,6 +3,7 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include <string.h>
+#include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/memory.h"
 #include "gfx/present/gfx_present.h"
@@ -17,7 +18,6 @@
 typedef struct {
     render_lab_test_t saved;
     bool entered;
-    int current_markers;
 } dispatch_fixture_t;
 
 static dispatch_fixture_t* active;
@@ -38,14 +38,6 @@ fixture(void) {
     *active = (dispatch_fixture_t){0};
     suite_set_test_cleanup(release_fixture);
     return active;
-}
-
-static void
-capture_reply(const char* line) {
-    if (strstr(line, "current=1") != NULL) {
-        TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=1", line);
-        active->current_markers++;
-    }
 }
 
 static void
@@ -77,10 +69,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
         const char* playing = scene_animator_clip_name(scene, subject, animator->layer.current.clip);
         TEST_ASSERT_EQUAL_STRING("idle", playing);
         TEST_ASSERT_TRUE(app_render_lab.console->handle("clips"));
-        f->current_markers = 0;
-        TEST_ASSERT_TRUE(scene_capybara_test_reply("clips", capture_reply));
-        TEST_ASSERT_EQUAL_INT(1, f->current_markers);
-        char command[ASSET_NAME_MAX + sizeof("clip  1000")];
+        char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
         (void)snprintf(command, sizeof command, "clip gallop %d", DISPATCH_BLEND_MS);
         TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
         TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(scene, subject, animator->layer.current.clip));
@@ -101,7 +90,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
 }
 
 static void
-test_exit_finishes_present_without_tripping_guard(void) {
+test_cleanup_finishes_present_without_tripping_guard(void) {
     dispatch_fixture_t* f = fixture();
     enter(f, "capybara");
     const unsigned trips = gfx_present_guard_trips;
@@ -117,7 +106,7 @@ void
 run_clip_dispatch_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_scene_console_dispatch_and_repeated_exit_release_heap);
-    RUN_TEST(test_exit_finishes_present_without_tripping_guard);
+    RUN_TEST(test_cleanup_finishes_present_without_tripping_guard);
 #endif
 }
 

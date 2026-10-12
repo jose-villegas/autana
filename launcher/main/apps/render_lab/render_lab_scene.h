@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
+#include "console/console_verbs.h"
 #include "input/input.h"
 
 typedef struct {
@@ -28,5 +29,5 @@ typedef struct {
     render_lab_controls_fn controls;
     /* Optional. Handles `render <args>` that Render Lab's scene commands did not;
      * false means the command is not this scene's. */
-    bool (*console)(const char* args);
+    bool (*console)(const char* args, console_reply_fn reply);
 } render_lab_scene_t;

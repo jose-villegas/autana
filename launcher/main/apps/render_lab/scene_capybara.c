@@ -176,16 +176,9 @@ capybara_status(void) {
     return buf;
 }
 
-#if CONFIG_LAUNCHER_SELFTEST
-bool
-scene_capybara_test_reply(const char* args, console_reply_fn reply) {
-    return render_lab_clips_reply(&choice, args, reply);
-}
-#endif
-
 static bool
-scene_capybara_console(const char* args) {
-    return render_lab_clips_console(&choice, args);
+scene_capybara_console(const char* args, console_reply_fn reply) {
+    return render_lab_clips_reply(&choice, args, reply);
 }
 
 static void
