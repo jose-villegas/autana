@@ -429,12 +429,6 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
 
-const transformf_t*
-scene_camera_pose(const scene_t* scene, const char* camera) {
-    const int index = scene_camera_index(scene, camera);
-    return index < 0 ? NULL : &scene->locals[scene->cameras[index].entity];
-}
-
 const scene_transform_t*
 scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);

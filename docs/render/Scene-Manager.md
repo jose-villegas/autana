@@ -25,7 +25,7 @@ block transactionally; attachment failure preserves the scene.
 | `lights[]` | entity | optional directional light, linear color and intensity; at most `R3D_SKIN_LIGHT_MAX` attached per scene |
 | `flags[]` | entity | enabled, moved since the last draw, and changed since the last skin stage |
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and the placement built from its transform |
-| `cameras[]` | camera | lens, entity TRS pose, clear color, its entity id |
+| `cameras[]` | camera | lens, clear color, its entity id (its pose is the entity's `locals[]` slot) |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
@@ -46,7 +46,7 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_unload(scene)` | frees it and releases its pack; its camera, if active, is deactivated |
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
-| `scene_camera_lens(scene, camera)`, `scene_camera_pose(scene, camera)` | a camera's lens and its entity's current transform (NULL: the first), to sample without drawing |
+| `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
 | `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value, hide or show a renderer |
 | `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
@@ -140,8 +140,9 @@ flowchart LR
 
 Host tools and tests pass a `const render_view_t*` to `raster_draw()`
 and compose its picture with `raster_upscale()`. `camera_view()` builds a
-frame view from a lens and a pose; a scene camera's pose is its entity's,
-which a property animator moves.
+frame view from a lens (`camera_t`, `scene/camera/camera.h`) and a pose; a
+scene camera's pose is its entity's, which an [animation
+track](../Animation-Tracks.md) moves.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.

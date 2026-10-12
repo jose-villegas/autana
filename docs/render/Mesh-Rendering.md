@@ -4,7 +4,7 @@ How the runtime draws a baked lit-mesh: cameras, culling, the rasterizer, the
 two-core frame and the view modes. The mesh's format and how it is made are
 in [Mesh-Import.md](Mesh-Import.md).
 
-`launcher/main/render/` is the engine's 3D layer: cameras, projection, a
+`launcher/main/render/` is the engine's 3D layer: the frame view, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
 offline. It sits above `gfx/`, whose render targets it draws into, and
 otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
@@ -28,7 +28,6 @@ Both use `render_view_t` for the per-frame perspective fit and picture basis.
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
-| `camera_t` | A baked camera's lens; its pose is the camera entity's transform, from `scene/camera/camera.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
@@ -37,10 +36,9 @@ Both use `render_view_t` for the per-frame perspective fit and picture basis.
 Flat or smooth shading is the mesh's own, not an option: a mesh baked flat
 carries a colour per face and the raster draws what the mesh carries.
 
-A camera that moves is an [animation track](../Animation-Tracks.md), sampled
-into the camera entity's pose; `camera_view()` builds its frame view with
-`render_view_make()`, which folds in the panel's quarter turn, fits its lens
-to the shorter picture side, ignores the pose's scale and keeps its roll.
+`render_view_make()` builds the frame view from a pose and a lens: it folds
+in the panel's quarter turn, fits the lens to the shorter picture side,
+ignores the pose's scale and keeps its roll.
 Poses follow [math/linear's conventions](../math/README.md#conventions).
 
 Several meshes share one picture: the raster draws each instance in turn

@@ -571,7 +571,8 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     fx.target.height = PICTURE_HEIGHT;
     scene_render(0, 0, fx.target.width, fx.target.height);
     const render_view_t view =
-        camera_view(&scene->cameras[0].lens, scene_camera_pose(scene, NULL), (viewport_t){SIZE, SIZE / 2, 0});
+        camera_view(scene_camera_lens(scene, NULL), scene_entity_transform(scene, scene->cameras[0].entity),
+                    (viewport_t){SIZE, SIZE / 2, 0});
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
         render_context_set_scale(c, scale);
@@ -722,7 +723,7 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
 
     scene_t* scene = load("test_flight");
     const scene_entity_t camera = scene_find(scene, "camera");
-    const transformf_t* flight = scene_camera_pose(scene, NULL);
+    const scene_transform_t* flight = scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
     TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
@@ -1533,7 +1534,8 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     render_context_t* c = render_context_main();
     render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
     const render_view_t view =
-        camera_view(&scene->cameras[0].lens, scene_camera_pose(scene, NULL), (viewport_t){SIZE, SIZE, 0});
+        camera_view(scene_camera_lens(scene, NULL), scene_entity_transform(scene, scene->cameras[0].entity),
+                    (viewport_t){SIZE, SIZE, 0});
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
     const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
@@ -2328,6 +2330,40 @@ test_authored_light_preserves_static_mesh_colors(void) {
 }
 
 static void
+test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
+    transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
+    const camera_t camera = {1.0F, 1.0F};
+    const render_view_t view = camera_view(&camera, &pose, (viewport_t){SIZE, SIZE, 0});
+    const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    TEST_ASSERT_TRUE(vec3f_equal(pose.position, view.position));
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.x, view.forward.x);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.y, view.forward.y);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.z, view.forward.z);
+}
+
+/* A pose rolled about +z turns the screen axes with it. */
+static void
+test_a_camera_view_keeps_the_roll_of_its_pose(void) {
+    const camera_t camera = {1.0F, 1.0F};
+    const viewport_t viewport = {SIZE, SIZE, 0};
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    const render_view_t level = camera_view(&camera, &pose, viewport);
+    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, MATH_PI / 2.0F));
+    const render_view_t rolled = camera_view(&camera, &pose, viewport);
+    const vec3f_t along_x = quatf_rotate(pose.rotation, level.screen_x);
+    const vec3f_t along_y = quatf_rotate(pose.rotation, level.screen_y);
+    TEST_ASSERT_TRUE(vec3f_equal(level.forward, rolled.forward));
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_x.x, rolled.screen_x.x);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_x.y, rolled.screen_x.y);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_y.x, rolled.screen_y.x);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_y.y, rolled.screen_y.y);
+    TEST_ASSERT_FALSE(vec3f_equal(level.screen_x, rolled.screen_x));
+}
+
+static void
 test_translation_only_camera_clip_retains_rotation(void) {
     fixture();
     scene_t* scene = load("test_unturned");
@@ -2338,7 +2374,7 @@ test_translation_only_camera_clip_retains_rotation(void) {
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, entity)->position.x);
     TEST_ASSERT_EQUAL_MEMORY(&pose.rotation, &scene_entity_transform(scene, entity)->rotation, sizeof pose.rotation);
-    const transformf_t* camera = scene_camera_pose(scene, NULL);
+    const scene_transform_t* camera = scene_entity_transform(scene, entity);
     const vec3f_t wanted = quatf_rotate(pose.rotation, (vec3f_t){0, 0, 1});
     const vec3f_t forward = quatf_rotate(camera->rotation, (vec3f_t){0, 0, 1});
     TEST_ASSERT_EQUAL_FLOAT(2.5F, camera->position.x);
@@ -3034,6 +3070,8 @@ run_scene_suite(void) {
     RUN_TEST(test_lighting_storage_requires_a_skin_and_light_in_both_orders);
     RUN_TEST(test_authored_skin_load_allocation_failures_release_lighting);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
+    RUN_TEST(test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z);
+    RUN_TEST(test_a_camera_view_keeps_the_roll_of_its_pose);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
     RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);

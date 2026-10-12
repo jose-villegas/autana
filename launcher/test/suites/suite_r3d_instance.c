@@ -17,7 +17,6 @@
 #include "r3d_quad_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
-#include "scene/camera/camera.h"
 
 #define SIZE   64
 #define CLEAR  0x1234
@@ -228,40 +227,6 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
 }
 
 static void
-test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
-    transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
-    transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
-    transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
-    const camera_t camera = {1.0F, 1.0F};
-    const render_view_t view = camera_view(&camera, &pose, (viewport_t){SIZE, SIZE, 0});
-    const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
-    TEST_ASSERT_TRUE(vec3f_equal(pose.position, view.position));
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.x, view.forward.x);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.y, view.forward.y);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.z, view.forward.z);
-}
-
-/* A pose rolled about +z turns the screen axes with it. */
-static void
-test_a_camera_view_keeps_the_roll_of_its_pose(void) {
-    const camera_t camera = {1.0F, 1.0F};
-    const viewport_t viewport = {SIZE, SIZE, 0};
-    transformf_t pose = TRANSFORMF_IDENTITY;
-    const render_view_t level = camera_view(&camera, &pose, viewport);
-    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, MATH_PI / 2.0F));
-    const render_view_t rolled = camera_view(&camera, &pose, viewport);
-    const vec3f_t along_x = quatf_rotate(pose.rotation, level.screen_x);
-    const vec3f_t along_y = quatf_rotate(pose.rotation, level.screen_y);
-    TEST_ASSERT_TRUE(vec3f_equal(level.forward, rolled.forward));
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_x.x, rolled.screen_x.x);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_x.y, rolled.screen_x.y);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_y.x, rolled.screen_y.x);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_y.y, rolled.screen_y.y);
-    TEST_ASSERT_FALSE(vec3f_equal(level.screen_x, rolled.screen_x));
-}
-
-static void
 test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex(void) {
     static const int16_t corners[4][3] = {{0, 0, 0}, {8, 0, 0}, {8, 4, 0}, {0, 2, 0}};
     static const r3d_lit_cluster_t cluster = {0, 4, 0, 2, {0, 0, 0}, {8, 4, 0}, false};
@@ -276,7 +241,7 @@ test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_ver
 }
 
 void
-suite_r3d_scene(void) {
+suite_r3d_instance(void) {
     RUN_TEST(test_a_mesh_with_no_placement_draws_where_it_is);
     RUN_TEST(test_two_instances_appear_at_their_own_placements);
     RUN_TEST(test_position_ticks_keep_a_placed_instance_in_model_units);
@@ -284,9 +249,7 @@ suite_r3d_scene(void) {
     RUN_TEST(test_a_scale_widens_an_instance_about_its_position);
     RUN_TEST(test_a_rotation_turns_an_instance_about_its_position);
     RUN_TEST(test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first);
-    RUN_TEST(test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z);
-    RUN_TEST(test_a_camera_view_keeps_the_roll_of_its_pose);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
 }
 
-SUITE_REGISTER(suite_r3d_scene);
+SUITE_REGISTER(suite_r3d_instance);

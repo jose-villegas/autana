@@ -16,7 +16,6 @@
 #ifndef DEVICE_BUILD
 
 #include "render/r3d_pipeline.h"
-#include "scene/camera/camera.h"
 #include "triangle_sizes.h"
 
 #define GRID  24 /* quads a side */
@@ -262,11 +261,10 @@ test_source_poses_and_the_engine_camera_make_the_same_asymmetric_view(void) {
     r3d_sizes_poses_t* poses = malloc(sizeof(*poses));
     TEST_ASSERT_NOT_NULL(poses);
     TEST_ASSERT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 3 2 400 -0.6 0 -0.8\n", poses));
-    const camera_t camera = {poses->half_fov_short_tan, poses->near_z};
     const viewport_t viewport = {poses->width, poses->height, 0};
-    const render_view_t runtime = camera_view(&camera, &camera_pose, viewport);
+    const render_view_t runtime = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z, viewport);
     const transformf_t pose = transformf_looking(poses->eye[0], poses->forward[0], (vec3f_t){0, 1, 0});
-    const render_view_t measured = render_view_make(&pose, camera.half_fov_short_tan, camera.near_z, viewport);
+    const render_view_t measured = render_view_make(&pose, poses->half_fov_short_tan, poses->near_z, viewport);
     const vec3f_t runtime_axes[] = {runtime.position, runtime.screen_x, runtime.screen_y, runtime.forward};
     const vec3f_t measured_axes[] = {measured.position, measured.screen_x, measured.screen_y, measured.forward};
     for (size_t axis = 0; axis < sizeof runtime_axes / sizeof runtime_axes[0]; axis++) {

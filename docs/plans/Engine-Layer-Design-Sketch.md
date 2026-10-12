@@ -1,7 +1,7 @@
 # Engine layer: design sketch
 
 **Status:** every section approved; a final read before it merges.
-The scene transform and animator calls in section 2 exist; the rest has not moved. `[M]` marks the maintainer's decision or constraint.
+The scene transform and animator calls in section 2 exist and the scene camera is in `scene/camera/`; the rest has not moved. `[M]` marks the maintainer's decision or constraint.
 
 The firmware becomes three bands over the shared packages: the **platform**
 (board, panel, input, present, core), the **engine** (scene, render, anim,
@@ -106,7 +106,7 @@ Every item in this section is approved.
 
 | System | Public face today | As the rule wants it | Gap |
 |---|---|---|---|
-| scene | `scene_load(id)`, `scene_find(name)`, `scene_set_transform()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string; `scene_camera_lens()` returns a render struct |
+| scene | `scene_load(id)`, `scene_find(name)`, `scene_set_transform()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the animator component and `scene_animator_*()`; sampler, binding, pose and layer stay behind `scene/scene.h`; boot calls `anim_tracks_*` and samples its tracks directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | boot's animation is not a scene |
 | asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
@@ -217,7 +217,6 @@ system icons), not code; it keeps its place under L1.
 | `render/viewport.h` | `display/` | S2 |
 | `render/r3d_project.h`, `r3d_project_x.h` | stay in `render/` for now `[M]`: they include `render/render_view.h`, so the maths package cannot take them until they take plain values | |
 | `render/r3d.h` | deleted, its six includers name what they use | S1 |
-| scene camera types (were `render/r3d_scene.h`) | `scene/camera/` | S1 |
 
 ### Untangling gfx first (S1)
 
