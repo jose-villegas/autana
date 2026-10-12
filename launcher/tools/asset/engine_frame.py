@@ -61,8 +61,9 @@ def to_engine(kind, entry):
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
     elif kind == scene_asset.TYPE:
-        version, entities, renderers, cameras, names_at, transforms_at, renderers_at, cameras_at = (
-            scene_asset.HEADER.unpack_from(entry))
+        header = scene_asset.HEADER.unpack_from(entry)
+        entities = header[1]
+        transforms_at = header[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("transforms")]
         for index in range(entities):
             at = transforms_at + index * scene_asset.TRANSFORM.size
             values = scene_asset.TRANSFORM.unpack_from(entry, at)
@@ -78,8 +79,8 @@ def to_engine(kind, entry):
             skeleton_asset.REST.pack_into(out, rest_at + index * skeleton_asset.REST.size,
                                          *(value * sign for value, sign in zip(rest, signs)))
     elif kind == skin_asset.TYPE:
-        matrices, vertices, influences = skin_asset.decode(entry)
-        *_, matrix_at, vertices_at = skin_asset.HEADER.unpack_from(entry)
+        matrices, vertices, influences, _ = skin_asset.decode(entry)
+        matrix_at, vertices_at = skin_asset.HEADER.unpack_from(entry)[4:6]
         for index, matrix in enumerate(matrices):
             skin_asset.MATRIX.pack_into(out, matrix_at + index * skin_asset.MATRIX.size,
                                        *_mirror_matrix(matrix, AFFINE_SIGNS))

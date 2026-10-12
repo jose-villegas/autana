@@ -64,7 +64,12 @@ fixture(int influences) {
         r[influences] += R3D_SKIN_WEIGHT_SUM % influences;
         r[2 * influences + 2] = R3D_SKIN_NORMAL_SCALE;
     }
-    f.skin = (r3d_skin_t){JOINTS, influences, VERTICES, INVERSE, f.records, stride};
+    f.skin = (r3d_skin_t){.joint_count = JOINTS,
+                          .influences = influences,
+                          .vertex_count = VERTICES,
+                          .inverse_binds = INVERSE,
+                          .vertices = f.records,
+                          .vertex_stride = stride};
     return f;
 }
 

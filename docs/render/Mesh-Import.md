@@ -37,7 +37,7 @@ Keys before `;` are required; after it, optional.
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `[source]` | `path`, `credit` | Locates the local source file; `credit` records its attribution. | Required. | Local file / none. | [source](#source) |
-| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
+| `[output]` | ; `name`, `position_scale` | Names the single mesh and position scale; bakes go to the cache. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
 #### source
@@ -64,12 +64,54 @@ The empty exclude clears the clone's default exclusion for this pull.
 
 #### output
 
-`[output]` names the generated mesh and its directory. `position_scale` is the
+`[output]` names the mesh entry. Baked meshes are stored in the bake cache. `position_scale` is the
 number of quantisation ticks per model unit.
 
 #### materials
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
+
+### Skin lighting
+
+| Option | Keys | What it does | Default | Constraint | Option link |
+|---|---|---|---|---|---|
+| `[skin]` | ; `lighting` | Selects the skinned renderer's runtime lighting mode, stored in SKIN. | `"direct"`. | None / see the table below. | [Skin lighting](#skin) |
+
+```toml
+[skin]
+lighting = "direct"
+```
+
+`lighting` is stored in SKIN v2 and selects the runtime kernel on attachment.
+Unknown values fail naming the import file and allowed modes.
+
+#### skin
+
+The `[skin]` table configures runtime lighting for the imported skin.
+
+- `direct` (default): shades the blended normal without normalising it.
+- `renormalised`: normalises the blended normal before direct shading.
+- `table`: samples bilinear irradiance from the scene's normal-direction table.
+
+[Lighting modes](Skinned-Lighting.md#lighting-modes) includes the comparison
+sheet. This quality/cost table is generated from the committed board capture;
+cycles per vertex are grouped by light count, errors are 8-bit channel steps.
+
+<!-- generated: skin-light-import check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
+Build `8d0d33ecbdb9-diag`.
+
+| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
+| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
+| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
+| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
+| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
+| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
+<!-- /generated: skin-light-import -->
 
 ### Process options
 

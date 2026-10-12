@@ -48,8 +48,9 @@ and the bake's 1/2.2 gamma and byte rounding. Runtime lighting has no shadow,
 sky visibility, ambient occlusion or bounced-light pass.
 
 The decode table has `R3D_SKIN_LIGHT_DECODE_SIZE` uint16 entries,
-stored as the rounded upper half of an IEEE float. A scene's first light
-allocates the decode and encode tables together in internal RAM.
+stored as the rounded upper half of an IEEE float. An attached skin in a scene with directional
+lights or nonzero ambient allocates the decode and encode tables together
+in internal RAM. Baked-only scenes allocate neither table.
 The radiance bins use `R3D_SKIN_LIGHT_RADIANCE_LOW_BITS` mantissa bits
 below `R3D_SKIN_LIGHT_RADIANCE_SPLIT_EXP` and
 `R3D_SKIN_LIGHT_RADIANCE_BITS` above it. Entries sample bin centers;
@@ -64,9 +65,9 @@ The scene prepares shared world-space light directions and premultiplied
 colors before splitting its cluster ranges. A directional
 light's direction toward the light is its entity's +Y turned by its
 rotation, matching `import_settings.py:load_light`.
-Only skinned renderers use runtime lights. Without lights, their mesh view
+Only skinned renderers use runtime lights. Without lights or nonzero ambient, their mesh view
 retains the bind-color pointer and does no color copy or shading.
-Only scenes with attached lights reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
+Scenes with attached skins and either directional lights or nonzero ambient reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
 vertex for lit colors and a `mat3f_t` normal palette per joint, in a separate
 internal RAM block per skin. The first light allocates all existing skins'
 blocks transactionally; a new skin in a lit scene allocates its own block.
@@ -79,14 +80,17 @@ produce black. Scene unload releases the blocks. World light directions are
 computed at most once per frame, and every lit renderer reads the scene's
 shared `r3d_skin_lights_t`. Scene
 component arrays and the world-light set remain in PSRAM.
-SCNE v1 carries no lighting settings: absent ambient contributes zero,
-and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
-SCNE v1 has no writers for the private ambient and tone-map fields.
-`test_skin_light_transfer.py` checks the runtime tables against `light.py`.
+SCNE settings supply ambient and tone map before light attachment. Absent
+ambient contributes zero; `SCENE_TONEMAP_WHITE_NONE` makes the tone map the
+identity. `test_skin_light_bake.py` compares an offline baked patch against
+the fused C kernel, within the host test's byte-error bound.
+
+The Python tools read literal constants from their owning C headers through `read_define`.
+Intensity is unscaled on both sides.
 
 ## Lighting modes
 
-Lighting mode is private to each skinned renderer. **Direct is the default**,
+Lighting mode comes from the SKIN entry, selected by the import's [`[skin].lighting`](Mesh-Import.md#skin-lighting). **Direct is the default**,
 the cheapest mode: it evaluates N.L on the blended world-space normal without
 renormalising, so vertices where joints blend come out darker. Pick it when
 that is acceptable. Renormalised evaluates
@@ -95,9 +99,7 @@ pick it when normal length must not affect light intensity. Table evaluates bili
 irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>.
 Its per-vertex cost does not grow with light count, but every light change
 rebuilds the shared table. The table below compares it with direct at each
-light count up to `R3D_SKIN_LIGHT_MAX`. No import setting or public call selects
-a mode, so every renderer runs direct; reading the mode from the skin pack
-entry is planned ([design sketch](../plans/Animation-System-Design-Sketch.md)).
+light count up to `R3D_SKIN_LIGHT_MAX`.
 Runtime tests and device suites select the mode through `scene_internal.h`.
 
 Every mode reads the same inverse-transpose normal palette. A scene
@@ -134,7 +136,7 @@ per frame, and RAM per
 renderer and per scene. Scene bytes are shared across renderers. The table is
 generated from the [board capture](#board-measurement).
 
-<!-- generated: skin-light-modes sha256=5eb1e45004dfec2fe27a4ae739cd09b714a4c38f27b2739d165ce133f011ac41 -->
+<!-- generated: skin-light-modes check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
 Build `8d0d33ecbdb9-diag`.
 
 | Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
@@ -160,7 +162,7 @@ Runtime error is measured against float lighting of packed bind normals.
 The [comparison sheet](images/skin-light-sheet.png) shows source-normal
 benchmark error; those inputs differ from packed normals.
 
-<!-- generated: skin-light-board sha256=a3a646596a6be493c4342f7fa7bc0718f76dbd69ad9ee504aab3d80df22176b9 -->
+<!-- generated: skin-light-board check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
 | Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
 |---|---|---:|---|---:|---:|---:|
 | 8d0d33ecbdb9-diag | normal_palette_build | 5104.000 | build | 5.187 | — | — |

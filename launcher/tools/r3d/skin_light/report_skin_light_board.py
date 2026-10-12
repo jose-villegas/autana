@@ -95,6 +95,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=pathlib.Path)
     parser.add_argument("document", type=pathlib.Path)
+    parser.add_argument("--import-document", type=pathlib.Path,
+                        default=pathlib.Path(__file__).resolve().parents[4] / "docs/render/Mesh-Import.md")
+    parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     capture = args.capture.read_text(encoding="utf-8")
     try:
@@ -104,9 +107,15 @@ def main():
     table = ["| Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |",
              "|---|---|---:|---|---:|---:|---:|"]
     table.extend("| " + " | ".join(row) + " |" for row in rows(capture))
-    replace_block(args.document, "skin-light-board", "\n".join(table))
-    replace_block(args.document, "skin-light-modes", modes)
+    command = ("python launcher/tools/r3d/skin_light/report_skin_light_board.py "
+               "docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check")
+    changed = False
+    for document, name, body in ((args.document, "skin-light-board", "\n".join(table)),
+                                 (args.document, "skin-light-modes", modes),
+                                 (args.import_document, "skin-light-import", modes)):
+        changed |= replace_block(document, name, body, check=args.check, command=command)
+    return int(args.check and changed)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

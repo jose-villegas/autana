@@ -52,8 +52,8 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     def test_skin_round_trip(self):
         matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0)
         vertices = [((0, 0), (255, 0), (0, 127, 0))]
-        self.assertEqual(skin_asset.decode(skin_asset.encode([matrix], vertices, 2)),
-                         ([matrix], vertices, 2))
+        self.assertEqual(skin_asset.decode(skin_asset.encode([matrix], vertices, 2, skin_asset.LIGHTING_MODES["direct"])),
+                         ([matrix], vertices, 2, skin_asset.LIGHTING_MODES["direct"]))
 
     def test_skeleton_mirror_round_trip_and_involution(self):
         rest = (2, 3, -7, 0.5, 0.5, 0.5, 0.5, 2, 3, 4)
@@ -87,6 +87,23 @@ runpy.run_path(sys.argv[0], run_name='__main__')
             self.assertEqual([(j, w) for j, w, _ in decoded[1]], [(j, w) for j, w, _ in rows])
             self.assertEqual(skin_asset.encode(*decoded), mirrored)
             self.assertEqual(to_engine(skin_asset.TYPE, mirrored), raw)
+
+    def test_skin_mode_round_trip(self):
+        matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0)
+        vertices = [((0, 0), (255, 0), (0, 127, 0))]
+        for name, mode in skin_asset.LIGHTING_MODES.items():
+            with self.subTest(mode=name):
+                entry = skin_asset.encode([matrix], vertices, lighting_mode=mode)
+                self.assertEqual(skin_asset.HEADER.unpack_from(entry)[6:], (mode, 0, 0, 0))
+                self.assertEqual(skin_asset.decode(entry), ([matrix], vertices, 2, mode))
+                self.assertEqual(skin_asset.encode(*skin_asset.decode(entry)), entry)
+        invalid = max(skin_asset.LIGHTING_MODES.values()) + 1
+        with self.assertRaisesRegex(ValueError, "lighting mode"):
+            skin_asset.encode([matrix], vertices, lighting_mode=invalid)
+        entry = bytearray(skin_asset.encode([matrix], vertices))
+        entry[skin_asset.AT_LIGHTING_MODE] = invalid
+        with self.assertRaisesRegex(ValueError, "lighting mode"):
+            skin_asset.decode(entry)
 
     def test_weight_ties_and_sum(self):
         self.assertEqual(skin_asset.quantize_weights((3, 2, 1, 0), (1, 1, 1, 1), 4),
@@ -145,7 +162,7 @@ class Matching(unittest.TestCase):
         for influences in (2, 4):
             entries = [(key, kind, to_engine(kind, data)) for key, kind, data in skin_probe.entries(influences)]
             skeleton = skeleton_asset.decode(entries[0][2])
-            inverse, vertices, width = skin_asset.decode(entries[1][2])
+            inverse, vertices, width, _ = skin_asset.decode(entries[1][2])
             tracks, _ = tracks_asset.decode(entries[2][2])
             positions, scale = skin_asset.mesh_positions(to_engine(mesh_asset.TYPE, skin_probe.mesh_entry()))
             error = 0
@@ -204,9 +221,9 @@ class Refusals(unittest.TestCase):
         import skin_probe
         entry = skin_probe.entries()[1][2]
         vertices = struct.unpack_from('<I', entry, 12)[0]
-        changes = [(0, '<H', 2), (2, 'B', 0), (2, 'B', 255), (3, 'B', 3),
+        changes = [(0, '<H', 1), (16, 'B', 255), (17, 'B', 1), (18, 'B', 1), (19, 'B', 1), (2, 'B', 0), (2, 'B', 255), (3, 'B', 3),
                    (4, '<I', 0xffffffff), (8, '<I', 0), (8, '<I', 17),
-                   (12, '<I', 0), (12, '<I', 17), (16, '<f', math.nan),
+                   (12, '<I', 0), (12, '<I', 17), (skin_asset.HEADER.size, '<f', math.nan),
                    (vertices, 'B', 254), (vertices + 4, 'B', 0), (vertices + 11, 'B', 1),
                    (vertices + 8, 'b', -128)]
         for offset, pattern, value in changes:
@@ -248,7 +265,6 @@ class PackStep(unittest.TestCase):
     def test_scene_pack_has_skin_and_rig(self):
         import tempfile
         import skin_probe
-        from gltf import gltf_write
         from r3d import build_pack
         from asset.asset_pack import parse_pack
         document, binary = skin_probe.rig()
@@ -256,10 +272,7 @@ class PackStep(unittest.TestCase):
         nodes = document['nodes']
         nodes[1]['translation'] = [2, 3, -7]
         nodes[1]['rotation'] = [0.5, 0.5, 0.5, 0.5]
-        primitive = dict(positions=skin_probe.POSITIONS, indices=[0, 1, 2], normals=skin_probe.NORMALS,
-                         joints=skin_probe.JOINTS, weights=skin_probe.WEIGHTS)
-        data = gltf_write.build_glb(nodes, [], meshes=[{'primitives': [primitive]}],
-                skins=[{'joints': [1, 2, 3, 4], 'inverse_binds': [skin_probe.IDENTITY] * 4}])
+        data = skin_probe.rig_glb(nodes)
         from gltf import gltf_read
         source_document, source_binary = gltf_read.parse_glb(data)
         _, source_skeleton, source_skin = skin_asset.bake(source_document, source_binary, 5,
@@ -284,6 +297,36 @@ class PackStep(unittest.TestCase):
                     self.assertEqual(decoded[mesh_id + '.skin'][1], to_engine(skin_asset.TYPE, source_skin))
                     self.assertEqual(decoded[mesh_id][1], to_engine(mesh_asset.TYPE, skin_probe.mesh_entry()))
                     self.assertNotIn('move', decoded)
+
+    def test_skin_pack_entries_use_the_import_mode_and_share_the_rig_read(self):
+        import tempfile
+        from types import SimpleNamespace
+        from unittest import mock
+        import skin_probe
+        from gltf import gltf_read
+        from r3d import skin_pack
+        from r3d.import_settings import load_import_settings, SKIN_LIGHTING
+        from test_r3d_import import write_import
+        data = skin_probe.rig_glb()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / 'rig.glb').write_bytes(data)
+            mesh_source = root / 'rig.mesh'
+            skin_pack.source_rig.cache_clear()
+            with mock.patch.object(gltf_read, 'load_asset', wraps=gltf_read.load_asset) as read:
+                for mode in SKIN_LIGHTING:
+                    path = write_import(root, source='[source]\npath = "rig.glb"\ncredit = "probe"\n',
+                                        body=f'[skin]\nlighting = "{mode}"\n')
+                    settings = load_import_settings(path)
+                    job = SimpleNamespace(settings=settings, object=SimpleNamespace(animator=None))
+                    additions = skin_pack.entries([('mesh', mesh_source, skin_probe.mesh_entry())],
+                        {mesh_source.resolve(): (job, None, root)}, root, True)
+                    encoded = next(entry for key, kind, entry, _ in additions if kind == skin_asset.TYPE)
+                    self.assertEqual(skin_asset.decode(encoded)[3], skin_asset.LIGHTING_MODES[mode])
+                    self.assertEqual(encoded[skin_asset.AT_LIGHTING_MODE], skin_asset.LIGHTING_MODES[mode])
+                    self.assertEqual(skin_pack.rig_ids('mesh', settings, root, True), ('mesh.skin', 'armature'))
+                self.assertEqual(read.call_count, 1)
+            skin_pack.source_rig.cache_clear()
 
     def test_ids_and_duplicate_sources(self):
         from r3d import skin_pack
