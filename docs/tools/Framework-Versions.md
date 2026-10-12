@@ -11,8 +11,7 @@ each pin to the newest release, so the pins do not fall behind.
 |---|---|---|---|
 | ESP-IDF (CI image, commit, esp-clang release) | [`launcher/idf-pin.json`](../../launcher/idf-pin.json); CI pulls the image from its GHCR mirror, same digest | ESP-IDF refresh, weekly | the refresh writes the pin, the component lock and the IRAM budgets, and mirrors the image; any other check that fails names its own command |
 | ESP-IDF components | [`launcher/dependencies.lock`](../../launcher/dependencies.lock), within the ranges in each `idf_component.yml` | ESP-IDF refresh, weekly | the refresh re-solves it; a build that rewrites it fails CI with the diff |
-| clang-format | [`scripts/gates/requirements.txt`](../../scripts/gates/requirements.txt) | Renovate, its own PR | `check-format.sh` fails on files the release formats differently: format them; a new major reformats the tree in a commit of its own |
-| clang-tidy | the `esp_clang` release in `launcher/idf-pin.json` | moves with ESP-IDF | the complexity gate names the functions whose scores moved |
+| clang-format, clang-tidy | the `esp_clang` release in `launcher/idf-pin.json`; CI runs that esp-clang in the pinned image | moves with ESP-IDF | a new major reformats the tree in a commit of its own: that bump is a migration |
 | QEMU and its patches | ESP-IDF's `tools/tools.json` ([`patched_qemu.py`](../../launcher/test/qemu/patched_qemu.py)) | moves with ESP-IDF | a patch that no longer applies stops the QEMU build, naming the file |
 | Python | [`.python-version`](../../.python-version) | Renovate | CI proves it; a new minor waits for the bake stack's wheels |
 | Python packages | `requirements*.txt` beside the tools that use them | Renovate, one PR for all | a bake package moves bake keys: the Bakes workflow bakes, then `bake.py lock --from-run N` |
@@ -47,8 +46,7 @@ another major. CI runs the pinned ones. To match:
 | Framework | Command |
 |---|---|
 | ESP-IDF | in your ESP-IDF checkout, `git fetch`, `git checkout <commit from idf-pin.json>`, `git submodule update --init --recursive`, then `install.sh esp32s3` (`install.ps1` on Windows) |
-| clang-format | `python -m pip install -r scripts/gates/requirements.txt` |
-| clang-tidy | comes with that ESP-IDF's esp-clang (`python tools/idf_tools.py install esp-clang`) |
+| clang-format, clang-tidy | come with that ESP-IDF's esp-clang (`python tools/idf_tools.py install esp-clang`); `python scripts/lib/pinned_tool.py clang-format --pinned` prints the release |
 | Python | install the version in `.python-version`, then `python -m pip install -r <requirements file>` for the tools you run |
 | Node | install the version in `.node-version`, then `npm ci --prefix scripts/gates` and `npm ci --prefix scripts/gates/mermaid` |
 | submodules | `git submodule update --init` |
