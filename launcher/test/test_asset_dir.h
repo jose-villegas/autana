@@ -10,6 +10,10 @@
  * cleanup puts it back; test_asset_dir_restore() does so earlier. */
 void test_asset_dir_use(const char* dir);
 
+/* Sets AUTANA_ASSET_DIR without keeping the runner's value: for a test of
+ * this helper, not for fixtures. */
+void test_asset_dir_set(const char* dir);
+
 /* Puts the runner's value back; does nothing when it already is. */
 void test_asset_dir_restore(void);
 

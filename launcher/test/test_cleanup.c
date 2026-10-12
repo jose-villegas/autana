@@ -1,7 +1,10 @@
 /* Deferred cleanups registered by test fixtures. */
 #include "test_cleanup.h"
 
+#include <setjmp.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "unity.h"
 
@@ -32,9 +35,21 @@ suite_clear_test_cleanup(void) {
 
 void
 suite_run_test_cleanup(void) {
-    /* Each is dropped before it runs: a cleanup that fails its own assertion
-     * runs once, and the ones still listed run on the next call. */
+    /* Each is dropped before it runs, so one that fails its own assertion
+     * runs once. The rest still run; the failure is raised once they have. */
+    jmp_buf outer;
+    memcpy(outer, Unity.AbortFrame, sizeof outer);
+    volatile bool failed = false;
     while (cleanup_count > 0) {
-        cleanups[--cleanup_count]();
+        void (*const cleanup)(void) = cleanups[--cleanup_count];
+        if (TEST_PROTECT()) {
+            cleanup();
+        } else {
+            failed = true;
+        }
+    }
+    memcpy(Unity.AbortFrame, outer, sizeof outer);
+    if (failed) {
+        TEST_ABORT();
     }
 }

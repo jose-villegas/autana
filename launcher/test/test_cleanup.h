@@ -1,5 +1,6 @@
 /* Deferred cleanups registered by test fixtures. They run in reverse order
- * after the test, even when one of its assertions failed. */
+ * after the test, even when one of its assertions failed, and each runs
+ * even when another fails. */
 #pragma once
 
 /* Most cleanups one test can have registered at once. */
