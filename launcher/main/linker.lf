@@ -19,7 +19,7 @@ entries:
 # test_narrow_present_counters). Only what every present runs; setup, the
 # other present modes and the SPI driver's own queue (SPI_MASTER_IN_IRAM)
 # stay where they are.
-# IRAM budget: 3926 B
+# IRAM budget: release 784 B, dev 3926 B, diag 3926 B
 [mapping:present_gfx]
 archive: libmain.a
 entries:

@@ -61,7 +61,6 @@ jobs:
 
   refresh:
     name: Regenerate and compare
-    needs: memory-tables
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -112,6 +111,36 @@ jobs:
           fi
           grep '^changed ' "$RUNNER_TEMP/report.txt" > "$RUNNER_TEMP/changed.txt" || true
           echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Package rendered output
+        run: |
+          mkdir -p "$RUNNER_TEMP/rendered-docs"
+          cp -a launcher/tools/results/doc_images/out/cpu "$RUNNER_TEMP/rendered-docs/cpu"
+          cp "$RUNNER_TEMP/changed.txt" "$RUNNER_TEMP/rendered-docs/changed.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-docs
+          path: ${{ runner.temp }}/rendered-docs
+
+  publish:
+    name: Commit images and measured tables
+    needs: [memory-tables, refresh]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: rendered-docs
+          path: ${{ runner.temp }}/rendered-docs
+      - name: Restore rendered output
+        run: |
+          out=launcher/tools/results/doc_images/out/cpu
+          mkdir -p "$out"
+          cp -a "$RUNNER_TEMP/rendered-docs/cpu/." "$out/"
+          cp "$RUNNER_TEMP/rendered-docs/changed.txt" "$RUNNER_TEMP/changed.txt"
 
       - uses: actions/download-artifact@v4
         with:

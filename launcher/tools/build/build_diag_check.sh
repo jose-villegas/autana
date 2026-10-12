@@ -92,6 +92,7 @@ soft_double_gate() {
 render_layout_gate() {
     echo "=== Pinned render code layout ==="
     "$PYTHON" "$DIR/../render/code_layout.py" --check "$DIR/../../build.diag"
+    "$PYTHON" "$DIR/memory_map.py" --check "$DIR/../../build.diag"
 }
 
 if [ -f "$COMPILE_DB" ]; then
