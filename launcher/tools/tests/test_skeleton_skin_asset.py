@@ -319,14 +319,80 @@ class PackStep(unittest.TestCase):
                                         body=f'[skin]\nlighting = "{mode}"\n')
                     settings = load_import_settings(path)
                     job = SimpleNamespace(settings=settings, object=SimpleNamespace(animator=None))
-                    additions = skin_pack.entries([('mesh', mesh_source, skin_probe.mesh_entry())],
-                        {mesh_source.resolve(): (job, None, root)}, root, True)
+                    with mock.patch.object(skin_pack, 'load_rig', wraps=skin_pack.load_rig) as resolve:
+                        additions = skin_pack.entries([('mesh', mesh_source, skin_probe.mesh_entry())],
+                            {mesh_source.resolve(): (job, None, root)}, root, True)
+                        self.assertEqual(resolve.call_count, 1)
                     encoded = next(entry for key, kind, entry, _ in additions if kind == skin_asset.TYPE)
                     self.assertEqual(skin_asset.decode(encoded)[3], skin_asset.LIGHTING_MODES[mode])
                     self.assertEqual(encoded[skin_asset.AT_LIGHTING_MODE], skin_asset.LIGHTING_MODES[mode])
                     self.assertEqual(skin_pack.rig_ids('mesh', settings, root, True), ('mesh.skin', 'armature'))
                 self.assertEqual(read.call_count, 1)
             skin_pack.source_rig.cache_clear()
+
+    def test_rig_ids_require_a_rig(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from r3d import skin_pack
+        from r3d.import_settings import SettingsError
+        settings = SimpleNamespace(path='plain.import.toml')
+        with mock.patch.object(skin_pack, 'load_rig', return_value=None):
+            with self.assertRaisesRegex(SettingsError, 'plain.import.toml: skinned_renderer requires a rig'):
+                skin_pack.rig_ids('mesh', settings, None, True)
+
+    def test_scene_and_skeleton_entries_use_the_source_rig_name(self):
+        from r3d import scene_asset, skin_pack
+        from r3d.import_settings import load_scene
+        from test_r3d_import import write_import
+        from types import SimpleNamespace
+        import skin_probe
+        document, _ = skin_probe.rig()
+        document['nodes'][0]['name'] = 'named_skeleton'
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / 'rig.glb').write_bytes(skin_probe.rig_glb(document['nodes']))
+            write_import(root, 'rig.import.toml', source='[source]\npath="rig.glb"\ncredit="test"\n')
+            path = root / 'room.scene.toml'
+            path.write_text('[[objects]]\nname="subject"\n[objects.skinned_renderer]\nmesh="rig.import.toml"\n')
+            scene = load_scene(path)
+            decoded = scene_asset.decode(scene_asset.encode(scene, root, True))
+            row = decoded['skinned_renderers'][0]
+            self.assertEqual(row['skeleton'], 'named_skeleton')
+            item = scene.renderers[0]
+            mesh_source = root / 'rig.mesh'
+            job = SimpleNamespace(settings=item.settings, object=item.object)
+            additions = skin_pack.entries([(row['mesh'], mesh_source, skin_probe.mesh_entry())],
+                {mesh_source.resolve(): (job, scene, root)}, root, True)
+            skeleton_ids = [key for key, kind, _, _ in additions if kind == skeleton_asset.TYPE]
+            self.assertEqual(skeleton_ids, [row['skeleton']])
+            self.assertEqual([key for key, kind, _, _ in additions if kind == skin_asset.TYPE], [row['skin']])
+
+    def test_rewritten_source_is_read_again(self):
+        import os
+        from gltf import gltf_read
+        from r3d import skin_pack
+        from r3d.import_settings import load_import_settings
+        from test_r3d_import import write_import
+        from unittest import mock
+        import skin_probe
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            source = root / 'rig.glb'
+            source.write_bytes(skin_probe.rig_glb())
+            settings = load_import_settings(write_import(root, source='[source]\npath="rig.glb"\ncredit="test"\n'))
+            skin_pack.source_rig.cache_clear()
+            self.addCleanup(skin_pack.source_rig.cache_clear)
+            with mock.patch.object(gltf_read, 'load_asset', wraps=gltf_read.load_asset) as read:
+                self.assertEqual(skin_pack.rig_ids('mesh', settings, root, True)[1], 'armature')
+                stamp = source.stat()
+                document, _ = skin_probe.rig()
+                document['nodes'][0]['name'] = 'new_name'
+                changed = skin_probe.rig_glb(document['nodes'])
+                self.assertEqual(len(changed), stamp.st_size)
+                source.write_bytes(changed)
+                os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000_000))
+                self.assertEqual(skin_pack.rig_ids('mesh', settings, root, True)[1], 'new_name')
+                self.assertEqual(read.call_count, 2)
 
     def test_ids_and_duplicate_sources(self):
         from r3d import skin_pack

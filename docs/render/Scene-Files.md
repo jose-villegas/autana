@@ -62,8 +62,9 @@ mesh = "statue.import.toml"
 ## Objects
 
 Every object has a unique `name`, an optional transform and one primary
-component table: `mesh_renderer`, `skinned_renderer`, `light` or `camera`. A skinned renderer may also have an animator. A scene needs
-a mesh renderer or skinned renderer.
+component table: `mesh_renderer`, `skinned_renderer`, `light` or `camera`.
+A skinned renderer may also have an animator. A scene needs a mesh renderer
+or skinned renderer.
 
 | Key | Meaning |
 |---|---|
@@ -195,6 +196,7 @@ wrap = "loop"
 
 The mesh id is `<scene>.<object>`; the skin id appends `.skin` and the skeleton
 id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
+
 #### animator
 
 `clips` defaults to the import's `source.clips`; an explicit list selects the
@@ -349,7 +351,8 @@ test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 frames beside the model. The generated board table records the frames used
 to fit the model. The cost term $`\mathcal{E}_c`$ from
 [fit.optimise](#fitoptimise) trades appearance for predicted time alongside
-the triangle budget. Generated tables and findings live in the scene tools README.
+the triangle budget. Generated tables and findings live in the scene tools
+README.
 
 #### fit.poses
 

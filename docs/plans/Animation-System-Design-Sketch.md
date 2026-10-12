@@ -36,8 +36,8 @@ flowchart TB
 It runs in the scene's advance (`scene_render()`, before the draw), so an app
 never skins. The raster reads an `r3d_lit_mesh_t` view. A skinned renderer's
 view points `positions`, `clusters` and `nodes` at its mutable buffers,
-retaining the bind mesh's colours unless the scene has lights or nonzero ambient, when `colors`
-points at its lit buffer.
+retaining the bind mesh's colours unless the scene has lights or nonzero
+ambient, when `colors` points at its lit buffer.
 
 ## 2. Two cores
 
@@ -108,10 +108,11 @@ separate influence-count kernels and cluster ranges.
 The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime-pose-and-skinning).
 
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
-an `animator` component (clip ids, one layer). Runtime asset-id attachment
-configures skeleton animators and skin components.
-SCNE animator rows create animators; a camera path loads as one. Public playback controls are declared in `scene/scene.h`; apps hold
-entity handles and clip indices. The playback query API includes:
+an `animator` component (clip ids, one layer). Runtime asset-id
+attachment configures skeleton animators and skin components.
+SCNE animator rows create animators; a camera path loads as one. Public
+playback controls are declared in `scene/scene.h`; apps hold entity handles
+and clip indices. The playback query API includes:
 
 ```c
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);

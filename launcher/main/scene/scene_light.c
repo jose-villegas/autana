@@ -26,6 +26,15 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     return true;
 }
 
+r3d_skin_light_transfer_t*
+scene_light_transfer_take(const scene_t* scene) {
+    r3d_skin_light_transfer_t* transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
+    if (transfer != NULL) {
+        r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
+    }
+    return transfer;
+}
+
 bool
 scene_lights_allocate(scene_t* scene) {
     bool has_skin = false;
@@ -40,7 +49,7 @@ scene_lights_allocate(scene_t* scene) {
     if (!has_skin) {
         return true;
     }
-    r3d_skin_light_transfer_t* transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
+    r3d_skin_light_transfer_t* transfer = scene_light_transfer_take(scene);
     if (transfer == NULL) {
         return false;
     }
@@ -63,7 +72,6 @@ scene_lights_allocate(scene_t* scene) {
         memory_free(transfer);
         return false;
     }
-    r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
     scene->light_transfer = transfer;
     return true;
 }
