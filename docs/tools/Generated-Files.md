@@ -42,7 +42,9 @@ to rewrite them whenever a banner is added, changed or removed.
 - **The command.** The first non-blank line after the marker, written the
   way you would type it. A script ending in `.py` runs under the Python
   that runs the gate, and one ending in `.sh` under `sh`, so the same banner
-  works on Windows and Linux.
+  works on Windows and Linux. In an XML comment banner (an SVG), where
+  `--` is not allowed, the hyphens are written `&#45;` and the gate
+  decodes character references before running it.
 - **Where it runs.** From the nearest folder above the file that holds the
   command's script. Most banners are written from `launcher/`.
 - **Where the output goes.** The command names the file itself, either as

@@ -169,9 +169,7 @@ def chart(body):
                     extra.append(suffix)
         label = name if variant == "release" else f"{name} ({variant})"
         end = f"{freed} B; heap {heap:+d} B"
-        rows.append((label, [(name, freed, svg_bars.OURS_FILL)], end))
-        if extra:
-            rows.append(("", [], ", ".join(extra)))
+        rows.append((label, [(name, freed, svg_bars.OURS_FILL)], end, ", ".join(extra)))
     return svg_bars.bars("python launcher/tools/build/iram_what_if.py --chart docs/memory/images/iram-what-if.svg",
                          "IRAM freed per experiment", "Release unless marked; each experiment isolated; savings are not additive", rows,
                          max(1, max(int(row['IRAM freed B']) for row in selected)), ("Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.",))

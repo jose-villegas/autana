@@ -582,8 +582,12 @@ def chart(kind, body):
             start, end, size = alias("dram0_0_seg", variant)
             iram = sum(int(region(name, variant)) for name in region_rows if name.startswith('.iram') and name != '.iram0.text_end')
             slack = int(region("Slack including pad", variant))
-            dram = sum(int(region(name, variant)) for name in (".dram0.data", ".dram0.bss"))
-            heap = int(end, 16) - int(region("_heap_start", variant), 16)
+            data_start, heap_start = (int(region(name, variant), 16) for name in ("_data_start", "_heap_start"))
+            if iram + slack != data_start - int(start, 16):
+                raise ValueError(f"{variant}: IRAM and split slack do not end at _data_start")
+            # From _data_start, so the alignment between .data and .bss counts here.
+            dram = heap_start - data_start
+            heap = int(end, 16) - heap_start
             counts = (iram - ours[variant], ours[variant], slack, dram, heap)
             if sum(counts) != size:
                 raise ValueError(f"{variant}: pool segments do not sum to shared alias")
@@ -593,7 +597,7 @@ def chart(kind, body):
         start, end, _ = alias("dram0_0_seg", "release")
         iram_start, _, _ = alias("iram0_0_seg", "release")
         return svg_bars.bars(command, "Shared internal memory pool", "Linked ranges in address order; heap is not runtime free memory", rows, max(scales),
-                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), legend, (start, end))
+                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), legend, (start, end), inside=True)
     idf = Counter()
     fill = None
     for row in components:

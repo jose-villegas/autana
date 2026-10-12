@@ -1,53 +1,48 @@
 <!-- GENERATED FILE - do not edit.
 python launcher/tools/build/iram_what_if.py &#45;&#45;chart docs/memory/images/iram-what-if.svg
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" viewBox="0 0 1240 918" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" viewBox="0 0 1040 668" role="img">
 <title>IRAM freed per experiment</title>
-<style>text{fill:#24292f;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px}@media(prefers-color-scheme:dark){text{fill:#f0f6fc}}</style>
-<text x="0" y="24" text-anchor="start">IRAM freed per experiment</text>
-<text x="0" y="48" text-anchor="start">Release unless marked; each experiment isolated; savings are not additive</text>
-<text x="233" y="107" text-anchor="end">heap-to-flash</text>
-<rect x="245.00" y="90" width="620.00" height="24" fill="#e36209" data-label="heap-to-flash" data-bytes="15352"><title>heap-to-flash: 15352 B</title></rect>
-<text x="877.00" y="107" text-anchor="start">15352 B; heap +16312 B</text>
-<text x="233" y="151" text-anchor="end"></text>
-<text x="257.00" y="151" text-anchor="start">dev 15404, diag 15404</text>
-<text x="233" y="195" text-anchor="end">freertos-non-isr</text>
-<rect x="245.00" y="178" width="278.01" height="24" fill="#e36209" data-label="freertos-non-isr" data-bytes="6884"><title>freertos-non-isr: 6884 B</title></rect>
-<text x="535.01" y="195" text-anchor="start">6884 B; heap +6912 B</text>
-<text x="233" y="239" text-anchor="end"></text>
-<text x="257.00" y="239" text-anchor="start">dev 6920, diag 7560 (heap +7680 B)</text>
-<text x="233" y="283" text-anchor="end">silent-assertions</text>
-<rect x="245.00" y="266" width="261.86" height="24" fill="#e36209" data-label="silent-assertions" data-bytes="6484"><title>silent-assertions: 6484 B</title></rect>
-<text x="518.86" y="283" text-anchor="start">6484 B; heap +11880 B</text>
-<text x="233" y="327" text-anchor="end">unused-flash-chips</text>
-<rect x="245.00" y="310" width="154.27" height="24" fill="#e36209" data-label="unused-flash-chips" data-bytes="3820"><title>unused-flash-chips: 3820 B</title></rect>
-<text x="411.27" y="327" text-anchor="start">3820 B; heap +5224 B</text>
-<text x="233" y="371" text-anchor="end">gpspi-flash-hal</text>
-<rect x="245.00" y="354" width="74.47" height="24" fill="#e36209" data-label="gpspi-flash-hal" data-bytes="1844"><title>gpspi-flash-hal: 1844 B</title></rect>
-<text x="331.47" y="371" text-anchor="start">1844 B; heap +1792 B</text>
-<text x="233" y="415" text-anchor="end">dynamic-log-level</text>
-<rect x="245.00" y="398" width="40.06" height="24" fill="#e36209" data-label="dynamic-log-level" data-bytes="992"><title>dynamic-log-level: 992 B</title></rect>
-<text x="297.06" y="415" text-anchor="start">992 B; heap +1288 B</text>
-<text x="233" y="459" text-anchor="end"></text>
-<text x="257.00" y="459" text-anchor="start">dev 992 (heap +1304 B), diag 992 (heap +1304 B)</text>
-<text x="233" y="503" text-anchor="end">libc-locks</text>
-<rect x="245.00" y="486" width="38.29" height="24" fill="#e36209" data-label="libc-locks" data-bytes="948"><title>libc-locks: 948 B</title></rect>
-<text x="295.29" y="503" text-anchor="start">948 B; heap +1024 B</text>
-<text x="233" y="547" text-anchor="end">i2c-isr</text>
-<rect x="245.00" y="530" width="29.40" height="24" fill="#e36209" data-label="i2c-isr" data-bytes="728"><title>i2c-isr: 728 B</title></rect>
-<text x="286.40" y="547" text-anchor="start">728 B; heap +768 B</text>
-<text x="233" y="591" text-anchor="end">encrypted-read-write</text>
-<rect x="245.00" y="574" width="24.07" height="24" fill="#e36209" data-label="encrypted-read-write" data-bytes="596"><title>encrypted-read-write: 596 B</title></rect>
-<text x="281.07" y="591" text-anchor="start">596 B; heap +952 B</text>
-<text x="233" y="635" text-anchor="end">ringbuf-to-flash</text>
-<rect x="245.00" y="618" width="6.46" height="24" fill="#e36209" data-label="ringbuf-to-flash" data-bytes="160"><title>ringbuf-to-flash: 160 B</title></rect>
-<text x="263.46" y="635" text-anchor="start">160 B; heap +256 B</text>
-<text x="233" y="679" text-anchor="end"></text>
-<text x="257.00" y="679" text-anchor="start">dev 4132 (heap +4096 B), diag 4132 (heap +4096 B)</text>
-<text x="233" y="723" text-anchor="end">noflash-text</text>
-<rect x="245.00" y="706" width="0.00" height="24" fill="#e36209" data-label="noflash-text" data-bytes="0"><title>noflash-text: 0 B</title></rect>
-<text x="257.00" y="723" text-anchor="start">0 B; heap +664 B</text>
-<text x="233" y="767" text-anchor="end"></text>
-<text x="257.00" y="767" text-anchor="start">diag 0 (heap +672 B)</text>
-<text x="0" y="794" text-anchor="start">Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.</text>
+<style>text{fill:#737c86;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px}.title{font-size:18px;font-weight:600}.note{font-size:12px}.inside{fill:#1f2328}</style>
+<text x="16" y="40" text-anchor="start" class="title">IRAM freed per experiment</text>
+<text x="16" y="64" text-anchor="start">Release unless marked; each experiment isolated; savings are not additive</text>
+<text x="188" y="113" text-anchor="end">heap-to-flash</text>
+<rect x="200.00" y="96" width="640.00" height="24" fill="#e36209" data-label="heap-to-flash" data-bytes="15352"><title>heap-to-flash: 15352 B</title></rect>
+<text x="852.00" y="113" text-anchor="start">15352 B; heap +16312 B</text>
+<text x="852.00" y="130" text-anchor="start" class="note">dev 15404, diag 15404</text>
+<text x="188" y="157" text-anchor="end">freertos-non-isr</text>
+<rect x="200.00" y="140" width="286.98" height="24" fill="#e36209" data-label="freertos-non-isr" data-bytes="6884"><title>freertos-non-isr: 6884 B</title></rect>
+<text x="498.98" y="157" text-anchor="start">6884 B; heap +6912 B</text>
+<text x="498.98" y="174" text-anchor="start" class="note">dev 6920, diag 7560 (heap +7680 B)</text>
+<text x="188" y="201" text-anchor="end">silent-assertions</text>
+<rect x="200.00" y="184" width="270.31" height="24" fill="#e36209" data-label="silent-assertions" data-bytes="6484"><title>silent-assertions: 6484 B</title></rect>
+<text x="482.31" y="201" text-anchor="start">6484 B; heap +11880 B</text>
+<text x="188" y="245" text-anchor="end">unused-flash-chips</text>
+<rect x="200.00" y="228" width="159.25" height="24" fill="#e36209" data-label="unused-flash-chips" data-bytes="3820"><title>unused-flash-chips: 3820 B</title></rect>
+<text x="371.25" y="245" text-anchor="start">3820 B; heap +5224 B</text>
+<text x="188" y="289" text-anchor="end">gpspi-flash-hal</text>
+<rect x="200.00" y="272" width="76.87" height="24" fill="#e36209" data-label="gpspi-flash-hal" data-bytes="1844"><title>gpspi-flash-hal: 1844 B</title></rect>
+<text x="288.87" y="289" text-anchor="start">1844 B; heap +1792 B</text>
+<text x="188" y="333" text-anchor="end">dynamic-log-level</text>
+<rect x="200.00" y="316" width="41.35" height="24" fill="#e36209" data-label="dynamic-log-level" data-bytes="992"><title>dynamic-log-level: 992 B</title></rect>
+<text x="253.35" y="333" text-anchor="start">992 B; heap +1288 B</text>
+<text x="253.35" y="350" text-anchor="start" class="note">dev 992 (heap +1304 B), diag 992 (heap +1304 B)</text>
+<text x="188" y="377" text-anchor="end">libc-locks</text>
+<rect x="200.00" y="360" width="39.52" height="24" fill="#e36209" data-label="libc-locks" data-bytes="948"><title>libc-locks: 948 B</title></rect>
+<text x="251.52" y="377" text-anchor="start">948 B; heap +1024 B</text>
+<text x="188" y="421" text-anchor="end">i2c-isr</text>
+<rect x="200.00" y="404" width="30.35" height="24" fill="#e36209" data-label="i2c-isr" data-bytes="728"><title>i2c-isr: 728 B</title></rect>
+<text x="242.35" y="421" text-anchor="start">728 B; heap +768 B</text>
+<text x="188" y="465" text-anchor="end">encrypted-read-write</text>
+<rect x="200.00" y="448" width="24.85" height="24" fill="#e36209" data-label="encrypted-read-write" data-bytes="596"><title>encrypted-read-write: 596 B</title></rect>
+<text x="236.85" y="465" text-anchor="start">596 B; heap +952 B</text>
+<text x="188" y="509" text-anchor="end">ringbuf-to-flash</text>
+<rect x="200.00" y="492" width="6.67" height="24" fill="#e36209" data-label="ringbuf-to-flash" data-bytes="160"><title>ringbuf-to-flash: 160 B</title></rect>
+<text x="218.67" y="509" text-anchor="start">160 B; heap +256 B</text>
+<text x="218.67" y="526" text-anchor="start" class="note">dev 4132 (heap +4096 B), diag 4132 (heap +4096 B)</text>
+<text x="188" y="553" text-anchor="end">noflash-text</text>
+<rect x="200.00" y="536" width="0.00" height="24" fill="#e36209" data-label="noflash-text" data-bytes="0"><title>noflash-text: 0 B</title></rect>
+<text x="212.00" y="553" text-anchor="start">0 B; heap +664 B</text>
+<text x="212.00" y="570" text-anchor="start" class="note">diag 0 (heap +672 B)</text>
+<text x="16" y="604" text-anchor="start">Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.</text>
 </svg>

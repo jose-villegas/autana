@@ -19,7 +19,8 @@ class MemoryChartTests(unittest.TestCase):
                    ('dram0_0_seg shared alias', '0x3fc88000–0x3fc88400 (1024 B)'),
                    ('.iram0.text', 256), ('.iram0.text_end', 16),
                    ('Slack including pad', 16), ('.dram0.data', 32),
-                   ('.dram0.bss', 64), ('_heap_start', '0x3fc88170')]
+                   ('.dram0.bss', 64), ('_data_start', '0x3fc88110'),
+                   ('_heap_start', '0x3fc88170')]
         components = [('libmain.a', 'our sites', 16), ('liblcd.a', 'our sites', 16)]
         components += [(f'libpart{i}.a', 'IDF', 20) for i in range(10)]
         components += [('Linker fill / split slack', 'unattributed', 40)]

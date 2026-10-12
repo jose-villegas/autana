@@ -1,0 +1,41 @@
+<!-- GENERATED FILE - do not edit.
+python launcher/tools/build/memory_map.py &#45;&#45;chart components docs/memory/images/iram-components.svg
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" viewBox="0 0 1040 648" role="img">
+<title>ESP-IDF IRAM by component — release</title>
+<style>text{fill:#737c86;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px}.title{font-size:18px;font-weight:600}.note{font-size:12px}.inside{fill:#1f2328}</style>
+<text x="16" y="40" text-anchor="start" class="title">ESP-IDF IRAM by component — release</text>
+<text x="16" y="64" text-anchor="start">Top 8 archives; remaining archives summed as other</text>
+<text x="188" y="113" text-anchor="end">freertos</text>
+<rect x="200.00" y="96" width="640.00" height="24" fill="#8c959f" data-label="freertos" data-bytes="13701"><title>freertos: 13701 B</title></rect>
+<text x="852.00" y="113" text-anchor="start">13701 B</text>
+<text x="188" y="157" text-anchor="end">esp_hw_support</text>
+<rect x="200.00" y="140" width="622.86" height="24" fill="#8c959f" data-label="esp_hw_support" data-bytes="13334"><title>esp_hw_support: 13334 B</title></rect>
+<text x="834.86" y="157" text-anchor="start">13334 B</text>
+<text x="188" y="201" text-anchor="end">spi_flash</text>
+<rect x="200.00" y="184" width="578.25" height="24" fill="#8c959f" data-label="spi_flash" data-bytes="12379"><title>spi_flash: 12379 B</title></rect>
+<text x="790.25" y="201" text-anchor="start">12379 B</text>
+<text x="188" y="245" text-anchor="end">hal</text>
+<rect x="200.00" y="228" width="513.78" height="24" fill="#8c959f" data-label="hal" data-bytes="10999"><title>hal: 10999 B</title></rect>
+<text x="725.78" y="245" text-anchor="start">10999 B</text>
+<text x="188" y="289" text-anchor="end">heap</text>
+<rect x="200.00" y="272" width="298.07" height="24" fill="#8c959f" data-label="heap" data-bytes="6381"><title>heap: 6381 B</title></rect>
+<text x="510.07" y="289" text-anchor="start">6381 B</text>
+<text x="188" y="333" text-anchor="end">esp_driver_spi</text>
+<rect x="200.00" y="316" width="235.47" height="24" fill="#8c959f" data-label="esp_driver_spi" data-bytes="5041"><title>esp_driver_spi: 5041 B</title></rect>
+<text x="447.47" y="333" text-anchor="start">5041 B</text>
+<text x="188" y="377" text-anchor="end">esp_system</text>
+<rect x="200.00" y="360" width="164.52" height="24" fill="#8c959f" data-label="esp_system" data-bytes="3522"><title>esp_system: 3522 B</title></rect>
+<text x="376.52" y="377" text-anchor="start">3522 B</text>
+<text x="188" y="421" text-anchor="end">xtensa</text>
+<rect x="200.00" y="404" width="116.41" height="24" fill="#8c959f" data-label="xtensa" data-bytes="2492"><title>xtensa: 2492 B</title></rect>
+<text x="328.41" y="421" text-anchor="start">2492 B</text>
+<text x="188" y="465" text-anchor="end">other</text>
+<rect x="200.00" y="448" width="451.19" height="24" fill="#8c959f" data-label="other" data-bytes="9659"><title>other: 9659 B</title></rect>
+<text x="663.19" y="465" text-anchor="start">9659 B</text>
+<text x="188" y="509" text-anchor="end">Linker fill</text>
+<rect x="200.00" y="492" width="68.25" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1461"><title>Linker fill: 1461 B</title></rect>
+<text x="280.25" y="509" text-anchor="start">1461 B</text>
+<text x="16" y="560" text-anchor="start">release: 77508 B IDF-placed; dev: 82149 B IDF-placed; diag: 82902 B IDF-placed</text>
+<text x="16" y="584" text-anchor="start">Unattributed linker fill excludes split slack and prefetch pad.</text>
+</svg>
