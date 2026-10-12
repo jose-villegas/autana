@@ -28,7 +28,7 @@ edge_under_logical_bottom(int quarter) {
     int found = -1;
     for (int edge = 0; edge < 4; edge++) {
         if (hugs[edge]) {
-            found = found < 0 ? edge : -2;
+            found = found == -1 ? edge : -2;
         }
     }
     return found;
