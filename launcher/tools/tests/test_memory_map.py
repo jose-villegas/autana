@@ -134,6 +134,7 @@ class MemoryMapTests(unittest.TestCase):
         self.assertIn("extra.c.obj:extra (4 B)", differs)
         self.assertEqual(body.count("abcdef123456-release"), 1)
         self.assertIn("IDF fixture-idf", body)
+        self.assertIn("\u2013", body)
         self.assertIn('iram["IRAM<br/>4 B"]', body)
         release["sections"][".iram0.text_end"] = (0, 100)
         self.assertIn('iram["IRAM<br/>4 B"]', memory.render([release, dev]))
@@ -405,7 +406,7 @@ print(m.render(builds))
 
     def test_unsupported_attribute_declaration(self):
         with self.assertRaisesRegex(ValueError, "unsupported IRAM declaration"):
-            self.source("/* Cache latency. IRAM budget: 4 B */\nvoid IRAM_ATTR foo(void);")
+            self.source("/* Cache latency. IRAM budget: 4 B */\nvoid IRAM_ATTR foo(void);\nvoid unrelated(void) {}")
 
     def test_config_placement_requires_full_line(self):
         path = "launcher/sdkconfig.defaults"
