@@ -74,7 +74,7 @@ core 1 through `job_try_core1()`, core 0 runs the other half, and
 
 ## 3. Pack entries
 
-The implemented SKEL v1 and SKIN v1 layouts, checks, model-space constraint,
+The implemented SKEL v1 and SKIN v2 layouts, checks, model-space constraint,
 LMSH position matching, influence quantization and ids are owned by
 [Skeleton and skin entries](../render/Skeleton-and-Skin.md). The uncached
 pack step reads the finished LMSH rather
@@ -86,27 +86,12 @@ TRCK v2 is defined by [Animation tracks](../Animation-Tracks.md#the-pack-entry).
 Skeleton clips use joint paths from each root joint. SKIN normals hold the
 bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 
-**Planned SCNE v2** adds rows, read like the current entry:
-
-| Part | Layout |
-|---|---|
-| skinned renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]`, `char skin_id[32]`, `char skeleton_id[32]` |
-| animators (the animator row) | `u16 entity`, `u16 clip_count`, `u32 first_clip` (index into the clip rows) |
-| clip rows | `char clip_id[32]` |
-| lights | `u8 kind` (`SCENE_LIGHT_DIRECTIONAL` = 0, the only kind yet), 3 zero bytes, `f32 direction[3]` (unit, scene space, pointing toward the light), `f32 colour[3]` (linear RGB, 0 to 1), `f32 intensity` (the scene file's, unscaled) |
-| header additions | `u16` counts and `u32` offsets of the four parts; `f32 ambient_colour[3]` (linear RGB), `f32 ambient_intensity`, `f32 tonemap_white` |
-
-The lights, ambient and tone map are read by one runtime system: the skinned
-renderers' lighting (`r3d_skin_lights_t`, one world-space set per scene that every lit
-skinned renderer reads), so a skinned mesh is lit by the same
-numbers the static bake used. Each renderer selects direct (the default),
-renormalised or table lighting, with bake-matched albedo decode, tone map and
-gamma. Scene-format work fills this private mode from the skin pack entry;
-[lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds the costs,
-quality and choice criteria.
-SCNE v1 is the scene format. The proposed version adds authored
-animator and lighting rows; runtime attachment uses asset ids without these
-rows. TRCK v1 is refused (`ASSET_ERR_VERSION`).
+SCNE v2 carries authored skinned-renderer, animator and light rows, plus ambient
+and tone-map settings. [Scene-Files.md](../render/Scene-Files.md#the-scene-entry)
+owns the layout and syntax. SKIN v2 supplies the renderer's lighting mode;
+[lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds costs and
+quality. Runtime lights shade skinned albedo; static renderers keep baked
+colours. TRCK v1 is refused (`ASSET_ERR_VERSION`).
 
 ## 4. Runtime types and functions
 

@@ -33,13 +33,18 @@ Rest values are finite. Rotations obey `abs(1 - sum(q*q)) <= ANIM_SKELETON_UNIT_
 floats on both sides. Joint rows precede rest data, which precedes
 strings; strings end at the entry end. Gaps and reserved bytes are zero.
 
-## SKIN v1
+## SKIN v2
 
 | Part | Layout |
 |---|---|
-| Header, 16 bytes | `u16 version=1`, `u8 joint_count`, `u8 influences`, `u32 vertex_count`, `u32 inverse_bind_off`, `u32 vertices_off` |
+| Header, 20 bytes | `u16 version=2` at 0, `u8 joint_count` at 2, `u8 influences` at 3, `u32 vertex_count` at 4, `u32 inverse_bind_off` at 8, `u32 vertices_off` at 12, `u8 lighting_mode` at 16, three zero bytes at 17..19 |
 | Inverse binds, at inverse_bind_off, 48 bytes each | `f32 matrix[3][4]`, row-major, model units |
 | Vertex, at vertices_off, 2*influences+4 bytes | `u8 joints[influences]`, `u8 weights[influences]`, `i8 normal[3]`, `u8 zero` |
+
+Lighting codes are `R3D_SKIN_LIGHT_DIRECT`, `R3D_SKIN_LIGHT_RENORMALISED` and
+`R3D_SKIN_LIGHT_TABLE` in `render/r3d_skin.h`; unknown codes are refused.
+The import's `[skin].lighting` selects the mode, default `direct`; skin attachment
+fills the renderer's private mode. SKIN v1 is refused with `ASSET_ERR_VERSION`.
 
 Joint count is in 1..254, influences are 2 or 4, joint indices are below
 the joint count, and weights sum to 255. Every matrix value is finite.

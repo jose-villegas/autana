@@ -79,14 +79,19 @@ produce black. Scene unload releases the blocks. World light directions are
 computed at most once per frame, and every lit renderer reads the scene's
 shared `r3d_skin_lights_t`. Scene
 component arrays and the world-light set remain in PSRAM.
-SCNE v1 carries no lighting settings: absent ambient contributes zero,
-and `SCENE_TONEMAP_WHITE_NONE` is zero, making the tone map the identity.
-SCNE v1 has no writers for the private ambient and tone-map fields.
-`test_skin_light_transfer.py` checks the runtime tables against `light.py`.
+SCNE settings supply ambient and tone map before light attachment. Absent
+ambient contributes zero; `SCENE_TONEMAP_WHITE_NONE` makes the tone map the
+identity. `test_skin_light_bake.py` compares an offline baked patch against
+the fused C kernel, within the committed one-light direct-mode byte error.
+
+The Python tools read the C owners through `read_define`: `SCENE_LIGHT_AXIS`,
+`SCENE_LIGHT_KIND_DIRECTIONAL`, `ANIM_WRAP_*`, `R3D_SKIN_LIGHT_GAMMA` and
+`R3D_SKIN_LIGHT_DIRECT`, `R3D_SKIN_LIGHT_RENORMALISED`, `R3D_SKIN_LIGHT_TABLE`.
+Intensity is unscaled on both sides.
 
 ## Lighting modes
 
-Lighting mode is private to each skinned renderer. **Direct is the default**,
+Lighting mode comes from the SKIN entry, selected by the import's `[skin].lighting`. **Direct is the default**,
 the cheapest mode: it evaluates N.L on the blended world-space normal without
 renormalising, so vertices where joints blend come out darker. Pick it when
 that is acceptable. Renormalised evaluates
@@ -95,9 +100,8 @@ pick it when normal length must not affect light intensity. Table evaluates bili
 irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>.
 Its per-vertex cost does not grow with light count, but every light change
 rebuilds the shared table. The table below compares it with direct at each
-light count up to `R3D_SKIN_LIGHT_MAX`. No import setting or public call selects
-a mode, so every renderer runs direct; reading the mode from the skin pack
-entry is planned ([design sketch](../plans/Animation-System-Design-Sketch.md)).
+light count up to `R3D_SKIN_LIGHT_MAX`. The import selects the mode through the
+skin entry; attachment fills the private per-renderer mode.
 Runtime tests and device suites select the mode through `scene_internal.h`.
 
 Every mode reads the same inverse-transpose normal palette. A scene
@@ -134,7 +138,7 @@ per frame, and RAM per
 renderer and per scene. Scene bytes are shared across renderers. The table is
 generated from the [board capture](#board-measurement).
 
-<!-- generated: skin-light-modes sha256=5eb1e45004dfec2fe27a4ae739cd09b714a4c38f27b2739d165ce133f011ac41 -->
+<!-- generated: skin-light-modes check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
 Build `8d0d33ecbdb9-diag`.
 
 | Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
@@ -160,7 +164,7 @@ Runtime error is measured against float lighting of packed bind normals.
 The [comparison sheet](images/skin-light-sheet.png) shows source-normal
 benchmark error; those inputs differ from packed normals.
 
-<!-- generated: skin-light-board sha256=a3a646596a6be493c4342f7fa7bc0718f76dbd69ad9ee504aab3d80df22176b9 -->
+<!-- generated: skin-light-board check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
 | Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
 |---|---|---:|---|---:|---:|---:|
 | 8d0d33ecbdb9-diag | normal_palette_build | 5104.000 | build | 5.187 | — | — |

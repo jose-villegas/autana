@@ -11,7 +11,6 @@ enum { R3D_SKIN_LIGHT_CHANNELS = 3 };
 #define R3D_SKIN_LIGHT_BYTE_SCALE          255
 #define R3D_SKIN_LIGHT_DECODE_SIZE         256
 #define R3D_SKIN_LIGHT_DECODE_SHIFT        16
-/* test_skin_light_transfer.py checks these transfer constants against tools/r3d/light.py. */
 #define R3D_SKIN_LIGHT_GAMMA               2.2F
 #define R3D_SKIN_LIGHT_FLOAT_MANTISSA_BITS (FLT_MANT_DIG - 1)
 #define R3D_SKIN_LIGHT_FLOAT_BIAS          (FLT_MAX_EXP - 1)

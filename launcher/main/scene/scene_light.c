@@ -26,9 +26,9 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     return true;
 }
 
-static bool
-light_storage_allocate(scene_t* scene) {
-    for (int r = 0; r < scene->asset.renderer_count; r++) {
+bool
+scene_lights_allocate(scene_t* scene) {
+    for (int r = 0; r < scene->renderer_count; r++) {
         const scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
         if (skin->internal_storage != NULL && skin->bind.colors == NULL) {
             (void)fprintf(stderr, "scene: %s\n", SCENE_LIGHT_FAILURE_ALBEDO);
@@ -40,7 +40,7 @@ light_storage_allocate(scene_t* scene) {
         return false;
     }
     bool allocated = true;
-    for (int r = 0; r < scene->asset.renderer_count; r++) {
+    for (int r = 0; r < scene->renderer_count; r++) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
         if (skin->internal_storage != NULL && !scene_skin_light_allocate(skin)) {
             allocated = false;
@@ -48,7 +48,7 @@ light_storage_allocate(scene_t* scene) {
         }
     }
     if (!allocated) {
-        for (int r = 0; r < scene->asset.renderer_count; r++) {
+        for (int r = 0; r < scene->renderer_count; r++) {
             scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
             memory_free(skin->light_storage);
             skin->light_storage = NULL;
@@ -75,12 +75,12 @@ light_attach(scene_t* scene, scene_entity_t entity) {
     if (scene->light_count == R3D_SKIN_LIGHT_MAX) {
         return NULL;
     }
-    if (scene->light_count == 0 && !light_storage_allocate(scene)) {
+    if (scene->light_transfer == NULL && !scene_lights_allocate(scene)) {
         return NULL;
     }
     *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
     scene->light_count++;
-    for (int r = 0; r < scene->asset.renderer_count; r++) {
+    for (int r = 0; r < scene->renderer_count; r++) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
         if (skin->internal_storage != NULL) {
             skin->output.mesh.colors = skin->colors;
@@ -91,10 +91,18 @@ light_attach(scene_t* scene, scene_entity_t entity) {
 }
 
 bool
-scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb) {
+scene_light_color_fits(vec3f_t linear_rgb) {
     if (!isfinite(linear_rgb.x) || !isfinite(linear_rgb.y) || !isfinite(linear_rgb.z) || linear_rgb.x < 0.0F
         || linear_rgb.x > 1.0F || linear_rgb.y < 0.0F || linear_rgb.y > 1.0F || linear_rgb.z < 0.0F
         || linear_rgb.z > 1.0F) {
+        return false;
+    }
+    return true;
+}
+
+bool
+scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb) {
+    if (!scene_light_color_fits(linear_rgb)) {
         return false;
     }
     scene_light_t* light = light_attach(scene, entity);
@@ -136,7 +144,7 @@ scene_light_intensity(const scene_t* scene, scene_entity_t entity) {
 
 void
 scene_skin_light_prepare(scene_t* scene, scene_entity_t entity) {
-    if (scene->light_count == 0) {
+    if (scene->light_transfer == NULL) {
         return;
     }
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
@@ -150,7 +158,7 @@ scene_skin_light_prepare(scene_t* scene, scene_entity_t entity) {
 
 void
 scene_lights_prepare(scene_t* scene) {
-    if (scene->light_count == 0) {
+    if (scene->light_transfer == NULL) {
         return;
     }
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
@@ -180,7 +188,12 @@ scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_ligh
         || mode > SCENE_SKIN_LIGHT_TABLE) {
         return false;
     }
-    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    return scene_skin_light_apply_mode(scene, entity, &scene->skinned_renderers[entity], mode);
+}
+
+bool
+scene_skin_light_apply_mode(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* skin,
+                            scene_skin_light_mode_t mode) {
     if (skin->internal_storage == NULL) {
         return false;
     }
