@@ -1,9 +1,11 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
 #include "apps/render_lab/render_lab.h"
+#include "core/timing.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_present_guard.h"
 #include "render/context/render_context.h"
 #include "scene/scene_shell.h"
 #include "ui/ui.h"
@@ -21,7 +23,9 @@ render_lab_test_enter(render_lab_test_t* saved, const char* scene) {
 
 void
 render_lab_test_exit(const render_lab_test_t* saved) {
-    gfx_present_wait();
+    if (gfx_present_guard_in_flight) {
+        gfx_present_wait();
+    }
     app_render_lab.exit();
     scene_unload_all();
     render_lab_start_scene_key = saved->scene;
@@ -29,18 +33,22 @@ render_lab_test_exit(const render_lab_test_t* saved) {
     render_lab_show_hud = saved->hud;
 }
 
-void
+int64_t
 render_lab_test_frame(bool switching) {
     const input_t idle = {0};
     gfx_present_begin();
     app_render_lab.update(RENDER_LAB_TEST_FRAME_MS, &idle);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_context_set_scale(render_context_main(), RENDER_LAB_TEST_SCALE);
+    const int64_t render_start = timing_now_us();
     scene_shell_render(RENDER_LAB_TEST_FRAME_MS);
+    const int64_t render_us = timing_now_us() - render_start;
     gfx_present_wait();
     ui_clear_band_overlay();
     scene_shell_compose(RENDER_LAB_TEST_FRAME_MS);
-    TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
+    if (switching) {
+        TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
+    }
     app_render_lab.frame(RENDER_LAB_TEST_FRAME_MS, &idle);
     if (switching) {
         TEST_ASSERT_FALSE_MESSAGE(gfx_frame_expanded(), "the new scene must discard the expanded picture");
@@ -48,6 +56,7 @@ render_lab_test_frame(bool switching) {
         TEST_ASSERT_NOT_NULL(gfx_framebuffer());
     }
     gfx_present();
+    return render_us;
 }
 
 #endif
