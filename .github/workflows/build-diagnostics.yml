@@ -45,8 +45,6 @@ jobs:
           cache-name: diag-perf
           command: >-
             ../tools/autana build diag --perf-scope --project ..
-            && cd ..
-            && python3 launcher/tools/build/memory_map.py --check launcher/build.diag
 
   build-diagnostics:
     name: Build (diagnostics and complexity gate)

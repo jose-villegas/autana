@@ -170,16 +170,32 @@ jobs:
       - name: Every generated file is what its banner's command makes
         run: python3 scripts/gates/check_generated_files.py
 
+  idf-image:
+    name: Read the IDF pin
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.pin.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pin
+        run: python3 -c 'import sys; sys.path.insert(0, "launcher/tools"); from build.espressif import idf_pin; print("image=" + idf_pin()["image"])' >> "$GITHUB_OUTPUT"
+
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
     runs-on: ubuntu-latest
+    needs: idf-image
+    container: ${{ needs.idf-image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Every code and documentation citation resolves
+      # The container runs as another user than the checkout's owner.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Every name, file and heading a comment cites exists
         env:
           STAGED_TEXT_GATE: "true"
-        run: |
-          image=$(python3 -c 'import json; print(json.load(open("launcher/idf-pin.json"))["image"])')
-          docker run --rm -v "$GITHUB_WORKSPACE:/app" -w /app -e STAGED_TEXT_GATE "$image" \
-            /bin/bash -c 'git config --global --add safe.directory "*" && python3 scripts/gates/check_comment_symbols.py --require-idf && python3 scripts/gates/check_doc_citations.py --require-idf'
+        run: python3 scripts/gates/check_comment_symbols.py --require-idf
+
+      - name: Every documentation citation resolves
+        run: python3 scripts/gates/check_doc_citations.py --require-idf

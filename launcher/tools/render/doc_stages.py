@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables, tracked_files
-from tool_support import markdown
+from doc_tables import markdown
 from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
@@ -197,7 +197,6 @@ def run(command, log):
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("w") as output:
         subprocess.run([str(value) for value in command], cwd=ROOT, stdout=output, stderr=subprocess.STDOUT, check=True)
-
 
 
 

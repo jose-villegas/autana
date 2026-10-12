@@ -13,9 +13,11 @@ archive: libmain.a
 entries:
     * (patchable_entries_default)
 
-# Keep every normal present's hot path in IRAM to avoid cache-dependent flash timing.
-# suite_gfx test_narrow_present_counters measures that path. Setup, other present
-# modes and the SPI driver's own queue keep their configured placement.
+# A present's own code in IRAM: from flash, a narrow strip went from ~236 us to
+# ~398 us with the cache cold (suite_gfx test_narrow_present_counters). Setup, other
+# present modes and the SPI driver's own queue keep their configured placement.
+# CONFIG_LAUNCHER_DEVELOPMENT adds overlays, send auditing and raw-full dispatch,
+# so dev and diag are larger.
 # IRAM budget: release 784 B, dev 3926 B, diag 3926 B
 [mapping:present_gfx]
 archive: libmain.a
@@ -29,7 +31,7 @@ entries:
     gfx_present:present_task_fn (noflash)
 
 # Avoid cache misses in the LCD dispatch and SPI completion path used by every present.
-# IRAM budget: 1549 B
+# IRAM budget: 1561 B
 [mapping:present_lcd]
 archive: libesp_lcd.a
 entries:

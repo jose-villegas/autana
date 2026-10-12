@@ -42,16 +42,23 @@ env:
 jobs:
   memory-tables:
     name: Measure internal memory (sequential variants)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/idf-build
         with:
-          cache-name: memory-tables
+          cache-name: release
           command: >-
             ../tools/autana build rel --project ..
-            && ../tools/autana build dev --project ..
-            && ../tools/autana build diag --project ..
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: dev
+          command: ../tools/autana build dev --project ..
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: diag
+          command: >-
+            ../tools/autana build diag --project ..
             && cd ..
             && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --tables launcher/build/memory-tables
       - uses: actions/upload-artifact@v4

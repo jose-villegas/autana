@@ -10,6 +10,7 @@ that has pyserial and esptool (idf_python()).
 idf_python() searches only on Windows: elsewhere ESP-IDF's export script
 puts its Python on PATH, so sys.executable is already the right one.
 """
+import json
 import glob
 import os
 import re
@@ -33,6 +34,15 @@ def idf_path():
     same rule as idf.sh's idf_default_export(). It may not exist."""
     env = os.environ.get("IDF_PATH")
     return Path(env) if env else Path.home() / "esp" / "esp-idf"
+
+
+def idf_pin(root=Path(__file__).resolve().parents[3]):
+    return json.loads((root / "launcher/idf-pin.json").read_text(encoding="utf-8"))
+
+
+def idf_drift(commit, pinned_commit=None):
+    pinned_commit = idf_pin()["commit"] if pinned_commit is None else pinned_commit
+    return None if commit == pinned_commit else f"build {commit}, pin {pinned_commit}"
 
 
 def _version_key(path):
