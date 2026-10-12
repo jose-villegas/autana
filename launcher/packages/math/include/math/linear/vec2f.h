@@ -1,6 +1,6 @@
 /*
  * vec2f: a 2-component vector of a float. The operations are
- * vec2_template.h's; math_template.h says how they are made.
+ * vec2_template.h's; docs/math/README.md says how they are made.
  */
 #pragma once
 

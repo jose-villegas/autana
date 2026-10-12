@@ -1,6 +1,6 @@
 /*
  * quatf: a float rotation, plus the one operation only floats have, slerp.
- * The rest is quat_template.h's; math_template.h says how it is made.
+ * The rest is quat_template.h's; docs/math/README.md says how it is made.
  */
 #pragma once
 
