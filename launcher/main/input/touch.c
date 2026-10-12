@@ -224,7 +224,7 @@ touch_task(void* arg) {
         if (was_touching) {
             /* A resting finger is sampled at the poll rate, however often
              * the controller pulses. */
-            vTaskDelayUntil(&last_wake, ticks);
+            xTaskDelayUntil(&last_wake, ticks);
         } else {
             /* Idle: a contact wakes the task, the timeout still polls the
              * level when no interrupt is registered. */
