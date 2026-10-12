@@ -1,100 +1,102 @@
-BUILD_ID=2e0848e1164f-diag
+BUILD_ID=b9ed51bd9fef-diag
 RUN=1
-I (6736) capybara_perf: capybara_perf: phase=before_enter internal_free=103759 internal_largest=61440
-I (6783) capybara_perf: capybara_perf: phase=loaded internal_free=90727 internal_largest=49152
-I (7395) capybara_perf: capybara_perf: phase=before_enter internal_free=100595 internal_largest=47104
-I (7441) capybara_perf: capybara_perf: phase=loaded internal_free=87563 internal_largest=47104
-I (7954) capybara_perf: capybara_perf: phase=before_enter internal_free=100595 internal_largest=47104
-I (8001) capybara_perf: capybara_perf: phase=loaded internal_free=87563 internal_largest=47104
-I (8029) capybara_perf: capybara_perf: phase=playing internal_free=87563 internal_largest=47104
-I (8413) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 mean_us=2149 p95_us=2204 us_per_vertex=2.686 cycles_per_vertex=644.727
-I (8709) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 mean_us=1284 p95_us=1305 us_per_vertex=1.605 cycles_per_vertex=385.099
-I (8903) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 mean_us=286 p95_us=296 us_per_vertex=0.357 cycles_per_vertex=85.831
-I (9099) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 mean_us=307 p95_us=319 us_per_vertex=0.384 cycles_per_vertex=91.951
-I (9430) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 mean_us=1630 p95_us=1649 us_per_vertex=2.038 cycles_per_vertex=488.902
-I (11694) capybara_perf: capybara_perf: stage=render paused=0 samples=100 mean_us=9805 p95_us=10065
-I (11695) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 mean_us=22394 p95_us=22649
-I (13725) capybara_perf: capybara_perf: stage=render paused=1 samples=100 mean_us=7544 p95_us=7625
-I (13726) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 mean_us=20087 p95_us=20152
-I (13727) capybara_perf: capybara_perf: stage=render_delta mean_us=2261 p95_us=2440
-I (13728) capybara_perf: capybara_perf: stage=frame_delta mean_us=2307 p95_us=2497
-I (13731) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (13777) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (13806) capybara_perf: capybara_perf: phase=playing internal_free=87443 internal_largest=47104
-I (14189) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 mean_us=2150 p95_us=2208 us_per_vertex=2.688 cycles_per_vertex=644.847
-I (14486) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 mean_us=1284 p95_us=1303 us_per_vertex=1.605 cycles_per_vertex=385.101
-I (14680) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 mean_us=289 p95_us=307 us_per_vertex=0.361 cycles_per_vertex=86.472
-I (14876) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 mean_us=307 p95_us=316 us_per_vertex=0.384 cycles_per_vertex=91.957
-I (15207) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 mean_us=1631 p95_us=1654 us_per_vertex=2.039 cycles_per_vertex=489.252
-I (17472) capybara_perf: capybara_perf: stage=render paused=0 samples=100 mean_us=9815 p95_us=10075
-I (17473) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 mean_us=22405 p95_us=22684
-I (19495) capybara_perf: capybara_perf: stage=render paused=1 samples=100 mean_us=7453 p95_us=7469
-I (19496) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 mean_us=20001 p95_us=20044
-I (19497) capybara_perf: capybara_perf: stage=render_delta mean_us=2362 p95_us=2606
-I (19497) capybara_perf: capybara_perf: stage=frame_delta mean_us=2404 p95_us=2640
+I (7743) capybara_perf: capybara_perf: phase=before_enter internal_free=103815 internal_largest=61440
+I (7790) capybara_perf: capybara_perf: phase=loaded internal_free=90795 internal_largest=49152
+I (8403) capybara_perf: capybara_perf: phase=before_enter internal_free=100651 internal_largest=47104
+I (8450) capybara_perf: capybara_perf: phase=loaded internal_free=87631 internal_largest=47104
+I (8963) capybara_perf: capybara_perf: phase=before_enter internal_free=100651 internal_largest=47104
+I (9010) capybara_perf: capybara_perf: phase=loaded internal_free=87631 internal_largest=47104
+I (9038) capybara_perf: capybara_perf: phase=playing internal_free=87631 internal_largest=47104
+I (9422) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=2150 p95_us=2208 us_per_vertex=2.688 cycles_per_vertex=644.840
+I (9718) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=1283 p95_us=1299 us_per_vertex=1.604 cycles_per_vertex=384.830
+I (9913) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=286 p95_us=298 us_per_vertex=0.357 cycles_per_vertex=85.671
+I (10109) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=306 p95_us=317 us_per_vertex=0.383 cycles_per_vertex=91.690
+I (10440) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 joints=22 mean_us=1631 p95_us=1653 us_per_vertex=2.039 cycles_per_vertex=489.176
+I (12706) capybara_perf: capybara_perf: stage=render paused=0 samples=100 joints=22 mean_us=9836 p95_us=10064
+I (12707) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 joints=22 mean_us=22414 p95_us=22658
+I (14729) capybara_perf: capybara_perf: stage=render paused=1 samples=100 joints=22 mean_us=7498 p95_us=7520
+I (14730) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 joints=22 mean_us=19999 p95_us=20019
+I (14731) capybara_perf: capybara_perf: stage=render_delta joints=22 mean_us=2338 p95_us=2544
+I (14732) capybara_perf: capybara_perf: stage=frame_delta joints=22 mean_us=2415 p95_us=2639
+I (14735) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (14781) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (14810) capybara_perf: capybara_perf: phase=playing internal_free=87447 internal_largest=47104
+I (15193) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=2149 p95_us=2203 us_per_vertex=2.686 cycles_per_vertex=644.545
+I (15490) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=1284 p95_us=1303 us_per_vertex=1.605 cycles_per_vertex=385.069
+I (15684) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=286 p95_us=298 us_per_vertex=0.357 cycles_per_vertex=85.832
+I (15880) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=306 p95_us=316 us_per_vertex=0.383 cycles_per_vertex=91.690
+I (16212) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 joints=22 mean_us=1630 p95_us=1648 us_per_vertex=2.038 cycles_per_vertex=488.964
+I (18477) capybara_perf: capybara_perf: stage=render paused=0 samples=100 joints=22 mean_us=9832 p95_us=10090
+I (18478) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 joints=22 mean_us=22411 p95_us=22674
+I (20505) capybara_perf: capybara_perf: stage=render paused=1 samples=100 joints=22 mean_us=7527 p95_us=7635
+I (20506) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 joints=22 mean_us=20049 p95_us=20169
+I (20507) capybara_perf: capybara_perf: stage=render_delta joints=22 mean_us=2305 p95_us=2455
+I (20508) capybara_perf: capybara_perf: stage=frame_delta joints=22 mean_us=2362 p95_us=2505
 RUN=2
-I (19824) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (19871) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (20384) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (20430) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (20459) capybara_perf: capybara_perf: phase=playing internal_free=87443 internal_largest=47104
-I (20842) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 mean_us=2149 p95_us=2205 us_per_vertex=2.686 cycles_per_vertex=644.577
-I (21139) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 mean_us=1284 p95_us=1304 us_per_vertex=1.605 cycles_per_vertex=385.074
-I (21333) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 mean_us=287 p95_us=304 us_per_vertex=0.359 cycles_per_vertex=85.985
-I (21529) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 mean_us=307 p95_us=317 us_per_vertex=0.384 cycles_per_vertex=91.938
-I (21860) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 mean_us=1630 p95_us=1649 us_per_vertex=2.038 cycles_per_vertex=488.894
-I (26145) capybara_perf: capybara_perf: stage=render paused=1 samples=100 mean_us=7486 p95_us=7565
-I (26146) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 mean_us=20008 p95_us=20097
-I (26147) capybara_perf: capybara_perf: stage=render_delta mean_us=2321 p95_us=2490
-I (26148) capybara_perf: capybara_perf: stage=frame_delta mean_us=2387 p95_us=2570
+I (21182) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (21229) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (21742) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (21789) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (21817) capybara_perf: capybara_perf: phase=playing internal_free=87447 internal_largest=47104
+I (22201) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=2149 p95_us=2203 us_per_vertex=2.686 cycles_per_vertex=644.658
+I (22497) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=1283 p95_us=1304 us_per_vertex=1.604 cycles_per_vertex=384.819
+I (22692) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=287 p95_us=300 us_per_vertex=0.359 cycles_per_vertex=85.969
+I (22888) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=306 p95_us=321 us_per_vertex=0.383 cycles_per_vertex=91.825
+I (23219) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 joints=22 mean_us=1632 p95_us=1656 us_per_vertex=2.040 cycles_per_vertex=489.514
+I (25485) capybara_perf: capybara_perf: stage=render paused=0 samples=100 joints=22 mean_us=9836 p95_us=10096
+I (25487) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 joints=22 mean_us=22414 p95_us=22653
+I (27508) capybara_perf: capybara_perf: stage=render paused=1 samples=100 joints=22 mean_us=7491 p95_us=7505
+I (27509) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 joints=22 mean_us=19996 p95_us=20009
+I (27510) capybara_perf: capybara_perf: stage=render_delta joints=22 mean_us=2345 p95_us=2591
+I (27511) capybara_perf: capybara_perf: stage=frame_delta joints=22 mean_us=2418 p95_us=2644
 RUN=3
-I (26598) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (26645) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (27157) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (27204) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (27232) capybara_perf: capybara_perf: phase=playing internal_free=87443 internal_largest=47104
-I (27616) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 mean_us=2148 p95_us=2202 us_per_vertex=2.685 cycles_per_vertex=644.425
-I (27912) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 mean_us=1284 p95_us=1304 us_per_vertex=1.605 cycles_per_vertex=385.124
-I (28107) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 mean_us=291 p95_us=350 us_per_vertex=0.364 cycles_per_vertex=87.220
-I (28303) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 mean_us=307 p95_us=318 us_per_vertex=0.384 cycles_per_vertex=92.089
-I (28634) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 mean_us=1631 p95_us=1648 us_per_vertex=2.039 cycles_per_vertex=489.064
-I (30897) capybara_perf: capybara_perf: stage=render paused=0 samples=100 mean_us=9809 p95_us=10072
-I (30898) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 mean_us=22390 p95_us=22669
-I (32925) capybara_perf: capybara_perf: stage=render paused=1 samples=100 mean_us=7529 p95_us=7625
-I (32926) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 mean_us=20055 p95_us=20169
-I (32927) capybara_perf: capybara_perf: stage=render_delta mean_us=2280 p95_us=2447
-I (32928) capybara_perf: capybara_perf: stage=frame_delta mean_us=2335 p95_us=2500
+I (27976) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (28022) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (28535) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (28582) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (28610) capybara_perf: capybara_perf: phase=playing internal_free=87447 internal_largest=47104
+I (28994) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=2150 p95_us=2204 us_per_vertex=2.688 cycles_per_vertex=644.898
+I (29291) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=1283 p95_us=1298 us_per_vertex=1.604 cycles_per_vertex=384.746
+I (29485) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=288 p95_us=297 us_per_vertex=0.360 cycles_per_vertex=86.180
+I (29681) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=306 p95_us=315 us_per_vertex=0.383 cycles_per_vertex=91.772
+I (30013) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 joints=22 mean_us=1632 p95_us=1658 us_per_vertex=2.040 cycles_per_vertex=489.474
+I (32279) capybara_perf: capybara_perf: stage=render paused=0 samples=100 joints=22 mean_us=9835 p95_us=10116
+I (32280) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 joints=22 mean_us=22417 p95_us=22697
+I (34305) capybara_perf: capybara_perf: stage=render paused=1 samples=100 joints=22 mean_us=7506 p95_us=7634
+I (34306) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 joints=22 mean_us=20030 p95_us=20165
+I (34307) capybara_perf: capybara_perf: stage=render_delta joints=22 mean_us=2329 p95_us=2482
+I (34308) capybara_perf: capybara_perf: stage=frame_delta joints=22 mean_us=2387 p95_us=2532
 RUN=4
-I (33332) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (33379) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (33892) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (33939) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (33967) capybara_perf: capybara_perf: phase=playing internal_free=87443 internal_largest=47104
-I (34350) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 mean_us=2150 p95_us=2205 us_per_vertex=2.688 cycles_per_vertex=644.905
-I (34647) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 mean_us=1284 p95_us=1307 us_per_vertex=1.605 cycles_per_vertex=385.129
-I (34841) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 mean_us=289 p95_us=303 us_per_vertex=0.361 cycles_per_vertex=86.646
-I (35037) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 mean_us=307 p95_us=322 us_per_vertex=0.384 cycles_per_vertex=92.109
-I (35368) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 mean_us=1630 p95_us=1649 us_per_vertex=2.038 cycles_per_vertex=488.940
-I (37632) capybara_perf: capybara_perf: stage=render paused=0 samples=100 mean_us=9814 p95_us=10056
-I (37633) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 mean_us=22401 p95_us=22652
-I (39655) capybara_perf: capybara_perf: stage=render paused=1 samples=100 mean_us=7448 p95_us=7462
-I (39656) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 mean_us=19998 p95_us=20042
-I (39657) capybara_perf: capybara_perf: stage=render_delta mean_us=2366 p95_us=2594
-I (39657) capybara_perf: capybara_perf: stage=frame_delta mean_us=2403 p95_us=2610
+I (34775) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (34821) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (35334) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (35381) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (35409) capybara_perf: capybara_perf: phase=playing internal_free=87447 internal_largest=47104
+I (35793) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=2150 p95_us=2205 us_per_vertex=2.688 cycles_per_vertex=644.831
+I (36090) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=1283 p95_us=1305 us_per_vertex=1.604 cycles_per_vertex=384.925
+I (36284) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=288 p95_us=311 us_per_vertex=0.360 cycles_per_vertex=86.325
+I (36480) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=306 p95_us=316 us_per_vertex=0.383 cycles_per_vertex=91.571
+I (36811) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 joints=22 mean_us=1631 p95_us=1647 us_per_vertex=2.039 cycles_per_vertex=489.125
+I (39077) capybara_perf: capybara_perf: stage=render paused=0 samples=100 joints=22 mean_us=9832 p95_us=10087
+I (39079) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 joints=22 mean_us=22416 p95_us=22684
+I (41105) capybara_perf: capybara_perf: stage=render paused=1 samples=100 joints=22 mean_us=7525 p95_us=7642
+I (41106) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 joints=22 mean_us=20047 p95_us=20177
+I (41107) capybara_perf: capybara_perf: stage=render_delta joints=22 mean_us=2307 p95_us=2445
+I (41108) capybara_perf: capybara_perf: stage=frame_delta joints=22 mean_us=2369 p95_us=2507
 RUN=5
-I (40117) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (40163) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (40676) capybara_perf: capybara_perf: phase=before_enter internal_free=100475 internal_largest=47104
-I (40723) capybara_perf: capybara_perf: phase=loaded internal_free=87443 internal_largest=47104
-I (40751) capybara_perf: capybara_perf: phase=playing internal_free=87443 internal_largest=47104
-I (41134) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 mean_us=2149 p95_us=2205 us_per_vertex=2.686 cycles_per_vertex=644.771
-I (41431) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 mean_us=1283 p95_us=1302 us_per_vertex=1.604 cycles_per_vertex=384.908
-I (41625) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 mean_us=288 p95_us=303 us_per_vertex=0.360 cycles_per_vertex=86.401
-I (41821) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 mean_us=306 p95_us=316 us_per_vertex=0.383 cycles_per_vertex=91.809
-I (42152) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 mean_us=1629 p95_us=1647 us_per_vertex=2.036 cycles_per_vertex=488.623
-I (44415) capybara_perf: capybara_perf: stage=render paused=0 samples=100 mean_us=9807 p95_us=10069
-I (44416) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 mean_us=22393 p95_us=22680
-I (46445) capybara_perf: capybara_perf: stage=render paused=1 samples=100 mean_us=7543 p95_us=7623
-I (46446) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 mean_us=20072 p95_us=20159
-I (46447) capybara_perf: capybara_perf: stage=render_delta mean_us=2264 p95_us=2446
-I (46448) capybara_perf: capybara_perf: stage=frame_delta mean_us=2321 p95_us=2521
+I (41509) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (41555) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (42068) capybara_perf: capybara_perf: phase=before_enter internal_free=100467 internal_largest=47104
+I (42115) capybara_perf: capybara_perf: phase=loaded internal_free=87447 internal_largest=47104
+I (42143) capybara_perf: capybara_perf: phase=playing internal_free=87447 internal_largest=47104
+I (42527) capybara_perf: capybara_perf: stage=skin cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=2149 p95_us=2204 us_per_vertex=2.686 cycles_per_vertex=644.646
+I (42823) capybara_perf: capybara_perf: stage=skin cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=1283 p95_us=1302 us_per_vertex=1.604 cycles_per_vertex=384.946
+I (43017) capybara_perf: capybara_perf: stage=animate cores=1 worker_samples=0 samples=100 vertices=800 joints=22 mean_us=287 p95_us=299 us_per_vertex=0.359 cycles_per_vertex=85.856
+I (43214) capybara_perf: capybara_perf: stage=animate cores=2 worker_samples=100 samples=100 vertices=800 joints=22 mean_us=306 p95_us=319 us_per_vertex=0.383 cycles_per_vertex=91.786
+I (43545) capybara_perf: capybara_perf: stage=animation_step cores=unknown worker_samples=0 samples=100 vertices=800 joints=22 mean_us=1631 p95_us=1657 us_per_vertex=2.039 cycles_per_vertex=489.185
+I (45811) capybara_perf: capybara_perf: stage=render paused=0 samples=100 joints=22 mean_us=9837 p95_us=10077
+I (45812) capybara_perf: capybara_perf: stage=frame paused=0 samples=100 joints=22 mean_us=22416 p95_us=22655
+I (47834) capybara_perf: capybara_perf: stage=render paused=1 samples=100 joints=22 mean_us=7479 p95_us=7496
+I (47835) capybara_perf: capybara_perf: stage=frame paused=1 samples=100 joints=22 mean_us=19999 p95_us=20039
+I (47836) capybara_perf: capybara_perf: stage=render_delta joints=22 mean_us=2358 p95_us=2581
+I (47837) capybara_perf: capybara_perf: stage=frame_delta joints=22 mean_us=2417 p95_us=2616

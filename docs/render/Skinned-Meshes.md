@@ -108,20 +108,18 @@ measures the animated subject playing, including runtime lighting.
 
 | Stage, per frame | One core | Two cores |
 |---|---:|---:|
-| Animate: sample, blend, palette | 289 Âµs (0.361 Âµs / vertex) | 307 Âµs (0.384 Âµs / vertex) |
-| Skin and light | 2149 Âµs (2.686 Âµs / vertex) | 1284 Âµs (1.605 Âµs / vertex) |
-| Whole animation step (cores not recorded) | 1630 Âµs (2.038 Âµs / vertex) | |
-| Scene render, playing vs paused | | +2321 Âµs (9811.5 vs 7486 Âµs) |
-
-render, paused=0: 4 of 5 runs.
+| Animate: sample, blend, palette | 287 Âµs (0.359 Âµs / vertex) | 306 Âµs (0.383 Âµs / vertex) |
+| Skin and light | 2149 Âµs (2.686 Âµs / vertex) | 1283 Âµs (1.604 Âµs / vertex) |
+| Whole animation step (cores not recorded) | 1631 Âµs (2.039 Âµs / vertex) | |
+| Scene render, playing vs paused | | +2329 Âµs (9835 vs 7506 Âµs) |
 
 | Internal RAM | Free / largest block, bytes |
 |---|---:|
-| Before the scene loads | 100475 / 47104 |
-| Scene loaded | 87443 / 47104 |
-| Scene playing | 87443 / 47104 |
+| Before the scene loads | 100467 / 47104 |
+| Scene loaded | 87447 / 47104 |
+| Scene playing | 87447 / 47104 |
 
-Build `2e0848e1164f-diag`; 5 runs, 100 samples per stage,
+Build `b9ed51bd9fef-diag`; 5 runs, 100 samples per stage,
 800 vertices. Values are medians of each run's last measurement.
 
 To repeat: `autana flash diag --perf-scope`, then
