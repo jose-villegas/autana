@@ -22,7 +22,7 @@ typedef struct {
     transformf_t shown_pose, frozen_pose;
     render_lab_clips_t choice;
     void* blocked_heap;
-    char reply[TEST_CLIP_COUNT * (ASSET_NAME_MAX + sizeof("RENDER clip= current=1\n")) + sizeof("RENDER_END\n")];
+    char reply[(TEST_CLIP_COUNT * (ASSET_NAME_MAX + sizeof("RENDER clip= current=1\n"))) + sizeof("RENDER_END\n")];
     char long_name[ASSET_NAME_MAX + 1];
 } clip_fixture_t;
 
@@ -286,7 +286,7 @@ menu_frame(const input_t* input) {
 
 static void
 menu_tap(mu_Rect rect) {
-    input_t input = {.down = true, .pressed = true, .x = rect.x + rect.w / 2, .y = rect.y + rect.h / 2};
+    input_t input = {.down = true, .pressed = true, .x = rect.x + (rect.w / 2), .y = rect.y + (rect.h / 2)};
     menu_frame(&input);
     input.pressed = false;
     for (int i = 0; i < UI_DROPDOWN_CLOSE_FRAMES; i++) {
@@ -301,13 +301,15 @@ menu_tap(mu_Rect rect) {
 
 static void
 slider_drag(int blend_ms) {
-    input_t drag = {
-        .down = true, .pressed = true, .x = slider_rect.x + slider_rect.w / 2, .y = slider_rect.y + slider_rect.h / 2};
+    input_t drag = {.down = true,
+                    .pressed = true,
+                    .x = slider_rect.x + (slider_rect.w / 2),
+                    .y = slider_rect.y + (slider_rect.h / 2)};
     menu_frame(&drag);
     drag.pressed = false;
     menu_frame(&drag);
-    drag.x =
-        slider_rect.x + UI_SLIDER_KNOB_W / 2 + (slider_rect.w - UI_SLIDER_KNOB_W) * blend_ms / RENDER_LAB_BLEND_MAX_MS;
+    drag.x = slider_rect.x + (UI_SLIDER_KNOB_W / 2)
+             + ((slider_rect.w - UI_SLIDER_KNOB_W) * blend_ms / RENDER_LAB_BLEND_MAX_MS);
     menu_frame(&drag);
     drag.down = false;
     drag.released = true;

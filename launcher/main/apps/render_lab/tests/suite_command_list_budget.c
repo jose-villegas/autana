@@ -66,7 +66,7 @@ test_menu_screen_command_list_fits_budget(void) {
     ui_budget_assert("render lab menu");
 }
 
-#define BUDGET_CLIP_COUNT (GFX_HEIGHT / UI_ROW_HEIGHT + 1)
+#define BUDGET_CLIP_COUNT ((GFX_HEIGHT / UI_ROW_HEIGHT) + 1)
 #define BUDGET_FRAME_MS   16
 
 typedef struct {
@@ -120,8 +120,8 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     budget_menu_frame(&idle);
     input_t tap = {.down = true, .pressed = true};
     ui_transform_point(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT),
-                       menu_budget->anchor.x + menu_budget->anchor.w / 2,
-                       menu_budget->anchor.y + menu_budget->anchor.h / 2, &tap.x, &tap.y);
+                       menu_budget->anchor.x + (menu_budget->anchor.w / 2),
+                       menu_budget->anchor.y + (menu_budget->anchor.h / 2), &tap.x, &tap.y);
     budget_menu_frame(&tap);
     tap.pressed = false;
     budget_menu_frame(&tap);
