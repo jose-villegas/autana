@@ -286,7 +286,8 @@ select_camera(const char* name) {
     TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0), name);
 }
 
-static void
+/* Kept out of line: the stack gate follows its calls through `check`. */
+static __attribute__((noinline)) void
 check_camera_paths(void (*check)(const r3d_lit_mesh_t*)) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         select_camera(sponza_cameras[camera]);
