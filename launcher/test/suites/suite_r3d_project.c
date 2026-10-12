@@ -1,5 +1,7 @@
 /* Portable line projection reference, matrix composition and near clipping. */
 
+#include <float.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -278,6 +280,10 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
             const mat4f_t matrix = r3d_line_matrix(&view, &model);
             r3d_lens_t lens;
             r3d_lens_init(&lens, &view, 1);
+            /* Dot/scale and affine paths round at most 5+1+1+1 and 6+1+1 times, fused or not.
+             * Cancellation requires the pre-divide magnitude rather than the output coordinate. */
+            const int projection_roundings = 16;
+            const float center_magnitude = fmaxf(view.center_x, view.center_y);
             for (int ix = -edge_steps; ix <= edge_steps; ix++) {
                 for (int iy = -edge_steps; iy <= edge_steps; iy++) {
                     const float dx = view.center_x * (float)ix / (float)edge_steps;
@@ -289,6 +295,9 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
                     const vec3f_t point = vec3f_add(view.position, relative);
                     const vec3f_t delta = vec3f_sub(point, view.position);
                     const float z = vec3f_dot(view.forward, delta);
+                    const float point_magnitude = sqrtf(vec3f_dot(point, point));
+                    const float projection_magnitude = center_magnitude + view.pixels_per_unit * point_magnitude / z;
+                    const float lens_bound_px = FLT_EPSILON * projection_magnitude * (float)projection_roundings;
                     const float expected_x = view.center_x + view.pixels_per_unit * vec3f_dot(view.screen_x, delta) / z;
                     const float expected_y = view.center_y + view.pixels_per_unit * vec3f_dot(view.screen_y, delta) / z;
                     int fx, fy, qx, qy;
@@ -300,8 +309,8 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
                     const vec3f_t lp = mat4f_apply(&lens.m, point);
-                    TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_x, lens.center_x + lp.x / lp.z);
-                    TEST_ASSERT_FLOAT_WITHIN(1e-4F, expected_y, lens.center_y + lp.y / lp.z);
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, lens.center_x + lp.x / lp.z);
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, lens.center_y + lp.y / lp.z);
                 }
             }
         }

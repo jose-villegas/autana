@@ -21,16 +21,6 @@ anim_pose_rest(const anim_skeleton_t* skeleton, anim_pose_t* out) {
     }
 }
 
-static quatf_t
-blend_rotation(quatf_t a, quatf_t b, float weight) {
-    const float dot = (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w);
-    const float sign = dot < 0.0F ? -1.0F : 1.0F;
-    const float from = 1.0F - weight;
-    const float to = weight * sign;
-    return quatf_normalize((quatf_t){(from * a.x) + (to * b.x), (from * a.y) + (to * b.y), (from * a.z) + (to * b.z),
-                                     (from * a.w) + (to * b.w)});
-}
-
 void
 anim_pose_blend(const anim_pose_t* a, const anim_pose_t* b, float weight, anim_pose_t* out) {
     assert(a->joint_count == b->joint_count && a->joint_count == out->joint_count);
@@ -42,7 +32,7 @@ anim_pose_blend(const anim_pose_t* a, const anim_pose_t* b, float weight, anim_p
         transformf_set_position(&out->local[j],
                                 vec3f_add(vec3f_scale(av.position, from), vec3f_scale(bv.position, to)));
         transformf_set_scale(&out->local[j], vec3f_add(vec3f_scale(av.scale, from), vec3f_scale(bv.scale, to)));
-        transformf_set_rotation(&out->local[j], blend_rotation(av.rotation, bv.rotation, to));
+        transformf_set_rotation(&out->local[j], quatf_nlerp(av.rotation, bv.rotation, to));
     }
 }
 
