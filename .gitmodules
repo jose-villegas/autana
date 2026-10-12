@@ -7,6 +7,8 @@
 [submodule "third_party/upstream/meshoptimizer"]
 	path = third_party/upstream/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
+	branch = v1.3
 [submodule "third_party/upstream/ufbx"]
 	path = third_party/upstream/ufbx
 	url = https://github.com/ufbx/ufbx.git
+	branch = v0.23.1

@@ -28,7 +28,7 @@ from code_layout import LayoutError, find_tool, run, symbols
 from doc_tables import markdown
 from compile_db import compile_flags
 from generated_blocks import replace_block
-from espressif import idf_python, idf_pin, idf_drift
+from espressif import idf_commit, idf_drift, idf_pin, idf_python
 from layout_pad import placed_sections
 sys.path.insert(0, str(ROOT / "scripts/gates"))
 from c_comments import scan
@@ -173,7 +173,7 @@ def sites(root, owned=None):
 
 def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True):
     errors = []
-    drift = idf_drift(idf_commit, pinned_commit) if idf_commit is not None else None
+    drift = "; ".join(idf_drift({"commit": idf_commit}, {"commit": pinned_commit})) if idf_commit is not None else None
     used = Counter()
     names = {}
     for item in inputs:
@@ -406,8 +406,7 @@ def read_build(build, root=ROOT):
     variant = build_id.rsplit("-", 1)[-1]
     if variant not in VARIANTS:
         raise ValueError(f"unknown build variant: {build_id}")
-    idf_commit = run("git", "-C", metadata["idf_path"], "rev-parse", "HEAD").strip()
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit, inputs=inputs, sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 

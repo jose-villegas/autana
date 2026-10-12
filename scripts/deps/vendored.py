@@ -6,15 +6,17 @@ the folder inside it (`from`), files that moved on the way in (`moved`) and the 
 commit the copy was last taken from (`taken_from`). A submodule bump moves the pin; until
 the copy takes the same upstream change, `check` fails.
 
-    python3 scripts/deps/vendored.py check    # each pin equals its copy's taken_from
-    python3 scripts/deps/vendored.py update   # merge each moved upstream into its copy
+    python3 scripts/deps/vendored.py check     # each pin equals its copy's taken_from
+    python3 scripts/deps/vendored.py update    # merge each moved upstream into its copy
+    python3 scripts/deps/vendored.py resolved  # record the pins once conflicts are resolved by hand
 
 `check` reads the pins from the index, so it needs no submodule checkout. `update` needs the
 submodule checked out at its new pin with the old commit fetched; each upstream file changed
 between the two is merged into the vendored file with `git merge-file`, so this project's own
 edits stay. A file the copy cut out stays cut, and a file upstream added or deleted is listed
-for a person to decide. Exits 1 when a merge conflicts or an entry needs a decision, after
-recording the new commit, with the conflict markers left in the vendored file.
+for a person to decide. When a merge conflicts or an entry needs a decision, `update` exits 1,
+leaves the conflict markers in the vendored file and records nothing, so `check` keeps failing
+until `resolved` records the pins after a person finishes the merge.
 """
 import argparse
 import json
@@ -88,7 +90,6 @@ def update_entry(copy, entry, commit, root=ROOT):
             clean = False
         else:
             clean &= merge(target, show(submodule, base, path), show(submodule, commit, path), report, root)
-    entry["taken_from"] = commit
     return clean, report
 
 
@@ -112,21 +113,31 @@ def merge(target, base, theirs, report, root):
 
 
 def update(entries, registry=REGISTRY, root=ROOT):
+    """Merges every stale copy; records the pins only when all of them merged cleanly."""
     clean = True
     for copy, entry, commit in stale(entries, root):
         merged, report = update_entry(copy, entry, commit, root)
         clean &= merged
         print("\n".join(report or [f"{copy}: upstream changed nothing it vendors"]))
+    if not clean:
+        print("Finish the merge by hand, then run `python3 scripts/deps/vendored.py resolved`.")
+        return 1
+    return resolved(entries, registry, root)
+
+
+def resolved(entries, registry=REGISTRY, root=ROOT):
+    """Records each copy as taken from its submodule's pinned commit."""
+    for _, entry, commit in stale(entries, root):
+        entry["taken_from"] = commit
     registry.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8", newline="\n")
-    return 0 if clean else 1
+    return 0
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("check", "update"))
+    parser.add_argument("command", choices=("check", "update", "resolved"))
     args = parser.parse_args(argv)
-    entries = load()
-    return check(entries) if args.command == "check" else update(entries)
+    return {"check": check, "update": update, "resolved": resolved}[args.command](load())
 
 
 if __name__ == "__main__":

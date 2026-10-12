@@ -385,7 +385,7 @@ print(m.render(builds))
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             memory.check(sites, inputs, "release", memory.components(self.root), lambda site: True, "local-commit", "pinned-commit")
-        self.assertIn("build local-commit, pin pinned-commit", output.getvalue())
+        self.assertIn("commit local-commit here, pinned-commit pinned", output.getvalue())
         with self.assertRaisesRegex(ValueError, "set the budget to 8 B"):
             memory.check(sites, inputs, "release", memory.components(self.root), lambda site: True, "pinned-commit", "pinned-commit")
         with self.assertRaisesRegex(ValueError, "no site"):
@@ -497,7 +497,7 @@ print(m.render(builds))
         ld.mkdir(parents=True)
         (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
         (ld / "memory.ld").write_text("")
-        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), "idf-commit\n"]):
+        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", return_value=json.dumps({"layout": []})), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
