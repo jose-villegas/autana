@@ -2020,15 +2020,16 @@ test_authored_skin_modes_animation_and_ambient(void) {
 static void
 test_authored_light_preserves_static_mesh_colors(void) {
     fixture();
-    scene_t* scene = load("test_lit");
-    const scene_entity_t entity = scene_find(scene, "red");
     r3d_lit_mesh_t packed;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &packed));
+    uint8_t expected[QUAD_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+    memcpy(expected, packed.colors, sizeof expected);
+    scene_t* scene = load("test_lit");
+    const scene_entity_t entity = scene_find(scene, "red");
     TEST_ASSERT_EQUAL_INT(1, scene->light_count);
     scene_animation_step(scene, RIG_DURATION_MS);
     TEST_ASSERT_EQUAL_PTR(packed.colors, scene_entity_mesh(scene, entity)->colors);
-    TEST_ASSERT_EQUAL_MEMORY(packed.colors, scene_entity_mesh(scene, entity)->colors,
-                             QUAD_VERTICES * sizeof packed.colors[0]);
+    TEST_ASSERT_EQUAL_MEMORY(expected, scene_entity_mesh(scene, entity)->colors, sizeof expected);
 }
 
 static void
