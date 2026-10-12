@@ -16,7 +16,7 @@ and read the macros in `*_template.h` only to change an algorithm.
 - [Number types](#number-types)
 - [Conventions](#conventions)
 - [The transform cache](#the-transform-cache)
-- [Scalar helpers](#scalar-helpers): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [units.h](#unitsh)
+- [Scalar helpers](#scalar-helpers): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [units.h](#unitsh)
 - [Function reference](#function-reference): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
@@ -144,6 +144,14 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 | `mathf_round_i32(v)` | nearest int32, ties away from zero; saturates | $`\mathrm{round}(v)`$ |
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
+
+### mathf_rsqrt.h
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_rsqrt(x)` | reciprocal square root for positive normal-range inputs; on the board the FPU's `rsqrt0.s` seed plus one Newton step, on host and QEMU the exact `1 / sqrt(x)` | $`y_0 = \mathrm{rsqrt0}(x)`$<br>$`y_1 = y_0\,(3 - x\,y_0^2) / 2`$ |
+
+The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
 
 ### units.h
 
@@ -309,7 +317,3 @@ and the rules are in [Build-Variants.md](../Build-Variants.md):
 | `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
-
-| Helper | Contract |
-|---|---|
-| `mathf_rsqrt()` (`math/scalar/mathf_rsqrt.h`) | reciprocal square root for positive normal-range inputs; S3 FPU seed plus one Newton correction, exact sqrt on host/QEMU; device sweep gates `MATHF_RSQRT_RELATIVE_LIMIT` |
