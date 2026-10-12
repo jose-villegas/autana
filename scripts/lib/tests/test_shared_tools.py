@@ -70,20 +70,12 @@ class SharedToolsTests(unittest.TestCase):
     def test_the_pinned_release_beats_another_patch_of_its_major(self):
         near = self.candidate('clang-format', '19.1.7')
         exact = self.candidate('clang-format', '19.1.2', version='esp-19.1.2')
-        with mock.patch.object(pinned_tool, 'pinned_version', return_value='19.1.2'),              mock.patch.object(subprocess, 'run', side_effect=self.version_run):
+        with mock.patch.object(pinned_tool, 'PINNED_VERSION', '19.1.2'),              mock.patch.object(subprocess, 'run', side_effect=self.version_run):
             self.assertEqual(pinned_tool.resolve('clang-format'), (exact, '19'))
             self.versions[os.path.normcase(exact)] = '18.1.8'
             with mock.patch('sys.stderr', new_callable=io.StringIO) as err:
                 self.assertEqual(pinned_tool.resolve('clang-format'), (near, '19'))
             self.assertIn('clang-format 19.1.7 here, 19.1.2 pinned', err.getvalue())
-
-    def test_each_tool_reads_its_own_pin(self):
-        (self.root / 'scripts/gates').mkdir(parents=True)
-        (self.root / 'scripts/gates/requirements.txt').write_text('PyYAML==6.0.3\nclang-format==21.1.8\n')
-        (self.root / 'launcher').mkdir()
-        (self.root / 'launcher/idf-pin.json').write_text('{"esp_clang": "19.1.2"}')
-        self.assertEqual(pinned_tool.pinned_version('clang-format', self.root), '21.1.8')
-        self.assertEqual(pinned_tool.pinned_version('clang-tidy', self.root), '19.1.2')
 
     def test_override_and_first_wrong_major_fallback(self):
         override = self.candidate('custom-tidy', '18')
