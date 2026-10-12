@@ -849,9 +849,35 @@ test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
     test_free_aligned(raw);
 }
 
+static void
+assert_load_failures_release(const asset_pack_t* pack, const char* id) {
+    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
+    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+
+    enum { ALLOCATION_LIMIT = 16 };
+
+    bool succeeded = false;
+    for (int allocation = 0; allocation < ALLOCATION_LIMIT; allocation++) {
+        scene_fail_allocation_after = allocation;
+        scene_failure_t why;
+        scene_t* scene = scene_load_from(pack, id, &why);
+        scene_fail_allocation_after = -1;
+        if (scene != NULL) {
+            scene_unload(scene);
+            succeeded = true;
+        } else {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_MEMORY, why.status, why.what);
+        }
+        TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        if (succeeded) {
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(succeeded);
+}
+
 #ifndef DEVICE_BUILD
-/* The scene tools/tests/scene_probe.py bakes with the tools' own writer,
- * loaded beside quads for its two meshes: what the scene file says arrives. */
 static void
 test_authored_clip_ids_require_nonempty_terminated_text(void) {
     fixture();
@@ -1023,33 +1049,12 @@ test_encoder_authored_two_skin_allocation_failures_release_lighting(void) {
     asset_pack_t pack;
     void* buffer = NULL;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
-    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
-
-    enum { ALLOCATION_LIMIT = 16 };
-
-    bool succeeded = false;
-    for (int allocation = 0; allocation < ALLOCATION_LIMIT; allocation++) {
-        scene_fail_allocation_after = allocation;
-        scene_failure_t why;
-        scene_t* scene = scene_load_from(&pack, "authored", &why);
-        scene_fail_allocation_after = -1;
-        if (scene != NULL) {
-            scene_unload(scene);
-            succeeded = true;
-        } else {
-            TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_MEMORY, why.status, why.what);
-        }
-        TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
-        if (succeeded) {
-            break;
-        }
-    }
-    TEST_ASSERT_TRUE(succeeded);
+    assert_load_failures_release(&pack, "authored");
     asset_file_release(buffer);
 }
 
+/* The scene tools/tests/scene_probe.py bakes with the tools' own writer,
+ * loaded beside quads for its two meshes: what the scene file says arrives. */
 static void
 test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     fixture();
@@ -2299,28 +2304,7 @@ test_authored_skin_load_allocation_failures_release_lighting(void) {
     skin_fixture_options_t options = SKIN_OPTIONS;
     options.mode = R3D_SKIN_LIGHT_TABLE;
     fixture_with_skin(&options);
-    const size_t before = memory_free_bytes(MEMORY_INTERNAL);
-
-    enum { ALLOCATION_LIMIT = 16 };
-
-    bool succeeded = false;
-    for (int allocation = 0; allocation < ALLOCATION_LIMIT; allocation++) {
-        scene_fail_allocation_after = allocation;
-        scene_failure_t why;
-        scene_t* scene = scene_load_from(&fx.pack, "test_skin", &why);
-        scene_fail_allocation_after = -1;
-        if (scene != NULL) {
-            scene_unload(scene);
-            succeeded = true;
-        } else {
-            TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-        }
-        TEST_ASSERT_EQUAL_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
-        if (succeeded) {
-            break;
-        }
-    }
-    TEST_ASSERT_TRUE(succeeded);
+    assert_load_failures_release(&fx.pack, "test_skin");
 }
 
 static void
