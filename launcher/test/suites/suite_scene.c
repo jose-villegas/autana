@@ -50,6 +50,7 @@
 #define CENTER             (SIZE / 2)
 #define PICTURE_HEIGHT     (SIZE / 2)
 #define GREEN_PIXEL_OFFSET 6
+#define PIXELS_PER_UNIT    3.2F /* the camera at z = -10, half field of view 1 */
 #define CLEAR_RGB          0x336699
 #define QUAD_BYTES         132
 #define PACK_MAX           16384
@@ -591,7 +592,7 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
 
 static uint16_t
 pixel(float units_from_center) {
-    return fx.pixels[(CENTER * SIZE) + CENTER + (int)(units_from_center * 3.2F)];
+    return fx.pixels[(CENTER * SIZE) + CENTER + (int)(units_from_center * PIXELS_PER_UNIT)];
 }
 
 static const uint16_t CLEAR = GFX_RGB(CLEAR_RGB);
@@ -1256,19 +1257,20 @@ test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned(void) {
     fixture();
     scene_t* scene = show("test_pair", NULL);
     const uint16_t green = GFX_RGB(0x00FF00);
-    const int along = (int)(4.0F * 3.2F); /* the green quad's offset from the centre, in pixels */
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const float beside = scene_entity_transform(scene, scene_find(scene, "green"))->position.x;
+    const int along = (int)(beside * PIXELS_PER_UNIT);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(green, pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(green, pixel(beside));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[((CENTER - along) * SIZE) + CENTER]);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[((CENTER + along) * SIZE) + CENTER]);
 
-    scene_transform_t rolled = TRANSFORMF_IDENTITY;
-    transformf_set_position(&rolled, (vec3f_t){0, 0, -10}); /* the fixture's camera pose */
+    scene_transform_t rolled = *scene_entity_transform(scene, camera);
     transformf_set_rotation(&rolled, quatf_from_axis_angle((vec3f_t){0, 0, 1}, MATH_PI / 2));
-    scene_set_transform(scene, scene_find(scene, "camera"), &rolled);
+    scene_set_transform(scene, camera, &rolled);
     frame(16);
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
-    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(beside));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-beside));
     const bool above = fx.pixels[((CENTER - along) * SIZE) + CENTER] == green;
     const bool below = fx.pixels[((CENTER + along) * SIZE) + CENTER] == green;
     TEST_ASSERT_TRUE(above != below);
