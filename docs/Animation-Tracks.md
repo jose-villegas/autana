@@ -316,7 +316,7 @@ Advancement widens the millisecond product before wrapping; a fractional
 accumulator retains sub-millisecond steps. Conversion to float seconds happens
 after integer wrap/clamp through `anim_clip_seconds()`.
 
-Every scene playback slot loops; play-once clips are planned.
+A scene animator loops or clamps, as its scene file's `wrap` sets.
 Each entity has one animator of one clip kind; a property clip (NULL skeleton)
 cannot replace the skeleton animator on a skinned entity. Controls on an empty
 or frozen PREVIOUS slot return false.
