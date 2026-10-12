@@ -2306,7 +2306,7 @@ test_face_color_skin_refuses_lights_and_lit_attachment(void) {
     scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red"), light = scene_find(scene, "camera");
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
-    const uint8_t(*colors)[R3D_SKIN_LIGHT_CHANNELS] = skin->bind.colors;
+    const uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS] = skin->bind.colors;
     skin->bind.colors = NULL;
     static const uint16_t face_colors[] = {0};
     skin->bind.face_colors = face_colors;

@@ -13,7 +13,7 @@ typedef struct {
 } registry_rule_t;
 
 #define REGISTRY_RULE(T, name_cmp, order)                                                                              \
-    {_Generic(((T*)0)->next, T *: offsetof(T, next)), _Generic(((T*)0)->name, const char*: offsetof(T, name)),         \
+    {_Generic(((T*)0)->next, T*: offsetof(T, next)), _Generic(((T*)0)->name, const char*: offsetof(T, name)),          \
      (name_cmp), (order)}
 
 typedef enum { REGISTRY_ADDED, REGISTRY_ALREADY, REGISTRY_CLASH } registry_add_t;
