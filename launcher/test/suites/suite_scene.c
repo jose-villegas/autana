@@ -1248,6 +1248,32 @@ test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
 }
 
+/* The green quad stands off the view axis, so a roll of the camera about it
+ * moves the quad round the picture: a quarter turn takes it from beside the
+ * centre to above or below it. */
+static void
+test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const uint16_t green = GFX_RGB(0x00FF00);
+    const int along = (int)(4.0F * 3.2F); /* the green quad's offset from the centre, in pixels */
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(green, pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[((CENTER - along) * SIZE) + CENTER]);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[((CENTER + along) * SIZE) + CENTER]);
+
+    scene_transform_t rolled = TRANSFORMF_IDENTITY;
+    transformf_set_position(&rolled, (vec3f_t){0, 0, -10}); /* the fixture's camera pose */
+    transformf_set_rotation(&rolled, quatf_from_axis_angle((vec3f_t){0, 0, 1}, MATH_PI / 2));
+    scene_set_transform(scene, scene_find(scene, "camera"), &rolled);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-4.0F));
+    const bool above = fx.pixels[((CENTER - along) * SIZE) + CENTER] == green;
+    const bool below = fx.pixels[((CENTER + along) * SIZE) + CENTER] == green;
+    TEST_ASSERT_TRUE(above != below);
+}
+
 static void
 test_with_nothing_enabled_the_picture_is_left_alone(void) {
     fixture();
@@ -3134,6 +3160,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
+    RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);
     RUN_TEST(test_with_nothing_enabled_the_picture_is_left_alone);
     RUN_TEST(test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen);
     RUN_TEST(test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone);
