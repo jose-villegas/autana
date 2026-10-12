@@ -1,14 +1,17 @@
-"""SCNE authored components, encoded and validated against the mapped C reader."""
+"""SCNE v2 settings, lights, renderers and animators, validated against the mapped C reader."""
 
 import math
 import pathlib
 import struct
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
-from r3d.import_settings import SettingsError, load_scene
+from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d import skin_pack
+from bake import bake as bake_tools
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
 ANIM_OWNER = OWNER.parents[1] / "anim/anim_track.h"
@@ -20,10 +23,12 @@ DEFAULT_COLOR = read_define(OWNER, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(OWNER, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(OWNER, "SCENE_TONEMAP_WHITE_NONE")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
-WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ("clamp", "loop")}
+WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 SUFFIX = ".scene.toml"
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
-HEADER = struct.Struct("<10H9I")
+HEADER = struct.Struct(f"<{1 + len(PARTS)}H{len(PARTS)}I")
+assert HEADER.size == read_define(OWNER, "SCENE_ASSET_HEADER_SIZE")
+U16_MAX = (1 << 16) - 1
 NAME = struct.Struct(f"<{NAME_BYTES}s")
 TRANSFORM = struct.Struct("<12f")
 RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")
@@ -43,10 +48,6 @@ def scene_id(path):
     return pathlib.Path(path).name.removesuffix(SUFFIX)
 
 
-def entities(scene):
-    return scene.objects
-
-
 def mesh_ids(scene):
     return [item.asset_name for item in scene.renderers]
 
@@ -60,7 +61,8 @@ def field(value, what):
 
 def encode(scene, cache=None, offline=False):
     """Encode authored rows; resolve skin and skeleton ids through the pack's rig owner."""
-    objects = entities(scene)
+    objects = scene.objects
+    cache = cache or bake_tools.default_cache()
     index = {obj.name: i for i, obj in enumerate(objects)}
     rows = {part: [] for part in PARTS}
     rows["names"] = [(field(obj.name, "entity"),) for obj in objects]
@@ -69,16 +71,9 @@ def encode(scene, cache=None, offline=False):
         obj, mesh = item.object, item.asset_name
         entity = index[obj.name]
         if obj.kind == "skinned_renderer":
-            from anim import skeleton_asset
-            from bake import bake
-            from r3d import skin_pack
-            rig = skin_pack.load_rig(item.settings, cache or bake.default_cache(), offline)
-            if rig is None:
-                raise SceneError(f"{item.settings.path}: skinned_renderer requires a rig")
-            _, document, _, node = rig
-            _, _, skeleton = skeleton_asset.rig(document, node)
+            skin, skeleton = skin_pack.rig_ids(mesh, item.settings, cache, offline)
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
-                field(mesh + skin_pack.SKIN_ID_SUFFIX, "skin id"), field(skeleton, "skeleton id")))
+                field(skin, "skin id"), field(skeleton, "skeleton id")))
         else:
             rows["renderers"].append((entity, 0, field(mesh, "mesh id")))
     for obj in objects:
@@ -93,7 +88,6 @@ def encode(scene, cache=None, offline=False):
             lens = obj.component
             rows["cameras"].append((entity, 0, lens.half_fov_short_tan, lens.near_z, lens.background))
             if lens.path:
-                from types import SimpleNamespace
                 animator = SimpleNamespace(clips=[lens.path.clip], default_clip=lens.path.clip, wrap="loop")
         if animator:
             clips = animator.clips
@@ -105,7 +99,7 @@ def encode(scene, cache=None, offline=False):
                          ambient["intensity"] if ambient else AMBIENT_NONE,
                          TONEMAP_NONE if getattr(scene, "tonemap_white", None) is None else scene.tonemap_white)]
     counts = [len(rows[part]) for part in PARTS]
-    if any(count > DEFAULT_CLIP_NONE for count in counts):
+    if any(count > U16_MAX for count in counts):
         raise SceneError("a scene holds at most 65535 rows per part")
     parts = [b"".join(row.pack(*values) for values in rows[part]) for part, row in zip(PARTS, ROWS)]
     offsets, at = [], HEADER.size
@@ -139,10 +133,6 @@ def section(entry, offset, count, row, table_end, what):
 
 def nonnegative(value):
     return math.isfinite(value) and value >= 0
-
-
-def color_fits(color):
-    return all(nonnegative(value) and value <= 1 for value in color)
 
 
 def decode(entry):

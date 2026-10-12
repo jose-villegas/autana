@@ -306,6 +306,32 @@ class NativeTests(unittest.TestCase):
             finally:
                 bake.module_facts.cache_clear()
 
+    def test_all_literal_defines_key_even_comprehension_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            header, module = root / "owner.h", root / "entry.py"
+            header.write_text('#define MODE 1U\n#define OTHER 2U\n')
+            module.write_text('from pathlib import Path\nOWNER = Path(__file__).with_name("owner.h")\n'
+                              'MODES = {n: read_define(OWNER, n) for n in ("MODE",)}\n')
+            before = bake.native_inputs([module])
+            header.write_text('#define MODE 1U // unrelated comment\n#define OTHER 2U\n')
+            self.assertEqual(before, bake.native_inputs([module]))
+            for text in ('#define MODE 3U\n#define OTHER 2U\n', '#define MODE 1U\n#define OTHER 4U\n'):
+                header.write_text(text)
+                self.assertNotEqual(before, bake.native_inputs([module]))
+
+    def test_unresolvable_read_define_header_is_loud(self):
+        with tempfile.TemporaryDirectory() as directory:
+            module = pathlib.Path(directory) / "entry.py"
+            module.write_text('VALUE = read_define(unknown_header, "MODE")\n')
+            with self.assertRaisesRegex(bake.SettingsError, r'entry.py:1: cannot resolve read_define header'):
+                bake.native_inputs([module])
+            missing = pathlib.Path(directory) / "missing.py"
+            missing.write_text('from pathlib import Path\nOWNER = Path(__file__).with_name("missing.h")\n'
+                               'VALUE = read_define(OWNER, "MODE")\n')
+            with self.assertRaisesRegex(bake.SettingsError, r'missing.py:3: cannot resolve read_define header'):
+                bake.native_inputs([missing])
+
     def test_the_pose_samplers_c_and_headers_are_in_the_poses_stage(self):
         names = bake.native_inputs(bake.stage_files("poses"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",

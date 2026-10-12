@@ -176,6 +176,7 @@ test_skin_open_refusals(void) {
     fixture_t f = fixture();
     const mutation_t changes[] = {
         {R3D_SKIN_AT_VERSION, 1, 2, ASSET_ERR_VERSION},
+        {R3D_SKIN_AT_LIGHTING_MODE, R3D_SKIN_LIGHT_TABLE + 1, 1, ASSET_ERR_FORMAT},
         {R3D_SKIN_AT_LIGHTING_MODE, UINT8_MAX, 1, ASSET_ERR_FORMAT},
         {R3D_SKIN_AT_PAD, 1, 1, ASSET_ERR_FORMAT},
         {R3D_SKIN_AT_PAD + 1, 1, 1, ASSET_ERR_FORMAT},

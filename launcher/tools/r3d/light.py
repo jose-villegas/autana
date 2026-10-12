@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from pathlib import Path
 from build.c_header import read_define
 
-LIGHT_GAMMA = read_define(Path(__file__).resolve().parents[2] / "main/render/skin/r3d_skin_light.h",
+LIGHT_OWNER = Path(__file__).resolve().parents[2] / "main/render/skin/r3d_skin_light.h"
+LIGHT_GAMMA = read_define(LIGHT_OWNER,
                           "R3D_SKIN_LIGHT_GAMMA")
 
 import numpy as np

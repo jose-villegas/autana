@@ -48,8 +48,9 @@ and the bake's 1/2.2 gamma and byte rounding. Runtime lighting has no shadow,
 sky visibility, ambient occlusion or bounced-light pass.
 
 The decode table has `R3D_SKIN_LIGHT_DECODE_SIZE` uint16 entries,
-stored as the rounded upper half of an IEEE float. A scene's first light
-allocates the decode and encode tables together in internal RAM.
+stored as the rounded upper half of an IEEE float. An attached skin in a scene with directional
+lights or nonzero ambient allocates the decode and encode tables together
+in internal RAM. Baked-only scenes allocate neither table.
 The radiance bins use `R3D_SKIN_LIGHT_RADIANCE_LOW_BITS` mantissa bits
 below `R3D_SKIN_LIGHT_RADIANCE_SPLIT_EXP` and
 `R3D_SKIN_LIGHT_RADIANCE_BITS` above it. Entries sample bin centers;
@@ -64,9 +65,9 @@ The scene prepares shared world-space light directions and premultiplied
 colors before splitting its cluster ranges. A directional
 light's direction toward the light is its entity's +Y turned by its
 rotation, matching `import_settings.py:load_light`.
-Only skinned renderers use runtime lights. Without lights, their mesh view
+Only skinned renderers use runtime lights. Without lights or nonzero ambient, their mesh view
 retains the bind-color pointer and does no color copy or shading.
-Only scenes with attached lights reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
+Scenes with attached skins and either directional lights or nonzero ambient reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
 vertex for lit colors and a `mat3f_t` normal palette per joint, in a separate
 internal RAM block per skin. The first light allocates all existing skins'
 blocks transactionally; a new skin in a lit scene allocates its own block.
@@ -82,16 +83,14 @@ component arrays and the world-light set remain in PSRAM.
 SCNE settings supply ambient and tone map before light attachment. Absent
 ambient contributes zero; `SCENE_TONEMAP_WHITE_NONE` makes the tone map the
 identity. `test_skin_light_bake.py` compares an offline baked patch against
-the fused C kernel, within the committed one-light direct-mode byte error.
+the fused C kernel, within the host test's byte-error bound.
 
-The Python tools read the C owners through `read_define`: `SCENE_LIGHT_AXIS`,
-`SCENE_LIGHT_KIND_DIRECTIONAL`, `ANIM_WRAP_*`, `R3D_SKIN_LIGHT_GAMMA` and
-`R3D_SKIN_LIGHT_DIRECT`, `R3D_SKIN_LIGHT_RENORMALISED`, `R3D_SKIN_LIGHT_TABLE`.
+The Python tools read literal constants from their owning C headers through `read_define`.
 Intensity is unscaled on both sides.
 
 ## Lighting modes
 
-Lighting mode comes from the SKIN entry, selected by the import's `[skin].lighting`. **Direct is the default**,
+Lighting mode comes from the SKIN entry, selected by the import's [`[skin].lighting`](Mesh-Import.md#skin-lighting). **Direct is the default**,
 the cheapest mode: it evaluates N.L on the blended world-space normal without
 renormalising, so vertices where joints blend come out darker. Pick it when
 that is acceptable. Renormalised evaluates
@@ -100,8 +99,7 @@ pick it when normal length must not affect light intensity. Table evaluates bili
 irradiance from the normal's octahedral coordinate<sup>[[21]](../Citations.md#21)</sup>.
 Its per-vertex cost does not grow with light count, but every light change
 rebuilds the shared table. The table below compares it with direct at each
-light count up to `R3D_SKIN_LIGHT_MAX`. The import selects the mode through the
-skin entry; attachment fills the private per-renderer mode.
+light count up to `R3D_SKIN_LIGHT_MAX`.
 Runtime tests and device suites select the mode through `scene_internal.h`.
 
 Every mode reads the same inverse-transpose normal palette. A scene

@@ -10,8 +10,8 @@ an .icons.toml, a .curve.toml or a folder searched for these roots; with none,
 launcher/main is searched. An app's demo_assets.toml adds launcher/demo/NAME
 for each NAME in its `demo` list; one inside launcher/demo is refused. A
 folder reached twice is searched once. A root is a file nothing else names:
-NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh its
-renderers name and the clip its camera flies; an NAME.import.toml no scene
+NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh, skin, skeleton
+and clip it names; an NAME.import.toml no scene
 places is pack NAME, holding its variants; an NAME.anim.toml no scene names
 is pack NAME, holding its one clip; an NAME.image.toml is pack NAME, holding
 its one picture; an NAME.icons.toml is pack NAME, holding an image entry per

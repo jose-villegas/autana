@@ -148,7 +148,11 @@ typedef struct {
     bool dirty, posed;
 } scene_animator_t;
 
-typedef enum { SCENE_SKIN_LIGHT_DIRECT, SCENE_SKIN_LIGHT_RENORMALISED, SCENE_SKIN_LIGHT_TABLE } scene_skin_light_mode_t;
+typedef enum {
+    SCENE_SKIN_LIGHT_DIRECT = R3D_SKIN_LIGHT_DIRECT,
+    SCENE_SKIN_LIGHT_RENORMALISED = R3D_SKIN_LIGHT_RENORMALISED,
+    SCENE_SKIN_LIGHT_TABLE = R3D_SKIN_LIGHT_TABLE
+} scene_skin_light_mode_t;
 
 typedef struct {
     r3d_skin_t skin;

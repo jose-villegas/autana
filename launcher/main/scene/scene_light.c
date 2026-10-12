@@ -28,12 +28,17 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
 
 bool
 scene_lights_allocate(scene_t* scene) {
+    bool has_skin = false;
     for (int r = 0; r < scene->renderer_count; r++) {
         const scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
+        has_skin |= skin->internal_storage != NULL;
         if (skin->internal_storage != NULL && skin->bind.colors == NULL) {
             (void)fprintf(stderr, "scene: %s\n", SCENE_LIGHT_FAILURE_ALBEDO);
             return false;
         }
+    }
+    if (!has_skin) {
+        return true;
     }
     r3d_skin_light_transfer_t* transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
     if (transfer == NULL) {

@@ -21,6 +21,7 @@ MESHLET_TRIANGLES = 32
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
+ANIM_WRAPS = ("clamp", "loop")
 
 RESERVED_LIGHTS = ("point", "spot")
 
@@ -412,8 +413,12 @@ def rotate(degrees, vector_):
     return [sum(matrix[i][j] * vector_[j] for j in range(3)) for i in range(3)]
 
 
+def color_fits(color):
+    return all(math.isfinite(value) and 0 <= value <= 1 for value in color)
+
+
 def light_values(light, where):
-    if any(value < 0 or value > 1 for value in light["color"]):
+    if not color_fits(light["color"]):
         raise SettingsError(f"{where}.color must be linear components in 0..1")
     if light["intensity"] < 0:
         raise SettingsError(f"{where}.intensity must be nonnegative")
@@ -577,7 +582,7 @@ def load_object(value, base, where):
         if default is not None and default not in clips:
             raise SettingsError(f"{where}.animator.default_clip must name one of its clips")
         wrap = table.get("wrap", "loop")
-        if wrap not in ("loop", "clamp"):
+        if wrap not in ANIM_WRAPS:
             raise SettingsError(f"{where}.animator.wrap must be loop or clamp")
         obj.animator = SimpleNamespace(clips=clips, default_clip=default, wrap=wrap)
     return obj
@@ -651,7 +656,7 @@ def load_scene(path):
     renderers = [item for item in objects if item.kind in ("mesh_renderer", "skinned_renderer")]
     cameras = [item for item in objects if item.kind == "camera"]
     if not renderers:
-        raise SettingsError("scene.objects needs a mesh_renderer")
+        raise SettingsError("scene.objects needs a mesh_renderer or skinned_renderer")
     if any(camera.component.region is not None for camera in cameras[1:]):
         raise SettingsError("only the first camera may have a region")
     lights = [item.component for item in objects if item.kind == "light"]

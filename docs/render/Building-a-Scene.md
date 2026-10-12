@@ -64,7 +64,9 @@ stands ([Scene-Files.md](Scene-Files.md)); one without it may go anywhere.
 
 ## 3. Light it
 
-Light is baked, so it is part of the scene file and `[bake]` reads it. A
+Light is part of the scene file: `[bake]` traces it into baked renderers, and
+skinned renderers apply the directional lights, ambient and `tonemap_white`
+at run time. A
 directional sun is an object whose rotation points it; sky and
 ambient are scene settings; `tonemap_white` sets how bright the result is.
 
@@ -123,7 +125,7 @@ This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
 committed as written and never reformatted. The firmware build writes the
 scene's [pack](../assets/README.md#packs), named after the scene: its
 [scene entry](Scene-Files.md#the-scene-entry), baked from the scene file, its
-meshes and its camera's clip. It flashes the pack with the app
+every mesh, skin, skeleton and clip it names. It flashes the pack with the app
 ([assets/README.md](../assets/README.md#flashing)).
 
 ## 6. Draw it

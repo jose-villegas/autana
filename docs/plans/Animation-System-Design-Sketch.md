@@ -2,8 +2,8 @@
 
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
 animator and skinned-renderer components, and per-renderer lighting (direct
-by default) are implemented. Mode selection from the skin pack entry,
-SCNE v2 and the clip picker are proposed. `[A]` marks a proposal of this sketch.
+by default), mode selection from the SKIN entry and SCNE v2 are implemented.
+The clip picker is proposed. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
 
@@ -29,14 +29,14 @@ flowchart TB
     Property --> Placement["dirty entity placements"]
     Placement --> Raster
     Pose -.-> Post["proposed post-pose<br/>IK and root motion"]
-    Skin --> Light["lit colors (scenes with lights)"]
+    Skin --> Light["lit colors (lights or ambient)"]
     Light --> Raster
 ```
 
 It runs in the scene's advance (`scene_render()`, before the draw), so an app
 never skins. The raster reads an `r3d_lit_mesh_t` view. A skinned renderer's
 view points `positions`, `clusters` and `nodes` at its mutable buffers,
-retaining the bind mesh's colours unless the scene has lights, when `colors`
+retaining the bind mesh's colours unless the scene has lights or nonzero ambient, when `colors`
 points at its lit buffer.
 
 ## 2. Two cores
@@ -110,8 +110,7 @@ The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id attachment
 configures skeleton animators and skin components.
-SCNE camera rows create property animators. Authored animator rows are
-planned. Public playback controls are declared in `scene/scene.h`; apps hold
+SCNE animator rows create animators; a camera path loads as one. Public playback controls are declared in `scene/scene.h`; apps hold
 entity handles and clip indices. The playback query API includes:
 
 ```c
@@ -144,11 +143,10 @@ blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets.
 2. A character clip resolves relative to its skeleton, reusable on any
    entity with that rig; a property clip resolves at scene level by object
    name.
-3. Skinning and animators live in scene/. Runtime attachment is
-   implemented; authored animator, directional-light and ambient SCNE rows
-   are planned.
+3. Skinning and animators live in scene/. Runtime attachment and authored
+   SCNE animator, light and ambient rows are implemented.
 4. Influences per vertex: an import setting, default 2, 4 allowed; the
    entry records it and the runtime skins either.
 5. The range stages use two cores (section 2) with an inline fallback.
 6. Lighting has direct, renormalised and table modes per renderer, defaulting
-   to direct. The skin pack entry selects the mode in the scene-format work.
+   to direct. The SKIN entry selects the mode.

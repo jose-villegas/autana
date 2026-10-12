@@ -395,13 +395,20 @@ def native_inputs(files):
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "read_define":
                 try:
-                    header, name = [eval(compile(ast.Expression(arg), str(path), "eval"),
-                                         {"__builtins__": {}}, constants) for arg in node.args[:2]]
-                    header = pathlib.Path(header).resolve()
-                    defines.setdefault(header, {})[name] = read_define(header, name)
-                    headers.add(header)
-                except (NameError, TypeError, ValueError):
-                    continue
+                    header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
+                                               {"__builtins__": {}}, constants)).resolve()
+                    header_text = header.read_text(encoding="utf-8")
+                except (NameError, TypeError, ValueError, IndexError, OSError) as error:
+                    raise SettingsError(f"{path}:{node.lineno}: cannot resolve read_define header: {error}") from error
+                if header not in defines:
+                    values = {}
+                    for name in re.findall(r"^#define\s+(\w+)\s+[^\n]+", header_text, re.MULTILINE):
+                        try:
+                            values[name] = read_define(header, name)
+                        except RuntimeError:
+                            pass
+                    defines[header] = values
+                headers.add(header)
         for value in constants.values():
             for item in path_constants(value):
                 if holder(item) is not None:

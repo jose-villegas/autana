@@ -16,6 +16,10 @@ _Static_assert(sizeof(scene_placement_t) == 48 && sizeof(scene_asset_renderer_t)
                    && sizeof(scene_asset_skinned_renderer_t) == 100 && sizeof(scene_asset_animator_t) == 12
                    && sizeof(scene_asset_settings_t) == 20,
                "SCNE mapped row layouts");
+_Static_assert(SCENE_ASSET_AT_COUNTS == sizeof(uint16_t)
+                   && SCENE_ASSET_AT_OFFSETS == SCENE_ASSET_AT_COUNTS + SCENE_ASSET_PART_COUNT * sizeof(uint16_t)
+                   && SCENE_ASSET_HEADER_SIZE == SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_PART_COUNT * sizeof(uint32_t),
+               "SCNE header matches its part count");
 _Static_assert(sizeof(((scene_asset_t*)0)->names) == sizeof(void*), "mapped view pointer width");
 
 static uint16_t
@@ -34,8 +38,7 @@ section(asset_view_t entry, int part, size_t row) {
 }
 
 static bool
-text_fits(const scene_asset_t* scene, const void* row) {
-    (void)scene;
+text_fits(const void* row) {
     const char* field = row;
     const char* end = memchr(field, '\0', ASSET_NAME_MAX);
     if (end == NULL || end == field) {
@@ -57,7 +60,7 @@ nonnegative(float value) {
 static bool
 renderer_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_renderer_t* r = row;
-    return r->entity < scene->entity_count && r->pad == 0 && text_fits(scene, r->mesh);
+    return r->entity < scene->entity_count && r->pad == 0 && text_fits(r->mesh);
 }
 
 static bool
@@ -77,8 +80,8 @@ light_fits(const scene_asset_t* scene, const void* row) {
 static bool
 skin_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_skinned_renderer_t* skin = row;
-    return skin->entity < scene->entity_count && skin->pad == 0 && text_fits(scene, skin->mesh)
-           && text_fits(scene, skin->skin) && text_fits(scene, skin->skeleton);
+    return skin->entity < scene->entity_count && skin->pad == 0 && text_fits(skin->mesh) && text_fits(skin->skin)
+           && text_fits(skin->skeleton);
 }
 
 static bool
@@ -119,7 +122,7 @@ static bool
 row_fits(const scene_asset_t* scene, int part, const void* row) {
     switch (part) {
         case SCENE_ASSET_NAMES:
-        case SCENE_ASSET_CLIPS: return text_fits(scene, row);
+        case SCENE_ASSET_CLIPS: return text_fits(row);
         case SCENE_ASSET_TRANSFORMS: return true;
         case SCENE_ASSET_RENDERERS: return renderer_fits(scene, row);
         case SCENE_ASSET_CAMERAS: return camera_fits(scene, row);
@@ -170,6 +173,7 @@ check_rows(const scene_asset_t* scene) {
 asset_status_t
 scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     *out = (scene_asset_t){0};
+    /* A v1 entry may be shorter than the v2 header; report its version before its bounds. */
     if (entry.size >= sizeof(uint16_t) && asset_read_u16(entry.data) != SCENE_ASSET_VERSION) {
         return ASSET_ERR_VERSION;
     }

@@ -226,7 +226,8 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (status != ASSET_OK) {
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
     }
-    if (scene->light_transfer != NULL && next.bind.colors == NULL) {
+    const bool lit = scene->light_count > 0 || scene->ambient_intensity > 0.0F;
+    if (lit && next.bind.colors == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO));
     }
     const size_t size = r3d_skin_output_bytes(&next.bind);
@@ -242,7 +243,7 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (next.internal_storage == NULL) {
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
-    if (scene->light_transfer != NULL && !scene_skin_light_allocate(&next)) {
+    if (lit && !scene_skin_light_allocate(&next)) {
         memory_free(next.internal_storage);
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
@@ -253,15 +254,24 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
     r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
-    static const scene_skin_light_mode_t modes[] = {
-        [R3D_SKIN_LIGHT_DIRECT] = SCENE_SKIN_LIGHT_DIRECT,
-        [R3D_SKIN_LIGHT_RENORMALISED] = SCENE_SKIN_LIGHT_RENORMALISED,
-        [R3D_SKIN_LIGHT_TABLE] = SCENE_SKIN_LIGHT_TABLE,
-    };
-    if (!scene_skin_light_apply_mode(scene, entity, &next, modes[next.skin.lighting_mode])) {
+    r3d_skin_light_transfer_t* transfer = NULL;
+    if (lit && scene->light_transfer == NULL) {
+        transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
+        if (transfer == NULL) {
+            memory_free(next.light_storage);
+            memory_free(next.internal_storage);
+            return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        }
+        r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
+    }
+    if (!scene_skin_light_apply_mode(scene, entity, &next, (scene_skin_light_mode_t)next.skin.lighting_mode)) {
+        memory_free(transfer);
         memory_free(next.light_storage);
         memory_free(next.internal_storage);
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+    }
+    if (transfer != NULL) {
+        scene->light_transfer = transfer;
     }
     scene_skin_light_table_release(scene, entity);
     memory_free(scene->skinned_renderers[entity].light_storage);
@@ -521,7 +531,9 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     if (clusters == 0) {
         return;
     }
-    scene_lights_prepare(scene);
+    if (scene->light_transfer != NULL) {
+        scene_lights_prepare(scene);
+    }
     range_t a = {scene, 0, clusters / 2, 0};
     range_t b = {scene, clusters / 2, clusters - (clusters / 2), 0};
     _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
