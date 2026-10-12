@@ -77,6 +77,11 @@ its scene by name rather than through the menu:
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
 
+The Capybara scene's BOOT menu holds the same clip picker: the CLIP
+dropdown plays the chosen clip over the BLEND slider's time.
+
+![The clip picker and the capybara walking, on the board](images/clip-picker/board-picker.png)
+
 A screenshot's state carries an `app` object naming the scene, whether the
 menu is open and the scale, so two captures can
 be checked to have measured the same thing.
