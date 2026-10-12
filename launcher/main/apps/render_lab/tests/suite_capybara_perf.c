@@ -2,6 +2,7 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include <string.h>
+#include "apps/render_lab/tests/capybara_perf_log.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/job.h"
 #include "core/memory.h"
@@ -35,7 +36,7 @@ static fixture_t* active;
 
 static void
 heap_report(const char* phase) {
-    ESP_LOGI(TAG, "capybara_perf: phase=%s internal_free=%u internal_largest=%u", phase,
+    ESP_LOGI(TAG, CAPYBARA_PERF_PREFIX " phase=%s internal_free=%u internal_largest=%u", phase,
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
 }
 
@@ -52,7 +53,7 @@ fixture(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
-    heap_report("before_enter");
+    heap_report(CAPYBARA_PERF_PHASE_BEFORE_ENTER);
     render_lab_test_enter(&active->saved, "capybara");
     suite_set_test_cleanup(release_fixture);
     active->scene = render_lab_test_loaded_scene("capybara");
@@ -62,7 +63,7 @@ fixture(void) {
     const r3d_lit_mesh_t* mesh = scene_entity_mesh(active->scene, active->subject);
     TEST_ASSERT_NOT_NULL(mesh);
     TEST_ASSERT_GREATER_THAN_INT(0, mesh->vertex_count);
-    heap_report("loaded");
+    heap_report(CAPYBARA_PERF_PHASE_LOADED);
     active->position_bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
     active->positions = memory_alloc(active->position_bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(active->positions);
@@ -152,13 +153,13 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     const perf_stats_t cycles = perf_stats_compute(f->cpu_cycles, PERF_SAMPLES);
     const int vertices = scene_entity_mesh(f->scene, f->subject)->vertex_count;
     TEST_ASSERT_GREATER_THAN_INT64(0, us.avg);
-    ESP_LOGI(
-        TAG,
-        "capybara_perf: stage=%s cores=%s worker_samples=%d samples=%d vertices=%d joints=%d mean_us=%lld p95_us=%lld "
-        "us_per_vertex=%.3f "
-        "cycles_per_vertex=%.3f",
-        stage, cores, worker_samples, PERF_SAMPLES, vertices, f->scene->animators[f->subject].skeleton.joint_count,
-        (long long)us.avg, (long long)us.p95, (double)us.avg / vertices, (double)cycles.avg / vertices);
+    ESP_LOGI(TAG,
+             CAPYBARA_PERF_PREFIX
+             " stage=%s cores=%s worker_samples=%d samples=%d vertices=%d joints=%d mean_us=%lld p95_us=%lld "
+             "us_per_vertex=%.3f "
+             "cycles_per_vertex=%.3f",
+             stage, cores, worker_samples, PERF_SAMPLES, vertices, f->scene->animators[f->subject].skeleton.joint_count,
+             (long long)us.avg, (long long)us.p95, (double)us.avg / vertices, (double)cycles.avg / vertices);
 }
 
 static perf_stats_t
@@ -175,12 +176,16 @@ frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats) {
         }
     }
     *render_stats = perf_stats_compute(f->render_us, PERF_SAMPLES);
-    ESP_LOGI(TAG, "capybara_perf: stage=render paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld", paused,
-             PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95);
+    ESP_LOGI(TAG,
+             CAPYBARA_PERF_PREFIX " stage=" CAPYBARA_PERF_STAGE_RENDER
+                                  " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld",
+             paused, PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95);
     const perf_stats_t stats = perf_stats_compute(f->elapsed_us, PERF_SAMPLES);
     TEST_ASSERT_GREATER_THAN_INT64(0, stats.avg);
-    ESP_LOGI(TAG, "capybara_perf: stage=frame paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld", paused,
-             PERF_SAMPLES, joints, (long long)stats.avg, (long long)stats.p95);
+    ESP_LOGI(TAG,
+             CAPYBARA_PERF_PREFIX " stage=" CAPYBARA_PERF_STAGE_FRAME
+                                  " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld",
+             paused, PERF_SAMPLES, joints, (long long)stats.avg, (long long)stats.p95);
     return stats;
 }
 
@@ -191,22 +196,23 @@ test_animation_and_frame_cost(void) {
     (void)snprintf(command, sizeof command, CLIP_COMMAND, CLIP_CUT_MS);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     assert_skin_changes(f);
-    heap_report("playing");
+    heap_report(CAPYBARA_PERF_PHASE_PLAYING);
     const int clusters = scene_entity_mesh(f->scene, f->subject)->cluster_count;
     TEST_ASSERT_GREATER_THAN_INT(0, clusters);
-    report_stage(f, "skin", skin_slice, clusters, false, "1");
-    report_stage(f, "skin", skin_slice, clusters, true, "2");
-    report_stage(f, "animate", animate_slice, f->scene->asset.entity_count, false, "1");
-    report_stage(f, "animate", animate_slice, f->scene->asset.entity_count, true, "2");
-    report_stage(f, "animation_step", step, 1, false, "unknown");
+    report_stage(f, CAPYBARA_PERF_STAGE_SKIN, skin_slice, clusters, false, "1");
+    report_stage(f, CAPYBARA_PERF_STAGE_SKIN, skin_slice, clusters, true, "2");
+    report_stage(f, CAPYBARA_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, false, "1");
+    report_stage(f, CAPYBARA_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, true, "2");
+    report_stage(f, CAPYBARA_PERF_STAGE_ANIMATION_STEP, step, 1, false, "unknown");
     perf_stats_t playing_render, paused_render;
     const perf_stats_t playing = frame_cost(f, false, &playing_render);
     const perf_stats_t paused = frame_cost(f, true, &paused_render);
     const int joints = f->scene->animators[f->subject].skeleton.joint_count;
-    ESP_LOGI(TAG, "capybara_perf: stage=render_delta joints=%d mean_us=%lld p95_us=%lld", joints,
-             (long long)(playing_render.avg - paused_render.avg), (long long)(playing_render.p95 - paused_render.p95));
-    ESP_LOGI(TAG, "capybara_perf: stage=frame_delta joints=%d mean_us=%lld p95_us=%lld", joints,
-             (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95));
+    ESP_LOGI(TAG, CAPYBARA_PERF_PREFIX " stage=" CAPYBARA_PERF_STAGE_RENDER_DELTA " joints=%d mean_us=%lld p95_us=%lld",
+             joints, (long long)(playing_render.avg - paused_render.avg),
+             (long long)(playing_render.p95 - paused_render.p95));
+    ESP_LOGI(TAG, CAPYBARA_PERF_PREFIX " stage=" CAPYBARA_PERF_STAGE_FRAME_DELTA " joints=%d mean_us=%lld p95_us=%lld",
+             joints, (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95));
 }
 #endif
 
