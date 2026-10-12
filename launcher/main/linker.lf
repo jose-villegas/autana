@@ -13,12 +13,9 @@ archive: libmain.a
 entries:
     * (patchable_entries_default)
 
-# A present's own code, from gfx down to the SPI queue, in IRAM: from flash
-# its cost moved with whatever else the image linked, and a narrow strip
-# went from ~236 us to ~398 us with the cache cold (suite_gfx
-# test_narrow_present_counters). Only what every present runs; setup, the
-# other present modes and the SPI driver's own queue (SPI_MASTER_IN_IRAM)
-# stay where they are.
+# Keep every normal present's hot path in IRAM to avoid cache-dependent flash timing.
+# suite_gfx test_narrow_present_counters measures that path. Setup, other present
+# modes and the SPI driver's own queue keep their configured placement.
 # IRAM budget: release 784 B, dev 3926 B, diag 3926 B
 [mapping:present_gfx]
 archive: libmain.a
