@@ -207,6 +207,55 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, scene->id));
 }
 
+static asset_status_t
+open_renderer_skin(scene_t* scene, scene_entity_t entity, int renderer, const char* id,
+                   scene_skinned_renderer_t* next) {
+    asset_status_t status = r3d_skin_open(scene->pack, id, &next->skin);
+    const scene_animator_t* animator = &scene->animators[entity];
+    const scene_skinned_renderer_t* old = &scene->skinned_renderers[entity];
+    next->bind = old->internal_storage == NULL ? scene->renderers[renderer].mesh : old->bind;
+    if (status == ASSET_OK
+        && (next->skin.joint_count != animator->skeleton.joint_count
+            || next->skin.vertex_count != (uint32_t)next->bind.vertex_count)) {
+        status = ASSET_ERR_FORMAT;
+    }
+    return status;
+}
+
+static bool
+prepare_skin_lighting(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* next, bool lit) {
+    r3d_skin_light_transfer_t* transfer = NULL;
+    if (lit && scene->light_transfer == NULL) {
+        transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
+        if (transfer == NULL) {
+            return false;
+        }
+        r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
+    }
+    if (!scene_skin_light_apply_mode(scene, entity, next, (scene_skin_light_mode_t)next->skin.lighting_mode)) {
+        memory_free(transfer);
+        return false;
+    }
+    if (transfer != NULL) {
+        scene->light_transfer = transfer;
+    }
+    return true;
+}
+
+static void
+attach_renderer_skin(scene_t* scene, scene_entity_t entity, int renderer, const scene_skinned_renderer_t* next) {
+    scene_skin_light_table_release(scene, entity);
+    memory_free(scene->skinned_renderers[entity].light_storage);
+    memory_free(scene->skinned_renderers[entity].internal_storage);
+    scene->skinned_renderers[entity] = *next;
+    scene->renderers[renderer].mesh = next->output.mesh;
+    if (scene->light_transfer != NULL) {
+        scene->skinned_renderers[entity].output.mesh.colors = next->colors;
+        scene->renderers[renderer].mesh.colors = next->colors;
+    }
+    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
+}
+
 bool
 scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, scene_failure_t* why) {
     const int renderer = scene_renderer_index(scene, entity);
@@ -214,15 +263,7 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id));
     }
     scene_skinned_renderer_t next = {0};
-    asset_status_t status = r3d_skin_open(scene->pack, id, &next.skin);
-    const scene_animator_t* animator = &scene->animators[entity];
-    const scene_skinned_renderer_t* old = &scene->skinned_renderers[entity];
-    next.bind = old->internal_storage == NULL ? scene->renderers[renderer].mesh : old->bind;
-    if (status == ASSET_OK
-        && (next.skin.joint_count != animator->skeleton.joint_count
-            || next.skin.vertex_count != (uint32_t)next.bind.vertex_count)) {
-        status = ASSET_ERR_FORMAT;
-    }
+    const asset_status_t status = open_renderer_skin(scene, entity, renderer, id, &next);
     if (status != ASSET_OK) {
         return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
     }
@@ -250,39 +291,17 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
     next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
     next.palette = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.palette);
+    const scene_animator_t* animator = &scene->animators[entity];
     anim_pose_model(&animator->skeleton, &animator->layer.shown, next.model);
     r3d_skin_palette(&next.skin, next.model, next.bind.position_scale, next.palette);
     r3d_skin_clusters(&next.skin, &next.bind, next.palette, 0, next.bind.cluster_count, &next.output);
     r3d_skin_refit_nodes(&next.output);
-    r3d_skin_light_transfer_t* transfer = NULL;
-    if (lit && scene->light_transfer == NULL) {
-        transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
-        if (transfer == NULL) {
-            memory_free(next.light_storage);
-            memory_free(next.internal_storage);
-            return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
-        }
-        r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
-    }
-    if (!scene_skin_light_apply_mode(scene, entity, &next, (scene_skin_light_mode_t)next.skin.lighting_mode)) {
-        memory_free(transfer);
+    if (!prepare_skin_lighting(scene, entity, &next, lit)) {
         memory_free(next.light_storage);
         memory_free(next.internal_storage);
         return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
     }
-    if (transfer != NULL) {
-        scene->light_transfer = transfer;
-    }
-    scene_skin_light_table_release(scene, entity);
-    memory_free(scene->skinned_renderers[entity].light_storage);
-    memory_free(scene->skinned_renderers[entity].internal_storage);
-    scene->skinned_renderers[entity] = next;
-    scene->renderers[renderer].mesh = next.output.mesh;
-    if (scene->light_transfer != NULL) {
-        scene->skinned_renderers[entity].output.mesh.colors = next.colors;
-        scene->renderers[renderer].mesh.colors = next.colors;
-    }
-    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
+    attach_renderer_skin(scene, entity, renderer, &next);
     return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, id));
 }
 
