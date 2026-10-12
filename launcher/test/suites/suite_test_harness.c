@@ -208,9 +208,8 @@ register_then_bail(void) {
     TEST_ABORT();
 }
 
-/* Runs `body` in a frame of its own, so its bail ends it alone, and puts the
- * test's abort frame back. This is the shape of a test that fails, then
- * tearDown(): the bail leaves the body, and the cleanups run afterwards. */
+/* Gives `body` a frame of its own, so a bail ends it alone and the test goes
+ * on to run the cleanups, as tearDown() does after a failed test. */
 static void
 run_trapped(void (*body)(void)) {
     jmp_buf outer;
@@ -281,29 +280,38 @@ expect_dir(const char* expected, const char* what) {
     TEST_ASSERT_EQUAL_STRING_MESSAGE(expected == NULL ? "" : expected, dir == NULL ? "" : dir, what);
 }
 
+/* The runner's own value, put back by a cleanup so a failed assertion cannot
+ * leave the environment changed. */
+static char real_dir[ENV_COPY_BYTES];
+static bool had_real_dir;
+
+static void
+restore_real_dir(void) {
+    test_asset_dir_set(had_real_dir ? real_dir : NULL);
+}
+
 static void
 test_using_the_asset_dir_twice_puts_back_the_runners_value_not_the_first_dir(void) {
     static const char* const runner_values[] = {NULL, "runner_dir"};
     const char* const real = getenv(ASSET_STORE_DIR_ENV);
-    const bool had_real = real != NULL;
-    char real_copy[ENV_COPY_BYTES] = "";
-    if (had_real) {
+    had_real_dir = real != NULL;
+    if (had_real_dir) {
         TEST_ASSERT_TRUE(strlen(real) < ENV_COPY_BYTES);
-        strcpy(real_copy, real);
+        strcpy(real_dir, real);
     }
+    suite_add_test_cleanup(restore_real_dir);
     for (size_t i = 0; i < sizeof runner_values / sizeof runner_values[0]; i++) {
         test_asset_dir_set(runner_values[i]);
         test_asset_dir_use("first_dir");
         test_asset_dir_use("second_dir");
         expect_dir("second_dir", "the latest dir is in use");
-        suite_run_test_cleanup();
+        test_asset_dir_restore();
         expect_dir(runner_values[i], "the runner's value is back");
 
         test_asset_dir_set("other_dir");
         test_asset_dir_restore();
         expect_dir("other_dir", "a restore with nothing saved changes nothing");
     }
-    test_asset_dir_set(had_real ? real_copy : NULL);
 }
 
 static void

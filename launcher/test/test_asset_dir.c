@@ -14,13 +14,18 @@
 static char* saved;
 static bool active;
 
+static int
+put_dir(const char* dir) {
+#ifdef _WIN32
+    return _putenv_s(ASSET_STORE_DIR_ENV, dir == NULL ? "" : dir);
+#else
+    return dir == NULL ? unsetenv(ASSET_STORE_DIR_ENV) : setenv(ASSET_STORE_DIR_ENV, dir, 1);
+#endif
+}
+
 void
 test_asset_dir_set(const char* dir) {
-#ifdef _WIN32
-    TEST_ASSERT_EQUAL_INT(0, _putenv_s(ASSET_STORE_DIR_ENV, dir == NULL ? "" : dir));
-#else
-    TEST_ASSERT_EQUAL_INT(0, dir == NULL ? unsetenv(ASSET_STORE_DIR_ENV) : setenv(ASSET_STORE_DIR_ENV, dir, 1));
-#endif
+    TEST_ASSERT_EQUAL_INT(0, put_dir(dir));
 }
 
 void
@@ -31,8 +36,10 @@ test_asset_dir_restore(void) {
     active = false;
     char* const runner = saved;
     saved = NULL;
-    test_asset_dir_set(runner);
+    /* Asserted last: a failed test must not skip the free. */
+    const int status = put_dir(runner);
     free(runner);
+    TEST_ASSERT_EQUAL_INT(0, status);
 }
 
 void
