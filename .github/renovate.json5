@@ -84,6 +84,20 @@
     {matchDepNames: ['third_party/upstream/ufbx'], groupName: 'ufbx', groupSlug: 'upstream-ufbx'},
 
     {matchManagers: ['custom.regex'], groupName: 'CI tools', groupSlug: 'ci-tools'},
+
+    // These change what the board runs: no merge without a board perf comparison
+    // against main (.github/workflows/board-perf.yml).
+    {
+      matchDepNames: [
+        'third_party/upstream/microui',
+        'third_party/upstream/Waveshare-ESP32-components',
+        'third_party/upstream/meshoptimizer',
+        'third_party/upstream/ufbx',
+        'blender/blender',
+      ],
+      labels: ['needs-board-perf'],
+      prBodyNotes: ['This bump can change the firmware: it merges only with a board perf comparison against main. Run `launcher/tools/perf/perf_compare.sh origin/main <this branch> --suite ...`, post the result, then remove the `needs-board-perf` label. A regression blocks it until fixed.'],
+    },
     // A new Blender re-exports every skinned mesh: a rebake, opened from the dashboard.
     {matchDepNames: ['blender/blender'], groupName: 'Blender', groupSlug: 'blender', dependencyDashboardApproval: true},
   ],
