@@ -1,6 +1,6 @@
 /*
  * vec3s: a 3-component vector of an int16. The operations are
- * vec3_template.h's and vec_swizzle_template.h's; math_template.h says how
+ * vec3_template.h's and vec_swizzle_template.h's; docs/math/README.md says how
  * they are made.
  */
 #pragma once
