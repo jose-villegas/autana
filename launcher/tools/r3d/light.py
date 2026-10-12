@@ -2,6 +2,12 @@
 
 import math
 from types import SimpleNamespace
+from pathlib import Path
+from build.c_header import read_define
+
+LIGHT_OWNER = Path(__file__).resolve().parents[2] / "main/render/skin/r3d_skin_light.h"
+LIGHT_GAMMA = read_define(LIGHT_OWNER,
+                          "R3D_SKIN_LIGHT_GAMMA")
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -141,7 +147,7 @@ def albedo_from_uv(texture, kd, uv, lod):
     """Linear albedo at texture coordinates: the material colour alone for an
     untextured material, else the texture sampled at `lod` times the colour."""
     if texture is None:
-        return np.tile(np.array(kd) ** 2.2, (len(uv), 1))
+        return np.tile(np.array(kd) ** LIGHT_GAMMA, (len(uv), 1))
     return texture.sample(uv, lod)[:, :3] * np.array(kd)
 
 
@@ -332,7 +338,7 @@ def bounced_light(bounce, points, normals, ray_offset, groups=None):
 
 def encode_srgb8(linear):
     """Linear light to 8-bit, with a 1/2.2 gamma (not the piecewise sRGB curve)."""
-    return np.clip(np.round(255.0 * np.clip(linear, 0, 1) ** (1 / 2.2)), 0, 255).astype(np.int64)
+    return np.clip(np.round(255.0 * np.clip(linear, 0, 1) ** (1 / LIGHT_GAMMA)), 0, 255).astype(np.int64)
 
 
 def to_srgb8(linear, tonemap_white):

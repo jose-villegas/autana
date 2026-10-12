@@ -413,7 +413,7 @@ boot_anim_grid_alpha(uint32_t now_ms, int ring) {
     /* left/FADE, bounded rings. Squared dims too much. Linear keeps depth. */
     const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - ring);
     const uint32_t ceiling =
-        (uint32_t)tween_lerp_i32(BOOT_ANIM_GRID_MAX, BOOT_ANIM_GRID_CEILING_MAX, boot_anim_grid_climb(now_ms));
+        (uint32_t)mathi_lerp_u8(BOOT_ANIM_GRID_MAX, BOOT_ANIM_GRID_CEILING_MAX, boot_anim_grid_climb(now_ms));
     const uint32_t near = left * ceiling / (uint32_t)BOOT_ANIM_GRID_FADE;
 
     return (uint8_t)((arrived * near) / 255u);
@@ -455,7 +455,7 @@ boot_anim_spoke_reveal_target(int32_t near, int32_t far, uint8_t reach) {
 
 static inline uint8_t
 boot_anim_grid_whiten(uint32_t now_ms) {
-    return (uint8_t)tween_lerp_i32(0, BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_climb(now_ms));
+    return (uint8_t)mathi_lerp_u8(0, BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_climb(now_ms));
 }
 
 /* The title is laid out in the viewer's frame because the board is held one
@@ -511,9 +511,9 @@ boot_anim_title_letter(const gfx_font_t* font, int i, uint32_t now_ms) {
     const int start_x = final_x - BOOT_ANIM_TITLE_ENTRY_PX;
 
     vec2i_t p;
-    p.x = tween_lerp_i32(start_x, final_x, u8);
+    p.x = mathi_lerp_u8(start_x, final_x, u8);
 
-    const int32_t d_q12 = BOOT_ANIM_ONE - tween_lerp_i32(0, BOOT_ANIM_ONE, u8);
+    const int32_t d_q12 = BOOT_ANIM_ONE - mathi_lerp_u8(0, BOOT_ANIM_ONE, u8);
     p.y = BOOT_ANIM_TITLE_VIEW_Y + boot_anim_title_wobble(d_q12) + boot_anim_title_wave(i, now_ms);
     return p;
 }
@@ -546,11 +546,11 @@ boot_anim_pen(uint32_t now_ms) {
 
     if (now_ms <= phase1_end_ms) {
         const uint8_t linear = tween_ramp(now_ms, BOOT_ANIM_PEN_START_MS, BOOT_ANIM_PEN_MS);
-        return tween_lerp_i32(0, BOOT_ANIM_CURVE_PHASE1_FRACTION, linear);
+        return mathi_lerp_u8(0, BOOT_ANIM_CURVE_PHASE1_FRACTION, linear);
     }
 
     const uint8_t linear2 = tween_ramp(now_ms, phase1_end_ms, BOOT_ANIM_PEN_FINISH_MS - phase1_end_ms);
-    return tween_lerp_i32(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
+    return mathi_lerp_u8(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
 }
 
 static inline int32_t

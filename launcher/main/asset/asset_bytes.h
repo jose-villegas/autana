@@ -6,6 +6,11 @@
 
 #include <stdint.h>
 
+static inline uint16_t
+asset_read_u16(const uint8_t* at) {
+    return (uint16_t)((uint16_t)at[0] | ((uint16_t)at[1] << 8));
+}
+
 /* The little-endian u32 at `at`. */
 static inline uint32_t
 asset_read_u32(const uint8_t* at) {

@@ -23,7 +23,7 @@ from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # n
 from r3d import build_pack, scene_asset
 from asset.engine_frame import to_engine
 from test_engine_frame import mesh_entry  # noqa: E402
-from r3d.import_settings import SettingsError  # noqa: E402
+from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
@@ -374,15 +374,26 @@ class TreeTests(unittest.TestCase):
                 mesh = renderer["mesh"]
                 self.assertIn(mesh, entries, f"{path.name} names mesh {mesh!r}, which its pack does not hold")
                 self.assertEqual(entries[mesh][0], LIT_MESH)
+            authored = load_scene(path)
+            target = tracks_asset.read_define(tracks_asset.BINDING_OWNER, "ANIM_TARGET_SELF")
+            animators = {row["entity"]: row for row in scene["animators"]}
             for camera in scene["cameras"]:
-                if not camera["clip"]:
+                camera_path = authored.objects[camera["entity"]].component.path
+                if camera_path is None:
                     continue
-                kind, clip = entries[camera["clip"]]
-                self.assertEqual(kind, tracks_asset.TYPE)
-                tracks = {(track["path"], track["component"], track["field"]) for track in tracks_asset.decode(clip)[0]}
-                for field in ("position", "rotation"):
-                    self.assertIn((camera["node"], tracks_asset.TRANSFORM, field), tracks,
-                                  f"{path.name}: clip {camera['clip']!r}")
+                self.assertIn(camera["entity"], animators, f"{path.name}: camera path has no animator")
+                animator = animators[camera["entity"]]
+                first = animator["first_clip"]
+                clips = scene["clips"][first:first + animator["clip_count"]]
+                self.assertIn(camera_path.clip, clips, f"{path.name}: camera animator has no path clip")
+                for clip_id in clips:
+                    self.assertIn(clip_id, entries, f"{path.name}: clip {clip_id!r} is absent from its pack")
+                    kind, clip = entries[clip_id]
+                    self.assertEqual(kind, tracks_asset.TYPE)
+                    tracks = {(track["path"], track["component"], track["field"]) for track in tracks_asset.decode(clip)[0]}
+                    for field in ("position", "rotation"):
+                        self.assertIn((target, tracks_asset.TRANSFORM, field), tracks,
+                                      f"{path.name}: clip {clip_id!r}")
 
 
 if __name__ == "__main__":
