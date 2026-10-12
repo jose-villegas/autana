@@ -84,7 +84,7 @@ jobs:
             && ../tools/autana build dev --project ..
             && ../tools/autana build diag --project ..
             && cd ..
-            && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write
+            && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --update-budgets
 
       # refresh_branch.py rebuilds the branch on the current main from the changed files, so a
       # main that moved meanwhile (a workflow file, above all) never blocks the push.
