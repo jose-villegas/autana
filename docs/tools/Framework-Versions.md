@@ -1,7 +1,7 @@
 # Framework versions
 
 Every framework the firmware and its tools build with is pinned to one exact
-version, written in one file. CI installs exactly that version and never
+version, each in the one file the table below names. CI installs exactly that version and never
 resolves "latest" at build time. Bump pull requests then move each pin to the
 newest release, so the pins do not fall behind.
 
@@ -25,16 +25,18 @@ newest release, so the pins do not fall behind.
 
 A major release is a migration, not a routine bump: Renovate lists it on the
 repository's Dependency Dashboard issue and opens it only when someone ticks
-it there, and a newer ESP-IDF release line (`release-v6.1` for `release-v5.5`)
-is a warning in the refresh run. Each bump pull request names the standing
+it there, and an ESP-IDF release line newer than the pin's tag is a warning
+in the refresh run. Each bump pull request names the standing
 ticket for routine bumps; a migration gets its own.
 
 ## Matching your machine
 
 `python scripts/deps/versions.py` lists every pin beside what your machine
-has; `--drift` lists only the differences. A local ESP-IDF build, clang-format,
-clang-tidy and the mermaid check also print a note naming both versions when
-they run on another one, and carry on; CI runs the pinned one. To match:
+has; `--drift` lists only the differences. `autana build` and `autana flash` on
+another ESP-IDF commit, clang-format and clang-tidy on another patch release of
+the pinned major, and the mermaid check on another mermaid-cli each print a
+note naming both versions and carry on; clang-format and clang-tidy refuse
+another major. CI runs the pinned ones. To match:
 
 | Framework | Command |
 |---|---|
@@ -56,6 +58,6 @@ The ESP-IDF refresh ([`idf-refresh.yml`](../../.github/workflows/idf-refresh.yml
 does what Renovate cannot, because only a run inside ESP-IDF can regenerate what
 derives from it. It pulls the newest image of the pin's `tag`, has
 `scripts/deps/idf_pin.py write` read the commit and esp-clang release from
-inside it, runs `idf.py update-dependencies`, builds the three variants and
-rewrites their IRAM budgets. A pull request opened by a workflow starts no
+inside it, runs `idf.py update-dependencies`, builds each variant and
+rewrites its IRAM budgets. A pull request opened by a workflow starts no
 checks of its own: close and reopen it to run CI.

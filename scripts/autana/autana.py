@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
-from espressif import idf_python  # noqa: E402
+from espressif import idf_drift, idf_path, idf_pin, idf_python  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
 
@@ -284,7 +284,19 @@ def variant_request(verb, args, flags, project):
         dirty = " (dirty)" if git("-C", project, "status", "--porcelain") else ""
         where = f"{current_branch} @ {commit}{dirty}"
     print(f"autana {verb}: {variant} of {where}", flush=True)
+    idf_note(project)
     return asked, variant, seen
+
+
+def idf_note(project):
+    """A note, and nothing more, when the ESP-IDF a build here uses is not
+    the commit `project`'s launcher/idf-pin.json pins."""
+    commit = git("-C", str(idf_path()), "rev-parse", "HEAD")
+    if commit and (Path(project) / "launcher" / "idf-pin.json").is_file():
+        drift = idf_drift(commit, idf_pin(Path(project))["commit"])
+        if drift:
+            print(f"note: ESP-IDF {drift}; CI builds on the pin "
+                  "(docs/tools/Framework-Versions.md)", flush=True)
 
 
 def flash(args):

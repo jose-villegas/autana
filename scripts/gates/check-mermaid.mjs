@@ -313,13 +313,17 @@ async function main() {
 
   // Probe once, so a missing CLI reads as one actionable line instead of N identical
   // per-block failures.
+  let found;
   try {
-    await runMmdc(['--version']);
+    found = (await runMmdc(['--version'])).stdout.trim();
   } catch {
     console.error('mermaid-cli (mmdc) not found — cannot validate diagrams.');
-    console.error('Install it with:  npm install -g @mermaid-js/mermaid-cli');
+    console.error(`Install it with:  ${INSTALL}`);
     process.exitCode = 1;
     return;
+  }
+  if (found !== pinnedVersion()) {
+    console.warn(`note: mermaid-cli ${found} here, ${pinnedVersion()} pinned; CI runs the pinned one (${INSTALL}).`);
   }
 
   console.log(`Validating ${tasks.length} mermaid block(s)...\n`);

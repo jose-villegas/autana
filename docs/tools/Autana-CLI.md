@@ -67,6 +67,8 @@ CI builds through it too. `autana flash` runs that same build with no board
 lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot, the one script that
 opens the port.
+Both print a note when the ESP-IDF they build with is not the commit
+`launcher/idf-pin.json` pins ([Framework-Versions.md](Framework-Versions.md)).
 `BUILD_ID` identifies the image by its ELF hash; see
 [what a flash proves](Flash-and-Captures.md#what-a-flash-proves).
 It proves the write, not the boot.

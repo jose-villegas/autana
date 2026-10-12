@@ -5,9 +5,9 @@ name: ESP-IDF refresh
 # esp-clang read from inside it), re-solves launcher/dependencies.lock to the
 # newest components its manifests allow, rebuilds the three variants and
 # rewrites the IRAM budgets they measure, then opens one pull request with all
-# of it. Anything else a check finds is named by that check. A newer release
-# line (release-v6.1 for release-v5.5) is a migration: the run warns about it
-# and changes nothing. Every other framework's bump comes from Renovate
+# of it. Anything else a check finds is named by that check. A release line
+# newer than the pin's tag is a migration: the run warns and stays on the
+# pinned line. Every other framework's bump comes from Renovate
 # (.github/renovate.json5); docs/tools/Framework-Versions.md has both.
 
 on:
