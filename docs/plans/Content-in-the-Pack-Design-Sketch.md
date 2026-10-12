@@ -42,7 +42,7 @@ to**. A root is a source file nothing else names:
 
 | Root | Pack name | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | the `SCNE` entry, every mesh its renderers name, its camera's clip |
+| `NAME.scene.toml` | `NAME` | the `SCNE` entry and every mesh, skin, skeleton and clip it names |
 | `NAME.anim.toml` no scene names (e.g. the boot clip) | `NAME` | the one `TRCK` entry |
 | `NAME.import.toml` no scene places | `NAME` | its variants' `LMSH` entries |
 
