@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 
+#include "math/linear/vec_ops_template.h"
 #include "math/linear/vec_swizzle_template.h"
 
 #define MATH_DEFINE_VEC3(P, T, W, OPS)                                                                                 \
@@ -16,15 +17,7 @@
         T x, y, z;                                                                                                     \
     } P##_t;                                                                                                           \
                                                                                                                        \
-    /* a + b = (ax + bx, ay + by, az + bz). Arguments are by value, so a result may reuse either. */                   \
-    static inline P##_t P##_add(P##_t a, P##_t b) {                                                                    \
-        return (P##_t){OPS##_add(a.x, b.x), OPS##_add(a.y, b.y), OPS##_add(a.z, b.z)};                                 \
-    }                                                                                                                  \
-                                                                                                                       \
-    /* a - b = (ax - bx, ay - by, az - bz) */                                                                          \
-    static inline P##_t P##_sub(P##_t a, P##_t b) {                                                                    \
-        return (P##_t){OPS##_sub(a.x, b.x), OPS##_sub(a.y, b.y), OPS##_sub(a.z, b.z)};                                 \
-    }                                                                                                                  \
+    MATH_DEFINE_VEC_OPS(P, OPS, 3)                                                                                     \
                                                                                                                        \
     /* a * s = (ax*s, ay*s, az*s), in the number type's own units (Q16.16 for fixed). */                               \
     static inline P##_t P##_scale(P##_t a, T s) {                                                                      \
