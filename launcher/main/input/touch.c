@@ -66,8 +66,8 @@ static uint32_t point_samples, moved_samples;
 static int last_x = -1, last_y = -1;
 #endif
 
-/* GPIO dispatch uses gpio_install_isr_service(0), so no cache-off requirement is established.
- * Retain placement pending a touch-latency measurement. IRAM budget: 50 B */
+/* Need not be cache-off safe: esp_lcd_touch installs the GPIO ISR service with flags 0.
+ * Kept in IRAM until a touch-latency measurement says flash is fine. IRAM budget: 50 B */
 static void IRAM_ATTR
 on_touch_int(esp_lcd_touch_handle_t tp) {
     (void)tp;

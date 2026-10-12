@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """Account for internal memory and enforce budgets at IRAM placement sites.
 
-python launcher/tools/build/memory_map.py --source-only
-python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write
+python launcher/tools/build/memory_map.py --source-only [--root ROOT]
+python launcher/tools/build/memory_map.py --check BUILD...
+python launcher/tools/build/memory_map.py BUILD... --write
+python launcher/tools/build/memory_map.py BUILD... --tables DIR
+python launcher/tools/build/memory_map.py BUILD...  (print documentation tables)
+Scratch experiments: launcher/tools/build/iram_what_if.py --help
 """
 import argparse
-import ast
+from bisect import bisect_left
+import hashlib
 import fnmatch
 import json
 import re
-import os
-import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -19,176 +22,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-from code_layout import find_tool, run
+from code_layout import LayoutError, find_tool, run, symbols
+from tool_support import markdown, compile_flags
 from generated_blocks import replace_block
 from espressif import idf_python
 from layout_pad import placed_sections
 sys.path.insert(0, str(ROOT / "scripts/gates"))
 from c_comments import scan
 
-BUDGET = re.compile(r"IRAM budget: (\d+) B\b")
+BUDGET = re.compile(r"IRAM budget: ((?:(?:release|dev|diag) )?\d+ B(?:, (?:release|dev|diag) \d+ B)*)")
 ATTRIBUTE = re.compile(r"\b(?:\w*IRAM_ATTR|\w*IRAM\w*_ATTR)\b|__attribute__\s*\(\(\s*section\s*\(\s*\"\.iram[^\"]*\"")
 PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
-CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=(?:y|n)")
+CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
 BLOCK = "internal-memory-map"
 DOC = ROOT / "docs/notes/Board-and-Memory.md"
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
-OUR_ARCHIVES = {"libmain.a", "libesp32_s3_touch_amoled_1_8.a"}
-WHAT_IF_BLOCK = "internal-memory-what-if"
-WHAT_IF_COMMAND = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --what-if launcher/test/build/memory-experiments --write"
-WHAT_IF_OPTIONS = {
-    "ringbuf-to-flash": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"},
-    "silent-assertions": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"},
-    "unused-flash-chips": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")},
-    "encrypted-read-write": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"},
-    "libc-locks": {"CONFIG_LIBC_LOCKS_PLACE_IN_IRAM": "n"},
-    "i2c-isr": {"CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM": "n"},
-    "dynamic-log-level": {"CONFIG_LOG_TAG_LEVEL_IMPL_NONE": "y", "CONFIG_LOG_DYNAMIC_LEVEL_CONTROL": "n"},
-    "heap-to-flash": {"CONFIG_SPI_MASTER_IN_IRAM": "n", "CONFIG_SPI_MASTER_ISR_IN_IRAM": "n", "CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH": "y"},
-    "noflash-text": {},
-    "gpspi-flash-hal": {},
-    "freertos-non-isr": {},
-}
-
-
-def kconfig_options(build):
-    idf = Path(build["metadata"]["idf_path"])
-    options = {}
-    paths = sorted((idf / "components").rglob("Kconfig*")) + [idf / "Kconfig"]
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        for match in re.finditer(r"^\s*config (\w+)\s*\n", text, re.M):
-            name = "CONFIG_" + match.group(1)
-            if not re.search(r"IRAM|PLACE_.*INTO_FLASH|SPI_FLASH_(SUPPORT_.*_CHIP|ENABLE_ENCRYPTED_READ_WRITE|ROM_IMPL|AUTO_SUSPEND)|LOG_DYNAMIC_LEVEL_CONTROL|ASSERTIONS_SILENT|CHECKS_SILENT", name):
-                continue
-            component = path.relative_to(idf).parts[1] if path != idf / "Kconfig" else "compiler"
-            stop = re.search(r"^\s*(?:config|menuconfig|endmenu)\b", text[match.end():], re.M)
-            help_text = text[match.end():match.end() + stop.start()] if stop else text[match.end():]
-            prompt = re.search(r'(?:bool|prompt)\s+"([^"]+)"', help_text)
-            options[name] = (component, prompt.group(1) if prompt else "Internal selection", f"{path.relative_to(idf).as_posix()}:{text[:match.start()].count(chr(10)) + 1}")
-    return options
-
-
-def opportunities(builds, labels):
-    options = kconfig_options(builds[0])
-    rows = []
-    for name, (component, description, source) in sorted(options.items()):
-        if not any(name in b["config"] for b in builds):
-            continue
-        counts = [sum(i.size for i in b["inputs"] if i.archive == f"lib{component}.a") for b in builds]
-        cost = "Flash cache misses; cache-off callers must stay in IRAM. Latency: not board-measured."
-        recommendation = "needs a board measurement first"
-        if component in {"esp_ringbuf", "newlib", "esp_libc"}:
-            cost = "Cache-off ISR callers cannot use flash functions; audit console and libc callers. Latency: not board-measured."
-        if "SPI_MASTER" in name:
-            cost = "Present queue and callbacks gain cache misses; heap and FreeRTOS dependencies constrain placement. Latency: not board-measured."
-        if "SPI_FLASH" in name:
-            cost = "Flash operations disable cache; retain required cache-off driver paths. Latency: not board-measured."
-        if "HEAP" in name:
-            cost = "Allocation/free cache misses; SPI_MASTER_IN_IRAM and SPI_MASTER_ISR_IN_IRAM must be disabled. Latency: not board-measured."
-        if "ASSERT" in name or "CHECKS" in name:
-            cost = "Failure reports lose messages. Latency: not board-measured."
-            recommendation = "candidate to move out (release)"
-        if "RINGBUF" in name or "LIBC_LOCKS" in name or "LOG_DYNAMIC" in name:
-            recommendation = "candidate to move out after caller audit"
-        elif component in {"spi_flash", "esp_system", "esp_hw_support"}:
-            recommendation = "keep cache-off paths; audit finer selections"
-        if not any(counts):
-            recommendation = "keep; no linked component IRAM to free"
-        rows.append((name, *(b["config"].get(name, "not configured") for b in builds), description,
-                     "not attributable; component IRAM " + "/".join(str(c) for c in counts) + " B (upper bound, not savings)",
-                     cost + " <sup>[[60]](../Citations.md#60)</sup>", recommendation,
-                     "bytes: attributed from map (component only)", source))
-    return table(["Option", *labels, "What it places", "IRAM bytes", "Cost of moving it out", "Recommendation", "Measured", "IDF source"], rows)
-
-
-def scratch_fragment(name, original, idf, baseline):
-    if name == "noflash-text":
-        return original.replace("(noflash)", "(noflash_text)")
-    if name == "gpspi-flash-hal":
-        symbols = sorted({item.symbol for item in baseline["inputs"]
-                          if item.archive == "libhal.a" and item.object.startswith("spi_flash_hal_gpspi")})
-        return original + "\n[mapping:memory_probe]\narchive: libhal.a\nentries:\n" + "\n".join(
-            f"    spi_flash_hal_gpspi:{symbol} (default)" for symbol in symbols) + "\n"
-    if name == "freertos-non-isr":
-        text = (idf / "components/freertos/linker.lf").read_text(encoding="utf-8")
-        start = text.index("if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = y:")
-        selections = sorted(set(re.findall(r"^\s*(\w+)\s*:\s*(\w+)\s+\(default\)", text[start:], re.M)))
-        # Queue APIs are in the measured present path; ISR APIs must retain cache-off reachability.
-        keep = {"xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake", "xQueueGiveFromISR", "xQueueGenericSendFromISR", "xQueueReceiveFromISR"}
-        entries = [f"    {obj}:{symbol} (default)" for obj, symbol in selections if "FromISR" not in symbol and symbol not in keep and not obj.startswith("port")]
-        return original + "\n[mapping:memory_probe]\narchive: libfreertos.a\nentries:\n" + "\n".join(entries) + "\n"
-    return original
-
-
-def what_if(baseline, directory, selected=None, before_build=None):
-    directory.mkdir(parents=True, exist_ok=True)
-    project = directory / "project"
-    launcher = project / "launcher"
-    if not launcher.exists():
-        for relative in run("git", "-C", str(ROOT), "ls-files", "launcher", "third_party", "scripts", ".gitmodules").splitlines():
-            source = ROOT / relative
-            if not source.is_file():
-                continue
-            target = project / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
-        shutil.copytree(ROOT / "launcher/managed_components", launcher / "managed_components", dirs_exist_ok=True)
-    build = launcher / "build.memory"
-    config = build / "sdkconfig"
-    build.mkdir(exist_ok=True)
-    original_config = (baseline["build"] / "sdkconfig").read_text(encoding="utf-8")
-    original_lf = (ROOT / "launcher/main/linker.lf").read_bytes()
-    idf = Path(baseline["metadata"]["idf_path"])
-    variant = "diag" if baseline["config"].get("CONFIG_LAUNCHER_SELFTEST") == "y" else "dev" if baseline["config"].get("CONFIG_LAUNCHER_DEVELOPMENT") == "y" else "release"
-    result_file = directory / "results.json"
-    results = json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
-    rows = []
-    for name in selected or WHAT_IF_OPTIONS:
-        values = WHAT_IF_OPTIONS[name]
-        content = original_config
-        for option, value in values.items():
-            content = re.sub(r"^(?:" + re.escape(option) + r"=.*|# " + re.escape(option) + r" is not set)\n?", "", content, flags=re.M)
-            content += f"\n{option}={value}\n"
-        config.write_text(content, encoding="utf-8")
-        defaults = launcher / "sdkconfig.defaults"
-        defaults.write_text("\n".join(line for line in (ROOT / "launcher/sdkconfig.defaults").read_text(encoding="utf-8").splitlines()
-                                      if line.split("=", 1)[0] not in values) + "\n", encoding="utf-8")
-        fragment = scratch_fragment(name, original_lf.decode("utf-8"), idf, baseline)
-        (launcher / "main/linker.lf").write_bytes(fragment.encode("utf-8"))
-        log = directory / (name + ".log")
-        print(f"scratch build: {name} -> {log}", flush=True)
-        if before_build:
-            subprocess.run(before_build, check=True)
-        command = ['bash', '-c', '. "$1"; idf_init "$2" "" "$3" || exit; idf -B "$4" -D "SDKCONFIG=$5" reconfigure && idf_in "$2" ninja -j 2 -C "$4" launcher.elf',
-                   'memory-map', str(ROOT / 'launcher/tools/build/idf.sh'), str(launcher.resolve()),
-                   str(ROOT / 'launcher/tools/build'), str(build.resolve()), str(config.resolve())]
-        environment = dict(os.environ, IDF_PATH=str(idf))
-        with log.open("w", encoding="utf-8") as stream:
-            result = subprocess.run(command, env=environment, stdout=stream, stderr=subprocess.STDOUT, timeout=1800)
-        if result.returncode:
-            failures = [line.strip() for line in log.read_text(encoding="utf-8", errors="replace").splitlines()
-                        if re.search(r"error:|CMake Error|FAILED:|Error", line)]
-            rows.append((name, "build failed", "not measured", "not measured", "; ".join(failures[:2]) or f"exit {result.returncode}; see {log.name}"))
-        else:
-            measured = read_build(build)
-            wrong = [key for key, value in values.items() if measured["config"].get(key, "n") != value]
-            if wrong:
-                rows.append((name, "config rejected", "not measured", "not measured", ", ".join(wrong)))
-            else:
-                def bytes_in(b, prefix):
-                    return sum(size for section, (_, size) in b["sections"].items() if section.startswith(prefix)
-                               and section not in {".dram0.dummy", ".iram0.text_end"})
-                rows.append((name, bytes_in(baseline, ".iram") - bytes_in(measured, ".iram"),
-                             bytes_in(baseline, ".dram") - bytes_in(measured, ".dram"),
-                             measured["constants"]["_heap_start"] - baseline["constants"]["_heap_start"],
-                             "bytes: scratch build; latency: not board-measured; " + ", ".join(f"{k}={v}" for k, v in values.items())))
-        results[variant + ":" + name] = [variant, *rows[-1]]
-        result_file.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
-        # Preserve results after every experiment; a failed later build must not hide earlier measurements.
-        body = f"> Generated by: `{WHAT_IF_COMMAND}`\n\nPositive IRAM/DRAM deltas are bytes freed. Heap-start delta is negative when the heap grows. Each row is isolated; savings are not additive.\n\n" + table(["Variant", "Experiment", "IRAM freed B", "DRAM freed B", "Heap-start delta B", "Measured / constraint"], [results[key] for key in sorted(results)])
-        (directory / (WHAT_IF_BLOCK + ".md")).write_text(body, encoding="utf-8")
-    return body
 
 
 @dataclass
@@ -197,10 +45,9 @@ class Site:
     line: int
     owner: str
     reason: str
-    budget: int | None
+    budget: int | dict | None
     archive: str
     entries: list
-    guards: tuple = ()
 
     @property
     def label(self):
@@ -227,44 +74,58 @@ def preceding_comment(lines, index, kind):
                     for line in lines[index:end])
 
 
-def sites(root):
+def components(root, metadata=None):
+    root = root.resolve()
+    if metadata is None:
+        paths = [root / "launcher/main"]
+        paths += [path for parent in ("components", "packages") for path in sorted((root / "launcher" / parent).glob("*")) if path.is_dir()]
+        return {"lib" + path.name + ".a": path for path in paths}
+    return {"lib" + name + ".a": Path(path).resolve()
+            for name, path in zip(metadata["build_components"], metadata["build_component_paths"])
+            if name and Path(path).resolve().is_relative_to(root)
+            and "managed_components" not in Path(path).parts}
+
+
+def variant_label(config):
+    if config.get("CONFIG_LAUNCHER_SELFTEST") == "y":
+        return "diag"
+    if config.get("CONFIG_LAUNCHER_DEVELOPMENT") == "y":
+        return "dev"
+    if config.get("CONFIG_LAUNCHER_RELEASE") == "y":
+        return "release"
+    raise ValueError("build sdkconfig has no launcher variant")
+
+
+def parse_budget(reason):
+    match = BUDGET.search(reason)
+    if not match:
+        return None
+    clause = match.group(1)
+    if clause[0].isdigit():
+        return int(clause.split()[0])
+    entries = re.findall(r"(release|dev|diag) (\d+) B", clause)
+    if len(dict(entries)) != len(entries):
+        raise ValueError("duplicate IRAM budget variant")
+    return {name: int(value) for name, value in entries}
+
+
+def sites(root, owned=None):
     found = []
-    roots = [root / "launcher/main", root / "launcher/components/esp32_s3_touch_amoled_1_8"]
-    paths = sorted({p for base in roots for p in base.rglob("*") if p.suffix in {".c", ".h", ".lf"}})
+    owned = components(root) if owned is None else owned
+    paths = sorted({p for base in owned.values() for p in base.rglob("*") if p.suffix in {".c", ".h", ".lf"}})
     paths += sorted((root / "launcher").glob("sdkconfig.defaults*"))
-    aliases = {}
     attribute_aliases = set()
     for path in paths:
         if path.suffix in {".c", ".h"}:
             for alias, expression in re.findall(r"^#define\s+(\w+)\s+(.+)$", path.read_text(encoding="utf-8"), re.M):
-                options = tuple(re.findall(r"\bCONFIG_\w+\b", expression))
-                if options:
-                    aliases[alias] = expression
                 if ATTRIBUTE.search(expression):
                     attribute_aliases.add(alias)
-            for expression, alias in re.findall(r"^#if ([^\n]+)\n#define\s+(\w+)\s+1\b", path.read_text(encoding="utf-8"), re.M):
-                options = tuple(re.findall(r"\bCONFIG_\w+\b", expression))
-                if options:
-                    aliases[alias] = expression
     for path in paths:
         name = path.relative_to(root).as_posix()
         owner = "/".join(name.split("/")[:4]) + "/" if "/apps/" in name else "engine"
         lines = path.read_text(encoding="utf-8").splitlines()
-        guards = []
         for index, line in enumerate(lines):
             if path.suffix in {".c", ".h"}:
-                if re.match(r"\s*#\s*(?:if|ifdef)\b", line):
-                    expression = re.sub(r"^\s*#\s*(?:if|ifdef)\s+", "", line)
-                    expression = re.sub(r"\b\w+\b", lambda match: "(" + aliases[match.group()] + ")" if match.group() in aliases else match.group(), expression)
-                    guards.append([expression, [expression]])
-                elif re.match(r"\s*#\s*else\b", line) and guards:
-                    guards[-1][0] = "!(" + " || ".join(guards[-1][1]) + ")"
-                elif re.match(r"\s*#\s*elif\b", line) and guards:
-                    expression = re.sub(r"^\s*#\s*elif\s+", "", line)
-                    guards[-1][0] = "!(" + " || ".join(guards[-1][1]) + ") && (" + expression + ")"
-                    guards[-1][1].append(expression)
-                elif re.match(r"\s*#\s*endif\b", line) and guards:
-                    guards.pop()
                 if (not ATTRIBUTE.search(line) and not any(re.search(r"\b" + re.escape(alias) + r"\b", line)
                                                        for alias in attribute_aliases)) or line.lstrip().startswith(("//", "/*", "*", "#")):
                     continue
@@ -274,7 +135,7 @@ def sites(root):
                 if not function:
                     raise ValueError(f"{name}:{index + 1}: unsupported IRAM declaration")
                 entries = [(path.stem, function.group(1))]
-                archive = "libmain.a" if "main/" in name else "libesp32_s3_touch_amoled_1_8.a"
+                archive = next(archive for archive, directory in owned.items() if path.resolve().is_relative_to(directory.resolve()))
                 kind = "c"
             elif path.suffix == ".lf":
                 if not re.match(r"\[mapping:", line):
@@ -297,17 +158,17 @@ def sites(root):
             reason = preceding_comment(lines, index, kind)
             if not reason:
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason")
-            budget = BUDGET.search(reason)
+            budget = parse_budget(reason)
             if entries and not budget:
                 raise ValueError(f"{name}:{index + 1}: missing IRAM budget")
-            if len(BUDGET.sub("", reason).strip(" .")) < 8:
+            reason = BUDGET.sub("", reason).strip()
+            if not re.search(r"[A-Za-z][^.?!]*[.?!]", reason) or len(re.findall(r"[A-Za-z]+", reason)) < 2 or re.search(r"\b(?:TODO|TBD|FIXME)\b", reason, re.I):
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason beyond budget")
-            found.append(Site(name, index + 1, owner, reason, int(budget.group(1)) if budget else None,
-                              archive, entries, tuple(group[0] for group in guards)))
+            found.append(Site(name, index + 1, owner, reason, budget, archive, entries))
     return found
 
 
-def check(placements, inputs, config):
+def check(placements, inputs, config, owned, active):
     used = Counter()
     names = {}
     for item in inputs:
@@ -318,7 +179,7 @@ def check(placements, inputs, config):
             # A function attribute and a mapping may describe the same code; the function owns its budget.
             matches = sorted(matches, key=lambda site: site.path.endswith(".lf"))[:1]
         if not matches:
-            if item.archive in OUR_ARCHIVES and item.size:
+            if item.archive in owned and item.size:
                 raise ValueError(f"{item.archive}({item.object}): {item.symbol}: IRAM symbol has no site")
             continue
         site = matches[0]
@@ -327,39 +188,100 @@ def check(placements, inputs, config):
     report = []
     for site in placements:
         size = used[site.label]
-        if not site.entries:
+        if site.budget is None:
             continue
-        if size > site.budget:
-            raise ValueError(f"{site.label}: {size} B exceeds IRAM budget {site.budget} B")
-        if not size and not any(not condition(guard, config) for guard in site.guards):
-            raise ValueError(f"{site.label}: placed nothing in this build")
+        enabled = active(site)
+        if not enabled:
+            if size:
+                raise ValueError(f"{site.label}: compiled-out site owns {size} B")
+        else:
+            if not size:
+                raise ValueError(f"{site.label}: placed nothing in this build")
+            budget = site.budget
+            if isinstance(budget, dict):
+                label = variant_label(config)
+                if label not in budget:
+                    raise ValueError(f"{site.label}: missing {label} IRAM budget")
+                budget = budget[label]
+            if size != budget:
+                raise ValueError(f"{site.label}: measured {size} B, budget {budget} B; set the budget to {size} B")
         report.append((site, size, sorted(names.get(site.label, []))))
     return report
 
+def preprocessed_lines(build, paths=None):
+    alive = set()
+    commands = json.loads((build / "compile_commands.json").read_text(encoding="utf-8"))
+    for entry in commands:
+        source = Path(entry["file"])
+        if not source.resolve().is_relative_to(ROOT) or (paths is not None and source.resolve() not in paths):
+            continue
+        command = compile_flags(entry)
+        output = subprocess.run([*command, "-E", entry["file"]], cwd=entry["directory"], check=True, capture_output=True, text=True).stdout
+        path, number = None, 0
+        for line in output.splitlines():
+            marker = re.match(r'^# (\d+) "([^"]+)"', line)
+            if marker:
+                number = int(marker[1])
+                path = Path(marker[2])
+                if not path.is_absolute():
+                    path = Path(entry["directory"]) / path
+                path = path.resolve()
+            else:
+                if path and line.strip():
+                    alive.add((path, number))
+                number += 1
+    return alive
 
-def condition(expression, config):
-    expression = re.sub(r"defined\s*\(?\s*(\w+)\s*\)?", r"\1", expression)
-    def token(match):
-        name = match.group()
-        if name.startswith("CONFIG_"):
-            return "True" if config.get(name, "n") == "y" else "False"
-        if name == "ESP_PLATFORM":
-            return "True"
-        return name
-    expression = re.sub(r"\b[A-Za-z_]\w*\b", token, expression)
-    expression = expression.replace("&&", " and ").replace("||", " or ")
-    expression = re.sub(r"!(?!=)", " not ", expression).strip()
-    node = ast.parse(expression, mode="eval").body
-    def evaluate(node):
-        if isinstance(node, ast.Constant) and isinstance(node.value, (bool, int)):
-            return bool(node.value)
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-            return not evaluate(node.operand)
-        if isinstance(node, ast.BoolOp):
-            values = [evaluate(value) for value in node.values]
-            return all(values) if isinstance(node.op, ast.And) else any(values)
-        raise ValueError(f"unsupported IRAM guard: {expression}")
-    return evaluate(node)
+
+def fragment_entries(site, root, config):
+    lines = (root / site.path).read_text(encoding="utf-8").splitlines()
+    stack, entries = [], []
+    for line in lines[site.line:]:
+        if line.startswith("["):
+            break
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        branch = re.fullmatch(r"\s*(if|elif) (\w+) = (y|n):", line)
+        otherwise = line.strip() == "else:"
+        while stack and (indent < stack[-1][0] or (indent == stack[-1][0] and not (otherwise or branch and branch[1] == "elif"))):
+            stack.pop()
+        if branch:
+            kind, name, value = branch.groups()
+            condition = config.get("CONFIG_" + name, "n") == value
+            if kind == "if":
+                stack.append([indent, condition, condition])
+            elif stack and stack[-1][0] == indent:
+                stack[-1][1] = condition and not stack[-1][2]
+                stack[-1][2] |= condition
+            else:
+                raise ValueError(f"{site.label}: elif without if")
+        elif otherwise:
+            if not stack or stack[-1][0] != indent:
+                raise ValueError(f"{site.label}: else without if")
+            stack[-1][1] = not stack[-1][2]
+            stack[-1][2] = True
+        elif re.match(r"\s*(?:if|elif)\b", line):
+            raise ValueError(f"{site.label}: unsupported linker condition: {line.strip()}")
+        elif PLACEMENT.search(line) and all(enabled for _, enabled, _ in stack):
+            selector = line.strip().split()[0].split(":")
+            entries.append((selector[0], selector[1] if len(selector) == 2 else "*"))
+    return entries
+
+
+def build_sites(root, build):
+    placements = sites(root, build["owned"])
+    c_sites = [root / site.path for site in placements if site.path.endswith((".c", ".h"))]
+    paths = None if any(path.suffix == ".h" for path in c_sites) else set(c_sites)
+    alive = preprocessed_lines(build["build"], paths)
+    enabled = {}
+    for site in placements:
+        if site.path.endswith(".lf"):
+            site.entries = fragment_entries(site, root, build["config"])
+            enabled[site.label] = bool(site.entries)
+        else:
+            enabled[site.label] = (root / site.path, site.line) in alive
+    return placements, lambda site: enabled[site.label]
 
 
 def configuration(text):
@@ -395,6 +317,7 @@ def map_inputs(text, elf_symbols):
     constants = {}
     literals = []
     iram_names = {}
+    addresses = sorted(elf_symbols)
     for line in text.splitlines():
         wrapped = re.match(r"^(\.\S+)\s*$", line)
         if wrapped:
@@ -428,8 +351,8 @@ def map_inputs(text, elf_symbols):
             symbol = input_section.split(".", 2)[2]
             inputs.append(Input(archive, obj, symbol, size))
         else:
-            members = [(name, count) for name, (start, count) in elf_symbols.items()
-                       if address <= start < address + size and count and not name.startswith("$")]
+            members = [(name, count) for start in addresses[bisect_left(addresses, address):bisect_left(addresses, address + size)]
+                       for name, count in [elf_symbols[start]] if count and not name.startswith("$")]
             if len(members) == 1:
                 inputs.append(Input(archive, obj, members[0][0], size))
                 iram_names[(archive, obj, input_section)] = members[0][0]
@@ -447,13 +370,9 @@ def map_inputs(text, elf_symbols):
 def read_build(build):
     metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
     elf = build / metadata["app_elf"]
-    symbols = {}
-    for line in run(find_tool("nm"), "-n", "-S", str(elf)).splitlines():
-        fields = line.split()
-        if len(fields) == 4:
-            symbols[fields[3]] = (int(fields[0], 16), int(fields[1], 16))
+    elf_symbols = symbols(find_tool("nm"), elf)
     mapfile = elf.with_suffix(".map")
-    inputs, sections, constants = map_inputs(mapfile.read_text(encoding="utf-8"), symbols)
+    inputs, sections, constants = map_inputs(mapfile.read_text(encoding="utf-8"), elf_symbols)
     size = json.loads(run(idf_python(), str(Path(metadata["idf_path"]) / "tools/idf_size.py"),
                           "--format", "json2", str(mapfile)))
     scripts = build / "esp-idf/esp_system/ld"
@@ -465,20 +384,13 @@ def read_build(build):
     config = configuration((build / "sdkconfig").read_text(encoding="utf-8"))
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", mapfile.read_text(encoding="utf-8"), re.M)}
-    return dict(build=build, metadata=metadata, inputs=inputs, sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(ROOT, metadata), build_id=hashlib.sha256(elf.read_bytes()).hexdigest(), inputs=inputs, sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
-def table(headers, rows):
-    def cell(value):
-        return str(value).replace("|", "\\|").replace("\n", " ")
-    return "\n".join(["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers),
-                      *("| " + " | ".join(cell(value) for value in row) + " |" for row in rows)]) + "\n"
-
-
 def render(builds, placements):
-    labels = ["diag" if b["config"].get("CONFIG_LAUNCHER_SELFTEST") == "y" else
-              "dev" if b["config"].get("CONFIG_LAUNCHER_DEVELOPMENT") == "y" else "release" for b in builds]
+    builds = sorted(builds, key=lambda b: ("release", "dev", "diag").index(variant_label(b["config"])))
+    labels = [variant_label(b["config"]) for b in builds]
     lines = [f"> Generated by: `{REGENERATE}`", "", "Bytes from each build's ELF, link map, sdkconfig and ESP-IDF size JSON. Heap is a link-time range, not runtime free memory.", ""]
     rows = []
     for name in ("iram0_0_seg", "dram0_0_seg"):
@@ -492,46 +404,46 @@ def render(builds, placements):
     for key in ("_iram_end", "_data_start", "_bss_start", "_bss_end", "_heap_start", "_heap_low_start"):
         if any(key in b["constants"] for b in builds):
             rows.append((key, *(hex(b["constants"][key]) if key in b["constants"] else "absent" for b in builds)))
-    lines += [table(["Region / boundary", *labels], rows), "Split follows `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`; alignment and prefetch padding are read from the linked scripts and map.", ""]
+    lines += [markdown(["Region / boundary", *labels], rows), "Split follows `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`; alignment and prefetch padding are read from the linked scripts and map.", ""]
     components = [Counter() for _ in builds]
     for b, counts in zip(builds, components):
         for item in b["inputs"]:
             counts[item.archive] += item.size
     names = sorted(set().union(*components), key=lambda name: (-max(c[name] for c in components), name))
-    component_rows = [(name, "ours" if name in OUR_ARCHIVES else "IDF / managed", *(c[name] for c in components)) for name in names]
+    component_rows = [(name, "ours" if any(name in b["owned"] for b in builds) else "IDF / managed", *(c[name] for c in components)) for name in names]
     component_rows.append(("Linker fill / split slack", "unattributed", *(sum(size for key, (_, size) in b["sections"].items() if key.startswith(".iram")) - sum(c.values()) for b, c in zip(builds, components))))
-    lines += [table(["IRAM component", "Ownership", *labels], component_rows)]
-    reports = [check(placements, b["inputs"], b["config"]) for b in builds]
+    lines += [markdown(["IRAM component", "Ownership", *labels], component_rows)]
+    reports = [b["report"] for b in builds]
     rows = []
-    for index, (site, _, _) in enumerate(reports[0]):
-        rows.append((site.owner, site.label, ", ".join(sorted({n for report in reports for n in report[index][2]})),
-                     *(report[index][1] for report in reports), site.budget, site.reason))
-    lines += [table(["Owner", "Placement site", "Symbols", *labels, "Budget B", "Reason"], rows)]
+    site_labels = sorted({site.label for report in reports for site, _, _ in report})
+    for label in site_labels:
+        records = [next((record for record in report if record[0].label == label), None) for report in reports]
+        site = next(record[0] for record in records if record)
+        budget = ", ".join(f"{name} {value}" for name, value in site.budget.items()) if isinstance(site.budget, dict) else site.budget
+        rows.append((site.owner, site.label, ", ".join(sorted({name for record in records if record for name in record[2]})),
+                     *(record[1] if record else "not built" for record in records), budget, site.reason))
+    lines += [markdown(["Owner", "Placement site", "Symbols", *labels, "Budget B", "Reason"], rows)]
     differences = []
     for name in names:
         counts = [c[name] for c in components]
+        if len(set(counts)) == 1:
+            continue
         groups = [Counter() for _ in builds]
         for b, group in zip(builds, groups):
             for item in b["inputs"]:
                 if item.archive == name:
                     group[(item.object, item.symbol)] += item.size
-        changed = sorted(n for n in set().union(*groups) if len({g[n] for g in groups}) > 1)
-        if not changed:
-            continue
-        differences.append((name, *counts, "sum of changed input sections", ""))
+        changed = sorted(symbol for symbol in set().union(*groups) if len({g[symbol] for g in groups}) > 1)
         for obj, symbol in changed:
-            site = next((site for report in reports for site, _, symbols in report if symbol in symbols), None)
-            reason = ", ".join(site.guards) if site and site.guards else "linked section differs; causal option not isolated"
-            transitions = []
-            for index in range(1, len(builds)):
-                if groups[index - 1][(obj, symbol)] == groups[index][(obj, symbol)]:
-                    continue
-                options = sorted(k for k in builds[index - 1]["config"].keys() | builds[index]["config"].keys()
-                                 if builds[index - 1]["config"].get(k, "n") != builds[index]["config"].get(k, "n") and
-                                 any(word in k for word in ("LAUNCHER", "ASSERT", "HEAP", "DEBUG", "LOG", "UNITY")))
-                transitions.append(f"{labels[index - 1]} to {labels[index]}: " + ", ".join(options))
-            differences.append((name + ":" + obj + ":" + symbol, *(g[(obj, symbol)] for g in groups), reason, "; ".join(transitions)))
-    lines += ["#### Differs between variants", "", "Symbol changes are map-derived; differing options are correlations, not isolated causal measurements. A zero means absent from IRAM, not necessarily absent from the image.", "", table(["Component / symbol group", *labels, "Why / evidence", "Differing Kconfig"], differences)]
+            print(f"{name}:{obj}:{symbol}: " + ", ".join(f"{label} {group[(obj, symbol)]} B" for label, group in zip(labels, groups)))
+        exclusive = []
+        for index, group in enumerate(groups):
+            unique = [symbol for symbol in group if all(not other[symbol] for j, other in enumerate(groups) if j != index)]
+            exclusive.append(", ".join(f"{obj}:{symbol} ({group[(obj, symbol)]} B)" for obj, symbol in sorted(unique, key=lambda symbol: (-group[symbol], symbol))))
+        differences.append((name, *counts, *exclusive))
+    lines += ["#### Differs between variants", "", "Exclusive symbols are absent from IRAM in every other listed variant. The console reports the full symbol-level diff.", "",
+              "`CONFIG_LAUNCHER_DEVELOPMENT` enables presentation overlays, send auditing and raw-full dispatch in `gfx_present.c`; those branches enlarge the mapped `present_gfx` functions from 784 B in release to 3926 B in dev and diag.", "",
+              markdown(["Component", *labels, *(label + " only" for label in labels)], differences)]
     release = builds[0]
     sizes = [sum(size for name, (_, size) in release['sections'].items() if name.startswith('.iram') and name != '.iram0.text_end'),
              release['slack'], release['sections']['.dram0.data'][1], release['sections']['.dram0.bss'][1],
@@ -539,8 +451,7 @@ def render(builds, placements):
     lines += ["#### Release shared block", "", "The split slack includes the prefetch pad. Boxes show linked bytes in address order; width is schematic.", "", "```mermaid", "flowchart LR",
               "    " + " --- ".join(f'{node}["{label}<br/>{count} B"]' for node, label, count in zip(
                   ("iram", "slack", "data", "bss", "heap"),
-                  ("IRAM", "Split slack", "DRAM data", "BSS", "Heap range"), sizes)), "```", "",
-              "#### ESP-IDF IRAM options", "", opportunities(builds, labels)]
+                  ("IRAM", "Split slack", "DRAM data", "BSS", "Heap range"), sizes)), "```", ""]
     return "\n".join(lines)
 
 
@@ -548,31 +459,29 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("builds", nargs="*", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT)
-    parser.add_argument("--source-only", action="store_true")
-    parser.add_argument("--write", action="store_true")
-    parser.add_argument("--tables", type=Path)
-    parser.add_argument("--what-if", type=Path)
-    parser.add_argument("--experiment", action="append", choices=WHAT_IF_OPTIONS)
-    parser.add_argument("--before-build", nargs="+", help="optional command run before each scratch build")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--source-only", action="store_true")
+    modes.add_argument("--write", action="store_true")
+    modes.add_argument("--tables", type=Path)
+    modes.add_argument("--check", action="store_true")
     args = parser.parse_args()
     try:
-        placements = sites(args.root)
-        print(f"IRAM source gate: {len(placements)} sites checked")
         if args.source_only:
+            placements = sites(args.root)
+            print(f"IRAM source gate: {len(placements)} sites checked (main, components/*, packages/*)")
             return 0
         if not args.builds:
             parser.error("build directories required unless --source-only")
         builds = [read_build(build) for build in args.builds]
-        if args.what_if:
-            for build in builds:
-                body = what_if(build, args.what_if, args.experiment, args.before_build)
-            if args.write:
-                replace_block(DOC, WHAT_IF_BLOCK, body)
-            return 0
         for build in builds:
-            for site, size, names in check(placements, build["inputs"], build["config"]):
-                print(f"{build['build'].name}: {site.owner} {site.label}: {size}/{site.budget} B" +
+            placements, active = build_sites(args.root.resolve(), build)
+            build["report"] = check(placements, build["inputs"], build["config"], build["owned"], active)
+            for site, size, names in build["report"]:
+                print(f"{variant_label(build['config'])}: {site.owner} {site.label}: {size} B" +
                       (" (note: compiled out)" if not size else ""))
+            print(f"PASS IRAM {variant_label(build['config'])}: {len(build['report'])} sites checked")
+        if args.check:
+            return 0
         body = render(builds, placements)
         if args.write:
             replace_block(DOC, BLOCK, body)
@@ -582,7 +491,11 @@ def main():
         else:
             print(body)
         return 0
-    except (ValueError, OSError) as error:
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or "compiler command failed").strip().splitlines()[-1]
+        print(f"FAIL IRAM: {detail}", file=sys.stderr)
+        return 1
+    except (ValueError, OSError, LayoutError, subprocess.SubprocessError) as error:
         print(f"FAIL IRAM: {error}", file=sys.stderr)
         return 1
 

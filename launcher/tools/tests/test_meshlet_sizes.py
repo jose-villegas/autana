@@ -311,12 +311,13 @@ int main(void) {
 
     def test_capture_preparation_guards(self):
         import meshlet_capture
+        import tool_support
         from unittest import mock
         (TOOLS / "results").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TOOLS / "results") as directory:
             work = pathlib.Path(directory)
             (work / "tree").mkdir()
-            with mock.patch.object(meshlet_capture, "tracked_files", return_value=[]), \
+            with mock.patch.object(tool_support, "tracked_files", return_value=[]), \
                     self.assertRaisesRegex(ValueError, "already exists"):
                 meshlet_capture.scratch_tree(work)
             with self.assertRaisesRegex(ValueError, "not prepared"):
