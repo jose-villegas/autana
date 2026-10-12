@@ -173,18 +173,13 @@ jobs:
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
     runs-on: ubuntu-latest
-    container: espressif/idf:release-v5.5
     steps:
       - uses: actions/checkout@v4
 
-      # The container runs as another user than the checkout's owner.
-      - name: Trust the checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Every name, file and heading a comment cites exists
+      - name: Every code and documentation citation resolves
         env:
           STAGED_TEXT_GATE: "true"
-        run: python3 scripts/gates/check_comment_symbols.py --require-idf
-
-      - name: Every documentation citation resolves
-        run: python3 scripts/gates/check_doc_citations.py --require-idf
+        run: |
+          image=$(python3 -c 'import json; print(json.load(open("launcher/idf-pin.json"))["image"])')
+          docker run --rm -v "$GITHUB_WORKSPACE:/app" -w /app -e STAGED_TEXT_GATE "$image" \
+            /bin/bash -c 'git config --global --add safe.directory "*" && python3 scripts/gates/check_comment_symbols.py --require-idf && python3 scripts/gates/check_doc_citations.py --require-idf'
