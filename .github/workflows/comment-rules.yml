@@ -178,11 +178,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: pin
-        run: python3 -c 'import sys; sys.path.insert(0, "launcher/tools"); from build.espressif import idf_pin; print("image=" + idf_pin()["image"])' >> "$GITHUB_OUTPUT"
+        run: echo "image=$(jq -r .image launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: idf-image
     container: ${{ needs.idf-image.outputs.image }}
     steps:
@@ -191,6 +191,10 @@ jobs:
       # The container runs as another user than the checkout's owner.
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Verify the pinned IDF commit
+        run: |
+          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$(jq -r .commit launcher/idf-pin.json)" || { echo "image is not the pinned IDF commit"; exit 1; }
 
       - name: Every name, file and heading a comment cites exists
         env:

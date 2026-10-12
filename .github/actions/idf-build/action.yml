@@ -35,16 +35,19 @@ runs:
       shell: bash
       run: python3 launcher/tools/bake/bake.py fetch --cache "${{ runner.temp }}/bakes"
 
+    # MAXSIZE is about four times one variant's fresh cache: each save carries
+    # forward all it restored, and every variant and commit shares the repository's
+    # 10 GB of Actions cache.
     - name: Build in the pinned IDF image
       shell: bash
       env:
         BUILD_COMMAND: ${{ inputs.command }}
       run: |
-        image=$(python3 -c 'import sys; sys.path.insert(0, "launcher/tools"); from build.espressif import idf_pin; print(idf_pin()["image"])')
+        image=$(jq -r .image launcher/idf-pin.json)
         docker run --rm -t -e IDF_TARGET=esp32s3 \
           -v "$GITHUB_WORKSPACE:/app" -w /app/launcher \
           -v "${{ runner.temp }}/bakes:/bakes" -e AUTANA_BAKE_CACHE=/bakes \
           -v "${{ runner.temp }}/ccache:/ccache" -e CCACHE_DIR=/ccache \
-          -e CCACHE_MAXSIZE=150M -e CCACHE_COMPILERCHECK=content \
+          -e CCACHE_MAXSIZE=150M -e IDF_PIN_COMMIT="$(jq -r .commit launcher/idf-pin.json)" \
           -e BUILD_COMMAND "$image" /bin/bash -c \
-          'git config --global --add safe.directory "*"; git -C "$IDF_PATH" rev-parse HEAD; ccache -z > /dev/null; eval "$BUILD_COMMAND" && ccache -s'
+          'git config --global --add safe.directory "*"; test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$IDF_PIN_COMMIT" || { echo "image is not the pinned IDF commit"; exit 1; }; ccache -z > /dev/null; eval "$BUILD_COMMAND" && ccache -s'
