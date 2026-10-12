@@ -9,10 +9,9 @@ name: Format
 #
 # clang-format is pinned to one exact version, not a minimum: see
 # docs/C-Style-Guide.md's "One formatter version" for why the versions
-# disagree on real files in this tree. The version is the esp-clang release
-# the pinned ESP-IDF bundles (launcher/idf-pin.json), so a contributor with
-# that ESP-IDF already has it; pip rather than apt because it carries the
-# exact patch release on any runner image.
+# disagree on real files in this tree. scripts/gates/requirements.txt pins
+# it; pip rather than apt because it carries the exact patch release on any
+# runner image.
 
 on:
   push:
@@ -33,7 +32,7 @@ jobs:
       - uses: ./.github/actions/host-tools
 
       - name: Install the pinned clang-format
-        run: pip install "clang-format==$(python3 scripts/lib/pinned_tool.py clang-format --pinned)"
+        run: pip install -r scripts/gates/requirements.txt
 
       - name: Which clang-format, and which files
         run: |
