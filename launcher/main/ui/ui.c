@@ -509,22 +509,32 @@ typedef enum {
 } ui_band_entry_kind_t;
 
 typedef struct {
+    union {
+        const mu_Command* cmd;
+
+        struct {
+            mu_Rect rect;
+            mu_Color color;
+        };
+    };
+
     ui_band_entry_kind_t kind;
-    const mu_Command* cmd; /* UI_BAND_ENTRY_COMMAND only */
-    mu_Rect rect;          /* UI_BAND_ENTRY_FILL_RECT only */
-    mu_Color color;        /* UI_BAND_ENTRY_FILL_RECT only */
-    int y0, y1;            /* this entry's own row range, ignored when always is true */
-    bool always;           /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
+    int y0, y1;  /* this entry's own row range, ignored when always is true */
+    bool always; /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
                                 and any command type command_row_range() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
                                 effect is state for what follows, not pixels of
                                 its own) */
 } ui_band_entry_t;
 
-#define UI_EXTRA_RECT_MAX 4
-#define UI_BAND_BIN_MAX   64
+#define UI_EXTRA_RECT_MAX        4
+#define UI_BAND_BIN_MAX          71
+#define UI_BAND_BIN_BUDGET_BYTES 2560
 
 static ui_band_entry_t ui_band_bin[UI_BAND_BIN_MAX];
+#ifdef ESP_PLATFORM
+_Static_assert(sizeof ui_band_bin <= UI_BAND_BIN_BUDGET_BYTES, "band bin fits its internal RAM budget");
+#endif
 static int ui_band_bin_count;
 static uint32_t ui_band_overflow;
 static uint32_t ui_band_background;

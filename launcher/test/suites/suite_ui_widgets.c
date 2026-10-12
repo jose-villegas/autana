@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "suites.h"
+#include "test_cleanup.h"
 #include "unity.h"
 
 #include "core/memory.h"
@@ -613,7 +614,14 @@ test_closing_the_list_restores_the_closed_drawing(void) {
                               "a picked close must also redraw the dropdown's own closed chevron");
 }
 
-enum { MENU_INK = 0xFF00FF, MENU_FRAMES = 12, MENU_DENSE_COMMANDS = 80, MENU_ROW_HEIGHT = 62, MENU_ITEM_COUNT = 5 };
+enum {
+    MENU_INK = 0xFF00FF,
+    MENU_FRAMES = 12,
+    MENU_REVISION_FRAMES = 2,
+    MENU_DENSE_COMMANDS = 80,
+    MENU_ROW_HEIGHT = 62,
+    MENU_ITEM_COUNT = 5
+};
 
 static const mu_Rect MENU_ANCHOR = {40, 140, 300, MENU_ROW_HEIGHT};
 static const ui_dropdown_item_t MENU_ITEMS[] = {
@@ -1291,6 +1299,8 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
     }
 }
 
+static void test_menu_band_frame_cost(void);
+
 void
 run_ui_widgets_suite(void) {
     RUN_TEST(test_an_enabled_button_reports_a_tap);
@@ -1312,6 +1322,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_the_chevron_lags_the_lists_own_open_flag_by_one_frame);
     RUN_TEST(test_closing_the_list_restores_the_closed_drawing);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_menu_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
@@ -1337,7 +1348,6 @@ run_ui_widgets_suite(void) {
 
 SUITE_REGISTER(run_ui_widgets_suite);
 
-#ifdef DEVICE_BUILD
 static void
 paint_menu_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
@@ -1346,7 +1356,22 @@ paint_menu_band(int row0, int row1, gfx_color_t* target) {
 }
 
 static void
+restore_menu_band_fixture(void) {
+    ui_clear_band_overlay();
+    gfx_mode_exit();
+    fixture();
+#ifndef DEVICE_BUILD
+    gfx_reset_for_test();
+#endif
+}
+
+static void
 test_menu_band_frame_cost(void) {
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_TRUE(gfx_init());
+    const unsigned guard_trips = gfx_fb_guard_trips_for_test();
+#endif
+    suite_set_test_cleanup(restore_menu_band_fixture);
     const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS};
     TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&request)->layout);
     for (int dense = 0; dense <= 1; dense++) {
@@ -1357,20 +1382,32 @@ test_menu_band_frame_cost(void) {
         const input_t* warmup[] = {&idle, &idle, &contact.press, &contact.hold};
         const int commands = dense ? MENU_DENSE_COMMANDS : 0;
         for (size_t i = 0; i < sizeof warmup / sizeof warmup[0]; i++) {
+            gfx_present_begin();
+            gfx_present_wait();
+            ui_clear_band_overlay();
             build_menu_frame(warmup[i], 0, commands);
             ui_end_for_bands(MENU_BACKGROUND);
+            gfx_invalidate();
+            gfx_band_run(paint_menu_band, NULL);
         }
         TEST_ASSERT_TRUE(dropdown_open);
         for (int frame = 0; frame < MENU_FRAMES; frame++) {
+            gfx_present_begin();
+            gfx_present_wait();
+            ui_clear_band_overlay();
             const int64_t began_us = timing_now_us();
-            build_menu_frame(&idle, frame, commands);
+            build_menu_frame(&idle, frame / MENU_REVISION_FRAMES, commands);
             ui_end_for_bands(MENU_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
             const int64_t frame_us = timing_now_us() - began_us;
             const uint32_t fallbacks = ui_band_fallback_count();
+#ifdef DEVICE_BUILD
             ESP_LOGI("ui_band_perf", "dense=%d frame=%d fallbacks=%lu frame_us=%lld", dense, frame,
                      (unsigned long)fallbacks, (long long)frame_us);
+#else
+            (void)frame_us;
+#endif
             if (dense) {
                 TEST_ASSERT_GREATER_THAN_UINT32(0, fallbacks);
             } else {
@@ -1378,17 +1415,16 @@ test_menu_band_frame_cost(void) {
             }
         }
     }
-    ui_clear_band_overlay();
-    gfx_mode_exit();
-    fixture();
-}
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_EQUAL_UINT(guard_trips, gfx_fb_guard_trips_for_test());
 #endif
+    restore_menu_band_fixture();
+    suite_clear_test_cleanup();
+}
 
 void
 run_ui_band_perf_suite(void) {
-#ifdef DEVICE_BUILD
     RUN_TEST(test_menu_band_frame_cost);
-#endif
 }
 
 SUITE_REGISTER_ON_REQUEST(run_ui_band_perf_suite);

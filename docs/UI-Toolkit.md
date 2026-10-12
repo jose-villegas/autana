@@ -383,7 +383,9 @@ renders into `docs/images/ui/`; see "Images in these docs" in
 
 ### Band replay measurements
 
-The band bin has a fixed capacity at `UI_BAND_BIN_MAX` in `ui/ui.c`.
+The band bin has a fixed capacity at `UI_BAND_BIN_MAX` in `ui/ui.c`,
+with a device memory ceiling at `UI_BAND_BIN_BUDGET_BYTES`. Command and fill
+entries share storage for their mutually exclusive payloads.
 Bands touched by drawing that does not fit replay the complete UI in painter's
 order and remain dirty. Other bands replay the retained entries.
 `ui_band_fallback_count()` reports full band replays in the current frame.
@@ -406,7 +408,12 @@ build id before and after each capture.
 
 In a self-test build, the on-request suite `run_ui_band_perf_suite` replays the
 shared dropdown-menu fixture through the real band ring with and without dense
-drawing. Run it with `autana suite run_ui_band_perf_suite --flash`. Each case
+drawing. Its warm-up frames are presented before the measured range. Each
+revision is replayed on consecutive measured frames, covering changing and
+steady sparse content. Deferred cleanup restores
+the full framebuffer even when an assertion fails. The host widget suite runs
+the same fixture with the engine icon pack. Run it with
+`autana suite run_ui_band_perf_suite --flash`. Each case
 reports the frame range owned by `MENU_FRAMES` in `suite_ui_widgets.c`:
 
 ```text
