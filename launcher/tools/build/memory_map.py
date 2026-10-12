@@ -491,9 +491,8 @@ def pool_range(start, size, heap_start):
 
 
 def memory_size(size):
-    if size % MB_BYTES == 0:
-        return f"{size // MB_BYTES} MB"
-    return f"{size / svg_bars.KB_BYTES:.1f} KB"
+    unit, name = (MB_BYTES, "MB") if size >= MB_BYTES else (svg_bars.KB_BYTES, "KB")
+    return f"{size // unit} {name}" if size % unit == 0 else f"{size / unit:.1f} {name}"
 
 
 def render_tiers(builds, root):
@@ -508,7 +507,7 @@ def render_tiers(builds, root):
     for build in builds:
         size, heap = pool_range(*build["regions"]["dram0_0_seg"], build["constants"]["_heap_start"])
         pools.append(f"{build['variant']} {size} B")
-        heaps.append(f"{build['variant']} {heap / svg_bars.KB_BYTES:.1f} KB")
+        heaps.append(f"{build['variant']} {memory_size(heap)}")
     shared = release["regions"]["dram0_0_seg"][1]
     pool = f"{shared} B" if all(build["regions"]["dram0_0_seg"][1] == shared for build in builds) else "; ".join(pools)
     config = release["config"]
@@ -521,10 +520,10 @@ def render_tiers(builds, root):
     assets = partitions["assets"][1]
     sizes = (
         f"{memory_size(CHIP_SRAM_BYTES)} chip total {CHIP_CITATION}; {pool} shared IRAM/DRAM pool; "
-        f"[internal heap](../memory/images/internal-pool.svg): {'; '.join(heaps)}",
+        f"[internal heap](../memory/images/internal-pool.svg) {', '.join(heaps)}",
         f"{memory_size(CHIP_PSRAM_BYTES)} octal total {CHIP_CITATION}; {memory_size(arena)} app arena; "
-        f"{framebuffer / svg_bars.KB_BYTES:.1f} KB full framebuffer; "
-        f"{(CHIP_PSRAM_BYTES - arena - framebuffer) / svg_bars.KB_BYTES:.1f} KB PSRAM heap upper bound (other PSRAM allocations and IDF use reduce it)",
+        f"{memory_size(framebuffer)} full framebuffer; "
+        f"{memory_size(CHIP_PSRAM_BYTES - arena - framebuffer)} PSRAM heap upper bound (other PSRAM allocations and IDF use reduce it)",
         f"{memory_size(int(flash.removesuffix('MB')) * MB_BYTES)} total; {memory_size(app)} app partition; {memory_size(assets)} assets partition",
     )
     rows = [(tier, size, placement, rule) for (tier, placement, rule), size in zip(TIER_POLICY, sizes)]
