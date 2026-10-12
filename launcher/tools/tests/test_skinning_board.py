@@ -6,7 +6,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "r3d/skin_light"))
 from report_skinning_board import (PHASES, PHASE_LOADED, PHASE_PLAYING, PREFIX, STAGE_ANIMATE,
                                    STAGE_ANIMATION_STEP, STAGE_RENDER, STAGE_RENDER_DELTA,
-                                   STAGE_SKIN, parse_capture)
+                                   STAGE_SKIN, NANOSECONDS_PER_MICROSECOND, budget, parse_capture)
 
 
 def run_capture(number, mean):
@@ -21,10 +21,45 @@ def run_capture(number, mean):
     for paused in (0, 1):
         lines.append(f"{PREFIX} stage={STAGE_RENDER} paused={paused} samples=100 mean_us={mean - paused}")
     lines.append(f"{PREFIX} stage={STAGE_RENDER_DELTA} mean_us=1")
+    lines = [line + " joints=22 influences=2 lighting=0 lights=1" if f"stage={STAGE_SKIN} " in line else line
+             for line in lines]
     return "\n".join(lines) + "\n"
 
 
 class SkinningBoard(unittest.TestCase):
+    def test_rendered_units_and_setup(self):
+        capture = "BUILD_ID=sample-diag\n" + run_capture(1, 1600)
+        rendered = budget(capture)
+        self.assertIn("µs", rendered)
+        self.assertNotIn("Â", rendered)
+        self.assertIn("800 vertices, 22 joints", rendered)
+        self.assertIn("2 influences, direct lighting, 1 light", rendered)
+        self.assertIn("above budget on both cores", rendered)
+
+    def test_required_setup_fields_are_loud(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100)
+        for field, value in (("joints", 22), ("influences", 2), ("lighting", 0), ("lights", 1)):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                parse_capture(text.replace(f" {field}={value}", ""))
+
+    def test_setup_must_agree_between_skin_measurements(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100) + run_capture(2, 100)
+        with self.assertRaisesRegex(ValueError, "inconsistent joints"):
+            parse_capture(text.replace("joints=22", "joints=23", 1))
+
+    def test_verdict_compares_each_core_with_owner_budget(self):
+        from unittest.mock import patch
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 800)
+        text = text.replace(f"stage={STAGE_SKIN} cores=1 samples=100 vertices=800 mean_us=800 us_per_vertex=1.000",
+                            f"stage={STAGE_SKIN} cores=1 samples=100 vertices=800 mean_us=1600 us_per_vertex=2.000")
+        for limit, expected in ((0.5, "above budget on both cores"),
+                                (1, "within budget on two cores; above budget on one core"),
+                                (2, "within budget on both cores")):
+            with self.subTest(limit=limit), patch("report_skinning_board.BUDGET_NS_PER_VERTEX",
+                                                limit * NANOSECONDS_PER_MICROSECOND):
+                self.assertIn(expected, budget(text))
+                self.assertIn(f"budget is {limit:g} µs", budget(text))
+
     def test_several_runs_use_median_not_mean(self):
         result = parse_capture("BUILD_ID=sample-diag\n" + run_capture(1, 100)
                                + run_capture(2, 900) + run_capture(3, 300))
@@ -39,7 +74,7 @@ class SkinningBoard(unittest.TestCase):
         result = parse_capture("BUILD_ID=sample-diag\n" + run_capture(1, 100)
                                + f"{PREFIX} phase={PHASE_LOADED} internal_free=200 internal_largest=150\n"
                                + f"{PREFIX} stage={STAGE_SKIN} cores=1 samples=100 vertices=800 "
-                                 "mean_us=400 us_per_vertex=0.500\n")
+                                 "mean_us=400 us_per_vertex=0.500 joints=22 influences=2 lighting=0 lights=1\n")
         self.assertEqual(result["phases"][PHASE_LOADED], (200, 150))
         self.assertEqual(result["stages"][(STAGE_SKIN, "1")], 400)
 
