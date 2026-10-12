@@ -419,7 +419,7 @@ def update_budgets(root, builds):
         raise ValueError("budget update missing variants: " + ", ".join(missing))
     pin = idf_pin(root)
     for build in builds:
-        drift = idf_drift(build["idf_commit"], pin["commit"])
+        drift = "; ".join(idf_drift({"commit": build["idf_commit"]}, pin))
         if drift:
             raise ValueError(f"cannot update budgets: {drift}")
     measured, files = {}, {}
