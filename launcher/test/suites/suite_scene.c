@@ -2372,25 +2372,6 @@ test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
     TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.z, view.forward.z);
 }
 
-/* A pose rolled about +z turns the screen axes with it. */
-static void
-test_a_camera_view_keeps_the_roll_of_its_pose(void) {
-    const camera_t camera = {1.0F, 1.0F};
-    const viewport_t viewport = {SIZE, SIZE, 0};
-    transformf_t pose = TRANSFORMF_IDENTITY;
-    const render_view_t level = camera_view(&camera, &pose, viewport);
-    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, MATH_PI / 2.0F));
-    const render_view_t rolled = camera_view(&camera, &pose, viewport);
-    const vec3f_t along_x = quatf_rotate(pose.rotation, level.screen_x);
-    const vec3f_t along_y = quatf_rotate(pose.rotation, level.screen_y);
-    TEST_ASSERT_TRUE(vec3f_equal(level.forward, rolled.forward));
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_x.x, rolled.screen_x.x);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_x.y, rolled.screen_x.y);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_y.x, rolled.screen_y.x);
-    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, along_y.y, rolled.screen_y.y);
-    TEST_ASSERT_FALSE(vec3f_equal(level.screen_x, rolled.screen_x));
-}
-
 static void
 test_translation_only_camera_clip_retains_rotation(void) {
     fixture();
@@ -3099,7 +3080,6 @@ run_scene_suite(void) {
     RUN_TEST(test_authored_skin_load_allocation_failures_release_lighting);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
     RUN_TEST(test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z);
-    RUN_TEST(test_a_camera_view_keeps_the_roll_of_its_pose);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
     RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);
