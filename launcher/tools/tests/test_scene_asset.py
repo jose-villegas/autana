@@ -74,6 +74,8 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(loaded.camera.name, "camera")
         decoded = scene_asset.decode(scene_asset.bake(path))
         self.assertEqual(decoded["clips"], ["fly", "tour"])
+        self.assertEqual(decoded["animators"], [dict(entity=entity, clip_count=1, first_clip=first,
+                        default_clip=0, wrap=scene_asset.WRAPS["loop"]) for entity, first in ((2, 0), (3, 1))])
         self.assertEqual([decoded["entities"][c["entity"]]["name"] for c in decoded["cameras"]], ["camera", "tour"])
         packs = build_pack.pack_bytes([self.root])
         self.assertEqual(list(packs), ["hall"])
@@ -91,6 +93,10 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(decoded["skinned_renderers"][0], dict(entity=0, mesh="hall.rig", skin="hall.rig.skin", skeleton="armature"))
         self.assertEqual(decoded["animators"][0]["wrap"], scene_asset.WRAPS["clamp"])
         self.assertEqual(decoded["clips"], ["move"])
+        self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL,
+                         color=[1.0, 1.0, 1.0], intensity=1.0))
+        self.assertEqual(decoded["settings"], dict(ambient_color=[single(v) for v in (0.4, 0.5, 0.6)],
+                         ambient_intensity=single(0.2), tonemap_white=single(0.3)))
         with self.assertRaisesRegex(SettingsError, "takes no bake"):
             load_scene(self.scene(objects.replace('mesh = "rig.import.toml"', 'mesh = "rig.import.toml"\nbake = false')))
         for value in ("default_clip = \"missing\"", "wrap = \"unknown\""):
@@ -98,6 +104,33 @@ class SceneEntryTests(SceneFiles):
             bad = objects.replace('default_clip = "move"' if setting == "default_clip" else 'wrap = "clamp"', value)
             with self.assertRaisesRegex(SettingsError, setting):
                 load_scene(self.scene(bad))
+
+    def test_import_refusals_name_the_rule(self):
+        import_file = write_import(self.root, "rig.import.toml",
+            source='[source]\npath = "rig.blend"\ncredit = "test"\nclips = ["idle", "walk"]\n')
+        skin = renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
+        cases = [(skin + sun_object().replace('color = [1.0, 1.0, 1.0]', 'color = [1.1, 0.5, 0.5]'), '', 'color'),
+                 (skin + sun_object().replace('intensity = 1.0', 'intensity = -1.0'), '', 'intensity'),
+                 (skin, 'tonemap_white = -1.0\n', 'tonemap_white'),
+                 (skin, '[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\n', 'only baked renderers'),
+                 (renderer("a.import.toml") + '[objects.animator]\nclips = ["idle"]\n', '', 'requires a skinned_renderer'),
+                 (skin + '[objects.animator]\nclips = ["missing"]\n', '', 'unique import source.clips'),
+                 (skin + '[objects.animator]\nclips = ["idle", "idle"]\n', '', 'unique import source.clips')]
+        for objects, head, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(SettingsError, message):
+                load_scene(self.scene(objects, head))
+        import_file.write_text(import_file.read_text().replace('["idle", "walk"]', '["idle", "idle"]'))
+        with self.assertRaisesRegex(SettingsError, "duplicate clip names"):
+            load_scene(self.scene(skin))
+
+    def test_camera_node_without_tracks_and_shared_clip_different_nodes_are_refused(self):
+        path = self.root / "clips/fly.anim.toml"
+        with self.assertRaisesRegex(tracks_asset.TracksError, "has no property tracks"):
+            tracks_asset.bake(path, "absent")
+        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "lamp"', 'node = "other"')
+        self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml") + second)
+        with self.assertRaisesRegex(SettingsError, "selects different nodes"):
+            build_pack.pack_bytes([self.root])
 
     def test_skin_import_modes_and_named_refusal(self):
         from r3d.import_settings import load_import_settings
@@ -129,6 +162,8 @@ class SceneEntryTests(SceneFiles):
     def test_a_camera_without_a_path_has_no_clip_and_clears_to_black(self):
         scene = scene_asset.decode(self.entry(renderer("a.import.toml") + lens()))
         self.assertEqual(scene["animators"], [])
+        self.assertEqual(scene["settings"], dict(ambient_color=list(scene_asset.DEFAULT_COLOR),
+                         ambient_intensity=scene_asset.AMBIENT_NONE, tonemap_white=scene_asset.TONEMAP_NONE))
         self.assertEqual(scene["cameras"][0]["clear_rgb"], 0)
 
     def test_a_placement_is_baked_as_rotation_times_scale(self):
@@ -233,14 +268,15 @@ class SceneEntryRefusalTests(unittest.TestCase):
     def test_every_authored_refusal(self):
         original = authored_entry()
         offsets = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS):]
-        cases = [("lights", 2, "B", 255), ("lights", 3, "B", 1),
-                 ("animators", 4, "<I", 2), ("animators", 8, "<H", 1),
-                 ("animators", 10, "B", 255), ("animators", 11, "B", 1),
+        cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", 1),
+                 ("animators", 4, "<I", 2), ("animators", 4, "<I", (1 << 32) - 1), ("animators", 8, "<H", 1),
+                 ("animators", 10, "B", 2), ("animators", 10, "B", 255), ("animators", 11, "B", 1),
                  ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1),
                  ("renderers", 2, "<H", 1)]
         for part in ("lights", "animators", "skinned_renderers"):
             row = scene_asset.ROWS[scene_asset.PARTS.index(part)]
             cases.append((part, row.size, "<H", 0))
+            cases.append((part, 0, "<H", 2))
         for value in (-0.1, 1.1, math.nan, math.inf):
             for component in range(3):
                 cases.append(("lights", 4 + component * 4, "<f", value))
@@ -249,7 +285,11 @@ class SceneEntryRefusalTests(unittest.TestCase):
             cases.extend((part, offset, "<f", value) for part, offset in
                          (("lights", 16), ("settings", 12), ("settings", 16)))
         for part, offset, fmt, value in cases:
-            with self.subTest(part=part, offset=offset, value=value), self.assertRaises(SceneError):
+            message = (part + ": entity" if fmt == "<H" and offset in (0, scene_asset.ROWS[scene_asset.PARTS.index(part)].size)
+                       else "animator: invalid" if part == "animators"
+                       else "light: invalid" if part == "lights"
+                       else "settings: invalid" if part == "settings" else part + ": padding")
+            with self.subTest(part=part, offset=offset, value=value), self.assertRaisesRegex(SceneError, message):
                 entry = bytearray(original)
                 struct.pack_into(fmt, entry, offsets[scene_asset.PARTS.index(part)] + offset, value)
                 scene_asset.decode(entry)
@@ -257,6 +297,24 @@ class SceneEntryRefusalTests(unittest.TestCase):
         animator_at = offsets[scene_asset.PARTS.index("animators")]
         struct.pack_into("<H", entry, animator_at + 8, scene_asset.DEFAULT_CLIP_NONE)
         self.assertEqual(scene_asset.decode(entry)["animators"][0]["default_clip"], scene_asset.DEFAULT_CLIP_NONE)
+
+
+    def test_counts_and_skin_ids_are_strict(self):
+        original = authored_entry()
+        for part, counts in (("transforms", (1, 3)), ("settings", (0, 2))):
+            for count in counts:
+                entry = bytearray(original)
+                struct.pack_into("<H", entry, 2 + 2 * scene_asset.PARTS.index(part), count)
+                with self.subTest(part=part, count=count), self.assertRaisesRegex(SceneError, "transforms must match names"):
+                    scene_asset.decode(entry)
+        skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
+        for field, name in enumerate(("mesh", "skin", "skeleton")):
+            for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):
+                entry = bytearray(original)
+                at = skin + 4 + field * NAME_BYTES
+                entry[at:at + NAME_BYTES] = raw
+                with self.subTest(name=name, raw=raw), self.assertRaisesRegex(SceneError, name + " id is not NUL"):
+                    scene_asset.decode(entry)
 
 
 class ScenePackTests(SceneFiles):

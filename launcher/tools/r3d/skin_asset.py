@@ -8,18 +8,20 @@ from build.c_header import read_define
 from anim import skeleton_asset
 from gltf import gltf_read
 from r3d import gltf_skin, mesh_asset
+from r3d.import_settings import SKIN_LIGHTING
 
 TYPE = b'SKIN'
 OWNER = Path(__file__).resolve().parents[2] / 'main/render/r3d_skin.h'
 VERSION = read_define(OWNER, 'R3D_SKIN_VERSION')
 LIGHTING_MODES = {name: read_define(OWNER, 'R3D_SKIN_LIGHT_' + name.upper())
-                  for name in ('direct', 'renormalised', 'table')}
+                  for name in SKIN_LIGHTING}
 ALIGNMENT = 4
 INFLUENCES = (2, 4)
 DEFAULT_INFLUENCES = 2
 WEIGHT_SUM = 255
 NORMAL_SCALE = 127
 HEADER = struct.Struct('<HBBIIIB3B')
+AT_LIGHTING_MODE = HEADER.size - struct.calcsize('<B3B')
 # mesh_asset owns the LMSH position layout.
 MESH_POSITION = struct.Struct('<3h')
 MATRIX = struct.Struct('<12f')

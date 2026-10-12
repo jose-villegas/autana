@@ -6,7 +6,7 @@
 enum { PATCH_VERTICES = 3, PATCH_CLUSTERS = 1 };
 
 int
-probe_patch(const uint8_t (*albedo)[R3D_SKIN_LIGHT_CHANNELS], const float* values, float white,
+probe_patch(const uint8_t (*albedo)[R3D_SKIN_LIGHT_CHANNELS], const float* values, const int8_t* normal, float white,
             uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS]) {
     static const int16_t positions[PATCH_VERTICES][3] = {{0, 0, 0}, {1, 0, 0}, {0, 0, -1}};
     const r3d_lit_cluster_t cluster = {.vertex_count = PATCH_VERTICES};
@@ -21,7 +21,7 @@ probe_patch(const uint8_t (*albedo)[R3D_SKIN_LIGHT_CHANNELS], const float* value
     uint8_t records[PATCH_VERTICES][STRIDE] = {0};
     for (int v = 0; v < PATCH_VERTICES; v++) {
         records[v][R3D_SKIN_INFLUENCES_MIN] = R3D_SKIN_WEIGHT_SUM;
-        records[v][R3D_SKIN_INFLUENCES_MIN * 2 + 1] = R3D_SKIN_NORMAL_SCALE;
+        memcpy(records[v] + R3D_SKIN_INFLUENCES_MIN * 2, normal, R3D_SKIN_LIGHT_CHANNELS);
     }
     const r3d_skin_t skin = {.joint_count = 1,
                              .influences = R3D_SKIN_INFLUENCES_MIN,

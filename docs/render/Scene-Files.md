@@ -2,7 +2,7 @@
 
 A scene file holds transformed objects, renderer, light and camera components,
 optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
-the scenario places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
+the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
 [scene entry](#the-scene-entry) it reads at run time.
 
 ```toml
@@ -62,7 +62,7 @@ mesh = "statue.import.toml"
 ## Objects
 
 Every object has a unique `name`, an optional transform and one primary
-component table. A skinned renderer may also have an animator. A scene needs
+component table: `mesh_renderer`, `skinned_renderer`, `light` or `camera`. A skinned renderer may also have an animator. A scene needs
 a mesh renderer or skinned renderer.
 
 | Key | Meaning |
@@ -75,7 +75,7 @@ a mesh renderer or skinned renderer.
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
 | `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
-| `animator` | `clips`, `default_clip`, `wrap` | Optional on a skinned renderer; selects clips and playback. |
+| `animator` | `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. |
 | `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
@@ -174,6 +174,13 @@ at $w = 1$ and none at $w = 0$.
 
 ### skinned_renderer and animator
 
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `skinned_renderer` | `mesh`; `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. | Takes no `bake`. | [skinned_renderer](#skinned_renderer) |
+| `animator` | ; `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. | The import's `source.clips`; no default clip; `loop`. | [animator](#animator) |
+
+#### skinned_renderer
+
 ```toml
 [[objects]]
 name = "subject"
@@ -188,6 +195,8 @@ wrap = "loop"
 
 The mesh id is `<scene>.<object>`; the skin id appends `.skin` and the skeleton
 id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
+#### animator
+
 `clips` defaults to the import's `source.clips`; an explicit list selects the
 animator's clips. `default_clip` names one of those clips; absent, nothing plays.
 `wrap` is `loop` (default) or `clamp`. Without an animator the skin uses its
@@ -512,9 +521,7 @@ renderer and its fit reference.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
-| `animator` | `clips`, `default_clip`, `wrap` | Optional on a skinned renderer; selects clips and playback. |
-| `light` | `type`, `color`, `intensity` | Directional bake light. | Required for an object with this component. | [light](#light) |
+| `light` | `type`, `color`, `intensity` | A directional light: baked into baked renderers, applied at runtime to skinned renderers. | Required for an object with this component. | [light](#light) |
 
 #### light
 
@@ -556,15 +563,17 @@ A renderer with `bake = true` needs at least one light (a directional object,
 the camera `region`, or `path` for the path source. A scene must carry what a
 baked renderer reads and may not carry what none reads: the importer rejects
 lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
+Directional lights, `[ambient]` and `tonemap_white` are also read by skinned
+renderers, which require none of them; `[sky]` is read only by a bake.
 
 ## The scene entry
 
 `build_pack.py` bakes each scene file into a `SCNE` entry of its own pack,
 named after the file: `NAME.scene.toml` is entry and pack `NAME`, beside every
-mesh its renderers name and the clip its camera flies
+mesh, skin, skeleton and clip it names
 ([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
 reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
-mesh and the clip, and fails naming whichever is missing or malformed. A scene
+mesh, skin, skeleton and clip it names, and fails naming whichever is missing or malformed. A scene
 and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
 
 Every object is an entity in file order, found by name at runtime. Transforms
@@ -601,5 +610,5 @@ Readers refuse v1, invalid entity indices, nonzero padding, malformed text,
 nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
 animator or skinned-renderer entities, unknown kind or wrap, invalid clip
 ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
-settings. `default_clip=0xFFFF` means no playback. Light-kind codes belong to
+settings. `default_clip=SCENE_ASSET_DEFAULT_CLIP_NONE` means no playback. Light-kind codes belong to
 `scene_internal.h`; wrap codes belong to `anim_track.h`.

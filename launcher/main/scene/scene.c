@@ -204,15 +204,8 @@ open_skins(scene_t* scene) {
 
 static scene_failure_t
 open_lights(scene_t* scene) {
-    if (scene->asset.light_count == 0 && scene->asset.skinned_renderer_count > 0 && scene->ambient_intensity > 0.0F
-        && !scene_lights_allocate(scene)) {
-        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
-    }
     for (int i = 0; i < scene->asset.light_count; i++) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
-        if (row->kind != SCENE_LIGHT_KIND_DIRECTIONAL) {
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[row->entity]);
-        }
         if (!scene_light_set_color(scene, row->entity, row->color)
             || !scene_light_set_intensity(scene, row->entity, row->intensity)) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity]);
