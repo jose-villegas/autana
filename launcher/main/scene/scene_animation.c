@@ -226,11 +226,10 @@ static bool
 prepare_skin_lighting(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* next, bool lit) {
     r3d_skin_light_transfer_t* transfer = NULL;
     if (lit && scene->light_transfer == NULL) {
-        transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
+        transfer = scene_light_transfer_take(scene);
         if (transfer == NULL) {
             return false;
         }
-        r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
     }
     if (!scene_skin_light_apply_mode(scene, entity, next, (scene_skin_light_mode_t)next->skin.lighting_mode)) {
         memory_free(transfer);

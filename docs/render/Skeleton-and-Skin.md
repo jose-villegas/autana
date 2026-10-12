@@ -138,10 +138,11 @@ node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
 `r3d_skin_output_init()` carves it. The scene allocates it together with model
 matrices and the palette in internal RAM. A separate block reserves
 `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex for lit colors and a `mat3f_t`
-world-space normal palette per joint when the scene has lights or nonzero ambient.
-Without lights or nonzero ambient the mesh retains its bind-color pointer, with no copy.
-With lights or nonzero ambient, the renderer's lighting kernel skins positions and normals together
-and shades the bind albedo into that color buffer.
+world-space normal palette per joint when the scene has lights or nonzero
+ambient. Without lights or nonzero ambient the mesh retains its bind-color
+pointer, with no copy. With lights or nonzero ambient, the renderer's lighting
+kernel skins positions and normals together and shades the bind albedo into
+that color buffer.
 The normal palette is the inverse-transpose of entity world times joint palette.
 Scene light directions stay in world space and are shared before cluster
 jobs run; baked renderers keep their pack colors. See [Skinned lighting](Skinned-Lighting.md).
