@@ -1,8 +1,9 @@
 /*
- * Device-only: the audit RUN_TEST wraps around every test on the board (the
+ * On the board: the audit RUN_TEST wraps around every test on the board (the
  * leak check and the frame watch) holds for a test that ends in
  * TEST_PASS(), which leaves by longjmp, and does not count a task the test
- * ended as a leak.
+ * ended as a leak. On the host: the deferred cleanups a fixture registers
+ * run in reverse, once each, even when the test bailed.
  */
 
 #include "suites.h"
@@ -159,8 +160,89 @@ suite_test_harness(void) {
 
 #else
 
+#include <setjmp.h>
+#include <string.h>
+
+#include "test_cleanup.h"
+#include "unity.h"
+
+#define RAN_MAX 4
+
+/* The cleanups that ran, as the letters they note. */
+static char ran[RAN_MAX + 1];
+
 static void
-suite_test_harness(void) {}
+note(char which) {
+    const size_t at = strlen(ran);
+    TEST_ASSERT_TRUE(at < RAN_MAX);
+    ran[at] = which;
+    ran[at + 1] = '\0';
+}
+
+static void
+cleanup_a(void) {
+    note('a');
+}
+
+static void
+cleanup_b(void) {
+    note('b');
+}
+
+/* Registers cleanup_a, then bails the way a failed assertion does, without
+ * the failure. */
+static void
+register_then_bail(void) {
+    suite_add_test_cleanup(cleanup_a);
+    TEST_ABORT();
+}
+
+/* Runs `body` in a frame of its own, so its bail ends it alone, and puts the
+ * test's abort frame back. */
+static void
+run_trapped(void (*body)(void)) {
+    jmp_buf outer;
+    memcpy(outer, Unity.AbortFrame, sizeof outer);
+    if (TEST_PROTECT()) {
+        body();
+    }
+    memcpy(Unity.AbortFrame, outer, sizeof outer);
+}
+
+static void
+test_cleanups_run_in_reverse_registration_order(void) {
+    ran[0] = '\0';
+    suite_add_test_cleanup(cleanup_a);
+    suite_add_test_cleanup(cleanup_b);
+    suite_run_test_cleanup();
+    TEST_ASSERT_EQUAL_STRING("ba", ran);
+}
+
+static void
+test_a_cleanup_registered_twice_runs_once(void) {
+    ran[0] = '\0';
+    suite_add_test_cleanup(cleanup_a);
+    suite_add_test_cleanup(cleanup_a);
+    suite_run_test_cleanup();
+    suite_run_test_cleanup();
+    TEST_ASSERT_EQUAL_STRING("a", ran);
+}
+
+static void
+test_a_cleanup_registered_by_a_test_that_bails_still_runs(void) {
+    ran[0] = '\0';
+    run_trapped(register_then_bail);
+    TEST_ASSERT_EQUAL_STRING("", ran);
+    suite_run_test_cleanup();
+    TEST_ASSERT_EQUAL_STRING("a", ran);
+}
+
+static void
+suite_test_harness(void) {
+    RUN_TEST(test_cleanups_run_in_reverse_registration_order);
+    RUN_TEST(test_a_cleanup_registered_twice_runs_once);
+    RUN_TEST(test_a_cleanup_registered_by_a_test_that_bails_still_runs);
+}
 
 #endif
 
