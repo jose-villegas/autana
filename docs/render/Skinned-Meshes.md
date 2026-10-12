@@ -8,6 +8,8 @@ and what it costs on the board. [Skeleton and skin entries](Skeleton-and-Skin.md
 is the pack format reference; [Skinned-Mesh Lighting](Skinned-Lighting.md)
 holds the lighting measurements.
 
+![A skinned capybara walking, lit at run time, on the board](images/skinned-board-walk.gif)
+
 ```mermaid
 flowchart LR
     Src["rigged .glb / .fbx / .blend<br/>with clips"] --> Import["import file<br/>[source], [skin]"]
