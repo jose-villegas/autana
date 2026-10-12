@@ -153,19 +153,27 @@ skeleton_for(const scene_t* scene, scene_entity_t entity) {
 
 static scene_failure_t
 open_animator(scene_t* scene, const scene_asset_animator_t* row) {
-    const char* clips[ANIM_LAYER_CLIP_NONE];
     if (row->clip_count > ANIM_LAYER_CLIP_NONE) {
         return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id);
-    }
-    for (int c = 0; c < row->clip_count; c++) {
-        clips[c] = scene->asset.clips[row->first_clip + c];
     }
     const char* skeleton = skeleton_for(scene, row->entity);
     if (row->clip_count == 0 && skeleton == NULL) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
     }
+    const char** clips = NULL;
+    if (row->clip_count > 0) {
+        clips = scene_allocate(sizeof *clips * row->clip_count, MEMORY_PSRAM);
+        if (clips == NULL) {
+            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
+        }
+        for (int c = 0; c < row->clip_count; c++) {
+            clips[c] = scene->asset.clips[row->first_clip + c];
+        }
+    }
     scene_failure_t why;
-    if (!scene_animator_set_clips(scene, row->entity, skeleton, clips, row->clip_count, &why)) {
+    const bool bound = scene_animator_set_clips(scene, row->entity, skeleton, clips, row->clip_count, &why);
+    memory_free(clips);
+    if (!bound) {
         return why;
     }
     scene->animators[row->entity].wrap = (anim_wrap_t)row->wrap;
