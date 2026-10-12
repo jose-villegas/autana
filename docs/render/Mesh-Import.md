@@ -75,7 +75,9 @@ number of quantisation ticks per model unit.
 
 | Option | Keys | What it does | Default | Constraint | Option link |
 |---|---|---|---|---|---|
-| `[skin]` | ; `lighting` | Selects the skinned renderer's runtime lighting mode, stored in SKIN. | `"direct"`. | None / see the table below. | [Skin lighting](#skin) |
+| `[skin]` | ; `lighting` | Selects the skinned renderer's runtime lighting mode, stored in SKIN. | `"direct"`. | None / none. | [skin](#skin) |
+
+#### skin
 
 ```toml
 [skin]
@@ -84,10 +86,6 @@ lighting = "direct"
 
 `lighting` is stored in SKIN v2 and selects the runtime kernel on attachment.
 Unknown values fail naming the import file and allowed modes.
-
-#### skin
-
-The `[skin]` table configures runtime lighting for the imported skin.
 
 - `direct` (default): shades the blended normal without normalising it.
 - `renormalised`: normalises the blended normal before direct shading.

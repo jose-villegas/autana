@@ -84,7 +84,8 @@ class SceneEntryTests(SceneFiles):
     def test_skinned_renderer_and_animator_are_authored(self):
         import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
         objects = (renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
-                   + '[objects.animator]\nclips = ["move"]\ndefault_clip = "move"\nwrap = "clamp"\n' + sun_object())
+                   + '[objects.animator]\nclips = ["move"]\ndefault_clip = "move"\nwrap = "clamp"\n' + sun_object().replace('color = [1.0, 1.0, 1.0]', 'color = [0.25, 0.5, 0.75]')
+                   .replace('intensity = 1.0', 'intensity = 2.5'))
         document, binary = rig()
         with mock.patch("r3d.skin_pack.load_rig", return_value=(import_file, document, binary, 5)):
             entry = self.entry(objects, 'tonemap_white = 0.3\n[ambient]\ncolor = [0.4, 0.5, 0.6]\nintensity = 0.2\n')
@@ -94,7 +95,7 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(decoded["animators"][0]["wrap"], scene_asset.WRAPS["clamp"])
         self.assertEqual(decoded["clips"], ["move"])
         self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL,
-                         color=[1.0, 1.0, 1.0], intensity=1.0))
+                         color=[0.25, 0.5, 0.75], intensity=2.5))
         self.assertEqual(decoded["settings"], dict(ambient_color=[single(v) for v in (0.4, 0.5, 0.6)],
                          ambient_intensity=single(0.2), tonemap_white=single(0.3)))
         with self.assertRaisesRegex(SettingsError, "takes no bake"):

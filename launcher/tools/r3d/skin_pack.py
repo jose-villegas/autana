@@ -1,7 +1,7 @@
 """Rig identities and entries added to scene and import packs after their LMSH entries are ready."""
 
 from pathlib import Path
-from functools import cache
+import functools
 
 from bake import bake
 from anim import skeleton_asset, tracks_asset
@@ -16,18 +16,25 @@ SKIN_OWNER = Path(__file__).resolve().parents[2] / "main/render/r3d_skin.h"
 SKIN_ID_SUFFIX = read_define(SKIN_OWNER, "R3D_SKIN_ID_SUFFIX")
 
 
-@cache
+SOURCE_RIG_CACHE_SIZE = 16
+
+
+@functools.lru_cache(maxsize=SOURCE_RIG_CACHE_SIZE)
 def source_rig(source, modified, size):
     return gltf_read.load_asset(source)
 
 
-def rig_ids(mesh_id, settings, cache, offline):
-    rig = load_rig(settings, cache, offline)
+def skin_id(mesh_id):
+    return mesh_id + SKIN_ID_SUFFIX
+
+
+def rig_ids(mesh_id, settings, cache=None, offline=False):
+    rig = load_rig(settings, cache or bake.default_cache(), offline)
     if rig is None:
         raise SettingsError(f'{settings.path}: skinned_renderer requires a rig')
     _, document, _, node = rig
     _, _, skeleton = skeleton_asset.rig(document, node)
-    return mesh_id + SKIN_ID_SUFFIX, skeleton
+    return skin_id(mesh_id), skeleton
 
 
 def load_rig(settings, cache, offline):
@@ -67,10 +74,9 @@ def entries(meshes, jobs, cache, offline, influences=skin_asset.DEFAULT_INFLUENC
                                                   skin_asset.LIGHTING_MODES[settings.skin_lighting])
         except ValueError as error:
             raise SettingsError(f'{origin}: {error}') from error
-        skin_id, _ = rig_ids(mesh_id, settings, cache, offline)
         rig_source = (origin, 'skin', document['nodes'][node]['skin'])
         result.extend([(name, skeleton_asset.TYPE, skeleton, rig_source),
-                       (skin_id, skin_asset.TYPE, skin, (settings.path, mesh_id, 'skin'))])
+                       (skin_id(mesh_id), skin_asset.TYPE, skin, (settings.path, mesh_id, 'skin'))])
         animator = getattr(job.object, 'animator', None)
         clips = list(dict.fromkeys([*settings.source.get('clips', []), *(animator.clips if animator else [])]))
         for clip in clips:
