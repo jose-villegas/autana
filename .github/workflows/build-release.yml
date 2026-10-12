@@ -24,9 +24,9 @@ env:
 jobs:
   build-release:
     name: Build (release, esp32s3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/idf-build
         with:

@@ -28,11 +28,9 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/host-tools
 
       - name: List the exports and meshes the lock has no row for
         id: missing
@@ -76,7 +74,7 @@ jobs:
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.missing.outputs.count != '0'
         with:
           name: bakes-cpu
@@ -86,13 +84,11 @@ jobs:
     name: Lock is current
     if: github.event_name == 'pull_request'
     needs: cpu
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/host-tools
 
       - name: Every needed key has a row and every row is needed
         run: python launcher/tools/bake/bake.py check
@@ -100,16 +96,14 @@ jobs:
   publish:
     name: Publish locked bakes
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/host-tools
 
       - name: Upload each locked file the release lacks
         env:

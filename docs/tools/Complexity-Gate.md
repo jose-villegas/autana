@@ -138,12 +138,13 @@ check differently, so anything else is refused unless
 
 Vendored code is measured where this project changed it. Pristine upstream
 copies are git submodules under `third_party/upstream/`, pinned to the
-upstream commit each vendored copy was taken from: `microui` at
-rxi/microui `0850aba8` (version 2.02), and `Waveshare-ESP32-components` at
-waveshareteam `9f4030c6`, whose `bsp/esp32_s3_touch_amoled_1_8` is the source
-of `launcher/components/esp32_s3_touch_amoled_1_8/` with LVGL cut out. Taking
-an upstream BSP update means moving that pin, re-applying the cut, and
-`diff -r` against the upstream folder to confirm the cut is all that differs.
+upstream commit each vendored copy was taken from, as
+`third_party/vendored.json` records: `microui` is the source of
+`launcher/components/microui/`, and `Waveshare-ESP32-components`'s
+`bsp/esp32_s3_touch_amoled_1_8` the source of
+`launcher/components/esp32_s3_touch_amoled_1_8/` with LVGL cut out. Moving a
+pin fails `scripts/deps/vendored.py check` until `vendored.py update` merges
+the upstream change into the copy ([Framework-Versions.md](Framework-Versions.md)).
 They sit outside `launcher/`, so the
 firmware build never sees them; a worktree or clone needs
 `git submodule update --init` first, and the gate says so when they are
