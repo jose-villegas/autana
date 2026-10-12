@@ -1,11 +1,13 @@
 """Where ESP-IDF's tool installer put things (espressif_tools_root()), the
-ESP-IDF checkout itself (idf_path()), and the interpreter inside the tools
-that has pyserial and esptool (idf_python()).
+ESP-IDF checkout itself (idf_path()), the interpreter inside the tools that
+has pyserial and esptool (idf_python()), and the ESP-IDF pinned for CI and
+for matching locally (idf_pin()).
 
-    from espressif import espressif_tools_root, idf_path, idf_python
+    from espressif import espressif_tools_root, idf_path, idf_pin, idf_python
     root = espressif_tools_root()   # $IDF_TOOLS_PATH, or ~/.espressif
     idf = idf_path()                # $IDF_PATH, or ~/esp/esp-idf
     python = idf_python()           # falls back to sys.executable if not found
+    pin = idf_pin()                 # launcher/idf-pin.json
 
 It also reads the pinned IDF image and commit (idf_pin(), launcher/idf-pin.json)
 and names a build's drift from it (idf_drift()).
@@ -40,6 +42,9 @@ def idf_path():
 
 
 def idf_pin(root=Path(__file__).resolve().parents[3]):
+    """launcher/idf-pin.json: the image CI builds in (`image`, its tag and
+    digest), that image's ESP-IDF `commit`, and the LLVM release of its
+    esp-clang (`esp_clang`), which also pins clang-format and clang-tidy."""
     return json.loads((root / "launcher/idf-pin.json").read_text(encoding="utf-8"))
 
 
