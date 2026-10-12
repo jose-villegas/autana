@@ -536,7 +536,7 @@ def render(builds):
             unique = [symbol for symbol in group if all(not other[symbol] for j, other in enumerate(groups) if j != index)]
             exclusive.append(", ".join(f"{obj}:{symbol} ({group[(obj, symbol)]} B)" for obj, symbol in sorted(unique, key=lambda symbol: (-group[symbol], symbol))))
         differences.append((name, *counts, *exclusive))
-    lines += ["#### Differs between variants", "", "Exclusive symbols are absent from IRAM in every other listed variant. The console reports the full symbol-level diff.", "",
+    lines += ["### Differs between variants", "", "Exclusive symbols are absent from IRAM in every other listed variant. The console reports the full symbol-level diff.", "",
               collapsed("Variant differences", markdown(["Component", *labels, *(label + " only" for label in labels)], differences))]
     return "\n".join(lines)
 

@@ -1,4 +1,5 @@
-"""Write CPU fidelity tables from the doc-image run's comparison logs."""
+"""Markdown tables for generated doc blocks: write, parse back and collapse
+them, plus the CPU fidelity tables from the doc-image run's comparison logs."""
 import argparse
 import pathlib
 import re
