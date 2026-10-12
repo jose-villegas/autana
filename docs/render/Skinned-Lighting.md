@@ -48,9 +48,9 @@ and the bake's 1/2.2 gamma and byte rounding. Runtime lighting has no shadow,
 sky visibility, ambient occlusion or bounced-light pass.
 
 The decode table has `R3D_SKIN_LIGHT_DECODE_SIZE` uint16 entries,
-stored as the rounded upper half of an IEEE float. An attached skin in a scene with directional
-lights or nonzero ambient allocates the decode and encode tables together
-in internal RAM. Baked-only scenes allocate neither table.
+stored as the rounded upper half of an IEEE float. An attached skin in a
+scene with directional lights or nonzero ambient allocates the decode and
+encode tables together in internal RAM. Baked-only scenes allocate neither table.
 The radiance bins use `R3D_SKIN_LIGHT_RADIANCE_LOW_BITS` mantissa bits
 below `R3D_SKIN_LIGHT_RADIANCE_SPLIT_EXP` and
 `R3D_SKIN_LIGHT_RADIANCE_BITS` above it. Entries sample bin centers;
@@ -62,14 +62,14 @@ The host sweep checks encoded bytes against the float formula. Its error
 limits, albedo coverage and tone-map white sampling are in `suite_skin_light.c`.
 
 The scene prepares shared world-space light directions and premultiplied
-colors before splitting its cluster ranges. A directional
-light's direction toward the light is its entity's +Y turned by its
-rotation, matching `import_settings.py:load_light`.
-Only skinned renderers use runtime lights. Without lights or nonzero ambient, their mesh view
-retains the bind-color pointer and does no color copy or shading.
-Scenes with attached skins and either directional lights or nonzero ambient reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per
-vertex for lit colors and a `mat3f_t` normal palette per joint, in a separate
-internal RAM block per skin. The first light allocates all existing skins'
+colors before splitting its cluster ranges. A directional light's direction
+toward the light is its entity's +Y turned by its rotation, matching
+`import_settings.py:load_light`.
+Only skinned renderers use runtime lights. Without lights or nonzero ambient,
+their mesh view retains the bind-color pointer and does no color copy or shading.
+Scenes with attached skins and either directional lights or nonzero ambient
+reserve `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex for lit colors and a
+`mat3f_t` normal palette per joint, in a separate internal RAM block per skin. The first light allocates all existing skins'
 blocks transactionally; a new skin in a lit scene allocates its own block.
 Lighting needs per-vertex albedo. A light setter in a scene holding a skin
 without vertex colors (a face-color skin, for example) fails with

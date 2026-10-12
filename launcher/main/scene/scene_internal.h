@@ -228,6 +228,7 @@ void scene_skin_light_table_release(scene_t* scene, scene_entity_t entity);
 bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
 void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
 bool scene_light_color_fits(vec3f_t linear_rgb);
+r3d_skin_light_transfer_t* scene_light_transfer_take(const scene_t* scene);
 bool scene_lights_allocate(scene_t* scene);
 void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
