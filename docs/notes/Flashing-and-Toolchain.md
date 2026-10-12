@@ -92,7 +92,9 @@ continues if the PMIC does not acknowledge or the restart does not occur.
 ## Toolchain
 
 - **ESP-IDF v5.5+ is required.** `launcher/main/idf_component.yml` declares
-  `idf: ">=5.5"`. Several versions can coexist; they are keyed by `IDF_PATH`.
+  `idf: ">=5.5"`; CI builds on the exact commit `launcher/idf-pin.json` names
+  ([Framework-Versions.md](../tools/Framework-Versions.md)). Several versions
+  can coexist; they are keyed by `IDF_PATH`.
 - On Windows, `launcher/tools/build/idf.sh` invokes `export.bat` through
   `cmd` with the MSYS environment removed. A working `idf.py` or PowerShell
   activation alone is insufficient: `export.bat` must have batch-compatible

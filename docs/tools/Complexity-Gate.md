@@ -129,11 +129,12 @@ local ESP-IDF install provides. Not the pre-commit hook, which has to stay
 fast enough to run on every commit. `--changed` is the fast path for local
 use instead: point it at whatever ref the branch forked from.
 
-clang-tidy is pinned to major 19, resolved the same way
-`scripts/gates/check-format.sh` resolves clang-format: `$CLANG_TIDY` if set,
-then `clang-tidy-19` or `clang-tidy` on `PATH`, then ESP-IDF's bundled
-esp-clang under the ESP-IDF tools root. A different major scores this
-check differently, so anything else is refused unless
+clang-tidy is pinned to the esp-clang release `launcher/idf-pin.json` names,
+resolved the same way `scripts/gates/check-format.sh` resolves clang-format:
+`$CLANG_TIDY` if set, then `clang-tidy-<major>` or `clang-tidy` on `PATH`,
+then ESP-IDF's bundled esp-clang under the ESP-IDF tools root, the exact
+release first. Another patch release of that major runs with a note; a
+different major scores this check differently, so it is refused unless
 `CLANG_TIDY_ANY_VERSION=1` is set: informational use only, never CI.
 
 Vendored code is measured where this project changed it. Pristine upstream

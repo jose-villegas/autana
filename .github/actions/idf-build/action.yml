@@ -15,6 +15,11 @@ inputs:
   command:
     description: Shell command run from launcher/.
     required: true
+  lock-may-change:
+    description: >-
+      'true' when the command re-solves launcher/dependencies.lock on purpose
+      (the ESP-IDF refresh); otherwise a changed lock fails the build.
+    default: 'false'
 
 runs:
   using: composite
@@ -42,19 +47,20 @@ runs:
       env:
         BUILD_COMMAND: ${{ inputs.command }}
       run: |
-        image=$(python3 -c 'import sys; sys.path.insert(0, "launcher/tools"); from build.espressif import idf_pin; print(idf_pin()["image"])')
+        image=$(python3 scripts/deps/idf_pin.py show image)
         docker run --rm -t -e IDF_TARGET=esp32s3 \
           -v "$GITHUB_WORKSPACE:/app" -w /app/launcher \
           -v "${{ runner.temp }}/bakes:/bakes" -e AUTANA_BAKE_CACHE=/bakes \
           -v "${{ runner.temp }}/ccache:/ccache" -e CCACHE_DIR=/ccache \
           -e CCACHE_MAXSIZE=150M -e CCACHE_COMPILERCHECK=content \
           -e BUILD_COMMAND "$image" /bin/bash -c \
-          'git config --global --add safe.directory "*"; git -C "$IDF_PATH" rev-parse HEAD; ccache -z > /dev/null; eval "$BUILD_COMMAND" && ccache -s'
+          'git config --global --add safe.directory "*" && python3 ../scripts/deps/idf_pin.py check && ccache -z > /dev/null && eval "$BUILD_COMMAND" && ccache -s'
 
     # launcher/dependencies.lock is the owner of every component version a
     # build uses; the component manager rewrites it rather than fail when the
     # manifests or the ESP-IDF version no longer match it.
     - name: The build used launcher/dependencies.lock as committed
+      if: inputs.lock-may-change != 'true'
       shell: bash
       run: |
         if ! git diff --quiet -- launcher/dependencies.lock; then
