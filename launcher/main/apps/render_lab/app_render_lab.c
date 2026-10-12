@@ -192,6 +192,7 @@ draw_menu(const input_t* input, uint32_t dt_ms) {
 
     const render_lab_menu_screen_state_t state = {
         .scene_name = current_scene()->name,
+        .controls = current_scene()->controls,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
 
@@ -321,7 +322,7 @@ render_lab_console(const char* args) {
         (void)fflush(stdout);
         return true;
     }
-    return false;
+    return render_lab_capybara_console(args, current_scene() == &scene_capybara);
 }
 
 APP_CONSOLE("render", render_lab_console);
