@@ -102,28 +102,32 @@ user set.
 
 ## 4. Budget
 
-The skin stage's budget is about 1 µs per vertex: a character of 300 to 800
-vertices skinned in under a millisecond. The `capybara_perf` suite measures
-it on the board with the demo capybara (800 vertices as the suite logs
-them, 2 influences, direct lighting, one light) playing gallop.
+<!-- generated: skinning-budget check: python launcher/tools/r3d/skin_light/report_skinning_board.py docs/render/data/skinning-board.txt docs/render/Skinned-Meshes.md --check -->
+The skin stage's budget is about 1 Âµs per vertex. The board capture
+measures the animated subject playing, including runtime lighting.
 
 | Stage, per frame | One core | Two cores |
 |---|---:|---:|
-| Animate: sample, blend, palette | 288 µs | 307 µs |
-| Skin and light | 2149 µs (2.69 µs / vertex) | 1284 µs (1.61 µs / vertex) |
-| Whole animation step (the shipped path; cores not recorded) | 1630 µs | |
-| Scene render, playing vs paused | | +2.3 ms (9.8 vs 7.5 ms) |
+| Animate: sample, blend, palette | 289 Âµs (0.361 Âµs / vertex) | 307 Âµs (0.384 Âµs / vertex) |
+| Skin and light | 2149 Âµs (2.686 Âµs / vertex) | 1284 Âµs (1.605 Âµs / vertex) |
+| Whole animation step (cores not recorded) | 1630 Âµs (2.038 Âµs / vertex) | |
+| Scene render, playing vs paused | | +2321 Âµs (9811.5 vs 7486 Âµs) |
+
+render, paused=0: 4 of 5 runs.
 
 | Internal RAM | Free / largest block, bytes |
 |---|---:|
 | Before the scene loads | 100475 / 47104 |
-| Capybara loaded and playing | 87443 / 47104 |
+| Scene loaded | 87443 / 47104 |
+| Scene playing | 87443 / 47104 |
 
-Build `2e0848e1164f-diag`, five runs of 100 frames each after one warm-up
-frame; runs agree within 1%. To repeat: `autana flash diag --perf-scope`,
-then `autana suite run_capybara_perf_suite`. Skinning splits across both cores by cluster;
-animating a single character gains nothing from the split. The skin stage
-is above budget on both cores.
+Build `2e0848e1164f-diag`; 5 runs, 100 samples per stage,
+800 vertices. Values are medians of each run's last measurement.
+
+To repeat: `autana flash diag --perf-scope`, then
+`autana suite run_capybara_perf_suite`. Skinning splits by cluster;
+animating one character gains nothing from the split.
+<!-- /generated: skinning-budget -->
 
 ## 5. Current limits
 

@@ -1,5 +1,6 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
+#include <string.h>
 #include "apps/render_lab/render_lab.h"
 #include "core/timing.h"
 #include "gfx/present/gfx_fb_guard.h"
@@ -7,9 +8,21 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "render/context/render_context.h"
+#include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
 #include "ui/ui.h"
 #include "unity.h"
+
+scene_t*
+render_lab_test_loaded_scene(const char* key) {
+    for (int i = 0; i < scene_loaded_count(); i++) {
+        scene_t* scene = scene_loaded_at(i);
+        if (strcmp(scene->id, key) == 0) {
+            return scene;
+        }
+    }
+    return NULL;
+}
 
 void
 render_lab_test_enter(render_lab_test_t* saved, const char* scene) {
@@ -46,6 +59,8 @@ render_lab_test_frame(bool switching) {
     gfx_present_wait();
     ui_clear_band_overlay();
     scene_shell_compose(RENDER_LAB_TEST_FRAME_MS);
+    /* Switching must discard an expanded picture; a steady frame can keep
+     * its native target when no upscale is needed. */
     if (switching) {
         TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
     }

@@ -40,11 +40,5 @@ void console_start(void);
  * such as SCREENSHOT's framebuffer stream (console_screenshot.c). */
 void console_emit_line(const char* prefix, const char* payload);
 
-/* printf()+fflush() reply: used by every SET/GET/RESET/TUNE reply
- * (console_tune.c) and by this file's own fallback dispatch. A tune
- * reply is one short line, so buffered stdio is fine, unlike SCREENSHOT's
- * own console_emit_line() above. */
-void console_reply_stdio(const char* line);
-
 /* True once per unclaimed line, `out` filled; false with `out` untouched. */
 bool console_take_unclaimed_line(char* out, size_t out_size);

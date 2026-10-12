@@ -123,6 +123,18 @@ job_test_slow(void* ctx) {
 }
 
 static void
+test_an_idle_worker_split_runs_both_halves_on_device(void) {
+    TEST_ASSERT_TRUE(job_wait(JOB_TEST_WAIT_MS));
+    int first = 0;
+    int second = 0;
+    const job_test_ctx_t a = {.value = 0, .observed = &first};
+    const job_test_ctx_t b = {.value = 0, .observed = &second};
+    TEST_ASSERT_TRUE(job_run_split(job_test_increment, &a, &b, sizeof a));
+    TEST_ASSERT_EQUAL_INT(1, first);
+    TEST_ASSERT_EQUAL_INT(1, second);
+}
+
+static void
 test_a_try_on_an_idle_worker_reaches_core_1(void) {
     volatile bool finished = false;
     const job_slow_ctx_t slow = {.finished = &finished};
@@ -157,6 +169,7 @@ suite_job(void) {
     RUN_TEST(test_a_host_split_reports_inline_and_finishes_both_ranges);
 #endif
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_an_idle_worker_split_runs_both_halves_on_device);
     RUN_TEST(test_a_try_on_an_idle_worker_reaches_core_1);
     RUN_TEST(test_a_try_refuses_while_a_job_is_outstanding);
 #endif

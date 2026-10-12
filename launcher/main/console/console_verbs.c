@@ -1,8 +1,15 @@
 #include "console/console_verbs.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "core/registry.h"
+
+void
+console_reply_stdio(const char* line) {
+    printf("%s\n", line);
+    fflush(stdout);
+}
 
 /* Verb names are matched ignoring case, so the lowercase name a person
  * types and the uppercase one a harness has always sent are the same
