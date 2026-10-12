@@ -176,7 +176,7 @@ capybara_status(void) {
     return buf;
 }
 
-static bool
+static inline bool
 scene_capybara_console(const char* args, console_reply_fn reply) {
     return render_lab_clips_reply(&choice, args, reply);
 }
@@ -194,4 +194,4 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .status = capybara_status,
                                            .steer = scene_capybara_steer,
                                            .controls = scene_capybara_controls,
-                                           .console = scene_capybara_console};
+                                           .console = RENDER_LAB_SCENE_CONSOLE(scene_capybara_console)};

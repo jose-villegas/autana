@@ -84,7 +84,7 @@ test_console_gallop_blends_and_skins(void) {
     fixture_t* f = fixture();
     render_lab_test_frame(false, NULL);
     char command[ASSET_NAME_MAX];
-    (void)snprintf(command, sizeof command, CLIP_COMMAND, CLIP_BLEND_MS);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, CLIP_COMMAND, CLIP_BLEND_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     const scene_animator_t* a = &f->scene->animators[f->subject];
     TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blend_ms);
@@ -201,7 +201,7 @@ static void
 test_animation_and_frame_cost(void) {
     fixture_t* f = fixture();
     char command[ASSET_NAME_MAX];
-    (void)snprintf(command, sizeof command, CLIP_COMMAND, CLIP_CUT_MS);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, CLIP_COMMAND, CLIP_CUT_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     assert_skin_changes(f);
     heap_report(SKIN_PERF_PHASE_PLAYING);
@@ -212,7 +212,8 @@ test_animation_and_frame_cost(void) {
     report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, false, SKIN_PERF_CORES_ONE);
     report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, true, SKIN_PERF_CORES_TWO);
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
-    perf_stats_t playing_render, paused_render;
+    perf_stats_t playing_render;
+    perf_stats_t paused_render;
     const perf_stats_t playing = frame_cost(f, false, &playing_render);
     const perf_stats_t paused = frame_cost(f, true, &paused_render);
     const int joints = f->scene->animators[f->subject].skeleton.joint_count;

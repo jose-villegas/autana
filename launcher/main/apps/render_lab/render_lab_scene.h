@@ -31,3 +31,12 @@ typedef struct {
      * false means the command is not this scene's. */
     bool (*console)(const char* args, console_reply_fn reply);
 } render_lab_scene_t;
+
+/* A scene's `.console`: the hook in a development build, NULL otherwise, as
+ * APP_CONSOLE_PTR() does, so a release links none of the console. Declare
+ * the hook static inline so a release draws no unused-function warning. */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#define RENDER_LAB_SCENE_CONSOLE(hook) (hook)
+#else
+#define RENDER_LAB_SCENE_CONSOLE(hook) NULL
+#endif
