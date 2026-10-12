@@ -24,12 +24,12 @@ _Static_assert(sizeof(((scene_asset_t*)0)->names) == sizeof(void*), "mapped view
 
 static uint16_t
 count(asset_view_t entry, int part) {
-    return asset_read_u16(entry.data + SCENE_ASSET_AT_COUNTS + part * sizeof(uint16_t));
+    return asset_read_u16(entry.data + SCENE_ASSET_AT_COUNTS + (part * sizeof(uint16_t)));
 }
 
 static const void*
 section(asset_view_t entry, int part, size_t row) {
-    const uint32_t offset = asset_read_u32(entry.data + SCENE_ASSET_AT_OFFSETS + part * sizeof(uint32_t));
+    const uint32_t offset = asset_read_u32(entry.data + SCENE_ASSET_AT_OFFSETS + (part * sizeof(uint32_t)));
     if (offset % ENTRY_ALIGNMENT != 0 || offset < SCENE_ASSET_HEADER_SIZE
         || (uint64_t)offset + (uint64_t)count(entry, part) * row > entry.size) {
         return NULL;
@@ -137,9 +137,9 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
 static bool
 entities_unique(const uint8_t* rows, size_t stride, int count) {
     for (int i = 0; i < count; i++) {
-        const uint16_t entity = asset_read_u16(rows + i * stride);
+        const uint16_t entity = asset_read_u16(rows + (i * stride));
         for (int j = 0; j < i; j++) {
-            if (entity == asset_read_u16(rows + j * stride)) {
+            if (entity == asset_read_u16(rows + (j * stride))) {
                 return false;
             }
         }
@@ -162,7 +162,7 @@ check_rows(const scene_asset_t* scene) {
             return ASSET_ERR_FORMAT;
         }
         for (int i = 0; i < count; i++) {
-            if (!row_fits(scene, part, rows + i * layout->stride)) {
+            if (!row_fits(scene, part, rows + (i * layout->stride))) {
                 return ASSET_ERR_FORMAT;
             }
         }
