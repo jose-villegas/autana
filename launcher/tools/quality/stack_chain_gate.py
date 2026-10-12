@@ -4,7 +4,7 @@
 Discover launcher/**/stack_chain.txt: root FUNCTION test|frame|system|boot and
 indirect CALLER... : CALLEE... (private names: file.c:function).
 Compiler graphs close source pointer calls; context and budgets are derived.
-Uncompiled libraries are not counted: newlib printf (_vfprintf_r ~800 B),
+Uncompiled libraries are not counted: the C library's printf family,
 esp_log and FreeRTOS. timing.c's board watermark check covers the rest.
 
     stack_chain_gate.py [build-dir]
@@ -341,7 +341,7 @@ def main(argv):
         if subprocess.run([sys.executable, CHECKER, out]).returncode != 0:
             status = 1
     print("stack_chain_gate: %s; counts recompiled source frames only. "
-          "Uncompiled newlib printf (_vfprintf_r ~800 B), esp_log and FreeRTOS "
+          "Uncompiled libc printf, esp_log and FreeRTOS "
           "are not counted; timing.c board watermark check covers the rest."
           % ("FAIL" if status else "PASS"))
     return status

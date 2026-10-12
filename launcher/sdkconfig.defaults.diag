@@ -45,3 +45,8 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 # every task, which the main task's stack-chain reserve has no room for. A
 # backtrace without it ends at the task function, which is all one needs.
 CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER=n
+
+# The suites run on the main task. GCC 15's frames put the deepest compiled
+# chain (stack_chain_gate) 64 B past ESP-IDF's 3584 B default less the gate's
+# reserve; the board's own low-water mark was unchanged (704 B free).
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=3648
