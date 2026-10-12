@@ -59,8 +59,6 @@ render_lab_test_frame(bool switching) {
     gfx_present_wait();
     ui_clear_band_overlay();
     scene_shell_compose(RENDER_LAB_TEST_FRAME_MS);
-    /* Switching must discard an expanded picture; a steady frame can keep
-     * its native target when no upscale is needed. */
     if (switching) {
         TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
     }

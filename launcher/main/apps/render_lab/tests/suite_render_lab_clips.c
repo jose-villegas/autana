@@ -21,6 +21,7 @@ typedef struct {
     scene_t scene;
     transformf_t shown_pose, frozen_pose;
     render_lab_clips_t choice;
+    void* blocked_heap;
     char reply[TEST_CLIP_COUNT * (ASSET_NAME_MAX + sizeof("RENDER clip= current=1\n")) + sizeof("RENDER_END\n")];
     char long_name[ASSET_NAME_MAX + 1];
 } clip_fixture_t;
@@ -30,6 +31,7 @@ static clip_fixture_t* shown;
 static void
 release_fixture(void) {
     render_lab_clips_destroy(&shown->choice);
+    memory_free(shown->blocked_heap);
     memory_free(shown);
     shown = NULL;
 }
@@ -87,6 +89,7 @@ test_listing_marks_default_and_fallback_playback(void) {
     TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
     render_lab_clips_destroy(&f->choice);
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "missing"));
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BLEND_DEFAULT_MS, f->choice.blend_ms);
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     request(f, "clips");
     TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=1\nRENDER clip=gallop current=0\nRENDER_END\n", f->reply);
@@ -95,7 +98,7 @@ test_listing_marks_default_and_fallback_playback(void) {
 static void
 test_console_errors_leave_playback_unchanged(void) {
     clip_fixture_t* f = fixture();
-    char selection[sizeof("clip gallop 1000")];
+    char selection[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
     (void)snprintf(selection, sizeof selection, "clip gallop %d", TEST_BLEND_MS);
     request(f, selection);
     reject(f, "clip missing", "RENDER_ERR unknown clip 'missing'\n");
@@ -123,7 +126,7 @@ test_console_accepts_name_and_blend_boundaries(void) {
     f->long_name[ASSET_NAME_MAX - 1] = '\0';
     f->clips[1].id = f->long_name;
     static const int blends[] = {0, RENDER_LAB_BLEND_MAX_MS};
-    char command[ASSET_NAME_MAX + sizeof("clip  1000")];
+    char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
     for (size_t i = 0; i < sizeof blends / sizeof blends[0]; i++) {
         (void)snprintf(command, sizeof command, "clip %s %d", f->long_name, blends[i]);
         request(f, command);
@@ -141,22 +144,22 @@ test_console_accepts_name_and_blend_boundaries(void) {
 static void
 test_console_matches_case_folded_words(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(render_lab_clips_console(&f->choice, "CLIP gallop 0"));
+    TEST_ASSERT_TRUE(render_lab_clips_reply(&f->choice, "CLIP gallop 0", capture_reply));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
 }
 
 static void
 test_console_uses_current_blend_when_omitted(void) {
     clip_fixture_t* f = fixture();
-    char command[sizeof("clip gallop 1000")];
+    char command[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
     (void)snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS);
-    TEST_ASSERT_TRUE(render_lab_clips_console(&f->choice, command));
-    TEST_ASSERT_TRUE(render_lab_clips_console(&f->choice, "clip idle"));
+    TEST_ASSERT_TRUE(render_lab_clips_reply(&f->choice, command, capture_reply));
+    TEST_ASSERT_TRUE(render_lab_clips_reply(&f->choice, "clip idle", capture_reply));
     TEST_ASSERT_EQUAL_INT(0, f->choice.selected);
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     TEST_ASSERT_EQUAL_INT(TEST_BLEND_MS, f->choice.blend_ms);
     TEST_ASSERT_EQUAL_UINT32(TEST_BLEND_MS, f->animator.layer.blend_ms);
-    TEST_ASSERT_FALSE(render_lab_clips_console(&f->choice, "scene capybara"));
+    TEST_ASSERT_FALSE(render_lab_clips_reply(&f->choice, "scene capybara", capture_reply));
 }
 
 static void
@@ -175,6 +178,19 @@ test_picker_init_destroy_releases_items(void) {
     TEST_ASSERT_EQUAL_INT(0, f->choice.count);
     TEST_ASSERT_EQUAL(free_before, memory_free_bytes(MEMORY_PSRAM));
 }
+
+#ifdef HOST_HEAP_ARENA
+static void
+test_picker_init_reports_allocation_failure(void) {
+    clip_fixture_t* f = fixture();
+    f->blocked_heap = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(f->blocked_heap);
+    TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_NULL(f->choice.items);
+    TEST_ASSERT_EQUAL_INT(0, f->choice.count);
+    TEST_ASSERT_EQUAL_INT(RENDER_LAB_BLEND_DEFAULT_MS, f->choice.blend_ms);
+}
+#endif
 
 static int controls_drawn;
 
@@ -312,6 +328,9 @@ run_render_lab_clips_suite(void) {
     RUN_TEST(test_console_accepts_name_and_blend_boundaries);
     RUN_TEST(test_console_matches_case_folded_words);
     RUN_TEST(test_picker_init_destroy_releases_items);
+#ifdef HOST_HEAP_ARENA
+    RUN_TEST(test_picker_init_reports_allocation_failure);
+#endif
     RUN_TEST(test_console_uses_current_blend_when_omitted);
     RUN_TEST(test_menu_calls_optional_controls);
     RUN_TEST(test_menu_dropdown_plays_with_selected_blend);

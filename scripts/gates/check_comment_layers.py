@@ -39,6 +39,8 @@ from tracked import tracked_files  # noqa: E402
 from check_doc_citations import CITATIONS, CITED_BY  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.packages import FIRST_PARTY  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from generated_blocks import MARKER  # noqa: E402
 
 # Below the apps: all of launcher/main/ except apps/, the packages and the
 # test tree. A new folder is checked from the day it exists.
@@ -117,6 +119,10 @@ def problems(root=".", context=False, files=None):
         lines = text.splitlines()
         if rp == CITATIONS:
             text = "\n".join(blank_cited_by(line) for line in lines)
+        for marker in reversed(list(MARKER.finditer(text))):
+            if marker.group(1) == "generated" and marker.group(4):
+                start, end = marker.span(4)
+                text = text[:start] + " " * (end - start) + text[end:]
         for m in hits(text):
             line = text.count("\n", 0, m.start()) + 1
             found.append(f"{rp}:{line}: document names {canonical(m.group(), names)}")

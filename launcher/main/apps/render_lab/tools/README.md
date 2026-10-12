@@ -70,8 +70,8 @@ its scene by name rather than through the menu:
 
 | Command | Does |
 |---|---|
-| `autana render clips` | the showing scene's clips, and which one the picker holds |
-| `autana render clip <name> [blend_ms]` | plays that clip, blending over blend_ms (the picker's blend when omitted); `RENDER_ERR` when the scene has no animated subject |
+| `autana render clips` | the showing scene's clips, and which one the picker holds; a scene without a clip picker does not answer |
+| `autana render clip <name> [blend_ms]` | plays that clip, blending over blend_ms, which the picker then keeps (its current blend when omitted) |
 | `autana render scenes` | every scene's key and name, and which one is showing |
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |

@@ -88,7 +88,7 @@ console_copy_text(char* into, size_t into_size, const char* from) {
 
 typedef void (*console_reply_fn)(const char* line);
 
-/* Short replies can use stdio; capture streams need the driver's bulk write. */
+/* printf()+fflush() for a one-line reply; a long stream such as SCREENSHOT's uses console_emit_line(). */
 void console_reply_stdio(const char* line);
 
 /* `args` is what follows the verb and one space, or "" for a bare verb with
