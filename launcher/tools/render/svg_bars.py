@@ -1,4 +1,4 @@
-"""Deterministic, accessible byte-scaled bars for generated memory tables.
+"""Deterministic, accessible byte-scaled bars for generated tables.
 
 An SVG shown through <img> follows the viewer's OS colour scheme, not the
 page's theme, so text uses one grey that reads on GitHub's light and dark
@@ -31,12 +31,8 @@ KB_BYTES = 1024
 # Contrast about 4.2:1 on GitHub's light (#ffffff) and 4.5:1 on its dark (#0d1117) background.
 TEXT_FILL = '#737c86'
 INSIDE_FILL = '#1f2328'
-IDF_FILL = '#8c959f'
-OURS_FILL = '#e36209'
-SLACK_FILL = '#b1bac4'
-DRAM_FILL = '#4c8bf5'
-HEAP_FILL = '#2da44e'
-COMPONENT_TOP_COUNT = 8
+AXIS_FILL = '#8c959f'
+LEGEND_SWATCH_OFFSET = 3
 
 
 def text(x, y, value, anchor='start', css=None):
@@ -88,7 +84,7 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
             lines.append(text(f'{x + END_GAP:.2f}', y + NOTE_OFFSET, note[0], css='note'))
     y = TOP + len(rows) * ROW_HEIGHT
     if axis:
-        lines.append(f'<line x1="{LEFT}" y1="{y}" x2="{LEFT + BAR_WIDTH}" y2="{y}" stroke="{IDF_FILL}"/>')
+        lines.append(f'<line x1="{LEFT}" y1="{y}" x2="{LEFT + BAR_WIDTH}" y2="{y}" stroke="{AXIS_FILL}"/>')
         y += CAPTION_SPACING
         lines.extend((text(LEFT, y, axis[0]), text(LEFT + BAR_WIDTH, y, axis[1], 'end')))
     y += CAPTION_SPACING
@@ -99,7 +95,7 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
     for index, (label, fill) in enumerate(legend):
         x = MARGIN + (index % per_row) * LEGEND_SPACING
         legend_y = y + (index // per_row) * CAPTION_SPACING
-        lines.append(f'<rect x="{x}" y="{legend_y - TEXT_OFFSET + 3}" width="{TEXT_OFFSET}" height="{TEXT_OFFSET}" fill="{fill}"/>')
+        lines.append(f'<rect x="{x}" y="{legend_y - TEXT_OFFSET + LEGEND_SWATCH_OFFSET}" width="{TEXT_OFFSET}" height="{TEXT_OFFSET}" fill="{fill}"/>')
         lines.append(text(x + CAPTION_SPACING, legend_y, label))
     return '\n'.join([*lines, '</svg>', ''])
 

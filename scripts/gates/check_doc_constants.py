@@ -10,6 +10,9 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from doc_tables import table_rows
+
 from c_constants import constants
 from c_comments import balanced_end, blank_comments
 
@@ -191,24 +194,6 @@ def any_field_numbers(field, text):
         other_fields = r"\b(?:" + "|".join(map(re.escape, TABLE_FIELDS)) + r"|heats_to)\b"
         if number and number.start() - match.end() <= 24 and not re.search(other_fields, gap, re.I):
             yield number
-
-
-def table_rows(text):
-    """Yield Markdown table data rows with their header cells."""
-    lines = text.splitlines()
-    number = 0
-    while number + 1 < len(lines):
-        header, divider = lines[number].strip(), lines[number + 1].strip()
-        if not (header.startswith("|") and divider.startswith("|") and
-                re.fullmatch(r"[| :\-]+", divider)):
-            number += 1
-            continue
-        headings = [cell.strip() for cell in header.strip("|").split("|")]
-        number += 2
-        while number < len(lines) and lines[number].lstrip().startswith("|"):
-            cells = [cell.strip() for cell in lines[number].strip().strip("|").split("|")]
-            yield number + 1, headings, cells
-            number += 1
 
 
 def table_claims(doc, text, values, mismatches, skipped):

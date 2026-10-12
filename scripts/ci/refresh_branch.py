@@ -9,7 +9,7 @@ run's tables into whichever documents hold their blocks now.
 
     python scripts/ci/refresh_branch.py BRANCH MESSAGE --tables DIR [IMAGE ...]
 
-Each IMAGE is a path under docs/images/ as the run left it; one the run deleted is deleted. REFRESH_REMOTE
+Each IMAGE is a repository-relative path as the run left it; one the run deleted is deleted. REFRESH_REMOTE
 names the remote (origin by default). Exits 0 having pushed BRANCH, or 3 when main already matches
 the run and there is nothing to commit.
 """
@@ -24,8 +24,6 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from generated_blocks import apply_tables  # noqa: E402
-sys.path.insert(0, str(ROOT / "scripts/gates"))
-from check_generated_files import generated_files, regenerate  # noqa: E402
 
 UNCHANGED = 3
 
@@ -59,12 +57,6 @@ def refresh(root, branch, message, tables, images, remote="origin"):
             shutil.copyfile(copy, target)
             git("add", "--", image, cwd=root)
     apply_tables(root, pathlib.Path(tables))
-    for name in generated_files(root):
-        target = root / name
-        made = regenerate(root, name)
-        if made != target.read_bytes():
-            target.write_bytes(made)
-            git("add", "--", name, cwd=root)
     git("add", "--update", "--", "*.md", cwd=root)
     if not git("diff", "--cached", "--name-only", cwd=root).strip():
         return False

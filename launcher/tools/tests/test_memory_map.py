@@ -130,7 +130,7 @@ class MemoryMapTests(unittest.TestCase):
         self.assertIn("| libfixed.a | IDF | 4 | 4 |", body)
         self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", body)
         self.assertIn("| extra | not built | 4 |", body)
-        differs = body.split("#### Differs between variants")[1].split("#### Release shared block")[0]
+        differs = body.split(memory.DIFFERENCES_HEADING)[1]
         self.assertNotIn("libfixed.a", differs)
         self.assertNotIn("literal_only", differs)
         self.assertIn("extra.c.obj:extra (4 B)", differs)

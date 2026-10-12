@@ -64,7 +64,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: memory-tables
-          path: launcher/build/memory-tables/*.md
+          path: launcher/build/memory-tables/
 
   refresh:
     name: Regenerate and compare
@@ -164,6 +164,13 @@ jobs:
           set -e
           [ "$code" -le 1 ] || exit "$code"
           grep '^changed ' "$RUNNER_TEMP/memory-report.txt" >> "$RUNNER_TEMP/changed.txt" || true
+          tables=launcher/tools/results/doc_images/out/cpu/tables
+          while IFS= read -r -d '' chart; do
+            name=${chart#"$tables/"}
+            if ! cmp -s "$chart" "$name"; then
+              echo "changed $name#chart" >> "$RUNNER_TEMP/changed.txt"
+            fi
+          done < <(find "$tables" -type f -name '*.svg' -print0)
           sort -u "$RUNNER_TEMP/changed.txt" -o "$RUNNER_TEMP/changed.txt"
           echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt")" >> "$GITHUB_OUTPUT"
 
@@ -190,6 +197,12 @@ jobs:
             cp "$out/$name" "docs/images/$name"
             images+=("docs/images/$name")
           done < "$RUNNER_TEMP/changed.txt"
+          while IFS= read -r -d '' chart; do
+            name=${chart#"$out/tables/"}
+            mkdir -p "$(dirname "$name")"
+            cp "$chart" "$name"
+            images+=("$name")
+          done < <(find "$out/tables" -type f -name '*.svg' -print0)
           # The run rendered its trigger commit; the branch is built on the current main from
           # the changed images and the tables (scripts/ci/refresh_branch.py says why).
           set +e

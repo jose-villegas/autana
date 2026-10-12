@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from memory_map import ROOT, DOC, read_build, VARIANTS, build_variant
+from memory_map import ROOT, DOC, read_build, VARIANTS, MAIN_VARIANT, OURS_FILL, build_variant
 from generated_blocks import replace_block, blocks
 from doc_tables import markdown, parse_table, collapsed
 import svg_bars
@@ -18,19 +18,20 @@ from scratch import scratch_tree
 from code_layout import LayoutError
 
 WHAT_IF_BLOCK = "internal-memory-what-if"
+CHART_PATH = "docs/memory/images/iram-what-if.svg"
 WHAT_IF_COMMAND = "python launcher/tools/build/iram_what_if.py launcher/build launcher/build.dev launcher/build.diag --work launcher/build/iram-what-if --jobs 6 --write"
 DEFAULT_JOBS = 2
 OPTIONS = {
     "ringbuf-to-flash": {"variants": VARIANTS, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
-    "silent-assertions": {"variants": ("release",), "config": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"}},
-    "unused-flash-chips": {"variants": ("release",), "config": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")}},
-    "encrypted-read-write": {"variants": ("release",), "config": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"}},
-    "libc-locks": {"variants": ("release",), "config": {"CONFIG_LIBC_LOCKS_PLACE_IN_IRAM": "n"}},
-    "i2c-isr": {"variants": ("release",), "config": {"CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM": "n"}},
+    "silent-assertions": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"}},
+    "unused-flash-chips": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")}},
+    "encrypted-read-write": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"}},
+    "libc-locks": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_LIBC_LOCKS_PLACE_IN_IRAM": "n"}},
+    "i2c-isr": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM": "n"}},
     "dynamic-log-level": {"variants": VARIANTS, "config": {"CONFIG_LOG_TAG_LEVEL_IMPL_NONE": "y", "CONFIG_LOG_DYNAMIC_LEVEL_CONTROL": "n"}},
     "heap-to-flash": {"variants": VARIANTS, "config": {"CONFIG_SPI_MASTER_IN_IRAM": "n", "CONFIG_SPI_MASTER_ISR_IN_IRAM": "n", "CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH": "y"}},
     "noflash-text": {"variants": VARIANTS, "config": {}},
-    "gpspi-flash-hal": {"variants": ("release",), "config": {}},
+    "gpspi-flash-hal": {"variants": (MAIN_VARIANT,), "config": {}},
     "freertos-non-isr": {"variants": VARIANTS, "config": {}},
 }
 
@@ -149,7 +150,7 @@ def chart(body):
         if key in experiments_by_name:
             raise ValueError(f"duplicate experiment: {key}")
         experiments_by_name[key] = row
-    selected = [row for row in table if row["Variant"] == "release" or (row["Experiment"], "release") not in experiments_by_name]
+    selected = [row for row in table if row["Variant"] == MAIN_VARIANT or (row["Experiment"], MAIN_VARIANT) not in experiments_by_name]
     selected.sort(key=lambda row: (-int(row["IRAM freed B"]), row["Experiment"], row["Variant"]))
     if not selected:
         raise ValueError("Experiment: no measured rows")
@@ -159,7 +160,7 @@ def chart(body):
         freed = int(row["IRAM freed B"])
         heap = -int(row["Heap-start delta B"])
         extra = []
-        if variant == "release":
+        if variant == MAIN_VARIANT:
             for other in VARIANTS[1:]:
                 measured = experiments_by_name.get((name, other))
                 if measured and (measured['IRAM freed B'], measured['Heap-start delta B']) != (row['IRAM freed B'], row['Heap-start delta B']):
@@ -167,29 +168,38 @@ def chart(body):
                     if measured['Heap-start delta B'] != row['Heap-start delta B']:
                         suffix += f" (heap {-int(measured['Heap-start delta B']):+d} B)"
                     extra.append(suffix)
-        label = name if variant == "release" else f"{name} ({variant})"
+        label = name if variant == MAIN_VARIANT else f"{name} ({variant})"
         end = f"{freed} B; heap {heap:+d} B"
-        rows.append((label, [(name, freed, svg_bars.OURS_FILL)], end, ", ".join(extra)))
-    return svg_bars.bars("python launcher/tools/build/iram_what_if.py --chart docs/memory/images/iram-what-if.svg",
-                         "IRAM freed per experiment", "Release unless marked; each experiment isolated; savings are not additive", rows,
+        rows.append((label, [(name, freed, OURS_FILL)], end, ", ".join(extra)))
+    return svg_bars.bars(chart_command(),
+                         "IRAM freed per experiment", f"{MAIN_VARIANT.capitalize()} unless marked; each experiment isolated; savings are not additive", rows,
                          max(1, max(int(row['IRAM freed B']) for row in selected)), ("Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.",))
+
+
+def chart_command():
+    return f"python launcher/tools/build/iram_what_if.py --chart {CHART_PATH}"
+
+
+def write_chart(body, output):
+    svg_bars.write(output, chart(body))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("builds", nargs="*", type=Path)
     parser.add_argument("--work", type=Path)
-    parser.add_argument("--chart", type=Path)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--chart", type=Path)
     parser.add_argument("--experiment", action="append", choices=OPTIONS)
     parser.add_argument("--before-build", nargs="+")
-    parser.add_argument("--write", action="store_true")
+    modes.add_argument("--write", action="store_true")
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     try:
         if args.chart:
-            svg_bars.write(args.chart, chart(blocks(DOC.read_text(encoding="utf-8"))[WHAT_IF_BLOCK][2]))
+            write_chart(blocks(DOC.read_text(encoding="utf-8"))[WHAT_IF_BLOCK][2], args.chart)
             return 0
         if not args.builds or args.work is None:
             parser.error("builds and --work required unless --chart")
@@ -207,7 +217,7 @@ def main():
         (args.work / (WHAT_IF_BLOCK + ".md")).write_text(body, encoding="utf-8")
         if args.write:
             replace_block(DOC, WHAT_IF_BLOCK, body)
-            svg_bars.write(DOC.parent / "images/iram-what-if.svg", chart(blocks(DOC.read_text(encoding="utf-8"))[WHAT_IF_BLOCK][2]))
+            write_chart(body, ROOT / CHART_PATH)
         return 0
     except (ValueError, OSError, LayoutError, subprocess.SubprocessError) as error:
         print(f"FAIL IRAM what-if: {error}")

@@ -24,7 +24,7 @@ class MemoryChartTests(unittest.TestCase):
         components = [('libmain.a', 'our sites', 16), ('liblcd.a', 'our sites', 16)]
         components += [(f'libpart{i}.a', 'IDF', 20) for i in range(10)]
         components += [('Linker fill / split slack', 'unattributed', 40)]
-        return (markdown(['Region / boundary', 'abc-release (IDF abc)'], regions) + '\n' +
+        return (markdown(['Region / boundary', 'release'], regions) + '\n' +
                 markdown(['IRAM component', 'Placement', 'release'], components) + '\n' +
                 markdown(['Placement site', 'Symbols', 'release', 'Budget B', 'Reason'],
                          [('a:1', 'f', 32, 32, 'Interrupt latency.')]))
@@ -52,7 +52,7 @@ class MemoryChartTests(unittest.TestCase):
             memory.chart('pool', self.body().replace('_heap_start', '_absent'))
         with self.assertRaisesRegex(ValueError, 'Placement'):
             memory.chart('components', self.body().replace('| Placement |', '| Ownership |'))
-        with self.assertRaisesRegex(ValueError, 'site'):
+        with self.assertRaisesRegex(ValueError, 'differ from site table'):
             memory.chart('pool', self.body().replace('| f | 32 |', '| f | 31 |'))
 
     def test_what_if_sorted_and_variant_labels(self):
@@ -98,14 +98,40 @@ class MemoryChartTests(unittest.TestCase):
             doc = Path(directory) / 'map.md'
             doc.write_text(f'<!-- generated: {memory.BLOCK} -->\n<!-- /generated: {memory.BLOCK} -->\n', encoding='utf-8')
             build = dict(variant='release', idf_commit='fixture', inputs=[], owned={})
-            with (patch.object(memory, 'DOC', doc), patch.object(memory, 'read_build', return_value=build),
+            with (patch.object(memory, 'DOC', doc), patch.object(memory, 'ROOT', doc.parent), patch.object(memory, 'read_build', return_value=build),
                   patch.object(memory, 'build_sites', return_value=([], lambda site: True)),
                   patch.object(memory, 'check', return_value=[]), patch.object(memory, 'render', return_value=self.body()),
                   patch.object(memory, 'idf_pin', return_value={'commit': 'fixture'}),
                   patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--write']), contextlib.redirect_stdout(io.StringIO())):
                 self.assertEqual(memory.main(), 0)
             for name in memory.CHARTS.values():
-                svg = (doc.parent / 'images' / name).read_bytes()
+                svg = (doc.parent / name).read_bytes()
                 self.assertNotIn(b'\r', svg)
                 ET.fromstring(svg)
             self.assertIn('Placement', doc.read_text())
+
+    def test_tables_charts_match_chart_mode(self):
+        build = dict(variant='release', build_id='abc-release', idf_commit='fixture',
+                     regions={'iram0_0_seg': (0x40378000, 1024), 'dram0_0_seg': (0x3fc88000, 1024)},
+                     sections={'.iram0.text': (0, 32), '.dram0.data': (0, 32), '.dram0.bss': (0, 64)},
+                     constants={'_data_start': 0x3fc88020, '_heap_start': 0x3fc88080},
+                     size={'layout': [{'name': 'DIRAM', 'used': 128}]}, align=256, pad=16, slack=0,
+                     inputs=[memory.Input('libpart.a', 'part.c.obj', 'part', 32)], owned={}, report=[])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            doc = root / 'map.md'
+            doc.write_text(f'<!-- generated: {memory.BLOCK} -->\n<!-- /generated: {memory.BLOCK} -->\n')
+            from generated_blocks import replace_block
+            replace_block(doc, memory.BLOCK, memory.render([build]))
+            with (patch.object(memory, 'DOC', doc), patch.object(memory, 'ROOT', doc.parent), patch.object(memory, 'read_build', return_value=build),
+                  patch.object(memory, 'build_sites', return_value=([], lambda site: True)),
+                  patch.object(memory, 'check', return_value=[]),
+                  patch.object(memory, 'idf_pin', return_value={'commit': 'fixture'}),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--tables', str(root / 'tables')]):
+                    self.assertEqual(memory.main(), 0)
+                for kind, name in memory.CHARTS.items():
+                    output = root / (kind + '.svg')
+                    with patch.object(sys, 'argv', ['memory_map.py', '--chart', kind, str(output)]):
+                        self.assertEqual(memory.main(), 0)
+                    self.assertEqual((root / 'tables' / name).read_bytes(), output.read_bytes())
