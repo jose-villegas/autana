@@ -202,7 +202,7 @@ buttons_task(void* arg) {
 
     while (1) {
         poll_once();
-        vTaskDelayUntil(&last_wake, period > 0 ? period : 1);
+        xTaskDelayUntil(&last_wake, period > 0 ? period : 1);
     }
 }
 
