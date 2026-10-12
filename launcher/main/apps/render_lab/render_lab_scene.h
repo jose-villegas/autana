@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
+#include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "input/input.h"
-#include "ui/ui_scroll.h"
 
 typedef struct {
     const char* name;
@@ -25,8 +25,8 @@ typedef struct {
     void (*steer)(uint32_t dt_ms, const input_t* input);
     /* Optional. Drawn in the BOOT menu below NEXT SCENE while the scene is
      * paused; may call public scene_* calls only. */
-    void (*controls)(mu_Context* ctx, ui_flow_t* flow, int width);
-    /* Optional. Handles render <args> the shell's own commands did not;
+    render_lab_controls_fn controls;
+    /* Optional. Handles `render <args>` that Render Lab's scene commands did not;
      * false means the command is not this scene's. */
     bool (*console)(const char* args);
 } render_lab_scene_t;

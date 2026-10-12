@@ -88,6 +88,9 @@ console_copy_text(char* into, size_t into_size, const char* from) {
 
 typedef void (*console_reply_fn)(const char* line);
 
+/* Short replies can use stdio; capture streams need the driver's bulk write. */
+void console_reply_stdio(const char* line);
+
 /* `args` is what follows the verb and one space, or "" for a bare verb with
  * nothing after it. */
 typedef void (*console_verb_fn)(const char* args, console_reply_fn reply);

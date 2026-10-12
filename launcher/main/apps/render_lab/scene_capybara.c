@@ -28,6 +28,9 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "services/tune.h"
+#if CONFIG_LAUNCHER_SELFTEST
+#include "apps/render_lab/tests/render_lab_test.h"
+#endif
 
 static const char* TAG = "capybara";
 
@@ -116,13 +119,7 @@ scene_capybara_enter(void) {
         return;
     }
     subject_entity = scene_find(capybara, CAPYBARA_SUBJECT);
-    choice = (render_lab_clips_t){.selected = render_lab_clips_find(capybara, subject_entity, CAPYBARA_DEFAULT_CLIP),
-                                  .blend_ms = RENDER_LAB_BLEND_DEFAULT_MS};
-    if (choice.selected < 0) {
-        choice.selected = 0;
-        ESP_LOGW(TAG, "default clip missing");
-    }
-    if (!render_lab_clips_init(capybara, subject_entity, &choice)) {
+    if (!render_lab_clips_init(&choice, capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
         ESP_LOGW(TAG, "clip picker allocation failed");
     }
     place_camera();
@@ -179,14 +176,21 @@ capybara_status(void) {
     return buf;
 }
 
+#if CONFIG_LAUNCHER_SELFTEST
+bool
+scene_capybara_test_reply(const char* args, console_reply_fn reply) {
+    return render_lab_clips_reply(&choice, args, reply);
+}
+#endif
+
 static bool
-console(const char* args) {
-    return render_lab_clips_console(capybara, subject_entity, &choice, args);
+scene_capybara_console(const char* args) {
+    return render_lab_clips_console(&choice, args);
 }
 
 static void
-controls(mu_Context* ctx, ui_flow_t* flow, int width) {
-    render_lab_clips_draw(ctx, flow, width, capybara, subject_entity, &choice);
+scene_capybara_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
+    render_lab_clips_draw(ctx, flow, width, &choice);
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
@@ -196,5 +200,5 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .exit = scene_capybara_exit,
                                            .status = capybara_status,
                                            .steer = scene_capybara_steer,
-                                           .controls = controls,
-                                           .console = console};
+                                           .controls = scene_capybara_controls,
+                                           .console = scene_capybara_console};

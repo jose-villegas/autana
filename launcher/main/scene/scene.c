@@ -157,7 +157,7 @@ open_animator(scene_t* scene, const scene_asset_animator_t* row) {
         return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id);
     }
     const size_t clip_bytes = (size_t)row->clip_count * sizeof(const char*);
-    const char** clips = clip_bytes == 0 ? NULL : memory_alloc(clip_bytes, MEMORY_PSRAM);
+    const char** clips = clip_bytes == 0 ? NULL : scene_allocate(clip_bytes, MEMORY_PSRAM);
     if (clip_bytes != 0 && clips == NULL) {
         return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
     }
@@ -166,7 +166,6 @@ open_animator(scene_t* scene, const scene_asset_animator_t* row) {
     }
     const char* skeleton = skeleton_for(scene, row->entity);
     if (row->clip_count == 0 && skeleton == NULL) {
-        memory_free(clips);
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
     }
     scene_failure_t why;
