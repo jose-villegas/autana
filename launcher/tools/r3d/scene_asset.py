@@ -1,16 +1,4 @@
-"""The scene pack entry (SCNE): what a scene reads at run time, baked from its
-NAME.scene.toml, and read back. The one writer of the entry, and its reader
-on the host; main/scene/scene_asset.c is the firmware's.
-
-Each object that is a mesh renderer or a camera is an entity, in file
-order, found by name at run time. A renderer names its mesh by pack id and
-the camera its path by clip id (the stem of the .anim.toml the scene names)
-and node, all opened from the scene's pack at scene_load(). Lights, the
-camera region and the tone map are bake settings and stay offline. A
-transform is baked as a 3x3 (rotation times scale) and a position, so the
-device does no trigonometry. The layout is in docs/render/Scene-Files.md,
-"The scene entry". Standard library only.
-"""
+"""SCNE authored components, encoded and validated against the mapped C reader."""
 
 import math
 import pathlib
@@ -18,38 +6,48 @@ import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from asset.asset_pack import NAME_BYTES
+from build.c_header import read_define
+from r3d.import_settings import SettingsError, load_scene
 
-from asset.asset_pack import NAME_BYTES  # noqa: E402
-from r3d.import_settings import SettingsError, load_scene  # noqa: E402
-
+OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
+ANIM_OWNER = OWNER.parents[1] / "anim/anim_track.h"
 TYPE = b"SCNE"
-VERSION = 1
+VERSION = read_define(OWNER, "SCENE_ASSET_VERSION")
+DIRECTIONAL = read_define(OWNER, "SCENE_LIGHT_KIND_DIRECTIONAL")
+LIGHT_KINDS = {"directional": DIRECTIONAL}
+DEFAULT_COLOR = read_define(OWNER, "SCENE_LIGHT_COLOR_DEFAULT")
+AMBIENT_NONE = read_define(OWNER, "SCENE_AMBIENT_INTENSITY_NONE")
+TONEMAP_NONE = read_define(OWNER, "SCENE_TONEMAP_WHITE_NONE")
+DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
+WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ("clamp", "loop")}
 SUFFIX = ".scene.toml"
-# version, entity, renderer and camera counts, then where the names, transforms, renderers and cameras start
-HEADER = struct.Struct("<HHHHIIII")
+PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
+HEADER = struct.Struct("<10H9I")
 NAME = struct.Struct(f"<{NAME_BYTES}s")
 TRANSFORM = struct.Struct("<12f")
 RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")
-CAMERA = struct.Struct(f"<HHffI{NAME_BYTES}s{NAME_BYTES}s")
+CAMERA = struct.Struct("<HHffI")
+LIGHT = struct.Struct("<HBB4f")
+SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
+ANIMATOR = struct.Struct("<HHIHBB")
+SETTINGS = struct.Struct("<5f")
+ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, NAME, SETTINGS)
 
 
 class SceneError(ValueError):
-    """A scene that cannot be baked, or bytes that are not the entry."""
+    """An authored scene or mapped row violates the scene format."""
 
 
 def scene_id(path):
-    """The pack id of a .scene.toml, and the name of its pack: its stem."""
     return pathlib.Path(path).name.removesuffix(SUFFIX)
 
 
 def entities(scene):
-    """The scene's objects that exist at run time, in file order: a camera or
-    a mesh renderer. Lights are baked offline and have no entity."""
-    return [obj for obj in scene.objects if obj.kind in ("mesh_renderer", "camera")]
+    return scene.objects
 
 
 def mesh_ids(scene):
-    """The pack id of each renderer's mesh, in the entry's order: what scene_load() opens."""
     return [item.asset_name for item in scene.renderers]
 
 
@@ -60,42 +58,75 @@ def field(value, what):
     return raw
 
 
-def encode(scene):
-    """The entry's bytes for a scene as load_scene() returns it."""
+def encode(scene, cache=None, offline=False):
+    """Encode authored rows; resolve skin and skeleton ids through the pack's rig owner."""
     objects = entities(scene)
     index = {obj.name: i for i, obj in enumerate(objects)}
-    cameras = [obj for obj in objects if obj.kind == "camera"]
-    names = b"".join(NAME.pack(field(obj.name, "entity")) for obj in objects)
-    transforms = b"".join(TRANSFORM.pack(*[x for row in obj.matrix for x in row], *obj.position) for obj in objects)
-    renderers = b"".join(RENDERER.pack(index[item.object.name], 0, field(mesh, "mesh id"))
-                         for item, mesh in zip(scene.renderers, mesh_ids(scene)))
-    rows = []
-    for camera in cameras:
-        lens, path = camera.component, camera.component.path
-        rows.append(CAMERA.pack(index[camera.name], 0, lens.half_fov_short_tan, lens.near_z, lens.background,
-                                field(path.clip, "clip id") if path else b"", field(path.node, "node") if path else b""))
-    parts = [names, transforms, renderers, b"".join(rows)]
+    rows = {part: [] for part in PARTS}
+    rows["names"] = [(field(obj.name, "entity"),) for obj in objects]
+    rows["transforms"] = [(*[x for row in obj.matrix for x in row], *obj.position) for obj in objects]
+    for item in scene.renderers:
+        obj, mesh = item.object, item.asset_name
+        entity = index[obj.name]
+        if obj.kind == "skinned_renderer":
+            from anim import skeleton_asset
+            from bake import bake
+            from r3d import skin_pack
+            rig = skin_pack.load_rig(item.settings, cache or bake.default_cache(), offline)
+            if rig is None:
+                raise SceneError(f"{item.settings.path}: skinned_renderer requires a rig")
+            _, document, _, node = rig
+            _, _, skeleton = skeleton_asset.rig(document, node)
+            rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
+                field(mesh + skin_pack.SKIN_ID_SUFFIX, "skin id"), field(skeleton, "skeleton id")))
+        else:
+            rows["renderers"].append((entity, 0, field(mesh, "mesh id")))
+    for obj in objects:
+        entity = index[obj.name]
+        animator = getattr(obj, "animator", None)
+        if obj.kind == "light":
+            light = obj.component
+            if light["type"] not in LIGHT_KINDS:
+                raise SceneError(f"unknown light kind {light['type']!r}")
+            rows["lights"].append((entity, LIGHT_KINDS[light["type"]], 0, *light["color"], light["intensity"]))
+        if obj.kind == "camera":
+            lens = obj.component
+            rows["cameras"].append((entity, 0, lens.half_fov_short_tan, lens.near_z, lens.background))
+            if lens.path:
+                from types import SimpleNamespace
+                animator = SimpleNamespace(clips=[lens.path.clip], default_clip=lens.path.clip, wrap="loop")
+        if animator:
+            clips = animator.clips
+            default = DEFAULT_CLIP_NONE if animator.default_clip is None else clips.index(animator.default_clip)
+            rows["animators"].append((entity, len(clips), len(rows["clips"]), default, WRAPS[animator.wrap], 0))
+            rows["clips"].extend((field(clip, "clip id"),) for clip in clips)
+    ambient = next((light for light in getattr(scene, "lights", []) if light["type"] == "ambient"), None)
+    rows["settings"] = [(*(ambient["color"] if ambient else DEFAULT_COLOR),
+                         ambient["intensity"] if ambient else AMBIENT_NONE,
+                         TONEMAP_NONE if getattr(scene, "tonemap_white", None) is None else scene.tonemap_white)]
+    counts = [len(rows[part]) for part in PARTS]
+    if any(count > DEFAULT_CLIP_NONE for count in counts):
+        raise SceneError("a scene holds at most 65535 rows per part")
+    parts = [b"".join(row.pack(*values) for values in rows[part]) for part, row in zip(PARTS, ROWS)]
     offsets, at = [], HEADER.size
     for part in parts:
         offsets.append(at)
         at += len(part)
-    if any(len(items) > 0xFFFF for items in (objects, scene.renderers)):
-        raise SceneError("a scene holds at most 65535 entities")
-    return HEADER.pack(VERSION, len(objects), len(scene.renderers), len(cameras), *offsets) + b"".join(parts)
+    entry = HEADER.pack(VERSION, *counts, *offsets) + b"".join(parts)
+    decode(entry)
+    return entry
 
 
-def bake(path):
-    """The entry's bytes for a .scene.toml."""
+def bake(path, cache=None, offline=False):
     try:
-        return encode(load_scene(path))
+        return encode(load_scene(path), cache, offline)
     except (SettingsError, OSError) as error:
         raise SceneError(f"{path}: {error}") from error
 
 
 def text_at(raw, what):
-    """A NUL-padded field: some text, then nothing but NULs."""
     value, nul, rest = raw.partition(b"\0")
-    if not nul or any(rest):
+    if not value or not nul or any(rest):
         raise SceneError(f"{what} is not NUL terminated and padded")
     return value.decode("ascii")
 
@@ -106,37 +137,62 @@ def section(entry, offset, count, row, table_end, what):
     return [row.unpack_from(entry, offset + i * row.size) for i in range(count)]
 
 
+def nonnegative(value):
+    return math.isfinite(value) and value >= 0
+
+
+def color_fits(color):
+    return all(nonnegative(value) and value <= 1 for value in color)
+
+
 def decode(entry):
-    """The entry's contents after the checks scene_asset_open() makes: a
-    dict of `entities` (name, matrix, position), `renderers` (entity,
-    mesh id) and `cameras` (entity, half_fov_short_tan, near_z, clear_rgb,
-    clip, node)."""
+    if len(entry) >= 2 and struct.unpack_from("<H", entry)[0] != VERSION:
+        raise SceneError(f"version {struct.unpack_from('<H', entry)[0]}, this reads {VERSION}")
     if len(entry) < HEADER.size:
         raise SceneError("shorter than a header")
-    version, entity_count, renderer_count, camera_count, *offsets = HEADER.unpack_from(entry)
-    if version != VERSION:
-        raise SceneError(f"version {version}, this reads {VERSION}")
-    names, transforms, renderers, cameras = (
-        section(entry, at, count, row, HEADER.size, what) for at, count, row, what in zip(
-            offsets, (entity_count, entity_count, renderer_count, camera_count), (NAME, TRANSFORM, RENDERER, CAMERA),
-            ("names", "transforms", "renderers", "cameras")))
-    out = {"entities": [], "renderers": [], "cameras": []}
-    for (raw,), values in zip(names, transforms):
-        name = text_at(raw, "an entity name")
-        if not name:
-            raise SceneError("an entity has no name")
-        out["entities"].append({"name": name, "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)],
-                                "position": list(values[9:])})
-    for entity, pad, raw in renderers:
-        mesh = text_at(raw, "a mesh id")
-        if entity >= entity_count or pad or not mesh:
-            raise SceneError(f"renderer {mesh!r}: its entity, padding or mesh id is out of range")
-        out["renderers"].append({"entity": entity, "mesh": mesh})
-    for entity, pad, tan, near, clear, clip, node in cameras:
-        clip, node = text_at(clip, "a clip id"), text_at(node, "a node")
-        if entity >= entity_count or pad or not (math.isfinite(tan) and tan > 0 and math.isfinite(near) and near > 0) \
-                or clear > 0xFFFFFF or bool(clip) != bool(node):
-            raise SceneError(f"camera {entity}: a field holds a value the entry does not allow")
-        out["cameras"].append({"entity": entity, "half_fov_short_tan": tan, "near_z": near, "clear_rgb": clear,
-                               "clip": clip, "node": node})
+    _, *header = HEADER.unpack_from(entry)
+    counts, offsets = header[:len(PARTS)], header[len(PARTS):]
+    if counts[0] != counts[1] or counts[-1] != 1:
+        raise SceneError("transforms must match names and settings must have exactly one row")
+    rows = {part: section(entry, at, count, row, HEADER.size, part)
+            for part, at, count, row in zip(PARTS, offsets, counts, ROWS)}
+    out = {part: [] for part in PARTS if part not in ("names", "transforms")}
+    out["entities"] = [{"name": text_at(raw, "entity name"),
+                        "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)], "position": list(values[9:])}
+                       for (raw,), values in zip(rows["names"], rows["transforms"])]
+    for part in ("renderers", "skinned_renderers", "cameras", "lights", "animators"):
+        seen = set()
+        for row in rows[part]:
+            entity = row[0]
+            if entity >= counts[0] or (entity in seen and part in ("lights", "animators", "skinned_renderers")):
+                raise SceneError(f"{part}: entity out of range or duplicate")
+            seen.add(entity)
+            if part == "animators":
+                _, count, first, default, wrap, pad = row
+                if pad or wrap not in WRAPS.values() or first + count > counts[7] \
+                        or (default != DEFAULT_CLIP_NONE and default >= count):
+                    raise SceneError("animator: invalid clip range, default_clip, wrap or padding")
+                out[part].append(dict(entity=entity, clip_count=count, first_clip=first, default_clip=default, wrap=wrap))
+                continue
+            if part == "lights":
+                _, kind, pad, *values = row
+                if pad or kind != DIRECTIONAL or not color_fits(values[:3]) or not nonnegative(values[3]):
+                    raise SceneError("light: invalid kind, colour, intensity or padding")
+                out[part].append(dict(entity=entity, kind=kind, color=values[:3], intensity=values[3]))
+                continue
+            if row[1]:
+                raise SceneError(f"{part}: padding out of range")
+            if part == "cameras":
+                _, _, tan, near, clear = row
+                if not (math.isfinite(tan) and tan > 0 and math.isfinite(near) and near > 0) or clear > 0xFFFFFF:
+                    raise SceneError(f"camera {entity}: a field holds a value the entry does not allow")
+                out[part].append(dict(entity=entity, half_fov_short_tan=tan, near_z=near, clear_rgb=clear))
+            else:
+                names = ("mesh",) if part == "renderers" else ("mesh", "skin", "skeleton")
+                out[part].append(dict(entity=entity, **{key: text_at(raw, key + " id") for key, raw in zip(names, row[2:])}))
+    out["clips"] = [text_at(raw, "clip id") for (raw,) in rows["clips"]]
+    color, intensity, white = rows["settings"][0][:3], *rows["settings"][0][3:]
+    if not color_fits(color) or not nonnegative(intensity) or not nonnegative(white):
+        raise SceneError("settings: invalid ambient or tonemap_white")
+    out["settings"] = dict(ambient_color=list(color), ambient_intensity=intensity, tonemap_white=white)
     return out

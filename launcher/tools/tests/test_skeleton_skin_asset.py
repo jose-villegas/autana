@@ -52,8 +52,8 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     def test_skin_round_trip(self):
         matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0)
         vertices = [((0, 0), (255, 0), (0, 127, 0))]
-        self.assertEqual(skin_asset.decode(skin_asset.encode([matrix], vertices, 2)),
-                         ([matrix], vertices, 2))
+        self.assertEqual(skin_asset.decode(skin_asset.encode([matrix], vertices, 2, skin_asset.LIGHTING_MODES["direct"])),
+                         ([matrix], vertices, 2, skin_asset.LIGHTING_MODES["direct"]))
 
     def test_skeleton_mirror_round_trip_and_involution(self):
         rest = (2, 3, -7, 0.5, 0.5, 0.5, 0.5, 2, 3, 4)
@@ -87,6 +87,18 @@ runpy.run_path(sys.argv[0], run_name='__main__')
             self.assertEqual([(j, w) for j, w, _ in decoded[1]], [(j, w) for j, w, _ in rows])
             self.assertEqual(skin_asset.encode(*decoded), mirrored)
             self.assertEqual(to_engine(skin_asset.TYPE, mirrored), raw)
+
+    def test_skin_mode_round_trip(self):
+        matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0)
+        vertices = [((0, 0), (255, 0), (0, 127, 0))]
+        for name, mode in skin_asset.LIGHTING_MODES.items():
+            with self.subTest(mode=name):
+                entry = skin_asset.encode([matrix], vertices, lighting_mode=mode)
+                self.assertEqual(skin_asset.HEADER.unpack_from(entry)[6:], (mode, 0, 0, 0))
+                self.assertEqual(skin_asset.decode(entry), ([matrix], vertices, 2, mode))
+                self.assertEqual(skin_asset.encode(*skin_asset.decode(entry)), entry)
+        with self.assertRaisesRegex(ValueError, "lighting mode"):
+            skin_asset.encode([matrix], vertices, lighting_mode=255)
 
     def test_weight_ties_and_sum(self):
         self.assertEqual(skin_asset.quantize_weights((3, 2, 1, 0), (1, 1, 1, 1), 4),
@@ -145,7 +157,7 @@ class Matching(unittest.TestCase):
         for influences in (2, 4):
             entries = [(key, kind, to_engine(kind, data)) for key, kind, data in skin_probe.entries(influences)]
             skeleton = skeleton_asset.decode(entries[0][2])
-            inverse, vertices, width = skin_asset.decode(entries[1][2])
+            inverse, vertices, width, _ = skin_asset.decode(entries[1][2])
             tracks, _ = tracks_asset.decode(entries[2][2])
             positions, scale = skin_asset.mesh_positions(to_engine(mesh_asset.TYPE, skin_probe.mesh_entry()))
             error = 0
@@ -204,9 +216,9 @@ class Refusals(unittest.TestCase):
         import skin_probe
         entry = skin_probe.entries()[1][2]
         vertices = struct.unpack_from('<I', entry, 12)[0]
-        changes = [(0, '<H', 2), (2, 'B', 0), (2, 'B', 255), (3, 'B', 3),
+        changes = [(0, '<H', 1), (16, 'B', 255), (17, 'B', 1), (18, 'B', 1), (19, 'B', 1), (2, 'B', 0), (2, 'B', 255), (3, 'B', 3),
                    (4, '<I', 0xffffffff), (8, '<I', 0), (8, '<I', 17),
-                   (12, '<I', 0), (12, '<I', 17), (16, '<f', math.nan),
+                   (12, '<I', 0), (12, '<I', 17), (skin_asset.HEADER.size, '<f', math.nan),
                    (vertices, 'B', 254), (vertices + 4, 'B', 0), (vertices + 11, 'B', 1),
                    (vertices + 8, 'b', -128)]
         for offset, pattern, value in changes:

@@ -285,6 +285,27 @@ class NativeTests(unittest.TestCase):
             found = {path.relative_to(root.resolve()).as_posix() for path in bake.c_includes([root / "a.c"], (root / "inc",))}
         self.assertEqual(found, {"a.c", "near.h", "inc/sub/far.h", "inc/sub/deep.h"})
 
+    def test_define_values_are_keyed_without_compiling_their_include_graph(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            header = root / "owner.h"
+            included = root / "runtime.h"
+            included.write_text("#define UNUSED 1\n")
+            header.write_text('#include "runtime.h"\n#define GAMMA 2.2F\n')
+            module = root / "entry.py"
+            module.write_text('from pathlib import Path\nfrom build.c_header import read_define\n'
+                              'OWNER = Path(__file__).with_name("owner.h")\n'
+                              'GAMMA = read_define(OWNER, "GAMMA")\n')
+            try:
+                before = bake.native_inputs([module])
+                self.assertEqual(set(before), {bake.relative(header)})
+                included.write_text("#define UNUSED 2\n")
+                self.assertEqual(bake.native_inputs([module]), before)
+                header.write_text('#include "runtime.h"\n#define GAMMA 2.4F\n')
+                self.assertNotEqual(bake.native_inputs([module]), before)
+            finally:
+                bake.module_facts.cache_clear()
+
     def test_the_pose_samplers_c_and_headers_are_in_the_poses_stage(self):
         names = bake.native_inputs(bake.stage_files("poses"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",

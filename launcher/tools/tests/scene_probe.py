@@ -24,7 +24,9 @@ from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
 from r3d import scene_asset  # noqa: E402
-from test_r3d_import import write_import  # noqa: E402
+from test_r3d_import import write_import
+from test_scene_asset import authored_entry
+from build.c_header import read_define  # noqa: E402
 
 # What suite_scene.c checks: the placed renderer comes first, so an array
 # reversed or shifted is caught; it is turned a quarter about y and scaled
@@ -56,7 +58,8 @@ mesh = "green.import.toml"
 
 def camera_entry():
     tracks, duration = tracks_asset.decode(probe_entry())
-    tracks = [t for t in tracks if t["path"] == "lamp" and t["component"] == tracks_asset.TRANSFORM]
+    target = read_define(TOOLS.parent / "main/anim/anim_binding.h", "ANIM_TARGET_SELF")
+    tracks = [dict(t, path=target) for t in tracks if t["path"] == "lamp" and t["component"] == tracks_asset.TRANSFORM]
     return tracks_asset.encode(tracks, duration)
 
 
@@ -71,7 +74,8 @@ def probe_pack():
         scene.write_text(SCENE)
         entry = scene_asset.bake(scene)
         scene_id = scene_asset.scene_id(scene)
-    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, camera_entry())])
+    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, camera_entry()),
+                       ("authored", scene_asset.TYPE, bytes(authored_entry()))])
 
 
 def main(argv=None):

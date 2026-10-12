@@ -29,7 +29,7 @@ attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#the-scene-entry)). SCNE v1 carries no lights or lighting settings.
+([Scene-Files.md](Scene-Files.md#the-scene-entry)). SCNE v2 carries authored lights, lighting settings, skins and animators.
 Runtime setters attach directional lights for skinned renderers; baked
 renderers retain their pack colors. Names and immutable mesh and track views point into the
 asset pack. Camera rows with clips create property animators; their source-node
@@ -58,7 +58,7 @@ alias belongs to that camera row. Binding resolves every clip row before playbac
 A new light starts white with zero intensity. Its world direction is its
 entity's rotated +Y axis; moving its rotation changes skin shading next frame,
 including while the pose is paused. Scene ambient and tone map are private;
-SCNE v1 uses zero ambient contribution and an identity tone map.
+SCNE settings apply ambient and tone map before authored lights attach.
 All lit skins share world-space lights. Their normal palettes include entity
 and joint scale through an inverse-transpose transform. Skin dirty bits are
 consumed by the skin stage even when another scene is active. The shared
@@ -135,6 +135,6 @@ engine system `scene`, at `SHELL_ORDER_SCENE`
 
 ## Per-renderer lighting mode
 
-Each skinned renderer has a private lighting mode, direct by default; tests
-set it with `scene_skin_light_set_mode()` in `scene_internal.h`. See
+Each skinned renderer reads its lighting mode from SKIN, direct by default;
+tests set it with `scene_skin_light_set_mode()` in `scene_internal.h`. See
 [Lighting modes](Skinned-Lighting.md#lighting-modes).

@@ -1,7 +1,7 @@
 # Scene Files
 
-A scene file is a scenario: objects, each with one transform and one component,
-plus the light and tone-map settings. The offline importer bakes the lit meshes
+A scene file holds transformed objects, renderer, light and camera components,
+optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
 the scenario places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
 [scene entry](#the-scene-entry) it reads at run time.
 
@@ -61,8 +61,9 @@ mesh = "statue.import.toml"
 
 ## Objects
 
-Every object has a unique `name`, an optional transform and exactly one
-component table. A scene needs a `mesh_renderer`.
+Every object has a unique `name`, an optional transform and one primary
+component table. A skinned renderer may also have an animator. A scene needs
+a mesh renderer or skinned renderer.
 
 | Key | Meaning |
 |---|---|
@@ -73,8 +74,10 @@ component table. A scene needs a `mesh_renderer`.
 | Component | Fields | What it is |
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
+| `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
+| `animator` | `clips`, `default_clip`, `wrap` | Optional on a skinned renderer; selects clips and playback. |
 | `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). A scene has at most one camera. |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
 ## Option reference
 
@@ -88,8 +91,8 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 | `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounced light. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
-| `[ambient]` | `color`, `intensity` | Constant light for bakes. | Rejected unless a renderer bakes. | [ambient](#ambient) |
-| `tonemap_white` | value | Tone-map white point. | Rejected unless a renderer bakes. | [tonemap_white](#tonemap_white) |
+| `[ambient]` | `color`, `intensity` | Constant linear light for bakes and skinned renderers. | Absent: zero intensity. | [ambient](#ambient) |
+| `tonemap_white` | value | Tone-map white point for bakes and runtime lighting. | Runtime default `0` (identity); required by a baked renderer. | [tonemap_white](#tonemap_white) |
 
 #### bake
 
@@ -160,13 +163,35 @@ cosine-weighted directions each point tests for sky visibility.
 
 #### ambient
 
-`[ambient]` adds its constant coloured light everywhere in the bake.
+`[ambient]` adds constant linear coloured light to baked and runtime skinned shading.
+Colour components are finite in 0..1; intensity is finite and nonnegative.
 
 #### tonemap_white
 
-`tonemap_white` $w$ sets the tone map applied to baked light: radiance $L$
+`tonemap_white` $w$ sets the tone map applied to baked and runtime skinned light: radiance $L$
 becomes $L / (1 + wL)$ before the gamma, Reinhard's global operator<sup>[[7]](../Citations.md#7)</sup>
 at $w = 1$ and none at $w = 0$.
+
+### skinned_renderer and animator
+
+```toml
+[[objects]]
+name = "subject"
+[objects.skinned_renderer]
+mesh = "subject.import.toml"
+
+[objects.animator]
+default_clip = "idle"
+wrap = "loop"
+# clips = ["idle", "walk"]
+```
+
+The mesh id is `<scene>.<object>`; the skin id appends `.skin` and the skeleton
+id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
+`clips` defaults to the import's `source.clips`; an explicit list selects the
+animator's clips. `default_clip` names one of those clips; absent, nothing plays.
+`wrap` is `loop` (default) or `clamp`. Without an animator the skin uses its
+rest pose. Each component occurs once per entity.
 
 ### mesh_renderer
 
@@ -487,6 +512,8 @@ renderer and its fit reference.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
+| `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
+| `animator` | `clips`, `default_clip`, `wrap` | Optional on a skinned renderer; selects clips and playback. |
 | `light` | `type`, `color`, `intensity` | Directional bake light. | Required for an object with this component. | [light](#light) |
 
 #### light
@@ -540,23 +567,39 @@ reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
 mesh and the clip, and fails naming whichever is missing or malformed. A scene
 and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
 
-An entity is each mesh renderer and the camera, in file order, found by name at
-run time. Its transform is baked as a 3x3 (rotation times scale) and a
-position, so the device does no trigonometry. An entity's name is letters,
-digits and `_`, not starting with a digit, at most 31 bytes. Lights, the
-camera region, sky, ambient and the tone map stay offline.
+Every object is an entity in file order, found by name at runtime. Transforms
+store a 3x3 rotation-times-scale matrix and position. Names are letters, digits
+and `_`, not starting with a digit, at most 31 bytes. Directional lights use
+their entity's rotation applied to `SCENE_LIGHT_AXIS` (+Y). Baked renderers
+keep their LMSH colours; runtime lights shade only skinned renderers. Sky and
+camera regions are bake inputs.
 
-Little-endian; offsets count from the entry's first byte, each 4-aligned:
+SCNE v2 is little-endian; every part offset is four-byte aligned from entry
+start. The header contains only the version, counts and offsets. Parts follow
+this order:
 
 | Part | Layout |
 |---|---|
-| header | `u16 version`, `u16 entity_count`, `u16 renderer_count`, `u16 camera_count`, `u32` offset of each part below |
+| header, 56 bytes | `u16 version=2`, nine `u16` part counts, nine `u32` part offsets |
 | names | `char name[32]` per entity, NUL padded |
-| transforms | `f32 m[3][3]`, `f32 position[3]` per entity |
-| renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]` per renderer |
-| cameras | `u16 entity`, `u16 pad`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb`, `char clip_id[32]`, `char node[32]` per camera; an empty clip: no path |
+| transforms | `f32 m[3][3]`, `f32 position[3]` per entity; count equals names |
+| renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]` |
+| cameras | `u16 entity`, `u16 zero`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb` |
+| lights | `u16 entity`, `u8 kind`, `u8 zero`, `f32 colour[3]` (linear), `f32 intensity` (unscaled) |
+| skinned renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]`, `char skin_id[32]`, `char skeleton_id[32]` |
+| animators | `u16 entity`, `u16 clip_count`, `u32 first_clip`, `u16 default_clip`, `u8 wrap`, `u8 zero` |
+| clip rows | `char clip_id[32]` |
+| settings, exactly one | `f32 ambient_colour[3]` (linear), `f32 ambient_intensity`, `f32 tonemap_white` |
 
-The reader refuses an entity index out of range, a `pad` that is not zero, an
-empty name or mesh id, text with anything but NULs after its end, a lens value
-that is not finite and positive, a clear colour past 0xFFFFFF, and a clip
-without a node or a node without a clip.
+Settings are applied before lights attach. Absent ambient has zero intensity;
+`tonemap_white=0` is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map. A camera
+path becomes an animator on its entity with one clip, default index zero and
+loop wrap. Its `node` selects tracks at bake time; the packed tracks bind to
+the animator's owner through `ANIM_TARGET_SELF`.
+
+Readers refuse v1, invalid entity indices, nonzero padding, malformed text,
+nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
+animator or skinned-renderer entities, unknown kind or wrap, invalid clip
+ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
+settings. `default_clip=0xFFFF` means no playback. Light-kind codes belong to
+`scene_internal.h`; wrap codes belong to `anim_track.h`.

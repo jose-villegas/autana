@@ -1,12 +1,4 @@
-/*
- * scene_capybara: the capybara on its meadow, orbited by one finger.
- *
- * The camera circles the capybara's bounding sphere, measured from its mesh
- * when the scene loads, at the distance that fits the sphere from every
- * angle (orbit_motion.h). A drag turns it, a double tap brings it home, and
- * touches in the shell's edge strips are left alone (orbit_motion_touch.h). The
- * shell draws the scene through the camera; light is baked per vertex.
- */
+/* scene_capybara: an authored animated subject on its meadow with touch orbit steering. */
 
 #include <math.h>
 #include <stdbool.h>
