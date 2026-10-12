@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d import rebake
 from r3d.import_settings import load_scene
 from r3d.scene_asset import scene_id
-from tool_support import scratch_tree
+from build.scratch import scratch_tree
 
 DEFAULT_WORK = ROOT / "launcher/tools/results/meshlet-sizes"
 
@@ -29,7 +29,6 @@ def rebake_scene(scene_path, output, size):
                          "--meshlet-triangles", str(size)])
         paths.append(target)
     return paths
-
 
 
 

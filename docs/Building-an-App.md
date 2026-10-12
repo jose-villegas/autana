@@ -321,7 +321,7 @@ autana flash dev                      # then look for the app in the list
 Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 `Leaving <name>` under the `shell` tag.
 
-IRAM placement comments and exact variant budgets follow the [internal memory rule](notes/Board-and-Memory.md#internal-memory-map).
+An app's `IRAM_ATTR` function needs the comment directly above it to give a reason and `IRAM budget: N B`; see [Internal memory map](notes/Board-and-Memory.md#internal-memory-map).
 
 ## Related
 

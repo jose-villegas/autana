@@ -40,7 +40,7 @@ runs:
       env:
         BUILD_COMMAND: ${{ inputs.command }}
       run: |
-        image=$(python3 -c 'import json; print(json.load(open("launcher/idf-pin.json"))["image"])')
+        image=$(python3 -c 'import sys; sys.path.insert(0, "launcher/tools"); from build.espressif import idf_pin; print(idf_pin()["image"])')
         docker run --rm -t -e IDF_TARGET=esp32s3 \
           -v "$GITHUB_WORKSPACE:/app" -w /app/launcher \
           -v "${{ runner.temp }}/bakes:/bakes" -e AUTANA_BAKE_CACHE=/bakes \

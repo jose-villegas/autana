@@ -21,8 +21,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
-sys.path.insert(0, os.path.join(LAUNCHER, "tools", "render"))
-from tool_support import compile_flags
+sys.path.insert(0, os.path.join(LAUNCHER, "tools"))
+from build.compile_db import compile_flags
 
 MAIN_DIR = os.path.join(LAUNCHER, "main")
 CHECKER = os.path.join(LAUNCHER, "test", "check_stack_usage.py")
