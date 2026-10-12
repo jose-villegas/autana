@@ -16,8 +16,8 @@ and read the macros in `*_template.h` only to change an algorithm.
 - [Number types](#number-types)
 - [Conventions](#conventions)
 - [The transform cache](#the-transform-cache)
-- [Scalar helpers](#scalar-helpers): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [units.h](#unitsh)
-- [Function reference](#function-reference): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
+- [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
+- [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
 
@@ -85,11 +85,13 @@ model matrix with a `cached` flag.
 valid. A zero-initialized transform has `cached` false, so it builds on first
 use (its scale is zero, so its matrix sends every point to the origin). Code never edits `matrix`.
 
-## Scalar helpers
+## Scalar
 
-Each scalar header also holds the arithmetic the templates call (`OPS_add`,
-`OPS_mul`, `mathx_sqrt`, `mathx_sin_turns`, ...). The tables below list the range,
-lerp and rounding helpers; the header itself, or the [catalogue](../Shared-Helpers.md),
+The headers in `math/scalar/` provide per-type arithmetic, fixed-point
+operations, random draws, trigonometry and time units. The per-type headers
+also hold the arithmetic the linear templates call (`OPS_add`, `OPS_mul`,
+`mathx_sqrt`, `mathx_sin_turns`, ...). The tables below list the range, lerp and
+rounding helpers; the header itself, or the [catalogue](../Shared-Helpers.md),
 lists the rest.
 
 ### mathi.h
@@ -145,11 +147,43 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
+### mathf_rsqrt.h
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `mathf_rsqrt(x)` | reciprocal square root for positive normal-range inputs; on the board the FPU's `rsqrt0.s` seed plus one Newton step, on host and QEMU the exact `1 / sqrt(x)` | $`y_0 = \mathrm{rsqrt0}(x)`$<br>$`y_1 = y_0\,(3 - x\,y_0^2) / 2`$ |
+
+The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
+
+### fixed.h
+
+`fixed.h` provides fixed-point multiplication, division and rounding at a
+caller-selected shift. Products widen before shifting; `fx_mul_floor` floors
+negative products, while `fx_mul_round` rounds to nearest with ties away from
+zero. Division requires a nonzero denominator; `fx_div_round_wide` keeps the
+wide result, while `fx_div_round` wraps a result outside int32.
+
+### rng.h
+
+`rng_t` holds an explicitly seeded xorshift32 generator. `rng_seed` substitutes
+a nonzero state for a zero seed; `rng_next` advances it. `rng_below` draws below
+a positive bound using modulo, with a small bias when the bound does not divide
+the generator's range. `rng_chance` handles never and always without consuming
+a draw. `rng_hash` provides deterministic counter-based draws without mutable
+state, using `rng_avalanche32` to mix its inputs.
+
+### trig.h
+
+`trig_sin` and `trig_cos` take a uint16 phase with `TRIG_TURN` per turn and
+return integers with `TRIG_SIN_SHIFT` fractional bits, bounded by
+`TRIG_SIN_MAX` in magnitude. `trig_sin_quadrant` interpolates the quarter-wave
+table; cosine offsets the phase by `TRIG_QUARTER_TURN`.
+
 ### units.h
 
 `MATH_MS_PER_S` owns the integer milliseconds per second for time conversions.
 
-## Function reference
+## Linear
 
 `P` stands for the type's prefix: `vec3f`, `vec3x`, ... The linear families take
 and return small structs by value. Inputs may alias outputs; nothing is
@@ -309,7 +343,3 @@ and the rules are in [Build-Variants.md](../Build-Variants.md):
 | `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
-
-| Helper | Contract |
-|---|---|
-| `mathf_rsqrt()` (`math/scalar/mathf_rsqrt.h`) | reciprocal square root for positive normal-range inputs; S3 FPU seed plus one Newton correction, exact sqrt on host/QEMU; device sweep gates `MATHF_RSQRT_RELATIVE_LIMIT` |
