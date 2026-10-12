@@ -3,6 +3,7 @@
 
 python launcher/tools/build/memory_map.py --source-only [--root ROOT]
 python launcher/tools/build/memory_map.py --check BUILD...
+python launcher/tools/build/memory_map.py BUILD... --update-budgets (all pinned variants)
 python launcher/tools/build/memory_map.py BUILD... --write
 python launcher/tools/build/memory_map.py BUILD... --tables DIR
 python launcher/tools/build/memory_map.py BUILD...  (print documentation tables)
@@ -20,6 +21,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+VARIANTS = ("release", "dev", "diag")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from code_layout import LayoutError, find_tool, run, symbols
@@ -38,6 +40,7 @@ CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y
 BLOCK = "internal-memory-map"
 DOC = ROOT / "docs/notes/Board-and-Memory.md"
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
+UPDATE_BUDGETS = REGENERATE.rsplit(" ", 1)[0] + " --update-budgets"
 
 
 @dataclass
@@ -145,7 +148,7 @@ def sites(root, owned=None):
                 if not re.match(r"\[mapping:", line):
                     continue
                 stop = next((i for i in range(index + 1, len(lines)) if lines[i].startswith("[")), len(lines))
-                body = "\n".join(lines[index:stop])
+                body = "\n".join(entry for entry in lines[index:stop] if not entry.lstrip().startswith("#"))
                 if not PLACEMENT.search(body):
                     continue
                 archive = re.search(r"archive:\s*(\S+)", body).group(1)
@@ -168,7 +171,7 @@ def sites(root, owned=None):
     return found
 
 
-def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None):
+def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True):
     errors = []
     drift = idf_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
@@ -199,18 +202,19 @@ def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_co
         else:
             if not size:
                 errors.append(f"{site.label}: placed nothing in this build")
-            budget = site.budget
-            if isinstance(budget, dict):
-                if variant not in budget:
-                    errors.append(f"{site.label}: missing {variant} IRAM budget")
-                    continue
-                budget = budget[variant]
-            if size != budget:
-                message = f"{site.label}: measured {size} B, budget {budget} B; set the budget to {size} B"
-                if drift:
-                    print(f"NOTE IDF drift: {drift}: {message}")
-                else:
-                    errors.append(message)
+            if exact:
+                budget = site.budget
+                if isinstance(budget, dict):
+                    if variant not in budget:
+                        errors.append(f"{site.label}: missing {variant} IRAM budget")
+                        continue
+                    budget = budget[variant]
+                if size != budget:
+                    message = f"{site.label}: measured {size} B, budget {budget} B; set the budget to {size} B"
+                    if drift:
+                        print(f"NOTE IDF drift: {drift}: {message}")
+                    else:
+                        errors.append(f"{message}; run `{UPDATE_BUDGETS}`")
         report.append((site, size, sorted(names.get(site.label, []))))
     if errors:
         raise ValueError("\n".join(errors))
@@ -400,15 +404,51 @@ def read_build(build, root=ROOT):
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id = (build / "build_id.txt").read_text(encoding="utf-8").strip()
     variant = build_id.rsplit("-", 1)[-1]
-    if variant not in {"release", "dev", "diag"}:
+    if variant not in VARIANTS:
         raise ValueError(f"unknown build variant: {build_id}")
     idf_commit = run("git", "-C", metadata["idf_path"], "rev-parse", "HEAD").strip()
     return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit, inputs=inputs, sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
+def update_budgets(root, builds):
+    labels = [build["variant"] for build in builds]
+    if len(labels) != len(set(labels)):
+        raise ValueError("duplicate budget build variant")
+    missing = [variant for variant in VARIANTS if variant not in labels]
+    if missing:
+        raise ValueError("budget update missing variants: " + ", ".join(missing))
+    pin = idf_pin(root)
+    for build in builds:
+        drift = idf_drift(build["idf_commit"], pin["commit"])
+        if drift:
+            raise ValueError(f"cannot update budgets: {drift}")
+    measured, files = {}, {}
+    for build in builds:
+        for site, size, _ in build["report"]:
+            if size:
+                measured.setdefault((site.path, site.line), {})[build["variant"]] = size
+    for (name, line), sizes in sorted(measured.items()):
+        if name not in files:
+            files[name] = ((root / name).read_bytes().decode("utf-8"), [])
+        text, edits = files[name]
+        prefix = "".join(text.splitlines(keepends=True)[:line - 1])
+        matches = list(BUDGET.finditer(prefix))
+        if not matches:
+            raise ValueError(f"{name}:{line}: budget clause is not contiguous")
+        values = set(sizes.values())
+        clause = str(next(iter(values))) + " B" if len(values) == 1 else ", ".join(
+            f"{variant} {sizes[variant]} B" for variant in VARIANTS if variant in sizes)
+        edits.append((matches[-1].start(1), matches[-1].end(1), clause))
+    for name, (text, edits) in files.items():
+        for start, end, clause in sorted(edits, reverse=True):
+            text = text[:start] + clause + text[end:]
+        (root / name).write_bytes(text.encode("utf-8"))
+    print(f"Updated IRAM budgets: {len(measured)} active sites")
+
+
 def render(builds):
-    builds = sorted(builds, key=lambda b: ("release", "dev", "diag").index(b["variant"]))
+    builds = sorted(builds, key=lambda b: VARIANTS.index(b["variant"]))
     labels = [b["variant"] for b in builds]
     headers = [f"{b['build_id']} (IDF {b['idf_commit'][:12]})" for b in builds]
     release = next((build for label, build in zip(labels, builds) if label == "release"), None)
@@ -485,6 +525,7 @@ def main():
     modes.add_argument("--write", action="store_true")
     modes.add_argument("--tables", type=Path)
     modes.add_argument("--check", action="store_true")
+    modes.add_argument("--update-budgets", action="store_true")
     args = parser.parse_args()
     try:
         if args.source_only:
@@ -499,9 +540,11 @@ def main():
         for build in builds:
             placements, active = build_sites(args.root.resolve(), build)
             try:
-                build["report"] = check(placements, build["inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"])
+                build["report"] = check(placements, build["inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets)
             except ValueError as error:
                 errors.append(str(error))
+                continue
+            if args.update_budgets:
                 continue
             for site, size, names in build["report"]:
                 print(f"{build['variant']}: {site.owner} {site.label}: {size} B" +
@@ -509,6 +552,9 @@ def main():
             print(f"PASS IRAM {build['variant']}: {len(build['report'])} sites checked")
         if errors:
             raise ValueError("\n".join(errors))
+        if args.update_budgets:
+            update_budgets(args.root, builds)
+            return 0
         if args.check:
             return 0
         body = render(builds)
