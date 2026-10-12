@@ -13,6 +13,25 @@ import iram_what_if as probe
 from doc_tables import markdown
 
 
+def chart_documents(doc):
+    tiers = doc.parent / memory.TIERS_DOC
+    tiers.parent.mkdir(parents=True, exist_ok=True)
+    for path, block in ((doc, memory.BLOCK), (tiers, memory.TIERS_BLOCK)):
+        path.write_text(f'<!-- generated: {block} -->\n<!-- /generated: {block} -->\n', encoding='utf-8')
+
+
+@contextlib.contextmanager
+def chart_cli(doc, build):
+    replacements = dict(render_tiers=lambda builds, root: 'tier fixture', DOC=doc, ROOT=doc.parent, TIERS_DOC=doc.parent / memory.TIERS_DOC,
+                        read_build=lambda *args: build, build_sites=lambda *args: ([], lambda site: True),
+                        check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'})
+    with contextlib.ExitStack() as stack:
+        for name, value in replacements.items():
+            stack.enter_context(patch.object(memory, name, value))
+        stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+        yield
+
+
 class MemoryChartTests(unittest.TestCase):
     def body(self):
         regions = [('iram0_0_seg shared alias', '0x40378000–0x40378400 (1024 B)'),
@@ -96,19 +115,16 @@ class MemoryChartTests(unittest.TestCase):
     def test_write_refreshes_tables_and_both_charts(self):
         with tempfile.TemporaryDirectory() as directory:
             doc = Path(directory) / 'map.md'
-            doc.write_text(f'<!-- generated: {memory.BLOCK} -->\n<!-- /generated: {memory.BLOCK} -->\n', encoding='utf-8')
+            chart_documents(doc)
             build = dict(variant='release', idf_commit='fixture', inputs=[], owned={})
-            with (patch.object(memory, 'DOC', doc), patch.object(memory, 'ROOT', doc.parent), patch.object(memory, 'read_build', return_value=build),
-                  patch.object(memory, 'build_sites', return_value=([], lambda site: True)),
-                  patch.object(memory, 'check', return_value=[]), patch.object(memory, 'render', return_value=self.body()),
-                  patch.object(memory, 'idf_pin', return_value={'commit': 'fixture'}),
-                  patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--write']), contextlib.redirect_stdout(io.StringIO())):
+            with chart_cli(doc, build), patch.object(memory, 'render', return_value=self.body()), patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--write']):
                 self.assertEqual(memory.main(), 0)
             for name in memory.CHARTS.values():
                 svg = (doc.parent / name).read_bytes()
                 self.assertNotIn(b'\r', svg)
                 ET.fromstring(svg)
             self.assertIn('Placement', doc.read_text())
+            self.assertIn('tier fixture', (doc.parent / memory.TIERS_DOC).read_text())
 
     def test_tables_charts_match_chart_mode(self):
         build = dict(variant='release', build_id='abc-release', idf_commit='fixture',
@@ -120,18 +136,60 @@ class MemoryChartTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             doc = root / 'map.md'
-            doc.write_text(f'<!-- generated: {memory.BLOCK} -->\n<!-- /generated: {memory.BLOCK} -->\n')
+            chart_documents(doc)
             from generated_blocks import replace_block
             replace_block(doc, memory.BLOCK, memory.render([build]))
-            with (patch.object(memory, 'DOC', doc), patch.object(memory, 'ROOT', doc.parent), patch.object(memory, 'read_build', return_value=build),
-                  patch.object(memory, 'build_sites', return_value=([], lambda site: True)),
-                  patch.object(memory, 'check', return_value=[]),
-                  patch.object(memory, 'idf_pin', return_value={'commit': 'fixture'}),
-                  contextlib.redirect_stdout(io.StringIO())):
+            with chart_cli(doc, build):
                 with patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--tables', str(root / 'tables')]):
                     self.assertEqual(memory.main(), 0)
+                self.assertEqual((root / 'tables' / (memory.TIERS_BLOCK + '.md')).read_text(), 'tier fixture')
                 for kind, name in memory.CHARTS.items():
                     output = root / (kind + '.svg')
                     with patch.object(sys, 'argv', ['memory_map.py', '--chart', kind, str(output)]):
                         self.assertEqual(memory.main(), 0)
                     self.assertEqual((root / 'tables' / name).read_bytes(), output.read_bytes())
+
+
+class MemoryTierTests(unittest.TestCase):
+    def test_tiers_derive_constants_partitions_and_chart_heap(self):
+        from doc_tables import parse_table
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            arena = root / 'launcher/main/app/app_arena.h'
+            gfx = root / 'launcher/main/gfx/gfx.h'
+            for path in (arena, gfx):
+                path.parent.mkdir(parents=True)
+            arena.write_text('#define APP_ARENA_BYTES (2u * 1024u * 1024u)\n')
+            gfx.write_text('#define GFX_WIDTH 128\n#define GFX_HEIGHT 256\n')
+            partitions = root / 'launcher/fixture.csv'
+            partitions.write_text('# Name, Type, SubType, Offset, Size\nfactory,app,factory,,0x200000,\nassets,data,0x40,,0x300000,\n')
+            config = {'CONFIG_ESPTOOLPY_FLASHSIZE': '"16MB"',
+                      'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME': '"fixture.csv"'}
+            builds = [dict(variant=variant, regions={'dram0_0_seg': (0x3fc88000, 1024)},
+                           constants={'_heap_start': 0x3fc88170}, config=config)
+                      for variant in memory.VARIANTS]
+            body = memory.render_tiers(builds, root)
+            _, rows = parse_table(body, 'Tier')
+            sizes = {row['Tier']: row['Size'] for row in rows}
+            chart = ET.fromstring(memory.chart('pool', MemoryChartTests().body()))
+            heap = chart.find('.//{*}rect[@data-label="Internal heap"]')
+            expected = int(heap.attrib['data-bytes']) / memory.svg_bars.KB_BYTES
+            for variant in memory.VARIANTS:
+                self.assertIn(f'{variant} {expected:.1f} KB', sizes['Internal SRAM'])
+            self.assertIn('1024 B', sizes['Internal SRAM'])
+            self.assertIn('2 MB app arena', sizes['PSRAM'])
+            self.assertIn('64.0 KB full framebuffer', sizes['PSRAM'])
+            self.assertIn('6080.0 KB PSRAM heap upper bound', sizes['PSRAM'])
+            self.assertIn('16 MB total', sizes['Flash'])
+            self.assertIn('2 MB app partition', sizes['Flash'])
+            self.assertIn('3 MB assets partition', sizes['Flash'])
+            arena.write_text('#define APP_ARENA_BYTES (3u * 1024u * 1024u)\n')
+            gfx.write_text('#define GFX_WIDTH 256\n#define GFX_HEIGHT 256\n')
+            changed = memory.render_tiers(builds, root)
+            self.assertIn('3 MB app arena', changed)
+            self.assertIn('128.0 KB full framebuffer', changed)
+            self.assertIn('4992.0 KB PSRAM heap upper bound', changed)
+            partitions.write_text('factory,app,factory,,0x400000,\nassets,data,0x40,,0x100000,\n')
+            changed = memory.render_tiers(builds, root)
+            self.assertIn('4 MB app partition', changed)
+            self.assertIn('1 MB assets partition', changed)
