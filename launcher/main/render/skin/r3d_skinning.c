@@ -257,7 +257,15 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
                            mode);                                                                                      \
         }                                                                                                              \
     }
+/* Keep normal dot products ahead of position rounding so clamp constants stay in float registers. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize("no-tree-sink")
+#endif
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_lit, LIGHT_DIRECT)
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_renormalised, LIGHT_RENORMALISED)
 SKIN_LIGHT_KERNEL(r3d_skin_clusters_table, LIGHT_TABLE)
 
