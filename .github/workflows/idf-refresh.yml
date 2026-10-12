@@ -116,6 +116,8 @@ jobs:
             echo
             echo "Checks do not start on a PR opened by the workflow: close and reopen it to run CI."
             echo
+            echo "This bump changes the firmware: it merges only with a board perf comparison against main. Run \`launcher/tools/perf/perf_compare.sh origin/main $REFRESH_BRANCH --suite ...\`, post the result, then remove the \`needs-board-perf\` label. A regression blocks it until fixed."
+            echo
             echo "Ticket: xwxi"
           } > "$RUNNER_TEMP/body.md"
-          python scripts/ci/refresh_pr.py sync "$TITLE" "$RUNNER_TEMP/body.md"
+          python scripts/ci/refresh_pr.py sync "$TITLE" "$RUNNER_TEMP/body.md" needs-board-perf
