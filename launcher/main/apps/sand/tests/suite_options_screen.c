@@ -104,21 +104,25 @@ test_the_whole_screen_fits_landscape(void) {
 }
 
 static void
-assert_dither_list_opens_upward_on_screen(bool landscape) {
+assert_dither_list_overlays_on_screen(bool landscape) {
     const options_screen_layout_t lay = layout_for(landscape);
     const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(landscape), UI_MARGIN);
-    TEST_ASSERT_TRUE_MESSAGE(above(list, lay.dither), "the dropdown sits low, so its list grows upward");
+    const int rows_h = DITHER_COUNT * lay.dither.h;
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(rows_h, lay.dither.y - UI_MARGIN, "rows cannot fit above even without a gap");
+    TEST_ASSERT_LESS_THAN_INT(rows_h, canvas_h(landscape) - UI_MARGIN - lay.dither.y - lay.dither.h);
+    TEST_ASSERT_EQUAL_INT(UI_MARGIN, list.y);
+    TEST_ASSERT_EQUAL_INT(rows_h, list.h);
     TEST_ASSERT_TRUE(inside(list, landscape));
 }
 
 static void
-test_the_dither_list_opens_upward_portrait(void) {
-    assert_dither_list_opens_upward_on_screen(false);
+test_the_dither_list_overlays_the_canvas_portrait(void) {
+    assert_dither_list_overlays_on_screen(false);
 }
 
 static void
-test_the_dither_list_opens_upward_landscape(void) {
-    assert_dither_list_opens_upward_on_screen(true);
+test_the_dither_list_overlays_the_canvas_landscape(void) {
+    assert_dither_list_overlays_on_screen(true);
 }
 
 static void
@@ -412,10 +416,9 @@ finger_at(bool landscape, bool pressed, bool released, int x, int y) {
     options_frame(!released, pressed, released, px, py);
 }
 
-/* Held on the bottom row, then dragged up the screen. In landscape that is a
- * sideways stroke on the panel, which must still read as a scroll. */
+/* Every row fits in the canvas overlay, so a drag has no offscreen rows to reveal. */
 static void
-assert_a_drag_scrolls_the_dither_list(bool landscape) {
+assert_a_drag_leaves_the_fitting_dither_list_unscrolled(bool landscape) {
     tap_fixture(SAND_COLOUR_16, landscape);
     menu.draft.dither = 0;
     const mu_Rect dither = dither_rect(landscape);
@@ -423,7 +426,7 @@ assert_a_drag_scrolls_the_dither_list(bool landscape) {
     const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape), UI_MARGIN);
     const mu_Container* cnt = open_list(list);
     TEST_ASSERT_NOT_NULL_MESSAGE(cnt, "the tap must have opened the list");
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(DITHER_COUNT * dither.h, list.h, "a list that fits has nothing to scroll");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(DITHER_COUNT * dither.h, list.h, "the overlay fits all rows");
     const int before = cnt->scroll.y;
     const int x = list.x + list.w / 2;
     const int y0 = list.y + list.h - dither.h / 2;
@@ -434,26 +437,27 @@ assert_a_drag_scrolls_the_dither_list(bool landscape) {
     for (int dy = 4; dy <= 40; dy += 4) {
         finger_at(landscape, false, false, x, y0 - dy);
     }
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(before, cnt->scroll.y, "a finger held on the list, then dragged, scrolls it");
+    TEST_ASSERT_EQUAL_INT(0, before);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(before, cnt->scroll.y, "a fitting overlay has nothing to scroll");
     finger_at(landscape, false, true, x, y0 - 40);
 }
 
 static void
-test_a_drag_scrolls_the_dither_list_landscape(void) {
-    assert_a_drag_scrolls_the_dither_list(true);
+test_a_drag_leaves_the_fitting_dither_list_unscrolled_landscape(void) {
+    assert_a_drag_leaves_the_fitting_dither_list_unscrolled(true);
 }
 
 static void
-test_a_drag_scrolls_the_dither_list_portrait(void) {
-    assert_a_drag_scrolls_the_dither_list(false);
+test_a_drag_leaves_the_fitting_dither_list_unscrolled_portrait(void) {
+    assert_a_drag_leaves_the_fitting_dither_list_unscrolled(false);
 }
 
 void
 run_options_screen_suite(void) {
     RUN_TEST(test_the_whole_screen_fits_portrait);
     RUN_TEST(test_the_whole_screen_fits_landscape);
-    RUN_TEST(test_the_dither_list_opens_upward_portrait);
-    RUN_TEST(test_the_dither_list_opens_upward_landscape);
+    RUN_TEST(test_the_dither_list_overlays_the_canvas_portrait);
+    RUN_TEST(test_the_dither_list_overlays_the_canvas_landscape);
     RUN_TEST(test_every_string_fits_its_rect_portrait);
     RUN_TEST(test_every_string_fits_its_rect_landscape);
     RUN_TEST(test_dragging_the_slider_right_means_finer_quality);
@@ -465,8 +469,8 @@ run_options_screen_suite(void) {
     RUN_TEST(test_apply_takes_a_tap_once_something_is_pending);
     RUN_TEST(test_the_dither_dropdown_picks_from_its_list);
     RUN_TEST(test_a_landscape_tap_picks_the_open_dither_list_row);
-    RUN_TEST(test_a_drag_scrolls_the_dither_list_landscape);
-    RUN_TEST(test_a_drag_scrolls_the_dither_list_portrait);
+    RUN_TEST(test_a_drag_leaves_the_fitting_dither_list_unscrolled_landscape);
+    RUN_TEST(test_a_drag_leaves_the_fitting_dither_list_unscrolled_portrait);
     RUN_TEST(test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen);
     RUN_TEST(test_a_tap_at_the_sliders_right_end_reports_the_finest_quality);
     RUN_TEST(test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality);

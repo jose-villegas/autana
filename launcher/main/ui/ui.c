@@ -204,26 +204,41 @@ draw_command(const mu_Command* cmd) {
     }
 }
 
-/* One canvas's commands.
- *
- * Walked directly rather than through mu_next_command(), which follows the
- * jump chain across every container; the entire point here is to paint one
- * container and leave the others alone. */
+/* Nested heads skip their canvas. Stop at this root's tail before its
+ * painter-order jump: mu_next_command() continues into other roots. */
+static bool
+next_canvas_command(const mu_Container* cnt, mu_Command** cmd) {
+    if (*cmd == NULL) {
+        *cmd = cnt->head;
+    }
+    assert((*cmd)->base.size > 0);
+    *cmd = (mu_Command*)((char*)*cmd + (*cmd)->base.size);
+    while ((const char*)*cmd < (const char*)cnt->tail) {
+        if ((*cmd)->type != MU_COMMAND_JUMP) {
+            return true;
+        }
+        assert((const char*)(*cmd)->jump.dst > (const char*)*cmd);
+        *cmd = (*cmd)->jump.dst;
+    }
+    return false;
+}
+
+#ifndef ESP_PLATFORM
+void (*ui_canvas_painted_for_test)(const mu_Container*);
+#endif
+
 static void
 paint_canvas(const mu_Container* cnt) {
-    const char* p = (const char*)cnt->head + cnt->head->base.size;
-    const char* end = (const char*)cnt->tail;
-
-    while (p < end) {
-        const mu_Command* cmd = (const mu_Command*)p;
-        if (cmd->base.size <= 0) {
-            break; /* corrupt list: stop rather than spin */
-        }
+    mu_Command* cmd = NULL;
+    while (next_canvas_command(cnt, &cmd)) {
         draw_command(cmd);
-        p += cmd->base.size;
     }
-
     gfx_clear_clip();
+#ifndef ESP_PLATFORM
+    if (ui_canvas_painted_for_test != NULL) {
+        ui_canvas_painted_for_test(cnt);
+    }
+#endif
 }
 
 /* FNV-1a (docs/Citations.md#29). Cheap, and only ever run over the few
@@ -231,13 +246,13 @@ paint_canvas(const mu_Container* cnt) {
  * none of it is used. */
 static uint64_t
 hash_canvas(const mu_Container* cnt) {
-    const unsigned char* p = (const unsigned char*)cnt->head + cnt->head->base.size;
-    const unsigned char* end = (const unsigned char*)cnt->tail;
-
     uint64_t h = 1469598103934665603ull;
-    while (p < end) {
-        h ^= *p++;
-        h *= 1099511628211ull;
+    mu_Command* cmd = NULL;
+    while (next_canvas_command(cnt, &cmd)) {
+        const unsigned char* p = (const unsigned char*)cmd;
+        for (int i = 0; i < cmd->base.size; i++) {
+            h = (h ^ p[i]) * 1099511628211ull;
+        }
     }
     return h;
 }
@@ -453,16 +468,16 @@ typedef struct {
                                 its own) */
 } ui_band_entry_t;
 
-/* Headroom, not a tight fit; see gfx_dirty.h's own SUITE_MAX comment for
- * the same reasoning. A typical screen here is a handful of commands per
- * window plus one boundary marker; this leaves room for several such
- * windows in one frame. */
-#define UI_BAND_BIN_MAX 64
+#define UI_EXTRA_RECT_MAX 4
+/* Each drawable command occupies at least a clip command's bytes. Each
+ * root also needs a background and clip reset; queued overlays are separate. */
+#define UI_BAND_BIN_MAX   ((int)(MU_COMMANDLIST_SIZE / sizeof(mu_ClipCommand)) + 2 * MU_ROOTLIST_SIZE + UI_EXTRA_RECT_MAX)
+_Static_assert(sizeof(mu_ClipCommand) <= sizeof(mu_RectCommand), "clip is the smallest drawable command");
+_Static_assert(sizeof(mu_ClipCommand) <= sizeof(mu_TextCommand), "clip is the smallest drawable command");
+_Static_assert(sizeof(mu_ClipCommand) <= sizeof(mu_IconCommand), "clip is the smallest drawable command");
 
 static ui_band_entry_t ui_band_bin[UI_BAND_BIN_MAX];
 static int ui_band_bin_count;
-
-#define UI_EXTRA_RECT_MAX 4
 
 typedef struct {
     int x, y, w, h;
@@ -524,9 +539,7 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
 
 static void
 bin_fill_rect(mu_Rect rect, mu_Color color) {
-    if (ui_band_bin_count >= UI_BAND_BIN_MAX) {
-        return;
-    }
+    assert(ui_band_bin_count < UI_BAND_BIN_MAX);
     ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
     e->kind = UI_BAND_ENTRY_FILL_RECT;
     e->rect = rect;
@@ -631,27 +644,20 @@ ui_end_for_bands(uint32_t background_rgb) {
             bin_fill_rect(canvas_physical_rect(cnt), ui_rgb(background_rgb));
         }
 
-        const char* p = (const char*)cnt->head + cnt->head->base.size;
-        const char* end = (const char*)cnt->tail;
-        while (p < end) {
-            const mu_Command* cmd = (const mu_Command*)p;
-            if (cmd->base.size <= 0) {
-                break; /* corrupt list: stop rather than spin */
-            }
-            if (ui_band_bin_count < UI_BAND_BIN_MAX) {
-                ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
-                e->kind = UI_BAND_ENTRY_COMMAND;
-                e->cmd = cmd;
-                e->always = !command_row_range(cmd, &e->y0, &e->y1);
-            }
-            p += cmd->base.size;
+        mu_Command* cmd = NULL;
+        while (next_canvas_command(cnt, &cmd)) {
+            assert(ui_band_bin_count < UI_BAND_BIN_MAX);
+            ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
+            e->kind = UI_BAND_ENTRY_COMMAND;
+            e->cmd = cmd;
+            e->always = !command_row_range(cmd, &e->y0, &e->y1);
         }
 
-        if (ui_band_bin_count < UI_BAND_BIN_MAX) {
-            ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
-            e->kind = UI_BAND_ENTRY_CLIP_RESET;
-            e->always = true;
-        }
+        assert(ui_band_bin_count < UI_BAND_BIN_MAX);
+        ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
+        e->kind = UI_BAND_ENTRY_CLIP_RESET;
+        e->cmd = cnt->tail;
+        e->always = true;
     }
 
     for (int i = 0; i < extra_rect_count; i++) {
@@ -675,7 +681,18 @@ ui_replay_band(int row0, int row1) {
             case UI_BAND_ENTRY_FILL_RECT:
                 gfx_fill_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h, mu_color_to_gfx(e->color));
                 break;
-            case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip(); break;
+            case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip();
+#ifndef ESP_PLATFORM
+                if (ui_canvas_painted_for_test != NULL) {
+                    for (int root = 0; root < ui_ctx.root_list.idx; root++) {
+                        const mu_Container* cnt = ui_ctx.root_list.items[root];
+                        if (cnt->tail == e->cmd) {
+                            ui_canvas_painted_for_test(cnt);
+                        }
+                    }
+                }
+#endif
+                break;
         }
     }
 }

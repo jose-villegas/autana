@@ -145,10 +145,8 @@ ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int ma
     if (h <= room_above) {
         return mu_rect(anchor.x, anchor.y - LIST_GAP - h, anchor.w, h);
     }
-    if (room_below >= room_above) {
-        return mu_rect(anchor.x, below, anchor.w, room_below);
-    }
-    return mu_rect(anchor.x, margin, anchor.w, room_above);
+    const int room = canvas_h - 2 * margin;
+    return mu_rect(anchor.x, margin, anchor.w, h < room ? h : room);
 }
 
 int

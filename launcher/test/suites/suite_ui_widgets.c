@@ -14,10 +14,15 @@
 #include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_present.h"
+#ifndef DEVICE_BUILD
+#include "gfx/gfx_internal.h"
+#endif
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_scroll.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
 
@@ -280,17 +285,15 @@ overlaps(mu_Rect a, mu_Rect b) {
 }
 
 static void
-test_a_list_too_tall_for_either_side_fills_the_roomier_one(void) {
+test_a_list_too_tall_for_either_side_overlays_the_canvas(void) {
     const mu_Rect anchor = {20, 120, 200, 44};
     const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 300, 16);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(anchor.y + anchor.h - 1, list.y, "more room below than above");
-    TEST_ASSERT_EQUAL_INT(300 - 16, list.y + list.h);
-    TEST_ASSERT_FALSE(overlaps(list, anchor));
-
-    const mu_Rect low = {20, 200, 200, 44};
-    const mu_Rect up = ui_dropdown_list_rect(low, 5, 44, 300, 16);
-    TEST_ASSERT_EQUAL_INT(16, up.y);
-    TEST_ASSERT_FALSE(overlaps(up, low));
+    TEST_ASSERT_EQUAL_INT(16, list.y);
+    TEST_ASSERT_EQUAL_INT(5 * 44, list.h);
+    TEST_ASSERT_TRUE(overlaps(list, anchor));
+    const mu_Rect landscape = ui_dropdown_list_rect((mu_Rect){20, 120, 200, 62}, 5, 62, 368, 16);
+    TEST_ASSERT_EQUAL_INT(5 * 62, landscape.h);
+    TEST_ASSERT_EQUAL_INT(0, ui_dropdown_list_scroll(4, 5, 62, landscape.h));
 }
 
 /* The exact pixel where ui_dropdown_list_rect() switches sides: a list
@@ -326,7 +329,7 @@ test_a_list_taller_than_the_screen_stays_inside_it(void) {
     TEST_ASSERT_LESS_THAN_INT(10 * 44, list.h);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
     TEST_ASSERT_LESS_OR_EQUAL_INT(300 - 16, list.y + list.h);
-    TEST_ASSERT_FALSE(overlaps(list, anchor));
+    TEST_ASSERT_TRUE(overlaps(list, anchor));
 }
 
 static void
@@ -607,6 +610,159 @@ framebuffer_rect_hash(mu_Rect r) {
     return h;
 }
 
+enum {
+    MENU_INK = 0xFF00FF,
+    MENU_BACKGROUND = 0x0A0C14,
+    MENU_FRAMES = 12,
+    MENU_DENSE_COMMANDS = 80,
+    MENU_ROW_HEIGHT = 62,
+    MENU_ITEM_COUNT = 5
+};
+
+static const mu_Rect MENU_ANCHOR = {40, 140, 300, MENU_ROW_HEIGHT};
+static const ui_dropdown_item_t MENU_ITEMS[] = {
+    {.label = "IDLE"}, {.label = "WALK"}, {.label = "FAST"}, {.label = "GALLOP"}, {.label = "BOUND"}};
+
+static const mu_Container* last_menu_canvas;
+static bool menu_window_painted;
+
+static void
+record_menu_canvas(const mu_Container* canvas) {
+    if (canvas == ui_context()->root_list.items[0]) {
+        menu_window_painted = true;
+    }
+    last_menu_canvas = canvas;
+}
+
+static void
+menu_frame(const input_t* in, bool bands, int revision) {
+    last_menu_canvas = NULL;
+    menu_window_painted = false;
+    ui_begin(in);
+    mu_Context* ctx = ui_context();
+    if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
+                             ui_scroll_view_default(), 16)) {
+        ui_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
+        dropdown_open = ui_dropdown_is_open(ctx, "pick");
+        const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
+        ctx->style->colors[MU_COLOR_TEXT] = ui_rgb(MENU_INK);
+        mu_layout_set_next(ctx, (mu_Rect){60, 212, 180, 30}, 0);
+        mu_label(ctx, revision % 2 ? "CHANGED" : "LABEL");
+        mu_Real value = revision;
+        mu_layout_set_next(ctx, (mu_Rect){60, 250, 180, 30}, 0);
+        mu_slider(ctx, &value, 0, MENU_FRAMES);
+        mu_layout_set_next(ctx, (mu_Rect){60, 320, 180, 30}, 0);
+        mu_label(ctx, "BOOT to close");
+        for (int i = 0; i < MENU_DENSE_COMMANDS; i++) {
+            mu_draw_rect(ctx, (mu_Rect){60 + i, 212 + revision, 1, 100}, ui_rgb(MENU_INK));
+        }
+        ctx->style->colors[MU_COLOR_TEXT] = saved_text;
+        ui_scroll_view_end(ctx);
+    }
+    if (bands) {
+        ui_end_for_bands(MENU_BACKGROUND);
+        for (int row = 0; row < GFX_HEIGHT; row += GFX_BAND_HEIGHT) {
+            band_render_active = true;
+            strip_target = (gfx_target_t){gfx_framebuffer() + row * GFX_WIDTH, row, GFX_BAND_HEIGHT, GFX_WIDTH};
+            ui_replay_band(row, row + GFX_BAND_HEIGHT);
+            band_render_active = false;
+        }
+    } else {
+        ui_end(MENU_BACKGROUND);
+    }
+}
+
+static uint64_t
+owned_command_hash(const mu_Container* canvas) {
+    mu_Context* ctx = ui_context();
+    uint64_t hash = 1469598103934665603ull;
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ctx, &cmd)) {
+        const mu_Container* owner = NULL;
+        for (int i = 0; i < ctx->root_list.idx; i++) {
+            const mu_Container* root = ctx->root_list.items[i];
+            if ((char*)cmd > (char*)root->head && (char*)cmd < (char*)root->tail
+                && (owner == NULL || (char*)root->head > (char*)owner->head)) {
+                owner = root;
+            }
+        }
+        if (owner == canvas) {
+            const unsigned char* bytes = (const unsigned char*)cmd;
+            for (int i = 0; i < cmd->base.size; i++) {
+                hash = (hash ^ bytes[i]) * 1099511628211ull;
+            }
+        }
+    }
+    return hash;
+}
+
+static void
+assert_menu_list_on_top(void) {
+    const mu_Rect logical =
+        ui_dropdown_list_rect(MENU_ANCHOR, MENU_ITEM_COUNT, MENU_ROW_HEIGHT, ui_height(), UI_MARGIN);
+    const mu_Rect list = ui_transform_rect(ui_effective_transform(), logical);
+    mu_Context* ctx = ui_context();
+    TEST_ASSERT_TRUE(dropdown_open);
+    TEST_ASSERT_EQUAL_INT(2, ctx->root_list.idx);
+    const mu_Container* top = ctx->root_list.items[ctx->root_list.idx - 1];
+    TEST_ASSERT_EQUAL_MEMORY(&logical, &top->rect, sizeof logical);
+    if (menu_window_painted) {
+        TEST_ASSERT_EQUAL_PTR_MESSAGE(top, last_menu_canvas, "the list must repaint after its window");
+    }
+    const gfx_color_t* fb = gfx_framebuffer();
+    for (int y = list.y; y < list.y + list.h; y++) {
+        for (int x = list.x; x < list.x + list.w; x++) {
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), fb[y * GFX_WIDTH + x],
+                                          "menu ink must not bleed through the opaque list");
+        }
+    }
+}
+
+static void
+menu_repaint_frames(bool bands) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
+    ui_canvas_painted_for_test = record_menu_canvas;
+    gfx_clear(gfx_rgb(MENU_BACKGROUND));
+    int touch_x, touch_y;
+    ui_transform_point(ui_effective_transform(), MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20, &touch_x, &touch_y);
+    const input_t idle = {0};
+    const input_t press = {.down = true, .pressed = true, .x = touch_x, .y = touch_y};
+    const input_t hold = {.down = true, .x = touch_x, .y = touch_y};
+    const input_t release = {.released = true, .x = touch_x, .y = touch_y};
+    menu_frame(&idle, bands, 0);
+    menu_frame(&idle, bands, 0);
+    int ink_x, ink_y;
+    ui_transform_point(ui_effective_transform(), 80, 230, &ink_x, &ink_y);
+    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[ink_y * GFX_WIDTH + ink_x],
+                              "dense menu commands must all be painted before opening the list");
+    menu_frame(&press, bands, 0);
+    for (int frame = 0; frame < MENU_FRAMES; frame++) {
+        const input_t* in = frame < MENU_FRAMES / 2 ? &hold : frame == MENU_FRAMES / 2 ? &release : &idle;
+        menu_frame(in, bands, frame / 3);
+        assert_menu_list_on_top();
+        gfx_present();
+        if (!bands) {
+            const mu_Container* window = ui_context()->root_list.items[0];
+            TEST_ASSERT_EQUAL_MESSAGE(owned_command_hash(window), ui_canvas_hash[window - ui_context()->containers],
+                                      "a canvas hash must contain only its own drawing commands");
+        }
+    }
+    ui_canvas_painted_for_test = NULL;
+    gfx_reset_for_test();
+}
+
+static void
+test_open_list_stays_on_top_during_held_and_idle_partial_frames(void) {
+    menu_repaint_frames(false);
+}
+
+static void
+test_open_list_stays_on_top_during_held_and_idle_band_frames(void) {
+    menu_repaint_frames(true);
+}
+
 static void
 test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
@@ -743,7 +899,8 @@ test_a_drag_scroll_sticks_through_later_frames(void) {
     const int py = list.y + list.h / 2;
 
     many_frame_scroll(cx, py, MANY_COUNT / 2, 0);
-    many_frame_scroll(cx, py, MANY_COUNT / 2, 20);
+    /* The overlay opens near the bottom scroll limit; drag toward earlier rows. */
+    many_frame_scroll(cx, py, MANY_COUNT / 2, -20);
 
     const int dragged = many_list_scroll(list);
     const int opened_scroll = ui_dropdown_list_scroll(MANY_COUNT / 2, MANY_COUNT, DROPDOWN.h, list.h);
@@ -1099,7 +1256,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);
     RUN_TEST(test_a_list_grows_upward_from_a_dropdown_near_the_bottom);
-    RUN_TEST(test_a_list_too_tall_for_either_side_fills_the_roomier_one);
+    RUN_TEST(test_a_list_too_tall_for_either_side_overlays_the_canvas);
     RUN_TEST(test_a_list_switches_sides_at_the_exact_pixel_of_room);
     RUN_TEST(test_a_tap_on_a_listed_item_picks_it_and_closes_the_list);
     RUN_TEST(test_the_list_closes_within_the_close_frame_budget);
@@ -1109,6 +1266,8 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_closing_the_list_restores_the_closed_drawing);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
+    RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
+    RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_band_frames);
 #endif
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);

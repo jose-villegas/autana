@@ -70,3 +70,8 @@ void ui_to_logical(int x, int y, int* lx, int* ly);
  * draw_command() and command_row_range() (ui.c) both need this to know what
  * a MU_COMMAND_TEXT command actually measures as. */
 ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
+
+#ifndef ESP_PLATFORM
+/* Observes completed canvas paints without retaining device-side trace storage. */
+extern void (*ui_canvas_painted_for_test)(const mu_Container*);
+#endif
