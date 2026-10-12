@@ -1,0 +1,16 @@
+{
+  "launcher/components/esp32_s3_touch_amoled_1_8": {
+    "upstream": "third_party/upstream/Waveshare-ESP32-components",
+    "from": "bsp/esp32_s3_touch_amoled_1_8",
+    "taken_from": "30d0ac3b8b6b27ebd402c5852819cbe0dab92749"
+  },
+  "launcher/components/microui": {
+    "upstream": "third_party/upstream/microui",
+    "from": "src",
+    "moved": {
+      "microui.c": "src/microui.c",
+      "microui.h": "include/microui.h"
+    },
+    "taken_from": "0850aba860959c3e75fb3e97120ca92957f9d057"
+  }
+}
