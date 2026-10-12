@@ -11,3 +11,4 @@ extern bool render_lab_show_hud;
 
 /* NULL selects the scene's first camera. */
 extern const char* render_lab_start_camera;
+bool render_lab_capybara_console(const char* args, bool active);

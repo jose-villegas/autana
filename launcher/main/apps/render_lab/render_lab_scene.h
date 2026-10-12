@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "input/input.h"
+#include "ui/ui_scroll.h"
 
 typedef struct {
     const char* name;
@@ -22,4 +23,5 @@ typedef struct {
     /* Optional. The frame's touch, just before update() and under the same
      * rules: for a scene the finger steers. Not called while the menu is open. */
     void (*steer)(uint32_t dt_ms, const input_t* input);
+    void (*controls)(mu_Context* ctx, ui_flow_t* flow, int width);
 } render_lab_scene_t;
