@@ -167,12 +167,21 @@ fixture(int lights) {
     return f;
 }
 
+/* Keep normalisation ahead of ambient loads to avoid spills across the reciprocal call. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize("no-tree-sink")
+#endif
 /* Packed bind normals keep quality checks independent of source-normal quantisation. */
 static void
 reference_light(const fixture_t* f, int vertex, uint8_t out[3]) {
     skin_light_reference(skin_light_reference_normal(&f->skin, f->normals, vertex, true), &f->lights,
                          f->bind.colors[vertex], 0, out);
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 
 typedef enum { SKIN, DIRECT, RENORMALISED, TABLE, EXACT_SEPARATE, NORMAL_PALETTE, TABLE_BUILD } kernel_t;
 
