@@ -35,9 +35,11 @@ import glob
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
@@ -109,8 +111,17 @@ BAD_GCC_FLAGS = {
     "-fno-tree-switch-conversion",
     "-fstrict-volatile-bitfields",
     "-mdisable-hardware-atomics",
+    "-mlongcalls",
+    "-fno-malloc-dce",
+    "-fzero-init-padding-bits=all",
     "-Werror=unused-macros",
 }
+
+SPEC_FLAGS_RE = re.compile(r'(?<!\S)(?:"--?specs=[^"]+"|--?specs=(?:"[^"]+"|\S+))')
+GCC_INCLUDE_START = "#include <...> search starts here:"
+GCC_INCLUDE_END = "End of search list."
+GCC_PROBE_TIMEOUT_SECONDS = 15
+LIBC_HEADER = "stdio.h"
 
 RESPONSE_FILE_RE = re.compile(r'@"([^"]+)"')
 
@@ -416,17 +427,34 @@ def inline_response_file(cmd):
     return cmd[:m.start()] + rf_text + cmd[m.end():]
 
 
+@lru_cache(maxsize=None)
+def gcc_libc_includes(compiler, specs, directory):
+    """Clang does not interpret GCC specs, which select the firmware's libc.
+    Query GCC with those specs and keep its libc header order, without
+    substituting GCC's private intrinsic headers for clang's own."""
+    if not specs:
+        return ()
+    probe = [compiler, *specs, "-E", "-v", "-x", "c", "-"]
+    result = subprocess.run(probe, input="", capture_output=True, text=True,
+                            cwd=directory, env={**os.environ, "LC_ALL": "C"},
+                            timeout=GCC_PROBE_TIMEOUT_SECONDS)
+    if result.returncode:
+        sys.exit(f"FAIL: GCC libc include probe failed: {result.stderr}")
+    _, start, tail = result.stderr.partition(GCC_INCLUDE_START)
+    search, end, _ = tail.partition(GCC_INCLUDE_END)
+    includes = tuple(str((Path(directory) / line.strip()).resolve())
+                     for line in search.splitlines()
+                     if line.strip() and (Path(directory) / line.strip() / LIBC_HEADER).is_file())
+    if not start or not end or not includes:
+        sys.exit("FAIL: GCC specs probe reported no libc include directories")
+    return includes
+
+
 def build_idf_entries(toolchain_root, vendored=False):
-    """launcher/build.diag/compile_commands.json, restricted to this
-    project's own main/, packages/ and test/ trees (excluding vendored code and
-    apps/*/tools/, which the firmware never links), or, with `vendored`,
-    to only the vendored .c files in VENDORED_REFERENCES, with the flags esp-idf
-    generated for xtensa-esp32s3-elf-gcc adjusted for esp-clang: the three
-    GCC-only flags it does not recognise stripped, and --sysroot/
-    --gcc-toolchain added so its `#include_next` chain into newlib
-    resolves. Real device flags otherwise; this is what makes
-    hardware-facing files (app_*.c, gfx/, ui.c, boot/, board/, the
-    input/ drivers) measurable at all."""
+    """Device commands for first-party sources or modified vendored sources.
+    Strip GCC-only flags, resolve specs-selected libc headers through GCC,
+    and supply the toolchain sysroot for IDF's include_next shims. Entry
+    padding changes machine code placement only, so analysis omits it."""
     if not IDF_DB_PATH.exists():
         return {}
     db = json.loads(IDF_DB_PATH.read_text(encoding="utf-8"))
@@ -447,9 +475,15 @@ def build_idf_entries(toolchain_root, vendored=False):
         elif is_vendored(str(rel)) or "tools" in parts:
             continue
         cmd = inline_response_file(e.get("command", ""))
+        compiler = shlex.split(cmd, posix=False)[0].strip('"')
+        specs = tuple(flag.replace('"', '') for flag in SPEC_FLAGS_RE.findall(cmd))
+        includes = gcc_libc_includes(compiler, specs, e["directory"])
+        cmd = SPEC_FLAGS_RE.sub("", cmd)
         cmd = " ".join(t for t in cmd.split() if t not in BAD_GCC_FLAGS)
+        cmd += "".join(f' -isystem "{path}"' for path in includes)
         cmd += (f' --sysroot="{sysroot}" --gcc-toolchain="{toolchain_root}"'
-                ' -Wno-unknown-warning-option -Wno-string-plus-int')
+                ' -Wno-unknown-warning-option -Wno-string-plus-int'
+                ' "-Dpatchable_function_entry(...)="')
         entries[str(path.resolve())] = cmd
     if not vendored:
         for rel, (sibling_rel, variant_symbol) in VARIANT_ONLY_FILES.items():

@@ -1,6 +1,6 @@
-"""The complexity gate's empty-scan guard, driven through main() with
-clang-tidy and the compile database stubbed out."""
+"""Regression checks for complexity coverage and device command construction."""
 from pathlib import Path
+import json
 import subprocess
 import sys
 import tempfile
@@ -84,6 +84,101 @@ class EmptyScanGuardTest(unittest.TestCase):
         files = [self.source("mesh_generated.c", DATA_ONLY)]
         with self.assertRaisesRegex(SystemExit, "ZERO functions"):
             self.run_gate(files, changed=False)
+
+
+class DeviceCommandTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.launcher = Path(self.tmp.name)
+        self.source = self.launcher / "main/console/console.c"
+        self.source.parent.mkdir(parents=True)
+        self.source.touch()
+        self.db = self.launcher / "compile_commands.json"
+        for name, value in (("LAUNCHER_DIR", self.launcher), ("IDF_DB_PATH", self.db)):
+            patch = mock.patch.object(complexity_gate, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def entries(self, flags):
+        response = self.launcher / "cflags"
+        response.write_text(flags, encoding="utf-8")
+        self.db.write_text(json.dumps([{
+            "file": str(self.source), "directory": str(self.launcher),
+            "command": f'"/tool chain/bin/gcc" @"{response}" -Werror -c "{self.source}"',
+        }]), encoding="utf-8")
+        return complexity_gate.build_idf_entries("/tool chain")[str(self.source.resolve())]
+
+    def test_gcc15_flags_are_removed_from_response_files(self):
+        with mock.patch.object(complexity_gate.subprocess, "run") as probe:
+            command = self.entries("-fno-malloc-dce -fzero-init-padding-bits=all -mlongcalls -funknown-option")
+        self.assertNotIn("-mlongcalls", command)
+        self.assertNotIn("-fno-malloc-dce", command)
+        self.assertNotIn("-fzero-init-padding-bits=all", command)
+        self.assertIn("-funknown-option", command)
+        self.assertIn("-Werror", command)
+        probe.assert_not_called()
+
+    def test_specs_are_replaced_with_gcc_libc_search_order(self):
+        with mock.patch.object(complexity_gate, "gcc_libc_includes",
+                               return_value=("/tool chain/picolibc/include",)) as probe:
+            command = self.entries('"-specs=/build dir/picolibc.specs"')
+        probe.assert_called_once_with("/tool chain/bin/gcc",
+                                      ("-specs=/build dir/picolibc.specs",), str(self.launcher))
+        self.assertNotIn("-specs=", command)
+        self.assertIn('-isystem "/tool chain/picolibc/include"', command)
+        self.assertIn('--sysroot="/tool chain/xtensa-esp-elf"', command)
+
+    def test_only_entry_padding_attribute_is_neutralized(self):
+        command = self.entries("")
+        self.assertIn('"-Dpatchable_function_entry(...)="', command)
+        self.assertNotIn("-Wno-unknown-attributes", command)
+        self.assertNotIn("-Wno-error=unknown-attributes", command)
+
+
+class GccLibcProbeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        complexity_gate.gcc_libc_includes.cache_clear()
+        self.addCleanup(complexity_gate.gcc_libc_includes.cache_clear)
+
+    def test_probe_preserves_libc_order_and_omits_private_headers(self):
+        paths = [self.root / name for name in ("picolibc/include", "gcc/include", "newlib/include")]
+        for path in paths:
+            path.mkdir(parents=True)
+            (path / ("stddef.h" if path == paths[1] else complexity_gate.LIBC_HEADER)).touch()
+        stderr = (complexity_gate.GCC_INCLUDE_START + "\n" +
+                  "\n".join(" " + str(path) for path in paths) + "\n" + complexity_gate.GCC_INCLUDE_END)
+        result = subprocess.CompletedProcess([], 0, "", stderr)
+        with mock.patch.object(complexity_gate.subprocess, "run", return_value=result) as probe:
+            includes = complexity_gate.gcc_libc_includes("gcc", ("-specs=libc.specs",), str(self.root))
+            self.assertEqual(includes, (str(paths[0].resolve()), str(paths[2].resolve())))
+            self.assertEqual(includes, complexity_gate.gcc_libc_includes(
+                "gcc", ("-specs=libc.specs",), str(self.root)))
+        probe.assert_called_once()
+        self.assertEqual(probe.call_args.args[0],
+                         ["gcc", "-specs=libc.specs", "-E", "-v", "-x", "c", "-"])
+        self.assertEqual(probe.call_args.kwargs["timeout"], complexity_gate.GCC_PROBE_TIMEOUT_SECONDS)
+        self.assertEqual(probe.call_args.kwargs["input"], "")
+        self.assertEqual(probe.call_args.kwargs["env"]["LC_ALL"], "C")
+
+    def test_invalid_gcc_probe_is_fatal(self):
+        cases = ((1, "missing specs", "GCC libc include probe failed"),
+                 (0, "no search list", "no libc include directories"))
+        for status, stderr, message in cases:
+            with self.subTest(status=status):
+                result = subprocess.CompletedProcess([], status, "", stderr)
+                with mock.patch.object(complexity_gate.subprocess, "run", return_value=result):
+                    with self.assertRaisesRegex(SystemExit, message):
+                        complexity_gate.gcc_libc_includes("gcc", ("-specs=libc",), str(self.root))
+
+    def test_real_parse_errors_remain_fatal(self):
+        errors = complexity_gate.find_parse_errors(
+            "error: unknown argument: '-funknown-option' [clang-diagnostic-error]\n"
+            "/app/source.c:1:2: error: use of undeclared identifier 'missing' [clang-diagnostic-error]")
+        self.assertEqual(len(errors), 2)
 
 
 if __name__ == "__main__":
