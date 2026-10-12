@@ -347,7 +347,7 @@ class RecordedInputsTests(unittest.TestCase):
         names = []
         for step in steps[gate + 1:]:
             self.assertIn("steps.gate.outputs.render == 'true'", step.get('if', ''))
-            if step.get('uses') == 'actions/upload-artifact@v4':
+            if step.get('uses', '').split('@', 1)[0] == 'actions/upload-artifact':
                 names.append(step['with']['name'])
         self.assertCountEqual(names, [prefix + '${{ needs.fingerprint.outputs.fingerprint }}'
                                       for prefix in records.RECORD_PREFIXES])
