@@ -35,6 +35,9 @@ anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* compo
 /* The target named `name`, or NULL. */
 static const anim_target_t*
 find_target(const anim_target_t* targets, int count, const char* name) {
+    if (count > 0 && strcmp(name, ANIM_TARGET_SELF) == 0) {
+        return &targets[0];
+    }
     for (int t = 0; t < count; t++) {
         if (strcmp(targets[t].name, name) == 0) {
             return &targets[t];

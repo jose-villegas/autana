@@ -5,7 +5,8 @@
  * when the scene loads, at the distance that fits the sphere from every
  * angle (orbit_motion.h). A drag turns it, a double tap brings it home, and
  * touches in the shell's edge strips are left alone (orbit_motion_touch.h). The
- * shell draws the scene through the camera; light is baked per vertex.
+ * shell draws the scene through the camera; the capybara is skinned and lit at
+ * run time, the meadow's light is baked.
  */
 
 #include <math.h>
