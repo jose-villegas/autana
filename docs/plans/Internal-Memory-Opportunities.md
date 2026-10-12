@@ -2,8 +2,8 @@
 
 Status: investigation. Each row is a separate decision; none is applied.
 
-The [generated scratch table](../notes/Board-and-Memory.md#what-could-move-out-of-iram)
-and [variant map](../notes/Board-and-Memory.md#internal-memory-map) hold the measurements.
+The [generated scratch table](../memory/Internal-Memory-Map.md#what-could-move-out-of-iram)
+and [variant map](../memory/Internal-Memory-Map.md#placement-rules-and-gate) hold the measurements.
 
 Flash reads, NVS commits, writes and erases can disable caches. An ISR
 registered without ESP_INTR_FLAG_IRAM waits for cache restoration; an

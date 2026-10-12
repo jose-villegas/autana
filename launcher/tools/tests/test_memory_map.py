@@ -126,8 +126,8 @@ class MemoryMapTests(unittest.TestCase):
         self.assertIn("| Slack including pad | 252 | 248 |", body)
         self.assertIn("| launcher/main/apps/demo/ |", body)
         self.assertIn("| 4 | 8 | release 4, dev 8, diag 8 | Cache-off caller. |", body)
-        self.assertIn("| libmain.a | ours | 8 | 20 |", body)
-        self.assertIn("| libfixed.a | IDF / managed | 4 | 4 |", body)
+        self.assertIn("| libmain.a | our sites | 8 | 20 |", body)
+        self.assertIn("| libfixed.a | IDF | 4 | 4 |", body)
         self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", body)
         self.assertIn("| extra | not built | 4 |", body)
         differs = body.split("#### Differs between variants")[1].split("#### Release shared block")[0]
@@ -142,9 +142,9 @@ class MemoryMapTests(unittest.TestCase):
         self.assertEqual(body.count("abcdef123456-release"), 1)
         self.assertIn("IDF fixture-idf", body)
         self.assertIn("\u2013", body)
-        self.assertIn('iram["IRAM<br/>4 B"]', body)
+        self.assertNotIn('```mermaid', body)
         release["sections"][".iram0.text_end"] = (0, 100)
-        self.assertIn('iram["IRAM<br/>4 B"]', memory.render([release, dev]))
+        self.assertNotIn('```mermaid', memory.render([release, dev]))
         del release["sections"][".iram0.text_end"]
         for build in (release, dev):
             build["inputs"].reverse()

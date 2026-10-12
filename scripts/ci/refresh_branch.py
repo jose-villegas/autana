@@ -24,6 +24,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from generated_blocks import apply_tables  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts/gates"))
+from check_generated_files import generated_files, regenerate  # noqa: E402
 
 UNCHANGED = 3
 
@@ -57,6 +59,12 @@ def refresh(root, branch, message, tables, images, remote="origin"):
             shutil.copyfile(copy, target)
             git("add", "--", image, cwd=root)
     apply_tables(root, pathlib.Path(tables))
+    for name in generated_files(root):
+        target = root / name
+        made = regenerate(root, name)
+        if made != target.read_bytes():
+            target.write_bytes(made)
+            git("add", "--", name, cwd=root)
     git("add", "--update", "--", "*.md", cwd=root)
     if not git("diff", "--cached", "--name-only", cwd=root).strip():
         return False

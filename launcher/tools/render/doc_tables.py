@@ -18,6 +18,37 @@ def markdown(headers, rows):
     return "\n".join(lines + ["| " + " | ".join(map(cell, row)) + " |" for row in rows]) + "\n"
 
 
+def parse_table(body, key, required=()):
+    tables = []
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        if not line.startswith('| '):
+            continue
+        cells = lambda row: [cell.strip().replace('\\|', '|') for cell in re.split(r'(?<!\\)\|', row)[1:-1]]
+        headers = cells(line)
+        if key not in headers or index + 1 >= len(lines) or not re.fullmatch(r'\|(?:[-:]+\|)+', lines[index + 1]):
+            continue
+        missing = set(required) - set(headers)
+        if missing:
+            raise ValueError(f'{key}: missing columns: {", ".join(sorted(missing))}')
+        rows = []
+        for row in lines[index + 2:]:
+            if not row.startswith('| '):
+                break
+            values = cells(row)
+            if len(values) != len(headers):
+                raise ValueError(f'{key}: malformed table row: {row}')
+            rows.append(dict(zip(headers, values)))
+        tables.append((headers, rows))
+    if len(tables) != 1:
+        raise ValueError(f'{key}: expected one table, found {len(tables)}')
+    return tables[0]
+
+
+def collapsed(summary, table):
+    return f'<details><summary>{summary}</summary>\n\n{table}\n</details>\n'
+
+
 def scores(path):
     found = {label: tuple(float(value) for value in values) for label, *values in
              SCORE.findall(path.read_text(encoding="utf-8"))}

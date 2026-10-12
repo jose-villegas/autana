@@ -79,6 +79,21 @@ class RefreshBranchTests(unittest.TestCase):
         self.assertFalse(self.refresh(images=()))
         self.assertEqual(git("branch", "--list", "refresh", cwd=self.remote), "")
 
+    def test_generated_file_follows_refreshed_table(self):
+        write(self.main / 'make_chart.py',
+              '\n\n\n\n\n\nimport pathlib, sys\n'
+              'doc = pathlib.Path("docs/new.md").read_text()\n'
+              'value = "2" if "| 2 |" in doc else "1"\n'
+              'pathlib.Path(sys.argv[1]).write_text('
+              '"<!-- GENERATED FILE - do not edit.\\npython make_chart.py docs/memory/chart.svg\\n-->\\n" + value)\n')
+        write(self.main / 'docs/memory/chart.svg',
+              '<!-- GENERATED FILE - do not edit.\npython make_chart.py docs/memory/chart.svg\n-->\n1')
+        git('add', '-A', cwd=self.main)
+        git('commit', '-q', '-m', 'chart', cwd=self.main)
+        git('push', '-q', 'origin', 'main', cwd=self.main)
+        self.refresh(images=())
+        self.assertTrue(self.branch_file('docs/memory/chart.svg').endswith('2'))
+
 
 if __name__ == "__main__":
     unittest.main()

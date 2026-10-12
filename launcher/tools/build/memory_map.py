@@ -25,9 +25,10 @@ VARIANTS = ("release", "dev", "diag")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from code_layout import LayoutError, find_tool, run, symbols
-from doc_tables import markdown
+from doc_tables import markdown, parse_table, collapsed
+import svg_bars
 from compile_db import compile_flags
-from generated_blocks import replace_block
+from generated_blocks import replace_block, blocks
 from espressif import idf_python, idf_pin, idf_drift
 from layout_pad import placed_sections
 sys.path.insert(0, str(ROOT / "scripts/gates"))
@@ -39,7 +40,8 @@ ATTRIBUTE = re.compile(r"\b(?:\w*IRAM_ATTR|\w*IRAM\w*_ATTR)\b|__attribute__\s*\(
 PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
 CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
 BLOCK = "internal-memory-map"
-DOC = ROOT / "docs/notes/Board-and-Memory.md"
+DOC = ROOT / "docs/memory/Internal-Memory-Map.md"
+CHARTS = {"pool": "internal-pool.svg", "components": "iram-components.svg"}
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
 UPDATE_BUDGETS = REGENERATE.rsplit(" ", 1)[0] + " --update-budgets"
 
@@ -175,15 +177,19 @@ def sites(root, owned=None):
     return found
 
 
+def matches_site(item, site):
+    return (fnmatch.fnmatch(item.archive, site.archive) and
+            any(fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
+                and fnmatch.fnmatch(item.symbol, symbol) for obj, symbol in site.entries))
+
+
 def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True):
     errors = []
     drift = idf_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
     names = {}
     for item in inputs:
-        matches = [site for site in placements if fnmatch.fnmatch(item.archive, site.archive)
-                   and any(fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
-                           and fnmatch.fnmatch(item.symbol, symbol) for obj, symbol in site.entries)]
+        matches = [site for site in placements if matches_site(item, site)]
         if len(matches) > 1:
             # A function attribute and a mapping may describe the same code; the function owns its budget.
             matches = sorted(matches, key=lambda site: site.path.endswith(".lf"))[:1]
@@ -479,15 +485,26 @@ def render(builds):
     for key in ("_iram_end", "_data_start", "_bss_start", "_bss_end", "_heap_start", "_heap_low_start"):
         if any(key in b["constants"] for b in builds):
             rows.append((key, *(hex(b["constants"][key]) if key in b["constants"] else "absent" for b in builds)))
-    lines += [markdown(["Region / boundary", *headers], rows), "Split follows `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`; alignment and prefetch padding are read from the linked scripts and map.", ""]
+    lines += [collapsed("Regions and boundaries", markdown(["Region / boundary", *headers], rows)), "Split follows `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`; alignment and prefetch padding are read from the linked scripts and map.", ""]
     components = [Counter() for _ in builds]
     for b, counts in zip(builds, components):
         for item in b["inputs"]:
             counts[item.archive] += item.size
     names = sorted(set().union(*components), key=lambda name: (-max(c[name] for c in components), name))
-    component_rows = [(name, "ours" if any(name in b["owned"] for b in builds) else "IDF / managed", *(c[name] for c in components)) for name in names]
+    placements = [Counter() for _ in builds]
+    for build, counts in zip(builds, placements):
+        for item in build["inputs"]:
+            placement = "our sites" if item.archive == "libmain.a" or any(
+                matches_site(item, site) for site, _, _ in build["report"]) else "IDF"
+            counts[(item.archive, placement)] += item.size
+        ours = sum(size for (_, placement), size in counts.items() if placement == "our sites")
+        if ours != sum(size for _, size, _ in build["report"]):
+            raise ValueError(f"{build['variant']}: our sites component bytes differ from site table")
+    component_rows = [(name, placement, *(c[(name, placement)] for c in placements))
+                      for name in names for placement in ("our sites", "IDF")
+                      if any(c[(name, placement)] for c in placements)]
     component_rows.append(("Linker fill / split slack", "unattributed", *(sum(size for key, (_, size) in b["sections"].items() if key.startswith(".iram")) - sum(c.values()) for b, c in zip(builds, components))))
-    lines += [markdown(["IRAM component", "Ownership", *labels], component_rows)]
+    lines += [collapsed("IRAM components by placement", markdown(["IRAM component", "Placement", *labels], component_rows))]
     reports = [b["report"] for b in builds]
     rows = []
     site_labels = sorted({site.label for report in reports for site, _, _ in report})
@@ -497,7 +514,10 @@ def render(builds):
         budget = ", ".join(f"{name} {value}" for name, value in site.budget.items()) if isinstance(site.budget, dict) else site.budget
         rows.append((site.owner, site.label, ", ".join(sorted({name for record in records if record for name in record[2]})),
                      *(record[1] if record else "not built" for record in records), budget, site.reason))
-    lines += [markdown(["Owner", "Placement site", "Symbols", *labels, "Budget B", "Reason"], rows)]
+    show_owner = any(row[0] != "engine" for row in rows)
+    if not show_owner:
+        rows = [row[1:] for row in rows]
+    lines += [markdown([*(["Owner"] if show_owner else []), "Placement site", "Symbols", *labels, "Budget B", "Reason"], rows)]
     differences = []
     for name in names:
         counts = [c[name] for c in components]
@@ -517,15 +537,79 @@ def render(builds):
             exclusive.append(", ".join(f"{obj}:{symbol} ({group[(obj, symbol)]} B)" for obj, symbol in sorted(unique, key=lambda symbol: (-group[symbol], symbol))))
         differences.append((name, *counts, *exclusive))
     lines += ["#### Differs between variants", "", "Exclusive symbols are absent from IRAM in every other listed variant. The console reports the full symbol-level diff.", "",
-              markdown(["Component", *labels, *(label + " only" for label in labels)], differences)]
-    sizes = [sum(size for name, (_, size) in release['sections'].items() if name.startswith('.iram') and name != '.iram0.text_end'),
-             release['slack'], release['sections']['.dram0.data'][1], release['sections']['.dram0.bss'][1],
-             sum(release['regions']['dram0_0_seg']) - release['constants']['_heap_start']]
-    lines += ["#### Release shared block", "", "The split slack includes the prefetch pad. Boxes show linked bytes in address order; width is schematic.", "", "```mermaid", "flowchart LR",
-              "    " + " --- ".join(f'{node}["{label}<br/>{count} B"]' for node, label, count in zip(
-                  ("iram", "slack", "data", "bss", "heap"),
-                  ("IRAM", "Split slack", "DRAM data", "BSS", "Heap range"), sizes)), "```", ""]
+              collapsed("Variant differences", markdown(["Component", *labels, *(label + " only" for label in labels)], differences))]
     return "\n".join(lines)
+
+
+def chart(kind, body):
+    if kind not in CHARTS:
+        raise ValueError(f"unknown chart kind: {kind}")
+    headers, components = parse_table(body, "IRAM component", ("Placement", "release"))
+    variants = [variant for variant in VARIANTS if variant in headers]
+    region_headers, regions = parse_table(body, "Region / boundary")
+    _, sites_table = parse_table(body, "Placement site", variants)
+    region_rows = {row["Region / boundary"]: row for row in regions}
+    def region(name, variant):
+        if name not in region_rows:
+            raise ValueError(f"Region / boundary: missing row {name}")
+        column = next((column for column in region_headers if f"-{variant} (IDF " in column), None)
+        if column is None:
+            raise ValueError(f"Region / boundary: missing column for {variant}")
+        return region_rows[name][column]
+    def number(value):
+        return 0 if value == "not built" else int(value)
+    ours = {}
+    for variant in variants:
+        ours[variant] = sum(number(row[variant]) for row in components if row["Placement"] == "our sites")
+        if ours[variant] != sum(number(row[variant]) for row in sites_table):
+            raise ValueError(f"{variant}: our sites component bytes differ from site table")
+    def alias(name, variant):
+        value = region(name + " shared alias", variant)
+        match = re.fullmatch(r"(0x[0-9a-f]+)–(0x[0-9a-f]+) \((\d+) B\)", value)
+        if not match:
+            raise ValueError(f"invalid shared alias: {value}")
+        start, end, size = match.groups()
+        if int(end, 16) - int(start, 16) != int(size):
+            raise ValueError(f"inconsistent shared alias: {value}")
+        return start, end, int(size)
+    command = f"python launcher/tools/build/memory_map.py --chart {kind} docs/memory/images/{CHARTS[kind]}"
+    if kind == "pool":
+        rows, scales = [], []
+        legend = [("ESP-IDF IRAM", svg_bars.IDF_FILL), ("IRAM we place", svg_bars.OURS_FILL),
+                  ("Split slack incl. pad", svg_bars.SLACK_FILL), ("DRAM data + BSS", svg_bars.DRAM_FILL),
+                  ("Internal heap", svg_bars.HEAP_FILL)]
+        for variant in variants:
+            start, end, size = alias("dram0_0_seg", variant)
+            iram = sum(int(region(name, variant)) for name in region_rows if name.startswith('.iram') and name != '.iram0.text_end')
+            slack = int(region("Slack including pad", variant))
+            dram = sum(int(region(name, variant)) for name in (".dram0.data", ".dram0.bss"))
+            heap = int(end, 16) - int(region("_heap_start", variant), 16)
+            counts = (iram - ours[variant], ours[variant], slack, dram, heap)
+            if sum(counts) != size:
+                raise ValueError(f"{variant}: pool segments do not sum to shared alias")
+            rows.append((variant, [(label, count, fill) for (label, fill), count in zip(legend, counts)],
+                         f"{heap / svg_bars.KB_BYTES:.1f} KB heap"))
+            scales.append(size)
+        start, end, _ = alias("dram0_0_seg", "release")
+        iram_start, _, _ = alias("iram0_0_seg", "release")
+        return svg_bars.bars(command, "Shared internal memory pool", "Linked ranges in address order; heap is not runtime free memory", rows, max(scales),
+                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), legend, (start, end))
+    idf = Counter()
+    fill = None
+    for row in components:
+        if row["Placement"] == "IDF":
+            idf[row["IRAM component"]] += int(row["release"])
+        elif row["IRAM component"] == "Linker fill / split slack":
+            fill = int(row["release"]) - int(region("Slack including pad", "release"))
+    if fill is None:
+        raise ValueError("IRAM component: missing row Linker fill / split slack")
+    ordered = sorted(idf.items(), key=lambda item: (-item[1], item[0]))
+    selected = [(name.removeprefix('lib').removesuffix('.a'), count) for name, count in ordered[:svg_bars.COMPONENT_TOP_COUNT]]
+    selected.extend([("other", sum(count for _, count in ordered[svg_bars.COMPONENT_TOP_COUNT:])), ("Linker fill", fill)])
+    rows = [(label, [(label, count, svg_bars.IDF_FILL)], f"{count} B") for label, count in selected]
+    totals = [f"{variant}: {sum(int(row[variant]) for row in components if row['Placement'] == 'IDF')} B IDF-placed" for variant in variants]
+    return svg_bars.bars(command, "ESP-IDF IRAM by component — release", f"Top {svg_bars.COMPONENT_TOP_COUNT} archives; remaining archives summed as other", rows,
+                         max(count for _, count in selected), ("; ".join(totals), "Unattributed linker fill excludes split slack and prefetch pad."))
 
 
 def main():
@@ -538,9 +622,14 @@ def main():
     modes.add_argument("--tables", type=Path)
     modes.add_argument("--check", action="store_true")
     modes.add_argument("--update-budgets", action="store_true")
+    modes.add_argument("--chart", nargs=2, metavar=("KIND", "OUT"))
     parser.add_argument("--require-pin", action="store_true", help="fail when a build differs from the pinned IDF commit")
     args = parser.parse_args()
     try:
+        if args.chart:
+            kind, out = args.chart
+            svg_bars.write(out, chart(kind, blocks(DOC.read_text(encoding="utf-8"))[BLOCK][2]))
+            return 0
         if args.source_only:
             placements = sites(args.root)
             print(f"IRAM source gate: {len(placements)} sites checked (launcher/CMakeLists.txt and IDF project component discovery)")
@@ -576,6 +665,8 @@ def main():
         body = render(builds)
         if args.write:
             replace_block(DOC, BLOCK, body)
+            for kind, name in CHARTS.items():
+                svg_bars.write(DOC.parent / "images" / name, chart(kind, blocks(DOC.read_text(encoding="utf-8"))[BLOCK][2]))
         elif args.tables:
             args.tables.mkdir(parents=True, exist_ok=True)
             (args.tables / (BLOCK + ".md")).write_text(body, encoding="utf-8")
