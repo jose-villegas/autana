@@ -122,6 +122,9 @@ scene_capybara_enter(void) {
         choice.selected = 0;
         ESP_LOGW(TAG, "default clip missing");
     }
+    if (!render_lab_clips_init(capybara, subject_entity, &choice)) {
+        ESP_LOGW(TAG, "clip picker allocation failed");
+    }
     place_camera();
     (void)scene_activate(capybara, CAPYBARA_CAMERA);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
@@ -133,6 +136,7 @@ scene_capybara_enter(void) {
 
 static void
 scene_capybara_exit(void) {
+    render_lab_clips_destroy(&choice);
     scene_unload(capybara);
     capybara = NULL;
 }
@@ -175,9 +179,9 @@ capybara_status(void) {
     return buf;
 }
 
-bool
-render_lab_capybara_console(const char* args, bool active) {
-    return render_lab_clips_console(active ? capybara : NULL, subject_entity, &choice, args);
+static bool
+console(const char* args) {
+    return render_lab_clips_console(capybara, subject_entity, &choice, args);
 }
 
 static void
@@ -192,4 +196,5 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .exit = scene_capybara_exit,
                                            .status = capybara_status,
                                            .steer = scene_capybara_steer,
-                                           .controls = controls};
+                                           .controls = controls,
+                                           .console = console};

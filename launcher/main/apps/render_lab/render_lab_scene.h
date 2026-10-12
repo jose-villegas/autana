@@ -23,5 +23,10 @@ typedef struct {
     /* Optional. The frame's touch, just before update() and under the same
      * rules: for a scene the finger steers. Not called while the menu is open. */
     void (*steer)(uint32_t dt_ms, const input_t* input);
+    /* Optional. Drawn in the BOOT menu below NEXT SCENE while the scene is
+     * paused; may call public scene_* calls only. */
     void (*controls)(mu_Context* ctx, ui_flow_t* flow, int width);
+    /* Optional. Handles render <args> the shell's own commands did not;
+     * false means the command is not this scene's. */
+    bool (*console)(const char* args);
 } render_lab_scene_t;
