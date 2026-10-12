@@ -1,34 +1,28 @@
-/*
- * shell_system: the registered engine systems, one list threaded through
- * shell_system_t.next and kept in run order. Portable, so the host tests run
- * the same phases the board does.
- */
+/* shell_system: registered engine systems linked by shell_system_t.next in run
+ * order; no hardware dependency, so host tests run the board's phases. */
 #include "shell/shell_system.h"
 
 #include <assert.h>
-#include <stddef.h>
 #include <string.h>
+
+#include "core/registry.h"
 
 static shell_system_t* systems_head;
 
-static bool
-runs_before(const shell_system_t* a, const shell_system_t* b) {
-    return a->order < b->order || (a->order == b->order && strcmp(a->name, b->name) < 0);
+static int
+run_order(const void* a, const void* b) {
+    const shell_system_t* first = a;
+    const shell_system_t* second = b;
+    return first->order == second->order ? strcmp(first->name, second->name)
+                                         : (first->order > second->order) - (first->order < second->order);
 }
 
 void
 shell_system_register(shell_system_t* system) {
-    for (const shell_system_t* other = systems_head; other != NULL; other = other->next) {
-        assert(strcmp(other->name, system->name) != 0 && "two systems share a name");
-    }
-    system->next = NULL;
-
-    shell_system_t** link = &systems_head;
-    while (*link != NULL && runs_before(*link, system)) {
-        link = &(*link)->next;
-    }
-    system->next = *link;
-    *link = system;
+    static const registry_rule_t rule = REGISTRY_RULE(shell_system_t, strcmp, run_order);
+    const registry_add_t result = registry_add(&systems_head, &rule, system);
+    assert(result == REGISTRY_ADDED && "system registered twice or name taken");
+    (void)result;
 }
 
 void

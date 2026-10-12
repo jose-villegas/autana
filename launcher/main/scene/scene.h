@@ -68,6 +68,13 @@ const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t ent
  * sample without drawing; NULL when the scene has no such camera. */
 const r3d_scene_camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
 
+/* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
+bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);
+bool scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float intensity);
+/* Zero when the entity has no light. */
+vec3f_t scene_light_color(const scene_t* scene, scene_entity_t entity);
+float scene_light_intensity(const scene_t* scene, scene_entity_t entity);
+
 const scene_transform_t* scene_entity_transform(const scene_t* scene, scene_entity_t entity);
 void scene_set_transform(scene_t* scene, scene_entity_t entity, const scene_transform_t* transform);
 bool scene_entity_enabled(const scene_t* scene, scene_entity_t entity);
