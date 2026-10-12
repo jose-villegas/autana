@@ -51,8 +51,6 @@
     {matchManagers: ['github-actions'], matchPackageNames: ['jose-villegas/autana'], enabled: false},
 
     {matchManagers: ['pip_requirements'], groupName: 'Python packages', groupSlug: 'python-packages'},
-    // A new clang-format may reformat the tree; its own pull request carries the reformat.
-    {matchPackageNames: ['clang-format'], groupName: 'clang-format', groupSlug: 'clang-format'},
     // The fit's GPU packages: the self-hosted runner's environment is rebuilt by hand
     // (launcher/tools/r3d/README.md), so these open only from the dashboard.
     {

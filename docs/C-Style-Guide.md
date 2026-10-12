@@ -72,13 +72,14 @@ scripts/gates/check-format.sh path/to/file.c path/to/file.h
 One exact clang-format release, not "this major or newer". `.clang-format`
 does not define a formatting on its own; a version of clang-format reading it
 does, and majors disagree about this config on real files here. The release is
-the one `scripts/gates/requirements.txt` pins: `python -m pip install -r
-scripts/gates/requirements.txt` installs it, and CI installs the same.
-`check-format.sh` runs another patch release of the same major with a note
-naming both, and refuses any other major. `CLANG_FORMAT_ANY_VERSION=1` forces a
-one-off run on another major, at the cost of reformatting files you did not
-touch. Moving to a new major is a migration: its pull request reformats the
-tree in a commit of its own, listed in `.git-blame-ignore-revs`.
+the esp-clang the pinned ESP-IDF bundles (`launcher/idf-pin.json`), so installing
+that ESP-IDF is all it takes, and CI formats with that same esp-clang inside the
+pinned ESP-IDF image. `check-format.sh` runs another patch release of the same
+major with a note naming both, and refuses any other major.
+`CLANG_FORMAT_ANY_VERSION=1` forces a one-off run on another major, at the cost
+of reformatting files you did not touch. An ESP-IDF bump that moves esp-clang to
+a new major is a migration: its pull request reformats the tree in a commit of
+its own, listed in `.git-blame-ignore-revs`.
 
 ### Where the rules are checked
 
