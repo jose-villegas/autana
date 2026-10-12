@@ -8,8 +8,9 @@ Informational: nothing here installs or changes a tool. docs/tools/Framework-Ver
 says how to match each row.
 """
 import argparse
+import contextlib
+import io
 import importlib.metadata
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -17,10 +18,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "launcher/tools/build"))
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from espressif import idf_path, idf_pin  # noqa: E402
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from bake.produce import PIN  # noqa: E402  (the exact-pin line a bake key counts)
+from espressif import idf_commit, idf_path, idf_pin  # noqa: E402
 import pinned_tool  # noqa: E402
 
-REQUIREMENT = re.compile(r"^([A-Za-z0-9_.-]+)==(\S+)")
 MISSING = "not found"
 
 
@@ -37,7 +39,7 @@ def pinned_requirements(root=ROOT):
     files = output("git", "ls-files", "--", ":(glob)**/requirements*.txt", cwd=root) or ""
     for name in files.splitlines():
         for line in (root / name).read_text(encoding="utf-8").splitlines():
-            if match := REQUIREMENT.match(line):
+            if match := PIN.match(line.strip()):
                 yield name, match.group(1), match.group(2)
 
 
@@ -48,14 +50,22 @@ def installed(package):
         return MISSING
 
 
+def resolved_version(tool):
+    """The version of the binary the gates would run, or why there is none."""
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            binary, _ = pinned_tool.resolve(tool)
+    except SystemExit:
+        return MISSING
+    return pinned_tool.tool_version(binary)
+
+
 def rows(root=ROOT):
     """(framework, pinned, here) for each pin."""
     pin = idf_pin()
-    yield "ESP-IDF commit", pin["commit"], output("git", "-C", str(idf_path()), "rev-parse", "HEAD") or MISSING
+    yield "ESP-IDF commit", pin["commit"], idf_commit(idf_path()) or MISSING
     for tool in ("clang-format", "clang-tidy"):
-        found = [pinned_tool.tool_version(c) for c in pinned_tool.candidates(tool)]
-        here = pin["esp_clang"] if pin["esp_clang"] in found else next((v for v in found if v), MISSING)
-        yield tool, pin["esp_clang"], here
+        yield tool, pin["esp_clang"], resolved_version(tool)
     yield "Python", (root / ".python-version").read_text().strip(), ".".join(map(str, sys.version_info[:3]))
     node = output("node", "--version")
     yield "Node", (root / ".node-version").read_text().strip(), node.lstrip("v") if node else MISSING

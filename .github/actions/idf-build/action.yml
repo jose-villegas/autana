@@ -50,7 +50,7 @@ runs:
       env:
         BUILD_COMMAND: ${{ inputs.command }}
       run: |
-        image=$(python3 scripts/deps/idf_pin.py show image)
+        image=$(sh scripts/ci/idf_image.sh)
         docker run --rm -t -e IDF_TARGET=esp32s3 \
           -v "$GITHUB_WORKSPACE:/app" -w /app/launcher \
           -v "${{ runner.temp }}/bakes:/bakes" -e AUTANA_BAKE_CACHE=/bakes \

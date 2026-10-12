@@ -2141,7 +2141,7 @@ class IdfNoteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / "launcher").mkdir()
             (Path(folder) / "launcher" / "idf-pin.json").write_text(json.dumps({"commit": pinned_commit}))
-            with mock.patch.object(autana, "git", return_value=local_commit),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            with mock.patch.object(autana, "idf_commit", return_value=local_commit),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
                 autana.idf_note(folder)
         return out.getvalue()
 
