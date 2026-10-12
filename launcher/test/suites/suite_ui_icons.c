@@ -80,7 +80,6 @@ test_a_set_of_one_bit_icons_loads_and_holds_its_pack_until_released(void) {
     write_icon_pack();
     TEST_ASSERT_TRUE(load_one(PACK, "mark"));
     (void)remove("./" PACK ".apak");
-    test_asset_dir_restore();
 }
 
 static void
@@ -91,7 +90,6 @@ test_a_missing_name_an_image_of_another_format_or_no_pack_loads_nothing(void) {
     TEST_ASSERT_FALSE(load_one(PACK, "photo"));
     TEST_ASSERT_FALSE(load_one("suite_ui_icons_missing", "mark"));
     (void)remove("./" PACK ".apak");
-    test_asset_dir_restore();
 }
 #endif
 
