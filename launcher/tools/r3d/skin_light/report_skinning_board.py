@@ -12,6 +12,12 @@ from generated_blocks import replace_block
 
 LOG_HEADER = pathlib.Path(__file__).resolve().parents[3] / "main/apps/render_lab/tests/capybara_perf_log.h"
 PREFIX = read_define(LOG_HEADER, "CAPYBARA_PERF_PREFIX")
+BUDGET_NS_PER_VERTEX = read_define(LOG_HEADER, "CAPYBARA_PERF_BUDGET_NS_PER_VERTEX")
+NANOSECONDS_PER_MICROSECOND = 1000
+SKIN_HEADER = LOG_HEADER.parents[3] / "render/r3d_skin.h"
+LIGHTING_MODES = {read_define(SKIN_HEADER, "R3D_SKIN_LIGHT_" + mode.upper()): mode
+                  for mode in ("direct", "renormalised", "table")}
+SETUP_FIELDS = tuple(re.findall(r"(\w+)=%d", read_define(LOG_HEADER, "CAPYBARA_PERF_SETUP_FORMAT")))
 PHASE_BEFORE_ENTER = read_define(LOG_HEADER, "CAPYBARA_PERF_PHASE_BEFORE_ENTER")
 PHASE_LOADED = read_define(LOG_HEADER, "CAPYBARA_PERF_PHASE_LOADED")
 PHASE_PLAYING = read_define(LOG_HEADER, "CAPYBARA_PERF_PHASE_PLAYING")
@@ -64,6 +70,8 @@ def parse_capture(text):
             fields = ("internal_free", "internal_largest") if key[0] == "phase" else ("mean_us",)
             if key in STAGES:
                 fields += ("vertices", "samples")
+            if key[0] == STAGE_SKIN:
+                fields += SETUP_FIELDS
             for field in fields:
                 try:
                     int(run[key][field])
@@ -73,7 +81,19 @@ def parse_capture(text):
     samples = {int(run[key]["samples"]) for run in runs.values() for key in STAGES if key in run}
     if len(vertices) != 1 or min(vertices) <= 0 or len(samples) != 1 or min(samples) <= 0:
         raise ValueError("inconsistent vertices or samples")
+    setup = {}
+    for field in SETUP_FIELDS:
+        values = {int(run[key][field]) for run in runs.values() for key in STAGES
+                  if key[0] == STAGE_SKIN and key in run}
+        if len(values) != 1:
+            raise ValueError(f"inconsistent {field}")
+        setup[field] = values.pop()
+    if setup["joints"] <= 0 or setup["influences"] <= 0 or setup["lights"] < 0:
+        raise ValueError("invalid skin setup")
+    if setup["lighting"] not in LIGHTING_MODES:
+        raise ValueError("invalid lighting")
     return {
+        "setup": setup,
         "build": build, "run_count": len(runs), "vertices": vertices.pop(), "samples": samples.pop(),
         "stages": {key: statistics.median(int(run[key]["mean_us"]) for run in runs.values() if key in run) for key in STAGES},
         "per_vertex": {key: statistics.median(float(run[key].get("us_per_vertex",
@@ -90,22 +110,36 @@ def parse_capture(text):
 def budget(text):
     data = parse_capture(text)
     stages, costs = data["stages"], data["per_vertex"]
-    table = ["The skin stage's budget is about 1 Âµs per vertex. The board capture",
-             "measures the animated subject playing, including runtime lighting.", "",
+    limit = BUDGET_NS_PER_VERTEX / NANOSECONDS_PER_MICROSECOND
+    setup = data["setup"]
+    table = [f"The skin stage's budget is {limit:g} µs per vertex. The board capture",
+             f"measures the animated subject playing: {data['vertices']} vertices, {setup['joints']} joints,",
+             f"{setup['influences']} influences, {LIGHTING_MODES[setup['lighting']]} lighting, "
+             f"{setup['lights']} light{'s' if setup['lights'] != 1 else ''}.", "",
              "| Stage, per frame | One core | Two cores |", "|---|---:|---:|"]
     for stage, label in ((STAGE_ANIMATE, "Animate: sample, blend, palette"), (STAGE_SKIN, "Skin and light")):
-        cells = [f"{stages[(stage, core)]:g} Âµs ({costs[(stage, core)]:.3f} Âµs / vertex)" for core in ("1", "2")]
+        cells = [f"{stages[(stage, core)]:g} µs ({costs[(stage, core)]:.3f} µs / vertex)" for core in ("1", "2")]
         table.append(f"| {label} | {' | '.join(cells)} |")
     step = (STAGE_ANIMATION_STEP, "unknown")
-    table.append(f"| Whole animation step (cores not recorded) | {stages[step]:g} Âµs ({costs[step]:.3f} Âµs / vertex) | |")
+    table.append(f"| Whole animation step (cores not recorded) | {stages[step]:g} µs ({costs[step]:.3f} µs / vertex) | |")
     playing, paused, delta = data["render"]
-    table.append(f"| Scene render, playing vs paused | | +{delta:g} Âµs ({playing:g} vs {paused:g} Âµs) |")
+    table.append(f"| Scene render, playing vs paused | | +{delta:g} µs ({playing:g} vs {paused:g} µs) |")
     for key, count in data["stage_counts"].items():
         if count < data["run_count"]:
             table.extend(("", f"{key[0]}, {key[1]} core(s): {count} of {data['run_count']} runs."))
     for (stage, slot), count in zip(RENDER_KEYS, data["render_counts"]):
         if count < data["run_count"]:
             table.extend(("", f"{stage}, paused={slot}: {count} of {data['run_count']} runs."))
+    within = [costs[(STAGE_SKIN, core)] <= limit for core in ("1", "2")]
+    if all(within):
+        verdict = "within budget on both cores"
+    elif not any(within):
+        verdict = "above budget on both cores"
+    elif within[1]:
+        verdict = "within budget on two cores; above budget on one core"
+    else:
+        verdict = "within budget on one core; above budget on two cores"
+    table.extend(("", f"Skin and light: {verdict} (budget {limit:g} µs / vertex)."))
     table.extend(("", "| Internal RAM | Free / largest block, bytes |", "|---|---:|"))
     for phase, label in zip(PHASES, ("Before the scene loads", "Scene loaded", "Scene playing")):
         free, largest = data["phases"][phase]

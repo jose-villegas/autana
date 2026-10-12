@@ -152,14 +152,17 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     const perf_stats_t us = perf_stats_compute(f->elapsed_us, PERF_SAMPLES);
     const perf_stats_t cycles = perf_stats_compute(f->cpu_cycles, PERF_SAMPLES);
     const int vertices = scene_entity_mesh(f->scene, f->subject)->vertex_count;
+    const scene_skinned_renderer_t* skin = &f->scene->skinned_renderers[f->subject];
     TEST_ASSERT_GREATER_THAN_INT64(0, us.avg);
     ESP_LOGI(TAG,
              CAPYBARA_PERF_PREFIX
-             " stage=%s cores=%s worker_samples=%d samples=%d vertices=%d joints=%d mean_us=%lld p95_us=%lld "
+             " stage=%s cores=%s worker_samples=%d samples=%d vertices=%d" CAPYBARA_PERF_SETUP_FORMAT
+             " mean_us=%lld p95_us=%lld "
              "us_per_vertex=%.3f "
              "cycles_per_vertex=%.3f",
              stage, cores, worker_samples, PERF_SAMPLES, vertices, f->scene->animators[f->subject].skeleton.joint_count,
-             (long long)us.avg, (long long)us.p95, (double)us.avg / vertices, (double)cycles.avg / vertices);
+             skin->skin.influences, skin->light_mode, f->scene->light_count, (long long)us.avg, (long long)us.p95,
+             (double)us.avg / vertices, (double)cycles.avg / vertices);
 }
 
 static perf_stats_t
