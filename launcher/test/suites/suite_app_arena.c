@@ -107,7 +107,8 @@ test_padding_alone_past_the_block_end_is_refused(void) {
 }
 
 /* Address and offset alignment differ observably only when the lowest set
- * bit of the base is below APP_ARENA_BYTES; twice that bit may equal the size. */
+ * bit of the base is below APP_ARENA_BYTES. An address-aligned take to twice
+ * that bit lands at offset base_alignment, which fits while below the size. */
 static void
 test_alignment_is_of_the_address_not_the_offset(void) {
     const uintptr_t base = block_base();
