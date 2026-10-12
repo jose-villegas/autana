@@ -2135,5 +2135,26 @@ class ProjectSettingsTests(unittest.TestCase):
         self.assertIn("records", printed.getvalue())
 
 
+
+class IdfNoteTests(unittest.TestCase):
+    def note(self, local_commit, pinned_commit="a" * 40):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "launcher").mkdir()
+            (Path(folder) / "launcher" / "idf-pin.json").write_text(json.dumps({"commit": pinned_commit}))
+            with mock.patch.object(autana, "git", return_value=local_commit),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                autana.idf_note(folder)
+        return out.getvalue()
+
+    def test_another_esp_idf_commit_is_a_note_naming_both(self):
+        printed = self.note("b" * 40)
+        self.assertIn("note: ESP-IDF", printed)
+        self.assertIn("b" * 40, printed)
+        self.assertIn("a" * 40, printed)
+
+    def test_the_pinned_commit_or_no_esp_idf_prints_nothing(self):
+        self.assertEqual(self.note("a" * 40), "")
+        self.assertEqual(self.note(""), "")
+
+
 if __name__ == "__main__":
     unittest.main()
