@@ -1,6 +1,6 @@
 /*
  * vec2x: a 2-component vector of a Q16.16. The operations are
- * vec2_template.h's; math_template.h says how they are made.
+ * vec2_template.h's; docs/math/README.md says how they are made.
  */
 #pragma once
 

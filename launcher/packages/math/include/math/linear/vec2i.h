@@ -1,6 +1,6 @@
 /*
  * vec2i: a 2-component vector of an int32. The operations are
- * vec2_template.h's; math_template.h says how they are made.
+ * vec2_template.h's; docs/math/README.md says how they are made.
  */
 #pragma once
 
