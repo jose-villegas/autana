@@ -30,7 +30,7 @@ searching, so no list is kept:
 
 | Root | Pack | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh its renderers name, the clip its camera flies |
+| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
@@ -185,7 +185,7 @@ pack is unmapped or freed. A missing or bad pack is `NULL` and one log
 line saying why. At most `ASSET_STORE_MOUNTS_MAX` packs are mounted at once,
 and the engine pack, mounted when the first system icon is drawn, keeps its
 slot for the run; `asset_store_mounted()` counts them. `scene_load(id)` mounts pack `id` and opens its scene
-entry `id`, every mesh it names and its camera's clip from it, failing on the
+entry `id`, every mesh, skin, skeleton and clip it names from it, failing on the
 first missing or malformed one with the id and the status; `scene_unload()`
 releases it. A scene that fails to load is not drawn; showing that is up to
 the app.

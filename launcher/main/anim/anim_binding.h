@@ -3,6 +3,8 @@
  * Resolved curves sample directly into their targets without name lookups.
  */
 #pragma once
+
+#define ANIM_TARGET_SELF "."
 #include <stddef.h>
 #include "anim/anim_tracks.h"
 

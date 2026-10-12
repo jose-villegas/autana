@@ -139,7 +139,7 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
     test_tracks_header(entry, track_count, 1000);
     test_track_row(entry, 0,
-                   &(test_track_t){.path = "camera",
+                   &(test_track_t){.path = ANIM_TARGET_SELF,
                                    .field = "position",
                                    .component = ANIM_COMPONENT_TRANSFORM,
                                    .times = FLIGHT_TIMES,
@@ -149,7 +149,7 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
                                    .interp = ANIM_LINEAR});
     if (track_count > 1) {
         test_track_row(entry, 1,
-                       &(test_track_t){.path = "camera",
+                       &(test_track_t){.path = ANIM_TARGET_SELF,
                                        .field = "rotation",
                                        .component = ANIM_COMPONENT_TRANSFORM,
                                        .times = FLIGHT_TIMES,
@@ -189,9 +189,18 @@ typedef struct {
         int entity;
         uint32_t clear_rgb;
         const char* clip;
-        const char* node;
     } cameras[2];
 } scene_spec_t;
+
+typedef struct {
+    uint8_t mode;
+    uint16_t default_clip;
+    vec3f_t ambient;
+    float intensity;
+    float tonemap_white;
+} skin_fixture_options_t;
+
+static const skin_fixture_options_t SKIN_OPTIONS = {R3D_SKIN_LIGHT_DIRECT, 0, {0.25F, 0.5F, 0.75F}, 0.3F, 0.4F};
 
 static const scene_spec_t SCENES[] = {
     /* a camera, a red quad at the origin and a green one 4 units right */
@@ -201,21 +210,15 @@ static const scene_spec_t SCENES[] = {
      1,
      {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
      {{1, "red"}, {2, "green"}},
-     {{0, CLEAR_RGB, "", ""}}},
+     {{0, CLEAR_RGB, ""}}},
     /* its own camera and one blue quad at the origin */
-    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, "", ""}}},
+    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
     /* the same as solo, its camera clearing to a colour of its own */
-    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, "", ""}}},
+    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
     /* names a mesh the pack does not hold */
     {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
     /* a camera that flies the clip "flight", and a red quad */
-    {"test_flight",
-     2,
-     1,
-     1,
-     {{"camera", IDENTITY}, {"red", IDENTITY}},
-     {{1, "red"}},
-     {{0, CLEAR_RGB, "flight", "camera"}}},
+    {"test_flight", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "flight"}}},
     /* two cameras, 4 units apart, and a red quad at the origin */
     {"test_twin",
      3,
@@ -223,90 +226,140 @@ static const scene_spec_t SCENES[] = {
      2,
      {{"left", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}, {"red", IDENTITY}},
      {{2, "red"}},
-     {{0, CLEAR_RGB, "", ""}, {1, CLEAR_RGB, "", ""}}},
+     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}}},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
      .entities = {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
-     .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight", .node = "camera"},
-                 {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight", .node = "camera"}}},
+     .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight"},
+                 {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight"}}},
     /* a camera flying a clip the pack does not hold */
-    {"test_lost",
-     2,
-     1,
-     1,
-     {{"camera", IDENTITY}, {"red", IDENTITY}},
-     {{1, "red"}},
-     {{0, CLEAR_RGB, "nowhere", "camera"}}},
-    /* a camera flying a node the clip does not animate */
-    {"test_headless",
-     2,
-     1,
-     1,
-     {{"camera", IDENTITY}, {"red", IDENTITY}},
-     {{1, "red"}},
-     {{0, CLEAR_RGB, "flight", "lamp"}}},
+    {"test_lost", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "nowhere"}}},
     /* cameras flying a translation of the wrong width, and a clip with no rotation */
-    {"test_skewed",
-     2,
-     1,
-     1,
-     {{"camera", IDENTITY}, {"red", IDENTITY}},
-     {{1, "red"}},
-     {{0, CLEAR_RGB, "skewed", "camera"}}},
-    {"test_unturned",
-     2,
-     1,
-     1,
-     {{"camera", IDENTITY}, {"red", IDENTITY}},
-     {{1, "red"}},
-     {{0, CLEAR_RGB, "unturned", "camera"}}},
+    {"test_skewed", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "skewed"}}},
+    {"test_unturned", 2, 1, 1, {{"camera", IDENTITY}, {"red", IDENTITY}}, {{1, "red"}}, {{0, CLEAR_RGB, "unturned"}}},
 
+    {.id = "test_lit",
+     .entity_count = 3,
+     .renderer_count = 1,
+     .camera_count = 1,
+     .entities = {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"sun", IDENTITY}},
+     .renderers = {{1, "red"}},
+     .cameras = {{0, CLEAR_RGB, ""}}},
+    {.id = "test_skin",
+     .entity_count = 2,
+     .renderer_count = 1,
+     .entities = {{"red", IDENTITY}, {"lamp", IDENTITY}},
+     .renderers = {{0, "red"}}},
 };
 
 #define SCENE_COUNT ((int)(sizeof SCENES / sizeof SCENES[0]))
 #define BAD_SCENE   "test_bad" /* the pair, its second renderer naming entity 9 */
 
+static int
+camera_clip_count(const scene_spec_t* s) {
+    int count = 0;
+    for (int i = 0; i < s->camera_count; i++) {
+        count += s->cameras[i].clip[0] != '\0';
+    }
+    return count;
+}
+
 static uint32_t
 scene_entry_size(const scene_spec_t* s) {
-    return 24U + ((uint32_t)s->entity_count * (32U + sizeof(scene_placement_t)))
+    return SCENE_ASSET_HEADER_SIZE + ((uint32_t)s->entity_count * (ASSET_NAME_MAX + sizeof(scene_placement_t)))
            + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
-           + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t));
+           + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t)) + sizeof(scene_asset_settings_t)
+           + camera_clip_count(s) * (sizeof(scene_asset_animator_t) + ASSET_NAME_MAX)
+           + (strcmp(s->id, "test_lit") == 0 ? sizeof(scene_asset_light_t) : 0)
+           + (strcmp(s->id, "test_skin") == 0 ? sizeof(scene_asset_skinned_renderer_t) - sizeof(scene_asset_renderer_t)
+                                                    + sizeof(scene_asset_animator_t) + 2 * ASSET_NAME_MAX
+                                              : 0);
+}
+
+static void
+make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
+    const uint16_t skins = strcmp(s->id, "test_skin") == 0;
+    const uint16_t clips = camera_clip_count(s) + 2 * skins;
+    const uint16_t lights = strcmp(s->id, "test_lit") == 0;
+    const uint16_t counts[SCENE_ASSET_PART_COUNT] = {s->entity_count,
+                                                     s->entity_count,
+                                                     s->renderer_count - skins,
+                                                     s->camera_count,
+                                                     lights,
+                                                     skins,
+                                                     camera_clip_count(s) + skins,
+                                                     clips,
+                                                     1};
+    const size_t sizes[SCENE_ASSET_PART_COUNT] = {ASSET_NAME_MAX,
+                                                  sizeof(scene_placement_t),
+                                                  sizeof(scene_asset_renderer_t),
+                                                  sizeof(scene_asset_camera_t),
+                                                  sizeof(scene_asset_light_t),
+                                                  sizeof(scene_asset_skinned_renderer_t),
+                                                  sizeof(scene_asset_animator_t),
+                                                  ASSET_NAME_MAX,
+                                                  sizeof(scene_asset_settings_t)};
+    uint32_t offsets[SCENE_ASSET_PART_COUNT], at = SCENE_ASSET_HEADER_SIZE;
+    test_pack_put16(entry, SCENE_ASSET_VERSION);
+    for (int i = 0; i < SCENE_ASSET_PART_COUNT; i++) {
+        offsets[i] = at;
+        test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + i * sizeof(uint16_t), counts[i]);
+        test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + i * sizeof(uint32_t), at);
+        at += counts[i] * sizes[i];
+    }
+    for (int i = 0; i < s->entity_count; i++) {
+        memcpy(entry + offsets[SCENE_ASSET_NAMES] + ASSET_NAME_MAX * i, s->entities[i].name,
+               strlen(s->entities[i].name));
+        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_placement_t) * i, &s->entities[i].at,
+               sizeof(scene_placement_t));
+    }
+    for (int i = 0; i < s->renderer_count - skins; i++) {
+        const scene_asset_renderer_t row = {.entity = s->renderers[i].entity};
+        uint8_t* bytes = entry + offsets[SCENE_ASSET_RENDERERS] + sizeof row * i;
+        memcpy(bytes, &row, sizeof row);
+        memcpy(bytes + offsetof(scene_asset_renderer_t, mesh), s->renderers[i].mesh, strlen(s->renderers[i].mesh));
+    }
+    if (skins != 0) {
+        const scene_asset_skinned_renderer_t skin = {.entity = 0, .mesh = "red", .skin = "rig.quad", .skeleton = "rig"};
+        const scene_asset_animator_t animator = {
+            .entity = 0, .clip_count = 2, .default_clip = options->default_clip, .wrap = ANIM_CLAMP};
+        memcpy(entry + offsets[SCENE_ASSET_SKINS], &skin, sizeof skin);
+        memcpy(entry + offsets[SCENE_ASSET_ANIMATORS], &animator, sizeof animator);
+        memcpy(entry + offsets[SCENE_ASSET_CLIPS], "rig.move", sizeof "rig.move");
+        memcpy(entry + offsets[SCENE_ASSET_CLIPS] + ASSET_NAME_MAX, "rig.back", sizeof "rig.back");
+    }
+    int clip = 0;
+    for (int i = 0; i < s->camera_count; i++) {
+        const scene_asset_camera_t row = {.entity = s->cameras[i].entity,
+                                          .half_fov_short_tan = 1.0F,
+                                          .near_z = 1.0F,
+                                          .clear_rgb = s->cameras[i].clear_rgb};
+        memcpy(entry + offsets[SCENE_ASSET_CAMERAS] + sizeof row * i, &row, sizeof row);
+        if (s->cameras[i].clip[0] != '\0') {
+            const scene_asset_animator_t animator = {
+                .entity = row.entity, .clip_count = 1, .first_clip = clip, .default_clip = 0, .wrap = ANIM_LOOP};
+            memcpy(entry + offsets[SCENE_ASSET_ANIMATORS] + sizeof animator * clip, &animator, sizeof animator);
+            memcpy(entry + offsets[SCENE_ASSET_CLIPS] + ASSET_NAME_MAX * clip, s->cameras[i].clip,
+                   strlen(s->cameras[i].clip));
+            clip++;
+        }
+    }
+    if (lights != 0) {
+        const scene_asset_light_t light = {
+            .entity = 2, .kind = SCENE_LIGHT_KIND_DIRECTIONAL, .color = {0.25F, 0.5F, 0.75F}, .intensity = 2.0F};
+        memcpy(entry + offsets[SCENE_ASSET_LIGHTS], &light, sizeof light);
+    }
+    const scene_asset_settings_t settings = {.ambient_color = options->ambient,
+                                             .ambient_intensity = skins != 0 ? options->intensity : 0.0F,
+                                             .tonemap_white =
+                                                 skins != 0 ? options->tonemap_white : SCENE_TONEMAP_WHITE_NONE};
+    memcpy(entry + offsets[SCENE_ASSET_SETTINGS], &settings, sizeof settings);
 }
 
 static void
 make_scene_entry(uint8_t* entry, const scene_spec_t* s) {
-    const uint32_t names = 24;
-    const uint32_t transforms = names + ((uint32_t)s->entity_count * 32U);
-    const uint32_t renderers = transforms + ((uint32_t)s->entity_count * sizeof(scene_placement_t));
-    const uint32_t cameras = renderers + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t));
-    const uint32_t offsets[4] = {names, transforms, renderers, cameras};
-    test_pack_put16(entry, SCENE_ASSET_VERSION);
-    test_pack_put16(entry + 2, s->entity_count);
-    test_pack_put16(entry + 4, s->renderer_count);
-    test_pack_put16(entry + 6, s->camera_count);
-    for (int i = 0; i < 4; i++) {
-        test_pack_put32(entry + 8 + (4 * i), offsets[i]);
-    }
-    for (int i = 0; i < s->entity_count; i++) {
-        memcpy(entry + names + (32U * (uint32_t)i), s->entities[i].name, strlen(s->entities[i].name));
-        memcpy(entry + transforms + (sizeof(scene_placement_t) * (size_t)i), &s->entities[i].at,
-               sizeof(scene_placement_t));
-    }
-    for (int i = 0; i < s->renderer_count; i++) {
-        uint8_t* row = entry + renderers + (sizeof(scene_asset_renderer_t) * (size_t)i);
-        test_pack_put16(row, s->renderers[i].entity);
-        memcpy(row + 4, s->renderers[i].mesh, strlen(s->renderers[i].mesh));
-    }
-    for (int i = 0; i < s->camera_count; i++) {
-        uint8_t* row = entry + cameras + (sizeof(scene_asset_camera_t) * (size_t)i);
-        const float lens[2] = {1.0F, 1.0F};
-        test_pack_put16(row, s->cameras[i].entity);
-        test_pack_put_floats(row + 4, lens, 2);
-        test_pack_put32(row + 12, s->cameras[i].clear_rgb);
-        memcpy(row + 16, s->cameras[i].clip, strlen(s->cameras[i].clip));
-        memcpy(row + 48, s->cameras[i].node, strlen(s->cameras[i].node));
-    }
+    make_scene_entry_with_skin(entry, s, &SKIN_OPTIONS);
 }
 
 static void
@@ -331,11 +384,12 @@ make_rig_skeleton(test_pack_t* pack, const char* id, int joints) {
 }
 
 static void
-make_rig_skin(test_pack_t* pack, const char* id, int influences, int joints, int vertices) {
+make_rig_skin(test_pack_t* pack, const char* id, int influences, int joints, int vertices, uint8_t mode) {
     const uint32_t records = R3D_SKIN_HEADER_SIZE + joints * sizeof(float[R3D_SKIN_MATRIX_WIDTH]);
     const int stride = 2 * influences + R3D_SKIN_RECORD_TAIL;
     uint8_t* entry = test_pack_add(pack, id, R3D_SKIN_ASSET, records + vertices * stride);
     test_pack_put16(entry + R3D_SKIN_AT_VERSION, R3D_SKIN_VERSION);
+    entry[R3D_SKIN_AT_LIGHTING_MODE] = mode;
     entry[R3D_SKIN_AT_JOINTS] = joints;
     entry[R3D_SKIN_AT_INFLUENCES] = influences;
     test_pack_put32(entry + R3D_SKIN_AT_VERTICES, vertices);
@@ -379,13 +433,14 @@ make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t roo
 }
 
 static void
-make_rig_entries(test_pack_t* pack) {
+make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
     make_rig_skeleton(pack, "rig", RIG_JOINTS);
     make_rig_skeleton(pack, "rig.short", R3D_SKIN_INFLUENCES_MIN);
-    make_rig_skin(pack, "rig.skin2", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, RIG_VERTICES);
-    make_rig_skin(pack, "rig.skin4", R3D_SKIN_INFLUENCES_MAX, RIG_JOINTS, RIG_VERTICES);
-    make_rig_skin(pack, "rig.quad", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, QUAD_VERTICES);
-    make_rig_skin(pack, "rig.shortj", R3D_SKIN_INFLUENCES_MIN, R3D_SKIN_INFLUENCES_MIN, RIG_VERTICES);
+    make_rig_skin(pack, "rig.skin2", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, RIG_VERTICES, R3D_SKIN_LIGHT_DIRECT);
+    make_rig_skin(pack, "rig.skin4", R3D_SKIN_INFLUENCES_MAX, RIG_JOINTS, RIG_VERTICES, R3D_SKIN_LIGHT_DIRECT);
+    make_rig_skin(pack, "rig.quad", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, QUAD_VERTICES, options->mode);
+    make_rig_skin(pack, "rig.shortj", R3D_SKIN_INFLUENCES_MIN, R3D_SKIN_INFLUENCES_MIN, RIG_VERTICES,
+                  R3D_SKIN_LIGHT_DIRECT);
     make_rig_clip(pack, "rig.move", "root", ANIM_ROOT_SKELETON, RIG_TRAVEL);
     make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, -RIG_TRAVEL);
     make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_TRAVEL);
@@ -394,23 +449,25 @@ make_rig_entries(test_pack_t* pack) {
 
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
-make_pack(uint8_t* bytes) {
+make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
     test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES);
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
         make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue, 1);
     }
     for (int i = 0; i < SCENE_COUNT; i++) {
-        make_scene_entry(test_pack_add(&pack, SCENES[i].id, SCENE_ASSET, scene_entry_size(&SCENES[i])), &SCENES[i]);
+        make_scene_entry_with_skin(test_pack_add(&pack, SCENES[i].id, SCENE_ASSET, scene_entry_size(&SCENES[i])),
+                                   &SCENES[i], options);
     }
     uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
     make_scene_entry(bad, &SCENES[0]);
-    test_pack_put16(bad + 24 + (3 * (32 + sizeof(scene_placement_t))) + sizeof(scene_asset_renderer_t), 9);
+    test_pack_put16(
+        bad + SCENE_ASSET_HEADER_SIZE + (3 * (32 + sizeof(scene_placement_t))) + sizeof(scene_asset_renderer_t), 9);
     for (int i = 0; i < CLIP_COUNT; i++) {
         make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].position_type,
                         CLIPS[i].track_count);
     }
-    make_rig_entries(&pack);
+    make_rig_entries(&pack, options);
     return test_pack_finish(&pack);
 }
 
@@ -445,7 +502,7 @@ release_fixture(void) {
 /* Every test starts from an empty engine, so the order of tests is no one's
  * business. */
 static void
-fixture(void) {
+fixture_with_skin(const skin_fixture_options_t* options) {
     scene_unload_all();
     fx.bytes = test_alloc_aligned(PACK_MAX, ASSET_PACK_BASE_ALIGN, &fx.raw);
     fx.pixels = malloc(sizeof(*fx.pixels) * SIZE * SIZE);
@@ -456,9 +513,14 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     TEST_ASSERT_NOT_NULL(fx.instances);
-    const uint32_t total = make_pack(fx.bytes);
+    const uint32_t total = make_pack(fx.bytes, options);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
     fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL};
+}
+
+static void
+fixture(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
 }
 
 static scene_t*
@@ -639,7 +701,6 @@ test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_ent
     fixture();
     expect_failure(BAD_SCENE, ASSET_ERR_FORMAT, BAD_SCENE);
     expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
-    expect_failure("test_headless", ASSET_ERR_FORMAT, "flight");
     expect_failure("test_skewed", ASSET_ERR_FORMAT, "skewed");
     expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
     TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
@@ -671,7 +732,12 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
 }
 
 /* Where the pair's entry puts its parts, as the pack holds it. */
-enum { PAIR_NAMES = 24, PAIR_RENDERERS = 264, PAIR_CAMERA = 336, PAIR_BYTES = 416 };
+enum {
+    PAIR_NAMES = SCENE_ASSET_HEADER_SIZE,
+    PAIR_RENDERERS = PAIR_NAMES + 3 * (ASSET_NAME_MAX + sizeof(scene_placement_t)),
+    PAIR_CAMERA = PAIR_RENDERERS + 2 * sizeof(scene_asset_renderer_t),
+    PAIR_BYTES = PAIR_CAMERA + sizeof(scene_asset_camera_t) + sizeof(scene_asset_settings_t)
+};
 
 /* One edit that breaks the pair's entry: `width` bytes of `value` at `at`,
  * little-endian, or with `fill` every byte of a 32-byte field. */
@@ -683,10 +749,11 @@ typedef struct {
 } breakage_t;
 
 static const breakage_t BREAKAGES[] = {
-    {"another version", 0, 2, 2, false, ASSET_ERR_VERSION},
-    {"names not 4-aligned", 8, 4, PAIR_NAMES + 2, false, ASSET_ERR_BOUNDS},
-    {"names inside the header", 8, 4, 20, false, ASSET_ERR_BOUNDS},
-    {"the camera past the end by part of a row", 20, 4, PAIR_CAMERA + 4, false, ASSET_ERR_BOUNDS},
+    {"another version", 0, 2, 1, false, ASSET_ERR_VERSION},
+    {"names not 4-aligned", SCENE_ASSET_AT_OFFSETS, 4, PAIR_NAMES + 2, false, ASSET_ERR_BOUNDS},
+    {"names inside the header", SCENE_ASSET_AT_OFFSETS, 4, 20, false, ASSET_ERR_BOUNDS},
+    {"the camera past the end by part of a row", SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_CAMERAS * sizeof(uint32_t), 4,
+     PAIR_BYTES, false, ASSET_ERR_BOUNDS},
     {"a name with no NUL", PAIR_NAMES, 1, 'x', true, ASSET_ERR_FORMAT},
     {"bytes after a name's NUL", PAIR_NAMES + 20, 1, 'x', false, ASSET_ERR_FORMAT},
     {"an empty entity name", PAIR_NAMES, 1, 0, true, ASSET_ERR_FORMAT},
@@ -698,8 +765,6 @@ static const breakage_t BREAKAGES[] = {
     {"a near plane that is not a number", PAIR_CAMERA + 8, 4, 0x7FC00000U, false, ASSET_ERR_FORMAT},
     {"an infinite field of view", PAIR_CAMERA + 4, 4, 0x7F800000U, false, ASSET_ERR_FORMAT},
     {"a clear colour past 0xFFFFFF", PAIR_CAMERA + 12, 4, 0x1000000U, false, ASSET_ERR_FORMAT},
-    {"a clip with no node", PAIR_CAMERA + 16, 1, 'x', false, ASSET_ERR_FORMAT},
-    {"a node with no clip", PAIR_CAMERA + 48, 1, 'x', false, ASSET_ERR_FORMAT},
 };
 
 static void
@@ -722,6 +787,47 @@ open_entry(const uint8_t* entry, uint32_t size) {
 /* Each edit alone is refused with its status; the entry as written opens,
  * and a load of it fails taking nothing. */
 static void
+test_scene_header_counts_are_independent_of_components(void) {
+    fixture();
+
+    enum { ENTITIES = 2, ROWS = ENTITIES + 1 };
+
+    const uint32_t names = SCENE_ASSET_HEADER_SIZE;
+    const uint32_t transforms = names + ROWS * ASSET_NAME_MAX;
+    const uint32_t settings = transforms + ROWS * sizeof(scene_placement_t);
+    const uint32_t size = settings + 2 * sizeof(scene_asset_settings_t);
+    uint8_t* entry = fx.bytes;
+    memset(entry, 0, size);
+    test_pack_put16(entry, SCENE_ASSET_VERSION);
+    for (int part = 0; part < SCENE_ASSET_PART_COUNT; part++) {
+        test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + part * sizeof(uint32_t), settings);
+    }
+    test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_NAMES * sizeof(uint32_t), names);
+    test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_TRANSFORMS * sizeof(uint32_t), transforms);
+    test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_NAMES * sizeof(uint16_t), ENTITIES);
+    test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), ENTITIES);
+    test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 1);
+    for (int i = 0; i < ROWS; i++) {
+        (void)snprintf((char*)entry + names + i * ASSET_NAME_MAX, ASSET_NAME_MAX, "entity_%d", i);
+    }
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(entry, size));
+
+    const struct {
+        int part, count;
+    } changes[] = {{SCENE_ASSET_TRANSFORMS, ENTITIES - 1},
+                   {SCENE_ASSET_TRANSFORMS, ENTITIES + 1},
+                   {SCENE_ASSET_SETTINGS, 0},
+                   {SCENE_ASSET_SETTINGS, 2}};
+
+    for (size_t i = 0; i < sizeof changes / sizeof changes[0]; i++) {
+        const uint32_t at = SCENE_ASSET_AT_COUNTS + changes[i].part * sizeof(uint16_t);
+        test_pack_put16(entry + at, changes[i].count);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(entry, size));
+        test_pack_put16(entry + at, changes[i].part == SCENE_ASSET_SETTINGS ? 1 : ENTITIES);
+    }
+}
+
+static void
 test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
     void* raw = NULL;
     uint8_t* entry = test_alloc_aligned(PAIR_BYTES + 4, 4, &raw);
@@ -743,7 +849,210 @@ test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
     test_free_aligned(raw);
 }
 
+static void
+assert_load_failures_release(const asset_pack_t* pack, const char* id) {
+    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
+    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+
+    enum { ALLOCATION_LIMIT = 16 };
+
+    bool succeeded = false;
+    for (int allocation = 0; allocation < ALLOCATION_LIMIT; allocation++) {
+        scene_fail_allocation_after = allocation;
+        scene_failure_t why;
+        scene_t* scene = scene_load_from(pack, id, &why);
+        scene_fail_allocation_after = -1;
+        if (scene != NULL) {
+            scene_unload(scene);
+            succeeded = true;
+        } else {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_MEMORY, why.status, why.what);
+        }
+        TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        if (succeeded) {
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(succeeded);
+}
+
 #ifndef DEVICE_BUILD
+static void
+test_authored_clip_ids_require_nonempty_terminated_text(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    asset_view_t entry;
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "authored", SCENE_ASSET, &entry));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
+    uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
+    const uint32_t size = entry.size;
+    for (int i = 0; i < asset.clip_count; i++) {
+        char* clip = (char*)(uintptr_t)asset.clips[i];
+        char saved[ASSET_NAME_MAX];
+        memcpy(saved, clip, sizeof saved);
+        memset(clip, 'x', sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, size));
+        memset(clip, 0, sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, size));
+        memcpy(clip, saved, sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, size));
+    }
+    asset_file_release(buffer);
+}
+
+static void
+check_authored_colors(uint8_t* bytes, uint32_t size, uint32_t light, uint32_t settings) {
+    const float invalid[] = {-1.0F, INFINITY, NAN};
+    const uint32_t fields[] = {light + offsetof(scene_asset_light_t, color),
+                               light + offsetof(scene_asset_light_t, intensity),
+                               settings + offsetof(scene_asset_settings_t, ambient_color),
+                               settings + offsetof(scene_asset_settings_t, ambient_intensity),
+                               settings + offsetof(scene_asset_settings_t, tonemap_white)};
+    for (size_t f = 0; f < sizeof fields / sizeof fields[0]; f++) {
+        float saved;
+        memcpy(&saved, bytes + fields[f], sizeof saved);
+        for (size_t v = 0; v < sizeof invalid / sizeof invalid[0]; v++) {
+            memcpy(bytes + fields[f], &invalid[v], sizeof invalid[v]);
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, size));
+        }
+        memcpy(bytes + fields[f], &saved, sizeof saved);
+    }
+    const uint32_t colors[] = {light + offsetof(scene_asset_light_t, color), settings};
+    for (size_t c = 0; c < sizeof colors / sizeof colors[0]; c++) {
+        for (int axis = 0; axis < R3D_SKIN_LIGHT_CHANNELS; axis++) {
+            const uint32_t at = colors[c] + axis * sizeof(float);
+            float saved;
+            const float too_bright = 1.1F;
+            memcpy(&saved, bytes + at, sizeof saved);
+            memcpy(bytes + at, &too_bright, sizeof too_bright);
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, size));
+            memcpy(bytes + at, &saved, sizeof saved);
+        }
+    }
+}
+
+static void
+test_authored_rows_and_refusals(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    asset_view_t entry;
+    scene_asset_t asset;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "authored", SCENE_ASSET, &entry));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
+    TEST_ASSERT_EQUAL_INT(2, asset.light_count);
+    TEST_ASSERT_EQUAL_INT(2, asset.skinned_renderer_count);
+    TEST_ASSERT_EQUAL_INT(2, asset.animator_count);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, asset.lights[0].intensity);
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, asset.settings->tonemap_white);
+    TEST_ASSERT_EQUAL_STRING("authored.first.skin", asset.skinned_renderers[0].skin);
+    TEST_ASSERT_EQUAL_STRING("walk", asset.clips[1]);
+    uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
+    const uint32_t light = (const uint8_t*)asset.lights - entry.data;
+    const uint32_t skin = (const uint8_t*)asset.skinned_renderers - entry.data;
+    const uint32_t animator = (const uint8_t*)asset.animators - entry.data;
+    const uint32_t settings = (const uint8_t*)asset.settings - entry.data;
+    const breakage_t changes[] = {
+        {"light entity", light, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
+        {"skin entity", skin, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
+        {"animator entity", animator, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
+        {"fewer transforms", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), 2,
+         asset.entity_count - 1, false, ASSET_ERR_FORMAT},
+        {"more transforms", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), 2,
+         asset.entity_count + 1, false, ASSET_ERR_FORMAT},
+        {"no settings", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 2, 0, false, ASSET_ERR_FORMAT},
+        {"two settings", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 2, 2, false,
+         ASSET_ERR_FORMAT},
+        {"light kind zero", light + offsetof(scene_asset_light_t, kind), 1, 0, false, ASSET_ERR_FORMAT},
+        {"light kind next", light + offsetof(scene_asset_light_t, kind), 1, SCENE_LIGHT_KIND_DIRECTIONAL + 1, false,
+         ASSET_ERR_FORMAT},
+        {"wrap next", animator + offsetof(scene_asset_animator_t, wrap), 1, ANIM_WRAP_LOOP + 1, false,
+         ASSET_ERR_FORMAT},
+        {"overflow clips", animator + offsetof(scene_asset_animator_t, first_clip), 4, UINT32_MAX, false,
+         ASSET_ERR_FORMAT},
+        {"light pad", light + offsetof(scene_asset_light_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
+        {"two lights", light + sizeof(scene_asset_light_t), 2, asset.lights[0].entity, false, ASSET_ERR_FORMAT},
+        {"skin pad", skin + offsetof(scene_asset_skinned_renderer_t, pad), 2, 1, false, ASSET_ERR_FORMAT},
+        {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset.skinned_renderers[0].entity, false,
+         ASSET_ERR_FORMAT},
+        {"two animators", animator + sizeof(scene_asset_animator_t), 2, asset.animators[0].entity, false,
+         ASSET_ERR_FORMAT},
+        {"default clip", animator + offsetof(scene_asset_animator_t, default_clip), 2, 1, false, ASSET_ERR_FORMAT},
+        {"animator pad", animator + offsetof(scene_asset_animator_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof changes[0]; i++) {
+        uint32_t saved;
+        memcpy(&saved, bytes + changes[i].at, changes[i].width);
+        apply(bytes, &changes[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(changes[i].want, open_entry(bytes, entry.size), changes[i].what);
+        memcpy(bytes + changes[i].at, &saved, changes[i].width);
+    }
+    const uint32_t entities[] = {skin, animator};
+    for (size_t i = 0; i < sizeof entities / sizeof entities[0]; i++) {
+        uint16_t saved;
+        memcpy(&saved, bytes + entities[i], sizeof saved);
+        test_pack_put16(bytes + entities[i], asset.entity_count - 1);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
+        test_pack_put16(bytes + entities[i], saved);
+    }
+    const uint32_t ids[] = {skin + offsetof(scene_asset_skinned_renderer_t, mesh),
+                            skin + offsetof(scene_asset_skinned_renderer_t, skin),
+                            skin + offsetof(scene_asset_skinned_renderer_t, skeleton)};
+    for (size_t i = 0; i < sizeof ids / sizeof ids[0]; i++) {
+        char saved[ASSET_NAME_MAX];
+        memcpy(saved, bytes + ids[i], sizeof saved);
+        memset(bytes + ids[i], 'x', sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, entry.size));
+        memset(bytes + ids[i], 0, sizeof saved);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, open_entry(bytes, entry.size));
+        memcpy(bytes + ids[i], saved, sizeof saved);
+    }
+    check_authored_colors(bytes, entry.size, light, settings);
+    test_pack_put16(bytes + animator + offsetof(scene_asset_animator_t, default_clip), SCENE_ASSET_DEFAULT_CLIP_NONE);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
+    asset_file_release(buffer);
+}
+
+static void
+test_encoder_authored_components_load_and_reach_runtime(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    scene_failure_t why;
+    scene_t* loaded = scene_load_from(&pack, "authored", &why);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_OK, why.status, why.what);
+    TEST_ASSERT_NOT_NULL(loaded);
+    TEST_ASSERT_EQUAL_INT(2, loaded->light_count);
+    const scene_entity_t entity = scene_find(loaded, "first");
+    TEST_ASSERT_EQUAL_INT(1, entity);
+    TEST_ASSERT_EQUAL_STRING("authored.first", scene_entity_mesh_id(loaded, entity));
+    TEST_ASSERT_NOT_NULL(loaded->skinned_renderers[entity].internal_storage);
+    TEST_ASSERT_NOT_NULL(loaded->light_transfer);
+    const vec3f_t color = scene_light_color(loaded, scene_find(loaded, "sun"));
+    TEST_ASSERT_EQUAL_FLOAT(0.8F, color.x);
+    TEST_ASSERT_EQUAL_FLOAT(0.7F, color.y);
+    TEST_ASSERT_EQUAL_FLOAT(0.6F, color.z);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, scene_light_intensity(loaded, scene_find(loaded, "sun")));
+    scene_unload(loaded);
+    asset_file_release(buffer);
+}
+
+static void
+test_encoder_authored_two_skin_allocation_failures_release_lighting(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    assert_load_failures_release(&pack, "authored");
+    asset_file_release(buffer);
+}
+
 /* The scene tools/tests/scene_probe.py bakes with the tools' own writer,
  * loaded beside quads for its two meshes: what the scene file says arrives. */
 static void
@@ -1869,6 +2178,159 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_authored_skin_modes_animation_and_ambient(void) {
+    const size_t before = memory_free_bytes(MEMORY_INTERNAL);
+    static const uint8_t modes[] = {R3D_SKIN_LIGHT_DIRECT, R3D_SKIN_LIGHT_RENORMALISED, R3D_SKIN_LIGHT_TABLE};
+    for (size_t i = 0; i < sizeof modes / sizeof modes[0]; i++) {
+        skin_fixture_options_t options = SKIN_OPTIONS;
+        options.mode = modes[i];
+        fixture_with_skin(&options);
+        scene_t* scene = load("test_skin");
+        const scene_entity_t entity = scene_find(scene, "red");
+        TEST_ASSERT_EQUAL_INT(modes[i], scene->skinned_renderers[entity].light_mode);
+        TEST_ASSERT_EQUAL_INT(0, scene->light_count);
+        TEST_ASSERT_NOT_NULL(scene->light_transfer);
+        TEST_ASSERT_EQUAL_FLOAT(0.4F, scene->tonemap_white);
+        TEST_ASSERT_EQUAL_INT(ANIM_CLAMP, scene->animators[entity].wrap);
+        scene_animation_step(scene, RIG_DURATION_MS * 2);
+        const r3d_lit_mesh_t* mesh = scene_entity_mesh(scene, entity);
+        TEST_ASSERT_EQUAL_INT16(RIG_TRAVEL - 1, mesh->positions[0][0]);
+        for (int channel = 0; channel < R3D_SKIN_LIGHT_CHANNELS; channel++) {
+            const float ambient[] = {options.ambient.x, options.ambient.y, options.ambient.z};
+            const float albedo =
+                powf(scene->skinned_renderers[entity].bind.colors[0][channel] / (float)R3D_SKIN_LIGHT_BYTE_SCALE,
+                     R3D_SKIN_LIGHT_GAMMA);
+            const float radiance = albedo * ambient[channel] * options.intensity;
+            const float mapped = radiance / (1.0F + radiance * scene->tonemap_white);
+            const int expected = (int)lrintf(R3D_SKIN_LIGHT_BYTE_SCALE * powf(mapped, 1 / R3D_SKIN_LIGHT_GAMMA));
+            TEST_ASSERT_UINT8_WITHIN(2, expected, mesh->colors[0][channel]);
+        }
+        TEST_ASSERT_EQUAL_INT(modes[i] == R3D_SKIN_LIGHT_TABLE, scene->light_table_users);
+        release_fixture();
+    }
+    skin_fixture_options_t options = SKIN_OPTIONS;
+    options.default_clip = SCENE_ASSET_DEFAULT_CLIP_NONE;
+    fixture_with_skin(&options);
+    scene_t* rest = load("test_skin");
+    scene_animation_step(rest, RIG_DURATION_MS);
+    TEST_ASSERT_EQUAL_INT16(-1, scene_entity_mesh(rest, 0)->positions[0][0]);
+    scene_unload(rest);
+    release_fixture();
+    options.default_clip = 1;
+    fixture_with_skin(&options);
+    scene_t* second = load("test_skin");
+    scene_animation_step(second, RIG_DURATION_MS);
+    TEST_ASSERT_EQUAL_INT16(-RIG_TRAVEL - 1, scene_entity_mesh(second, 0)->positions[0][0]);
+    release_fixture();
+    TEST_ASSERT_EQUAL_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
+}
+
+static void
+test_authored_tonemap_changes_skin_colors_in_both_attachment_orders(void) {
+    enum { BYTE_TOLERANCE = 2, MINIMUM_TONEMAP_CHANGE = 32 };
+
+    const float intensity = 4.0F, white = 4.0F;
+    for (int runtime = 0; runtime < 2; runtime++) {
+        uint8_t colors[2];
+        for (int mapped = 0; mapped < 2; mapped++) {
+            skin_fixture_options_t options = SKIN_OPTIONS;
+            options.ambient = SCENE_LIGHT_COLOR_DEFAULT;
+            options.intensity = runtime ? SCENE_AMBIENT_INTENSITY_NONE : intensity;
+            options.tonemap_white = mapped ? white : SCENE_TONEMAP_WHITE_NONE;
+            fixture_with_skin(&options);
+            scene_t* scene = load("test_skin");
+            const scene_entity_t entity = scene_find(scene, "red");
+            if (runtime) {
+                TEST_ASSERT_NULL(scene->light_transfer);
+                const scene_entity_t lamp = scene_find(scene, "lamp");
+                scene_transform_t pose = *scene_entity_transform(scene, lamp);
+                transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 0, 0}, MATH_PI / 2));
+                scene_set_transform(scene, lamp, &pose);
+                TEST_ASSERT_TRUE(scene_light_set_intensity(scene, lamp, intensity));
+            }
+            scene_animation_step(scene, 0);
+            const float albedo =
+                powf(scene->skinned_renderers[entity].bind.colors[0][0] / (float)R3D_SKIN_LIGHT_BYTE_SCALE,
+                     R3D_SKIN_LIGHT_GAMMA);
+            const float radiance = albedo * intensity;
+            const float toned = radiance / (1.0F + radiance * options.tonemap_white);
+            const int expected =
+                (int)lrintf(R3D_SKIN_LIGHT_BYTE_SCALE * powf(fminf(toned, 1.0F), 1 / R3D_SKIN_LIGHT_GAMMA));
+            colors[mapped] = scene_entity_mesh(scene, entity)->colors[0][0];
+            TEST_ASSERT_UINT8_WITHIN(BYTE_TOLERANCE, expected, colors[mapped]);
+            release_fixture();
+        }
+        TEST_ASSERT_GREATER_THAN_INT(MINIMUM_TONEMAP_CHANGE, colors[0] - colors[1]);
+    }
+}
+
+static void
+test_lighting_storage_requires_a_skin_and_light_in_both_orders(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const scene_entity_t entity = scene_find(scene, "green"), lamp = scene_find(scene, "camera");
+    static const char* const clips[] = {"rig.move"};
+    const size_t before = memory_free_bytes(MEMORY_INTERNAL);
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, lamp, 1));
+    TEST_ASSERT_NULL(scene->light_transfer);
+    TEST_ASSERT_EQUAL_UINT(before, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, "rig", clips, 1, NULL));
+    TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, "rig.quad", NULL));
+    TEST_ASSERT_NOT_NULL(scene->light_transfer);
+    TEST_ASSERT_NOT_NULL(scene->skinned_renderers[entity].light_storage);
+    TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(scene, entity));
+    release_fixture();
+    skin_fixture_options_t options = SKIN_OPTIONS;
+    options.intensity = 0;
+    fixture_with_skin(&options);
+    scene = load("test_skin");
+    TEST_ASSERT_NULL(scene->light_transfer);
+    TEST_ASSERT_NULL(scene->skinned_renderers[0].light_storage);
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, 0, 1));
+    TEST_ASSERT_NOT_NULL(scene->light_transfer);
+    TEST_ASSERT_NOT_NULL(scene->skinned_renderers[0].light_storage);
+    release_fixture();
+    fixture();
+    scene = load("test_pair");
+    scene->ambient_intensity = SKIN_OPTIONS.intensity;
+    const size_t ambient_free = memory_free_bytes(MEMORY_INTERNAL);
+    scene_animation_step(scene, RIG_DURATION_MS);
+    TEST_ASSERT_NULL(scene->light_transfer);
+    TEST_ASSERT_EQUAL_UINT(ambient_free, memory_free_bytes(MEMORY_INTERNAL));
+}
+
+static void
+test_authored_skin_load_allocation_failures_release_lighting(void) {
+    skin_fixture_options_t options = SKIN_OPTIONS;
+    options.mode = R3D_SKIN_LIGHT_TABLE;
+    fixture_with_skin(&options);
+    assert_load_failures_release(&fx.pack, "test_skin");
+}
+
+static void
+test_authored_light_preserves_static_mesh_colors(void) {
+    fixture();
+    r3d_lit_mesh_t packed;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &packed));
+    uint8_t expected[QUAD_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+    memcpy(expected, packed.colors, sizeof expected);
+    scene_t* scene = load("test_lit");
+    const scene_entity_t entity = scene_find(scene, "red");
+    TEST_ASSERT_EQUAL_INT(1, scene->light_count);
+    TEST_ASSERT_NULL(scene->light_transfer);
+    const vec3f_t color = scene_light_color(scene, scene_find(scene, "sun"));
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, color.x);
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, color.y);
+    TEST_ASSERT_EQUAL_FLOAT(0.75F, color.z);
+    TEST_ASSERT_EQUAL_FLOAT(2.0F, scene_light_intensity(scene, scene_find(scene, "sun")));
+    const size_t available = memory_free_bytes(MEMORY_INTERNAL);
+    scene_animation_step(scene, RIG_DURATION_MS);
+    TEST_ASSERT_EQUAL_UINT(available, memory_free_bytes(MEMORY_INTERNAL));
+    TEST_ASSERT_EQUAL_PTR(packed.colors, scene_entity_mesh(scene, entity)->colors);
+    TEST_ASSERT_EQUAL_MEMORY(expected, scene_entity_mesh(scene, entity)->colors, sizeof expected);
+}
+
+static void
 test_translation_only_camera_clip_retains_rotation(void) {
     fixture();
     scene_t* scene = load("test_unturned");
@@ -1907,8 +2369,9 @@ test_failed_second_camera_releases_the_first_animator(void) {
     scene_asset_t asset;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_aliases", SCENE_ASSET, &entry));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
-    scene_asset_camera_t* cameras = (scene_asset_camera_t*)(uintptr_t)asset.cameras;
-    memcpy(cameras[1].clip, "nowhere", sizeof "nowhere");
+    char(*clips)[ASSET_NAME_MAX] = (char(*)[ASSET_NAME_MAX])(uintptr_t)asset.clips;
+    memset(clips[1], 0, ASSET_NAME_MAX);
+    memcpy(clips[1], "nowhere", sizeof "nowhere");
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
     scene_failure_t why;
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_aliases", &why));
@@ -2089,13 +2552,14 @@ test_disabled_light_skin_and_two_object_rotations(void) {
 
 static void
 test_light_transfer_allocation_refuses_without_changes(void) {
-    scene_light_t light = {0};
-    scene_t scene = {.asset = {.entity_count = 1}, .lights = &light};
+    scene_t* scene = rig_fixture("rig.skin2", NULL);
+    const scene_entity_t lamp = scene_find(scene, "camera");
     scene_fail_allocation_after = 0;
-    TEST_ASSERT_FALSE(scene_light_set_intensity(&scene, 0, 1));
-    TEST_ASSERT_NULL(scene.light_transfer);
-    TEST_ASSERT_EQUAL_INT(0, scene.light_count);
-    TEST_ASSERT_EQUAL_INT(SCENE_LIGHT_NONE, light.kind);
+    TEST_ASSERT_FALSE(scene_light_set_intensity(scene, lamp, 1));
+    TEST_ASSERT_NULL(scene->light_transfer);
+    TEST_ASSERT_EQUAL_INT(0, scene->light_count);
+    TEST_ASSERT_EQUAL_INT(SCENE_LIGHT_NONE, scene->lights[lamp].kind);
+    scene_fail_allocation_after = -1;
 }
 
 static void
@@ -2567,6 +3031,11 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_authored_skin_modes_animation_and_ambient);
+    RUN_TEST(test_authored_light_preserves_static_mesh_colors);
+    RUN_TEST(test_authored_tonemap_changes_skin_colors_in_both_attachment_orders);
+    RUN_TEST(test_lighting_storage_requires_a_skin_and_light_in_both_orders);
+    RUN_TEST(test_authored_skin_load_allocation_failures_release_lighting);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
@@ -2611,8 +3080,13 @@ run_scene_suite(void) {
     RUN_TEST(test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_entry);
     RUN_TEST(test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens);
     RUN_TEST(test_the_reader_refuses_an_entry_that_breaks_any_one_rule);
+    RUN_TEST(test_scene_header_counts_are_independent_of_components);
     RUN_TEST(test_an_id_too_long_for_a_pack_name_is_cut_where_the_failure_names_it);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_authored_clip_ids_require_nonempty_terminated_text);
+    RUN_TEST(test_authored_rows_and_refusals);
+    RUN_TEST(test_encoder_authored_components_load_and_reach_runtime);
+    RUN_TEST(test_encoder_authored_two_skin_allocation_failures_release_lighting);
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif
 #ifndef DEVICE_BUILD

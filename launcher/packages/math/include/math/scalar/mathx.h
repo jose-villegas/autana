@@ -145,3 +145,33 @@ static inline int32_t
 mathx_wmul(int32_t a, int32_t b) {
     return mathx_mul(a, b);
 }
+
+static inline int32_t
+mathx_lerp(int32_t a, int32_t b, int32_t t) {
+    return mathx_add(a, mathx_mul(mathx_sub(b, a), t));
+}
+
+static inline int32_t
+mathx_min(int32_t a, int32_t b) {
+    return mathi_min(a, b);
+}
+
+static inline int32_t
+mathx_max(int32_t a, int32_t b) {
+    return mathi_max(a, b);
+}
+
+static inline int32_t
+mathx_clamp(int32_t v, int32_t lo, int32_t hi) {
+    return mathi_clamp(v, lo, hi);
+}
+
+static inline int32_t
+mathx_repeat(int32_t v, int32_t len) {
+    return mathi_repeat(v, len);
+}
+
+static inline int32_t
+mathx_wrap(int32_t v, int32_t lo, int32_t hi) {
+    return mathi_wrap(v, lo, hi);
+}

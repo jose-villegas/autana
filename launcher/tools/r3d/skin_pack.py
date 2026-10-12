@@ -1,6 +1,7 @@
-"""Uncached rig entries added to scene and import packs after their LMSH entries are ready."""
+"""Rig identities and entries added to scene and import packs after their LMSH entries are ready."""
 
 from pathlib import Path
+import functools
 
 from bake import bake
 from anim import skeleton_asset, tracks_asset
@@ -11,43 +12,73 @@ from r3d import skin_asset
 from r3d.import_settings import SettingsError
 
 ID_BYTES = NAME_BYTES - 1
-SKIN_ID_SUFFIX = read_define(Path(__file__).resolve().parents[2] / "main/render/r3d_skin.h", "R3D_SKIN_ID_SUFFIX")
+SKIN_OWNER = Path(__file__).resolve().parents[2] / "main/render/r3d_skin.h"
+SKIN_ID_SUFFIX = read_define(SKIN_OWNER, "R3D_SKIN_ID_SUFFIX")
+
+
+SOURCE_RIG_CACHE_SIZE = 16
+
+
+@functools.lru_cache(maxsize=SOURCE_RIG_CACHE_SIZE)
+def source_rig(source, modified, size):
+    return gltf_read.load_asset(source)
+
+
+def skin_id(mesh_id):
+    return mesh_id + SKIN_ID_SUFFIX
+
+
+def rig_ids(mesh_id, settings, cache=None, offline=False):
+    rig = load_rig(settings, cache or bake.default_cache(), offline)
+    if rig is None:
+        raise SettingsError(f'{settings.path}: skinned_renderer requires a rig')
+    _, document, _, node = rig
+    _, _, skeleton = skeleton_asset.rig(document, node)
+    return skin_id(mesh_id), skeleton
+
+
+def load_rig(settings, cache, offline):
+    """Resolve the import's exported source and sole skinned mesh node."""
+    source = settings.source['path']
+    origin = source
+    if source.suffix == bake.BLEND_SUFFIX:
+        stages = {'blend': bake.tool_digest('blend')}
+        export = bake.blend_export(settings, stages)
+        source = bake.fetch_all([export], bake.read_lock(), cache, offline)[export]
+    if source.suffix.lower() not in gltf_read.ASSET_SUFFIXES:
+        return None
+    stamp = source.stat()
+    document, binary = source_rig(source, stamp.st_mtime_ns, stamp.st_size)
+    mesh_nodes = [i for i, node in enumerate(document.get('nodes', [])) if 'skin' in node and 'mesh' in node]
+    if not mesh_nodes:
+        return None
+    if len(mesh_nodes) != 1:
+        names = [document['nodes'][i].get('name', str(i)) for i in mesh_nodes]
+        raise SettingsError(f'{origin}: one LMSH source must identify one skinned mesh node; found {names}')
+    node = mesh_nodes[0]
+    return origin, document, binary, node
 
 
 def entries(meshes, jobs, cache, offline, influences=skin_asset.DEFAULT_INFLUENCES):
     """(id, type, bytes, source identity) for rigs in scene or standalone import packs."""
-    loaded, result = {}, []
+    result = []
     for mesh_id, mesh_source, mesh_entry in meshes:
         job, scene, root = jobs[mesh_source.resolve()]
         settings = job.settings
-        source = settings.source['path']
-        origin = source
-        if source.suffix == bake.BLEND_SUFFIX:
-            stages = {'blend': bake.tool_digest('blend')}
-            export = bake.blend_export(settings, stages)
-            source = bake.fetch_all([export], bake.read_lock(), cache, offline)[export]
-        if source.suffix.lower() not in gltf_read.ASSET_SUFFIXES:
+        rig = load_rig(settings, cache, offline)
+        if rig is None:
             continue
-        if source not in loaded:
-            loaded[source] = gltf_read.load_asset(source)
-        document, binary = loaded[source]
-        mesh_nodes = [i for i, node in enumerate(document.get('nodes', [])) if 'skin' in node and 'mesh' in node]
-        if not mesh_nodes:
-            continue
-        if len(mesh_nodes) != 1:
-            names = [document['nodes'][i].get('name', str(i)) for i in mesh_nodes]
-            raise SettingsError(f'{origin}: one LMSH source must identify one skinned mesh node; found {names}')
-        node = mesh_nodes[0]
+        origin, document, binary, node = rig
         try:
-            name, skeleton, skin = skin_asset.bake(document, binary, node, mesh_entry, influences)
+            name, skeleton, skin = skin_asset.bake(document, binary, node, mesh_entry, influences,
+                                                  skin_asset.LIGHTING_MODES[settings.skin_lighting])
         except ValueError as error:
             raise SettingsError(f'{origin}: {error}') from error
         rig_source = (origin, 'skin', document['nodes'][node]['skin'])
         result.extend([(name, skeleton_asset.TYPE, skeleton, rig_source),
-                       (mesh_id + SKIN_ID_SUFFIX, skin_asset.TYPE, skin, (settings.path, mesh_id, 'skin'))])
-        clips = settings.source.get('clips', [])
-        if len(set(clips)) != len(clips):
-            raise SettingsError(f'{settings.path}: duplicate clip names {clips!r}')
+                       (skin_id(mesh_id), skin_asset.TYPE, skin, (settings.path, mesh_id, 'skin'))])
+        animator = getattr(job.object, 'animator', None)
+        clips = list(dict.fromkeys([*settings.source.get('clips', []), *(animator.clips if animator else [])]))
         for clip in clips:
             animation = tracks_asset.find_animation(document, clip, origin)
             tracks, duration, clip_root = tracks_asset.clip_tracks(document, binary, animation)

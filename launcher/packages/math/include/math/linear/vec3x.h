@@ -12,5 +12,6 @@
 #include "math/scalar/mathx.h"
 
 MATH_DEFINE_VEC3(vec3x, int32_t, int32_t, mathx)
+MATH_DEFINE_VEC_LERP(vec3x, int32_t, mathx, 3)
 MATH_DEFINE_VEC3_NORMALIZE(vec3x, int32_t, mathx)
 MATH_DEFINE_VEC_SWIZZLE(vec3x, vec2x, int32_t)

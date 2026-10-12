@@ -30,9 +30,12 @@ typedef enum {
     ANIM_CUBIC,  /* glTF CUBICSPLINE: an in-tangent, value and out-tangent per key */
 } anim_interp_t;
 
+#define ANIM_WRAP_CLAMP 0U
+#define ANIM_WRAP_LOOP  1U
+
 typedef enum {
-    ANIM_CLAMP, /* before the start and after the end hold the end values */
-    ANIM_LOOP,  /* time wraps at the clip's duration */
+    ANIM_CLAMP = ANIM_WRAP_CLAMP, /* before the start and after the end hold the end values */
+    ANIM_LOOP = ANIM_WRAP_LOOP,   /* time wraps at the clip's duration */
 } anim_wrap_t;
 
 typedef struct {

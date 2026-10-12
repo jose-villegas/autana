@@ -64,6 +64,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec3s.h](include/math/linear/vec3s.h) | vec3s: a 3-component vector of an int16. |
 | [include/math/linear/vec3x.h](include/math/linear/vec3x.h) | vec3x: a 3-component vector of a Q16.16. |
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions between float, int32, int16 and Q16.16. |
+| [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
 | [include/math/motion/orbit_motion.h](include/math/motion/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 | [include/math/motion/spring_line.h](include/math/motion/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |
@@ -71,7 +72,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (math_template.h). |
 | [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: scalar rounding to nearest, ties away from zero; finite inputs saturate to int32. |
 | [include/math/scalar/mathf_rsqrt.h](include/math/scalar/mathf_rsqrt.h) | mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed. |
-| [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalar operations, for grid, pixel and cell coordinates. |
+| [include/math/scalar/mathi.h](include/math/scalar/mathi.h) | mathi: plain integer scalars. |
 | [include/math/scalar/maths.h](include/math/scalar/maths.h) | maths: int16 scalar operations for the math templates (math_template.h), coordinates kept compact where memory is short. |
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (math_template.h). |
 | [include/math/scalar/rng.h](include/math/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. |

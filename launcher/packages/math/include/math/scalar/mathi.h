@@ -1,15 +1,9 @@
-/*
- * mathi: plain integer scalar operations, for grid, pixel and cell
- * coordinates. The first group serves the math templates (math_template.h):
- * sums and products wrap like any int32, so a caller keeps its coordinates
- * small, and a dot product widens to int64. The template group has no div,
- * sqrt or angle op, so an `i` vector gets no normalize or rotation. The rest are the shared integer helpers: abs, min,
- * max, clamp, repeat, wrap, an approximate length, an integer square root, even rounding.
+/* mathi: plain integer scalars. Template sums and products wrap like any int32,
+ * so a caller keeps coordinates small; a dot product widens to int64. No div,
+ * sqrt or angle op, so an `i` vector has no normalize or rotation.
  *
- * `static inline`: some are called tens of thousands of times a second from
- * an innermost loop, where a cross-file call is not free. abs and sign are
- * prefixed like the rest, which also keeps them clear of <stdlib.h>.
- */
+ * `static inline`: some run in an innermost loop, where a cross-file call is
+ * not free. abs and sign are prefixed, which keeps them clear of <stdlib.h>. */
 #pragma once
 
 #include <assert.h>
@@ -178,4 +172,21 @@ mathi_isqrt64(uint64_t value) {
         bit >>= 2;
     }
     return (uint32_t)root;
+}
+
+/* Truncation keeps the fractional step toward a. The step is int64 because a full int32 span overflows,
+ * and it divides in 32 bits when it fits: a 64-bit divide is a library call on the board. */
+static inline int32_t
+mathi_lerp(int32_t a, int32_t b, int32_t t, int32_t n) {
+    assert(n > 0 && t >= 0 && t <= n);
+    const int64_t step = ((int64_t)b - a) * t;
+    if (step >= INT32_MIN && step <= INT32_MAX) {
+        return a + (int32_t)step / n;
+    }
+    return (int32_t)((int64_t)a + step / n);
+}
+
+static inline int32_t
+mathi_lerp_u8(int32_t a, int32_t b, uint8_t w) {
+    return mathi_lerp(a, b, w, UINT8_MAX);
 }
