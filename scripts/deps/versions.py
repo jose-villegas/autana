@@ -65,7 +65,7 @@ def rows(root=ROOT):
     pin = idf_pin()
     yield "ESP-IDF commit", pin["commit"], idf_commit(idf_path()) or MISSING
     for tool in ("clang-format", "clang-tidy"):
-        yield tool, pin["esp_clang"], resolved_version(tool)
+        yield tool, pinned_tool.pinned_version(tool), resolved_version(tool)
     yield "Python", (root / ".python-version").read_text().strip(), ".".join(map(str, sys.version_info[:3]))
     node = output("node", "--version")
     yield "Node", (root / ".node-version").read_text().strip(), node.lstrip("v") if node else MISSING
