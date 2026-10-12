@@ -97,12 +97,16 @@ class VendoredTests(unittest.TestCase):
         self.assertEqual(vendored.load(self.registry)["vendor"]["taken_from"], new)
         self.assertEqual(self.check(), (0, ""))
 
-    def test_a_conflict_is_left_marked_and_fails(self):
-        self.bump({"lib/core.c": "uno\ntwo\nthree\nfour\nfive\n"})
+    def test_a_conflict_is_left_marked_and_the_check_fails_until_resolved(self):
+        new = self.bump({"lib/core.c": "uno\ntwo\nthree\nfour\nfive\n"})
         code, report = self.update()
         self.assertEqual(code, 1)
         self.assertIn("conflict", report)
         self.assertIn("<<<<<<< vendored", (self.root / "vendor/core.c").read_text())
+        self.assertEqual(self.check()[0], 1)
+        self.assertEqual(vendored.resolved(self.entries, self.registry, self.root), 0)
+        self.assertEqual(vendored.load(self.registry)["vendor"]["taken_from"], new)
+        self.assertEqual(self.check(), (0, ""))
 
     def test_added_and_deleted_upstream_files_need_a_decision(self):
         self.bump({"lib/extra.c": "new\n", "lib/core.h": None})

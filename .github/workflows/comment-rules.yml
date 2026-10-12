@@ -180,7 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: pin
-        run: echo "image=$(python3 scripts/deps/idf_pin.py show image)" >> "$GITHUB_OUTPUT"
+        run: echo "image=$(sh scripts/ci/idf_image.sh)" >> "$GITHUB_OUTPUT"
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF

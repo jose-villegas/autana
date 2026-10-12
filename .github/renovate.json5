@@ -29,6 +29,17 @@
       managerFilePatterns: ['/^\\.github/workflows/[^/]+\\.yml$/'],
       matchStrings: ['# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+\\w+: (?<currentValue>\\S+)'],
     },
+    {
+      // The Blender the skinned-mesh exporter refuses to run without; bakes.yml installs it.
+      customType: 'regex',
+      managerFilePatterns: ['/^launcher/tools/gltf/blend_skin_to_glb\\.py$/'],
+      matchStrings: ['BLENDER_VERSION = \\((?<major>\\d+), (?<minor>\\d+), (?<patch>\\d+)\\)'],
+      currentValueTemplate: '{{{major}}}.{{{minor}}}.{{{patch}}}',
+      depNameTemplate: 'blender/blender',
+      datasourceTemplate: 'github-tags',
+      extractVersionTemplate: '^v(?<version>\\d+\\.\\d+\\.\\d+)$',
+      autoReplaceStringTemplate: "BLENDER_VERSION = ({{{replace '\\.' ', ' newValue}}})",
+    },
   ],
 
   packageRules: [
@@ -73,5 +84,7 @@
     {matchDepNames: ['third_party/upstream/ufbx'], groupName: 'ufbx', groupSlug: 'upstream-ufbx'},
 
     {matchManagers: ['custom.regex'], groupName: 'CI tools', groupSlug: 'ci-tools'},
+    // A new Blender re-exports every skinned mesh: a rebake, opened from the dashboard.
+    {matchDepNames: ['blender/blender'], groupName: 'Blender', groupSlug: 'blender', dependencyDashboardApproval: true},
   ],
 }
