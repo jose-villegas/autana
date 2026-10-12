@@ -40,6 +40,32 @@ env:
   REFRESH_BRANCH: feature/refresh-doc-images
 
 jobs:
+  memory-tables:
+    name: Measure internal memory (sequential variants)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: release
+          command: >-
+            ../tools/autana build rel --project ..
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: dev
+          command: ../tools/autana build dev --project ..
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: diag
+          command: >-
+            ../tools/autana build diag --project ..
+            && cd ..
+            && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --tables launcher/build/memory-tables
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memory-tables
+          path: launcher/build/memory-tables/*.md
+
   refresh:
     name: Regenerate and compare
     runs-on: ubuntu-24.04
@@ -93,8 +119,56 @@ jobs:
           grep '^changed ' "$RUNNER_TEMP/report.txt" > "$RUNNER_TEMP/changed.txt" || true
           echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt")" >> "$GITHUB_OUTPUT"
 
+      - name: Package rendered output
+        run: |
+          mkdir -p "$RUNNER_TEMP/rendered-docs"
+          cp -a launcher/tools/results/doc_images/out/cpu "$RUNNER_TEMP/rendered-docs/cpu"
+          cp "$RUNNER_TEMP/changed.txt" "$RUNNER_TEMP/rendered-docs/changed.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-docs
+          path: ${{ runner.temp }}/rendered-docs
+
+  publish:
+    name: Commit images and measured tables
+    needs: [memory-tables, refresh]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: rendered-docs
+          path: ${{ runner.temp }}/rendered-docs
+      - name: Restore rendered output
+        run: |
+          out=launcher/tools/results/doc_images/out/cpu
+          mkdir -p "$out"
+          cp -a "$RUNNER_TEMP/rendered-docs/cpu/." "$out/"
+          cp "$RUNNER_TEMP/rendered-docs/changed.txt" "$RUNNER_TEMP/changed.txt"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: memory-tables
+          path: launcher/tools/results/doc_images/out/cpu/tables
+
+      - name: Compare the internal-memory table
+        id: memory
+        run: |
+          set +e
+          python launcher/tools/render/generated_blocks.py --root . \
+            --tables launcher/tools/results/doc_images/out/cpu/tables --check > "$RUNNER_TEMP/memory-report.txt"
+          code=$?
+          set -e
+          [ "$code" -le 1 ] || exit "$code"
+          grep '^changed ' "$RUNNER_TEMP/memory-report.txt" >> "$RUNNER_TEMP/changed.txt" || true
+          sort -u "$RUNNER_TEMP/changed.txt" -o "$RUNNER_TEMP/changed.txt"
+          echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt")" >> "$GITHUB_OUTPUT"
+
       - name: Nothing changed, close a stale refresh PR
-        if: steps.render.outputs.count == '0' && github.ref == 'refs/heads/main'
+        if: steps.memory.outputs.count == '0' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -102,7 +176,7 @@ jobs:
             "Every rendered image and generated table already matches main; nothing left to refresh."
 
       - name: Commit the changed images and tables and open or update the PR
-        if: steps.render.outputs.count != '0' && github.ref == 'refs/heads/main'
+        if: steps.memory.outputs.count != '0' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

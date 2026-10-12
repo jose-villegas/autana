@@ -97,13 +97,11 @@ def cache_line_size(build):
 
 
 def symbols(nm, elf, functions=None):
-    if functions is None:
-        functions = [function for group in baselines(SOURCES).values() for function in group]
     found = {}
     for line in run(nm, "-n", "-S", str(elf)).splitlines():
         fields = line.split()
-        if len(fields) == 4 and fields[3] in functions:
-            found[fields[3]] = (int(fields[0], 16), int(fields[1], 16))
+        if len(fields) == 4 and (functions is None or fields[3] in functions):
+            found[int(fields[0], 16)] = (fields[3], int(fields[1], 16))
     return found
 
 
@@ -182,7 +180,7 @@ def line_span(start, end, line_size):
 def layout_entries(elf, nm, objdump, line_size, functions=None):
     if functions is None:
         functions = [function for group in baselines(SOURCES).values() for function in group]
-    located = symbols(nm, elf, functions)
+    located = {name: (address, size) for address, (name, size) in symbols(nm, elf, functions).items()}
     missing = [function for function in functions if function not in located]
     if missing:
         raise LayoutError("pinned functions missing from %s: %s" % (elf, ", ".join(missing)))

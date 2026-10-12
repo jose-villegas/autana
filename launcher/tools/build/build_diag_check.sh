@@ -94,6 +94,11 @@ render_layout_gate() {
     "$PYTHON" "$DIR/../render/code_layout.py" --check "$DIR/../../build.diag"
 }
 
+iram_budget_gate() {
+    echo "=== IRAM placement budgets ==="
+    "$PYTHON" "$DIR/memory_map.py" --check "$DIR/../../build.diag"
+}
+
 if [ -f "$COMPILE_DB" ]; then
     complexity_gate
     build_diag
@@ -101,6 +106,7 @@ if [ -f "$COMPILE_DB" ]; then
     stack_chain_gate
     soft_double_gate
     render_layout_gate
+    iram_budget_gate
     exit 0
 fi
 
@@ -111,3 +117,4 @@ suite_static_data_gate
 stack_chain_gate
 soft_double_gate
 render_layout_gate
+iram_budget_gate
