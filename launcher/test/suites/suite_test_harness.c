@@ -161,12 +161,20 @@ suite_test_harness(void) {
 #else
 
 #include <setjmp.h>
+#include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_store.h"
+#include "test_asset_dir.h"
 #include "test_cleanup.h"
 #include "unity.h"
 
-#define RAN_MAX 4
+/* One more than TEST_CLEANUP_MAX, each a cleanup of its own. */
+#define RAN_MAX        (TEST_CLEANUP_MAX + 1)
+
+/* Room for the runner's own AUTANA_ASSET_DIR. */
+#define ENV_COPY_BYTES 512
 
 /* The cleanups that ran, as the letters they note. */
 static char ran[RAN_MAX + 1];
@@ -179,18 +187,21 @@ note(char which) {
     ran[at + 1] = '\0';
 }
 
+#define NOTING_CLEANUP(letter)                                                                                         \
+    static void cleanup_##letter(void) { note(#letter[0]); }
+
+NOTING_CLEANUP(a)
+NOTING_CLEANUP(b)
+NOTING_CLEANUP(c)
+NOTING_CLEANUP(d)
+
+/* Bails the way a failed assertion does, without the failure. */
 static void
-cleanup_a(void) {
-    note('a');
+bailing_cleanup(void) {
+    note('x');
+    TEST_ABORT();
 }
 
-static void
-cleanup_b(void) {
-    note('b');
-}
-
-/* Registers cleanup_a, then bails the way a failed assertion does, without
- * the failure. */
 static void
 register_then_bail(void) {
     suite_add_test_cleanup(cleanup_a);
@@ -198,7 +209,8 @@ register_then_bail(void) {
 }
 
 /* Runs `body` in a frame of its own, so its bail ends it alone, and puts the
- * test's abort frame back. */
+ * test's abort frame back. This is the shape of a test that fails, then
+ * tearDown(): the bail leaves the body, and the cleanups run afterwards. */
 static void
 run_trapped(void (*body)(void)) {
     jmp_buf outer;
@@ -238,10 +250,70 @@ test_a_cleanup_registered_by_a_test_that_bails_still_runs(void) {
 }
 
 static void
+test_an_earlier_cleanup_runs_although_a_later_one_bails(void) {
+    ran[0] = '\0';
+    suite_add_test_cleanup(cleanup_a);
+    suite_add_test_cleanup(bailing_cleanup);
+    suite_add_test_cleanup(cleanup_b);
+    run_trapped(suite_run_test_cleanup);
+    TEST_ASSERT_EQUAL_STRING("bxa", ran);
+    suite_run_test_cleanup();
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("bxa", ran, "nothing is left to run twice");
+}
+
+/* A fifth cleanup fails the test, which a passing test cannot show: this
+ * covers the four that fit. */
+static void
+test_the_most_cleanups_are_accepted_and_all_run(void) {
+    ran[0] = '\0';
+    suite_add_test_cleanup(cleanup_a);
+    suite_add_test_cleanup(cleanup_b);
+    suite_add_test_cleanup(cleanup_c);
+    suite_add_test_cleanup(cleanup_d);
+    suite_run_test_cleanup();
+    TEST_ASSERT_EQUAL_STRING("dcba", ran);
+}
+
+static void
+expect_dir(const char* expected, const char* what) {
+    const char* const dir = getenv(ASSET_STORE_DIR_ENV);
+    /* Windows has no unset: an empty value stands for it. */
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(expected == NULL ? "" : expected, dir == NULL ? "" : dir, what);
+}
+
+static void
+test_using_the_asset_dir_twice_puts_back_the_runners_value_not_the_first_dir(void) {
+    static const char* const runner_values[] = {NULL, "runner_dir"};
+    const char* const real = getenv(ASSET_STORE_DIR_ENV);
+    const bool had_real = real != NULL;
+    char real_copy[ENV_COPY_BYTES] = "";
+    if (had_real) {
+        TEST_ASSERT_TRUE(strlen(real) < ENV_COPY_BYTES);
+        strcpy(real_copy, real);
+    }
+    for (size_t i = 0; i < sizeof runner_values / sizeof runner_values[0]; i++) {
+        test_asset_dir_set(runner_values[i]);
+        test_asset_dir_use("first_dir");
+        test_asset_dir_use("second_dir");
+        expect_dir("second_dir", "the latest dir is in use");
+        suite_run_test_cleanup();
+        expect_dir(runner_values[i], "the runner's value is back");
+
+        test_asset_dir_set("other_dir");
+        test_asset_dir_restore();
+        expect_dir("other_dir", "a restore with nothing saved changes nothing");
+    }
+    test_asset_dir_set(had_real ? real_copy : NULL);
+}
+
+static void
 suite_test_harness(void) {
     RUN_TEST(test_cleanups_run_in_reverse_registration_order);
     RUN_TEST(test_a_cleanup_registered_twice_runs_once);
     RUN_TEST(test_a_cleanup_registered_by_a_test_that_bails_still_runs);
+    RUN_TEST(test_an_earlier_cleanup_runs_although_a_later_one_bails);
+    RUN_TEST(test_the_most_cleanups_are_accepted_and_all_run);
+    RUN_TEST(test_using_the_asset_dir_twice_puts_back_the_runners_value_not_the_first_dir);
 }
 
 #endif

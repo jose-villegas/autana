@@ -14,8 +14,8 @@
 static char* saved;
 static bool active;
 
-static void
-set_dir(const char* dir) {
+void
+test_asset_dir_set(const char* dir) {
 #ifdef _WIN32
     TEST_ASSERT_EQUAL_INT(0, _putenv_s(ASSET_STORE_DIR_ENV, dir == NULL ? "" : dir));
 #else
@@ -31,18 +31,19 @@ test_asset_dir_restore(void) {
     active = false;
     char* const runner = saved;
     saved = NULL;
-    set_dir(runner);
+    test_asset_dir_set(runner);
     free(runner);
 }
 
 void
 test_asset_dir_use(const char* dir) {
-    test_asset_dir_restore();
-    const char* runner = getenv(ASSET_STORE_DIR_ENV);
-    saved = runner == NULL ? NULL : strdup(runner);
-    active = true;
-    suite_add_test_cleanup(test_asset_dir_restore);
-    set_dir(dir);
+    if (!active) {
+        const char* runner = getenv(ASSET_STORE_DIR_ENV);
+        saved = runner == NULL ? NULL : strdup(runner);
+        active = true;
+        suite_add_test_cleanup(test_asset_dir_restore);
+    }
+    test_asset_dir_set(dir);
 }
 
 void
