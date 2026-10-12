@@ -59,7 +59,7 @@ static void
 capture_reply(const char* line) {
     const size_t used = strlen(shown->reply);
     TEST_ASSERT_LESS_THAN(sizeof shown->reply - used, strlen(line) + 1);
-    (void)snprintf(shown->reply + used, sizeof shown->reply - used, "%s\n", line);
+    TEST_ASSERT_TRUE(snprintf(shown->reply + used, sizeof shown->reply - used, "%s\n", line) >= 0);
 }
 
 static void
@@ -100,11 +100,13 @@ test_console_success_reports_applied_blend_and_end(void) {
     clip_fixture_t* f = fixture();
     char command[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
     char expected[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=\nRENDER_END\n") + RENDER_LAB_BLEND_TEXT_SIZE];
-    (void)snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS);
-    (void)snprintf(expected, sizeof expected, "RENDER clip=gallop blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS) >= 0);
+    TEST_ASSERT_TRUE(snprintf(expected, sizeof expected, "RENDER clip=gallop blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS)
+                     >= 0);
     request(f, command);
     TEST_ASSERT_EQUAL_STRING(expected, f->reply);
-    (void)snprintf(expected, sizeof expected, "RENDER clip=idle blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS);
+    TEST_ASSERT_TRUE(snprintf(expected, sizeof expected, "RENDER clip=idle blend_ms=%d\nRENDER_END\n", TEST_BLEND_MS)
+                     >= 0);
     request(f, "clip idle");
     TEST_ASSERT_EQUAL_STRING(expected, f->reply);
     TEST_ASSERT_EQUAL_UINT32(TEST_BLEND_MS, f->animator.layer.blend_ms);
@@ -130,17 +132,17 @@ static void
 test_console_errors_leave_playback_unchanged(void) {
     clip_fixture_t* f = fixture();
     char selection[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
-    (void)snprintf(selection, sizeof selection, "clip gallop %d", TEST_BLEND_MS);
+    TEST_ASSERT_TRUE(snprintf(selection, sizeof selection, "clip gallop %d", TEST_BLEND_MS) >= 0);
     request(f, selection);
     reject(f, "clip missing", "RENDER_ERR unknown clip 'missing'\n");
     reject(f, "clip", "RENDER_ERR bad clip name\n");
     static const char* const bad_blends[] = {"-1", "12x", "999999999999999999999999", ""};
     char command[ASSET_NAME_MAX + sizeof("clip idle ")];
     for (size_t i = 0; i < sizeof bad_blends / sizeof bad_blends[0]; i++) {
-        (void)snprintf(command, sizeof command, "clip idle %s", bad_blends[i]);
+        TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip idle %s", bad_blends[i]) >= 0);
         reject(f, command, "RENDER_ERR bad blend\n");
     }
-    (void)snprintf(command, sizeof command, "clip idle %d", RENDER_LAB_BLEND_MAX_MS + 1);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip idle %d", RENDER_LAB_BLEND_MAX_MS + 1) >= 0);
     reject(f, command, "RENDER_ERR bad blend\n");
     f->choice.scene = NULL;
     reject(f, "clips", "RENDER_ERR no animated subject\n");
@@ -159,7 +161,7 @@ test_console_accepts_name_and_blend_boundaries(void) {
     static const int blends[] = {0, RENDER_LAB_BLEND_MAX_MS};
     char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
     for (size_t i = 0; i < sizeof blends / sizeof blends[0]; i++) {
-        (void)snprintf(command, sizeof command, "clip %s %d", f->long_name, blends[i]);
+        TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip %s %d", f->long_name, blends[i]) >= 0);
         request(f, command);
         TEST_ASSERT_EQUAL_INT(1, f->choice.selected);
         TEST_ASSERT_EQUAL_INT(blends[i], f->choice.blend_ms);
@@ -168,7 +170,7 @@ test_console_accepts_name_and_blend_boundaries(void) {
     }
     f->long_name[ASSET_NAME_MAX - 1] = 'x';
     f->long_name[ASSET_NAME_MAX] = '\0';
-    (void)snprintf(command, sizeof command, "clip %s", f->long_name);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip %s", f->long_name) >= 0);
     reject(f, command, "RENDER_ERR bad clip name\n");
 }
 
@@ -183,7 +185,7 @@ static void
 test_console_uses_current_blend_when_omitted(void) {
     clip_fixture_t* f = fixture();
     char command[sizeof("clip gallop ") + RENDER_LAB_BLEND_TEXT_SIZE];
-    (void)snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", TEST_BLEND_MS) >= 0);
     TEST_ASSERT_TRUE(render_lab_clips_reply(&f->choice, command, capture_reply));
     TEST_ASSERT_TRUE(render_lab_clips_reply(&f->choice, "clip idle", capture_reply));
     TEST_ASSERT_EQUAL_INT(0, f->choice.selected);

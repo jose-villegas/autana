@@ -1,6 +1,7 @@
 #include "apps/render_lab/render_lab_clips.h"
 
 #include <limits.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,6 +81,19 @@ parse_blend(const char* text, int* blend_ms) {
     return true;
 }
 
+/* One formatted reply line, long enough for a clip name and its longest field. */
+static void
+reply_line(console_reply_fn reply, const char* format, ...) {
+    char line[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=") + RENDER_LAB_BLEND_TEXT_SIZE];
+    va_list args;
+    va_start(args, format);
+    if (vsnprintf(line, sizeof line, format, args) < 0) {
+        line[0] = '\0';
+    }
+    va_end(args);
+    reply(line);
+}
+
 static void
 play_request(render_lab_clips_t* choice, const char* args, console_reply_fn reply) {
     const char* space = strchr(args, ' ');
@@ -97,18 +111,15 @@ play_request(render_lab_clips_t* choice, const char* args, console_reply_fn repl
         return;
     }
     const int clip = render_lab_clips_find(choice->scene, choice->subject, name);
-    char line[ASSET_NAME_MAX + sizeof("RENDER clip= blend_ms=") + RENDER_LAB_BLEND_TEXT_SIZE];
     if (!render_lab_clips_play(choice, clip, blend_ms)) {
         if (clip < 0) {
-            (void)snprintf(line, sizeof line, "RENDER_ERR unknown clip '%s'", name);
+            reply_line(reply, "RENDER_ERR unknown clip '%s'", name);
         } else {
-            (void)snprintf(line, sizeof line, "RENDER_ERR bad blend");
+            reply("RENDER_ERR bad blend");
         }
-        reply(line);
         return;
     }
-    (void)snprintf(line, sizeof line, "RENDER clip=%s blend_ms=%d", name, blend_ms);
-    reply(line);
+    reply_line(reply, "RENDER clip=%s blend_ms=%d", name, blend_ms);
     reply("RENDER_END");
 }
 
@@ -125,10 +136,8 @@ render_lab_clips_reply(render_lab_clips_t* choice, const char* args, console_rep
         reply("RENDER_ERR no animated subject");
     } else if (listing) {
         for (int i = 0; i < scene_animator_clip_count(scene, subject); i++) {
-            char line[ASSET_NAME_MAX + sizeof("RENDER clip= current=1")];
-            (void)snprintf(line, sizeof line, "RENDER clip=%s current=%d", scene_animator_clip_name(scene, subject, i),
-                           i == choice->selected);
-            reply(line);
+            reply_line(reply, "RENDER clip=%s current=%d", scene_animator_clip_name(scene, subject, i),
+                       i == choice->selected);
         }
         reply("RENDER_END");
     } else {
@@ -152,7 +161,9 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_cl
         (void)render_lab_clips_play(choice, picked, choice->blend_ms);
     }
     char label[sizeof("BLEND:  ms") + RENDER_LAB_BLEND_TEXT_SIZE];
-    (void)snprintf(label, sizeof label, "BLEND: %d ms", choice->blend_ms);
+    if (snprintf(label, sizeof label, "BLEND: %d ms", choice->blend_ms) < 0) {
+        label[0] = '\0';
+    }
     ui_flow_row(ctx, flow, width, gfx_text_height());
     mu_label(ctx, label);
     ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);

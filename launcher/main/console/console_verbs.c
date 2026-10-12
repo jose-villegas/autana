@@ -7,8 +7,8 @@
 
 void
 console_reply_stdio(const char* line) {
-    printf("%s\n", line);
-    fflush(stdout);
+    (void)printf("%s\n", line);
+    (void)fflush(stdout);
 }
 
 /* Verb names are matched ignoring case, so the lowercase name a person

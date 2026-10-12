@@ -71,7 +71,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
         TEST_ASSERT_EQUAL_STRING("idle", playing);
         TEST_ASSERT_TRUE(app_render_lab.console->handle("clips"));
         char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
-        (void)snprintf(command, sizeof command, "clip gallop %d", DISPATCH_BLEND_MS);
+        TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", DISPATCH_BLEND_MS) >= 0);
         TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
         TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(scene, subject, animator->layer.current.clip));
         TEST_ASSERT_EQUAL_UINT32(DISPATCH_BLEND_MS, animator->layer.blend_ms);
