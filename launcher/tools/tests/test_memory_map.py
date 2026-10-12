@@ -782,7 +782,7 @@ class GateRegressions(unittest.TestCase):
                 snapshots.append((command[-1], defaults.read_text(), fragment.read_text()))
                 return SimpleNamespace(returncode=1 if len(snapshots) == 2 else 0)
             argv = ["iram_what_if.py", *builds, "--work", str(root)]
-            with patch.object(sys, "argv", argv), patch.object(probe, "OPTIONS", options), patch.object(probe, "scratch_tree", return_value=root), patch.object(probe.shutil, "copytree"), patch.object(probe.subprocess, "run", side_effect=run), patch.object(probe, "read_build", side_effect=[measured("release", 20), measured("release", 12), measured("dev", 40), measured("dev", 24)]), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(sys, "argv", argv), patch.dict(probe.OPTIONS, options, clear=True), patch.object(probe, "scratch_tree", return_value=root), patch.object(probe.shutil, "copytree"), patch.object(probe.subprocess, "run", side_effect=run), patch.object(probe, "read_build", side_effect=[measured("release", 20), measured("release", 12), measured("dev", 40), measured("dev", 24)]), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(probe.main(), 0)
             body = (root / (probe.WHAT_IF_BLOCK + ".md")).read_text()
             self.assertIn("| release | first | build failed |", body)
@@ -797,7 +797,7 @@ class GateRegressions(unittest.TestCase):
                 self.assertEqual(snapshots[index][1], "CONFIG_AB=y\n")
             self.assertEqual(defaults.read_text(), original_defaults)
             self.assertEqual(fragment.read_text(), original_fragment)
-            with patch.object(sys, "argv", argv), patch.object(probe, "OPTIONS", options), patch.object(probe, "scratch_tree", return_value=root), patch.object(probe.shutil, "copytree"), patch.object(probe.subprocess, "run", return_value=SimpleNamespace(returncode=1)), patch.object(probe, "read_build") as read, contextlib.redirect_stdout(io.StringIO()) as output:
+            with patch.object(sys, "argv", argv), patch.dict(probe.OPTIONS, options, clear=True), patch.object(probe, "scratch_tree", return_value=root), patch.object(probe.shutil, "copytree"), patch.object(probe.subprocess, "run", return_value=SimpleNamespace(returncode=1)), patch.object(probe, "read_build") as read, contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(probe.main(), 1)
                 read.assert_not_called()
             self.assertIn("baseline build failed", output.getvalue())
