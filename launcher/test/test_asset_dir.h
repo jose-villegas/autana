@@ -6,10 +6,15 @@
 
 #include <stddef.h>
 
-/* Sets AUTANA_ASSET_DIR to `dir`, keeping the runner's value for
- * test_asset_dir_restore(). */
+/* Sets AUTANA_ASSET_DIR to `dir`, keeping the runner's value. The test's
+ * cleanup puts it back; test_asset_dir_restore() does so earlier. */
 void test_asset_dir_use(const char* dir);
 
+/* Sets AUTANA_ASSET_DIR without keeping the runner's value: for a test of
+ * this helper, not for fixtures. */
+void test_asset_dir_set(const char* dir);
+
+/* Puts the runner's value back; does nothing when it already is. */
 void test_asset_dir_restore(void);
 
 /* Writes `size` bytes to `path`, failing the test when it cannot. */

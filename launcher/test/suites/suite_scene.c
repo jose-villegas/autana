@@ -1144,7 +1144,6 @@ test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
     remove_pack("test_pair");
-    test_asset_dir_restore();
 }
 
 /* A load that fails gives its use of the pack back. */
@@ -1161,7 +1160,6 @@ test_a_scene_that_fails_to_load_does_not_hold_its_pack(void) {
     TEST_ASSERT_NULL(scene_load("test_broken", &why));
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_NO_PACK, why.asset, "the damaged file was read again");
     remove_pack("test_broken");
-    test_asset_dir_restore();
 }
 #endif
 

@@ -191,7 +191,6 @@ test_two_packs_mount_alone_and_a_bad_checksum_in_one_leaves_the_other_usable(voi
     asset_store_release("suite_pack_b");
     remove_pack("suite_pack_a");
     remove_pack("suite_pack_b");
-    test_asset_dir_restore();
 }
 
 /* A counted mount is read once: a damaged file goes unseen until the last
@@ -208,7 +207,6 @@ test_a_pack_is_read_on_its_first_use_and_again_only_after_its_last_release(void)
     asset_store_release("suite_pack_a");
     TEST_ASSERT_NULL(asset_store_pack("suite_pack_a"));
     remove_pack("suite_pack_a");
-    test_asset_dir_restore();
 }
 
 static void
@@ -235,7 +233,6 @@ test_a_mount_past_the_store_s_slots_is_refused_until_one_is_released(void) {
     for (int i = 0; i <= ASSET_STORE_MOUNTS_MAX; i++) {
         remove_pack(names[i]);
     }
-    test_asset_dir_restore();
 }
 #endif
 
