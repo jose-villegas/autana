@@ -34,8 +34,8 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart components docs/memory
 <rect x="200.00" y="448" width="451.19" height="24" fill="#8c959f" data-label="other" data-bytes="9659"><title>other: 9659 B</title></rect>
 <text x="663.19" y="465" text-anchor="start">9659 B</text>
 <text x="188" y="509" text-anchor="end">Linker fill</text>
-<rect x="200.00" y="492" width="68.25" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1461"><title>Linker fill: 1461 B</title></rect>
-<text x="280.25" y="509" text-anchor="start">1461 B</text>
+<rect x="200.00" y="492" width="59.23" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1268"><title>Linker fill: 1268 B</title></rect>
+<text x="271.23" y="509" text-anchor="start">1268 B</text>
 <text x="16" y="560" text-anchor="start">release: 77508 B IDF-placed; dev: 82149 B IDF-placed; diag: 82902 B IDF-placed</text>
 <text x="16" y="584" text-anchor="start">Unattributed linker fill excludes split slack and prefetch pad.</text>
 </svg>
