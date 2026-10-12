@@ -43,7 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
 from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
-from pinned_tool import PINNED_MAJOR, resolve
+from pinned_tool import resolve
 from native_path import to_native as to_native_path
 
 TOOLS_DIR = Path(__file__).resolve().parent
