@@ -37,16 +37,16 @@ test_console_scene_requests_survive_expanded_frames(void) {
         {"scene sponza-lite", "sponza-lite"}, {"scene sponza", "sponza"},
     };
 
-    render_lab_test_frame(false);
+    render_lab_test_frame(false, NULL);
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clips"));
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clip gallop"));
     TEST_ASSERT_FALSE(app_render_lab.console->handle("unknown"));
     for (size_t i = 0; i < sizeof switches / sizeof switches[0]; i++) {
         TEST_ASSERT_TRUE(app_render_lab.console->handle(switches[i].request));
-        render_lab_test_frame(true);
+        render_lab_test_frame(true, NULL);
         TEST_ASSERT_EQUAL_STRING(switches[i].key, render_lab_start_scene_key);
         TEST_ASSERT_TRUE(scene_has_active_camera());
-        render_lab_test_frame(false);
+        render_lab_test_frame(false, NULL);
     }
 }
 

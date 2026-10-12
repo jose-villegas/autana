@@ -20,5 +20,5 @@ extern app_t app_render_lab;
 scene_t* render_lab_test_loaded_scene(const char* key);
 void render_lab_test_enter(render_lab_test_t* saved, const char* scene);
 void render_lab_test_exit(const render_lab_test_t* saved);
-int64_t render_lab_test_frame(bool switching);
+int64_t render_lab_test_frame(bool switching, const input_t* input);
 #endif

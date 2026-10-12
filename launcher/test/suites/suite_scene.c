@@ -1052,24 +1052,30 @@ test_authored_animator_clip_array_allocation_failure_releases_memory(void) {
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
     const size_t psram = memory_free_bytes(MEMORY_PSRAM);
 
-    /* The scene block and shared light transfer precede the first clip array. */
-    enum { AUTHORED_CLIP_ALLOCATION = 2 };
+    enum { ALLOCATION_SWEEP_LIMIT = 64 };
 
-    scene_fail_allocation_after = AUTHORED_CLIP_ALLOCATION;
-    scene_failure_t why;
-    scene_t* loaded = scene_load_from(&pack, "authored", &why);
-    scene_fail_allocation_after = -1;
-    if (loaded != NULL) {
-        scene_unload(loaded);
+    bool completed = false;
+    for (int allocation = 0; allocation < ALLOCATION_SWEEP_LIMIT; allocation++) {
+        scene_fail_allocation_after = allocation;
+        scene_failure_t why;
+        scene_t* loaded = scene_load_from(&pack, "authored", &why);
+        scene_fail_allocation_after = -1;
+        if (loaded != NULL) {
+            TEST_ASSERT_GREATER_THAN_INT(0, allocation);
+            TEST_ASSERT_EQUAL_INT(SCENE_OK, why.status);
+            scene_unload(loaded);
+            completed = true;
+        } else {
+            TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+        }
+        TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        if (completed) {
+            break;
+        }
     }
-    const size_t internal_after = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram_after = memory_free_bytes(MEMORY_PSRAM);
     asset_file_release(buffer);
-    TEST_ASSERT_NULL(loaded);
-    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    TEST_ASSERT_EQUAL_STRING("authored", why.what);
-    TEST_ASSERT_EQUAL_UINT(internal, internal_after);
-    TEST_ASSERT_EQUAL_UINT(psram, psram_after);
+    TEST_ASSERT_TRUE(completed);
 }
 
 static void

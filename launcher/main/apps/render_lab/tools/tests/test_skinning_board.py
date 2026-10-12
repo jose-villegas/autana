@@ -2,8 +2,11 @@
 import pathlib
 import sys
 import unittest
+import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import report_performance
 from report_performance import (PHASES, PHASE_LOADED, PHASE_PLAYING, PREFIX, STAGE_ANIMATE,
                                    STAGE_ANIMATION_STEP, STAGE_RENDER, STAGE_RENDER_DELTA,
                                    STAGE_SKIN, CORES_ONE, CORES_TWO, CORES_UNKNOWN, NANOSECONDS_PER_MICROSECOND, budget, parse_capture)
@@ -27,6 +30,104 @@ def run_capture(number, mean):
 
 
 class SkinningBoard(unittest.TestCase):
+    def test_check_exit_status_and_byte_preservation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            capture = pathlib.Path(temp) / "capture.txt"
+            document = pathlib.Path(temp) / "budget.md"
+            capture.write_text("BUILD_ID=sample-diag\n" + run_capture(1, 100), encoding="utf-8")
+            stale = b"Before\r\n<!-- generated: skinning-budget -->\r\nstale\r\n<!-- /generated: skinning-budget -->\r\nAfter\r\n"
+            document.write_bytes(stale)
+            argv = ["report_performance", str(capture), str(document)]
+            with patch.object(sys, "argv", [*argv, "--check"]):
+                self.assertNotEqual(report_performance.main(), 0)
+            self.assertEqual(document.read_bytes(), stale)
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(report_performance.main(), 0)
+            matching = document.read_bytes()
+            self.assertNotEqual(matching, stale)
+            with patch.object(sys, "argv", [*argv, "--check"]):
+                self.assertEqual(report_performance.main(), 0)
+            self.assertEqual(document.read_bytes(), matching)
+
+    def test_distinct_cells_and_lighting_names(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100)
+        lines = []
+        for line in text.splitlines():
+            if "phase=" in line:
+                index = PHASES.index(line.split("phase=")[1].split()[0])
+                line = line.replace("internal_free=100 internal_largest=100",
+                                    f"internal_free={1100 + index * 100} internal_largest={1050 + index * 100}")
+            elif "stage=" in line:
+                stage = line.split("stage=")[1].split()[0]
+                if stage in (STAGE_ANIMATE, STAGE_SKIN):
+                    core = line.split("cores=")[1].split()[0]
+                    mean = {(STAGE_ANIMATE, CORES_ONE): 160, (STAGE_ANIMATE, CORES_TWO): 240,
+                            (STAGE_SKIN, CORES_ONE): 320, (STAGE_SKIN, CORES_TWO): 400}[(stage, core)]
+                    line = line.replace("mean_us=100", f"mean_us={mean}").replace("us_per_vertex=0.125", f"us_per_vertex={mean / 800:.3f}")
+                elif stage == STAGE_ANIMATION_STEP:
+                    line = line.replace("mean_us=100", "mean_us=480")
+                elif stage == STAGE_RENDER:
+                    line = line.replace("mean_us=100", "mean_us=700").replace("mean_us=99", "mean_us=500")
+                else:
+                    line = line.replace("mean_us=1", "mean_us=200")
+            lines.append(line)
+        text = "\n".join(lines) + "\n"
+        mode = next(mode for mode in report_performance.LIGHTING_MODES if mode != 0)
+        text = text.replace("lighting=0", f"lighting={mode}")
+        for lights in (1, 2):
+            with self.subTest(lights=lights):
+                rendered = budget(text.replace("lights=1", f"lights={lights}"))
+                for row in (
+                    "| Animate: sample, blend, palette | 160 \u00b5s (0.200 \u00b5s / vertex) | 240 \u00b5s (0.300 \u00b5s / vertex) |",
+                    "| Skin and light | 320 \u00b5s (0.400 \u00b5s / vertex) | 400 \u00b5s (0.500 \u00b5s / vertex) |",
+                    "| Whole animation step | 480 \u00b5s (0.600 \u00b5s / vertex) |",
+                    "| Scene render, playing minus paused | +200 \u00b5s (700 vs 500 \u00b5s) |",
+                    "| Before the scene loads | 1100 / 1050 |",
+                    "| Scene loaded | 1200 / 1150 |",
+                    "| Scene playing | 1300 / 1250 |",
+                    f"{report_performance.LIGHTING_MODES[mode]} lighting, {lights} light{'s' if lights != 1 else ''}.",
+                ):
+                    self.assertIn(row, rendered)
+
+    def test_malformed_captures_name_the_refusal_cause(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100)
+        cases = [
+            (text.replace("lighting=0", "lighting=999"), "invalid lighting"),
+            (text + "RUN=1\n", "duplicate run"),
+            (text + "BUILD_ID=other\n", "mismatched build"),
+            (text.replace("RUN=1\n", ""), "no run"),
+            (text.replace("vertices=800", "vertices=801", 1), "inconsistent vertices or samples"),
+            (text.replace("samples=100", "samples=101", 1), "inconsistent vertices or samples"),
+        ]
+        for field, old, bad_values in (("joints", 22, (0, -1)), ("influences", 2, (0, -1)), ("lights", 1, (-1,))):
+            cases.extend((text.replace(f"{field}={old}", f"{field}={value}"), f"invalid {field}") for value in bad_values)
+        for stage, core in report_performance.STAGES:
+            lines = [line for line in text.splitlines() if not (f"stage={stage} " in line and f"cores={core} " in line)]
+            cases.append(("\n".join(lines), f"missing {stage} {core}"))
+        for field, value in (("mean_us", 100), ("vertices", 800), ("samples", 100),
+                             ("internal_free", 100), ("internal_largest", 100),
+                             ("worker_samples", 100), ("joints", 22), ("influences", 2), ("lighting", 0), ("lights", 1)):
+            cases.append((text.replace(f"{field}={value}", f"{field}=bad"), f"invalid {field}"))
+        for capture, cause in cases:
+            with self.subTest(cause=cause), self.assertRaisesRegex(ValueError, cause):
+                parse_capture(capture)
+
+    def test_partial_measurements_render_run_counts_only_when_needed(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100) + run_capture(2, 900)
+        self.assertNotIn("of 2 runs", budget(text))
+        for key in (*report_performance.STAGES, *report_performance.RENDER_KEYS):
+            stage, slot = key
+            field = "cores" if key in report_performance.STAGES else "paused"
+            partial = "\n".join(line for line in text.splitlines()
+                                if not (f"stage={stage} " in line and (not slot or f"{field}={slot} " in line)
+                                        and ("mean_us=900" in line or "mean_us=899" in line
+                                             or stage == STAGE_RENDER_DELTA)))
+            if stage == STAGE_RENDER_DELTA:
+                partial = text.replace(f"{PREFIX} stage={stage} mean_us=1\n", "", 1)
+            with self.subTest(key=key):
+                self.assertIn(f"{stage}, {slot} core(s): 1 of 2 runs." if key in report_performance.STAGES
+                              else f"{stage}, paused={slot}: 1 of 2 runs.", budget(partial))
+
     def test_rendered_units_and_setup(self):
         capture = "BUILD_ID=sample-diag\n" + run_capture(1, 1600)
         rendered = budget(capture)

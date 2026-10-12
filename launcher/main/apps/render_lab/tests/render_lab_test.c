@@ -47,10 +47,13 @@ render_lab_test_exit(const render_lab_test_t* saved) {
 }
 
 int64_t
-render_lab_test_frame(bool switching) {
+render_lab_test_frame(bool switching, const input_t* input) {
     const input_t idle = {0};
+    if (input == NULL) {
+        input = &idle;
+    }
     gfx_present_begin();
-    app_render_lab.update(RENDER_LAB_TEST_FRAME_MS, &idle);
+    app_render_lab.update(RENDER_LAB_TEST_FRAME_MS, input);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_context_set_scale(render_context_main(), RENDER_LAB_TEST_SCALE);
     const int64_t render_start = timing_now_us();
@@ -62,7 +65,7 @@ render_lab_test_frame(bool switching) {
     if (switching) {
         TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
     }
-    app_render_lab.frame(RENDER_LAB_TEST_FRAME_MS, &idle);
+    app_render_lab.frame(RENDER_LAB_TEST_FRAME_MS, input);
     if (switching) {
         TEST_ASSERT_FALSE_MESSAGE(gfx_frame_expanded(), "the new scene must discard the expanded picture");
         TEST_ASSERT_TRUE_MESSAGE(gfx_fb_guard_available, "the new scene must allow full-framebuffer writes");

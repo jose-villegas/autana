@@ -28,3 +28,5 @@ root test_cleanup_finishes_present_without_tripping_guard test
 indirect test_scene_console_dispatch_and_repeated_exit_release_heap : render_lab_console
 indirect render_lab_test_exit : render_lab_exit
 indirect render_lab_clips_reply : console_reply_stdio suite_render_lab_clips.c:capture_reply
+
+root test_boot_menu_draws_controls_only_for_animated_scene test
