@@ -127,6 +127,9 @@ sdkconfig and linked scripts. The measured block is refreshed by CI;
 its SHA-256 marker lets host gates detect hand edits without building firmware.
 
 An IRAM site's immediately preceding comment gives a reason and `IRAM budget: N B`.
+A function definition is a site when it carries an IRAM attribute (including an alias)
+or its immediately preceding comment declares an IRAM budget; placement may be
+inherited from a declaration. IRAM-placing linker-fragment mappings are sites too.
 When sizes differ, use `IRAM budget: release R B, dev D B, diag T B`
 with measured integers in place of R, D and T. Each build selects its variant
 from `build_id.txt`. On the IDF commit in
