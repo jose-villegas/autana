@@ -35,7 +35,6 @@ import glob
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -43,6 +42,7 @@ from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
+from compile_db import compile_flags
 from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 from pinned_tool import PINNED_MAJOR, resolve
@@ -112,13 +112,10 @@ CLANG_REJECTED_FLAG_RE = re.compile(
     r"^.*error: (?:unknown argument|argument unused during compilation): "
     r"'(?P<flag>[^']+)'(?: \[-Werror,-Wunused-command-line-argument\])?$")
 
-SPEC_FLAGS_RE = re.compile(r'(?<!\S)(?:"--?specs=[^"]+"|--?specs=(?:"[^"]+"|\S+))')
 GCC_INCLUDE_START = "#include <...> search starts here:"
 GCC_INCLUDE_END = "End of search list."
 GCC_PROBE_TIMEOUT_SECONDS = 15
 LIBC_HEADER = "stdio.h"
-
-RESPONSE_FILE_RE = re.compile(r'@"([^"]+)"')
 
 DIAG_RE = re.compile(
     r"^(?P<file>.+):(?P<line>\d+):\d+: warning: function '(?P<name>[^']+)' "
@@ -135,10 +132,9 @@ def resolve_clang_tidy():
 
 
 def resolve_analysis_clang():
-    """Probe with the driver shipped alongside the analyzer being used."""
+    """Probe with a validated driver matching the pinned LLVM major."""
     clang_tidy, _ = resolve_clang_tidy()
-    tidy_path = Path(clang_tidy)
-    return str(tidy_path.with_name("clang" + tidy_path.suffix))
+    return resolve("clang", companion=clang_tidy)[0]
 
 
 def find_xtensa_toolchain_root():
@@ -414,21 +410,6 @@ def scan_vendored(clang_tidy, db_path, sources):
     return scores
 
 
-def inline_response_file(cmd):
-    """ESP-IDF's generated compile commands hand most flags to the
-    compiler via a GCC-style @"file" response file rather than inline;
-    inlined here so rejected flags can be stripped from all of it, not just
-    whatever half of the command happens to sit outside the file."""
-    m = RESPONSE_FILE_RE.search(cmd)
-    if not m:
-        return cmd
-    try:
-        rf_text = Path(m.group(1)).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return cmd
-    return cmd[:m.start()] + rf_text + cmd[m.end():]
-
-
 @lru_cache(maxsize=None)
 def gcc_libc_includes(compiler, specs, directory):
     """Clang does not interpret GCC specs, which select the firmware's libc.
@@ -494,20 +475,19 @@ def build_idf_entries(toolchain_root, vendored=False):
             continue
         elif is_vendored(str(rel)) or "tools" in parts:
             continue
-        cmd = inline_response_file(e.get("command", ""))
-        compiler = shlex.split(cmd, posix=False)[0].strip('"')
-        specs = tuple(flag.replace('"', '') for flag in SPEC_FLAGS_RE.findall(cmd))
+        argv = compile_flags(e)
+        compiler = argv[0]
+        specs = tuple(flag for flag in argv if flag.startswith(("-specs=", "--specs=")))
         includes = gcc_libc_includes(compiler, specs, e["directory"])
-        cmd = SPEC_FLAGS_RE.sub("", cmd)
-        cmd = " ".join(t for t in cmd.split()
-                       if t != ANALYSIS_UNUSED_MACROS_FLAG and
-                       (not t.strip('"').startswith(("-f", "-m")) or
-                        clang_accepts_flag(clang, t.strip('"'), Path(sysroot).name)))
-        cmd += "".join(f' -isystem "{path}"' for path in includes)
-        cmd += (f' --sysroot="{sysroot}" --gcc-toolchain="{toolchain_root}"'
-                ' -Wno-unknown-warning-option -Wno-string-plus-int'
-                ' "-Dpatchable_function_entry(...)="')
-        entries[str(path.resolve())] = cmd
+        argv = [arg for arg in argv if arg not in specs and arg != ANALYSIS_UNUSED_MACROS_FLAG and
+                (not arg.startswith(("-f", "-m")) or
+                 clang_accepts_flag(clang, arg, Path(sysroot).name))]
+        for include in includes:
+            argv += ["-isystem", include]
+        argv += [f"--sysroot={sysroot}", f"--gcc-toolchain={toolchain_root}",
+                 "-Wno-unknown-warning-option", "-Wno-string-plus-int",
+                 "-Dpatchable_function_entry(...)=", str(path)]
+        entries[str(path.resolve())] = argv
     if not vendored:
         for rel, (sibling_rel, variant_symbol) in VARIANT_ONLY_FILES.items():
             sibling = str((LAUNCHER_DIR / sibling_rel).resolve())
@@ -516,13 +496,13 @@ def build_idf_entries(toolchain_root, vendored=False):
                 continue
             # Same folder, so only the file name differs: after either
             # separator, since a Windows database writes backslashes.
-            borrowed, swaps = re.subn(
+            borrowed = [re.sub(
                 r"(?<=[\\/])" + re.escape(Path(sibling_rel).name) + r"(?!\w)",
-                lambda _m: Path(rel).name, entries[sibling])
-            if swaps == 0:
+                lambda _m: Path(rel).name, arg) for arg in entries[sibling]]
+            if borrowed == entries[sibling]:
                 sys.exit(f"{sibling_rel}'s compile command does not name it; "
                          f"cannot borrow it for {rel}")
-            entries[target] = f"{borrowed} -D{variant_symbol}=1"
+            entries[target] = borrowed + [f"-D{variant_symbol}=1"]
     return entries
 
 
@@ -617,12 +597,7 @@ def build_compile_db():
     db_json = []
     for path, cmd in {**all_entries, **vendored_entries}.items():
         entry = {"directory": str(LAUNCHER_DIR), "file": path}
-        # IDF entries stay a "command" string (built by text surgery on
-        # ESP-IDF's own string); host/tools entries are a real argv list
-        # (built here token by token); "arguments" needs no tokenising on
-        # the way back in, which a hand-built string does and a Windows
-        # path's own backslashes can trip.
-        entry["arguments" if isinstance(cmd, list) else "command"] = cmd
+        entry["arguments"] = cmd
         db_json.append(entry)
     db_path = BUILD_DIR / "compile_commands.json"
     db_path.write_text(json.dumps(db_json, indent=2), encoding="utf-8")
