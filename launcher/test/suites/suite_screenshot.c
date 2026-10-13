@@ -1,7 +1,7 @@
 /*
  * Portable suite: screenshot_bmp_header/screenshot_bmp_row_stride, the pure
  * byte layout of the BMP console_screenshot_dump()
- * (console/console_screenshot.c, device-only) writes.
+ * (console/verbs/console_screenshot.c, device-only) writes.
  *
  * Every expected byte below is spelled out by hand against the
  * BITMAPFILEHEADER/BITMAPINFOHEADER field order rather than derived from the
@@ -12,7 +12,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "console/screenshot.h"
+#include "console/capture/screenshot.h"
 
 static void
 test_row_stride_already_aligned_needs_no_padding(void) {

@@ -10,8 +10,8 @@
  * clock until its duration runs out, and a button edge is consumed by the
  * next read. Whatever is injected outranks the hardware while it lasts.
  */
-#include "console/console_inject_parse.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_inject_parse.h"
 
 #include "input/buttons.h"
 #include "input/imu.h"

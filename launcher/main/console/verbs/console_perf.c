@@ -4,8 +4,8 @@
  * line. Development builds only; see console.h.
  */
 #include "console/console.h"
-#include "console/console_perf_parse.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_perf_parse.h"
 
 #include "profile/frame_cost.h"
 
