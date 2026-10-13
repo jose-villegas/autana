@@ -9,10 +9,9 @@ name: Format
 #
 # clang-format is pinned to one exact version, not a minimum: see
 # docs/C-Style-Guide.md's "One formatter version" for why the versions
-# disagree on real files in this tree. pip rather than apt because it
-# carries the exact patch version on any runner image; 19 because it is
-# also what ESP-IDF's esp-clang bundles, so contributors usually already
-# have it.
+# disagree on real files in this tree. The version is the esp-clang release
+# the pinned ESP-IDF bundles (launcher/idf-pin.json), run inside that image,
+# so a contributor with that ESP-IDF formats with the same binary.
 
 on:
   push:
@@ -27,27 +26,26 @@ concurrency:
 jobs:
   format:
     name: clang-format and LF line endings
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-
-      # Same version scripts/gates/check-format.sh pins. Keep the two in step:
-      # PINNED_MAJOR there, this line here.
-      - name: Install clang-format 19
-        run: pip install 'clang-format==19.1.7'
-
-      - name: Which clang-format, and which files
-        run: |
-          set -eu
-          scripts/gates/check-format.sh --which
-          clang-format --version
-          echo "Files checked: $(scripts/gates/format-file-list.sh | wc -l)"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
 
       # scripts/gates/format-file-list.sh is the same list the hook filters against,
       # so a file cannot be gated here and skipped there. Vendored and
-      # generated sources are excluded by it, not by this workflow.
+      # generated sources are excluded by it, not by this workflow. The pinned
+      # ESP-IDF image installs the esp-clang it pins, the binary a developer with
+      # that ESP-IDF formats with.
       - name: Every first-party C and header file is formatted
-        run: scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check
+        run: |
+          image=$(sh scripts/ci/idf_image.sh)
+          docker run --rm -v "$GITHUB_WORKSPACE:/app" -w /app "$image" /bin/bash -c '
+            set -eu
+            git config --global --add safe.directory "*"
+            python "$IDF_PATH/tools/idf_tools.py" install esp-clang > /dev/null
+            scripts/gates/check-format.sh --which
+            echo "Files checked: $(scripts/gates/format-file-list.sh | wc -l)"
+            scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check'
 
       # Reads the index, not the checkout, so a CRLF file fails here whatever
       # .gitattributes or the runner's git config would do to it on disk.

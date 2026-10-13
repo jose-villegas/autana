@@ -1,4 +1,5 @@
 """Shared tool resolution, shell paths and capture contracts."""
+import io
 import os
 from pathlib import Path
 import shutil
@@ -32,6 +33,11 @@ class SharedToolsTests(unittest.TestCase):
             'CLANG_FORMAT_ANY_VERSION': '', 'CLANG_TIDY_ANY_VERSION': ''})
         self.env.start()
         self.addCleanup(self.env.stop)
+        # The fixtures' own pin, so a bump of launcher/idf-pin.json changes nothing here.
+        for name, value in (('PINNED_VERSION', '19.1.2'), ('PINNED_MAJOR', '19')):
+            patch = mock.patch.object(pinned_tool, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def candidate(self, name, major='19', version=None):
         folder = self.bin if version is None else self.root / 'tools/esp-clang' / version / 'esp-clang/bin'
@@ -65,6 +71,16 @@ class SharedToolsTests(unittest.TestCase):
                     self.versions[os.path.normcase(versioned)] = 'unparseable'
                     self.versions[os.path.normcase(plain)] = '19'
                     self.assertEqual(pinned_tool.resolve(tool), (plain, '19'))
+
+    def test_the_pinned_release_beats_another_patch_of_its_major(self):
+        near = self.candidate('clang-format', '19.1.7')
+        exact = self.candidate('clang-format', '19.1.2', version='esp-19.1.2')
+        with mock.patch.object(subprocess, 'run', side_effect=self.version_run):
+            self.assertEqual(pinned_tool.resolve('clang-format'), (exact, '19'))
+            self.versions[os.path.normcase(exact)] = '18.1.8'
+            with mock.patch('sys.stderr', new_callable=io.StringIO) as err:
+                self.assertEqual(pinned_tool.resolve('clang-format'), (near, '19'))
+            self.assertIn('clang-format 19.1.7 here, 19.1.2 pinned', err.getvalue())
 
     def test_override_and_first_wrong_major_fallback(self):
         override = self.candidate('custom-tidy', '18')

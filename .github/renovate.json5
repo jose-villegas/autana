@@ -1,0 +1,104 @@
+// Bump pull requests for every shared framework this repository pins: what each
+// pin is, what a bump regenerates and how to match it locally is
+// docs/tools/Framework-Versions.md. Validated by .github/workflows/renovate-config.yml.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended', 'helpers:pinGitHubActionDigests'],
+  timezone: 'Europe/Madrid',
+  schedule: ['before 6am on monday'],
+
+  // Branches pass scripts/gates/check-branch-name.sh: feature/<slug>, and every
+  // update belongs to a group below that sets the slug.
+  branchPrefix: 'feature/',
+  branchNameStrict: true,
+  // And bodies pass scripts/gates/check-pr-ticket.sh.
+  prFooter: 'Ticket: xwxi',
+  prBodyNotes: ['A failing check names what this bump regenerates; docs/tools/Framework-Versions.md lists each one.'],
+  semanticCommits: 'disabled',
+  commitMessagePrefix: 'build:',
+  rangeStrategy: 'pin',
+
+  'git-submodules': {enabled: true},
+
+  customManagers: [
+    {
+      // An exact tool version a workflow installs, annotated on the line above it:
+      //   # renovate: datasource=npm depName=renovate
+      //   RENOVATE_VERSION: 44.151.5
+      customType: 'regex',
+      managerFilePatterns: ['/^\\.github/workflows/[^/]+\\.yml$/'],
+      matchStrings: ['# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+\\w+: (?<currentValue>\\S+)'],
+    },
+    {
+      // The Blender the skinned-mesh exporter refuses to run without; bakes.yml installs it.
+      customType: 'regex',
+      managerFilePatterns: ['/^launcher/tools/gltf/blend_skin_to_glb\\.py$/'],
+      matchStrings: ['BLENDER_VERSION = \\((?<major>\\d+), (?<minor>\\d+), (?<patch>\\d+)\\)'],
+      currentValueTemplate: '{{{major}}}.{{{minor}}}.{{{patch}}}',
+      depNameTemplate: 'blender/blender',
+      datasourceTemplate: 'github-tags',
+      extractVersionTemplate: '^v(?<version>\\d+\\.\\d+\\.\\d+)$',
+      autoReplaceStringTemplate: "BLENDER_VERSION = ({{{replace '\\.' ', ' newValue}}})",
+    },
+  ],
+
+  packageRules: [
+    // A major is a migration with its own ticket, opened from the dependency dashboard.
+    {matchUpdateTypes: ['major'], dependencyDashboardApproval: true},
+
+    {matchManagers: ['github-actions'], groupName: 'GitHub Actions', groupSlug: 'github-actions'},
+    // This repository's own reusable workflows follow the web-pages branch on purpose.
+    {matchManagers: ['github-actions'], matchPackageNames: ['jose-villegas/autana'], enabled: false},
+
+    {matchManagers: ['pip_requirements'], groupName: 'Python packages', groupSlug: 'python-packages'},
+    // The fit's GPU packages: the self-hosted runner's environment is rebuilt by hand
+    // (launcher/tools/r3d/README.md), so these open only from the dashboard.
+    {
+      matchFileNames: ['launcher/tools/r3d/requirements-gpu.txt'],
+      groupName: 'GPU fit packages',
+      groupSlug: 'gpu-fit-packages',
+      dependencyDashboardApproval: true,
+    },
+    {matchPackageNames: ['torch'], registryUrls: ['https://download.pytorch.org/whl/cu128']},
+    {
+      matchPackageNames: ['nvdiffrast'],
+      overrideDatasource: 'github-tags',
+      overridePackageName: 'NVlabs/nvdiffrast',
+      extractVersion: '^v(?<version>.+)$',
+    },
+
+    {matchManagers: ['npm'], groupName: 'Node packages', groupSlug: 'node-packages'},
+
+    // The interpreters every host job installs. A Python minor waits for the bake
+    // stack's wheels (mitsuba, drjit), so it is a migration too.
+    {matchManagers: ['pyenv'], groupName: 'Python', groupSlug: 'python'},
+    {matchManagers: ['pyenv'], matchUpdateTypes: ['minor'], dependencyDashboardApproval: true},
+    {matchManagers: ['nodenv'], groupName: 'Node', groupSlug: 'node'},
+
+    // One pull request per upstream: a BSP or microui bump merges into its vendored
+    // copy (scripts/deps/vendored.py), a meshoptimizer or ufbx bump rebakes.
+    {matchManagers: ['git-submodules'], schedule: ['before 6am on the first day of the month']},
+    {matchDepNames: ['third_party/upstream/microui'], groupName: 'microui', groupSlug: 'upstream-microui'},
+    {matchDepNames: ['third_party/upstream/Waveshare-ESP32-components'], groupName: 'Waveshare BSP', groupSlug: 'upstream-waveshare-bsp'},
+    {matchDepNames: ['third_party/upstream/meshoptimizer'], groupName: 'meshoptimizer', groupSlug: 'upstream-meshoptimizer'},
+    {matchDepNames: ['third_party/upstream/ufbx'], groupName: 'ufbx', groupSlug: 'upstream-ufbx'},
+
+    {matchManagers: ['custom.regex'], groupName: 'CI tools', groupSlug: 'ci-tools'},
+
+    // These change what the board runs: no merge without a board perf comparison
+    // against main (.github/workflows/board-perf.yml).
+    {
+      matchDepNames: [
+        'third_party/upstream/microui',
+        'third_party/upstream/Waveshare-ESP32-components',
+        'third_party/upstream/meshoptimizer',
+        'third_party/upstream/ufbx',
+        'blender/blender',
+      ],
+      labels: ['needs-board-perf'],
+      prBodyNotes: ['This bump can change the firmware: it merges only after a board perf comparison against main. Run a seeded `launcher/tools/perf/perf_compare.sh origin/main <this branch> --suite ...`, post its summary (improved, unchanged and regressed rows, with magnitudes) for the maintainer to judge, then remove the `needs-board-perf` label.'],
+    },
+    // A new Blender re-exports every skinned mesh: a rebake, opened from the dashboard.
+    {matchDepNames: ['blender/blender'], groupName: 'Blender', groupSlug: 'blender', dependencyDashboardApproval: true},
+  ],
+}

@@ -1,0 +1,33 @@
+name: Renovate config
+
+# .github/renovate.json5 opens every framework bump pull request; a config
+# Renovate cannot read opens none, silently, so it is validated here first.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/renovate.json5'
+      - '.github/workflows/renovate-config.yml'
+  pull_request:
+    paths:
+      - '.github/renovate.json5'
+      - '.github/workflows/renovate-config.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  validate:
+    name: Renovate reads its config
+    runs-on: ubuntu-24.04
+    env:
+      # renovate: datasource=npm depName=renovate
+      RENOVATE_VERSION: 44.151.5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
+      - name: Validate .github/renovate.json5
+        run: npx --yes --package "renovate@$RENOVATE_VERSION" -- renovate-config-validator --strict
