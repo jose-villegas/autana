@@ -6,7 +6,7 @@ you do is the same on both.
 
 Every command that touches the board (`flash`, `suite`, `selftest`,
 `monitor`, `screenshot`, `tune`, `reset`) takes the board's lock first, so two
-terminals, two agents or a CI job sharing one board wait for each other
+terminals or a CI job sharing one board wait for each other
 instead of fighting over the USB serial port.
 
 A command is named `user@host:pid`: your login, the machine, and the
@@ -53,7 +53,7 @@ sequenceDiagram
     B->>L: reads the console for 5 s
 ```
 
-- `autana 0.1.0, lock protocol 2` is the holder's tool version and lock-file
+- `autana 0.1.0, lock protocol 3` is the holder's tool version and lock-file
   format; it only matters when installs of different ages share a board.
 - `monitor` appears as a `listen capture`: it is the console read.
 - The line in A's terminal only tells its user someone is queued. Nothing
@@ -63,6 +63,35 @@ sequenceDiagram
   terminal or killing the process is the same: B prints
   `reclaimed lock from sam@bench:4120 for autana monitor (dead process)` and
   carries on.
+
+## Holding the board across commands
+
+`lock run`, `lock take`, and `lock hand` use the same board lock and FIFO queue.
+`run` holds it for a child command, which inherits the token and can call
+autana repeatedly. Ctrl+C ends the child and releases the lock. A failed child
+also releases it unless `--keep-on-failure <seconds>` leaves a timed hold; the
+token and an early release command then print on stderr.
+
+```sh
+autana lock run -- bash -c "autana flash && autana open APP_NAME && autana screenshot"
+```
+
+For separate shell commands, `take` prints a token alone on stdout. Pass it
+with the global `--lock-token` flag to each board command, then release it:
+
+```sh
+token=$(autana lock take --for 3600 inspecting the panel)
+autana --lock-token "$token" flash && autana --lock-token "$token" open APP_NAME && autana --lock-token "$token" screenshot; autana lock release "$token"
+```
+
+The default timed hold lasts one hour, and `--for` cannot exceed that hour.
+`--until-released` instead ties the hold to the invoking process, or to
+`--pid <pid>`; it ends when that process exits on this host. A token from a
+released or lapsed hold fails with exit 75 immediately. `status` shows time
+left for a timed hold and age for an until-released hold. The token is kept in
+the lock record and child environments, never in a profile or persistent
+environment setting. `lock hand` makes a timed hold for a person; repeating
+it renews the same hold, and `take-back` ends it.
 
 ## Board busy?
 
@@ -81,10 +110,9 @@ work down this list.
    unlocked
    ```
 
-   `autana lock hand <note>` means "I am using the board by hand": it reserves
-   the board so every command waits or fails until `autana lock take-back`,
-   or until an hour after the last `hand`. It is refused while a command
-   holds the board. Below a holder, `waiting:` lists
+   `autana lock hand <note>` reserves the board for a person until
+   `autana lock take-back` or an hour after the last `hand`. It waits in the
+   queue when a command holds the board. Below a holder, `waiting:` lists
    the queue with each estimated start; an estimate is `unknown (no duration
    history)` until that command has run a few times on this machine. A
    `stale` or `expired` line needs nothing from you: the next command takes
@@ -137,11 +165,10 @@ work down this list.
    program outside autana (a serial terminal, a monitor) probably has the port
    open; close it. Only a person decides to end a process; autana does not.
 
-6. **Ending a reservation or a lock.** A reservation is someone's
-   `autana lock hand`; `autana lock take-back` clears it now. A held lock is a
-   running command: end it with Ctrl+C in its terminal. Do not clear it from
-   outside while the command lives; if it is truly stuck see [Forcing a stuck
-   lock clear](#forcing-a-stuck-lock-clear).
+6. **Ending a reservation or a lock.** `autana lock take-back` ends a person's
+   reservation. `autana lock release <token>` ends a hold. End a running
+   command with Ctrl+C in its terminal. For a stuck command see
+   [Forcing a stuck lock clear](#forcing-a-stuck-lock-clear).
 
 ## Guarantees and non-guarantees
 
@@ -204,17 +231,13 @@ session:
 
 There is no setting for another folder: the lock is one per machine, and a
 folder chosen per checkout or per shell would split it. Linux ignores `TMPDIR`
-so two jobs with different temp folders still exclude each other; an install older
-than this rule used `$TMPDIR/autana-device` there, and until every copy on the
-machine is updated the two do not exclude each other (the lock protocol number
-cannot help: an older install never looks in the new folder). Per board, with
+so two jobs with different temp folders still exclude each other. Per board, with
 `:` in the serial number written as `_`:
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `host`, `pid`, `token`, `protocol`, `autana_version`; `purpose` is what `status` shows. The `token` is a random secret naming this one lock; the holder and every process it starts also carry it in their environment, which `autana lock release` uses when given none. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `host`, `token`, `protocol`, `autana_version`; a running command also has `heartbeat_at` and `pid`, a timed hold has `expires_at`, and an until-released hold has `pid`. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
-| `<serial>.human.json` | A person's reservation, with `expires_at`. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
 | `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |
 | `durations.jsonl` | How long each kind of command held the board, for estimates ([Flash-and-Captures.md](Flash-and-Captures.md#wait-estimates)). |
@@ -236,7 +259,7 @@ alone fall back once more to the only board this machine has ever seen.
 |---|---|
 | `0` | Success. For `lock hand --until-back`: the reservation was taken back or lapsed. |
 | `1` | Any other failure, including `device lock was lost`. |
-| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. Also `lock hand --until-back` when its wait runs out or the reservation is replaced; the reservation stands. |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. A wrong, released or lapsed token also fails at once with this code. `lock hand --until-back` uses it when its wait runs out or the reservation is replaced. |
 | `130` | Ctrl+C: the second one on `monitor`, or the first on `lock hand --until-back`, which leaves the reservation in place. |
 | `2` | `device.py` itself, for a bad command line. |
 
@@ -248,11 +271,11 @@ Times are epoch seconds; an age or a time left is the difference from now. An es
 | `board` | USB serial number |
 | `port` | COM port now, `null` when the board is not on USB |
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
-| `holder` | `{"owner", "purpose"}`, the purpose being the command that holds a lock (`autana tune`; `device.py <kind>` for a direct call) and the note for a reservation; `null` when unlocked. A held lock's also carries `protocol` and `autana_version`. |
+| `holder` | `{"owner", "purpose"}`, the command or hold note; `null` when unlocked. A held lock also carries `protocol` and `autana_version`; a timed or until-released hold carries `kind: "hold"`. |
 | `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done |
-| `expires_at` | when a reservation lapses; else `null` |
-| `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process` or `heartbeat expiry` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a reservation treated as released (`at` is when it lapsed). |
+| `expires_at` | when a timed hold or person's reservation lapses; else `null` |
+| `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process`, `heartbeat expiry`, or `hold lapsed` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a person's reservation (`at` is when it lapsed). |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
 
 ### Lock events
@@ -293,10 +316,11 @@ selftest`, `autana suite` or `autana flash`.
 
 Installs of different ages can still meet at one board. Every record carries
 its `protocol` number and `autana_version`, and a difference is only shown,
-never refused. A dead or stale holder is judged from `host`, `pid` and
-`heartbeat_at` alone, so it is reclaimed whatever its protocol. An install
-older than protocol 2 does not know a reservation lapses, so on a shared
-machine update every copy.
+never refused. Protocol 3 puts timed and process-bound holds in the same lock
+record as running commands. A running command is reclaimed from its process
+and heartbeat; a timed hold from its expiry; an until-released hold from its
+owner process on this host. Install the same autana version in every checkout
+that shares a board.
 
 ### Forcing a stuck lock clear
 
@@ -339,8 +363,8 @@ comes first on `PATH`, which from a native shell is WSL's launcher.
 python scripts/device/device.py --owner ci-7 --wait 0 run-suite run_gfx_suite --expect-build-id 0123456789ab-dev
 ```
 
-`--owner` defaults to `unknown`, and `--wait` is the lock wait in
-seconds. `release --token <t>`, `hand-to-human --note <n>` and `take-back` are
+`--owner` names the holder, and `--wait` is the lock wait in
+seconds. `release --token <t>`, `take`, `run`, `hand-to-human --note <n>` and `take-back` are
 what `autana lock` calls; `check-token --token <t>` exits 0 when the token is the
 board's live lock, which `flash_image.sh` asks before it opens the port.
 

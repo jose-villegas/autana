@@ -559,6 +559,18 @@ def release(args):
     return subprocess.call(device_command("release", "--token", token))
 
 
+def take(args):
+    if "--until-released" in args and "--pid" not in args:
+        args = ["--pid", str(device_module().device_lock.caller_pid()), *args]
+    return subprocess.call(device_command("take", *args))
+
+
+def lock_run(args):
+    if "--" not in args:
+        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] -- <command...>")
+    return subprocess.call(device_command("run", *args))
+
+
 def hand(args):
     """Reserve the board for a maintainer sitting at it; autana refuses new
     work against it until `autana lock take-back`, or an hour after the last
@@ -568,7 +580,7 @@ def hand(args):
     if args and args[0] == "--until-back":
         if len(args) < 3:
             sys.exit(usage)
-        wait = ["--wait", args[1]]
+        wait = ["--until-back", args[1]]
         args = args[2:]
     if not args:
         sys.exit(usage)
@@ -786,6 +798,10 @@ def board_holder():
         return ""
     board = candidates[0]
     holder = board["holder"]
+    token = os.environ.get(TOKEN_ENV)
+    if token and subprocess.call(device_command("check-token", "--token", token),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+        return ""
     if board["state"] == "held" and holder["owner"] != owner():
         return f"held by {holder['owner']} for {holder['purpose']}"
     return ""
@@ -1391,7 +1407,7 @@ def alias(old, new, handler):
     return wrapped
 
 
-LOCK_VERBS = {"release": release, "hand": hand, "take-back": take_back}
+LOCK_VERBS = {"take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
               "framewatch": framewatch}
 
@@ -1484,6 +1500,8 @@ COMMAND_GROUPS = (
     ("lock", "Sharing the board", (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
         Command("lock", lock, (
+            ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
+            ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
             ("lock release [<token>]", "release a lock this session holds, given its token"),
             ("lock hand [--until-back <seconds>] <note...>",
              "reserve the board for a person at it for an hour; run again to renew"),
@@ -1533,6 +1551,7 @@ USAGE_WIDTH = 34
 # own usage line (`autana help flags` instead) since most commands take most
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
+    ("--lock-token TOKEN", "run inside this board's live hold", "every board command"),
     ("--wait SECONDS", "how long to wait for the board's lock; 0 fails at once (exit 75)",
      "every board command"),
     ("--owner NAME", "the lock owner's label",
@@ -1668,9 +1687,9 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
-GLOBALS = ("--wait", "--owner", "--board", "--project")
+GLOBALS = ("--wait", "--owner", "--board", "--project", "--lock-token")
 _GLOBAL_ENV = {"--wait": WAIT_ENV, "--owner": OWNER_ENV, "--board": BOARD_ENV,
-               "--project": PROJECT_ENV}
+               "--project": PROJECT_ENV, "--lock-token": TOKEN_ENV}
 
 # Flags typed before a bare `autana`: they hold for the whole console session.
 session_flags = {}
@@ -1687,6 +1706,8 @@ def project_of(value):
 # files key on (device_lock.normalise_board); an owner is a label the lock
 # appends `:pid` to and prints, so it holds no whitespace.
 GLOBAL_CHECKS = {
+    "--lock-token": ("a non-empty token without whitespace", "autana --lock-token TOKEN screenshot",
+                     lambda v: v if v and not re.search(r"\s", v) else None),
     "--wait": ("a non-negative integer number of seconds", "autana --wait 0 monitor 5",
                lambda v: v if v.isascii() and v.isdigit() else None),
     "--owner": ("a name without whitespace", "autana --owner ci-7 flash",
@@ -1717,6 +1738,9 @@ def pop_globals(words):
     queue = list(words)
     while queue:
         word = queue.pop(0)
+        if word == "--":
+            rest.extend([word, *queue])
+            break
         flag, equals, value = word.partition("=")
         if flag not in GLOBALS:
             rest.append(word)

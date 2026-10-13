@@ -1103,6 +1103,16 @@ class LockCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.release(["one", "two"])
 
+    def test_lock_token_global_is_scoped_to_the_command(self):
+        environment = {key: value for key, value in autana.os.environ.items()
+                       if key != autana.TOKEN_ENV}
+        with mock.patch.dict(autana.os.environ, environment, clear=True):
+            flags, words = autana.pop_globals(["--lock-token", "cafe", "screenshot"])
+            self.assertEqual(words, ["screenshot"])
+            with autana.applied(flags):
+                self.assertEqual(autana.os.environ[autana.TOKEN_ENV], "cafe")
+            self.assertNotIn(autana.TOKEN_ENV, autana.os.environ)
+
     def test_hand_joins_its_words_into_one_note(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.hand(["checking", "the", "panel"])
@@ -1120,7 +1130,7 @@ class LockCommandTests(unittest.TestCase):
         self.assertEqual(code, autana.EXIT_BUSY)
         command = called.call_args.args[0]
         after = command[command.index("hand-to-human"):]
-        self.assertEqual(after[after.index("--wait") + 1], "10")
+        self.assertEqual(after[after.index("--until-back") + 1], "10")
         self.assertEqual(command[command.index("--note") + 1], "enter download mode")
 
     def test_hand_interrupt_returns_the_childs_interrupted_status(self):
