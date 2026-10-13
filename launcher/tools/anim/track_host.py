@@ -22,7 +22,6 @@ Standard library only.
 import hashlib
 import os
 import pathlib
-import re
 import subprocess
 import sys
 import tempfile
@@ -32,7 +31,7 @@ sys.path.insert(0, str(TOOLS))
 
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
-from build import packages  # noqa: E402
+from build import compile_db, packages  # noqa: E402
 
 HERE = TOOLS / "anim"
 MAIN = TOOLS.parent / "main"
@@ -71,13 +70,7 @@ def inputs(cc):
     listed = subprocess.run([*compile_args(cc), "-MM", "-MT", "x"], capture_output=True, text=True)
     if listed.returncode != 0:
         raise TrackHostError(f"listing track_host's headers with {cc} failed:\n{listed.stderr}")
-    files = []
-    for rule in listed.stdout.replace("\\\n", " ").splitlines():
-        for name in re.split(r"(?<!\\) +", rule.strip().removeprefix("x:").strip()):
-            path = pathlib.Path(name.replace("\\ ", " ")).resolve()
-            if name and path not in files:
-                files.append(path)
-    return files
+    return list(dict.fromkeys(pathlib.Path(name).resolve() for name in compile_db.parse_dependencies(listed.stdout)))
 
 
 def build_key(cc):

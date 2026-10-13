@@ -1,8 +1,10 @@
-"""Compiler arguments shared by analysis, preprocessing and stack measurements."""
+"""A compile database entry's compiler arguments for analysis, preprocessing and stack measurements, and the files its compile reads (-M)."""
 import os
 import ntpath
 import posixpath
+import re
 import shlex
+import subprocess
 
 
 def compile_flags(entry):
@@ -32,6 +34,29 @@ def compile_flags(entry):
                 filtered.extend(compile_flags({"command": text, "file": entry["file"], "directory": directory}))
         elif arg in {"-o", "-MF", "-MT", "-MQ"}:
             skip = True
+        elif arg.startswith(("-o", "-MF", "-MT", "-MQ")):
+            continue
         elif arg not in {"-c", "-MD", "-MMD", "-MP"} and path.normcase(path.normpath(path.join(directory, arg.replace("\\", "/")))) != source:
             filtered.append(arg)
     return filtered
+
+
+def parse_dependencies(output, directory=""):
+    """Absolute paths a compiler's -M/-MM text lists, in order: continuations joined, each rule's target dropped, escaped spaces, '#' and '$' unescaped."""
+    paths = []
+    for rule in re.sub(r"\\\r?\n", " ", output).splitlines():
+        for name in re.findall(r"(?:\\[ \t#]|[^\s])+", re.split(r":(?:\s|$)", rule, maxsplit=1)[-1]):
+            paths.append(os.path.abspath(os.path.join(directory, re.sub(r"\\([ \t#])|\$\$", lambda m: m.group(1) or "$", name))))
+    return paths
+
+
+def dependencies(entry):
+    """Files the entry's source depends on: its own command run with -M -MG."""
+    directory = entry.get("directory", "")
+    try:
+        scan = subprocess.run([*compile_flags(entry), "-M", "-MG", "-MT", "deps", entry["file"]], cwd=directory or None, capture_output=True, text=True)
+    except (OSError, KeyError, ValueError) as error:
+        raise RuntimeError(f"dependency scan failed for {entry.get('file')}: {error}") from error
+    if scan.returncode:
+        raise RuntimeError(f"dependency scan failed for {entry['file']}:\n{scan.stderr.strip()}")
+    return parse_dependencies(scan.stdout, directory)
