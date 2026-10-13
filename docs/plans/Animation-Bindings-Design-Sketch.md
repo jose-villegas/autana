@@ -64,8 +64,8 @@ Each component with animatable fields lists them where it is defined. The list
 is the component's own declaration of its state, kept beside its struct, and
 nothing outside it can be bound. The declaration types are in
 `launcher/main/anim/anim_binding.h`, and any component declares its list the
-same way (the camera's is `R3D_SCENE_CAMERA_FIELDS` in
-`launcher/main/render/r3d_scene.h`). See
+same way (the camera's is `CAMERA_FIELDS` in
+`launcher/main/scene/camera/camera.h`). See
 [Binding any field](../Animation-Tracks.md#binding-any-field).
 
 Materials are baked into vertex colours, and runtime lights declare no

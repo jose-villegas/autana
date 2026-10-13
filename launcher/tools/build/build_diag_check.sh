@@ -31,7 +31,7 @@
 # for local use; CI scores the whole tree instead).
 #
 # The build is `autana build diag`, which runs build.sh; ESP-IDF is the one
-# under $IDF_PATH.
+# selected by espressif.py.
 
 set -euo pipefail
 
@@ -51,7 +51,8 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 . "$DIR/../../../scripts/quiet.sh"
 
 if [ -z "${QUIET_INNER:-}" ]; then
-    quiet_begin "$DIR/../../build.diag/build_diag_check.log"
+    # Beside build.diag, not in it: the build prepares (and may empty) that folder.
+    quiet_begin "$DIR/../../build.diag-check.log"
     quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" || true
     quiet_end build_diag_check || exit $?
     exit 0
@@ -71,7 +72,8 @@ suite_static_data_gate() {
     # The directory goes in as its own argument so Git Bash converts it for a
     # Windows Python; inside the -c string it would stay a /c/... path.
     IDF_PYTHON=$("$PYTHON" -c "import sys; sys.path.insert(0, sys.argv[1]); from espressif import idf_python; print(idf_python())" "$DIR")
-    "$IDF_PYTHON" "$IDF_PATH/tools/idf_size.py" --files --format csv "$DIR/../../build.diag/launcher.map" |
+    BUILD_IDF=$("$PYTHON" -c "import json, sys; print(json.load(open(sys.argv[1]))['idf_path'])" "$DIR/../../build.diag/project_description.json")
+    "$IDF_PYTHON" "$BUILD_IDF/tools/idf_size.py" --files --format csv "$DIR/../../build.diag/launcher.map" |
         "$PYTHON" "$DIR/../quality/suite_static_data_gate.py"
 }
 
