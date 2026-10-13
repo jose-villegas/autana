@@ -53,8 +53,14 @@ exempt.
 
 ## Matching your machine
 
+After an ESP-IDF bump, install the commit in `launcher/idf-pin.json` and
+its tools. The resolver selects that checkout for builds and tool readers;
+no profile or registry change is required. `autana help config` describes
+`idf_installs` for installations outside the known roots. A missing checkout
+or matching tools installation prints the commands needed to install them.
+
 `python scripts/deps/versions.py` lists every pin beside what your machine
-has; `--drift` lists only the differences. `autana build` and `autana flash` on
+has; `--drift` lists only the differences. `autana build` and `autana flash` with an explicit override to
 another ESP-IDF commit, clang-format and clang-tidy on another patch release of
 the pinned major, and the mermaid check on another mermaid-cli each print a
 note naming both versions and carry on; clang-format and clang-tidy refuse

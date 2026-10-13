@@ -4,6 +4,7 @@ runs wrong is the end-to-end tests' job (FlashImageScriptTests). It also runs
 build.sh with the ESP-IDF stubbed."""
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -87,28 +88,51 @@ if args[-1] == "build":
         except RuntimeError as error:
             self.skipTest(str(error))
 
-    def run_build_sh(self, flags, sdkconfig):
+    def run_build_sh(self, flags, sdkconfig, previous_idf=None):
         """Returns the result, the fake's logged argv lines and the files
         left in the launcher folder."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tools = root / "launcher" / "tools" / "build"
             tools.mkdir(parents=True)
-            (root / "scripts").mkdir()
-            for name in ("build.sh", "idf.sh", "idf_shim.bat", "idf_variant.sh", "write_build_id.sh"):
+            (root / "scripts/lib").mkdir(parents=True)
+            for name in ("python.sh", "autana_config.py"):
+                shutil.copy(ENGINE / "scripts/lib" / name, root / "scripts/lib" / name)
+            (root / "autana.local.toml").write_text(f"build_root = '{(root / 'b').as_posix()}'\n")
+            for name in ("build.sh", "idf.sh", "idf_shim.bat", "idf_variant.sh", "write_build_id.sh", "espressif.py", "build_paths.py"):
                 shutil.copy(ENGINE / "launcher/tools/build" / name, tools / name)
             shutil.copy(ENGINE / "scripts/quiet.sh", root / "scripts" / "quiet.sh")
             export = fake_esp_idf.stub_esp_idf(root / "stubs", self.FAKE_IDF_PY)
             (root / "sdkconfig").write_text(sdkconfig)
+            if previous_idf:
+                sys.path.insert(0, str(ENGINE / "launcher/tools/build"))
+                import build_paths
+                build = build_paths.prepare(root / "launcher", "build.dev")
+                selected = {"commit": None, "path": str(export.parent.resolve())}
+                build_paths.stamp(build, selected if previous_idf == "matching" else {**selected, "commit": "old"})
+                (build / "sentinel").write_text("configured output")
             environment = dict(os.environ, FAKE_LOG=(root / "log").as_posix(),
                                FAKE_SDKCONFIG=str(root / "sdkconfig"))
             result = subprocess.run([self.bash, (tools / "build.sh").as_posix(), *flags, export.as_posix()],
                                     capture_output=True, text=True, timeout=120,
                                     stdin=subprocess.DEVNULL, env=environment)
             log = (root / "log").read_text().splitlines() if (root / "log").exists() else []
-            files = {path.relative_to(root / "launcher").as_posix()
-                     for path in (root / "launcher").rglob("*") if path.is_file()}
+            files = {name + "/" + path.relative_to(root / "launcher" / name).as_posix()
+                     for name in self.DIRECTORIES.values() if (root / "launcher" / name).exists()
+                     for path in (root / "launcher" / name).rglob("*") if path.is_file()}
+            log = [re.sub(r"(?:[A-Za-z]:)?[^ ]*/b/[^ ]*/(build(?:\.[a-z]+)?)(/sdkconfig)?",
+                          r"\1\2", line) for line in log]
         return result, log, files
+
+    def test_idf_identity_reconfigures_stale_output_only(self):
+        stale, _, stale_files = self.run_build_sh(["--dev", "--configure"], self.SDKCONFIGS["dev"], "stale")
+        self.assertEqual(stale.returncode, 0, stale.stdout + stale.stderr)
+        self.assertIn("reconfiguring from scratch", stale.stdout + stale.stderr)
+        self.assertNotIn("build.dev/sentinel", stale_files)
+        matched, _, matched_files = self.run_build_sh(["--dev", "--configure"], self.SDKCONFIGS["dev"], "matching")
+        self.assertEqual(matched.returncode, 0, matched.stdout + matched.stderr)
+        self.assertNotIn("reconfiguring from scratch", matched.stdout + matched.stderr)
+        self.assertIn("build.dev/sentinel", matched_files)
 
     def test_configure_reconfigures_with_the_builds_arguments(self):
         for variant, sdkconfig in self.SDKCONFIGS.items():
@@ -116,7 +140,7 @@ if args[-1] == "build":
             with self.subTest(variant=variant):
                 built, built_log, built_files = self.run_build_sh(self.FLAGS[variant], sdkconfig)
                 self.assertEqual(built.returncode, 0, built.stderr + built.stdout)
-                self.assertTrue(built_log[0].endswith(" build"), built_log)
+                self.assertTrue(built_log[-1].endswith(" build"), built_log)
                 self.assertIn(directory + "/build_id.txt", built_files)
                 configured, log, files = self.run_build_sh([*self.FLAGS[variant], "--configure"], sdkconfig)
                 self.assertEqual(configured.returncode, 0, configured.stderr + configured.stdout)

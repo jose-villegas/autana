@@ -5,6 +5,11 @@
 # sdkconfig, so remove one made from stale or different defaults before it
 # silently builds the wrong image; assert the selected symbols afterward.
 
+# Prepare before logs or locks create an in-tree build folder.
+idf_variant_prepare() {
+    IDF_VARIANT_BUILD=$("$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" prepare "$1" "$2") || return 1
+}
+
 idf_variant_disagreement() {
     config=$1
     for flag in $IDF_VARIANT_REQUIRED; do
@@ -106,7 +111,8 @@ idf_variant_build() {
         shift
     done
 
-    config="$launcher_dir/$build_dir/sdkconfig"
+    idf_variant_prepare "$launcher_dir" "$build_dir" || return 1
+    config="$IDF_VARIANT_BUILD/sdkconfig"
     if [ -f "$config" ]; then
         stale=""
         for fragment in $(printf '%s' "$IDF_VARIANT_DEFAULTS" | tr ';' ' '); do
@@ -142,8 +148,15 @@ idf_variant_build() {
     # config in its build directory while SDKCONFIG_DEFAULTS selects its seed.
     # The layout seed is always passed: the CMake cache would otherwise keep
     # the last seed a build directory was given.
-    idf -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS"         -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
-        -D SDKCONFIG="$build_dir/sdkconfig" "$idf_verb" || return $?
+    set -- -B "$IDF_VARIANT_BUILD" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS" \
+        -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
+        -D SDKCONFIG="$config"
+    if [ "$idf_verb" = build ] && ! "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" configured "$launcher_dir" "$build_dir"; then
+        idf "$@" reconfigure || return $?
+        "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" stamp "$launcher_dir" "$build_dir" || return 1
+    fi
+    idf "$@" "$idf_verb" || return $?
+    "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" stamp "$launcher_dir" "$build_dir" || return 1
 
     disagreement="$(idf_variant_disagreement "$config")" || disagreement=""
     if [ -n "$disagreement" ]; then

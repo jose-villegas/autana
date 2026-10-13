@@ -29,6 +29,8 @@ EXIT_BUSY = 75
 EXIT_INTERRUPTED = 130
 
 KEYS = {
+    "idf_installs": (list, "ESP-IDF checkouts or install folders to search before known roots"),
+    "build_root": (str, "external build root; Windows defaults to %LOCALAPPDATA%/autana/b"),
     "docs_extra": (list, "extra Markdown files or folders `autana docs` searches, "
                          "relative to the project"),
     "records": (str, "where captures and index.jsonl land; default .records/device "

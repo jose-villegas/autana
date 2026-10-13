@@ -6,7 +6,8 @@
 # on PATH.
 here=$(cd "$(dirname "$0")/.." && pwd -P)
 # shellcheck source=../launcher/tools/build/espressif.sh
-. "$here/launcher/tools/build/espressif.sh"
+ESPRESSIF_SCRIPT_DIR="$here/launcher/tools/build"
+. "$ESPRESSIF_SCRIPT_DIR/espressif.sh"
 
 # shellcheck source=../scripts/lib/python.sh
 . "$here/scripts/lib/python.sh"

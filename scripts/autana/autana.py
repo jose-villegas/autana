@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
-from espressif import IDF_PIN, idf_commit, idf_drift, idf_path, idf_pin, idf_python  # noqa: E402
+from espressif import IDF_PIN, idf_commit, idf_drift, idf_path, idf_pin, idf_python, install_note  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
 
@@ -289,9 +289,13 @@ def variant_request(verb, args, flags, project):
 
 
 def idf_note(project):
-    """A note, and nothing more, when the ESP-IDF a build here uses is not
-    the commit `project`'s launcher/idf-pin.json pins."""
-    commit = idf_commit(idf_path())
+    """Name the selected installation and any explicit override's drift."""
+    try:
+        print(install_note(project), flush=True)
+    except (ValueError, OSError) as error:
+        sys.exit(str(error))
+    os.environ["_AUTANA_IDF_NOTED"] = "1"
+    commit = idf_commit(idf_path(project))
     if commit and (Path(project) / IDF_PIN).is_file():
         for drift in idf_drift({"commit": commit}, idf_pin(Path(project))):
             print(f"note: ESP-IDF {drift}; CI builds on the pin "

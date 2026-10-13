@@ -35,6 +35,7 @@ TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
 from espressif import espressif_tools_root, idf_path, idf_python  # noqa: E402  (path must be set up first)
+from build_paths import BUILD_LOCK  # noqa: E402
 
 
 COMMAND_ENV = autana_config.COMMAND_ENV
@@ -996,7 +997,6 @@ BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build.sh"
 FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
 BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag"}
-BUILD_LOCK = "autana-build.lock"
 BUILD_LOCK_POLL_SECONDS = 0.2
 FLASH_ARGS_FILE = re.compile(r"^0x[0-9a-fA-F]+\s+(\S+)\s*$")
 
@@ -1044,6 +1044,9 @@ def build_directory_lock(build_dir):
     worktree's variant never interleave in one directory. An OS file lock:
     the system drops it with the process that held it."""
     build_dir = Path(build_dir)
+    if (build_dir.parent / "tools/build/build_paths.py").is_file():
+        from build_paths import prepare
+        build_dir = prepare(build_dir.parent, build_dir.name)
     build_dir.mkdir(parents=True, exist_ok=True)
     with open(build_dir / BUILD_LOCK, "a+b") as handle:
         if not try_lock_file(handle):

@@ -2141,7 +2141,11 @@ class IdfNoteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / "launcher").mkdir()
             (Path(folder) / "launcher" / "idf-pin.json").write_text(json.dumps({"commit": pinned_commit}))
-            with mock.patch.object(autana, "idf_commit", return_value=local_commit),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            with mock.patch.object(autana, "idf_commit", return_value=local_commit), \
+                 mock.patch.object(autana, "idf_path", return_value=Path(folder)), \
+                 mock.patch.object(autana, "install_note", return_value="ESP-IDF fixture, tools fixture"), \
+                 mock.patch.dict(os.environ), \
+                 mock.patch("sys.stdout", new_callable=io.StringIO) as out:
                 autana.idf_note(folder)
         return out.getvalue()
 
@@ -2151,9 +2155,9 @@ class IdfNoteTests(unittest.TestCase):
         self.assertIn("b" * 40, printed)
         self.assertIn("a" * 40, printed)
 
-    def test_the_pinned_commit_or_no_esp_idf_prints_nothing(self):
-        self.assertEqual(self.note("a" * 40), "")
-        self.assertEqual(self.note(""), "")
+    def test_every_build_names_the_installation(self):
+        self.assertEqual(self.note("a" * 40), "ESP-IDF fixture, tools fixture\n")
+        self.assertEqual(self.note(""), "ESP-IDF fixture, tools fixture\n")
 
 
 if __name__ == "__main__":

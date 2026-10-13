@@ -37,7 +37,7 @@
 #               writes its sdkconfig and compile_commands.json, and no image.
 #               For a tool that reads which sources a variant compiles.
 #   IDF_EXPORT  path to ESP-IDF's export script: export.bat on Windows,
-#               export.sh elsewhere. Default: the one under $IDF_PATH.
+#               export.sh elsewhere. Default: the resolved pinned install.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->
@@ -132,6 +132,8 @@ esac
 . "$SCRIPT_DIR/../../../scripts/quiet.sh"
 idf_init "$LAUNCHER_DIR" "$IDF_EXPORT_ARG" "$SCRIPT_DIR" || exit 2
 . "$SCRIPT_DIR/idf_variant.sh"
+
+idf_variant_prepare "$LAUNCHER_DIR" "$BUILD_DIR" || exit 2
 
 # A passing build's stream belongs in build.log under the build directory.
 QUIET_LOG="$LAUNCHER_DIR/$BUILD_DIR/build.log"

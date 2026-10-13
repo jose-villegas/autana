@@ -15,6 +15,7 @@ from generated_blocks import replace_block
 from doc_tables import markdown
 from scratch import scratch_tree
 from code_layout import LayoutError
+from build_paths import prepare
 
 WHAT_IF_BLOCK = "internal-memory-what-if"
 WHAT_IF_COMMAND = "python launcher/tools/build/iram_what_if.py launcher/build launcher/build.dev launcher/build.diag --work launcher/build/iram-what-if --jobs 6 --write"
@@ -80,8 +81,7 @@ def result_row(name, baseline, measured):
 
 def what_if(template, directory, project, selected=None, before_build=None, jobs=DEFAULT_JOBS):
     launcher = project / "launcher"
-    build = launcher / "build.memory"
-    build.mkdir(exist_ok=True)
+    build = prepare(launcher, "build.memory")
     config = build / "sdkconfig"
     original_config = (template["build"] / "sdkconfig").read_text(encoding="utf-8")
     original_lf = (launcher / "main/linker.lf").read_text(encoding="utf-8")
