@@ -281,13 +281,15 @@ class MemoryTierTests(unittest.TestCase):
             for variant in memory.VARIANTS:
                 self.assertIn(f'{variant} {expected} linked', sizes['Internal SRAM'])
                 self.assertIn('free at floor', sizes['Internal SRAM'])
-            self.assertIn('1 KB (1024 B) shared IRAM/DRAM pool', sizes['Internal SRAM'])
-            self.assertIn('2 MB app arena', sizes['PSRAM'])
-            self.assertIn('64 KB full framebuffer', sizes['PSRAM'])
-            self.assertIn('5.9 MB at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)', sizes['PSRAM'])
-            self.assertIn('16 MB total', sizes['Flash'])
-            self.assertIn('2 MB app partition', sizes['Flash'])
-            self.assertIn('3 MB assets partition', sizes['Flash'])
+            expected_cells = {
+                'Internal SRAM': ('1 KB (1024 B) shared IRAM/DRAM pool',),
+                'PSRAM': ('2 MB app arena', '64 KB full framebuffer',
+                          '5.9 MB at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)'),
+                'Flash': ('16 MB total', '2 MB app partition', '3 MB assets partition'),
+            }
+            for tier, phrases in expected_cells.items():
+                for phrase in phrases:
+                    self.assertIn(phrase, sizes[tier])
             arena.write_text('#define APP_ARENA_BYTES (3u * 1024u * 1024u)\n')
             gfx.write_text('#define GFX_FRAMEBUFFER_BYTES (128u * 1024u)\n')
             profile.write_text('DP_SRAM_BYTES=262144\nDP_PSRAM_BYTES=16777216\n')
