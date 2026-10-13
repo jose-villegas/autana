@@ -1,7 +1,8 @@
 /*
  * Portable scene-manager tests use small packs with distinct quad colours
- * so pixels identify the drawn entry. A camera at z = -10 with half field
- * of view 1 projects each x unit 3.2 pixels from the centre of a 64-pixel view.
+ * so pixels identify the drawn entry. Each camera stands CAMERA_DISTANCE in
+ * front of the quads' plane with a half-field tangent of 1, so a unit across
+ * is PIXELS_PER_UNIT pixels from the centre.
  */
 
 #include <limits.h>
@@ -50,6 +51,8 @@
 #define CENTER             (SIZE / 2)
 #define PICTURE_HEIGHT     (SIZE / 2)
 #define GREEN_PIXEL_OFFSET 6
+#define CAMERA_DISTANCE    10
+#define PIXELS_PER_UNIT    ((float)CENTER / CAMERA_DISTANCE)
 #define CLEAR_RGB          0x336699
 #define QUAD_BYTES         132
 #define PACK_MAX           16384
@@ -168,6 +171,7 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     {                                                                                                                  \
         {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, { x, y, z }                                                                 \
     }
+#define CAMERA_AT(x) AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
 
 /* What a scene entry holds, written out as tools/r3d/scene_asset.py would.
  * Every camera has a half field of view and a near plane of 1. */
@@ -208,13 +212,13 @@ static const scene_spec_t SCENES[] = {
      3,
      2,
      1,
-     {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
+     {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"green", AT(4, 0, 0)}},
      {{1, "red"}, {2, "green"}},
      {{0, CLEAR_RGB, ""}}},
     /* its own camera and one blue quad at the origin */
-    {"test_solo", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
+    {"test_solo", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, CLEAR_RGB, ""}}},
     /* the same as solo, its camera clearing to a colour of its own */
-    {"test_sky", 2, 1, 1, {{"eye", AT(0, 0, -10)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
+    {"test_sky", 2, 1, 1, {{"eye", CAMERA_AT(0)}, {"blue", IDENTITY}}, {{1, "blue"}}, {{0, 0x996633, ""}}},
     /* names a mesh the pack does not hold */
     {"test_broken", 2, 2, 0, {{"red", IDENTITY}, {"gone", IDENTITY}}, {{0, "red"}, {1, "gone"}}, {{0}}},
     /* a camera that flies the clip "flight", and a red quad */
@@ -224,13 +228,13 @@ static const scene_spec_t SCENES[] = {
      3,
      1,
      2,
-     {{"left", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}, {"red", IDENTITY}},
+     {{"left", CAMERA_AT(0)}, {"right", CAMERA_AT(4)}, {"red", IDENTITY}},
      {{2, "red"}},
      {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}}},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
-     .entities = {{"camera", AT(0, 0, -10)}, {"right", AT(4, 0, -10)}},
+     .entities = {{"camera", CAMERA_AT(0)}, {"right", CAMERA_AT(4)}},
      .cameras = {{.entity = 0, .clear_rgb = CLEAR_RGB, .clip = "flight"},
                  {.entity = 1, .clear_rgb = CLEAR_RGB, .clip = "flight"}}},
     /* a camera flying a clip the pack does not hold */
@@ -243,7 +247,7 @@ static const scene_spec_t SCENES[] = {
      .entity_count = 3,
      .renderer_count = 1,
      .camera_count = 1,
-     .entities = {{"camera", AT(0, 0, -10)}, {"red", IDENTITY}, {"sun", IDENTITY}},
+     .entities = {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"sun", IDENTITY}},
      .renderers = {{1, "red"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
     {.id = "test_skin",
@@ -570,7 +574,9 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
     scene_t* scene = show("test_pair", NULL);
     fx.target.height = PICTURE_HEIGHT;
     scene_render(0, 0, fx.target.width, fx.target.height);
-    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, (viewport_t){SIZE, SIZE / 2, 0});
+    const render_view_t view =
+        camera_view(scene_camera_lens(scene, NULL), scene_entity_transform(scene, scene->cameras[0].entity),
+                    (viewport_t){SIZE, SIZE / 2, 0});
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
         render_context_set_scale(c, scale);
@@ -588,8 +594,14 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
 }
 
 static uint16_t
+pixel_at(float right_units, float down_units) {
+    return fx.pixels[((CENTER + (int)(down_units * PIXELS_PER_UNIT)) * SIZE) + CENTER
+                     + (int)(right_units * PIXELS_PER_UNIT)];
+}
+
+static uint16_t
 pixel(float units_from_center) {
-    return fx.pixels[(CENTER * SIZE) + CENTER + (int)(units_from_center * 3.2F)];
+    return pixel_at(units_from_center, 0.0F);
 }
 
 static const uint16_t CLEAR = GFX_RGB(CLEAR_RGB);
@@ -721,14 +733,11 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
 
     scene_t* scene = load("test_flight");
     const scene_entity_t camera = scene_find(scene, "camera");
-    const r3d_scene_camera_t* flight = scene_camera_lens(scene, NULL);
+    const scene_transform_t* flight = scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
-    vec3f_t eye;
-    vec3f_t forward;
-    r3d_scene_camera_sample(flight, &eye, &forward);
-    TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
-    TEST_ASSERT_EQUAL_FLOAT(1.0F, forward.z);
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, quatf_rotate(flight->rotation, (vec3f_t){0, 0, 1}).z);
 }
 
 /* Where the pair's entry puts its parts, as the pack holds it. */
@@ -1131,7 +1140,7 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_FLOAT(want.position.x, got->position.x);
     TEST_ASSERT_EQUAL_FLOAT(want.position.y, got->position.y);
     TEST_ASSERT_EQUAL_FLOAT(want.position.z, got->position.z);
-    const r3d_scene_camera_t* lens = scene_camera_lens(scene, "camera");
+    const camera_t* lens = scene_camera_lens(scene, "camera");
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x336699), scene->cameras[0].clear);
@@ -1282,6 +1291,33 @@ test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     scene_set_transform(scene, scene_find(scene, "red"), &home);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+}
+
+/* The green quad stands off the view axis, so a roll of the camera about it
+ * moves the quad round the picture: a quarter turn takes it from beside the
+ * centre to above or below it. */
+static void
+test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned(void) {
+    fixture();
+    scene_t* scene = show("test_pair", NULL);
+    const uint16_t green = GFX_RGB(0x00FF00);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const float beside = scene_entity_transform(scene, scene_find(scene, "green"))->position.x;
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(green, pixel(beside));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel_at(0.0F, -beside));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel_at(0.0F, beside));
+
+    scene_transform_t rolled = *scene_entity_transform(scene, camera);
+    transformf_set_rotation(&rolled,
+                            quatf_mul(rolled.rotation, quatf_from_axis_angle((vec3f_t){0, 0, 1}, MATH_PI / 2)));
+    scene_set_transform(scene, camera, &rolled);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(beside));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(-beside));
+    const bool above = pixel_at(0.0F, -beside) == green;
+    const bool below = pixel_at(0.0F, beside) == green;
+    TEST_ASSERT_TRUE(above != below);
 }
 
 static void
@@ -1569,7 +1605,9 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
     render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 2);
-    const render_view_t view = r3d_scene_view_at(&scene->cameras[0].lens, (viewport_t){SIZE, SIZE, 0});
+    const render_view_t view =
+        camera_view(scene_camera_lens(scene, NULL), scene_entity_transform(scene, scene->cameras[0].entity),
+                    (viewport_t){SIZE, SIZE, 0});
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
     TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
     const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
@@ -2392,6 +2430,21 @@ test_authored_light_preserves_static_mesh_colors(void) {
 }
 
 static void
+test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
+    transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
+    const camera_t camera = {1.0F, 1.0F};
+    const render_view_t view = camera_view(&camera, &pose, (viewport_t){SIZE, SIZE, 0});
+    const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    TEST_ASSERT_TRUE(vec3f_equal(pose.position, view.position));
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.x, view.forward.x);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.y, view.forward.y);
+    TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.z, view.forward.z);
+}
+
+static void
 test_translation_only_camera_clip_retains_rotation(void) {
     fixture();
     scene_t* scene = load("test_unturned");
@@ -2402,10 +2455,10 @@ test_translation_only_camera_clip_retains_rotation(void) {
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, scene_entity_transform(scene, entity)->position.x);
     TEST_ASSERT_EQUAL_MEMORY(&pose.rotation, &scene_entity_transform(scene, entity)->rotation, sizeof pose.rotation);
-    vec3f_t eye, forward;
-    r3d_scene_camera_sample(scene_camera_lens(scene, NULL), &eye, &forward);
+    const scene_transform_t* camera = scene_entity_transform(scene, entity);
     const vec3f_t wanted = quatf_rotate(pose.rotation, (vec3f_t){0, 0, 1});
-    TEST_ASSERT_EQUAL_FLOAT(2.5F, eye.x);
+    const vec3f_t forward = quatf_rotate(camera->rotation, (vec3f_t){0, 0, 1});
+    TEST_ASSERT_EQUAL_FLOAT(2.5F, camera->position.x);
     TEST_ASSERT_EQUAL_MEMORY(&wanted, &forward, sizeof wanted);
 }
 
@@ -3098,6 +3151,7 @@ run_scene_suite(void) {
     RUN_TEST(test_lighting_storage_requires_a_skin_and_light_in_both_orders);
     RUN_TEST(test_authored_skin_load_allocation_failures_release_lighting);
     RUN_TEST(test_translation_only_camera_clip_retains_rotation);
+    RUN_TEST(test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z);
     RUN_TEST(test_skin_step_skips_unposed_entities_before_posed_clusters);
     RUN_TEST(test_failed_second_camera_releases_the_first_animator);
     RUN_TEST(test_replacing_skin_clips_drives_the_new_clip_after_one_step);
@@ -3162,6 +3216,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
+    RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);
     RUN_TEST(test_with_nothing_enabled_the_picture_is_left_alone);
     RUN_TEST(test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen);
     RUN_TEST(test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone);

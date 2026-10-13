@@ -5,9 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_tracks.h"
+#include "asset/asset_bytes.h"
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"
-#include "render/r3d_scene.h"
+#include "scene/camera/camera.h"
 #include "suites.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
@@ -344,11 +345,6 @@ open_probe(asset_pack_t* pack, void** buffer) {
 #define REFERENCE_TYPE ASSET_TYPE('T', 'R', 'E', 'F')
 #define REFERENCE_ROW  24U
 
-static uint32_t
-get32(const uint8_t* at) {
-    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
-}
-
 static float
 get_float(const uint8_t* at) {
     float value;
@@ -359,7 +355,7 @@ get_float(const uint8_t* at) {
 /* One reference row: track `index` at `seconds` against the Python sampler. */
 static void
 check_reference_row(const anim_tracks_t* tracks, const uint8_t* row) {
-    const int index = row[0] | (row[1] << 8);
+    const int index = asset_read_u16(row);
     TEST_ASSERT_LESS_THAN_INT(tracks->count, index);
     anim_binding_t binding;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(tracks, index, &binding));
@@ -389,8 +385,8 @@ test_the_probe_clip_samples_as_the_python_sampler(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &tracks));
     asset_view_t reference;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "probe_ref", REFERENCE_TYPE, &reference));
-    TEST_ASSERT_EQUAL_UINT32(get32(reference.data), tracks.clip.duration_ms);
-    const uint32_t rows = get32(reference.data + 4);
+    TEST_ASSERT_EQUAL_UINT32(asset_read_u32(reference.data), tracks.clip.duration_ms);
+    const uint32_t rows = asset_read_u32(reference.data + 4);
     TEST_ASSERT_EQUAL_UINT32(8U + (rows * REFERENCE_ROW), reference.size);
     TEST_ASSERT_GREATER_THAN_UINT32(tracks.count * 100U, rows);
     for (uint32_t r = 0; r < rows; r++) {
