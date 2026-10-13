@@ -54,7 +54,8 @@ for variant in dev diag; do
     reading=$("$AUTANA" --wait 3600 heap --json)
     printf '\nBUILD_ID=%s\nphase=boot %s\n' "$expected" "$reading" >> "$CAPTURE"
     apps=$("$AUTANA" --wait 3600 apps --json)
-    names=$(printf '%s' "$apps" | python -c 'import json,sys; print("\n".join(app["name"] for app in json.load(sys.stdin)["apps"]))')
+    # A Windows python prints CRLF; the names must not carry the CR into the capture.
+    names=$(printf '%s' "$apps" | python -c 'import json,sys; print("\n".join(app["name"] for app in json.load(sys.stdin)["apps"]))' | tr -d '\r')
     while IFS= read -r app; do
         [[ -n "$app" ]] || continue
         "$AUTANA" --wait 3600 open "$app" >&2

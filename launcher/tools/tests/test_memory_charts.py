@@ -210,7 +210,7 @@ class MemoryChartTests(unittest.TestCase):
                                constants={'_heap_start': 0x3fc88080}, size={'layout': [{'name': 'DIRAM', 'used': 128}]},
                                align=256, pad=16, slack=0, inputs=inputs, owned={}, report=[(site, 12, ['draw'])]))
         body = memory.render(builds)
-        self.assertIn('dev: 0.3 KB free of its 1.2 KB internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, 0.9 KB of that heap is linked in the 1 KB pool and 0.3 KB lies above it, reclaimed after boot. IRAM can grow 0 B before it costs heap.',
+        self.assertIn('dev: 0.3 KB free of its 1.2 KB internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, 0.9 KB of that heap is linked in the 1 KB pool and 0.3 KB lies outside it, added by ESP-IDF at runtime. IRAM can grow 0 B before it costs heap.',
                       memory.render_headroom(builds))
         self.assertNotIn('free internal heap at its floor', body)
         from doc_tables import parse_table

@@ -1,16 +1,16 @@
-BUILD_ID=fc2a2d39ed23-release
-unmeasured: release has no console, and its POST boot line is lost in the USB reset gap
+BUILD_ID=20035ec4b8ba-release
+unmeasured: release has no console, and its boot log is lost in the USB reset gap
 
-BUILD_ID=ef3ac11008ed-dev
-phase=boot HEAP free=101231 largest=65536
-phase=app:Diagnostics HEAP free=101207 largest=65536
-phase=app:Falling Sand HEAP free=101127 largest=65536
-phase=app:Input Lab HEAP free=101207 largest=65536
-phase=app:Render Lab HEAP free=97963 largest=63488
+BUILD_ID=e63d733d83ee-dev
+phase=boot {"free": 103823, "largest": 69632, "total": 290339}
+phase=app:Diagnostics {"free": 103799, "largest": 69632, "total": 290339}
+phase=app:Falling Sand {"free": 103719, "largest": 69632, "total": 290339}
+phase=app:Input Lab {"free": 103799, "largest": 69632, "total": 290339}
+phase=app:Render Lab {"free": 100555, "largest": 65536, "total": 290339}
 
-BUILD_ID=fbbede4eb4fc-diag
-phase=boot HEAP free=85763 largest=51200
-phase=app:Diagnostics HEAP free=85739 largest=51200
-phase=app:Falling Sand HEAP free=85659 largest=51200
-phase=app:Input Lab HEAP free=85739 largest=51200
-phase=app:Render Lab HEAP free=82495 largest=49152
+BUILD_ID=df73e55eee0a-diag
+phase=boot {"free": 88339, "largest": 55296, "total": 275011}
+phase=app:Diagnostics {"free": 88315, "largest": 55296, "total": 275011}
+phase=app:Falling Sand {"free": 88235, "largest": 55296, "total": 275011}
+phase=app:Input Lab {"free": 88315, "largest": 55296, "total": 275011}
+phase=app:Render Lab {"free": 85071, "largest": 51200, "total": 275011}
