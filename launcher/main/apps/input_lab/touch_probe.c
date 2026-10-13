@@ -35,8 +35,8 @@ touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int 
     stats->sum_dy += dy;
     stats->sum_dx2 += (int64_t)dx * dx;
     stats->sum_dy2 += (int64_t)dy * dy;
-    if (dx * dx + dy * dy > stats->worst_dist2) {
-        stats->worst_dist2 = dx * dx + dy * dy;
+    if ((dx * dx) + (dy * dy) > stats->worst_dist2) {
+        stats->worst_dist2 = (dx * dx) + (dy * dy);
     }
     return hit;
 }

@@ -234,7 +234,7 @@ disc_cells(int radius) {
     int n = 0;
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            n += (dx * dx + dy * dy <= radius * radius) ? 1 : 0;
+            n += ((dx * dx) + (dy * dy) <= radius * radius) ? 1 : 0;
         }
     }
     return n;
@@ -297,7 +297,8 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
 
         int rows = 0, cols = 0;
         for (int d = -radius; d <= radius; d++) {
-            bool in_row = false, in_col = false;
+            bool in_row = false;
+            bool in_col = false;
             for (int e = -radius; e <= radius; e++) {
                 in_row = in_row || sand_at(&fx.loc, REAL_W / 2 + e, REAL_H / 2 + d) != SAND_EMPTY;
                 in_col = in_col || sand_at(&fx.loc, REAL_W / 2 + d, REAL_H / 2 + e) != SAND_EMPTY;

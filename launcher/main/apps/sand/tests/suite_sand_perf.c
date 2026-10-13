@@ -1561,7 +1561,7 @@ wood_leaf_row_pass(const uint8_t* row, const uint8_t* above, const uint8_t* belo
 static void
 wood_leaf_row_window(const uint8_t* big, int w, int h, int y, const uint8_t** row, const uint8_t** above,
                      const uint8_t** below) {
-    *row = big + (size_t)y * w;
+    *row = big + ((size_t)y * w);
     *above = (y > 0) ? *row - w : NULL;
     *below = (y < h - 1) ? *row + w : NULL;
 }
@@ -1810,18 +1810,31 @@ build_full_size_step_scene_awake(sand_t* real, uint8_t* big, uint8_t* blocks) {
     build_full_size_step_scene(real, big);
 }
 
+#define PACKED_GAS_SEED         31U
+#define XTPERF_PACKED_GAS_STEPS 10
+
+static void
+build_packed_gas_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    sand_init(real, big, REAL_W, REAL_H, PACKED_GAS_SEED);
+    sand_enable_sleeping(real, blocks);
+    sand_fill_box(real, 0, 0, REAL_W, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+}
+
 typedef struct {
     const char* name;
     void (*build)(sand_t* real, uint8_t* big, uint8_t* blocks);
     bool sleeping;
+    bool bookkeeping;
+    int gx;
     int gy;
     int steps;
 } xtperf_scene_t;
 
 static const xtperf_scene_t xtperf_scenes[] = {
-    {"mixed_flip", build_mixed_gravity_flip_scene, true, -1000, 20},
-    {"water", build_water_scene, true, 1000, 20},
-    {"full_step", build_full_size_step_scene_awake, false, 1, 10},
+    {"mixed_flip", build_mixed_gravity_flip_scene, true, false, 0, -1000, 20},
+    {"water", build_water_scene, true, false, 0, 1000, 20},
+    {"full_step", build_full_size_step_scene_awake, false, false, 0, 1, 10},
+    {"packed_gas", build_packed_gas_scene, true, true, LANDSCAPE_GX, 0, XTPERF_PACKED_GAS_STEPS},
 };
 
 static void
@@ -1839,9 +1852,16 @@ run_xtperf_over_scene(const xtperf_scene_t* scene, uint64_t* total_cycles, uint6
         sand_t* const real = malloc(sizeof *real);
         TEST_ASSERT_NOT_NULL(real);
         scene->build(real, big, blocks);
+        if (scene->bookkeeping) {
+            board_bookkeeping_open(real);
+        }
 
         uint32_t cycles = 0, value = 0;
-        measure_xtperf_event(scene->name, real, 0, scene->gy, 0, scene->steps, e, &cycles, &value);
+        measure_xtperf_event(scene->name, real, scene->gx, scene->gy, 0, scene->steps, e, &cycles, &value);
+
+        if (scene->bookkeeping) {
+            board_bookkeeping_close();
+        }
 
         free(real);
         free(big);
@@ -1879,7 +1899,7 @@ log_mixed_scene_hashes(void) {
  * window starts from the same deterministic state. Counters are per-CPU, so
  * the core is checked rather than assumed. */
 static void
-test_the_xtensa_counters_over_three_scenes(void) {
+test_xtensa_counters(void) {
 #if CONFIG_LAUNCHER_QEMU
     TEST_IGNORE_MESSAGE("QEMU does not model the performance monitor");
 #endif
@@ -2015,9 +2035,7 @@ test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
 static void
 test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 31U);
-
-    sand_fill_box(real, 0, 0, REAL_W, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
+    sand_t* const real = real_board_open_built(&b, build_packed_gas_scene);
 
     const two_core_scope_t core = two_core_scope_begin(true);
     const int64_t start = timing_now_us();
@@ -3549,8 +3567,8 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
         input_t in = {0};
         in.down = pouring;
         in.pressed = pouring && *frame_index == 0;
-        in.x = 150 + (*frame_index * 7) % 60;
-        in.y = 120 + (*frame_index * 3) % 40;
+        in.x = 150 + ((*frame_index * 7) % 60);
+        in.y = 120 + ((*frame_index * 3) % 40);
         clock_row_frame(&in, &w.present_us);
     }
     w.present_us /= frames;
@@ -3678,7 +3696,7 @@ run_sand_perf_suite(void) {
     RUN_TEST(test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget);
     RUN_TEST(test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget);
     RUN_TEST(test_a_screen_of_water_fits_in_the_frame_budget);
-    RUN_TEST(test_the_xtensa_counters_over_three_scenes);
+    RUN_TEST(test_xtensa_counters);
     /* Ungated: the two gas movers compare through sand_set_gas_walk(), an
      * ordinary API, so this runs in every diagnostics build. */
     RUN_TEST(test_the_gas_random_walk_against_the_exhaustive_mover);

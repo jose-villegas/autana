@@ -3,14 +3,14 @@
 # only what was actually decided - see docs/C-Style-Guide.md for the prose
 # and scripts/gates/format-file-list.sh for which files it applies to.
 #
-# clang-format 19.1.x and no other major version. The versions disagree
-# about C on this tree (20 and 21 each reformat files 19 leaves alone), and
-# a file of deviations leans on one version's defaults, so the pin is what
-# makes it reproducible: scripts/gates/check-format.sh enforces it and
+# One clang-format major version and no other: the esp-clang release
+# launcher/idf-pin.json pins. Major versions disagree about C on this tree,
+# and a file of deviations leans on one version's defaults, so the pin is
+# what makes it reproducible: scripts/gates/check-format.sh enforces it and
 # .github/workflows/format.yml installs it.
 #
-# No `Language:` key, deliberately: clang-format 19 handles C and C++ under
-# one Cpp language, and every option below is one that C uses.
+# No `Language:` key, deliberately: clang-format handles C and C++ under one
+# Cpp language, and every option below is one that C uses.
 ---
 BasedOnStyle: LLVM
 

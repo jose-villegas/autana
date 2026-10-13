@@ -314,7 +314,7 @@ static void
 scene_sand_pile(sand_t* s) {
     rect_v(s, 0, 170, VIEW_W / CELL_PX, GRID_W, CELL_SOIL(MAT_DIRT, 2, 0));
     for (int i = 0; i < 700; i++) {
-        spawn_v(s, 70 + (i / 40) % 3, 6, 3, MAT_SAND);
+        spawn_v(s, 70 + ((i / 40) % 3), 6, 3, MAT_SAND);
         spawn_v(s, 160, 6, 2, MAT_SAND);
         sand_step(s, GRAVITY_X, GRAVITY_Y, 0);
     }
@@ -329,7 +329,7 @@ scene_water_pool(sand_t* s) {
     spawn_v(s, 120, 130, 9, MAT_STONE);
     spawn_v(s, 160, 165, 12, MAT_STONE);
     for (int i = 0; i < 900; i++) {
-        spawn_cell_v(s, 40 + (i * 7) % 150, 4, 3, CELL_MAKE(MAT_WATER, 0));
+        spawn_cell_v(s, 40 + ((i * 7) % 150), 4, 3, CELL_MAKE(MAT_WATER, 0));
         sand_step(s, GRAVITY_X, GRAVITY_Y, 0);
     }
     steps(s, 600);
@@ -341,7 +341,7 @@ scene_lava_heat(sand_t* s) {
     rect_v(s, 30, 60, 34, 150, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
     rect_v(s, 190, 60, 194, 150, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
     for (int i = 0; i < 300; i++) {
-        spawn_cell_v(s, 90 + (i * 5) % 50, 4, 3, CELL_MAKE(MAT_LAVA, 0));
+        spawn_cell_v(s, 90 + ((i * 5) % 50), 4, 3, CELL_MAKE(MAT_LAVA, 0));
         sand_step(s, GRAVITY_X, GRAVITY_Y, 0);
     }
     rect_v(s, 150, 70, 180, 80, CELL_MAKE(MAT_WOOD, 0));
@@ -356,7 +356,7 @@ static void
 scene_glass(sand_t* s) {
     rect_v(s, 0, 176, VIEW_W / CELL_PX, GRID_W, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
     for (int v = 0; v < MATERIAL_VARIANTS; v++) {
-        const int vx0 = 8 + v * 12;
+        const int vx0 = 8 + (v * 12);
         rect_v(s, vx0, 20, vx0 + 9, 70, CELL_MAKE(MAT_GLASS, (uint8_t)v));
     }
     rect_v(s, 10, 90, 100, 96, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
@@ -380,7 +380,7 @@ plant_canopy(sand_t* s, int cx, int top, int ground) {
     rect_v(s, cx - 2, top, cx + 2, ground, CELL_MAKE(MAT_WOOD, 0));
     for (int dy = -24; dy <= 24; dy++) {
         for (int dx = -26; dx <= 26; dx++) {
-            if (dx * dx + dy * dy > 24 * 24) {
+            if ((dx * dx) + (dy * dy) > 24 * 24) {
                 continue;
             }
             const bool branch = ((dx + dy) & 3) == 0 && mathi_abs(dx) < 16;

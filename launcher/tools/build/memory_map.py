@@ -135,15 +135,22 @@ def sites(root, owned=None):
         name = path.relative_to(root).as_posix()
         owner = "/".join(name.split("/")[:4]) + "/" if "/apps/" in name else "engine"
         lines = path.read_text(encoding="utf-8").splitlines()
+        comments = {comment.line + len(comment.raw_lines) - 1: comment.text
+                    for comment in scan(path, "\n".join(lines))} if path.suffix in {".c", ".h"} else {}
         for index, line in enumerate(lines):
             if path.suffix in {".c", ".h"}:
-                if (not ATTRIBUTE.search(line) and not any(re.search(r"\b" + re.escape(alias) + r"\b", line)
-                                                       for alias in attribute_aliases)) or line.lstrip().startswith(("//", "/*", "*", "#")):
+                if line.lstrip().startswith(("//", "/*", "*", "#")):
+                    continue
+                attributed = ATTRIBUTE.search(line) or any(re.search(r"\b" + re.escape(alias) + r"\b", line)
+                                                            for alias in attribute_aliases)
+                if not attributed and "IRAM budget:" not in comments.get(index, ""):
                     continue
                 declaration = " ".join(lines[index:index + 5]).split(";", 1)[0]
                 declaration = re.sub(r"__attribute__\s*\(\(.*?\)\)", "", declaration)
                 function = re.search(r"\b(\w+)\s*\([^;{}]*\)\s*\{", declaration)
                 if not function:
+                    if not attributed:
+                        continue
                     raise ValueError(f"{name}:{index + 1}: unsupported IRAM declaration")
                 entries = [(path.stem, function.group(1))]
                 archive = next(archive for archive, directory in owned.items() if path.resolve().is_relative_to(directory.resolve()))
@@ -162,7 +169,7 @@ def sites(root, owned=None):
                 if not CONFIG_PLACEMENT.fullmatch(line):
                     continue
                 archive, entries, kind = "", [], "hash"
-            reason = preceding_comment(lines, index, kind)
+            reason = comments.get(index, "") if kind == "c" else preceding_comment(lines, index, kind)
             if not reason:
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason")
             budget = parse_budget(reason)
