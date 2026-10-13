@@ -29,6 +29,8 @@ EXIT_BUSY = 75
 EXIT_INTERRUPTED = 130
 
 KEYS = {
+    "idf_installs": (list, "ESP-IDF checkouts or install folders to search before known roots"),
+    "build_root": (str, "external build root; Windows defaults to %LOCALAPPDATA%/autana/b"),
     "docs_extra": (list, "extra Markdown files or folders `autana docs` searches, "
                          "relative to the project"),
     "records": (str, "where captures and index.jsonl land; default .records/device "
@@ -138,3 +140,11 @@ def load(project=None):
 def path_value(value, project=None):
     """A configured path: `~` expanded, relative to the project."""
     return (Path(project) if project else project_dir()) / Path(value).expanduser()
+
+
+def user_cache_dir():
+    """Shared per-user autana cache, independent of checkout and optional settings."""
+    for name in ("LOCALAPPDATA", "XDG_CACHE_HOME"):
+        if os.environ.get(name):
+            return Path(os.environ[name]) / "autana"
+    return Path.home() / ".cache" / "autana"

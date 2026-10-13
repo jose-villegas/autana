@@ -320,7 +320,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        build = Path(args.build)
+        requested_build = Path(args.build)
+        build = requested_build.resolve()
         elf = build / "launcher.elf"
         if not elf.is_file():
             raise LayoutError("no %s - build the diagnostics image first" % elf)
@@ -346,7 +347,7 @@ def main(argv=None):
                     line for line in text.splitlines()
                     if line == BASELINE_FUNCTIONS_HEADER or line.startswith(CONFIG_HEADER)
                 ]
-                baseline.write_text(format_layout(rows, build_name(build), metadata), encoding="utf-8", newline="\n")
+                baseline.write_text(format_layout(rows, build_name(requested_build), metadata), encoding="utf-8", newline="\n")
                 print("wrote %s (%d rows, %d-byte lines)" % (baseline, len(rows), line_size))
             elif args.check:
                 if not baseline.is_file():

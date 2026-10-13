@@ -1,8 +1,8 @@
 """What a lock holder started, on Linux, so nothing can keep the serial port
 after the lock is gone.
 
-Every process the holder starts is tagged through the environment: the lock's
-token is exported as _AUTANA_DEVICE_LOCK_TOKEN and inherited, so /proc names
+Every process the holder starts is tagged through the environment: a scope
+tag is inherited separately from the lock token, so /proc names
 the holder's descendants through any number of exited parents, which a process
 tree walk cannot (an orphan is reparented to init). PR_SET_PDEATHSIG covers
 only direct children and a subreaper dies with the holder, so neither can end
@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 
-TOKEN_VARIABLE = "_AUTANA_DEVICE_LOCK_TOKEN"
+SCOPE_TAG_VARIABLE = "_AUTANA_LOCK_SCOPE_TAG"
 GRACE_SECONDS = 2.0
 POLL_SECONDS = 0.05
 WATCHDOG_PATIENCE_SECONDS = 10.0
@@ -42,7 +42,7 @@ def tagged(pid, token):
             data = stream.read()
     except OSError:
         return False
-    return f"{TOKEN_VARIABLE}={token}".encode() in data.split(b"\0")
+    return f"{SCOPE_TAG_VARIABLE}={token}".encode() in data.split(b"\0")
 
 
 def tagged_pids(token, skip=()):
@@ -90,26 +90,12 @@ def process_name(pid):
         return ""
 
 
-def process_start(pid):
-    """When `pid` began, in epoch seconds, or None where /proc cannot say."""
-    try:
-        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as stream:
-            stat = stream.read()
-        with open("/proc/stat", encoding="utf-8") as stream:
-            boot = next(int(line.split()[1]) for line in stream if line.startswith("btime"))
-        # Field 22, counted from after the parenthesised command name.
-        ticks = int(stat[stat.rindex(")") + 2:].split()[19])
-        return boot + ticks / os.sysconf("SC_CLK_TCK")
-    except (OSError, ValueError, IndexError, StopIteration):
-        return None
-
-
 def enter(token):
     """Tags what this process starts from now on with `token` and starts the
     watchdog, which is itself untagged. False where there is no /proc."""
     if not has_proc():
         return False
-    clean = {name: value for name, value in os.environ.items() if name != TOKEN_VARIABLE}
+    clean = {name: value for name, value in os.environ.items() if name != SCOPE_TAG_VARIABLE}
     watchdog = None
     try:
         watchdog = subprocess.Popen(
@@ -119,8 +105,8 @@ def enter(token):
     except (OSError, ValueError) as error:
         report(f"could not start the watchdog ({error}); processes this command "
                "starts are not stopped if it is killed")
-    _stack.append((token, os.environ.get(TOKEN_VARIABLE), watchdog))
-    os.environ[TOKEN_VARIABLE] = token
+    _stack.append((token, os.environ.get(SCOPE_TAG_VARIABLE), watchdog))
+    os.environ[SCOPE_TAG_VARIABLE] = token
     return True
 
 
@@ -131,9 +117,9 @@ def leave():
         return
     _, previous, watchdog = _stack.pop()
     if previous is None:
-        os.environ.pop(TOKEN_VARIABLE, None)
+        os.environ.pop(SCOPE_TAG_VARIABLE, None)
     else:
-        os.environ[TOKEN_VARIABLE] = previous
+        os.environ[SCOPE_TAG_VARIABLE] = previous
     if watchdog is not None:
         watchdog.stdin.close()
         try:

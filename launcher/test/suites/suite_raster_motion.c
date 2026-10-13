@@ -12,8 +12,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "render/r3d.h"
-#include "render/r3d_pipeline.h"
+#include "render/raster.h"
 #include "render/raster_motion.h"
 
 #define W     96

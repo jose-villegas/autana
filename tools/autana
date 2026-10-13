@@ -4,16 +4,26 @@
 # finds a Python to start it with, and autana.py picks ESP-IDF's own for
 # anything that needs pyserial. scripts/add-tools-to-path.sh puts this folder
 # on PATH.
+unset _AUTANA_CALLER_PID
+# Under Git Bash, /proc/<ppid>/winpid is the Windows pid of the shell that ran
+# this; PPID 1 means a Windows program started bash, so autana.py finds the
+# caller itself.
+caller_pid=$(cat "/proc/$PPID/winpid" 2>/dev/null)
+if [ -n "$caller_pid" ]; then
+    export _AUTANA_CALLER_PID="$caller_pid"
+elif [ "$PPID" != 1 ]; then
+    export _AUTANA_CALLER_PID="$PPID"
+fi
 here=$(cd "$(dirname "$0")/.." && pwd -P)
-# shellcheck source=../launcher/tools/build/espressif.sh
-. "$here/launcher/tools/build/espressif.sh"
-
 # shellcheck source=../scripts/lib/python.sh
 . "$here/scripts/lib/python.sh"
-# find_python skips Windows' Store stub, which answers `command -v` but exits;
-# ESP-IDF's own python is the fallback, and each candidate has to run.
-for python in "$(find_python 2>/dev/null)" \
-              "$(espressif_tools_root)"/python_env/idf*_env/Scripts/python.exe; do
+if python=$(find_python 2>/dev/null); then
+    exec "$python" "$here/scripts/autana/autana.py" "$@"
+fi
+# Bootstrapping must not need Python to locate ESP-IDF's Python, so this
+# globs the default tools roots itself (espressif.py owns the full search).
+for python in "${IDF_TOOLS_PATH:-$HOME/.espressif}"/python_env/idf*_env/Scripts/python.exe \
+              /c/Espressif/*/tools/python_env/idf*_env/Scripts/python.exe; do
     "$python" -c '' >/dev/null 2>&1 && exec "$python" "$here/scripts/autana/autana.py" "$@"
 done
 
