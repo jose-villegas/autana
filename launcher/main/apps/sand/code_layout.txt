@@ -2,20 +2,20 @@
 # Functions: baseline
 # Config: CONFIG_LAUNCHER_RELEASE
 function	kind	offset	bytes	lines
-sand_step	function	0	2044	64
-sand_step	loop	24	56	3
-sand_step	loop	20	23	2
-sand_step	loop	13	25	2
-sand_step	blt-back	28	31	2
-sand_step	j-back	3	91	3
-sand_step	j-back	28	38	3
-sand_step	blti-back	24	34	2
-sand_step	j-back	7	99	4
-sand_step	j-back	12	24	2
-sand_step	j-back	28	177	7
-sand_step	loop	29	24	2
-sand_step	loop	24	6	1
-sand_step	j-back	14	711	23
-sand_step	j-back	29	1257	41
-sand_step	j-back	22	699	23
-sand_step	j-back	26	1440	46
+sand_step	function	16	2044	65
+sand_step	loop	8	56	2
+sand_step	loop	4	23	1
+sand_step	loop	29	25	2
+sand_step	blt-back	12	31	2
+sand_step	j-back	19	91	4
+sand_step	j-back	12	38	2
+sand_step	blti-back	8	34	2
+sand_step	j-back	23	99	4
+sand_step	j-back	28	24	2
+sand_step	j-back	12	177	6
+sand_step	loop	13	24	2
+sand_step	loop	8	6	1
+sand_step	j-back	30	711	24
+sand_step	j-back	13	1257	40
+sand_step	j-back	6	699	23
+sand_step	j-back	10	1440	46

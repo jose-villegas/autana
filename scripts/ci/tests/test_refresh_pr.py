@@ -19,7 +19,7 @@ class Recorder:
 
     def __call__(self, method, path, body=None):
         self.calls.append((method, path, body))
-        return self.open_pulls if method == "GET" else {}
+        return self.open_pulls if method == "GET" else {"number": 9}
 
 
 class RefreshPrTests(unittest.TestCase):
@@ -41,6 +41,12 @@ class RefreshPrTests(unittest.TestCase):
         self.assertEqual(request.calls[1], ("PATCH", "/pulls/7", {"body": "text"}))
         self.assertEqual(len(request.calls), 2)
 
+    def test_sync_labels_the_pull_request_it_opened_or_updated(self):
+        for open_pulls, number in (([], 9), ([{"number": 7}], 7)):
+            request = Recorder(open_pulls)
+            refresh_pr.sync("refresh", "title", "text", request, labels=["needs-board-perf"])
+            self.assertEqual(request.calls[-1], ("POST", f"/issues/{number}/labels", {"labels": ["needs-board-perf"]}))
+
     def test_close_comments_closes_and_deletes_the_branch(self):
         request = Recorder([{"number": 7}])
         refresh_pr.close("refresh", "clean", request)
@@ -60,7 +66,7 @@ class RefreshPrTests(unittest.TestCase):
                                     REFRESH_BRANCH='refresh'):
                 body = Path(directory) / 'body.txt'
                 body.write_text('body')
-                responses = ([[], {}] if action == 'sync' else [[{'number': 7}], {}, {}, {}])
+                responses = ([[], {'number': 9}] if action == 'sync' else [[{'number': 7}], {}, {}, {}])
                 with mock.patch.object(github_api.urllib.request, 'urlopen',
                         side_effect=[io.BytesIO(json.dumps(value).encode()) for value in responses]) as http:
                     argv = ['refresh_pr.py', 'sync', 'title', str(body)] if action == 'sync' else [

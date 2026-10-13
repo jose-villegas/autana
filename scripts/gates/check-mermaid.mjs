@@ -6,6 +6,7 @@
 //   node scripts/gates/check-mermaid.mjs                 # every git-tracked *.md
 //   node scripts/gates/check-mermaid.mjs path/to/file.md # one file or directory
 //   node scripts/gates/check-mermaid.mjs --verbose       # also list the blocks that passed
+//   node scripts/gates/check-mermaid.mjs --probe         # exit 0 when an mmdc runs, else 1
 //   node scripts/gates/check-mermaid.mjs --stdin <label> # one file's content from stdin,
 //                                                         # reported under <label>
 //
@@ -19,16 +20,17 @@
 // The browser is found without setup: whatever PUPPETEER_EXECUTABLE_PATH names when the
 // caller set it, else a chromium or chrome on PATH, else the Chrome mermaid-cli bundles.
 //
-// Requires @mermaid-js/mermaid-cli (npm install -g @mermaid-js/mermaid-cli) and the Chrome
-// it bundles; see docs/tools/Mermaid-Diagrams.md.
+// Runs the mermaid-cli scripts/gates/mermaid/package.json pins (npm ci --prefix
+// scripts/gates/mermaid), else an mmdc on PATH with a note naming both versions when they
+// differ; see docs/tools/Mermaid-Diagrams.md.
 
 import { execFile } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, posix, relative, resolve, win32 } from 'node:path';
+import { dirname, join, posix, relative, resolve, win32 } from 'node:path';
 import { promisify } from 'node:util';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const execFileAsync = promisify(execFile);
 
@@ -36,6 +38,19 @@ const CONCURRENCY = 4;
 const FENCE = /^[ \t]*```+[ \t]*mermaid[ \t]*$/;
 const CLOSING_FENCE = /^[ \t]*```+[ \t]*$/;
 const IS_WINDOWS = process.platform === 'win32';
+const PINNED_DIR = join(dirname(fileURLToPath(import.meta.url)), 'mermaid');
+const PINNED_PACKAGE = '@mermaid-js/mermaid-cli';
+const INSTALL = 'npm ci --prefix scripts/gates/mermaid';
+
+// The mmdc npm ci installs beside this script, else whichever is on PATH.
+export function mmdcCommand(pinnedDir = PINNED_DIR) {
+  const local = join(pinnedDir, 'node_modules', '.bin', IS_WINDOWS ? 'mmdc.cmd' : 'mmdc');
+  return existsSync(local) ? local : 'mmdc';
+}
+
+export function pinnedVersion(pinnedDir = PINNED_DIR) {
+  return JSON.parse(readFileSync(join(pinnedDir, 'package.json'), 'utf8')).dependencies[PINNED_PACKAGE];
+}
 
 export function extractBlocks(text) {
   const lines = text.split(/\r?\n/);
@@ -207,7 +222,8 @@ async function browserArguments(extra) {
 async function runMmdc(args) {
   const extra = parseExtraMmdcArgs(process.env.CHECK_MERMAID_MMDC_ARGS);
   const full = [...args, ...extra, ...(await browserArguments(extra))];
-  return execFileAsync('mmdc', IS_WINDOWS ? full.map(winQuote) : full, {
+  const mmdc = mmdcCommand();
+  return execFileAsync(IS_WINDOWS ? winQuote(mmdc) : mmdc, IS_WINDOWS ? full.map(winQuote) : full, {
     shell: IS_WINDOWS,
     maxBuffer: 1024 * 1024 * 10,
   });
@@ -251,6 +267,10 @@ async function validate(block, label, workDir, index) {
 
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv.includes('--probe')) {
+    await runMmdc(['--version']).catch(() => { process.exitCode = 1; });
+    return;
+  }
   const verbose = argv.includes('--verbose');
   const stdinIndex = argv.indexOf('--stdin');
   const stdinLabel = stdinIndex !== -1 ? argv[stdinIndex + 1] : null;
@@ -298,13 +318,17 @@ async function main() {
 
   // Probe once, so a missing CLI reads as one actionable line instead of N identical
   // per-block failures.
+  let found;
   try {
-    await runMmdc(['--version']);
+    found = (await runMmdc(['--version'])).stdout.trim();
   } catch {
     console.error('mermaid-cli (mmdc) not found — cannot validate diagrams.');
-    console.error('Install it with:  npm install -g @mermaid-js/mermaid-cli');
+    console.error(`Install it with:  ${INSTALL}`);
     process.exitCode = 1;
     return;
+  }
+  if (found !== pinnedVersion()) {
+    console.warn(`note: mermaid-cli ${found} here, ${pinnedVersion()} pinned; CI runs the pinned one (${INSTALL}).`);
   }
 
   console.log(`Validating ${tasks.length} mermaid block(s)...\n`);

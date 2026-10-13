@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Build a doc refresh branch on the current main.
+"""Build a refresh branch on the current main.
 
-The doc-image workflows render on the commit that triggered them, and main may move before they
-finish: a generated table moves to another document, or a workflow file changes (GitHub refuses an
-app push whose branch differs from main in one). So nothing of the run's own checkout is replayed:
-the branch starts from the current main, takes the run's changed images as files, and writes the
-run's tables into whichever documents hold their blocks now.
+The refresh workflows (doc images, ESP-IDF) work on the commit that triggered them, and main may
+move before they finish: a generated table moves to another document, or a workflow file changes
+(GitHub refuses an app push whose branch differs from main in one). So nothing of the run's own
+checkout is replayed: the branch starts from the current main, takes the run's changed files as
+they are, and writes the run's tables, if any, into whichever documents hold their blocks now.
 
-    python scripts/ci/refresh_branch.py BRANCH MESSAGE --tables DIR [IMAGE ...]
+    python scripts/ci/refresh_branch.py BRANCH MESSAGE [--tables DIR] [FILE ...]
 
-Each IMAGE is a repository-relative path as the run left it; one the run deleted is deleted. REFRESH_REMOTE
+Each FILE is a repository-relative path as the run left it; one the run deleted is deleted. REFRESH_REMOTE
 names the remote (origin by default). Exits 0 having pushed BRANCH, or 3 when main already matches
 the run and there is nothing to commit.
 """
@@ -33,7 +33,7 @@ def git(*args, cwd):
 
 
 def refresh(root, branch, message, tables, images, remote="origin"):
-    """Pushes `branch`: the remote's main plus the run's `images` and `tables`.
+    """Pushes `branch`: the remote's main plus the run's changed files (`images`) and `tables`.
     Returns False, pushing nothing, when that changes nothing."""
     root = pathlib.Path(root)
     with tempfile.TemporaryDirectory() as keep:
@@ -56,8 +56,9 @@ def refresh(root, branch, message, tables, images, remote="origin"):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(copy, target)
             git("add", "--", image, cwd=root)
-    apply_tables(root, pathlib.Path(tables))
-    git("add", "--update", "--", "*.md", cwd=root)
+    if tables is not None:
+        apply_tables(root, pathlib.Path(tables))
+        git("add", "--update", "--", "*.md", cwd=root)
     if not git("diff", "--cached", "--name-only", cwd=root).strip():
         return False
     git("-c", "user.name=github-actions[bot]",
@@ -71,7 +72,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("branch")
     parser.add_argument("message")
-    parser.add_argument("--tables", required=True, type=pathlib.Path)
+    parser.add_argument("--tables", type=pathlib.Path)
     parser.add_argument("images", nargs="*")
     args = parser.parse_args(argv)
     pushed = refresh(pathlib.Path.cwd(), args.branch, args.message, args.tables, args.images,

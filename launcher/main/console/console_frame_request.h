@@ -24,7 +24,7 @@
 
 /* RUNSUITE exists where the suites do: a self-test image and the host runner. */
 #if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
-#include "console/console_runsuite.h"
+#include "console/verbs/console_runsuite.h"
 #define CONSOLE_FRAME_HAS_RUNSUITE 1
 #endif
 

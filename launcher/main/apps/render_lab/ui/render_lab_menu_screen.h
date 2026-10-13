@@ -5,8 +5,12 @@
 #include <stdint.h>
 
 #include "microui.h"
+#include "ui/ui_scroll.h"
+
+typedef void (*render_lab_controls_fn)(mu_Context* ctx, ui_flow_t* flow, int width);
 
 typedef struct {
+    render_lab_controls_fn controls;
     const char* scene_name; /* shown on the cycle-scene button */
 } render_lab_menu_screen_state_t;
 

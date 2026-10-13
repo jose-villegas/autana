@@ -680,6 +680,10 @@ class BuildCommandTests(unittest.TestCase):
         _, built = self.build("diag", "--perf-scope")
         built.assert_called_once_with("C:/wt", "diag", ["--perf-scope"])
 
+    def test_configure_is_forwarded_to_the_build(self):
+        _, built = self.build("rel", "--configure")
+        built.assert_called_once_with("C:/wt", "release", ["--configure"])
+
     def test_hot_tunables_are_forwarded_to_the_build(self):
         _, built = self.build("diag", "--hot-tunables")
         built.assert_called_once_with("C:/wt", "diag", ["--hot-tunables"])
@@ -2129,6 +2133,27 @@ class ProjectSettingsTests(unittest.TestCase):
                 autana.main()
         self.assertEqual(stop.exception.code, 0)
         self.assertIn("records", printed.getvalue())
+
+
+
+class IdfNoteTests(unittest.TestCase):
+    def note(self, local_commit, pinned_commit="a" * 40):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "launcher").mkdir()
+            (Path(folder) / "launcher" / "idf-pin.json").write_text(json.dumps({"commit": pinned_commit}))
+            with mock.patch.object(autana, "idf_commit", return_value=local_commit),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                autana.idf_note(folder)
+        return out.getvalue()
+
+    def test_another_esp_idf_commit_is_a_note_naming_both(self):
+        printed = self.note("b" * 40)
+        self.assertIn("note: ESP-IDF", printed)
+        self.assertIn("b" * 40, printed)
+        self.assertIn("a" * 40, printed)
+
+    def test_the_pinned_commit_or_no_esp_idf_prints_nothing(self):
+        self.assertEqual(self.note("a" * 40), "")
+        self.assertEqual(self.note(""), "")
 
 
 if __name__ == "__main__":

@@ -33,16 +33,14 @@ env:
 jobs:
   fingerprint:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       fingerprint: ${{ steps.inputs.outputs.fingerprint }}
       current: ${{ steps.inputs.outputs.current }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - uses: ./.github/actions/host-tools
 
       - name: Fingerprint the GPU stage's inputs
         id: inputs
@@ -70,7 +68,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check inputs and the latest record before rendering
         id: gate
@@ -166,7 +164,7 @@ jobs:
 
       - name: Record the inputs these images were made from
         if: steps.gate.outputs.render == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doc-images-inputs-${{ needs.fingerprint.outputs.fingerprint }}
           path: launcher/tools/results/doc_images/out/gpu/source.json
@@ -178,7 +176,7 @@ jobs:
 
       - name: Record failed inputs
         if: failure() && steps.gate.outputs.render == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doc-images-failed-${{ needs.fingerprint.outputs.fingerprint }}
           path: ${{ runner.temp }}/doc-images-failed.txt

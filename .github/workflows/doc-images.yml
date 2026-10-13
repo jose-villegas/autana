@@ -44,7 +44,7 @@ jobs:
     name: Measure internal memory (sequential variants)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/idf-build
         with:
           cache-name: release
@@ -61,7 +61,7 @@ jobs:
             ../tools/autana build diag --project ..
             && cd ..
             && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --tables launcher/build/memory-tables
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: memory-tables
           path: launcher/build/memory-tables/
@@ -70,7 +70,7 @@ jobs:
     name: Regenerate and compare
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Identify mesh source LFS objects
         id: mesh-source
@@ -80,7 +80,7 @@ jobs:
           echo "path=$(git rev-parse --git-path lfs)" >> "$GITHUB_OUTPUT"
 
       - name: Cache mesh source LFS objects
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ steps.mesh-source.outputs.path }}
           key: mesh-source-lfs-${{ steps.mesh-source.outputs.key }}
@@ -91,9 +91,7 @@ jobs:
       - name: Initialize meshoptimizer for scratch bakes
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/host-tools
 
       # The bakes and the fidelity sheet trace rays on Mitsuba's LLVM variant, which needs libLLVM.
       - name: Install Pillow, the r3d requirements and ffmpeg
@@ -124,7 +122,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/rendered-docs"
           cp -a launcher/tools/results/doc_images/out/cpu "$RUNNER_TEMP/rendered-docs/cpu"
           cp "$RUNNER_TEMP/changed.txt" "$RUNNER_TEMP/rendered-docs/changed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rendered-docs
           path: ${{ runner.temp }}/rendered-docs
@@ -134,11 +132,9 @@ jobs:
     needs: [memory-tables, refresh]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rendered-docs
           path: ${{ runner.temp }}/rendered-docs
@@ -149,7 +145,7 @@ jobs:
           cp -a "$RUNNER_TEMP/rendered-docs/cpu/." "$out/"
           cp "$RUNNER_TEMP/rendered-docs/changed.txt" "$RUNNER_TEMP/changed.txt"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: memory-tables
           path: launcher/tools/results/doc_images/out/cpu/tables
