@@ -29,7 +29,8 @@ def chart_cli(doc, build):
     replacements = dict(render_tiers=lambda builds, root, runtime=None: 'tier fixture',
                         render_headroom=lambda builds, runtime=None, root=None: 'headroom fixture', ROOT=doc.parent,
                         read_build=lambda *args: build, build_sites=lambda *args: ([], lambda site: True),
-                        check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'})
+                        check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'},
+                        update_heap_profile=lambda *args, **kwargs: None)
     with contextlib.ExitStack() as stack:
         for name, value in replacements.items():
             stack.enter_context(patch.object(memory, name, value))
@@ -82,10 +83,10 @@ class MemoryChartTests(unittest.TestCase):
             self.assertIn(label, text)
 
     def test_charts_show_their_ceiling(self):
-        from byte_sizes import share_label, total_label
+        from byte_sizes import total_label
         pool = ''.join(ET.fromstring(memory.chart('pool', self.body())).itertext())
-        self.assertIn(f'pool {total_label(1024)}', pool)
-        self.assertIn('free 0 KB, largest 0 KB of 1 KB', pool)
+        self.assertIn('pool end 0x3fc88400, 1 KB', pool)
+        self.assertIn('linked heap 0.6 KB (not measured at runtime)', pool)
         components = ET.fromstring(memory.chart('components', self.body()))
         counts = [int(rect.attrib['data-bytes']) for rect in components.findall('.//{*}rect[@data-bytes]')]
         text = ''.join(components.itertext())
@@ -200,7 +201,7 @@ class MemoryChartTests(unittest.TestCase):
                                constants={'_heap_start': 0x3fc88080}, size={'layout': [{'name': 'DIRAM', 'used': 128}]},
                                align=256, pad=16, slack=0, inputs=inputs, owned={}, report=[(site, 12, ['draw'])]))
         body = memory.render(builds)
-        self.assertIn('dev: 0.3 KB free internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, of the 1 KB shared pool; IRAM can grow 0 B before it costs heap.',
+        self.assertIn('dev: 0.3 KB free of its 1.2 KB internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, 0.9 KB of that heap is linked in the 1 KB pool and 0.3 KB lies above it, reclaimed after boot. IRAM can grow 0 B before it costs heap.',
                       memory.render_headroom(builds))
         self.assertNotIn('free internal heap at its floor', body)
         from doc_tables import parse_table

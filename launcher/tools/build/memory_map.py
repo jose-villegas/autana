@@ -32,7 +32,7 @@ from doc_tables import markdown, parse_table, collapsed
 import svg_bars
 from compile_db import compile_flags
 from generated_blocks import apply_tables, block_body
-from byte_sizes import KB_BYTES, MB_BYTES, share_label, size_label, total_label
+from byte_sizes import MB_BYTES, size_label, total_label
 from svg_bars import IDF_FILL, OURS_FILL, SLACK_FILL, DRAM_FILL, HEAP_FILL, RUNTIME_FILL
 sys.path.insert(0, str(ROOT / "launcher/tools/device"))
 from device_profile import load, require
@@ -58,9 +58,11 @@ TIER_POLICY = (
 )
 CHARTS = {"pool": "docs/memory/images/internal-pool.svg", "components": "docs/memory/images/iram-components.svg"}
 RUNTIME_HEAP = "docs/memory/data/runtime-heap.txt"
+HEAP_PROFILE = "launcher/tools/device/device_profiles/esp32s3.sh"
 RUNTIME_LABEL = "In use at runtime (floor)"
 DIFFERENCES_HEADING = "### Differs between variants"
 COMPONENT_TOP_COUNT = 8
+POOL_LEGEND_SPACING = 320
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
 UPDATE_BUDGETS = REGENERATE.rsplit(" ", 1)[0] + " --update-budgets"
 
@@ -492,18 +494,24 @@ def update_budgets(root, builds):
     print(f"Updated IRAM budgets: {len(measured)} active sites")
 
 
-def iram_bytes(sizes):
-    """IRAM a build links, from section sizes by name; .iram0.text_end is
+def iram_bytes(sections):
+    """IRAM a build links, from linked sections by name; .iram0.text_end is
     only the alignment the split rounds up to."""
-    return sum(size for name, size in sizes.items() if name.startswith(".iram") and name != ".iram0.text_end")
+    return sum(size for name, (_, size) in sections.items() if name.startswith(".iram") and name != ".iram0.text_end")
 
 
 def pool_range(start, size, heap_start):
     return size, start + size - heap_start
 
 
+def dram_bytes(sections):
+    """Linked DRAM data, excluding the alias reservation for IRAM."""
+    return sum(size for name, (_, size) in sections.items()
+               if name.startswith(".dram") and name != ".dram0.dummy")
+
+
 def parse_runtime_heap(text):
-    """Strict board capture grammar; POST retains its truncated KiB resolution."""
+    """Capture blocks contain the JSON object printed by autana heap --json."""
     captures = {}
     current = None
     separated = True
@@ -526,23 +534,51 @@ def parse_runtime_heap(text):
         if unmeasured and current is not None and not current["phases"] and "unmeasured" not in current:
             current["unmeasured"] = unmeasured[1]
             continue
-        phase = re.fullmatch(r"phase=(boot|app:.+) (HEAP .+|\[[^\]]+\].+)", line)
+        phase = re.fullmatch(r"phase=(boot|app:.+?) (\{.*\})", line)
         if current is None or "unmeasured" in current or not phase or phase[1] in current["phases"]:
             raise ValueError(f"runtime heap line {line_number}: missing build or invalid phase: {line}")
-        reading = re.fullmatch(r"HEAP free=(\d+) largest=(\d+)", phase[2])
-        resolution = 1
-        if reading is None:
-            reading = re.fullmatch(r"\[[^\]\r\n]+\]\s+memory\s+(\d+) KiB free, DMA block (\d+) KiB", phase[2])
-            resolution = KB_BYTES
-        if reading is None:
+        reading = json.loads(phase[2])
+        if (set(reading) != {"free", "largest", "total"}
+                or any(type(value) is not int or value < 0 for value in reading.values())):
             raise ValueError(f"runtime heap line {line_number}: invalid reading: {phase[2]}")
-        free, largest = (int(value) * resolution for value in reading.groups())
-        if largest > free:
-            raise ValueError(f"runtime heap line {line_number}: largest block exceeds free bytes")
-        current["phases"][phase[1]] = dict(free=free, largest=largest, resolution=resolution)
-    if not captures or any("boot" not in capture["phases"] and "unmeasured" not in capture for capture in captures.values()):
+        if not reading["largest"] <= reading["free"] <= reading["total"]:
+            raise ValueError(f"runtime heap line {line_number}: require largest <= free <= total")
+        current["phases"][phase[1]] = reading
+    missing = set(VARIANTS) - captures.keys()
+    if missing:
+        raise ValueError("runtime heap: missing variants: " + ", ".join(sorted(missing)))
+    if any("boot" not in capture["phases"] and "unmeasured" not in capture for capture in captures.values()):
         raise ValueError("runtime heap: every captured variant requires a boot phase or an unmeasured reason")
     return captures
+
+
+def update_heap_profile(root, runtime, write=False):
+    """The host arena uses the diagnostics heap's boot reading."""
+    capture = runtime["diag"]
+    if "unmeasured" in capture:
+        raise ValueError("heap profile requires a measured diag boot capture")
+    reading = capture["phases"]["boot"]
+    source = f'{RUNTIME_HEAP} BUILD_ID={capture["build_id"]} phase=boot'
+    values = {"DP_FREE_HEAP_BYTES": str(reading["free"]),
+              "DP_LARGEST_FREE_BLOCK_BYTES": str(reading["largest"]),
+              "DP_FREE_HEAP_SOURCE": json.dumps(source),
+              "DP_LARGEST_FREE_BLOCK_SOURCE": json.dumps(source)}
+    path = root / HEAP_PROFILE
+    original = path.read_bytes().decode("utf-8")
+    retained = re.search(r"(?m)^DP_FREE_HEAP_BYTES=(\d+)", original)
+    if write and retained and reading["free"] < int(retained[1]):
+        raise ValueError(f"heap profile: diag boot reports {reading['free']} B, "
+                         f"{int(retained[1]) - reading['free']} B below the retained host arena; "
+                         "reduction requires host allocation-fixture validation; profile unchanged")
+    updated = original
+    for name, value in values.items():
+        updated, count = re.subn(r"(?m)^" + name + r"=[^\r\n]*", lambda match: name + "=" + value, updated)
+        if count != 1:
+            raise ValueError(f"heap profile: expected one {name}")
+    if write:
+        path.write_bytes(updated.encode("utf-8"))
+    elif updated != original:
+        raise ValueError("heap profile differs from diag boot capture; run memory_map.py --write")
 
 
 def read_runtime_heap(root):
@@ -563,26 +599,30 @@ def iram_headroom(slack, pad):
 
 
 def runtime_note(capture, build_id):
-    if runtime_floor(capture) is None:
+    floor = runtime_floor(capture)
+    if floor is None:
         return "not measured at runtime: " + capture["unmeasured"]
-    phase, reading = runtime_floor(capture)
+    phase, _ = floor
     # Engine docs name no app; the capture file keeps which one it was.
     note = "after boot" if phase == "boot" else "after opening the app that leaves the least"
-    if reading["resolution"] == KB_BYTES:
-        note += "; POST at boot only (KiB resolution)" if phase == "boot" else "; POST (KiB resolution)"
     if capture["build_id"] != build_id:
         note += f"; capture from build {capture['build_id']}"
     return note
 
 
 def runtime_headline(variant, capture, pool, slack, build_id, heap):
-    if runtime_floor(capture) is None:
+    floor = runtime_floor(capture)
+    if floor is None:
         return (f"{variant}: {size_label(heap)} linked internal heap ({runtime_note(capture, build_id)}) "
                 f"of the {size_label(pool)} shared pool; IRAM can grow {slack} B before it costs heap.")
-    _, reading = runtime_floor(capture)
-    return (f"{variant}: {size_label(reading['free'])} free internal heap at its floor "
+    _, reading = floor
+    above = reading["total"] - heap
+    if above < 0:
+        raise ValueError(f"{variant}: runtime total is smaller than linked heap")
+    return (f"{variant}: {size_label(reading['free'])} free of its {size_label(reading['total'])} internal heap at its floor "
             f"({runtime_note(capture, build_id)}), largest block {size_label(reading['largest'])}, "
-            f"of the {size_label(pool)} shared pool; IRAM can grow {slack} B before it costs heap.")
+            f"{size_label(heap)} of that heap is linked in the {size_label(pool)} pool and "
+            f"{size_label(above)} lies above it, reclaimed after boot. IRAM can grow {slack} B before it costs heap.")
 
 
 def render_tiers(builds, root, runtime=None):
@@ -603,7 +643,7 @@ def render_tiers(builds, root, runtime=None):
         pools.append(f"{build['variant']} {size_label(size)} ({size} B)")
         floor = runtime_floor(runtime[build["variant"]])
         heaps.append(f"{build['variant']} {size_label(heap)} linked, " +
-                     (f"{size_label(floor[1]['free'])} free at floor" if floor else "not measured at runtime"))
+                     (f"{size_label(floor[1]['total'])} at runtime, {size_label(floor[1]['free'])} free at floor" if floor else "not measured at runtime"))
     shared = release["regions"]["dram0_0_seg"][1]
     pool = f"{size_label(shared)} ({shared} B)" if all(build["regions"]["dram0_0_seg"][1] == shared for build in builds) else "; ".join(pools)
     config = release["config"]
@@ -616,7 +656,7 @@ def render_tiers(builds, root, runtime=None):
     assets = partitions["assets"][1]
     sizes = (
         f"{size_label(sram)} chip total {CHIP_CITATION}; {pool} shared IRAM/DRAM pool; "
-        f"[internal heap](../memory/images/internal-pool.svg) {', '.join(heaps)}",
+        f"[internal heap](../memory/images/internal-pool.svg) {'; '.join(heaps)}",
         f"{size_label(psram)} total {CHIP_CITATION}; {size_label(arena)} app arena; "
         f"{size_label(framebuffer)} full framebuffer; "
         f"{size_label(psram - arena - framebuffer)} at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)",
@@ -624,7 +664,7 @@ def render_tiers(builds, root, runtime=None):
     )
     rows = [(tier, size, placement, rule) for (tier, placement, rule), size in zip(TIER_POLICY, sizes)]
     return (f"> Generated by: `{REGENERATE}`\n\n" + markdown(["Tier", "Size", "Current placement", "Rule"], rows)
-            + "\nKB = 1024 B; MB = 1024 KB. Linked heap ranges and measured free floors are distinct; runtime readings come from `memory/data/runtime-heap.txt`.\n"
+            + "\nKB = 1024 B; MB = 1024 KB. Linked is the heap range the link leaves; at runtime is the heap the board reports, which also spans SRAM above the pool reclaimed after boot; free at floor is the lowest free-heap reading after boot and after opening each app (a reading, not the heap's low-water mark), from [runtime-heap.txt](../memory/data/runtime-heap.txt).\n"
             + "Arena and framebuffer sizes come from source headers, flash size from the build's sdkconfig and partitions from the partition table it names, chip totals from the device profile (datasheet), and pool/heap from the build.\n")
 
 
@@ -682,7 +722,7 @@ def render(builds, root=ROOT):
     component_rows = [(name, placement, *(c[(name, placement)] for c in placements))
                       for name in names for placement in ("our sites", "IDF")
                       if any(c[(name, placement)] for c in placements)]
-    component_rows.append(("Linker fill / split slack", "unattributed", *(iram_bytes({key: size for key, (_, size) in b["sections"].items()}) - sum(c.values()) for b, c in zip(builds, components))))
+    component_rows.append(("Linker fill / split slack", "unattributed", *(iram_bytes(b["sections"]) - sum(c.values()) for b, c in zip(builds, components))))
     lines += [collapsed("IRAM components by placement", markdown(["IRAM component", "Placement", *labels], component_rows))]
     reports = [b["report"] for b in builds]
     rows = []
@@ -755,41 +795,54 @@ def chart(kind, body, runtime=None, root=ROOT):
                      for match in [re.search(r"(?:Builds: |; )([^ ;]+-" + re.escape(variant) + r") \(IDF ", body)] if match}
         if len(build_ids) != len(variants):
             raise ValueError("pool chart: missing build ids")
-        rows, scales, overlays = [], [], []
+        rows, scales, overlays, totals = [], [], [], []
         legend = [("ESP-IDF IRAM", IDF_FILL), ("IRAM we place", OURS_FILL),
                   ("Split slack incl. pad", SLACK_FILL), ("DRAM data + BSS", DRAM_FILL),
                   ("Internal heap", HEAP_FILL)]
         for variant in variants:
             start, end, size = alias("dram0_0_seg", variant)
-            iram = iram_bytes({name: int(region(name, variant)) for name in region_rows if name.startswith(".iram")})
+            iram = iram_bytes({name: (0, int(region(name, variant))) for name in region_rows if name.startswith(".iram")})
             slack = int(region("Slack including pad", variant))
             data_start, heap_start = (int(region(name, variant), 16) for name in ("_data_start", "_heap_start"))
             if iram + slack != data_start - int(start, 16):
                 raise ValueError(f"{variant}: IRAM and split slack do not end at _data_start")
-            # From _data_start, so the alignment between .data and .bss counts here.
+            sections = {name: (0, int(region(name, variant))) for name in region_rows if name.startswith(".dram")}
+            # Alignment gaps belong to the static DRAM range.
             dram = heap_start - data_start
+            if dram < dram_bytes(sections):
+                raise ValueError(f"{variant}: linked DRAM sections exceed the static range")
             _, heap = pool_range(int(start, 16), size, heap_start)
             counts = (iram - ours[variant], ours[variant], slack, dram, heap)
             if sum(counts) != size:
                 raise ValueError(f"{variant}: pool segments do not sum to shared alias")
             capture = runtime[variant]
             floor = runtime_floor(capture)
+            total = floor[1]["total"] if floor else heap
+            above = total - heap
+            if above < 0:
+                raise ValueError(f"{variant}: runtime total is smaller than linked heap")
+            segments = [(label, count, fill) for (label, fill), count in zip(legend, counts)]
+            if floor:
+                segments.append(("Heap above the pool (reclaimed after boot)", above, HEAP_FILL))
             left = iram_headroom(slack, int(region("Prefetch pad", variant)))
             step = int(region("Split granularity", variant))
             headroom = f"free {size_label(floor[1]['free'])}" if floor else f"linked heap {size_label(heap)}"
-            rows.append((variant, [(label, count, fill) for (label, fill), count in zip(legend, counts)],
-                         (f"free {size_label(floor[1]['free'])}, largest {size_label(floor[1]['largest'])} of {size_label(size)}" if floor
-                          else f"linked heap {size_label(heap)} of {size_label(size)}"),
+            rows.append((variant, segments,
+                         (f"free {size_label(floor[1]['free'])}, largest {size_label(floor[1]['largest'])} of {size_label(total)} internal heap" if floor
+                          else f"linked heap {size_label(heap)} (not measured at runtime)"),
                          (runtime_note(capture, build_ids[variant]),
                           f"IRAM left before the next {step} B split step: {left} B; past it, every byte comes from the heap ({headroom})")))
-            # An older capture can exceed this linked heap; overlay widths cannot be negative.
-            overlays.append([(RUNTIME_LABEL, heap_start - int(start, 16), max(0, heap - floor[1]["free"]), RUNTIME_FILL, "in use", "free")] if floor else [])
-            scales.append(size)
+            overlays.append([(RUNTIME_LABEL, heap_start - int(start, 16), total - floor[1]["free"], RUNTIME_FILL, "in use", "free")] if floor else [])
+            scales.append(size + above)
+            if floor:
+                totals.append(total)
         start, end, _ = alias("dram0_0_seg", variants[0])
         iram_start, _, _ = alias("iram0_0_seg", variants[0])
         return svg_bars.bars(command, "Shared internal memory pool", "Measured free floor and largest block; linked ranges in address order", rows, max(scales),
                              (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), [*legend, (RUNTIME_LABEL, RUNTIME_FILL)],
-                             (start, end, f"pool {total_label(max(scales))}"), inside=True, overlays=overlays, headline=True)
+                             (start, f"measured heap total {size_label(max(totals))}" if totals else end),
+                             inside=True, overlays=overlays, headline=True, legend_spacing=POOL_LEGEND_SPACING,
+                             ticks=((int(end, 16) - int(start, 16), f"pool end {end}, {size_label(int(end, 16) - int(start, 16))}"),))
     def idf_parts(variant):
         """ESP-IDF-placed bytes by archive, and the unattributed linker fill."""
         parts, fill = Counter(), None
@@ -871,6 +924,7 @@ def main():
             update_budgets(args.root, builds)
             return 0
         if args.check:
+            update_heap_profile(args.root, read_runtime_heap(args.root))
             return 0
         body = render(builds, root=args.root)
         blocks = {BLOCK: body, TIERS_BLOCK: render_tiers(builds, args.root), HEADROOM_BLOCK: render_headroom(builds, root=args.root)}
@@ -882,6 +936,7 @@ def main():
                 apply_tables(args.root, tables)
             for kind, name in CHARTS.items():
                 write_chart(kind, body, args.root / name, root=args.root)
+            update_heap_profile(args.root, read_runtime_heap(args.root), write=True)
         elif args.tables:
             args.tables.mkdir(parents=True, exist_ok=True)
             for name, text in blocks.items():

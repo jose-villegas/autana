@@ -1,108 +1,89 @@
-"""Runtime internal heap capture and headroom presentation contracts."""
+"""Runtime heap capture and absolute overlay contracts."""
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 import xml.etree.ElementTree as ET
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 import memory_map as memory
 import test_memory_charts as charts
-from svg_bars import BAR_WIDTH
-
+import svg_bars
 FIXTURE = Path(__file__).parent / 'fixtures/runtime-heap.txt'
-
 
 class RuntimeHeapTests(unittest.TestCase):
     def capture(self):
         return memory.parse_runtime_heap(FIXTURE.read_text())
 
-    def test_line_kinds_resolution_and_floor(self):
+    def test_json_shape_and_floor(self):
         capture = self.capture()
-        self.assertEqual(capture['release']['phases']['boot'],
-                         dict(free=0, largest=0, resolution=memory.KB_BYTES))
-        phase, reading = memory.runtime_floor(capture['dev'])
-        self.assertEqual(phase, 'app:Sand')
-        self.assertEqual(reading, dict(free=320, largest=256, resolution=1))
-        post = memory.parse_runtime_heap(
-            'BUILD_ID=x-release\nphase=boot [OK] memory  123 KiB free, DMA block 45 KiB\n')
-        self.assertEqual(post['release']['phases']['boot']['free'], 123 * memory.KB_BYTES)
-        self.assertEqual(post['release']['phases']['boot']['largest'], 45 * memory.KB_BYTES)
-
-    def test_apps_define_floor_when_boot_has_less_free(self):
-        capture = self.capture()['dev']
-        capture['phases']['boot']['free'] = 1
-        self.assertEqual(memory.runtime_floor(capture)[0], 'app:Sand')
+        self.assertIsNone(memory.runtime_floor(capture['release']))
+        self.assertEqual(memory.runtime_floor(capture['dev']),
+                         ('app:A', dict(free=320, largest=256, total=1200)))
+        capture['dev']['phases']['boot']['free'] = 1
+        self.assertEqual(memory.runtime_floor(capture['dev'])[0], 'app:A')
 
     def test_invalid_captures_fail(self):
-        cases = ('phase=boot HEAP free=1 largest=1',
-                 'BUILD_ID=x-unknown\nphase=boot HEAP free=1 largest=1',
-                 'BUILD_ID=x-dev\nphase=app:Sand HEAP free=1 largest=1',
-                 'BUILD_ID=x-dev\nphase=boot nonsense',
-                 'BUILD_ID=x-dev\nphase=boot HEAP free=-1 largest=1',
-                 'BUILD_ID=x-dev\nphase=boot HEAP free=1 largest=2',
-                 'BUILD_ID=x-dev\nphase=boot HEAP free=1 largest=1\nphase=boot HEAP free=1 largest=1',
-                 'BUILD_ID=x-dev\nphase=boot HEAP free=1 largest=1\n\nBUILD_ID=y-dev\nphase=boot HEAP free=1 largest=1',
-                 'BUILD_ID=x-dev\nphase=boot HEAP free=1 largest=1\nBUILD_ID=y-diag\nphase=boot HEAP free=1 largest=1',
-                 '')
-        for text in cases:
+        good = FIXTURE.read_text()
+        for text in ('', good.split('\n\n')[1], good + '\nBUILD_ID=abc-dev\nunmeasured: x\n',
+                     good.replace('"total": 1200', '"total": 1'),
+                     good.replace('"largest": 400', '"largest": 601'),
+                     good.replace('"free": 600', '"free": -1'),
+                     good.replace('phase=boot {', 'phase=boot HEAP {'),
+                     good.replace('phase=boot', 'phase=app:B')):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 memory.parse_runtime_heap(text)
 
-    def test_runtime_overlay_headline_and_split_note(self):
-        capture = self.capture()
+    def test_heap_spans_pool_and_measured_ceiling(self):
         body = charts.MemoryChartTests().body().replace('release', 'dev')
-        body = 'Builds: abc-dev (IDF fixture)\n' + body
+        capture = self.capture()
         tree = ET.fromstring(memory.chart('pool', body, capture))
         overlay = tree.find('.//{*}rect[@data-label="In use at runtime (floor)"]')
-        self.assertEqual(int(overlay.attrib['data-bytes']), 656 - 320)
-        self.assertAlmostEqual(float(overlay.attrib['width']), (656 - 320) * BAR_WIDTH / 1024, delta=.01)
-        heap = tree.find('.//{*}rect[@data-label="Internal heap"]')
-        self.assertEqual(heap.attrib['x'], overlay.attrib['x'])
-        self.assertEqual(int(heap.attrib['data-bytes']), 656)
+        self.assertEqual(int(overlay.get('data-bytes')), 1200 - 320)
+        extra = tree.find('.//{*}rect[@data-label="Heap above the pool (reclaimed after boot)"]')
+        self.assertEqual(int(extra.get('data-bytes')), 1200 - 656)
+        self.assertAlmostEqual(float(overlay.get('width')), 880 * svg_bars.BAR_WIDTH / 1568, delta=.01)
         text = ''.join(tree.itertext())
-        self.assertIn('free 0.3 KB, largest 0.2 KB of 1 KB', text)
-        self.assertIn('after opening the app that leaves the least', text)
-        self.assertIn('IRAM left before the next 256 B split step: 0 B', text)
-        self.assertIn('every byte comes from the heap (free 0.3 KB)', text)
-        self.assertNotIn('capture from build', text)
-        # The heap's parts are labelled by what they are, not by the whole heap's size.
-        inside = [node.text for node in tree.iter('{http://www.w3.org/2000/svg}text') if node.get('class') in ('inside', 'overlay-inside')]
-        self.assertIn(f'in use {memory.size_label(656 - 320)}', inside)
-        self.assertIn(f'free {memory.size_label(320)}', inside)
-        self.assertNotIn(memory.size_label(656), inside)
-        mismatch = ''.join(ET.fromstring(memory.chart('pool', body.replace('abc-dev', 'new-dev'), capture)).itertext())
-        self.assertIn('capture from build abc-dev', mismatch)
+        self.assertIn('of 1.2 KB internal heap', text)
+        self.assertIn('pool end 0x3fc88400, 1 KB', text)
+        capture['dev']['phases']['app:A']['total'] = 655
+        with self.assertRaisesRegex(ValueError, 'linked heap'):
+            memory.chart('pool', body, capture)
 
-    def test_boot_only_post_note_and_no_capture_fallback(self):
-        body = 'Builds: abc-release (IDF fixture)\n' + charts.MemoryChartTests().body()
-        text = ''.join(ET.fromstring(memory.chart('pool', body, self.capture())).itertext())
-        self.assertIn('POST at boot only (KiB resolution)', text)
-        with self.assertRaises(FileNotFoundError):
-            memory.chart('pool', body, root=FIXTURE.parent)
+    def test_absolute_overlay_bounds_and_optional_words(self):
+        rows = [('A', [('one', 100, '#fff'), ('two', 100, '#fff')], '')]
+        tree = ET.fromstring(svg_bars.bars('test', 'test', '', rows, 200,
+                            overlays=[[('cover', 50, 120, '#000')]], inside=True))
+        overlay = tree.find('.//{*}rect[@data-label="cover"]')
+        self.assertEqual(float(overlay.get('x')), 200 + svg_bars.BAR_WIDTH / 4)
+        self.assertEqual(tree.findall('.//{*}text[@class="inside"]'), [])
+        for overlays in ([[('x', -1, 10, '#000')]], [[('x', 100, 101, '#000')]],
+                         [[('x', 0, -1, '#000')]], [[], [('x', 0, 1, '#000')]]):
+            with self.assertRaisesRegex(ValueError, 'overlay'):
+                svg_bars.bars('test', 'test', '', rows, 200, overlays=overlays)
 
-    def test_older_capture_can_exceed_current_linked_heap(self):
-        body = charts.MemoryChartTests().body().replace('abc-release', 'new-release')
-        capture = memory.parse_runtime_heap('BUILD_ID=old-release\nphase=boot [ok  ] memory  1 KiB free, DMA block 1 KiB\n')
-        tree = ET.fromstring(memory.chart('pool', body, capture))
-        overlay = tree.find('.//{*}rect[@data-label="In use at runtime (floor)"]')
-        self.assertEqual(int(overlay.attrib['data-bytes']), 0)
-        self.assertIn('capture from build old-release', ''.join(tree.itertext()))
+    def test_profile_capture_owner_preserves_bytes_and_checks_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / memory.HEAP_PROFILE
+            path.parent.mkdir(parents=True)
+            original = (b'# keep\r\nDP_FREE_HEAP_BYTES=1\r\nDP_FREE_HEAP_SOURCE="old"\r\n'
+                        b'DP_LARGEST_FREE_BLOCK_BYTES=1\r\nDP_LARGEST_FREE_BLOCK_SOURCE="old"\r\n')
+            path.write_bytes(original)
+            with self.assertRaisesRegex(ValueError, 'profile'):
+                memory.update_heap_profile(root, self.capture(), write=False)
+            memory.update_heap_profile(root, self.capture(), write=True)
+            memory.update_heap_profile(root, self.capture(), write=False)
+            self.assertIn(b'DP_FREE_HEAP_BYTES=512\r\n', path.read_bytes())
+            self.assertIn(b'abc-diag phase=boot', path.read_bytes())
+            smaller = self.capture()
+            smaller['diag']['phases']['boot']['free'] = 400
+            with self.assertRaisesRegex(ValueError, '112 B below the retained host arena'):
+                memory.update_heap_profile(root, smaller, write=True)
+            self.assertIn(b'DP_FREE_HEAP_BYTES=512\r\n', path.read_bytes())
+            self.assertEqual(path.read_bytes().count(b'\r\n'), original.count(b'\r\n'))
 
-    def test_doc_headline_and_prefetch_constraint(self):
-        reading = self.capture()['dev']
-        self.assertEqual(memory.iram_headroom(80, 16), 64)
-        self.assertIn(
-            'dev: 0.3 KB free internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, '
-            'of the 1 KB shared pool; IRAM can grow 64 B before it costs heap.',
-            memory.runtime_headline('dev', reading, 1024, 64, 'abc-dev', 656))
-
-    def test_unmeasured_build_states_why_and_draws_no_runtime_share(self):
-        reason = 'this build has no console'
-        capture = memory.parse_runtime_heap(f'BUILD_ID=abc-release\nunmeasured: {reason}\n')['release']
-        self.assertIsNone(memory.runtime_floor(capture))
-        headline = memory.runtime_headline('release', capture, 1024, 64, 'abc-release', 656)
-        self.assertIn(f'0.6 KB linked internal heap (not measured at runtime: {reason})', headline)
-        for bad in ('BUILD_ID=abc-release\nunmeasured: x\nphase=boot HEAP free=1 largest=1\n',
-                    'BUILD_ID=abc-release\nphase=boot HEAP free=1 largest=1\nunmeasured: x\n'):
-            with self.assertRaises(ValueError):
-                memory.parse_runtime_heap(bad)
+    def test_headroom_uses_runtime_total(self):
+        line = memory.runtime_headline('dev', self.capture()['dev'], 1024, 64, 'abc-dev', 656)
+        self.assertIn('free of its 1.2 KB internal heap', line)
+        self.assertIn('0.6 KB of that heap is linked in the 1 KB pool', line)
+        self.assertIn('0.5 KB lies above it, reclaimed after boot', line)

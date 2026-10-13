@@ -1,10 +1,10 @@
 BUILD_ID=abc-release
-phase=boot [OK] memory  0 KiB free, DMA block 0 KiB
+unmeasured: this build has no console
 
 BUILD_ID=abc-dev
-phase=boot HEAP free=600 largest=400
-phase=app:Sand HEAP free=320 largest=256
-phase=app:Render Lab HEAP free=400 largest=200
+phase=boot {"free": 600, "largest": 400, "total": 1200}
+phase=app:A {"free": 320, "largest": 256, "total": 1200}
+phase=app:B {"free": 400, "largest": 200, "total": 1200}
 
 BUILD_ID=abc-diag
-phase=boot HEAP free=512 largest=256
+phase=boot {"free": 512, "largest": 256, "total": 1200}

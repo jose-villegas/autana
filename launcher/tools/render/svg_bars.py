@@ -3,7 +3,7 @@
 An SVG shown through <img> follows the viewer's OS colour scheme, not the
 page's theme, so text uses one grey that reads on GitHub's light and dark
 backgrounds instead of a prefers-color-scheme switch. Text drawn on a bar
-uses dark text on light fills and white on dark overlays."""
+is dark on light fills and white on the dark overlay."""
 from html import escape
 from pathlib import Path
 from byte_sizes import size_label
@@ -36,7 +36,6 @@ HEAP_FILL = '#2da44e'
 RUNTIME_FILL = '#116329'
 _HEADLINE_ROW_HEIGHT = 112
 _HEADLINE_BAR_OFFSET = 28
-_LEGEND_RUNTIME_SPACING = 256
 # Contrast about 4.2:1 on GitHub's light (#ffffff) and 4.5:1 on its dark (#0d1117) background.
 _TEXT_FILL = '#737c86'
 _INSIDE_FILL = '#1f2328'
@@ -59,16 +58,18 @@ def inside_label(name, count, width):
     return None
 
 
-def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(), inside=False, overlays=(), headline=False):
-    """`rows` are (label, segments, end) or (label, segments, end, note);
-    each segment is (name, bytes, fill). `axis` is (start, end) labels,
-    optionally followed by the ceiling. `inside` writes each segment's
-    size on it where it fits. Notes may be tuples of lines; overlays per row
-    are (name, byte offset, bytes, fill), drawn inside the underlying segment."""
+def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(), inside=False, overlays=(), headline=False, legend_spacing=_LEGEND_SPACING, ticks=()):
+    """Rows hold label, segments, end and optional notes; segments hold name,
+    bytes and fill. Headline puts end above the bar. Inside labels fit sizes.
+    Absolute overlays hold name, byte offset, bytes, fill and optional covered/
+    remainder words; they may span segments, suppressing those segment labels.
+    Axis holds start/end labels and optional extra lines; ticks hold offset/label.
+    Legend spacing is independent of the headline layout."""
     if scale <= 0:
         raise ValueError('chart scale must be positive')
     row_height = _HEADLINE_ROW_HEIGHT if headline else _ROW_HEIGHT
-    legend_spacing = _LEGEND_RUNTIME_SPACING if headline else _LEGEND_SPACING
+    if overlays and len(overlays) != len(rows):
+        raise ValueError("overlay rows must match chart rows")
     legend_rows = -(-len(legend) // ((_WIDTH - _MARGIN) // legend_spacing))
     height = (_TOP + len(rows) * row_height + (len(captions) + legend_rows + 1) * _CAPTION_SPACING
               + len(axis) * _CAPTION_SPACING + _FOOTER_HEIGHT)
@@ -89,30 +90,38 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
         x = float(_LEFT)
         offset_bytes = 0
         row_overlays = overlays[index] if overlays else ()
+        row_bytes = sum(count for _, count, _ in segments)
+        for overlay_name, offset, overlay_count, overlay_fill, *words in row_overlays:
+            if offset < 0 or overlay_count < 0 or offset + overlay_count > row_bytes:
+                raise ValueError(f'{label}: overlay exceeds row')
+            if words and len(words) != 2:
+                raise ValueError(f'{label}: overlay needs covered and remainder words')
         for name, count, fill in segments:
             if count < 0:
                 raise ValueError(f'{label}: negative bytes for {name}')
             width = count * BAR_WIDTH / scale
             lines.append(f'<rect x="{x:.2f}" y="{y}" width="{width:.2f}" height="{_BAR_HEIGHT}" '
                          f'fill="{fill}" data-label="{escape(name, quote=True)}" data-bytes="{count}"><title>{escape(name)}: {count} B</title></rect>')
-            # (x, label) pairs; an overlay with its own words labels both of its parts.
-            labels = [(x, inside_label(name, count, width) if inside else None, 'inside')]
-            for overlay_name, offset, overlay_count, overlay_fill, *words in row_overlays:
-                if offset == offset_bytes:
-                    if not 0 <= overlay_count <= count:
-                        raise ValueError(f'{label}: runtime overlay exceeds segment')
-                    overlay_width = overlay_count * BAR_WIDTH / scale
-                    lines.append(f'<rect x="{x:.2f}" y="{y}" width="{overlay_width:.2f}" height="{_BAR_HEIGHT}" '
-                                 f'fill="{overlay_fill}" data-label="{escape(overlay_name, quote=True)}" data-bytes="{overlay_count}"><title>{escape(overlay_name)}: {overlay_count} B</title></rect>')
-                    if overlay_count and words and inside:
-                        covered, rest = words
-                        labels = [(x, inside_label(covered, overlay_count, overlay_width), 'overlay-inside'),
-                                  (x + overlay_width, inside_label(rest, count - overlay_count, width - overlay_width), 'inside')]
-            for label_x, fitted, css in labels:
-                if fitted:
-                    lines.append(text(f'{label_x + _INSIDE_PAD:.2f}', y + _TEXT_OFFSET, fitted, css=css))
+            covered = any(offset < offset_bytes + count and offset + overlay_count > offset_bytes
+                          or words and offset <= offset_bytes < row_bytes
+                          for _, offset, overlay_count, _, *words in row_overlays)
+            fitted = inside_label(name, count, width) if inside and not covered else None
+            if fitted:
+                lines.append(text(f'{x + _INSIDE_PAD:.2f}', y + _TEXT_OFFSET, fitted, css='inside'))
             x += width
             offset_bytes += count
+        for overlay_name, offset, overlay_count, overlay_fill, *words in row_overlays:
+            overlay_x = _LEFT + offset * BAR_WIDTH / scale
+            overlay_width = overlay_count * BAR_WIDTH / scale
+            lines.append(f'<rect x="{overlay_x:.2f}" y="{y}" width="{overlay_width:.2f}" height="{_BAR_HEIGHT}" '
+                         f'fill="{overlay_fill}" data-label="{escape(overlay_name, quote=True)}" data-bytes="{overlay_count}"><title>{escape(overlay_name)}: {overlay_count} B</title></rect>')
+            if words and inside:
+                remainder = row_bytes - offset - overlay_count
+                labels = [(overlay_x, inside_label(words[0], overlay_count, overlay_width), 'overlay-inside'),
+                          (overlay_x + overlay_width, inside_label(words[1], remainder, remainder * BAR_WIDTH / scale), 'inside')]
+                for label_x, fitted, css in labels:
+                    if fitted:
+                        lines.append(text(f'{label_x + _INSIDE_PAD:.2f}', y + _TEXT_OFFSET, fitted, css=css))
         if not headline:
             lines.append(text(f'{x + _END_GAP:.2f}', y + _TEXT_OFFSET, end))
         if note and note[0]:
@@ -122,13 +131,16 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
     y = _TOP + len(rows) * row_height
     if axis:
         lines.append(f'<line x1="{_LEFT}" y1="{y}" x2="{_LEFT + BAR_WIDTH}" y2="{y}" stroke="{_AXIS_FILL}"/>')
+        for offset, label in ticks:
+            tick_x = _LEFT + offset * BAR_WIDTH / scale
+            lines.append(f'<line x1="{tick_x:.2f}" y1="{y}" x2="{tick_x:.2f}" y2="{y + _LEGEND_SWATCH_OFFSET}" stroke="{_AXIS_FILL}"/>')
+            lines.append(text(f'{tick_x:.2f}', y + 2 * _CAPTION_SPACING, label, 'end', css='note'))
         y += _CAPTION_SPACING
         lines.extend((text(_LEFT, y, axis[0]), text(_LEFT + BAR_WIDTH, y, axis[1], 'end')))
-        # A third axis label is the ceiling, under the axis end.
         for extra in axis[2:]:
             y += _CAPTION_SPACING
             lines.append(text(_LEFT + BAR_WIDTH, y, extra, 'end'))
-    y += _CAPTION_SPACING
+    y += _CAPTION_SPACING * (2 if ticks else 1)
     for index, caption in enumerate(captions):
         lines.append(text(_MARGIN, y + index * _CAPTION_SPACING, caption))
     y += len(captions) * _CAPTION_SPACING + _CAPTION_SPACING

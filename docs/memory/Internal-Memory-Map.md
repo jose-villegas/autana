@@ -19,9 +19,12 @@ ranges are not runtime free memory.
 
 ![Shared internal pool by variant](images/internal-pool.svg)
 
-The pool and component charts are drawn from the generated tables below, so
-they need no firmware build; the generated-file gate checks them against those
-tables. Refresh both tables and both charts from the three builds:
+The charts read the generated tables below and `data/runtime-heap.txt`.
+Capture the board readings with `bash launcher/tools/device/capture_runtime_heap.sh docs/memory/data/runtime-heap.txt`.
+The refresh command reads the three builds; `--write` refreshes the generated
+blocks, both charts and the diag boot heap values in the device profile:
+A smaller boot heap refreshes the blocks and charts but fails the profile
+update, retaining the validated host arena.
 
 ```sh
 python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write

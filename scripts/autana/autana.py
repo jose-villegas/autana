@@ -390,7 +390,7 @@ def framewatch(args):
 
 
 def heap(args):
-    """Runtime free bytes and largest block in the board's internal DMA pool."""
+    """Runtime free bytes, largest block and total internal DMA heap."""
     reject_unknown("heap", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana heap [--json]")
     code, replies = send("HEAP", reply="HEAP")
@@ -401,11 +401,11 @@ def heap(args):
 
 
 def parse_heap(reply):
-    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+)", reply)
+    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
     if not match:
         raise ValueError(f"invalid HEAP reply: {reply}")
-    free, largest = map(int, match.groups())
-    return {"free": free, "largest": largest}
+    free, largest, total = map(int, match.groups())
+    return {"free": free, "largest": largest, "total": total}
 
 
 def parse_framewatch(reply):

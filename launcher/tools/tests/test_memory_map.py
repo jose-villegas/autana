@@ -26,6 +26,9 @@ class MemoryMapTests(unittest.TestCase):
         patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
         patcher.start()
         self.addCleanup(patcher.stop)
+        profile = patch.object(memory, 'update_heap_profile')
+        profile.start()
+        self.addCleanup(profile.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -664,6 +667,14 @@ print(m.render(builds))
 
 
 class GateRegressions(unittest.TestCase):
+    def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        for name, value in (('read_runtime_heap', memory.parse_runtime_heap(capture.read_text())),
+                            ('update_heap_profile', None)):
+            patcher = patch.object(memory, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_compile_source_spellings(self):
         for source in ("arbitrary.c", "C:/w/dir/arbitrary.c", r"C:\w\dir\arbitrary.c", "c:/w/dir/arbitrary.c"):
             with self.subTest(source=source):

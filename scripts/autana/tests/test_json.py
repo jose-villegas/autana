@@ -25,11 +25,11 @@ class JsonReadTests(unittest.TestCase):
         return json.loads(stream.getvalue())
 
     def test_heap_reply_and_failure(self):
-        reply = "HEAP free=123456 largest=54321"
-        self.assertEqual(autana.parse_heap(reply), {"free": 123456, "largest": 54321})
+        reply = "HEAP free=123456 largest=54321 total=200000"
+        self.assertEqual(autana.parse_heap(reply), {"free": 123456, "largest": 54321, "total": 200000})
         with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
             self.assertEqual(self.output(autana.heap, ["--json"]),
-                             {"free": 123456, "largest": 54321})
+                             {"free": 123456, "largest": 54321, "total": 200000})
             send.assert_called_once_with("HEAP", reply="HEAP")
         stream = io.StringIO()
         with mock.patch.object(autana, "send", return_value=(0, [reply])), contextlib.redirect_stdout(stream):
@@ -57,13 +57,13 @@ class JsonReadTests(unittest.TestCase):
                              {"frames": 40, "allocs": 0, "repeating": 0, "sites": []})
 
     def test_apps_reply(self):
-        replies = ["APPS name=Star Chart running=1", "APPS name=Sand running=0", "APPS_END"]
-        self.assertEqual(autana.parse_apps(replies), [{"name": "Star Chart", "running": True},
-                                                       {"name": "Sand", "running": False}])
+        replies = ["APPS name=A running=1", "APPS name=B running=0", "APPS_END"]
+        self.assertEqual(autana.parse_apps(replies), [{"name": "A", "running": True},
+                                                       {"name": "B", "running": False}])
         with mock.patch.object(autana, "send", return_value=(0, replies)):
             self.assertEqual(self.output(autana.apps, ["--json"]),
-                             {"apps": [{"name": "Star Chart", "running": True},
-                                       {"name": "Sand", "running": False}]})
+                             {"apps": [{"name": "A", "running": True},
+                                       {"name": "B", "running": False}]})
 
     def test_tune_reply(self):
         replies = ["TUNE tune.primary=200 min=0 max=255 default=226", "TUNE_END count=1"]
@@ -85,12 +85,12 @@ class JsonReadTests(unittest.TestCase):
                                               "on_request": False, "device_only": False}]})
 
     def test_text_output_is_the_board_reply_unchanged(self):
-        replies = ["APPS name=Sand running=1 extra=kept", "APPS_END"]
+        replies = ["APPS name=B running=1 extra=kept", "APPS_END"]
         stream = io.StringIO()
         with mock.patch.object(autana, "send", return_value=(0, replies)), \
                 contextlib.redirect_stdout(stream):
             autana.apps([])
-        self.assertEqual(stream.getvalue(), "APPS name=Sand running=1 extra=kept\n")
+        self.assertEqual(stream.getvalue(), "APPS name=B running=1 extra=kept\n")
 
     def test_json_rejected_for_tune_write(self):
         with self.assertRaises(SystemExit):
