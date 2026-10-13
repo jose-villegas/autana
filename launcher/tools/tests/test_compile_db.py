@@ -26,6 +26,15 @@ class ParseDependenciesTests(unittest.TestCase):
     def test_every_rule_of_a_multi_source_listing_counts(self):
         self.assertEqual(compile_db.parse_dependencies("x: /a.c\nx: /b.c\n"), [os.path.abspath("/a.c"), os.path.abspath("/b.c")])
 
+    def test_a_drive_letter_in_the_target_or_a_prerequisite_is_not_a_separator(self):
+        self.assertEqual(compile_db.parse_dependencies(r"C:/o/a.o: C:/a/b.c C:/Program\ Files/c.h"),
+                         [os.path.abspath("C:/a/b.c"), os.path.abspath("C:/Program Files/c.h")])
+
+    def test_an_entry_the_scan_cannot_read_raises_one_error_type(self):
+        for entry in ({"file": "a.c"}, {"file": "a.c", "command": 'cc "unbalanced'}):
+            with self.assertRaisesRegex(RuntimeError, "dependency scan failed"):
+                compile_db.dependencies(entry)
+
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
 class DependenciesTests(unittest.TestCase):
