@@ -1462,7 +1462,6 @@
 4	launcher/test/timing.c:78	run_body
 4	launcher/tools/r3d/triangle_sizes.c:33	owns
 3	launcher/components/microui/src/microui.c:1188	mu_seed_hover_root
-3	launcher/main/anim/anim_track.c:94	anim_clip_seconds
 3	launcher/main/apps/diagnostics/ui/toggles_screen.c:29	draw_orientation_readout
 3	launcher/main/apps/diagnostics/ui/toggles_screen.c:75	toggles_screen_draw
 3	launcher/main/apps/input_lab/app_input_lab.c:272	draw_hud

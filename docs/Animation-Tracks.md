@@ -12,11 +12,11 @@ The format is glTF 2.0's own animation model<sup>[[17]](Citations.md#17)</sup>, 
 or any other exporter plays back as it was made.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Author["Blender, any glTF exporter, or camera keys<br/><i>.glb, .fbx or .keys.toml</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
     Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its pack</i>"]
     Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the pack</i>"]
-    Open --> Sample["anim_clip_seconds(), anim_track_sample()<br/><i>clip time, then each track</i>"]
+    Open --> Sample["anim_playhead, anim_track_sample()<br/><i>clip time, then each track</i>"]
     Sample --> Caller["the caller's own object<br/><i>eye, colour, fov, ...</i>"]
 ```
 
@@ -111,7 +111,10 @@ float out[ANIM_WIDTH_MAX];
 if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
     && anim_tracks_find(&clip, "camera", ANIM_COMPONENT_TRANSFORM,
                         "position", &move) == ASSET_OK) {
-    anim_track_sample(&move, anim_clip_seconds(&clip.clip, t_ms, ANIM_LOOP), out);
+    anim_playhead_t playhead;
+    anim_playhead_init(&playhead, ANIM_LOOP);
+    anim_playhead_advance(&playhead, &clip.clip, t_ms);
+    anim_track_sample(&move, anim_playhead_seconds(&playhead), out);
 }
 ```
 
@@ -151,18 +154,16 @@ says how resolution works.
 ## Sampling
 
 ```c
-float out[ANIM_WIDTH_MAX];
-const float seconds = anim_clip_seconds(&clip.clip, t_ms, ANIM_LOOP);
-anim_track_sample(&move, seconds, out);
+anim_playhead_advance(&playhead, &clip.clip, dt_ms);
+anim_track_sample(&move, anim_playhead_seconds(&playhead), out);
 ```
 
-`anim_clip_seconds()` wraps the integer time at the clip's duration before
-converting to seconds, preserving millisecond resolution over a long run.
-`ANIM_CLAMP` holds at the duration; a loop authors its first key again as its
-last. `anim_track_sample()` holds the first value before its first key and the
-last after its last, as glTF defines.
-A scene animator keeps its own clock in an `anim_playhead_t`
-(`anim/playback/anim_playhead.h`), which scales by speed and wraps the same way.
+`anim_playhead_t` (`anim/playback/anim_playhead.h`) owns clip time.
+Advancement scales integer milliseconds by speed and wraps at the clip duration
+for `ANIM_LOOP` or holds at the duration for `ANIM_CLAMP`; an empty clip stays
+at zero. Conversion to seconds preserves millisecond resolution over a long run.
+A loop authors its first key again as its last. `anim_track_sample()` holds
+the first value before its first key and the last after its last, as glTF defines.
 `anim_quat_rotate()` turns a vector by a sampled rotation, such as a
 camera's look direction.
 
@@ -258,7 +259,7 @@ build it, the compiler or the flags change.
 ## How it is tested
 
 - `suite_anim_track.c` holds each interpolation, clamp and loop, tracks on one
-  clip timeline, a long run's resolution, the quaternion path and the cubic
+  clip timeline, the quaternion path and the cubic
   layout to hand-built tracks.
 - `suite_anim_binding.c` checks scene field resolution, error reports, dirty
   bits and quaternion writes.
@@ -312,9 +313,8 @@ buffer and starts the new blend from it. Interrupting that blend also freezes
 the currently displayed result.
 
 Each slot has its own speed and pause. Speed has Q16.16 precision.
-Advancement widens the millisecond product before wrapping; a fractional
-accumulator retains sub-millisecond steps. Conversion to float seconds happens
-after integer wrap/clamp through `anim_clip_seconds()`.
+Advancement widens the millisecond product; a fractional accumulator retains
+sub-millisecond steps. `anim_playhead_seconds()` converts the held clip time.
 
 A scene animator loops or clamps, as its scene file's `wrap` sets.
 Each entity has one animator of one clip kind; a property clip (NULL skeleton)

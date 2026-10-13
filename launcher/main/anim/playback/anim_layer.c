@@ -62,7 +62,7 @@ static void
 sample_slot(const anim_layer_t* layer, const anim_slot_t* slot, const anim_skeleton_t* skeleton,
             const anim_joint_bound_t* const* bound, const int* counts, anim_pose_t* out) {
     anim_pose_rest(skeleton, out);
-    const float seconds = anim_playhead_seconds(&slot->playhead, &layer->clips[slot->clip]);
+    const float seconds = anim_playhead_seconds(&slot->playhead);
     anim_sample_pose(bound[slot->clip], counts[slot->clip], seconds, out);
 }
 

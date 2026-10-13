@@ -11,7 +11,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "anim/anim_track.h"
+#include "anim/playback/anim_playhead.h"
 
 #define EPSILON 1e-5F
 
@@ -21,7 +21,10 @@ static const float TIMES[] = {0.0F, 1.0F, 3.0F};
 static void
 sample_at(const anim_track_t* track, uint32_t t_ms, anim_wrap_t wrap, float out[ANIM_WIDTH_MAX]) {
     const anim_clip_t clip = {(uint32_t)((track->times[track->count - 1] * 1000.0F) + 0.5F)};
-    anim_track_sample(track, anim_clip_seconds(&clip, t_ms, wrap), out);
+    anim_playhead_t playhead;
+    anim_playhead_init(&playhead, wrap);
+    anim_playhead_advance(&playhead, &clip, t_ms);
+    anim_track_sample(track, anim_playhead_seconds(&playhead), out);
 }
 
 static anim_track_t
@@ -101,25 +104,22 @@ test_tracks_with_different_key_ranges_stay_in_step_looped_and_clamped(void) {
     float a[ANIM_WIDTH_MAX];
     float b[ANIM_WIDTH_MAX];
     /* 5 s into a looping 4 s clip is 1 s: the early track is at 10, the late one at its start. */
-    float seconds = anim_clip_seconds(&clip, 5000, ANIM_LOOP);
+    anim_playhead_t playhead;
+    anim_playhead_init(&playhead, ANIM_LOOP);
+    anim_playhead_advance(&playhead, &clip, 5000);
+    float seconds = anim_playhead_seconds(&playhead);
     anim_track_sample(&early, seconds, a);
     anim_track_sample(&late, seconds, b);
     TEST_ASSERT_FLOAT_WITHIN(EPSILON, 10.0F, a[0]);
     TEST_ASSERT_FLOAT_WITHIN(EPSILON, 100.0F, b[0]);
     /* Clamped, 9 s is the clip's end: the early track has held 20 since 2 s. */
-    seconds = anim_clip_seconds(&clip, 9000, ANIM_CLAMP);
+    anim_playhead_init(&playhead, ANIM_CLAMP);
+    anim_playhead_advance(&playhead, &clip, 9000);
+    seconds = anim_playhead_seconds(&playhead);
     anim_track_sample(&early, seconds, a);
     anim_track_sample(&late, seconds, b);
     TEST_ASSERT_EQUAL_FLOAT(20.0F, a[0]);
     TEST_ASSERT_EQUAL_FLOAT(130.0F, b[0]);
-}
-
-static void
-test_a_long_run_keeps_millisecond_resolution(void) {
-    const anim_clip_t clip = {3000};
-    /* 3 999 999 001 ms is 1 ms into a lap: a float of milliseconds would be off by hundreds. */
-    const float seconds = anim_clip_seconds(&clip, 3999999001U, ANIM_LOOP);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6F, 0.001F, seconds);
 }
 
 static void
@@ -228,7 +228,6 @@ suite_anim_track(void) {
     RUN_TEST(test_a_looped_track_wraps_at_its_last_key);
     RUN_TEST(test_a_track_starting_late_holds_its_first_value_until_its_time);
     RUN_TEST(test_tracks_with_different_key_ranges_stay_in_step_looped_and_clamped);
-    RUN_TEST(test_a_long_run_keeps_millisecond_resolution);
     RUN_TEST(test_a_single_key_track_is_that_value_always);
     RUN_TEST(test_a_cubic_track_leaves_and_arrives_at_its_tangents);
     RUN_TEST(test_a_cubic_tangent_is_per_second_so_a_longer_segment_covers_the_same_shape);

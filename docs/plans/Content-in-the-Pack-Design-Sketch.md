@@ -99,13 +99,13 @@ today). A track name over 31 characters fails the bake, naming the track.
 
 ```c
 /* launcher/main/anim/anim_tracks.h  (no allocation, no ESP-IDF) */
-typedef struct { uint32_t duration_ms; } anim_clip_t;      /* was: track array + count + duration */
+typedef struct { uint32_t duration_ms; } anim_clip_t;
 typedef struct { const uint8_t* base; uint32_t size; uint16_t count; anim_clip_t clip; } anim_tracks_t;
 
 asset_status_t anim_tracks_open(asset_view_t entry, anim_tracks_t* out);  /* version, table, every array in range, 4-aligned, width/interp valid */
 asset_status_t anim_tracks_from_pack(const asset_pack_t*, const char* id, anim_tracks_t* out);  /* find TRCK + open */
 asset_status_t anim_tracks_find(const anim_tracks_t*, const char* name, anim_track_t* out);     /* zero copy: times/values point into the pack */
-/* unchanged: anim_track_t, anim_track_sample, anim_quat_rotate, anim_clip_seconds(const anim_clip_t*, ...) */
+/* Sampling: anim_track_t, anim_track_sample, anim_quat_rotate. */
 ```
 
 Python: one module `launcher/tools/anim/tracks_asset.py` writes and reads the
@@ -137,9 +137,8 @@ a loaded scene instead of a `const` global.
 
 ## 4. Poses equal the device's: one fixed C host
 
-`launcher/tools/anim/track_host.c` (replaces `sample_tracks_main.c`) links
-`anim_track.c`, `anim_tracks.c`, `asset_pack.c`, `asset_file.c`, and runs
-`anim_clip_seconds` and `anim_track_sample`, the code the firmware runs.
+`launcher/tools/anim/track_host.c` samples pack tracks through the playhead
+and `anim_track_sample`, the code the firmware runs.
 
 ```text
 track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]

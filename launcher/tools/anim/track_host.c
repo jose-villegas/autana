@@ -1,20 +1,7 @@
 /*
- * track_host: prints what a clip's tracks hold every N milliseconds, read
- * from the clip's TRCK entry in an asset pack through the same
- * anim_tracks_from_pack(), anim_clip_seconds() and anim_track_sample() the
- * firmware calls. One program for every clip: track_host.py builds it once.
- *
- *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
- *   track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR
- *
- * By default one line per track per sample time: `<t_ms> <path:CCCC.field> <value...>`,
- * from --from (0) to --until (the clip's duration). With --poses it prints the
- * poses file r3d's triangle_sizes reads, for the camera node NODE: its
- * translation as the eye, the way its rotation turns glTF's -Z as the
- * forward, over the lens and size given, from 0 and looping, so --from and
- * --clamp are refused with it. --poses comes last. --every 0 is refused.
- * The clock counts in 64 bits, so a step past an --until near the u32
- * maximum ends the run instead of wrapping to 0.
+ * track_host: samples pack tracks through the firmware playhead and sampler.
+ * track_host.py builds it once. The printed clock is 64-bit to avoid overflow.
+ * --poses loops from zero. --every must be nonzero.
  */
 #include <inttypes.h>
 #include <stdbool.h>
@@ -25,6 +12,7 @@
 #include "anim/anim_binding.h"
 #include "anim/anim_track.h"
 #include "anim/anim_tracks.h"
+#include "anim/playback/anim_playhead.h"
 #include "asset/asset_file.h"
 
 typedef struct {
@@ -53,16 +41,19 @@ print_poses(const anim_tracks_t* tracks, char** pose_args, const sampling_t* at)
     }
     printf("size %d %d\nlens %s %s\n", atoi(pose_args[1]), atoi(pose_args[2]), pose_args[3], pose_args[4]);
     const float ahead[3] = {0.0F, 0.0F, -1.0F};
+    anim_playhead_t playhead;
+    anim_playhead_init(&playhead, ANIM_LOOP);
     for (uint64_t t = 0; t < at->until_ms; t += at->every_ms) {
         float eye[ANIM_WIDTH_MAX];
         float q[ANIM_WIDTH_MAX];
         float forward[3];
-        const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, ANIM_LOOP);
+        const float seconds = anim_playhead_seconds(&playhead);
         anim_track_sample(&path.translation, seconds, eye);
         anim_track_sample(&path.rotation, seconds, q);
         anim_quat_rotate(q, ahead, forward);
         printf("pose %.9g %.9g %.9g %.9g %.9g %.9g\n", (double)eye[0], (double)eye[1], (double)eye[2],
                (double)forward[0], (double)forward[1], (double)forward[2]);
+        anim_playhead_advance(&playhead, &tracks->clip, at->every_ms);
     }
     return 0;
 }
@@ -71,8 +62,11 @@ enum { BINDING_DESCRIPTION_BYTES = 2 * ANIM_BINDING_STRING_MAX + 1 + sizeof(uint
 
 static int
 print_tracks(const anim_tracks_t* tracks, const sampling_t* at) {
+    anim_playhead_t playhead;
+    anim_playhead_init(&playhead, at->wrap);
+    anim_playhead_advance(&playhead, &tracks->clip, at->from_ms);
     for (uint64_t t = at->from_ms; t < at->until_ms; t += at->every_ms) {
-        const float seconds = anim_clip_seconds(&tracks->clip, (uint32_t)t, at->wrap);
+        const float seconds = anim_playhead_seconds(&playhead);
         for (int i = 0; i < tracks->count; i++) {
             anim_binding_t binding;
             (void)anim_tracks_binding_at(tracks, i, &binding);
@@ -87,6 +81,7 @@ print_tracks(const anim_tracks_t* tracks, const sampling_t* at) {
             }
             printf("\n");
         }
+        anim_playhead_advance(&playhead, &tracks->clip, at->every_ms);
     }
     return 0;
 }

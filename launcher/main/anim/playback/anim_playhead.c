@@ -3,6 +3,8 @@
 
 #include "math/scalar/mathi.h"
 
+static const float SECONDS_PER_MILLISECOND = 0.001F;
+
 void
 anim_playhead_init(anim_playhead_t* out, anim_wrap_t wrap) {
     *out = (anim_playhead_t){.speed_q16 = ANIM_PLAYHEAD_SPEED_ONE, .wrap = wrap};
@@ -32,6 +34,6 @@ anim_playhead_advance(anim_playhead_t* p, const anim_clip_t* clip, uint32_t dt_m
 }
 
 float
-anim_playhead_seconds(const anim_playhead_t* p, const anim_clip_t* clip) {
-    return anim_clip_seconds(clip, p->t_ms, p->wrap);
+anim_playhead_seconds(const anim_playhead_t* p) {
+    return (float)p->t_ms * SECONDS_PER_MILLISECOND;
 }
