@@ -1513,6 +1513,7 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
+                         "launcher/tools/build/build_paths.py",
                          "scripts/lib/python.sh",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
@@ -1557,9 +1558,10 @@ class FlashImageScriptTests(unittest.TestCase):
     def run_script(self, token, image=None):
         environment = dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token, _AUTANA_BOARD=BOARD_A,
                            _AUTANA_DEVICE_LOCK_ROOT=str(self.store.root), PYTHONPATH=str(self.stubs),
-                           PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
+                           PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"],
+                           IDF_PATH=str(self.export.parent))
         return subprocess.run([self.bash, str(self.tree / "scripts/device/flash_image.sh"),
-                               (image or self.image).as_posix(), str(self.export)],
+                               (image or self.image).as_posix()],
                               env=environment, stdin=subprocess.DEVNULL, capture_output=True,
                               text=True, timeout=120)
 

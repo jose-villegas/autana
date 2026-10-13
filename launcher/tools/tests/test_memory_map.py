@@ -548,7 +548,7 @@ print(m.render(builds))
         self.assertIs(result, baseline)
         self.assertEqual(rows, [])
         self.assertEqual(run.call_count, 1)
-        read.assert_called_once_with(launcher / "build.memory", project)
+        read.assert_called_once_with((launcher / "build.memory").resolve(), project)
         self.assertEqual((launcher / "main/linker.lf").read_text(), "original fragment")
         measured = dict(baseline, sections={".iram0.text": (0, 8)}, config=probe.OPTIONS["ringbuf-to-flash"]["config"])
         with patch.object(probe.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run, patch.object(probe, "read_build", side_effect=[baseline, measured]):
