@@ -57,7 +57,7 @@ static frame_watch_t watch;
 static vprintf_like_t forward_vprintf;
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 86 B */
+ * IRAM budget: 78 B */
 static IRAM_ATTR bool
 watching_this_task(void) {
     if (!armed || xPortInIsrContext()) {

@@ -73,6 +73,9 @@ CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=y
 CONFIG_BOOTLOADER_FLASH_DC_AWARE=y
 CONFIG_SPI_FLASH_HPM_ENA=y
 
+# The present's queue and semaphore calls run from IRAM; the SPI option
+# below depends on it.
+CONFIG_FREERTOS_IN_IRAM=y
 # The SPI queue every present goes through runs from IRAM, as the rest of a
 # present's own code does (main/linker.lf).
 CONFIG_SPI_MASTER_IN_IRAM=y
