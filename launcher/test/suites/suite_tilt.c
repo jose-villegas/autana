@@ -33,9 +33,9 @@ fixture(void) {
  * honest gravity: anything else would be rejected by the trust gate, which is
  * tested separately below. */
 static void
-hold(int gx, int gy, int shake, uint32_t dt_ms, uint32_t ms) {
+hold(int gx, int gy, int turn_speed, uint32_t dt_ms, uint32_t ms) {
     for (uint32_t elapsed = 0; elapsed < ms; elapsed += dt_ms) {
-        tilt_update(&t, gx, gy, 0, shake, dt_ms);
+        tilt_update(&t, gx, gy, 0, turn_speed, dt_ms);
     }
 }
 
@@ -111,9 +111,9 @@ test_shaking_makes_it_track_faster(void) {
     hold(ONE_G, 0, 0, 14, 140);
 
     tilt_reset(&moving, ONE_G);
-    tilt_update(&moving, 0, ONE_G, 0, 255, 14);
+    tilt_update(&moving, 0, ONE_G, 0, TILT_TURN_FULL_DPS, 14);
     for (int i = 0; i < 10; i++) {
-        tilt_update(&moving, ONE_G, 0, 0, 255, 14);
+        tilt_update(&moving, ONE_G, 0, 0, TILT_TURN_FULL_DPS, 14);
     }
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(tilt_x(&still), tilt_x(&moving),
@@ -305,7 +305,7 @@ test_turning_the_board_does_not_read_as_shaking(void) {
     fixture();
     for (int i = 0; i < 48; i++) {
         const int* u = unit[i % turns];
-        tilt_update(&t, (ONE_G * u[0]) / 1000, (ONE_G * u[1]) / 1000, 0, 255,
+        tilt_update(&t, (ONE_G * u[0]) / 1000, (ONE_G * u[1]) / 1000, 0, TILT_TURN_FULL_DPS,
                     14); /* gyro pinned at maximum throughout */
     }
 

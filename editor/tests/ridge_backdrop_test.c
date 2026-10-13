@@ -101,7 +101,7 @@ main(void) {
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
-    ui_ridge_set_gravity(0, INPUT_GRAVITY_PER_G, 256, 0);
+    ui_ridge_set_gravity(0, INPUT_ACCEL_ONE_G, 256, 0);
     frame(false, false);
     frame(false, false);
     gfx_color_t* as_boot_left_it = snapshot();

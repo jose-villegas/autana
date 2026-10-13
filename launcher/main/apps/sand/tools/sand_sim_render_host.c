@@ -156,12 +156,15 @@ board_angle(int frame) {
     return 7.0 * sin(t * 6.283185307179586) + 36.0 * (0.5 - 0.5 * cos(t * 6.283185307179586));
 }
 
+/* How fast the simulated board turns, for tilt's filter only. */
+#define SIMULATED_TURN_DPS 106
+
 static void
 drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
     const double radians = board_angle(frame->index) * 0.017453292519943295;
     const int sx = (int)lround(256.0 * sin(radians));
     const int sy = (int)lround(256.0 * cos(radians));
-    tilt_update(&tilt, -sy, sx, 0, 90, frame->dt_ms);
+    tilt_update(&tilt, -sy, sx, 0, SIMULATED_TURN_DPS, frame->dt_ms);
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
     if (angles != NULL) {

@@ -622,7 +622,7 @@ start_sim(void) {
      * allocation failure shows up at start_sim() rather than on the first
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
-    tilt_reset(&tilt, INPUT_GRAVITY_PER_G);
+    tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
@@ -1066,7 +1066,7 @@ static int pending_awake_blocks, pending_awake_cells;
 static void
 read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
     *gx = 0;
-    *gy = INPUT_GRAVITY_PER_G;
+    *gy = INPUT_ACCEL_ONE_G;
     *flow = 256;
     *jostle = 0;
 
@@ -1074,7 +1074,8 @@ read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int
         return;
     }
 
-    tilt_update(&tilt, motion->gravity.x, motion->gravity.y, motion->gravity_z, motion->turn_rate, dt_ms);
+    const vec3i_t a = motion->acceleration;
+    tilt_update(&tilt, a.x, a.y, a.z, motion->turn_speed, dt_ms);
 
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
@@ -1169,8 +1170,8 @@ log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
     }
     ESP_LOGI(TAG,
              "down is (%+d,%+d)  smoothed (%+6d,%+6d)  "
-             "gravity (%+6d,%+6d)  shake %d",
-             dx, dy, gx, gy, motion->gravity.x, motion->gravity.y, jostle);
+             "raw (%+6d,%+6d)  shake %d",
+             dx, dy, gx, gy, motion->acceleration.x, motion->acceleration.y, jostle);
     last_dx = dx;
     last_dy = dy;
 }

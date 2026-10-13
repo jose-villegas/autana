@@ -50,6 +50,10 @@
  * moment rather than flickering off between strokes. */
 #define TILT_SHAKE_TAU_MS   120
 
+/* A turn this fast, in deg/s summed across the gyroscope's axes, reads as
+ * fully turning: brisk, but reachable with a flick of the wrist. */
+#define TILT_TURN_FULL_DPS  300
+
 typedef struct {
     /* Smoothed in-plane gravity, in input units scaled by 256. The extra bits
      * matter: without them a slow tilt loses its fractional part every frame
@@ -71,11 +75,12 @@ void tilt_reset(tilt_t* t, int counts_per_g);
 /* Feed one sample. (gx, gy) is gravity in SCREEN axes and `gz` is the
  * component through the screen, needed only for the magnitude, but
  * needed: without it a flat device looks identical to free fall.
- * `rotation` is 0-255 from the GYROSCOPE, setting only how quickly the
- * filter tracks; deliberately not what shaking is read from. The first
+ * `turn_speed` is deg/s from the GYROSCOPE, setting only how quickly the
+ * filter tracks (full speed at TILT_TURN_FULL_DPS); deliberately not what
+ * shaking is read from. The first
  * sample after a reset is adopted exactly, so whatever follows it does
  * not visibly swing into place on its first frame. */
-void tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms);
+void tilt_update(tilt_t* t, int gx, int gy, int gz, int turn_speed, uint32_t dt_ms);
 
 /* Which way is down in the screen plane, in input units. */
 int tilt_x(const tilt_t* t);

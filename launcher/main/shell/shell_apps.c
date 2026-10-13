@@ -231,7 +231,8 @@ feed_launcher_gravity(uint32_t dt_ms) {
     if (!input_read_motion(&motion)) {
         return;
     }
-    tilt_update(&launcher_tilt, motion.gravity.x, motion.gravity.y, motion.gravity_z, motion.turn_rate, dt_ms);
+    const vec3i_t a = motion.acceleration;
+    tilt_update(&launcher_tilt, a.x, a.y, a.z, motion.turn_speed, dt_ms);
     ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
                          tilt_shake(&launcher_tilt));
 }
@@ -330,7 +331,7 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 void
 shell_apps_init(void) {
     gfx_set_frame_overlay(shell_frame_overlay);
-    tilt_reset(&launcher_tilt, INPUT_GRAVITY_PER_G);
+    tilt_reset(&launcher_tilt, INPUT_ACCEL_ONE_G);
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
