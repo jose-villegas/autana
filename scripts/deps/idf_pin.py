@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "launcher/tools/build"))
-from espressif import IDF_PIN, idf_drift, idf_facts, idf_path, idf_pin  # noqa: E402
+from espressif import IDF_PIN, idf_drift, idf_facts, idf_image_tag, idf_path, idf_pin  # noqa: E402
 
 RELEASE_LINE = re.compile(r"release-v(\d+)\.(\d+)")
 
@@ -38,11 +38,6 @@ def write(pin, found, image, date, path=ROOT / IDF_PIN):
     pin = {**pin, "image": image, "image_date": date, **found}
     path.write_text(json.dumps(pin, indent=2) + "\n", encoding="utf-8", newline="\n")
     return pin
-
-
-def tag(image):
-    """The tag of an image reference: espressif/idf:release-v5.5@sha256:... is release-v5.5."""
-    return image.split("@")[0].rpartition(":")[2]
 
 
 def newer_line(tag, tags):
@@ -66,7 +61,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "show":
         pin = idf_pin()
-        print(tag(pin["image"]) if args.field == "tag" else pin[args.field])
+        print(idf_image_tag(pin["image"]) if args.field == "tag" else pin[args.field])
         return 0
     if args.command == "newer-line":
         line = newer_line(tag(idf_pin()["image"]), json.load(sys.stdin))

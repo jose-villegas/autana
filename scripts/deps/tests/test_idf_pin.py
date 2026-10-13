@@ -61,7 +61,10 @@ class IdfPinTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text()), {
             "image": "espressif/idf:release-v5.5@sha256:abc", "commit": self.commit,
             "image_date": "2026-10-12", "esp_clang": "19.1.2"})
-        self.assertEqual(idf_pin.tag("espressif/idf:release-v5.5@sha256:abc"), "release-v5.5")
+        self.assertEqual(idf_pin.idf_image_tag("espressif/idf:release-v5.5@sha256:abc"), "release-v5.5")
+
+    def test_a_registry_port_is_not_the_tag(self):
+        self.assertEqual(idf_pin.idf_image_tag("registry:5000/espressif/idf:release-v6.1@sha256:abc"), "release-v6.1")
 
     def test_only_a_newer_release_line_is_named(self):
         tags = {"results": [{"name": n} for n in ("latest", "release-v5.5", "release-v6.1", "release-v6.0", "v6.1.1", "release-v5.10")]}

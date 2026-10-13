@@ -140,9 +140,15 @@ def checkout_version(idf):
                  for part in ("MAJOR", "MINOR"))
 
 
+def idf_image_tag(image):
+    """The tag of an image reference: espressif/idf:release-v5.5@sha256:... is
+    release-v5.5, and a registry port (host:5000/espressif/idf:...) is not a tag."""
+    return image.split("@")[0].rpartition(":")[2]
+
+
 def install_commands(pin, home=None, checkout=None):
     """Commands to install a missing pinned checkout, or just its missing tools."""
-    tag = pin["image"].split(":", 1)[1].split("@", 1)[0].removeprefix("release-")
+    tag = idf_image_tag(pin["image"]).removeprefix("release-")
     folder = Path("C:/Espressif") / tag if os.name == "nt" else (home or Path.home()) / "esp" / tag
     existing = checkout is not None
     checkout = Path(checkout) if existing else folder / "esp-idf"

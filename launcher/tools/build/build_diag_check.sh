@@ -51,7 +51,8 @@ GATE_BASE="${COMPLEXITY_GATE_BASE:-origin/main}"
 . "$DIR/../../../scripts/quiet.sh"
 
 if [ -z "${QUIET_INNER:-}" ]; then
-    quiet_begin "$DIR/../../build.diag/build_diag_check.log"
+    # Beside build.diag, not in it: the build prepares (and may empty) that folder.
+    quiet_begin "$DIR/../../build.diag-check.log"
     quiet_run diagnostics-check env QUIET_INNER=1 bash "$0" || true
     quiet_end build_diag_check || exit $?
     exit 0
