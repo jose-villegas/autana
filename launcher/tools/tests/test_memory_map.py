@@ -82,29 +82,134 @@ class MemoryMapTests(unittest.TestCase):
         inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 2), 0x40380006: ("foo$part$0", 2)})
         self.assertEqual(self.check(sites, inputs)[0][1], 8)
 
-    def test_escaped_clone_map_gate(self):
-        for archive in ("libmain.a", "libesp_lcd.a"):
-            for output in (".flash.text", ".iram0.text"):
-                with self.subTest(archive=archive, output=output):
-                    budget = 4 if output == ".flash.text" else 8
-                    sites = self.source(f"# Cache latency. IRAM budget: {budget} B\n[mapping:hot]\narchive: {archive}\nentries:\n    gfx_present:gather_and_send (noflash)\n", "launcher/main/linker.lf")
-                    text = f".iram0.text 0x40380000 0x4\n .text.gather_and_send 0x40380000 0x4 esp-idf/main/{archive}(gfx_present.c.obj)\n{output} 0x4207053c 0x4\n .text.gather_and_send.isra.0\n  0x4207053c 0x4 esp-idf/main/{archive}(gfx_present.c.obj)\n"
-                    inputs, _, _ = memory.map_inputs(text, {})
-                    if output == ".flash.text":
-                        with self.assertRaisesRegex(ValueError, r"linker.lf:2:.*gather_and_send.isra.0.*\.flash.text.*source.*clones"):
-                            self.check(sites, inputs)
-                        for other in ("other.a(gfx_present.c.obj)", f"{archive}(other.c.obj)"):
-                            base, clone = text.split(output, 1)
-                            inputs, _, _ = memory.map_inputs(base + output + clone.replace(f"{archive}(gfx_present.c.obj)", other), {})
-                            self.assertEqual(self.check(sites, inputs)[0][1], budget)
-                    else:
-                        self.assertEqual(self.check(sites, inputs)[0][1], budget)
+    def fragment_build(self, mappings, batch=False):
+        fragment = self.root / "linker fragment.lf"
+        fragment.write_text(json.dumps(mappings), encoding="utf-8")
+        package = self.root / "tools/ldgen/ldgen"
+        package.mkdir(parents=True, exist_ok=True)
+        (package / "__init__.py").write_text("")
+        (package / "fragments.py").write_text("import json\nfrom pathlib import Path\nfrom types import SimpleNamespace\nclass Mapping:\n def __init__(self, record):\n  self.archive, self.entries = record\ndef parse_fragment_file(path, config):\n return SimpleNamespace(fragments=[Mapping(r) for r in json.loads(Path(path).read_text())])\n")
+        (package / "sdkconfig.py").write_text("import os\nfrom pathlib import Path\nclass SDKConfig:\n def __init__(self, kconfig, config):\n  assert Path(kconfig).read_text() == 'fixture kconfig'\n  assert Path(config).read_text() == 'fixture config'\n  assert os.environ['LDGEN_FIXTURE'] == 'loaded'\n")
+        (self.root / "Kconfig").write_text("fixture kconfig")
+        (self.root / "sdkconfig").write_text("fixture config")
+        (self.root / "config.env").write_text(json.dumps({"LDGEN_FIXTURE": "loaded"}))
+        command = (f'python "{package.parent / "ldgen.py"}" --fragments-list "{fragment}" '
+                   f'--config "{self.root / "sdkconfig"}" --kconfig "{self.root / "Kconfig"}" --env-file "{self.root / "config.env"}"')
+        if batch:
+            (self.root / "ldgen.bat").write_text(command)
+            command = "ldgen.bat"
+        command = command.replace("$", "$$").replace(":", "$:")
+        (self.root / "build.ninja").write_text(f"build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND\n  COMMAND = {command}\n", encoding="utf-8")
+        return self.root
 
-        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR gather_and_send(void) {}")
-        text = ".flash.text 0x4207053c 0x4\n .iram1.0 0x4207053c 0x4 main/libmain.a(foo.c.obj)\n"
-        inputs, _, _ = memory.map_inputs(text, {0x4207053c: ("gather_and_send$isra$0", 4)})
-        with self.assertRaisesRegex(ValueError, r"foo.c:2:.*gather_and_send\$isra\$0.*\.flash.text.*source.*clones"):
-            self.check(sites, inputs)
+    def test_ldgen_fragment_entries(self):
+        mappings = [["libidf.a", [["foo", "foo", "noflash"], ["foo", "foo", "noflash_text"],
+                                 ["all", None, "noflash"], ["ignored", "ignored", "default"], ["bar", "bar", "iram"]]]]
+        for batch in (False, True):
+            with self.subTest(batch=batch), patch.object(memory, "idf_python", return_value=sys.executable):
+                entries = memory.iram_entries(self.fragment_build(mappings, batch))
+                self.assertEqual(entries, [["libidf.a", "bar.*", "bar"], ["libidf.a", "foo.*", "foo"]])
+                inputs = [memory.Input("libidf.a", "foo.c.obj", "foo$part$12", 4, output=".flash.text")]
+                with self.assertRaisesRegex(ValueError, r"ldgen: libidf.a:foo.\*:foo:.*map the whole object.*cannot name clones"):
+                    memory.check([], inputs, "release", {}, lambda site: True, linker_entries=entries)
+
+    def test_ldgen_requires_fragment_inputs(self):
+        for text in ("", "build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND\n  COMMAND = python ldgen.py\n"):
+            (self.root / "build.ninja").write_text(text)
+            with self.assertRaisesRegex(ValueError, "ldgen"):
+                memory.iram_entries(self.root)
+
+    def test_missing_base_clone_in_flash(self):
+        build = self.fragment_build([["libidf.a", [["foo", "foo", "noflash"]]]])
+        inputs, _, _ = memory.map_inputs(".flash.text 0x42000000 0x4\n .text.foo.isra.0 0x42000000 0x4 main/libidf.a(foo.c.obj)\n", {})
+        with patch.object(memory, "idf_python", return_value=sys.executable), self.assertRaisesRegex(ValueError, "clone foo.isra.0 is in .flash.text"):
+            memory.check([], inputs, "release", {}, lambda site: True, linker_entries=memory.iram_entries(build))
+
+    def test_owned_clone_escape_hint(self):
+        with self.assertRaisesRegex(ValueError, "mark it IRAM_ATTR in source so its clones are placed with it"):
+            memory.check([], [memory.Input("libmain.a", "foo.c.obj", "foo.isra.0", 4, output=".flash.text")],
+                         "release", {"libmain.a"}, lambda site: True, linker_entries=[("libmain.a", "foo.*", "foo")])
+
+    def test_other_archive_and_object_clones_are_not_escapes(self):
+        for archive, obj in (("libother.a", "foo.c.obj"), ("libmain.a", "other.c.obj")):
+            with self.subTest(archive=archive, obj=obj):
+                self.assertEqual(memory.check([], [memory.Input(archive, obj, "foo.isra.0", 4, output=".flash.text")],
+                                              "release", {}, lambda site: True, linker_entries=[("libmain.a", "foo.*", "foo")]), [])
+
+    def test_base_function_in_flash_is_not_clone_escape(self):
+        self.assertEqual(memory.check([], [memory.Input("libmain.a", "foo.c.obj", "foo", 4, output=".flash.text")],
+                                      "release", {}, lambda site: True, linker_entries=[("libmain.a", "foo.*", "foo")]), [])
+
+    def test_check_cli_clone_escape_and_flash_budget(self):
+        sites = self.source("/* Cache latency. IRAM budget: 8 B */\nstatic void IRAM_ATTR foo(void) {}")
+        for output, status in ((".flash.text", 1), (".iram0.text", 0)):
+            with self.subTest(output=output):
+                text = (".iram0.text 0x40380000 0x8\n .text.foo 0x40380000 0x4 main/libmain.a(foo.c.obj)\n"
+                        f"{output} 0x42000000 0x4\n .text.foo.isra.0\n  0x42000000 0x4 main/libmain.a(foo.c.obj)\n"
+                        ".flash.text 0x42000004 0x40\n .text.foo 0x42000004 0x40 main/libmain.a(foo.c.obj)\n")
+                placed, _, _ = memory.map_inputs(text, {})
+                build = dict(variant="release", idf_commit="pin", owned=memory.components(self.root),
+                             inputs=[item for item in placed if item.output.startswith(".iram")], placed_inputs=placed,
+                             linker_entries=[("libmain.a", "foo.*", "foo")])
+                capture = io.StringIO()
+                with patch.object(sys, "argv", ["memory_map.py", "--check", "fixture"]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=(sites, lambda site: True)), patch.object(memory, "idf_pin", return_value={"commit": "pin"}), contextlib.redirect_stdout(capture), contextlib.redirect_stderr(capture):
+                    self.assertEqual(memory.main(), status)
+                self.assertIn("clone foo.isra.0 is in .flash.text" if status else "8 B", capture.getvalue())
+
+    def test_clone_suffix_shape(self):
+        for suffix in (".const_prop.123", "$const_prop$123", ".part.10.cold"):
+            self.assertEqual(memory.clone_base("foo" + suffix), "foo")
+        for name in ("foo.isra.0_tail", "foo.isra.", "foo.isra.x", "foo.cold_tail", "foo.part.0.bar"):
+            self.assertEqual(memory.clone_base(name), name)
+
+    def test_map_outputs_and_admitted_sections(self):
+        for output in (".flash.text", ".rtc.text", ".other"):
+            text = (f"{output} 0x42000000 0x30\n"
+                    " .literal.foo 0x42000000 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .iram1.0.literal 0x42000004 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .iram1.0 0x42000008 0x8 main/libmain.a(foo.c.obj)\n"
+                    " .iram2.0 0x42000010 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .data.foo 0x42000014 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .text.foo 0x42000018 0x0 main/libmain.a(foo.c.obj)\n"
+                    " .text.bar 0x42000018 0x4 standalone.obj\n")
+            inputs, _, _ = memory.map_inputs(text, {0x42000008: ("foo", 4), 0x4200000c: ("foo$part$12", 4)})
+            self.assertEqual([(i.symbol, i.size, i.literal, i.output) for i in inputs],
+                             [("foo", 4, True, output), ("foo", 4, False, output),
+                              ("foo$part$12", 4, False, output), (".iram2.0", 4, False, output), ("foo", 4, True, output)])
+
+    def test_literal_name_for_unrelated_members(self):
+        text = ".iram0.text 0x40380000 0xc\n .iram1.0.literal 0x40380000 0x4 main/libmain.a(foo.c.obj)\n .iram1.0 0x40380004 0x8 main/libmain.a(foo.c.obj)\n"
+        inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 4), 0x40380008: ("bar", 4)})
+        self.assertEqual(inputs[-1].symbol, ".iram1.0.literal")
+
+    def test_single_member_in_non_iram_output(self):
+        inputs, _, _ = memory.map_inputs(".flash.text 0x42000000 0x4\n .iram1.0 0x42000000 0x4 main/libmain.a(foo.c.obj)\n", {0x42000000: ("foo$part$0", 4)})
+        self.assertEqual([(i.symbol, i.output) for i in inputs], [("foo$part$0", ".flash.text")])
+
+    def test_iram_output_admits_unspecialized_input(self):
+        inputs, _, _ = memory.map_inputs(".iram0.text 0x40380000 0x4\n .custom 0x40380000 0x4 main/libmain.a(foo.c.obj)\n", {})
+        self.assertEqual([(i.symbol, i.size) for i in inputs], [(".custom", 4)])
+
+    def test_alias_use_with_budgeted_and_unbudgeted_aliases(self):
+        found = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\n#define OTHER_CODE IRAM_ATTR\nstatic void HOT_CODE OTHER_CODE foo(void) {}")
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].entries, [("foo", "foo")])
+
+    def test_alias_uses_activity_archive_and_dedup(self):
+        self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE foo(void) {}")
+        self.source("static void HOT_CODE outside(void) {}", "launcher/components/other/other.c")
+        found = memory.sites(self.root)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].entries, [("foo", "foo")])
+        build = dict(build=self.root, owned=memory.components(self.root), config={})
+        for lines, expected in (([3], True), ([4], True), ([], False)):
+            with patch.object(memory, "preprocessed_lines", return_value={(self.root / "launcher/main/foo.c", line) for line in lines}):
+                placements, active = memory.build_sites(self.root, build)
+                self.assertEqual(active(placements[0]), expected)
+
+    def test_alias_detection_requires_attribute_and_word_boundary(self):
+        found = self.source("#define HOT_CODE IRAM_ATTR\n/* Ordinary macro. IRAM budget: 4 B */\n#define NOT_CODE ordinary\nstatic void NOT_CODE ignored(void) {}\nstatic void HOT_CODE_SUFFIX unrelated(void) {}\n/* Cache latency. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
+        self.assertEqual([(site.line, site.entries) for site in found], [(7, [("foo", "foo")])])
 
     def test_budget_comment_owns_unattributed_function(self):
         sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
@@ -335,6 +440,7 @@ print(m.render(builds))
         app = memory.Site("launcher/main/apps/demo/nested/foo.c", 1, "launcher/main/apps/demo/", "Cache latency.", 4, "libmain.a", [("foo", "foo")])
         engine = memory.Site("launcher/main/bar.c", 1, "engine", "Cache latency.", 8, "libmain.a", [("bar", "bar")])
         build = {"variant": "dev", "idf_commit": "fixture", "config": {"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, "owned": {"libmain.a"}, "inputs": [memory.Input("libmain.a", "foo.c.obj", "foo", 4), memory.Input("libmain.a", "bar.c.obj", "bar", 8)]}
+        build.update(placed_inputs=build["inputs"], linker_entries=[])
         output = io.StringIO()
         with patch.object(sys, "argv", ["memory_map.py", "--check", "fixture"]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=([app, engine], lambda site: True)), patch.object(memory, "render", side_effect=AssertionError("check rendered tables")), patch.object(memory, "idf_pin", return_value={"commit": "fixture"}), contextlib.redirect_stdout(output):
             self.assertEqual(memory.main(), 0)
@@ -565,17 +671,23 @@ print(m.render(builds))
         (build / "project_description.json").write_text(json.dumps(metadata))
         (build / "build_id.txt").write_text("123456abcdef-diag\n")
         (build / "sdkconfig").write_text("CONFIG_LAUNCHER_SELFTEST=y\n")
-        (build / "launcher.map").write_text("iram0_0_seg 0x40380000 0x400\ndram0_0_seg 0x3fc80000 0x400\n.iram0.text 0x40380000 0x4\n")
+        (build / "launcher.map").write_text("iram0_0_seg 0x40380000 0x400\ndram0_0_seg 0x3fc80000 0x400\n.iram0.text 0x40380000 0x4\n .text.foo 0x40380000 0x4 main/libchosen.a(foo.c.obj)\n.flash.text 0x42000000 0x4\n .text.foo.part.0 0x42000000 0x4 main/libchosen.a(foo.c.obj)\n")
         ld = build / "esp-idf/esp_system/ld"
         ld.mkdir(parents=True)
         (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
         (ld / "memory.ld").write_text("")
-        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", return_value=json.dumps({"layout": []})), patch.object(memory, "idf_commit", return_value="idf-commit"):
+        fragment = build / "linker.lf"
+        fragment.write_text("[mapping:hot]\narchive: libchosen.a\nentries:\n    foo:foo (noflash)\n")
+        (build / "build.ninja").write_text("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND linker.lf\n  COMMAND = python idf/tools/ldgen/ldgen.py --config sdkconfig --kconfig Kconfig --env-file config.env --fragments-list linker.lf\n")
+        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
         self.assertEqual(measured["variant"], "diag")
         self.assertEqual(measured["idf_commit"], "idf-commit")
+        self.assertEqual([i.output for i in measured["inputs"]], [".iram0.text"])
+        self.assertEqual([i.output for i in measured["placed_inputs"]], [".iram0.text", ".flash.text"])
+        self.assertEqual(measured["linker_entries"], [["libchosen.a", "foo.*", "foo"]])
 
     def test_probe_baseline_is_built_even_without_selected_experiments(self):
         from types import SimpleNamespace
@@ -692,6 +804,8 @@ print(m.render(builds))
         source = self.root / "launcher/main/foo.c"
         source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         self.assertNotIn(b"\r\r\n", source.read_bytes())
+        for build in builds:
+            build.update(placed_inputs=build["inputs"], linker_entries=[])
         def build_sites(root, build):
             return memory.sites(root), lambda site: site.entries[0][1] == "foo" or build["variant"] != "release"
         arguments = ["memory_map.py", "--root", str(self.root), "--update-budgets", "release", "dev", "diag"]
@@ -738,6 +852,7 @@ class GateRegressions(unittest.TestCase):
             site = memory.Site("foo.c", 1, "engine", "Cache latency.", 4, "libmain.a", [("foo", "foo")])
             build = dict(variant="release", idf_commit="measured", owned={"libmain.a"},
                          inputs=[memory.Input("libmain.a", "foo.c.obj", "foo", 8)])
+            build.update(placed_inputs=build["inputs"], linker_entries=[])
             for commit, flags, status in (("measured", [], 1), ("other", [], 0), ("other", ["--require-pin"], 1)):
                 pin.write_text(json.dumps({"commit": commit}))
                 output = io.StringIO()
@@ -762,6 +877,8 @@ class GateRegressions(unittest.TestCase):
         builds = [dict(variant=variant, idf_commit="pinned", owned={"libmain.a"},
                        inputs=[memory.Input("libmain.a", "foo.c.obj", "foo", 8), memory.Input("libmain.a", "other.c.obj", "other", 2)])
                   for variant in memory.VARIANTS]
+        for build in builds:
+            build.update(placed_inputs=build["inputs"], linker_entries=[])
         output = io.StringIO()
         with patch.object(sys, "argv", ["memory_map.py", "--check", *memory.VARIANTS]), patch.object(memory, "idf_pin", return_value={"commit": "pinned"}), patch.object(memory, "read_build", side_effect=builds), patch.object(memory, "build_sites", return_value=([site], lambda site: True)), contextlib.redirect_stderr(output):
             self.assertEqual(memory.main(), 1)

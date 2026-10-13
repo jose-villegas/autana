@@ -28,9 +28,10 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
 _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
-/* Present code avoids cold-cache latency on narrow strips (suite_gfx
- * test_narrow_present_counters). Development overlays, send auditing and
- * raw-full dispatch add code to this path.
+/* Present code avoids cold-cache latency on narrow strips. Use an
+ * attribute, not linker.lf, because a mapping entry misses the compiler's
+ * clones. Development overlays, send auditing and raw-full dispatch add
+ * code to this path.
  * IRAM budget: release 2920 B, dev 4001 B, diag 4001 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
@@ -832,12 +833,12 @@ gfx_present_wait(void) {
 
 #else /* !ESP_PLATFORM */
 
-void GFX_PRESENT_IRAM_ATTR
+void
 gfx_present_begin(void) {
     gfx_present_guard_begin();
 }
 
-void GFX_PRESENT_IRAM_ATTR
+void
 gfx_present_wait(void) {
     /* No panel on a host build; draining the dirty tracker here is what
      * lets a host test assert the same "sequencing leaves it clean"

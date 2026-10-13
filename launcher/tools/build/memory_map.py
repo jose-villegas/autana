@@ -36,6 +36,7 @@ from c_comments import scan
 VARIANT_PATTERN = "|".join(map(re.escape, VARIANTS))
 BUDGET = re.compile(r"IRAM budget: ((?:(?:" + VARIANT_PATTERN + r") )?\d+ B(?:, (?:(?:" + VARIANT_PATTERN + r") )?\d+ B)*)")
 ATTRIBUTE = re.compile(r"\b(?:\w*IRAM_ATTR|\w*IRAM\w*_ATTR)\b|__attribute__\s*\(\(\s*section\s*\(\s*\"\.iram[^\"]*\"")
+DEFINE = re.compile(r"^#define\s+(\w+)\s+(.+)$", re.M)
 PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
 CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
 CLONE_SUFFIX = re.compile(r"(?:[.$][a-z_]+[.$]\d+|[.$]cold)+$")
@@ -43,6 +44,26 @@ BLOCK = "internal-memory-map"
 DOC = ROOT / "docs/notes/Board-and-Memory.md"
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
 UPDATE_BUDGETS = REGENERATE.rsplit(" ", 1)[0] + " --update-budgets"
+
+
+LDGEN_ENTRIES = r"""
+import json, os, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from ldgen.fragments import Mapping, parse_fragment_file
+from ldgen.sdkconfig import SDKConfig
+args = json.loads(sys.argv[2])
+os.environ.update(json.loads(Path(args["env-file"]).read_text(encoding="utf-8")))
+config = SDKConfig(args["kconfig"], args["config"])
+entries = set()
+for path in args["fragments-list"].split(";"):
+    for fragment in parse_fragment_file(path, config).fragments:
+        if isinstance(fragment, Mapping):
+            for obj, symbol, scheme in fragment.entries:
+                if symbol and re.fullmatch(r"noflash\w*|iram\w*", scheme):
+                    entries.add((fragment.archive, obj + ".*", symbol))
+print(json.dumps(sorted(entries)))
+"""
 
 
 @dataclass
@@ -71,16 +92,11 @@ class Input:
     output: str = ".iram0.text"
 
 
-def preceding_comment(lines, index, kind):
+def preceding_comment(lines, index):
     end = index
-    if kind == "c":
-        return next((comment.text for comment in scan(Path(), "\n".join(lines))
-                     if comment.line + len(comment.raw_lines) == index + 1), "")
-    else:
-        while index and lines[index - 1].lstrip().startswith("#"):
-            index -= 1
-    return " ".join(re.sub(r"^\s*(?:/\*|\*|#)\s?|\*/", "", line).strip()
-                    for line in lines[index:end])
+    while index and lines[index - 1].lstrip().startswith("#"):
+        index -= 1
+    return " ".join(re.sub(r"^\s*#\s?", "", line).strip() for line in lines[index:end])
 
 
 def components(root, metadata=None):
@@ -132,26 +148,28 @@ def sites(root, owned=None):
     alias_sites = {}
     alias_uses = []
     budget_aliases = set()
+    sources = []
     for path in paths:
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        comments = {comment.line + len(comment.raw_lines) - 1: comment.text
+                    for comment in scan(path, text)} if path.suffix in {".c", ".h"} else {}
+        sources.append((path, lines, comments))
         if path.suffix in {".c", ".h"}:
-            for alias, expression in re.findall(r"^#define\s+(\w+)\s+(.+)$", path.read_text(encoding="utf-8"), re.M):
-                if ATTRIBUTE.search(expression):
-                    attribute_aliases.add(alias)
-            lines = path.read_text(encoding="utf-8").splitlines()
             for index, line in enumerate(lines):
-                define = re.match(r"#define\s+(\w+)\s+(.+)$", line)
-                if define and define.group(1) in attribute_aliases and BUDGET.search(preceding_comment(lines, index, "c")):
-                    budget_aliases.add(define.group(1))
-    for path in paths:
+                define = DEFINE.match(line)
+                if define and ATTRIBUTE.search(define.group(2)):
+                    alias = define.group(1)
+                    attribute_aliases.add(alias)
+                    if BUDGET.search(comments.get(index, "")):
+                        budget_aliases.add(alias)
+    for path, lines, comments in sources:
         name = path.relative_to(root).as_posix()
         owner = "/".join(name.split("/")[:4]) + "/" if "/apps/" in name else "engine"
-        lines = path.read_text(encoding="utf-8").splitlines()
-        comments = {comment.line + len(comment.raw_lines) - 1: comment.text
-                    for comment in scan(path, "\n".join(lines))} if path.suffix in {".c", ".h"} else {}
         for index, line in enumerate(lines):
             if path.suffix in {".c", ".h"}:
-                define = re.match(r"#define\s+(\w+)\s+(.+)$", line)
-                budget_alias = define and define.group(1) in attribute_aliases and BUDGET.search(comments.get(index, ""))
+                define = DEFINE.match(line)
+                budget_alias = define and define.group(1) in budget_aliases
                 if line.lstrip().startswith(("//", "/*", "*", "#")) and not budget_alias:
                     continue
                 attributed = ATTRIBUTE.search(line) or any(re.search(r"\b" + re.escape(alias) + r"\b", line)
@@ -190,7 +208,7 @@ def sites(root, owned=None):
                 if not CONFIG_PLACEMENT.fullmatch(line):
                     continue
                 archive, entries, kind = "", [], "hash"
-            reason = comments.get(index, "") if kind == "c" else preceding_comment(lines, index, kind)
+            reason = comments.get(index, "") if kind == "c" else preceding_comment(lines, index)
             if not reason:
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason")
             budget = parse_budget(reason)
@@ -227,17 +245,38 @@ def site_matches(site, item):
         and fnmatch.fnmatch(clone_base(item.symbol), symbol) for obj, symbol in site.entries)
 
 
-def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, placed_inputs=None):
+def iram_entries(build):
+    ninja = (build / "build.ninja").read_text(encoding="utf-8")
+    rule = re.search(r"^build esp-idf/esp_system/ld/sections\.ld .*?\n(.*?)(?=\n\S|\Z)", ninja, re.M | re.S)
+    if not rule:
+        raise ValueError("build.ninja has no ldgen rule")
+    command = re.search(r"^  COMMAND = (.+)$", rule.group(1), re.M).group(1)
+    command = command.replace("$:", ":").replace("$ ", " ").replace("$$", "$")
+    if ".bat" in command:
+        batch = re.match(r'"([^"\n]+\.bat)"|([^\s]+\.bat)', command)
+        command = (build / next(value for value in batch.groups() if value)).read_text(encoding="utf-8")
+    arguments = {key: value.strip('"') for key, value in re.findall(
+        r'--(kconfig|config|env-file|fragments-list)\s+("[^"\n]*"|[^\s]+)', command)}
+    if set(arguments) != {"kconfig", "config", "env-file", "fragments-list"}:
+        raise ValueError("ldgen rule lacks configuration or fragment inputs")
+    script = re.search(r'("[^"\n]*ldgen\.py"|[^\s"]*ldgen\.py)', command).group(1).strip('"')
+    return json.loads(run(idf_python(), "-c", LDGEN_ENTRIES, str(Path(script).parent), json.dumps(arguments)))
+
+
+def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, linker_entries=()):
     errors = []
     drift = commit_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
     names = {}
-    for item in inputs if placed_inputs is None else placed_inputs:
-        if item.output.startswith(".iram") or clone_base(item.symbol) == item.symbol:
+    for item in inputs:
+        base = clone_base(item.symbol)
+        if item.output.startswith(".iram") or base == item.symbol:
             continue
-        for site in placements:
-            if site_matches(site, item):
-                message = f"{site.label}: clone {item.symbol} is in {item.output}; place it in source to follow clones"
+        for archive, obj, symbol in linker_entries:
+            if base == symbol and fnmatch.fnmatch(item.archive, archive) and fnmatch.fnmatch(item.object, obj):
+                fix = ("mark it IRAM_ATTR in source so its clones are placed with it" if item.archive in owned else
+                       "map the whole object or move the caller-facing entry; a linker mapping cannot name clones")
+                message = f"ldgen: {archive}:{obj}:{symbol}: clone {item.symbol} is in {item.output}; {fix}"
                 if message not in errors:
                     errors.append(message)
     for item in inputs:
@@ -477,7 +516,7 @@ def read_build(build, root=ROOT):
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id, variant = build_variant(build)
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
@@ -617,7 +656,7 @@ def main():
                 drift = commit_drift(build["idf_commit"], pin["commit"])
                 if args.require_pin and drift:
                     errors.append(f"{build['variant']}: IDF drift: {drift}")
-                build["report"] = check(placements, build["inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, placed_inputs=build.get("placed_inputs"))
+                build["report"] = check(placements, build["placed_inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, linker_entries=build["linker_entries"])
             except ValueError as error:
                 errors.append(f"{build['variant']}: {error}")
                 continue
