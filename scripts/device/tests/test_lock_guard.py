@@ -28,6 +28,7 @@ sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
 import device_lock  # noqa: E402
 from fake_serial import FakeConnection, Replies
+import fake_esp_idf  # noqa: E402
 import fake_flash  # noqa: E402
 from autana_config import BOARD_ENV  # noqa: E402
 
@@ -926,26 +927,10 @@ class FlashImageScriptTests(unittest.TestCase):
             f"with open({str(self.log)!r}, 'a') as log:\n"
             "    log.write('esptool ' + ' '.join(sys.argv[1:]) + ' | ' + os.getcwd() + ' | '\n"
             "              + open(app[0], 'rb').read().decode() + '\\n')\n")
-        (stubs / "idf_stub.py").write_text(
-            "import sys\n"
+        self.export = fake_esp_idf.stub_esp_idf(
+            stubs, "import sys\n"
             f"with open({str(self.log)!r}, 'a') as log:\n"
             "    log.write('idf.py ' + ' '.join(sys.argv[1:]) + '\\n')\n")
-        # One stub per platform: cmd would run a POSIX idf.py found first on
-        # PATH through the .py file association instead of idf.py.bat.
-        if os.name == "nt":
-            (stubs / "idf.py.bat").write_bytes(
-                f'@"{sys.executable}" "{stubs / "idf_stub.py"}" %*\r\n'.encode())
-            self.export = stubs / "export.bat"
-            self.export.write_bytes(f'@set "PATH={stubs};%PATH%"\r\n'.encode())
-        else:
-            (stubs / "idf.py").write_text(
-                f'#!/bin/sh\nexec "{sys.executable}" "{stubs / "idf_stub.py"}" "$@"\n')
-            (stubs / "idf.py").chmod(0o755)
-            self.export = stubs / "export.sh"
-            self.export.write_text(f'PATH="{stubs.as_posix()}:$PATH"\n')
-            # ESP-IDF's export puts its own interpreter on PATH as plain `python`.
-            (stubs / "python").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
-            (stubs / "python").chmod(0o755)
         self.stubs = stubs
         self.image = self.tree / "flash.image"
         fake_flash.write_image(self.image, "abc123-dev", app=b"the built app")

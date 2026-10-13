@@ -242,8 +242,8 @@ Worker-task calls are separate; a dispatcher's synchronous fallback remains
 on its caller's stack. The conservative maximum includes clipping paths,
 which a device's high-water mark may not encounter with an interrupt.
 The gate counts frames only in the source files it recompiles. Uncompiled
-libraries, including newlib's printf family (about 800 bytes for
-`_vfprintf_r`), esp_log and FreeRTOS, are not counted. There is no library
+libraries, including the C library's printf family, esp_log and FreeRTOS,
+are not counted. There is no library
 allowance; `timing.c`'s board stack-watermark check covers the remaining
 stack use. Source-line pointer checks and private function qualification
 come from compiler graphs.
@@ -289,7 +289,7 @@ on a clean build directory, which is what makes it a trap.
 ## runsuite: the everyday device loop
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
-`runsuite <suite>` on the console (`console/console_runsuite.c`, one of the
+`runsuite <suite>` on the console (`console/verbs/console_runsuite.c`, one of the
 verbs `launcher/main/console/console.c` dispatches); `autana suite <name>`
 sends it. `screenshot` (`console_screenshot.c`) is another verb: it dumps
 the frame on screen. `runsuite <suite_function_name>` runs exactly that one

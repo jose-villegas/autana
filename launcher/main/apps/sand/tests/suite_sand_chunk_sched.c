@@ -147,7 +147,7 @@ cs_neighbours(int cols, int rows, int cx, int cy, int* out) {
         const int nx = cx + ring[i][0];
         const int ny = cy + ring[i][1];
         if ((unsigned)nx < (unsigned)cols && (unsigned)ny < (unsigned)rows) {
-            out[n++] = ny * cols + nx;
+            out[n++] = (ny * cols) + nx;
         }
     }
     return n;
@@ -336,7 +336,7 @@ cs_pick_lane(int which, int step, uint32_t* rnd) {
     if (which == 2) {
         return step & 1;
     }
-    *rnd = *rnd * 1664525u + 1013904223u;
+    *rnd = (*rnd * 1664525u) + 1013904223u;
     return (int)((*rnd >> 16) & 1u);
 }
 

@@ -1,4 +1,4 @@
-#include "console/console_frame_watch.h"
+#include "console/verbs/console_frame_watch.h"
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 

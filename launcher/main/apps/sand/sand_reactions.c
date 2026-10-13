@@ -1717,7 +1717,7 @@ dilution_water_wins_chance(const sand_t* s, int x, int y, int nx, int ny, int w,
         }
     }
     const int mass_bias = (s->acid_dilute_mass_bias >= 0) ? s->acid_dilute_mass_bias : SAND_ACID_DILUTE_MASS_BIAS;
-    return SAND_ACID_DILUTE_TO_WATER_CHANCE + (water_backing - acid_backing) * mass_bias;
+    return SAND_ACID_DILUTE_TO_WATER_CHANCE + ((water_backing - acid_backing) * mass_bias);
 }
 
 /* DILUTION occurs. SAND_ACID_DILUTE_TO_WATER_CHANCE dictates. Cells evolve

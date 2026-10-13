@@ -15,13 +15,15 @@ def open_number(branch, request=call):
     return found[0]["number"] if found else None
 
 
-def sync(branch, title, body, request=call):
+def sync(branch, title, body, request=call, labels=()):
     number = open_number(branch, request)
     if number is None:
-        request("POST", "/pulls", {"title": title, "head": branch,
-                                   "base": "main", "body": body})
+        number = request("POST", "/pulls", {"title": title, "head": branch,
+                                            "base": "main", "body": body})["number"]
     else:
         request("PATCH", f"/pulls/{number}", {"body": body})
+    if labels:
+        request("POST", f"/issues/{number}/labels", {"labels": list(labels)})
 
 
 def close(branch, comment, request=call):
@@ -34,14 +36,14 @@ def close(branch, comment, request=call):
 
 def main(argv):
     branch = os.environ["REFRESH_BRANCH"]
-    if len(argv) == 4 and argv[1] == "sync":
+    if len(argv) >= 4 and argv[1] == "sync":
         with open(argv[3]) as body:
-            sync(branch, argv[2], body.read())
+            sync(branch, argv[2], body.read(), labels=argv[4:])
         return 0
     if len(argv) == 3 and argv[1] == "close":
         close(branch, argv[2])
         return 0
-    print("usage: refresh_pr.py sync TITLE BODY_FILE | close COMMENT", file=sys.stderr)
+    print("usage: refresh_pr.py sync TITLE BODY_FILE [LABEL ...] | close COMMENT", file=sys.stderr)
     return 2
 
 

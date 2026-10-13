@@ -346,7 +346,7 @@ label_bbox(int ox, int oy, int len, int turn, int* bx, int* by, int* bw, int* bh
             *bh = GFX_CHAR_H;
             break;
         case 2: /* upside down: walks -x from ox,oy */
-            *bx = ox - (len - 1) * GFX_CHAR_W;
+            *bx = ox - ((len - 1) * GFX_CHAR_W);
             *by = oy;
             *bw = len * GFX_CHAR_W;
             *bh = GFX_CHAR_H;
@@ -359,7 +359,7 @@ label_bbox(int ox, int oy, int len, int turn, int* bx, int* by, int* bw, int* bh
             break;
         default: /* turn 3, bottom-to-top: walks -y */
             *bx = ox;
-            *by = oy - (len - 1) * GFX_CHAR_W;
+            *by = oy - ((len - 1) * GFX_CHAR_W);
             *bw = GFX_CHAR_H;
             *bh = len * GFX_CHAR_W;
             break;

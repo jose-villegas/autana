@@ -30,7 +30,7 @@ read_header(asset_view_t entry, anim_skeleton_t* out, uint32_t* out_strings_size
     *out = (anim_skeleton_t){
         .joint_count = count,
         .joints = (const anim_skeleton_joint_t*)(const void*)(entry.data + ANIM_SKELETON_HEADER_SIZE),
-        .rest = (const float(*)[ANIM_SKELETON_REST_WIDTH])(const void*)(entry.data + rest),
+        .rest = (const float (*)[ANIM_SKELETON_REST_WIDTH])(const void*)(entry.data + rest),
         .paths = (const char*)entry.data + strings,
     };
     *out_strings_size = strings_size;

@@ -5,7 +5,7 @@
  * task may not draw (console.c); the shell frame loop calls
  * suites_run_request().
  */
-#include "console/console_runsuite.h"
+#include "console/verbs/console_runsuite.h"
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
