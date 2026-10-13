@@ -24,6 +24,8 @@ typedef struct {
     bool in_band;
 } draw_state_t;
 
+/* Only after GFX_PRESENT_GUARD and GFX_REQUIRE_FRAMEBUFFER: overlay replay
+ * rewrites the target and clip while a present runs. */
 static inline draw_state_t
 draw_state(void) {
     return (draw_state_t){gfx_present_target(), gfx_clip_save(), gfx_present_in_band()};

@@ -1,5 +1,5 @@
 /*
- * gfx_target: framebuffer or band buffer with absolute row bounds.
+ * gfx_target: the framebuffer, a band buffer or a replay strip, with absolute row bounds.
  * Primitives intersect present's clip with the target and translate to local
  * rows. For full framebuffers, clip-to-rows and translation are no-ops.
  * Pure arithmetic lets host suites verify both without a panel.
