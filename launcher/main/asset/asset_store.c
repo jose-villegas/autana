@@ -58,6 +58,15 @@ mount(const char* name, mount_t** out) {
     return status;
 }
 
+int
+asset_store_mounted(void) {
+    int count = 0;
+    for (int i = 0; i < ASSET_STORE_MOUNTS_MAX; i++) {
+        count += mounts[i].uses > 0 ? 1 : 0;
+    }
+    return count;
+}
+
 const asset_pack_t*
 asset_store_pack(const char* name) {
     mount_t* mounted;

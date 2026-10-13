@@ -58,6 +58,8 @@ export VERBOSE
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
+# shellcheck disable=SC1007
+LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
 # --build-dir keeps two runs from clobbering each other: the build dir holds
 # one host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
@@ -113,11 +115,14 @@ $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
 $TEST_DIR/heap_arena.c
+$TEST_DIR/pack_reads.c
+$TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
+$MAIN_DIR/shell/shell_home_edge.c
 $MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c
@@ -130,13 +135,23 @@ $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
+$MAIN_DIR/boot/boot_anim_photo.c
 $MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/core/job.c
 $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/anim/anim_track.c
 $MAIN_DIR/anim/anim_tracks.c
+$MAIN_DIR/anim/anim_skeleton.c
+$MAIN_DIR/anim/pose/anim_pose.c
+$MAIN_DIR/anim/playback/anim_playhead.c
+$MAIN_DIR/anim/playback/anim_layer.c
+$MAIN_DIR/render/r3d_skin.c
+$MAIN_DIR/render/skin/r3d_skinning.c
+$MAIN_DIR/render/skin/r3d_skin_light.c
+$MAIN_DIR/anim/anim_binding.c
 $MAIN_DIR/asset/asset_pack.c
+$MAIN_DIR/asset/asset_table.c
 $MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
 $MAIN_DIR/asset/asset_store.c
@@ -154,10 +169,11 @@ $MAIN_DIR/render/context/render_context.c
 $MAIN_DIR/render/r3d_span.c
 $MAIN_DIR/render/r3d_scene.c
 $MAIN_DIR/scene/scene.c
+$MAIN_DIR/scene/scene_animation.c
+$MAIN_DIR/scene/scene_light.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
-$MAIN_DIR/math/motion/orbit_motion.c
 $MAIN_DIR/input/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
@@ -167,6 +183,7 @@ $MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
+$MAIN_DIR/ui/ui_icons.c
 $MAIN_DIR/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
 $MAIN_DIR/ui/ui_ridge.c
@@ -177,6 +194,13 @@ $MAIN_DIR/../tools/gen/gfx_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 $TEST_DIR/../components/microui/src/microui.c
 "
+
+# Every package's sources and suites, found the same way (tools/build/packages.sh).
+# shellcheck source=../tools/build/packages.sh
+. "$TEST_DIR/../tools/build/packages.sh"
+SOURCES="$SOURCES
+$(package_sources "$LAUNCHER_DIR")
+$(package_suites "$LAUNCHER_DIR")"
 
 # Every gfx source but the device-only *_device.c, found rather than listed.
 for gfx_src in $(find "$MAIN_DIR/gfx" -name '*.c' ! -name '*_device.c' | sort); do
@@ -235,7 +259,8 @@ case "${1:-}" in
         ;;
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
-            -I "$MAIN_DIR" -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
+            -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
+            -I "$TEST_DIR" -I "$TEST_DIR/framework" -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
@@ -255,6 +280,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
     [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
     quiet_run host-tests env QUIET_INNER=1 sh "$0" "$@" --build-dir "$BUILD_DIR" || true
     QUIET_SUMMARY=$(grep -E '^[0-9]+ Tests [0-9]+ Failures [0-9]+ Ignored' "$QUIET_LOG" | tail -n 1)
+    grep '^waiting on lock:' "$QUIET_LOG" || true
     export QUIET_SUMMARY
     QUIET_FAILURES=$(grep -E ':FAIL|ERROR: (AddressSanitizer|LeakSanitizer)' "$QUIET_LOG" || true)
     if [ -n "$QUIET_FAILURES" ]; then
@@ -281,6 +307,7 @@ fi
 # does not build is caught here rather than on the board.
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
+    "$TEST_DIR/check_packages_alone.sh"
     "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
@@ -352,11 +379,15 @@ CC_MK=$CC_BIN
 case "$CC_BIN" in */* | *\\*) CC_MK=$(native "$CC_BIN") ;; esac
 MAIN_N=$(native "$MAIN_DIR")
 TEST_N=$(native "$TEST_DIR")
-LAUNCHER_N=$(native "$(CDPATH= cd -- "$TEST_DIR/.." && pwd)")
+LAUNCHER_N=$(native "$LAUNCHER_DIR")
 BUILD_N=$(native "$BUILD_DIR")
-COMMON_INC="-I $MAIN_N -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
+PACKAGE_INC=""
+for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
+    PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
+done
+COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -pthread -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the
@@ -465,14 +496,24 @@ PYTHON=$(find_python) || exit 1
 
 [ "$BUILD_ONLY" != 1 ] || exit 0
 
-# The asset packs the suites read, one per root asset in the tree.
+# The asset packs the suites read, one per root asset in the tree. A pack
+# whose bakes only lack their lock rows (a re-keyed bake not yet locked) is
+# left out, and host_tests skips the suites that name it in SUITE_READS and
+# prints them (docs/Testing-Guide.md, "Adding a suite"). Any other build
+# failure fails here.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR
-"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" "$MAIN_DIR" > /dev/null
+UNLOCKED="$BUILD_DIR/unlocked_packs.txt"
+"$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" --skip-unlocked "$UNLOCKED" "$MAIN_DIR" > /dev/null
+AUTANA_PACKS_WAITING=$(paste -sd, "$UNLOCKED")
+export AUTANA_PACKS_WAITING
 # The test clip suite_anim_tracks.c holds to the Python sampler.
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/anim_probe.py" -o "$AUTANA_ANIM_PROBE"
+AUTANA_SKIN_PROBE="$BUILD_DIR/skin_probe.bin"
+export AUTANA_SKIN_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/skin_probe.py" -o "$AUTANA_SKIN_PROBE"
 # The scene suite_scene.c holds to the scene entry's Python writer.
 AUTANA_SCENE_PROBE="$BUILD_DIR/scene_probe.bin"
 export AUTANA_SCENE_PROBE
@@ -480,7 +521,42 @@ export AUTANA_SCENE_PROBE
 
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
-    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0" "$OUT"
+    ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
+    export ASAN_OPTIONS
+    "$OUT"
 else
     "$OUT"
 fi
+
+"$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
+
+EMPTY_ASSETS="$BUILD_DIR/no-packs"
+mkdir -p "$EMPTY_ASSETS"
+FALLBACK_LOG="$BUILD_DIR/ridge-fallback.log"
+if ! AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback > "$FALLBACK_LOG" 2>&1; then
+    tail -12 "$FALLBACK_LOG"
+    exit 1
+fi
+if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$FALLBACK_LOG")" != 1 ]; then
+    echo "FAIL: missing curve must log its fallback once" >&2
+    exit 1
+fi
+
+for INVALID_CASE in frac-bits columns row; do
+    INVALID_LOG="$BUILD_DIR/ridge-invalid-$INVALID_CASE.log"
+    if ! AUTANA_ASSET_DIR="$BUILD_DIR/ridge-invalid-$INVALID_CASE" "$OUT" --run suite_ridge_fallback > "$INVALID_LOG" 2>&1; then
+        tail -12 "$INVALID_LOG"
+        exit 1
+    fi
+    if [ "$(grep -c '^no ridge curve in pack engine .*: the ridge is level$' "$INVALID_LOG")" != 1 ]; then
+        echo "FAIL: invalid curve ($INVALID_CASE) must log its fallback once" >&2
+        exit 1
+    fi
+done
+
+for CURVE_LOG in "$FALLBACK_LOG" "$BUILD_DIR"/ridge-invalid-*.log; do
+    if grep -E 'runtime error:|ERROR: (AddressSanitizer|LeakSanitizer)' "$CURVE_LOG"; then
+        exit 1
+    fi
+    printf 'ridge fallback (%s): %s\n' "$(basename "$CURVE_LOG")" "$(grep -E '^[0-9]+ Tests ' "$CURVE_LOG")"
+done

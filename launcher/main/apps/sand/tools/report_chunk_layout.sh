@@ -28,6 +28,8 @@ REPORT_DIR="$SCRIPT_DIR/results"
 
 # shellcheck source=../../../../tools/build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
+# shellcheck source=../../../../tools/build/packages.sh
+. "$LAUNCHER_DIR/tools/build/packages.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -48,7 +50,7 @@ OUT_BIN="$BUILD_DIR/chunk_layout"
 # one rather than globbed: a file appearing under apps/sand/ is not by itself
 # a reason for this tool to link it.
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     -I "$LAUNCHER_DIR/test" -I "$LAUNCHER_DIR/test/framework" \
     "$SCRIPT_DIR/chunk_layout.c" \
     "$SAND_DIR/tests/suite_sand_scenes.c" \

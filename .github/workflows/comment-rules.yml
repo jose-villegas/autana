@@ -31,6 +31,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# The tool tests build packs, whose meshes come from the bake cache (bake/bake.py): from the release, or before
+# main publishes them from the run that made them, which needs this token.
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   comment-rules:
     name: Comment rules and tool tests
@@ -92,6 +97,9 @@ jobs:
         env:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
+
+      - name: IRAM placement sites declare reasons and budgets
+        run: python3 launcher/tools/build/memory_map.py --source-only
 
       - name: Documentation constants match source
         env:
@@ -162,16 +170,36 @@ jobs:
       - name: Every generated file is what its banner's command makes
         run: python3 scripts/gates/check_generated_files.py
 
+  idf-image:
+    name: Read the IDF pin
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.pin.outputs.image }}
+      commit: ${{ steps.pin.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pin
+        run: |
+          echo "image=$(jq -r .image launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(jq -r .commit launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
+
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
-    runs-on: ubuntu-latest
-    container: espressif/idf:release-v5.5
+    runs-on: ubuntu-24.04
+    needs: idf-image
+    container: ${{ needs.idf-image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
       # The container runs as another user than the checkout's owner.
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Verify the pinned IDF commit
+        env:
+          IDF_PIN_COMMIT: ${{ needs.idf-image.outputs.commit }}
+        run: |
+          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$IDF_PIN_COMMIT" || { echo "image is not the pinned IDF commit"; exit 1; }
 
       - name: Every name, file and heading a comment cites exists
         env:

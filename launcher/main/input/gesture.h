@@ -13,8 +13,8 @@
 
 /* Which physical edge of the screen the home gesture currently lives on.
  * The caller decides this (see shell_exit_edge_for_quarter()) by
- * working out which edge is opposite the USB connector for the board's
- * current orientation. */
+ * mapping the logical canvas's bottom edge to the physical panel at the
+ * current quarter turn. */
 typedef enum {
     GESTURE_EDGE_TOP,
     GESTURE_EDGE_BOTTOM,
@@ -37,20 +37,10 @@ typedef enum {
  * edge gesture may begin, so a touch landing there belongs to the shell. */
 bool gesture_in_edge_zone(int x, int y, gesture_edge_t edge, int screen_w, int screen_h);
 
-/* The edge across the screen from `edge`. The control centre opens from the
- * one opposite the home gesture's. */
-gesture_edge_t gesture_opposite_edge(gesture_edge_t edge);
-
 /* True while a finger that started near the given edge has travelled far
  * enough toward the centre of the screen.
  *
  * Requires the finger to still be down, so it fires partway through the swipe
  * rather than on release: waiting for the lift feels sluggish. That also means
  * it must not match on stale coordinates once contact ends. */
-bool gesture_is_edge_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);
-
-/* The edge swipe that leaves an app, named for the caller that means that. */
-static inline bool
-gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h) {
-    return gesture_is_edge_swipe(input, edge, screen_w, screen_h);
-}
+bool gesture_is_home_swipe(const input_t* input, gesture_edge_t edge, int screen_w, int screen_h);

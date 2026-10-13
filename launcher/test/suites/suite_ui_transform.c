@@ -193,6 +193,8 @@ static const uint8_t icon_l_rows[4] = {
     0x80, /* 1000: col 0 */
     0xE0, /* 1110: cols 0,1,2 */
 };
+static const gfx_image_t icon_l = {
+    .bits = icon_l_rows, .format = GFX_IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
 
 /* box = (10, 20, 4, 4), fixed across every quarter below. Expected physical
  * rects were mapped BY HAND, corner to corner, from
@@ -207,7 +209,7 @@ assert_icon_blocks_at_quarter(int quarter, const icon_rect_t* expected, const ch
     icon_rect_t runs[4];
     icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
 
-    ui_transform_icon_blocks(t, icon_l_rows, 4, 4, 1, box, icon_test_collect, &ic);
+    ui_transform_icon_blocks(t, &icon_l, box, icon_test_collect, &ic);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, ic.count, msg);
     for (int i = 0; i < 4; i++) {
@@ -282,7 +284,7 @@ test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
         const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
         icon_rect_t runs[4];
         icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
-        ui_transform_icon_blocks(t, icon_l_rows, 4, 4, 1, box, icon_test_collect, &ic);
+        ui_transform_icon_blocks(t, &icon_l, box, icon_test_collect, &ic);
 
         TEST_ASSERT_EQUAL_INT(4, ic.count);
         for (int i = 0; i < 4; i++) {

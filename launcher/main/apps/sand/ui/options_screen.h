@@ -27,7 +27,7 @@
 
 /* The app's own option names and colours, handed in so this file never
  * sees its tables. `quality_names` runs finest first; `dither_names` in
- * icons_dither.h's order, so name i shows swatch i; `mode_swatches` is
+ * gfx_dither_mode_t's order, so name i shows swatch i; `mode_swatches` is
  * indexed by sand_colour_mode_t. */
 typedef struct {
     const char* const* quality_names;

@@ -12,7 +12,9 @@ anything below them; that direction cannot dangle.
 The engine's documents sit at the same layer as its code, so every line of
 them is held to the same rule: every Markdown file under docs/ except an app's
 own folder (docs/<app>/) and docs/plans/, whose designs span layers and name
-the apps they plan for, plus any Markdown file inside a lower layer.
+the apps they plan for, plus any Markdown file inside a lower layer. The
+"Cited by" part of a docs/Citations.md entry lists the files citing a source,
+wherever they live, so its paths are not read.
 
 App names come from the folders themselves, so adding an app extends the check.
 
@@ -34,10 +36,15 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
+from check_doc_citations import CITATIONS, CITED_BY  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.packages import FIRST_PARTY  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from generated_blocks import MARKER  # noqa: E402
 
-# Below the apps: all of launcher/main/ except apps/, and the test tree. A
-# new folder is checked from the day it exists.
-ENGINE = ("launcher/main/", "launcher/test/")
+# Below the apps: all of launcher/main/ except apps/, the packages and the
+# test tree. A new folder is checked from the day it exists.
+ENGINE = (*FIRST_PARTY, "launcher/test/")
 APPS = "launcher/main/apps"
 
 
@@ -80,6 +87,11 @@ def documents(root, names):
             yield rp
 
 
+def blank_cited_by(line):
+    """`line` with a reference entry's citing paths blanked."""
+    return CITED_BY.sub(lambda m: " " * len(m.group()), line)
+
+
 def problems(root=".", context=False, files=None):
     names = app_names(root)
     word = name_pattern(names)
@@ -105,6 +117,13 @@ def problems(root=".", context=False, files=None):
             continue
         text = read(rp)
         lines = text.splitlines()
+        if rp == CITATIONS:
+            text = "\n".join(blank_cited_by(line) for line in lines)
+        for marker in reversed(list(MARKER.finditer(text))):
+            if (marker.group(1) == "generated" and marker.group(4)
+                    and "<!--" not in marker.group(4) and "-->" not in marker.group(4)):
+                start, end = marker.span(4)
+                text = text[:start] + " " * (end - start) + text[end:]
         for m in hits(text):
             line = text.count("\n", 0, m.start()) + 1
             found.append(f"{rp}:{line}: document names {canonical(m.group(), names)}")

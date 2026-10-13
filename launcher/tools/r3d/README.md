@@ -14,7 +14,7 @@ mesh. Nothing here runs on the board.
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [octree.py](octree.py) | Groups weighted items, here meshlets, into an octree whose leaves hold runs of them. |
-| [build_pack.py](build_pack.py) | Writes the [asset packs](../../../docs/assets/README.md) (`-o DIR`, `--image FILE`), one per root, from the `.mesh` entries each names, the scene entry each `.scene.toml` bakes ([scene_asset.py](scene_asset.py)) and the clip each `.anim.toml` names, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
+| [build_pack.py](build_pack.py) | Writes the [asset packs](../../../docs/assets/README.md) (`-o DIR`, `--image FILE`), one per root, from the `.mesh` entries each names, the scene entry each `.scene.toml` bakes ([scene_asset.py](scene_asset.py)) the clip each `.anim.toml` names and the table each `.curve.toml` bakes, with the container writer in [`tools/asset/`](../asset/asset_pack.py). Standard library only. |
 | [scene_asset.py](scene_asset.py) | The scene entry (`SCNE`): bakes a scene file's entities, renderers and camera, and reads the entry back as `scene_asset_open()` does. Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
@@ -117,7 +117,7 @@ $PY tools/render/render_compare.py --out unused.png --reference-video host.avi r
 ```
 
 The line for each frame, and for the frames' mean, has mean and 95th-percentile
-CIE76 ΔE over its pixels, luma SSIM, and the mean ΔE on edge and on interior
+CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> over its pixels, luma SSIM<sup>[[9]](../../../docs/Citations.md#9)</sup>, and the mean ΔE on edge and on interior
 pixels; the frames-mean line averages each frame's value, p95 included. The
 sheet is, left to right, the reference, the render, the ΔE heatmap and the
 reference's edge pixels in magenta, over the heatmap's colour scale: ΔE 0 is
@@ -137,7 +137,7 @@ the tests are small enough for the scalar one.
 |---|---|
 | `--spp N`, `--seed N` | Paths per pixel and sampler seed; `--samples` stays the bake backend's subpixel grid |
 | `--max-depth N` | Path depth cap; 2 is direct light only |
-| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
+| `--sky hosek-wilkie` | Replaces the scene lights by the Hosek–Wilkie sun and sky<sup>[[8]](../../../docs/Citations.md#8)</sup> (`--turbidity`, `--ground-albedo`), the sun taking the first directional light's direction |
 
 A `sky` light becomes a constant environment of the same radiance. The
 backends differ in these recorded ways, besides transport:
@@ -183,17 +183,18 @@ It prints a table sorted by mean ΔE.
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
 triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
-simplification (Hasselgren, Hofmann, Munkberg, Laine, Aila, Lehtinen,
-*Appearance-Driven Automatic 3D Model Simplification*, EGSR 2021). The
+simplification<sup>[[1]](../../../docs/Citations.md#1)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
+[Scene-Files.md](../../../docs/render/Scene-Files.md#against-the-paper) lists
+what the fit changes from the paper.
 
 | | |
 |---|---|
 | Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
-| Forward model | nvdiffrast draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
-| Loss | the mean CIE76 ΔE of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates from the start's |
-| Schedule | Adam; both learning rates decay tenfold over `--steps` |
+| Forward model | nvdiffrast<sup>[[2]](../../../docs/Citations.md#2)</sup> draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#5)</sup> from the start's |
+| Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
 The fitted colours are the bake, so the mesh enters the import at its last
@@ -210,30 +211,29 @@ the CUDA 12.8 compiler and a GCC that CUDA 12.8 accepts:
 ```sh
 micromamba create -y -p ~/gpu/env -c nvidia/label/cuda-12.8.1 -c conda-forge \
     python=3.12 cuda-nvcc cuda-cudart-dev cuda-cccl cuda-libraries-dev ninja "gxx_linux-64=13" "gcc_linux-64=13"
-E=~/gpu/env
-$E/bin/python -m ensurepip
-$E/bin/python -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-$E/bin/python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
-$E/bin/python -m pip install -q --progress-bar off ninja setuptools wheel
+GPU_ENV=~/gpu/env
+"$GPU_ENV/bin/python3" -m ensurepip
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off ninja setuptools wheel
 TORCH_CUDA_ARCH_LIST=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
 export TORCH_CUDA_ARCH_LIST
-CUDA_HOME=$E PATH=$E/bin:$PATH \
-    CPATH=$E/targets/x86_64-linux/include LIBRARY_PATH=$E/targets/x86_64-linux/lib:$E/lib \
-    CC=$E/bin/x86_64-conda-linux-gnu-gcc CXX=$E/bin/x86_64-conda-linux-gnu-g++ \
-    $E/bin/python -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
+. launcher/tools/r3d/gpu_env.sh
+"$GPU_ENV/bin/python3" -m pip install -q --progress-bar off --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
 ```
 
 That gives the PyTorch and nvdiffrast that [requirements-gpu.txt](requirements-gpu.txt) pins; a fit's
 cache key counts those pins, and `bake/bake.py` refuses to fit in an environment that differs.
-[gpu_python.sh](gpu_python.sh) runs a script in this environment. `TORCH_CUDA_ARCH_LIST`
+[gpu_env.sh](gpu_env.sh) exports the compiler, CUDA paths and libraries for `GPU_ENV`
+(`~/gpu/env` by default). [gpu_python.sh](gpu_python.sh) sources it and runs a Python script. `TORCH_CUDA_ARCH_LIST`
 names the target GPU's compute capability, queried above with `nvidia-smi`.
-Alternatively, `$E/bin/python -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
+Alternatively, `"$GPU_ENV/bin/python3" -c "import torch; print('.'.join(map(str, torch.cuda.get_device_capability())))"`
 prints the capability of the default CUDA device. Select the device that will
 run the fit when the machine has several GPUs. With the reference images of
 the training poses:
 
 ```sh
-$E/bin/python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
+"$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
     --poses train.txt --reference reference_train --out fitted
 ```
 
@@ -254,7 +254,7 @@ in this environment, the second in the GPU one:
 
 ```sh
 $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prepare   # start, poses, references
-$E/bin/python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
+"$GPU_ENV/bin/python3" launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch fit
 ```
 
 `NAME` is the fitted scene object, or its variant when only one object fits that variant.
@@ -271,13 +271,42 @@ way up. `fit` prunes to `fit.prune.budget`, fits with
 folder. A refit is not bit-identical, the GPU's sums being unordered, so the
 lock pins the bytes a fit made.
 
+### Reference on the GPU
+
+A reference set traces its rays and bounced light on Mitsuba 3's `cuda_ad_rgb` variant, OptiX on the GPU, when
+that variant loads a scene in the process, and on `llvm_ad_rgb` otherwise (`ray_query.trace_variant`). Mesh bakes,
+starts included, always trace on `llvm_ad_rgb`, so their bytes never depend on a GPU.
+
+| | CUDA | LLVM |
+|---|---|---|
+| Poses | one after another in the process, which frees the device before the fit | one after another, Mitsuba spreading each over every core |
+| Bytes | differ from LLVM's by float rounding; `test_r3d_reference.py` bounds the difference where both run | differ between CPU vendors by an ulp ([isa.py](isa.py)) |
+
+The reference key names the light model, not the device, so a set made on either serves the same fits; the set's
+`traced_on.txt` records which one made it. Under WSL 2 the Windows driver ships only an OptiX loader stub: Dr.Jit loads OptiX
+from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
+`libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
+profile:
+
+```sh
+DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
+    sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
+```
+
+The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba
+3<sup>[[15]](../../../docs/Citations.md#15)</sup> and Dr.Jit<sup>[[55]](../../../docs/Citations.md#55)</sup>, whose CUDA
+and LLVM backends the two variants run on, both used as published. The file list is Mitsuba's WSL 2 page (`docs/src/optix_setup.rst` in its
+repository); what changed is where the files go: that page copies them into Windows' own WSL driver folder, a system
+change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's core library, drjit-core)
+points at.
+
 ### Budget sweep
 
 `fitted_variant.py sweep` remakes and scores a fitted recipe at several
 triangle budgets and cost weights, one GPU fit at a time:
 
 ```sh
-$E/bin/python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
+"$GPU_ENV/bin/python3" launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
     --budgets 4000,6000,8672 --cost-weights 0,0.1 --out scratch/sweep
 ```
 
@@ -316,7 +345,8 @@ as well as colour, and weigh appearance against frame time.
 | Warm start | `--refine-to N` splits the longest edge of the start's worst triangles, by dE summed over the pixels they show, both sides of an edge at once, until N; a fitted coarse mesh then starts a finer fit | `appearance_simplify.refine`, `tessellate.split_marked_edges` |
 
 The cost model's weights come from board frame times of meshes with
-different triangle counts and overdraw, and live with those frames in
+different triangle counts and overdraw, fitted by non-negative least squares<sup>[[6]](../../../docs/Citations.md#6)</sup>,
+and live with those frames in
 [board_cost_weights.txt](board_cost_weights.txt): a `feature` row naming the
 columns, the `weight` row, and one `frame LABEL POSE MS feature...` row per
 measured frame.

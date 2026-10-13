@@ -4,15 +4,18 @@ import pathlib
 import re
 import sys
 
-from PIL import Image
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from render_compare import read_video, reference_video
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d.bake_fidelity import table
 
 SCORE = re.compile(r"^(.+): mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM (-?[\d.]+), "
                    r"edge DeltaE76 ([\d.]+), interior DeltaE76 ([\d.]+)", re.M)
+
+
+def markdown(headers, rows):
+    cell = lambda value: str(value).replace("|", "\\|").replace("\n", " ")
+    headers = [cell(value) for value in headers]
+    lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
+    return "\n".join(lines + ["| " + " | ".join(map(cell, row)) + " |" for row in rows]) + "\n"
 
 
 def scores(path):
@@ -24,6 +27,10 @@ def scores(path):
 
 
 def write_tables(work, out, scene_id, object_name):
+    from PIL import Image
+    from render_compare import read_video, reference_video
+    from r3d.bake_fidelity import table
+
     out.mkdir(parents=True, exist_ok=True)
     indirect = scores(work / "indirect-compare.log")
     smooth = indirect["two bounces"]

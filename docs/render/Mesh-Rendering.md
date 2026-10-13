@@ -8,27 +8,28 @@ in [Mesh-Import.md](Mesh-Import.md).
 span rasterizer, and a pipeline that draws a mesh whose light was baked
 offline. It sits above `gfx/`, whose render targets it draws into, and
 otherwise includes `core/`, `math/` and `asset/` (`r3d_lit_mesh.h` reads its
-mesh from a pack), so boot and apps both call it. `r3d_scene.h` also reads
-`anim/` tracks for a camera path; the raster and the pipeline do not depend on it. It
+mesh from a pack), so boot and apps both call it. `r3d_scene.h` also declares the
+camera's animatable lens fields for `anim/` bindings. It
 draws into buffers its caller hands it, and a framebuffer is only one of
 them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
 ## What a scene uses
 
-A scene that draws a baked mesh or traces rays includes `render/r3d.h`;
-one that projects points and segments takes `render/r3d_line_camera.h`.
+A scene that draws a baked mesh includes `render/r3d.h`;
+one that projects points and segments takes `render/r3d_project_x.h`.
+Both use `render_view_t` for the per-frame perspective fit and picture basis.
 
 | Noun | What it is |
 |---|---|
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Mesh-Import.md](Mesh-Import.md#the-baked-mesh)) |
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
-| `viewport_t` | The picture's size and the quarter turn the panel is read at; the ray and line cameras and `render_view_make()` take one |
+| `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
-| `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the glTF animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
+| `r3d_scene_camera_t` | A baked camera: its lens, where it stands and the animation it flies, from `render/r3d_scene.h` ([Scene-Files.md](Scene-Files.md)) |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
@@ -41,11 +42,7 @@ A camera that moves is an [animation track](../Animation-Tracks.md), sampled
 into a look-at pose; `r3d_scene_view_at()` builds its frame view with
 `render_view_make()`, which folds in the panel's quarter turn, fits its lens
 to the shorter picture side, ignores the pose's scale and keeps its roll.
-Poses are in math/linear's frame
-([math/README.md](../math/README.md#conventions)) but for one exception:
-before the quarter turn, `render_view_make()` puts the pose's −x at picture
-right and its −y at picture down, the right-handed frame baked scenes are
-authored in.
+Poses follow [math/linear's conventions](../math/README.md#conventions).
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
@@ -75,8 +72,8 @@ exactly.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
-| `r3d_line_camera.h` | A camera for points and segments: a `transformf_t` pose with a roll, and the fit onto a non-square viewport |
-| `r3d_project.h` | Camera-space near clip and perspective projection of those points and segments |
+| `r3d_project.h` | Float reference for near clipping and perspective projection |
+| `r3d_project_x.h` | Camera-space model matrix, fixed-point near clipping and perspective projection of points and segments |
 
 Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
@@ -84,7 +81,7 @@ suite or host tool include them.
 
 ## The maths
 
-The line camera, the boot animation, the animation tracks and the raster all
+Line projection, the animation tracks and the raster all
 take their types from `math/linear/`, documented in
 [../math/README.md](../math/README.md): the raster's lens and motion maps are
 `mat4f_t`, composed with `mat4f_mul_affine()`, inverted with
@@ -313,11 +310,15 @@ holds:
 | Bounding box holds | What the draw does |
 |---|---|
 | no centre | nothing: dropped before its colours are read |
-| at most 2 × 2 centres | tests each centre against its three edges, one depth and colour for all |
+| at most 4 × 4 centres | tests each centre against its three edges, one depth and colour for all |
 | more | walks its rows, each edge's column found exactly by an integer step |
 
 Both paths apply the same rule to the same integers, so a small triangle
 and a walked one sharing an edge still meet without a gap or an overlap.
+The per-centre path skips the walk's setup but loses the triangle's
+gradient: at this size that does not show, and larger it shows as facets
+on the walls, so the bound is where cost and look meet
+(`SMALL_MAX_SIDE`, `r3d_span.c`).
 `suite_r3d_lit.c` holds every triangle to a reference implementation of the
 rule, and a mesh of mixed sizes to one fill per pixel.
 

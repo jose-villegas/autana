@@ -1,10 +1,11 @@
 #!/bin/sh
 # Builds one scene file's pack through the shared harness, then runs its viewer;
-# --build-only -o DIR prints the built host instead.
+# --build-only -o DIR prints the built host instead; --deps prints what
+# the host is compiled from (render_scene.sh).
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ $# -eq 0 ]; then
-    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view shaded|depth|tiles|motion|meshlets] [--size WxH] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
+    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view shaded|depth|tiles|motion|meshlets] [--size WxH] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
     exit 2
 fi
 scene_file=$1
@@ -18,12 +19,14 @@ if [ ! -f "$scene_file" ]; then
     exit 2
 fi
 build_only=0
+deps=0
 build_dir=$SCRIPT_DIR/../results/render/scene_viewer
 render_args=
 output=
 while [ $# -gt 0 ]; do
     case "$1" in
         --build-only) build_only=1; shift ;;
+        --deps) deps=1; shift ;;
         -o)
             [ $# -ge 2 ] || { echo "-o needs a path" >&2; exit 2; }
             output=$2; shift 2 ;;
@@ -39,6 +42,9 @@ if [ -n "$output" ]; then
 }-o
 $output"
     fi
+fi
+if [ "$deps" = 1 ]; then
+    exec sh "$SCRIPT_DIR/scenes/scene_viewer_render_host.sh" --deps --asset-file "$scene_file"
 fi
 set -- --build-only --asset-file "$scene_file" -o "$build_dir"
 IFS='

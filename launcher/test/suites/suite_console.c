@@ -19,10 +19,10 @@
 #include "unity.h"
 
 #include "console/console_frame_request.h"
-#include "console/console_inject_parse.h"
-#include "console/console_navigation_parse.h"
-#include "console/console_perf_parse.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_inject_parse.h"
+#include "console/verbs/console_navigation_parse.h"
+#include "console/verbs/console_perf_parse.h"
 
 #define REPLIES_MAX 8
 
@@ -232,6 +232,18 @@ test_registration_order_does_not_change_dispatch_or_listing_order(void) {
 
     TEST_ASSERT_TRUE(say("BETA"));
     TEST_ASSERT_EQUAL_STRING("BETA", last_verb);
+}
+
+static void
+test_listing_orders_mixed_case_names_folded(void) {
+    fixture();
+    console_verb_t first = {.name = "alpha"}, last = {.name = "BETA"};
+    TEST_ASSERT_TRUE(console_register(&registry, &first));
+    TEST_ASSERT_TRUE(console_register(&registry, &last));
+    TEST_ASSERT_EQUAL_PTR(&first, registry.first);
+    TEST_ASSERT_EQUAL_PTR(&last, first.next);
+    TEST_ASSERT_NULL(last.next);
+    registry.first = NULL;
 }
 
 static void
@@ -840,6 +852,7 @@ suite_console(void) {
     RUN_TEST(test_the_longer_word_rule_holds_across_case);
     RUN_TEST(test_an_unknown_line_is_left_alone);
     RUN_TEST(test_registration_order_does_not_change_dispatch_or_listing_order);
+    RUN_TEST(test_listing_orders_mixed_case_names_folded);
     RUN_TEST(test_a_name_declared_twice_stays_with_the_first);
     RUN_TEST(test_registering_the_same_verb_object_twice_is_once);
     RUN_TEST(test_a_reply_is_up_to_the_verbs_own_handler);

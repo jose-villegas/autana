@@ -11,18 +11,11 @@
 #include "app/app.h"
 #include "gfx/gfx.h"
 #include "ui/ui.h"
-#include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
 #define LANDSCAPE_QUARTER 1
-
-/* microui clips a window to the rect it had on the previous frame, so the
- * first frame after the canvas turns is cut to the old shape. The device
- * shows the correct shape one frame later; a preview is one frame, so it
- * takes the second. */
-#define SETTLE_FRAMES     2
 
 static bool initialized;
 
@@ -63,27 +56,6 @@ editor_runtime_tap_min(void) {
     return UI_TAP_MIN;
 }
 
-int
-editor_runtime_element_count(editor_screen_t screen) {
-    return screen == EDITOR_SCREEN_CONTROL_CENTER ? CONTROL_CENTER_ELEMENT_COUNT : 0;
-}
-
-static bool
-layout_fits(editor_screen_t screen, const control_center_layout_t* layout, int width, int height) {
-    if (editor_runtime_element_count(screen) != CONTROL_CENTER_ELEMENT_COUNT || layout->canvas_width != width
-        || layout->canvas_height != height) {
-        return false;
-    }
-    for (int i = 0; i < CONTROL_CENTER_ELEMENT_COUNT; i++) {
-        const ui_layout_rect_t* rect = &layout->rects[i];
-        if (rect->x < 0 || rect->y < 0 || rect->width <= 0 || rect->height <= 0 || rect->width > width - rect->x
-            || rect->height > height - rect->y) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static void
 copy_framebuffer(uint16_t* pixels, int width, int height, bool portrait) {
     const gfx_color_t* framebuffer = gfx_framebuffer();
@@ -102,29 +74,12 @@ render_launcher(const input_t* input) {
     ui_launcher_frame(input, 0);
 }
 
-static void
-render_control_center(const input_t* input, const control_center_layout_t* authored) {
-    render_launcher(input);
-    ui_control_center_dim_backdrop();
-    ui_invalidate();
-
-    if (authored == NULL) {
-        ui_control_center_frame(input);
-        return;
-    }
-    ui_control_center_frame_layout(input, authored);
-}
-
 bool
-editor_runtime_render(editor_screen_t screen, const control_center_layout_t* layout, uint16_t* pixels, int width,
-                      int height) {
+editor_runtime_render(editor_screen_t screen, uint16_t* pixels, int width, int height) {
     const bool portrait = width == GFX_WIDTH && height == GFX_HEIGHT;
     const bool landscape = width == GFX_HEIGHT && height == GFX_WIDTH;
     if (pixels == NULL || (!portrait && !landscape) || screen < 0 || screen >= EDITOR_SCREEN_COUNT
         || !editor_runtime_init()) {
-        return false;
-    }
-    if (layout != NULL && !layout_fits(screen, layout, width, height)) {
         return false;
     }
 
@@ -137,13 +92,7 @@ editor_runtime_render(editor_screen_t screen, const control_center_layout_t* lay
     const input_t no_input = {0};
     ui_set_transform(landscape ? ui_transform_quarter_turn(LANDSCAPE_QUARTER, GFX_WIDTH, GFX_HEIGHT)
                                : ui_transform_identity());
-    for (int frame = 0; frame < SETTLE_FRAMES; frame++) {
-        if (screen == EDITOR_SCREEN_CONTROL_CENTER) {
-            render_control_center(&no_input, layout);
-        } else {
-            render_launcher(&no_input);
-        }
-    }
+    render_launcher(&no_input);
     copy_framebuffer(pixels, width, height, portrait);
     return true;
 }

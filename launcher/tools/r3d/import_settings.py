@@ -12,9 +12,16 @@ import re
 import tomllib
 from types import SimpleNamespace
 
-from anim import tracks_asset
+from anim import clip_name
+from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
 from gltf.gltf_read import ASSET_SUFFIXES
+
+MESHLET_TRIANGLES = 32
+SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
+LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
+SKIN_LIGHTING = ("direct", "renormalised", "table")
+ANIM_WRAPS = ("clamp", "loop")
 
 RESERVED_LIGHTS = ("point", "spot")
 
@@ -239,7 +246,10 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles"))
+    steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
+    if not 4 <= steps.meshlet_triangles <= 256:
+        raise SettingsError("geometry.meshlet_triangles must be between 4 and 256")
     if "alpha_mask" in table:
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
@@ -271,7 +281,12 @@ def load_import_settings(path):
     for name, home in (("visibility", "objects.mesh_renderer.visibility"), ("lighting", "scene [bake]")):
         if name in values:
             raise SettingsError(f"[{name}] moved to {home}")
-    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants"))
+    check_keys(values, ("source", "output"), "settings", optional=("materials", "process", "geometry", "variants", "skin"))
+    skin = values.get("skin", {})
+    check_keys(skin, (), f"{path}: skin", optional=("lighting",))
+    lighting = skin.get("lighting", "direct")
+    if lighting not in SKIN_LIGHTING:
+        raise SettingsError(f"{path}: skin.lighting must be one of {', '.join(SKIN_LIGHTING)}")
     source = values["source"]
     check_keys(source, ("path", "credit"), "source", optional=("clips",))
     for name in ("path", "credit"):
@@ -283,6 +298,8 @@ def load_import_settings(path):
         if source["path"].suffix.lower() != BLEND_SUFFIX:
             raise SettingsError("source.clips names the actions a .blend exports; this source is not one")
         source["clips"] = strings(source["clips"], "source.clips")
+        if len(set(source["clips"])) != len(source["clips"]):
+            raise SettingsError(f"{path}: duplicate clip names")
     output = values["output"]
     if "directory" in output:
         raise SettingsError("output.directory is gone: a mesh is a bake product, made into the bake cache "
@@ -317,7 +334,8 @@ def load_import_settings(path):
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
-        variants=variants)
+        meshlet_triangles=steps.meshlet_triangles,
+        variants=variants, skin_lighting=lighting)
 
 
 def source_files(settings):
@@ -395,6 +413,18 @@ def rotate(degrees, vector_):
     return [sum(matrix[i][j] * vector_[j] for j in range(3)) for i in range(3)]
 
 
+def color_fits(color):
+    return all(math.isfinite(value) and 0 <= value <= 1 for value in color)
+
+
+def light_values(light, where):
+    if not color_fits(light["color"]):
+        raise SettingsError(f"{where}.color must be linear components in 0..1")
+    if light["intensity"] < 0:
+        raise SettingsError(f"{where}.intensity must be nonnegative")
+    return light
+
+
 def load_environment_light(kind, table, where):
     """Sky and ambient are scene settings, not objects."""
     fields = LIGHT_FIELDS[kind]
@@ -402,7 +432,7 @@ def load_environment_light(kind, table, where):
     light = {"type": kind}
     for name, reader in fields.items():
         light[name] = READERS[reader](table[name], f"{where}.{name}")
-    return light
+    return light_values(light, where)
 
 
 def load_light(component, rotation, where):
@@ -414,10 +444,10 @@ def load_light(component, rotation, where):
         raise SettingsError(f"{where}.type must be directional: sky and ambient are scene settings")
     fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name != "direction"}
     check_keys(component, ("type", *fields), where)
-    light = {"type": kind, "direction": rotate(rotation, [0.0, 1.0, 0.0])}
+    light = {"type": kind, "direction": rotate(rotation, LIGHT_AXIS)}
     for name, reader in fields.items():
         light[name] = READERS[reader](component[name], f"{where}.{name}")
-    return light
+    return light_values(light, where)
 
 
 def load_camera(component, base, where):
@@ -439,12 +469,10 @@ def load_camera_path(path, base, where):
     file (its id is the stem), and the node in it that is the camera."""
     check_keys(path, ("animation", "node"), where)
     animation = (base / text(path["animation"], f"{where}.animation")).resolve()
-    if not animation.name.endswith(tracks_asset.SUFFIX) or not animation.is_file():
-        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {tracks_asset.SUFFIX} file")
+    if not animation.name.endswith(clip_name.SUFFIX) or not animation.is_file():
+        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {clip_name.SUFFIX} file")
     node = identifier(path["node"], f"{where}.node")
-    if len(f"{node}/translation") >= tracks_asset.NAME_BYTES:
-        raise SettingsError(f"{where}.node {node!r}: its track names exceed {tracks_asset.NAME_BYTES - 1} bytes")
-    clip = tracks_asset.clip_id(animation)
+    clip = clip_name.clip_id(animation)
     if len(clip.encode("utf-8")) >= NAME_BYTES:
         raise SettingsError(f"{where}.animation: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
     return SimpleNamespace(animation=animation, clip=clip, node=node)
@@ -509,11 +537,11 @@ def albedo_jobs(settings):
     return jobs
 
 
-COMPONENTS = ("mesh_renderer", "light", "camera")
+COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 
 def load_object(value, base, where):
-    check_keys(value, ("name",), where, optional=("position", "rotation", "scale", *COMPONENTS))
+    check_keys(value, ("name",), where, optional=("position", "rotation", "scale", "animator", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
@@ -528,14 +556,35 @@ def load_object(value, base, where):
     obj.matrix = placement_matrix(obj.rotation, obj.scale)
     obj.identity = obj.position == [0.0] * 3 and obj.rotation == [0.0] * 3 and obj.scale == [1.0] * 3
     spot = f"{where}.{kind}"
-    if kind in ("mesh_renderer", "camera"):
-        identifier(obj.name, f"{where}.name")
-    if kind == "mesh_renderer":
+    identifier(obj.name, f"{where}.name")
+    if kind == "skinned_renderer":
+        if "bake" in value[kind]:
+            raise SettingsError(f"{spot} takes no bake: its light is computed at runtime")
+        check_keys(value[kind], ("mesh",), spot, optional=("variant",))
+        obj.component = load_renderer(value[kind], base, spot)
+    elif kind == "mesh_renderer":
         obj.component = load_renderer(value[kind], base, spot)
     elif kind == "light":
         obj.component = load_light(value[kind], obj.rotation, spot)
     else:
         obj.component = load_camera(value[kind], base, spot)
+    obj.animator = None
+    if "animator" in value:
+        if kind != "skinned_renderer":
+            raise SettingsError(f"{where}.animator requires a skinned_renderer; camera clips use path")
+        table = value["animator"]
+        check_keys(table, (), f"{where}.animator", optional=("clips", "default_clip", "wrap"))
+        available = obj.component.settings.source.get("clips", [])
+        clips = strings(table["clips"], f"{where}.animator.clips") if "clips" in table else available
+        if not clips or len(set(clips)) != len(clips) or (available and any(clip not in available for clip in clips)):
+            raise SettingsError(f"{where}.animator.clips must select unique import source.clips")
+        default = table.get("default_clip")
+        if default is not None and default not in clips:
+            raise SettingsError(f"{where}.animator.default_clip must name one of its clips")
+        wrap = table.get("wrap", "loop")
+        if wrap not in ANIM_WRAPS:
+            raise SettingsError(f"{where}.animator.wrap must be loop or clamp")
+        obj.animator = SimpleNamespace(clips=clips, default_clip=default, wrap=wrap)
     return obj
 
 
@@ -604,10 +653,10 @@ def load_scene(path):
     names = [item.name for item in objects]
     if len(set(names)) != len(names):
         raise SettingsError("scene.objects names must be unique")
-    renderers = [item for item in objects if item.kind == "mesh_renderer"]
+    renderers = [item for item in objects if item.kind in ("mesh_renderer", "skinned_renderer")]
     cameras = [item for item in objects if item.kind == "camera"]
     if not renderers:
-        raise SettingsError("scene.objects needs a mesh_renderer")
+        raise SettingsError("scene.objects needs a mesh_renderer or skinned_renderer")
     if any(camera.component.region is not None for camera in cameras[1:]):
         raise SettingsError("only the first camera may have a region")
     lights = [item.component for item in objects if item.kind == "light"]
@@ -632,7 +681,7 @@ def load_scene(path):
             asset_name = f"{scene_name}.{item.name}"
             asset_path = path.parent / f"{asset_name}.mesh"
         else:
-            asset_name = component.variant.name
+            asset_name = f"{scene_name}.{item.name}" if item.kind == "skinned_renderer" else component.variant.name
             asset_path = component.settings.mesh_dir / f"{asset_name}.mesh"
         try:
             too_long = len(asset_name.encode("ascii")) >= NAME_BYTES
@@ -647,6 +696,11 @@ def load_scene(path):
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
         indirect=load_indirect_look(values.get("indirect", {})))
     lit = any(item.renderer.bake for item in jobs)
+    runtime_lit = any(item.kind == "skinned_renderer" for item in objects)
+    if scene.tonemap_white is not None and scene.tonemap_white < 0:
+        raise SettingsError("scene.tonemap_white must be nonnegative")
+    if any(light["type"] == "sky" for light in lights) and not lit:
+        raise SettingsError("scene sky is read by no placed mesh: only baked renderers read it")
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
@@ -659,7 +713,8 @@ def load_scene(path):
             raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer takes bounced light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
-    for name, present, needed in (("lights", bool(lights), lit), ("tonemap_white", scene.tonemap_white is not None, lit),
+    for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
+                                  ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
                                   ("camera region", region is not None, "camera_region" in sources)):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")

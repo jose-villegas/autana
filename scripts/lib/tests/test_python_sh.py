@@ -11,6 +11,8 @@ import unittest
 
 LIB = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LIB.parents[0] / "device"))
+sys.path.insert(0, str(LIB.parent / "device" / "tests"))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
 
 

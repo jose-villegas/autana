@@ -15,15 +15,27 @@
 
 #define ANIM_WIDTH_MAX 4
 
+/* The entry's type byte; tracks_asset.py mirrors this order. */
+typedef enum {
+    ANIM_VALUE_FLOAT,
+    ANIM_VALUE_VEC2,
+    ANIM_VALUE_VEC3,
+    ANIM_VALUE_QUAT,
+    ANIM_VALUE_COLOUR,
+} anim_value_t;
+
 typedef enum {
     ANIM_STEP,   /* holds a key's value until the next key */
     ANIM_LINEAR, /* lerp, or slerp for a quaternion track */
     ANIM_CUBIC,  /* glTF CUBICSPLINE: an in-tangent, value and out-tangent per key */
 } anim_interp_t;
 
+#define ANIM_WRAP_CLAMP 0U
+#define ANIM_WRAP_LOOP  1U
+
 typedef enum {
-    ANIM_CLAMP, /* before the start and after the end hold the end values */
-    ANIM_LOOP,  /* time wraps at the clip's duration */
+    ANIM_CLAMP = ANIM_WRAP_CLAMP, /* before the start and after the end hold the end values */
+    ANIM_LOOP = ANIM_WRAP_LOOP,   /* time wraps at the clip's duration */
 } anim_wrap_t;
 
 typedef struct {

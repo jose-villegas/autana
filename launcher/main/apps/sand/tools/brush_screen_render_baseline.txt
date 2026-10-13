@@ -3,3 +3,4 @@
 #     ./launcher/main/apps/sand/tools/brush_screen_render_host.sh --update-baseline
 portrait 9cb42a91ddea68575baef7feff24caaf4cd49be77ab887708129a4d8383bac91
 landscape 71cfd9d281092c99900f3a7f6ca83f43f7ac05618f097dd3e964614ddcf12cb1
+portrait-no-pack e158b0cf0974eff0acdb724c0f09ec46432af9cdc8108a0e55ded02c8e701780

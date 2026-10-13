@@ -206,25 +206,18 @@ test_the_quarter_points_are_exact(void) {
  * the finale starts (2700ms): the view at full progress. */
 #define CURVE_DONE_MS 2600
 
-/* A plain identity matrix (mat4f_identity()) and an orthographic focal length:
- * 0 is an orthographic projection (r3d_line_view_x_t's `focal`,
- * render/r3d_project_x.h), not a second code path. The simplest
- * boot_anim_view_t there is, built
- * directly rather than through boot_anim_view()/the motion tracks, so
- * these tests can check boot_anim_project()'s own arithmetic in isolation
- * from whatever the CURRENT seed motion happens to say. */
+/* The identity transform isolates projection from motion tracks. */
 static boot_anim_view_t
-identity_view(float focal) {
+identity_view(void) {
     boot_anim_view_t v;
     v.matrix = mat4x_identity();
     for (int i = 0; i < 4; i++) {
         v.matrix.m[i][i] = R3D_X_UNIT_ONE;
     }
-    v.focal = (int32_t)(focal * (float)R3D_X_UNIT_ONE);
     v.near_z = mathf_round_i32(R3D_LINE_NEAR_Z * (float)R3D_X_UNIT_ONE);
     v.center_x = PANEL_W / 2;
     v.center_y = PANEL_H / 2;
-    v.scale = PANEL_W / 2;
+    v.pixels_per_unit = PANEL_W / 2;
     v.units_ok = false;
     return v;
 }
@@ -232,43 +225,37 @@ identity_view(float focal) {
 /* Meters, as a camera-space point in 1/512 m. */
 static vec3x_t
 vx(float x, float y, float z) {
-    return (vec3x_t){mathf_round_i32(x * 512.0F), mathf_round_i32(y * 512.0F), mathf_round_i32(z * 512.0F)};
+    return (vec3x_t){mathf_round_i32(x * (float)R3D_X_UNIT_ONE), mathf_round_i32(y * (float)R3D_X_UNIT_ONE),
+                     mathf_round_i32(z * (float)R3D_X_UNIT_ONE)};
 }
 
-/* The space's own local origin (0,0,0) has to land at the screen's centre
- * under an identity transform and an orthographic projection: no camera
- * offset, no rotation, no depth-dependent scale to reason about, just
- * the projection centring a (0,0) point.
- * The most basic thing boot_anim_project() has to get right. */
+/* An on-axis point in front of the camera lands on the screen centre. */
 static void
-test_identity_transform_leaves_the_origin_at_screen_centre(void) {
-    const boot_anim_view_t view = identity_view(0);
+test_identity_transform_leaves_an_on_axis_point_at_screen_centre(void) {
+    const boot_anim_view_t view = identity_view();
     int x, y;
-    boot_anim_project(0, 0, 0, &view, &x, &y);
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, BOOT_ANIM_ONE, 0, &view, &x, &y));
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(PANEL_W / 2, x,
-                                  "the origin should land exactly on screen centre under an "
+                                  "the on-axis point should land exactly on screen centre under an "
                                   "identity transform");
     TEST_ASSERT_EQUAL_INT_MESSAGE(PANEL_H / 2, y,
-                                  "the origin should land exactly on screen centre under an "
+                                  "the on-axis point should land exactly on screen centre under an "
                                   "identity transform");
 }
 
-/* The property that distinguishes a real perspective projection: a point
- * further from the camera must project SMALLER (closer to screen centre)
- * than the same point nearer the camera, for a real focal length. re/im
- * map to X/Z (see boot_anim_project()'s axis-mapping comment); im is
- * depth, re is the offset compared at two depths. */
+/* A farther point projects closer to the centre. re/im map to X/Z:
+ * im is depth and re is the offset compared at two depths. */
 static void
 test_a_point_further_from_the_camera_projects_smaller(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const int32_t re = 2 * BOOT_ANIM_ONE;
     const int32_t near_im = 1 * BOOT_ANIM_ONE;
     const int32_t far_im = 4 * BOOT_ANIM_ONE;
     int x_near, y_near, x_far, y_far;
 
-    boot_anim_project(re, near_im, 0, &view, &x_near, &y_near);
-    boot_anim_project(re, far_im, 0, &view, &x_far, &y_far);
+    TEST_ASSERT_TRUE(boot_anim_project_point(re, near_im, 0, &view, &x_near, &y_near));
+    TEST_ASSERT_TRUE(boot_anim_project_point(re, far_im, 0, &view, &x_far, &y_far));
 
     const int centre = PANEL_W / 2;
     const int near_offset = (x_near > centre) ? x_near - centre : centre - x_near;
@@ -279,15 +266,11 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
                              "centre than the same point nearer the camera");
 }
 
-/* boot_anim_project_point()'s entire reason to exist over plain
- * boot_anim_project() is refusing to write anything for a point at or
- * behind the near plane, rather than projecting it to an ordinary-looking
- * but geometrically nonsense screen position. `im_q12 = 512` is 0.125 m,
- * which the view's near plane is set to, so this exercises the `<=`, which
- * a `<` typo would still pass anywhere further back. */
+/* A point at the near plane must leave the output untouched; the equality
+ * exercises the clip boundary independently of any point further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
-    boot_anim_view_t view = identity_view(1.0F);
+    boot_anim_view_t view = identity_view();
     view.near_z = 64; /* 0.125 m */
     int x = -1, y = -1;
 
@@ -306,7 +289,7 @@ test_project_point_rejects_a_point_at_the_near_plane(void) {
  * outright rather than clip against itself. */
 static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t p0 = {100, 200, 0};
     const vec3x_t p1 = {-100, -200, view.near_z};
     int ax, ay, bx, by;
@@ -323,7 +306,7 @@ test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
  * not the function under test. */
 static void
 test_project_segment_cs_clips_asymmetric_coordinates(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t p0 = vx(-3.1F, 2.5F, R3D_LINE_NEAR_Z - 0.168F);
     const vec3x_t p1 = vx(4.0F, -1.8F, R3D_LINE_NEAR_Z + 0.801F);
 
@@ -483,7 +466,7 @@ expect_the_curve_near_the_panel_throughout(const boot_anim_motion_t* motion) {
         }
         const boot_anim_pt_t p = boot_anim_sample(last);
         int x, y;
-        boot_anim_project(p.re, p.im, p.t, &view, &x, &y);
+        TEST_ASSERT_TRUE(boot_anim_project_point(p.re, p.im, p.t, &view, &x, &y));
 
         TEST_ASSERT_TRUE_MESSAGE(x > -PANEL_W * BOOT_ANIM_TEST_MAX_PANEL_MULTIPLE
                                      && x < PANEL_W * (BOOT_ANIM_TEST_MAX_PANEL_MULTIPLE + 1),
@@ -514,10 +497,10 @@ expect_three_distinct_axes(const boot_anim_motion_t* motion) {
     const int32_t one = BOOT_ANIM_ONE;
     int ox, oy, rx, ry, ix, iy, tx, ty;
 
-    boot_anim_project(0, 0, 0, &view, &ox, &oy);
-    boot_anim_project(one, 0, 0, &view, &rx, &ry);
-    boot_anim_project(0, one, 0, &view, &ix, &iy);
-    boot_anim_project(0, 0, 1 << BOOT_ANIM_TQ, &view, &tx, &ty);
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, 0, 0, &view, &ox, &oy));
+    TEST_ASSERT_TRUE(boot_anim_project_point(one, 0, 0, &view, &rx, &ry));
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, one, 0, &view, &ix, &iy));
+    TEST_ASSERT_TRUE(boot_anim_project_point(0, 0, 1 << BOOT_ANIM_TQ, &view, &tx, &ty));
 
     TEST_ASSERT_FALSE_MESSAGE(rx == ix && ry == iy, "the real and imaginary axes should not project to the same point");
     TEST_ASSERT_FALSE_MESSAGE(rx == tx && ry == ty, "the real and t axes should not project to the same point");
@@ -911,6 +894,34 @@ expect_the_narrow_transform_across_the_motion(const boot_anim_motion_t* motion) 
 }
 
 static void
+test_camera_transform_selects_the_narrow_path_at_negative_input_limits(void) {
+    const boot_anim_view_t original = boot_anim_view(seed, PANEL_W, PANEL_H, 0);
+    TEST_ASSERT_TRUE(original.units_ok);
+    for (int axis = 0; axis < 3; axis++) {
+        const int32_t limit = axis == 1 ? R3D_X_INPUT_Y_LIMIT : R3D_X_INPUT_XZ_LIMIT;
+        for (int sign = -1; sign <= 1; sign += 2) {
+            int32_t raw[3] = {0};
+            raw[axis] = sign * limit;
+            boot_anim_view_t view = original;
+            const vec3x_t point = {raw[0] * (MATHX_ONE / BOOT_ANIM_ONE), raw[1] * (BOOT_ANIM_SPIRAL_Q9 / 2),
+                                   raw[2] * (MATHX_ONE / BOOT_ANIM_ONE)};
+            const vec3x_t wide = mat4x_apply(&view.matrix, point);
+            const vec3x_t narrow = r3d_to_camera_space_units(&view, raw[0], raw[1], raw[2]);
+            const vec3x_t got = boot_anim_to_camera_space(raw[0], raw[2], raw[1], &view);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.x, got.x);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.y, got.y);
+            TEST_ASSERT_INT32_WITHIN(1 + limit / (1 << R3D_X_INPUT_SHIFT), wide.z, got.z);
+            /* A distinct narrow translation makes path selection observable. */
+            view.units[0][3] += 1 << R3D_X_INPUT_SHIFT;
+            const vec3x_t selected = boot_anim_to_camera_space(raw[0], raw[2], raw[1], &view);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.x + 1 : wide.x, selected.x);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.y : wide.y, selected.y);
+            TEST_ASSERT_EQUAL_INT32(sign < 0 ? narrow.z : wide.z, selected.z);
+        }
+    }
+}
+
+static void
 test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion(void) {
     expect_the_narrow_transform_across_the_motion(seed);
 }
@@ -929,13 +940,10 @@ test_the_curve_table_stays_inside_the_narrow_range(void) {
 
 /* Basic level of detail */
 
-/* Two points far enough apart on screen that boot_anim_curve_lod_steps()
- * must not shortcut: an identity, orthographic view (focal 0) so the
- * points' own x/y ARE their screen offset from centre, no projection math
- * to work back through by hand. */
+/* A wide perspective chord keeps the full spline detail. */
 static void
 test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
-    const boot_anim_view_t view = identity_view(0);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t a = vx(-0.2F, 0.0F, 5.0F);
     const vec3x_t c = vx(0.2F, 0.0F, 5.0F);
 
@@ -951,7 +959,7 @@ test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
  * this without looking at anything in between. */
 static void
 test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
-    const boot_anim_view_t view = identity_view(0);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t a = vx(0.08F, 0.08F, 5.0F);
     const vec3x_t c = vx(0.082F, 0.08F, 5.0F);
 
@@ -960,16 +968,11 @@ test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
                                   "to a single straight step");
 }
 
-/* boot_anim_screen_chord_lt()'s whole point over projecting the points for
- * real: the perspective cross-multiplication has to agree with what the
- * projection would say; the SAME camera-space pair reads as a wide chord
- * near the camera and a tiny one far from it, because apparent size falls
- * off with z. dx=0.2 with focal 1: at z of one meter it spans ~37 screen px
- * (well over the 3px bar); pushed a hundred meters out it spans well
- * under one. */
+/* Perspective chord bounds agree with projection: the same pair is wide
+ * near the camera and below one pixel far away. */
 static void
 test_screen_chord_shrinks_with_distance(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t near_a = vx(0.0F, 0.0F, 1.0F);
     const vec3x_t near_c = vx(0.2F, 0.0F, 1.0F);
     const vec3x_t far_a = vx(0.0F, 0.0F, 100.0F);
@@ -1004,7 +1007,7 @@ test_lod_stride_tiers_by_extent(void) {
  * guess low. */
 static void
 test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
-    const boot_anim_view_t view = identity_view(1.0F);
+    const boot_anim_view_t view = identity_view();
     const vec3x_t a = vx(0.08F, 0.08F, 0.0F);
     const vec3x_t c = vx(0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F);
 
@@ -1075,36 +1078,27 @@ test_the_picture_is_lit_until_the_dissolve_and_dark_at_the_end(void) {
     TEST_ASSERT_TRUE(boot_anim_ink(BOOT_ANIM_MS - 100) < 255);
 }
 
-/* boot_anim_image_reveal()'s own two guaranteed endpoints: the crossfade
+/* boot_anim_photo_reveal()'s own two guaranteed endpoints: the crossfade
  * has not started at or before BOOT_ANIM_IMAGE_START_MS, and it is fully
  * arrived (and stays arrived) once BOOT_ANIM_IMAGE_FADE_MS has passed
  * since. */
 static void
 test_the_photograph_arrives_over_its_own_window(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(0));
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(BOOT_ANIM_IMAGE_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_image_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS));
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_image_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 1000));
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_photo_reveal(0));
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS));
+    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS));
+    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_photo_reveal(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 1000));
 }
 
-/* The whole point of the pair (see boot_anim_scene_reach()'s own comment
- * in boot_anim.h): one window, two halves that always sum to a whole
- * picture. If these ever stopped summing to 255 the crossfade would
- * visibly dip or bloom partway through: exactly the artefact plain, not
- * eased, tween_ramp() is chosen to avoid. */
+/* Boot mounts the photograph's pack after the first frame, so the first
+ * picture never waits on it, and the first frame, drawn at 0 ms, never needs
+ * the photograph it has not mounted yet. */
 static void
-test_the_scene_leaves_exactly_as_fast_as_the_photograph_arrives(void) {
-    const uint32_t from = BOOT_ANIM_IMAGE_START_MS > 200 ? BOOT_ANIM_IMAGE_START_MS - 200 : 0;
-    const uint32_t to = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS + 200;
-
-    for (uint32_t ms = from; ms <= to; ms += 5) {
-        TEST_ASSERT_EQUAL_UINT16_MESSAGE(255, (uint16_t)boot_anim_image_reveal(ms) + boot_anim_scene_reach(ms),
-                                         "the photograph and the scene did not sum to one whole "
-                                         "picture - the crossfade would visibly dip or bloom");
-    }
-
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_scene_reach(BOOT_ANIM_IMAGE_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_scene_reach(BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS));
+test_the_photograph_is_mounted_after_the_first_frame(void) {
+    TEST_ASSERT_FALSE(boot_anim_photo_due(0));
+    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_PHOTO_MOUNT_FRAME));
+    TEST_ASSERT_TRUE(boot_anim_photo_due(BOOT_ANIM_PHOTO_MOUNT_FRAME + 1U));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_photo_reveal(0), "the first frame shows the photograph");
 }
 
 /* The two clocks (ink and the crossfade) are independent by design, but
@@ -1576,34 +1570,39 @@ test_title_shadow_offset_turns_reader_frame_into_panel_frame(void) {
  * so the store mounts what the case leaves.
  */
 
-#define FALLBACK_PACK   "./boot_anim_motion.apak"
+#define FALLBACK_PACK   "./" BOOT_CLIP ".apak"
 #define NO_PACKS        "./suite_boot_anim_no_such_folder"
 #define FALLBACK_TRACKS 6
 
 static const char* const NODE_PARTS[FALLBACK_TRACKS] = {"camera/translation", "camera/rotation", "camera/scale",
                                                         "space/translation",  "space/rotation",  "space/scale"};
 
-/* The boot clip's six tracks, in NODE_PARTS order. */
+static const char* const TRANSFORM_PARTS[] = {"position", "rotation", "scale"};
+
 static void
 six_tracks(test_track_t rows[FALLBACK_TRACKS]) {
     for (int i = 0; i < FALLBACK_TRACKS; i++) {
         const bool rotation = i % 3 == 1;
-        rows[i] = (test_track_t){.name = NODE_PARTS[i], .width = rotation ? 4 : 3, .quaternion = rotation};
+        rows[i] = (test_track_t){.path = i < 3 ? "camera" : "space",
+                                 .field = TRANSFORM_PARTS[i % 3],
+                                 .component = ANIM_COMPONENT_TRANSFORM,
+                                 .type = rotation ? ANIM_VALUE_QUAT : ANIM_VALUE_VEC3};
     }
 }
 
-/* Writes pack "boot_anim_motion" in "." holding a TRCK of `rows`, one key
+/* Writes pack BOOT_CLIP in "." holding a TRCK of `rows`, one key
  * each, row i holding i * 10 + 1, + 2, ... so each track can be told apart. */
 static void
 write_clip(const test_track_t* rows, int count) {
     enum { BYTES = 1024 };
 
-    const uint32_t times_at = TEST_TRACKS_HEADER_SIZE + (uint32_t)(count * TEST_TRACK_ROW_SIZE);
+    const uint32_t times_at =
+        TEST_TRACKS_HEADER_SIZE + (uint32_t)(count * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT));
     const uint32_t values_at = times_at + 16U;
     uint8_t* bytes = malloc(BYTES);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, BYTES, 1);
-    uint8_t* entry = test_pack_add(&pack, "boot_anim_motion", ANIM_TRACKS_ASSET, values_at + (16U * (uint32_t)count));
+    uint8_t* entry = test_pack_add(&pack, BOOT_CLIP, ANIM_TRACKS_ASSET, values_at + (16U * (uint32_t)count));
     test_tracks_header(entry, count, 1000);
     const float at_start[] = {0.0F};
     test_pack_put_floats(entry + times_at, at_start, 1);
@@ -1662,8 +1661,7 @@ expect_the_rest_pose(const char* dir) {
     }
     suite_set_test_cleanup(gfx_reset_for_test);
     const uint32_t now_ms = BOOT_ANIM_TITLE_START_MS - 1;
-    TEST_ASSERT_TRUE(boot_anim_scene_reach(now_ms) > 0);
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_image_reveal(now_ms));
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_photo_reveal(now_ms));
 
     boot_anim_motion_t rest;
     load_from(NO_PACKS, &rest);
@@ -1672,7 +1670,8 @@ expect_the_rest_pose(const char* dir) {
     const bool from_pack = motion.from_pack;
     const bool is_rest = !from_pack && motion.clip.duration_ms == rest.clip.duration_ms
                          && same_node(&motion.camera, &rest.camera) && same_node(&motion.space, &rest.space);
-    boot_anim_draw_frame(&motion, now_ms);
+    const gfx_image_t no_photo = {0};
+    boot_anim_draw_frame(&motion, &no_photo, now_ms);
     boot_anim_motion_release(&motion);
     TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
     TEST_ASSERT_TRUE_MESSAGE(is_rest, "a failed load left something other than the rest pose");
@@ -1716,7 +1715,7 @@ static void
 test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted(void) {
     test_track_t rows[FALLBACK_TRACKS];
     six_tracks(rows);
-    rows[4].quaternion = false;
+    rows[4].type = ANIM_VALUE_VEC3;
     write_clip(rows, FALLBACK_TRACKS);
     expect_the_rest_pose(".");
     (void)remove(FALLBACK_PACK);
@@ -1744,7 +1743,13 @@ test_each_part_of_the_motion_is_the_track_of_its_name(void) {
     (void)remove(FALLBACK_PACK);
     TEST_ASSERT_TRUE(from_pack);
     for (int i = 0; i < FALLBACK_TRACKS; i++) {
-        TEST_ASSERT_EQUAL_FLOAT_MESSAGE((float)(i * 10) + 1.0F, first[i], NODE_PARTS[i]);
+        float expected = (float)(i * 10) + 1.0F;
+        if (rows[i].type == ANIM_VALUE_QUAT) {
+            const float base = (float)(i * 10);
+            const quatf_t unit = quatf_normalize((quatf_t){base + 1, base + 2, base + 3, base + 4});
+            expected = unit.x;
+        }
+        TEST_ASSERT_EQUAL_FLOAT_MESSAGE(expected, first[i], NODE_PARTS[i]);
     }
 }
 
@@ -1758,7 +1763,165 @@ test_the_rest_pose_keeps_the_seeds_view_rules(void) {
     expect_three_distinct_axes(&rest);
     expect_the_narrow_transform_across_the_motion(&rest);
 }
+
+/*
+ * The photograph
+ *
+ * Without the boot picture's pack, or with a picture boot cannot draw, boot
+ * draws on without it: the scene stays where the photograph would have
+ * covered it, and nothing stays mounted.
+ */
+
+#define PICTURE_PACK "./" BOOT_PHOTO ".apak"
+
+/* Writes pack BOOT_PHOTO in "." holding a white IMAG of `width` x `height`, its
+ * header stating `version`. */
+static void
+write_picture(int version, int width, int height) {
+    const uint32_t pixels_at = 16;
+    const uint32_t entry_size = pixels_at + ((uint32_t)(width * height) * sizeof(gfx_color_t));
+    const uint32_t capacity = 256 + entry_size;
+    uint8_t* bytes = malloc(capacity);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t pack = test_pack_begin(bytes, capacity, 1);
+    uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, GFX_IMAGE_ASSET, entry_size);
+    test_pack_put16(entry, version);
+    test_pack_put16(entry + 2, GFX_IMAGE_RGB565);
+    test_pack_put16(entry + 4, width);
+    test_pack_put16(entry + 6, height);
+    test_pack_put32(entry + 8, (uint32_t)width);
+    test_pack_put32(entry + 12, pixels_at);
+    memset(entry + pixels_at, 0xFF, entry_size - pixels_at);
+    const uint32_t size = test_pack_finish(&pack);
+    test_write_file(PICTURE_PACK, bytes, size);
+    free(bytes);
+}
+
+static void
+load_photo_from(const char* dir, gfx_image_t* out) {
+    test_asset_dir_use(dir);
+    boot_anim_photo_load(out);
+    test_asset_dir_restore();
+}
+
+/* The lit pixels of the shipped motion's frame at `now_ms` drawn over `photo`. */
+static int
+lit_over(const gfx_image_t* photo, uint32_t now_ms) {
+    boot_anim_motion_t motion;
+    boot_anim_motion_load(&motion);
+    boot_anim_draw_frame(&motion, photo, now_ms);
+    boot_anim_motion_release(&motion);
+    return lit_pixels();
+}
+
+/* Loads the picture from `dir` and expects none, holding nothing mounted;
+ * then, once the crossfade would be over, expects the frame to light more
+ * than the same frame over a black photograph, which shows the title alone. */
+static void
+expect_no_photograph(const char* dir) {
+    if (gfx_mode_current()->width == 0) {
+        TEST_ASSERT_TRUE(gfx_init());
+    }
+    suite_set_test_cleanup(gfx_reset_for_test);
+    const uint32_t now_ms = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS;
+    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_ink(now_ms));
+
+    gfx_image_t photo;
+    load_photo_from(dir, &photo);
+    const bool no_pixels = photo.pixels == NULL;
+    const int without = lit_over(&photo, now_ms);
+    boot_anim_photo_release(&photo);
+
+    /* One black row repeated down the panel: a stride of 0. */
+    gfx_color_t* black = calloc(GFX_WIDTH, sizeof(gfx_color_t));
+    TEST_ASSERT_NOT_NULL(black);
+    const gfx_image_t covered = {
+        .pixels = black, .format = GFX_IMAGE_RGB565, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
+    const int title_only = lit_over(&covered, now_ms);
+    free(black);
+
+    TEST_ASSERT_TRUE_MESSAGE(no_pixels, "a failed load left the photograph's pixels behind");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(title_only + (GFX_WIDTH * GFX_HEIGHT / 100), without,
+                                         "without the photograph the scene did not stay");
+}
+
+/* A failed load holds no use of the pack: the next load mounts the shipped
+ * pack, not the one that failed. */
+static void
+expect_a_good_picture_loads_next(void) {
+    gfx_image_t photo;
+    boot_anim_photo_load(&photo);
+    const bool from_pack = photo.pixels != NULL;
+    boot_anim_photo_release(&photo);
+    TEST_ASSERT_TRUE_MESSAGE(from_pack, "the failed load left its pack mounted");
+}
+
+static void
+test_with_no_pack_the_scene_stays_where_the_photograph_would_be(void) {
+    expect_no_photograph(NO_PACKS);
+}
+
+static void
+test_with_a_picture_not_one_panel_the_scene_stays_and_nothing_stays_mounted(void) {
+    write_picture(GFX_IMAGE_VERSION, 2, 2);
+    expect_no_photograph(".");
+    (void)remove(PICTURE_PACK);
+    expect_a_good_picture_loads_next();
+}
+
+static void
+test_with_a_malformed_picture_the_scene_stays_and_nothing_stays_mounted(void) {
+    write_picture(GFX_IMAGE_VERSION + 1, 2, 2);
+    expect_no_photograph(".");
+    (void)remove(PICTURE_PACK);
+    expect_a_good_picture_loads_next();
+}
+
+/* With the shipped pack, the crossfade ends on the photograph itself: every
+ * pixel the title leaves is the picture's. */
+static void
+test_the_crossfade_ends_on_the_shipped_photograph(void) {
+    if (gfx_mode_current()->width == 0) {
+        TEST_ASSERT_TRUE(gfx_init());
+    }
+    suite_set_test_cleanup(gfx_reset_for_test);
+    gfx_image_t photo;
+    boot_anim_photo_load(&photo);
+    if (photo.pixels == NULL) {
+        TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
+    }
+    (void)lit_over(&photo, BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS);
+    const gfx_color_t* fb = gfx_framebuffer();
+    int same = 0;
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            same += fb[(y * GFX_WIDTH) + x] == photo.pixels[(y * (int)photo.stride) + x];
+        }
+    }
+    boot_anim_photo_release(&photo);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(GFX_WIDTH * GFX_HEIGHT * 9 / 10, same,
+                                         "the end of the crossfade is not the photograph");
+}
 #endif
+
+static void
+test_screen_chord_threshold_is_strict(void) {
+    const int threshold_px = 3;
+    const boot_anim_view_t view = identity_view();
+    const int32_t depth = view.pixels_per_unit * R3D_X_UNIT_ONE;
+    const vec3x_t a = {0, 0, depth};
+    const int32_t threshold = threshold_px * R3D_X_UNIT_ONE;
+    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold - 1, 0, depth}, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold, 0, depth}, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold + 1, 0, depth}, &view, threshold_px));
+    const vec3x_t farther_x = {threshold, 0, depth * 2};
+    const vec3x_t farther_y = {0, threshold, depth * 2};
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_x, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_x, a, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_y, &view, threshold_px));
+    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_y, a, &view, threshold_px));
+    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){0, threshold - 1, depth * 2}, &view, threshold_px));
+}
 
 void
 run_boot_anim_suite(void) {
@@ -1780,7 +1943,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_quarter_wave_rises_all_the_way);
     RUN_TEST(test_sin_squared_plus_cos_squared_is_one);
     RUN_TEST(test_the_quarter_points_are_exact);
-    RUN_TEST(test_identity_transform_leaves_the_origin_at_screen_centre);
+    RUN_TEST(test_identity_transform_leaves_an_on_axis_point_at_screen_centre);
     RUN_TEST(test_a_point_further_from_the_camera_projects_smaller);
     RUN_TEST(test_project_point_rejects_a_point_at_the_near_plane);
     RUN_TEST(test_project_segment_cs_rejects_a_segment_entirely_behind);
@@ -1816,10 +1979,12 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_spline_cs_matches_transforming_the_world_space_spline);
     RUN_TEST(test_plane_points_match_the_full_camera_space_transform);
     RUN_TEST(test_the_curve_table_stays_inside_the_narrow_range);
+    RUN_TEST(test_camera_transform_selects_the_narrow_path_at_negative_input_limits);
     RUN_TEST(test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
     RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
     RUN_TEST(test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project);
+    RUN_TEST(test_screen_chord_threshold_is_strict);
     RUN_TEST(test_screen_chord_shrinks_with_distance);
     RUN_TEST(test_lod_stride_tiers_by_extent);
 
@@ -1829,7 +1994,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seed_finishes_the_curve_before_the_dissolve_starts);
     RUN_TEST(test_the_picture_is_lit_until_the_dissolve_and_dark_at_the_end);
     RUN_TEST(test_the_photograph_arrives_over_its_own_window);
-    RUN_TEST(test_the_scene_leaves_exactly_as_fast_as_the_photograph_arrives);
+    RUN_TEST(test_the_photograph_is_mounted_after_the_first_frame);
     RUN_TEST(test_the_seed_finishes_the_crossfade_before_the_dissolve_starts);
     RUN_TEST(test_the_floor_fades_in_from_the_origin_outward);
     RUN_TEST(test_the_floor_fades_out_with_distance_rather_than_stopping);
@@ -1866,7 +2031,12 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_with_a_malformed_space_the_rest_pose_draws_and_nothing_stays_mounted);
     RUN_TEST(test_each_part_of_the_motion_is_the_track_of_its_name);
     RUN_TEST(test_the_rest_pose_keeps_the_seeds_view_rules);
+    RUN_TEST(test_with_no_pack_the_scene_stays_where_the_photograph_would_be);
+    RUN_TEST(test_with_a_picture_not_one_panel_the_scene_stays_and_nothing_stays_mounted);
+    RUN_TEST(test_with_a_malformed_picture_the_scene_stays_and_nothing_stays_mounted);
+    RUN_TEST(test_the_crossfade_ends_on_the_shipped_photograph);
 #endif
 }
 
 SUITE_REGISTER(run_boot_anim_suite);
+SUITE_READS(run_boot_anim_suite, BOOT_CLIP, BOOT_PHOTO);

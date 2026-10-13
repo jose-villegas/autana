@@ -1,0 +1,13 @@
+/*
+ * vec2f: a 2-component vector of a float. The operations are
+ * vec2_template.h's; docs/math/README.md says how they are made.
+ */
+#pragma once
+
+#include <stdint.h>
+
+#include "math/linear/vec2_template.h"
+#include "math/scalar/mathf.h"
+
+MATH_DEFINE_VEC2(vec2f, float, float, mathf)
+MATH_DEFINE_VEC_LERP(vec2f, float, mathf, 2)

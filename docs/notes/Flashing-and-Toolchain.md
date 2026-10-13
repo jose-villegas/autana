@@ -35,10 +35,12 @@ in [Flash-and-Captures.md](../tools/Flash-and-Captures.md#what-a-flash-proves).
 
 The RTS reset is a warm reset, so the bootloader's PMIC restart (below)
 power-cycles the SoC: USB drops and comes back, possibly on a **different
-COM number**. Nothing depends on the number; `device.py` finds the board by
-its USB serial number and looks the port up again before every open. The
-first open after the drop can get the old handle, which reads nothing; only
-`reset --capture` and `selftest` reopen a silent handle, and `selftest` and
+COM number**. Nothing depends on the number: after every reset `device.py`
+waits for the board's USB serial number to leave the port list and come
+back, then opens the port it is listed under, so no open gets the dying
+handle. Every open `device.py` makes leaves DTR and RTS low without passing
+through the USB Serial/JTAG reset state (DTR low, RTS high); `open_serial`
+in [device.py](../../scripts/device/device.py) says how on each OS. `selftest` and
 `batch` check the console `BUILD_ID` against the flashed image.
 
 If it vanishes from USB entirely (no COM port, no device at vendor ID
@@ -91,6 +93,9 @@ continues if the PMIC does not acknowledge or the restart does not occur.
 
 - **ESP-IDF v5.5+ is required.** `launcher/main/idf_component.yml` declares
   `idf: ">=5.5"`. Several versions can coexist; they are keyed by `IDF_PATH`.
+- CI builds in the image and IDF commit that `launcher/idf-pin.json` names.
+  On any other commit the IRAM budget check reports a mismatch as a drift note
+  instead of failing, and `memory_map.py --update-budgets` refuses to run.
 - On Windows, `launcher/tools/build/idf.sh` invokes `export.bat` through
   `cmd` with the MSYS environment removed. A working `idf.py` or PowerShell
   activation alone is insufficient: `export.bat` must have batch-compatible
@@ -132,21 +137,24 @@ remaining calls and register spills. `always_inline`, used by
 verification at its call sites. Inlining grows callers and can increase
 instruction-cache pressure, so time the final linked image.
 
-Every compiled source in `launcher/main/render/` receives
+The direct C sources in `launcher/main/render/` receive
 `-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}` from
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
-stabilizes timing; it does not select the fastest loop offsets. Hot functions
-also carry `RENDER_ENTRY_OFFSET` from `launcher/main/render/code_layout.h`:
+stabilizes timing; it does not select the fastest loop offsets. Explicit function
+alignment attributes take precedence and their offsets are baseline-checked. Hot functions
+in `launcher/main/render/` also carry `RENDER_ENTRY_OFFSET` from
+`launcher/main/render/code_layout.h`:
 never-executed `nop.n` padding ahead of the entry places their loops at the
 offsets measured fastest on the board. The diagnostics build gate in
 `launcher/tools/build/build_diag_check.sh` runs
 `launcher/tools/render/code_layout.py --check` against
-`launcher/main/render/code_layout.txt`, checking function and machine-loop
+source-local `code_layout.txt` baselines for the selected build configuration,
+including `launcher/main/render/code_layout.txt`, checking function and machine-loop
 offsets, sizes and cache-line spans. When a row changes, compare revisions
 with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
 If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write launcher/build.diag`.
+table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
@@ -159,14 +167,14 @@ The target is a 32-bit Xtensa core. A general signed 64-bit divide uses the
 software helper `__divdi3`; constant divisors can be optimized differently.
 Check widening inside fixed-point helpers, prove operand bounds before
 narrowing, and inspect disassembly rather than assigning a source-level
-divide a fixed cycle cost. `r3d_camera_to_screen_x()` in
+divide a fixed cycle cost. `r3d_project_point_cs_x()` in
 `launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
-and widens only the scale multiply. Near-plane clipping uses a 64-bit divide.
+and widens only the pixels-per-unit multiply. Near-plane clipping uses a 64-bit divide.
 
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
 falls short. Float division (`__divsf3`) is the FPU's exact
 `div0.s`/`divn.s` sequence behind a call. Where a hot loop needs 1 / z,
-`mathf_recip()` in `launcher/main/math/scalar/mathf.h` is cheaper: the FPU's
+`mathf_recip()` in `launcher/packages/math/include/math/scalar/mathf.h` is cheaper: the FPU's
 `recip0.s` seed and two Newton steps, within an ulp of the quotient; its
 comment holds the board's cycle counts.
 

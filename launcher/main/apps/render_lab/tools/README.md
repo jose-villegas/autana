@@ -70,10 +70,17 @@ its scene by name rather than through the menu:
 
 | Command | Does |
 |---|---|
+| `autana render clips` | the showing scene's clips, and which one the picker holds; a scene without a clip picker does not answer |
+| `autana render clip <name> [blend_ms]` | plays that clip, blending over blend_ms, which the picker then keeps (its current blend when omitted) |
 | `autana render scenes` | every scene's key and name, and which one is showing |
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+
+The Capybara scene's BOOT menu holds the same clip picker: the CLIP
+dropdown plays the chosen clip over the BLEND slider's time.
+
+![The clip picker and the capybara walking, on the board](images/clip-picker/board-picker.png)
 
 A screenshot's state carries an `app` object naming the scene, whether the
 menu is open and the scale, so two captures can
@@ -146,3 +153,37 @@ and measure the lighting again:
 ```sh
 launcher/tools/r3d/skin_light/report_skin_light.sh "$(python launcher/tools/bake/bake.py path capybara.glb)" gallop
 ```
+
+## Meshlet size captures
+
+Use the [meshlet capture recipe](../../../../tools/render/README.md#meshlet-size-captures)
+with `--scene launcher/demo/sponza/sponza.scene.toml` and
+`--suite run_sponza_perf_suite`. Its fixed flythrough samples measure the selected
+renderer with both culling settings. The generated table belongs to
+[Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).
+
+## Skinned frame comparison
+
+The model-independent skin-frame tool compares scene-controlled C skinning
+with the glTF reference and generates a sheet of two versus four influences.
+The selected source vertices are marked red in enlarged crops. All panels use
+bind colours, so the comparison isolates deformation rather than lighting.
+
+```sh
+python launcher/tools/r3d/skin/skin_frame.py "$(python launcher/tools/bake/bake.py path capybara.glb)" \
+  --poses gallop:200 half_bound:200 \
+  --vertices 7,11,44,54,77,129,171,205,211,260,302 \
+  --out launcher/main/apps/render_lab/tools/images/skin-frame
+```
+
+![C skinning beside the glTF reference](images/skin-frame/reference-sheet.png)
+![Two and four influence limits, with amplified image differences](images/skin-frame/influence-sheet.png)
+![Each requested vertex at both influence limits](images/skin-frame/vertex-crops.png)
+
+The circles locate the corresponding posed vertex in each panel; a crop may
+show a vertex through an occluding surface. The image difference is amplified
+by the comparison tool. Exact packed-weight reference errors and per-vertex
+influence-limit displacements are in
+[`measurements.json`](images/skin-frame/measurements.json). This tool bakes its
+own LMSH with the meshlet writer, so its vertex layout is independent
+of a scene pack's bake. The sheets use the poses named on the command line.

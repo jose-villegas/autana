@@ -22,4 +22,4 @@ The rest of this index explains the repository's checks and tools in depth.
 | [Mermaid-Diagrams.md](Mermaid-Diagrams.md) | Validating ```` ```mermaid ```` diagrams with mermaid-cli: the command, the pre-commit step, and CI. |
 | [Math-Formulas.md](Math-Formulas.md) | Writing maths GitHub renders, and validating every formula with GitHub's MathJax configuration: the command, the pre-commit step, and CI. |
 | [Generated-Files.md](Generated-Files.md) | Checked-in generated headers: the banner that names their command, and the gate that reruns it and compares bytes. |
-| [Icon-Baker.md](Icon-Baker.md) | `gen_icons.py`: baking icons from a PNG atlas or SVG source into a generated header, what it rejects, and how the shipped artifact is tested. |
+| [Icon-Baker.md](Icon-Baker.md) | Icons as pack content: the `.icons.toml` source, what the baker rejects, the one-bit image entry, drawing without the pack, and how the shipped icons are tested. |

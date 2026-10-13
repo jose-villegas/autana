@@ -13,7 +13,7 @@ inputs:
     description: Names this build's ccache, one per variant.
     required: true
   command:
-    description: Shell command run from launcher/; no single quotes.
+    description: Shell command run from launcher/.
     required: true
 
 runs:
@@ -29,21 +29,25 @@ runs:
     # that autana needs git for this: each command's own `--project ..`
     # names the repository root from launcher/, where this runs.
     #
-    # COMPILERCHECK=content: the release-v5.5 tag is rebuilt in place, and
-    # hashing the compiler driver is cheap next to trusting the image to keep
-    # its timestamps honest. MAXSIZE is about four times one variant's fresh
-    # cache: each save carries forward all it restored, and every variant and
-    # commit shares the repository's 10 GB of Actions cache.
-    - uses: espressif/esp-idf-ci-action@v1
-      with:
-        esp_idf_version: release-v5.5
-        target: esp32s3
-        path: launcher
-        extra_docker_args: >-
-          -v ${{ runner.temp }}/ccache:/ccache
-          -e CCACHE_DIR=/ccache
-          -e CCACHE_MAXSIZE=150M
-          -e CCACHE_COMPILERCHECK=content
-        command: >-
-          git config --global --add safe.directory "*"
-          && ccache -z > /dev/null && ${{ inputs.command }} && ccache -s
+    # The packs' meshes come from the bake cache (bake/bake.py). They are fetched here, where the workflow's
+    # GH_TOKEN can read a run that made them before main publishes them, into a cache the container mounts.
+    - name: Fetch the bakes launcher/bakes.lock names
+      shell: bash
+      run: python3 launcher/tools/bake/bake.py fetch --cache "${{ runner.temp }}/bakes"
+
+    # MAXSIZE is about four times one variant's fresh cache: each save carries
+    # forward all it restored, and every variant and commit shares the repository's
+    # 10 GB of Actions cache.
+    - name: Build in the pinned IDF image
+      shell: bash
+      env:
+        BUILD_COMMAND: ${{ inputs.command }}
+      run: |
+        image=$(jq -r .image launcher/idf-pin.json)
+        docker run --rm -t -e IDF_TARGET=esp32s3 \
+          -v "$GITHUB_WORKSPACE:/app" -w /app/launcher \
+          -v "${{ runner.temp }}/bakes:/bakes" -e AUTANA_BAKE_CACHE=/bakes \
+          -v "${{ runner.temp }}/ccache:/ccache" -e CCACHE_DIR=/ccache \
+          -e CCACHE_MAXSIZE=150M -e IDF_PIN_COMMIT="$(jq -r .commit launcher/idf-pin.json)" \
+          -e BUILD_COMMAND "$image" /bin/bash -c \
+          'git config --global --add safe.directory "*"; test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$IDF_PIN_COMMIT" || { echo "image is not the pinned IDF commit"; exit 1; }; ccache -z > /dev/null; eval "$BUILD_COMMAND" && ccache -s'

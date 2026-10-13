@@ -37,7 +37,7 @@ Keys before `;` are required; after it, optional.
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `[source]` | `path`, `credit` | Locates the local source file; `credit` records its attribution. | Required. | Local file / none. | [source](#source) |
-| `[output]` | `directory`; `name`, `position_scale` | Names the output directory, single-mesh name and position scale. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
+| `[output]` | ; `name`, `position_scale` | Names the single mesh and position scale; bakes go to the cache. | `name` required without `[[variants]]`, rejected with them; `position_scale` 8. | Write / none. | [output](#output) |
 | `[materials]` | ; `double_sided` | Draws listed material faces from both sides. | `[]`. | None / more faces drawn. | [materials](#materials) |
 
 #### source
@@ -64,12 +64,52 @@ The empty exclude clears the clone's default exclusion for this pull.
 
 #### output
 
-`[output]` names the generated mesh and its directory. `position_scale` is the
+`[output]` names the mesh entry. Baked meshes are stored in the bake cache. `position_scale` is the
 number of quantisation ticks per model unit.
 
 #### materials
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
+
+### Skin lighting
+
+| Option | Keys | What it does | Default | Constraint | Option link |
+|---|---|---|---|---|---|
+| `[skin]` | ; `lighting` | Selects the skinned renderer's runtime lighting mode, stored in SKIN. | `"direct"`. | None / none. | [skin](#skin) |
+
+#### skin
+
+```toml
+[skin]
+lighting = "direct"
+```
+
+`lighting` is stored in SKIN v2 and selects the runtime kernel on attachment.
+Unknown values fail naming the import file and allowed modes.
+
+- `direct` (default): shades the blended normal without normalising it.
+- `renormalised`: normalises the blended normal before direct shading.
+- `table`: samples bilinear irradiance from the scene's normal-direction table.
+
+[Lighting modes](Skinned-Lighting.md#lighting-modes) includes the comparison
+sheet. This quality/cost table is generated from the committed board capture;
+cycles per vertex are grouped by light count, errors are 8-bit channel steps.
+
+<!-- generated: skin-light-import check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
+Build `8d0d33ecbdb9-diag`.
+
+| Mode | Lights | Cycles / vertex | Worst byte error | Mean byte error | Table build cycles / light change | Normal-palette build cycles / frame | Renderer internal bytes | Scene internal bytes | Scene PSRAM bytes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| direct | 1 | 640.495 | 8 | 0.246612 | — | 5104.000 | 3744 | 1024 | 124 |
+| direct | 2 | 663.714 | 9 | 0.264905 | — | 5104.000 | 3744 | 1024 | 124 |
+| direct | 4 | 708.679 | 13 | 0.353997 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 1 | 680.045 | 1 | 0.184282 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 2 | 702.716 | 1 | 0.185637 | — | 5104.000 | 3744 | 1024 | 124 |
+| renormalised | 4 | 748.143 | 2 | 0.180217 | — | 5104.000 | 3744 | 1024 | 124 |
+| table | 1 | 865.099 | 7 | 0.455623 | 32224.000 | 5104.000 | 3744 | 2048 | 124 |
+| table | 2 | 861.271 | 4 | 0.360095 | 44202.000 | 5104.000 | 3744 | 2048 | 124 |
+| table | 4 | 861.167 | 4 | 0.380420 | 67278.000 | 5104.000 | 3744 | 2048 | 124 |
+<!-- /generated: skin-light-import -->
 
 ### Process options
 
@@ -110,7 +150,9 @@ share is random, so `process.seed` makes it repeatable.
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget. `dense_edge` is the longest unsplit edge, `props` names materials that
+budget with meshoptimizer's<sup>[[11]](../Citations.md#11)</sup> quadric error simplifier<sup>[[12]](../Citations.md#12)</sup>,
+with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#13)</sup>.
+`dense_edge` is the longest unsplit edge, `props` names materials that
 reserve the `props_share` part of the budget, and `seal_seams` is described
 under [seal_seams](#seal_seams). The baked colour steers which edges collapse:
 `colour_deviation`, in source units, prices one panel colour step: losing it
@@ -205,7 +247,7 @@ first byte, is a multiple of 4 and is 0 for an array the mesh does not have.
 A mesh has vertex colours or face colours, never both. The cluster and node sizes
 are checked against the C structs at compile time. `r3d_lit_mesh_from_asset()`
 fills an `r3d_lit_mesh_t` with pointers into the entry, once, and nothing is
-allocated or copied; the rasterizer reads that struct as it always did. Before
+allocated or copied; the rasterizer reads that struct. Before
 it does, the function checks that every array lies inside the entry and on a
 4-byte boundary, every cluster's ranges lie inside the mesh, each cluster's
 triangles index only its own vertices, every node's children lie inside the
@@ -213,13 +255,37 @@ cluster or node array, and an inner node's children come after it, so a walk
 down the tree ends; a failure there, or a vertex, triangle, cluster or node
 count past `VERTEX_LIMIT` in `r3d_lit_mesh.c`, is `ASSET_ERR_BOUNDS`. A mesh
 with no clusters, no nodes, no position scale, or not exactly one colour
-source is `ASSET_ERR_FORMAT`. `lit_mesh.py` writes the entry;
+source is `ASSET_ERR_FORMAT`. Position scale must be in `1..INT_MAX`.
+Cluster vertex ranges must cover every vertex exactly once in order: the
+first starts at zero, each starts at the previous end, and the last ends at
+the vertex count. An invalid scale or coverage is `ASSET_ERR_FORMAT`.
+`lit_mesh.py` writes the entry;
 `r3d_lit_mesh.c` is the one reader.
 
 ## The offline tools
 
-A mesh is an entry of the [asset pack](../assets/README.md): `<name>.mesh`, a
-bake product made into the bake cache
+Source assets, scene TOMLs, cached bakes and bake-time tools use the
+right-handed source frame: +x right, +y up, a camera looking down -z.
+`build_pack.py` mirrors entries once into the
+[engine frame](../math/README.md#conventions), through
+[`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py).
+The mirror negates position z; a placement's matrix `M` becomes `S M S`,
+where `S = diag(1, 1, -1)`, and quaternions `(x, y, z, w)` become
+`(-x, -y, z, w)`. Clips' translation and rotation tracks, including cubic
+tangents, are mirrored; other tracks, key times and interpolation stay as
+authored. Bounds swap their mirrored z endpoints; triangle order and baked
+colours stay intact. A z coordinate equal to the int16 minimum is rejected
+because its negation cannot fit. Cached meshes carry no normals: shading is
+already baked.
+
+A poses file is in the source frame.
+[`track_host.py`](../../launcher/tools/anim/track_host.py) writes one with
+`--poses` from a `.anim.toml`, baked into an unmirrored scratch pack;
+`triangle_sizes` mirrors each pose as it reads it. A built pack's clips are
+in the engine frame, so `--poses` on a `--pack` gives wrong poses.
+
+A cached `<name>.mesh` bake supplies an entry of the
+[asset pack](../assets/README.md). It is made into the bake cache
 ([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)) by
 [`launcher/tools/r3d/mesh_import.py`](../../launcher/tools/r3d/mesh_import.py)
 using the offline tools in
@@ -267,8 +333,9 @@ Scene-owned bake, visibility, shading and fit settings are described in
 
 The [`ao` setting](Scene-Files.md#bake-ao) scales a baked point's ambient light,
 and with `indirect = true` its bounced light, by a factor from short
-rays. Each point $x$ casts $R$ cosine-weighted rays, the same directions in its
-own frame as the bounce rays; the ray $i$ that hits a surface at distance
+rays, a distance-limited obscurance<sup>[[14]](../Citations.md#14)</sup>. Each point $x$ casts
+$R$ cosine-weighted rays, the same directions in its own frame as the bounce
+rays; the ray $i$ that hits a surface at distance
 $`t_i`$ within the reach $D$ has weight $`w_i = 1 - t_i/D`$, any other ray
 $`w_i = 0`$. With strength $s$ the factor is
 
@@ -289,7 +356,7 @@ colour, so frame cost and mesh size do not change; only the bake takes longer.
 The bake exports the full-detail source mesh, with its textures at full
 resolution, and the scene's directional and sky lights to Mitsuba once. A baked
 point $x$, a smooth vertex or a flat face sample, sends $R$ cosine-weighted
-rays into that scene. Mitsuba's path integrator follows each ray for up to $K$
+rays into that scene. Mitsuba's<sup>[[15]](../Citations.md#15)</sup> path integrator<sup>[[16]](../Citations.md#16)</sup> follows each ray for up to $K$
 bounces with next-event estimation at every hit, so the hit's own shadow, albedo
 and further bounces are all in what comes back. With $`L_i(x)`$ the light
 gathered along ray $i$, the mean is the bounced irradiance over $\pi$, and the
@@ -365,9 +432,10 @@ how well the one colour represents the face.
 
 ### The scores, exactly
 
-A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$,
-taken to CIE XYZ through the linear sRGB primaries, and to CIELAB relative to
-the D65 white. The constants live in `render_compare.py`, which both the
+A pixel's 8-bit colour $c$ is decoded with the display gamma $\gamma = 2.2$
+rather than the piecewise sRGB curve, taken to CIE XYZ through the linear sRGB
+primaries<sup>[[10]](../Citations.md#10)</sup>, and to CIELAB relative to the D65 white<sup>[[4]](../Citations.md#4)</sup>.
+The constants live in `render_compare.py`, which both the
 scoring and the fit's loss read.
 
 ```math
@@ -399,9 +467,11 @@ L^* = 116\,f\!\left(\tfrac{Y}{Y_n}\right) - 16,
 
 for render $R$ and reference $T$ at pixel $p$. Mean ΔE averages
 $`\Delta E_{76}(p)`$ over the frame's pixels and p95 is its 95th percentile.
-Luma SSIM works on the gamma-encoded luma $y = 0.2126 r + 0.7152 g + 0.0722 b$
-(channels 0 to 1), over every 8 by 8 window $w$ of the frame, with the
-window's means $\mu$, variances $\sigma^2$ and covariance $`\sigma_{RT}`$:
+Luma SSIM<sup>[[9]](../Citations.md#9)</sup> works on the gamma-encoded luma
+$y = 0.2126 r + 0.7152 g + 0.0722 b$ (channels 0 to 1), over every unweighted
+8 by 8 window $w$ of the frame where the paper uses 11 by 11 Gaussian-weighted
+ones, with the window's means $\mu$, variances $\sigma^2$ and covariance
+$`\sigma_{RT}`$; the constants are the paper's:
 
 ```math
 \mathrm{SSIM} = \frac{1}{|W|}\sum_{w \in W}
@@ -423,15 +493,17 @@ described by [fit.prune](Scene-Files.md#fitprune) and
 
 ## Meshlets
 
-The clusters are **meshlets**: compact runs of at most 32 triangles from
-meshoptimizer's clusterizer, each of one sidedness and owning the vertices its
+The clusters are **meshlets**: compact runs bounded by `geometry.meshlet_triangles`
+(4 through 256, default 32), from
+meshoptimizer's clusterizer<sup>[[11]](../Citations.md#11)</sup>, each of one sidedness and owning the vertices its
 triangles use. The octree above them is built over the meshlets' centres, and
 its leaves hold a few hundred triangles' worth.
 
 Meshlets share more vertices than clusters cut as leaves of an octree of the
 triangles, so a frame transforms fewer. Bigger ones span looser boxes and
 submit more triangles for the same view, and smaller ones cost more clusters
-to walk. The size trades these: 64 lost on the board and 32 won.
+to walk. The [measured size table](Render-Pipeline.md#meshlets) shows this trade.
+Import and `rebake.py --import PATH` read the same meshlet size setting.
 
 Meshlets also change the draw order of the finest level. Where two triangles
 reach the same depth the first drawn wins, so a redrawn frame differs from the

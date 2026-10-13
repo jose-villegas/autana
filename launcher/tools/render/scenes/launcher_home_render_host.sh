@@ -21,10 +21,14 @@ scene_name=launcher_home
 scene_sources="$launcher_home_sources
  tools/render/scenes/launcher_home_render_host.c"
 scene_defines="$launcher_home_defines"
+scene_assets="main/engine"
 scene_renders="
 landscape|--quarter 1|448x368
 landscape-panel|--quarter 1 --panel|368x448
 portrait|--quarter 0|368x448
+landscape-no-pack|--quarter 1|448x368|nopacks
+landscape-panel-no-pack|--quarter 1 --panel|368x448|nopacks
+portrait-no-pack|--quarter 0|368x448|nopacks
 "
 
 # shellcheck source=./render_scene.sh

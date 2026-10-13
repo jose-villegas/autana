@@ -56,7 +56,7 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build this project, no board and no lock; `dev` when omitted. `--hot-tunables` (dev/diag): build with live hot-path knobs; `suite` needs `--flash`. `--layout-seed N`: pad the layout by seed N ([Layout-Noise.md](Layout-Noise.md)); 0, the default, is the plain build. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
+| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]` | Build this project, no board and no lock; `dev` when omitted. `--hot-tunables` (dev/diag): build with live hot-path knobs; `suite` needs `--flash`. `--layout-seed N`: pad the layout by seed N ([Layout-Noise.md](Layout-Noise.md)); 0, the default, is the plain build. `--configure`: only write the variant's `sdkconfig` and `compile_commands.json`, compiling nothing. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
@@ -121,7 +121,9 @@ one line naming the new form, then runs it.
 
 | Command | What it does |
 |---|---|
-| `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Without a terminal and neither `seconds` nor `--follow`, this is a plain usage error rather than a hang. Always ends with its capture path. Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
+| `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Without a terminal and neither `seconds` nor `--follow`, this is a plain usage error rather than a hang. Always ends with its capture path, and exits 1 when the capture shows a crash or a reboot (a reset by hand included). Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
+| `autana coredump [--elf PATH]` | The last panic's core dump from the `coredump` partition, decoded against the build whose `build_id.txt` matches the board's, or `PATH`. Resets the board. See [Debugging](../notes/Debugging.md#after-a-crash-the-reset-reason-and-the-core-dump). |
+| `autana coredump --erase` | Clear the dump, so the next crash's is told from this one. Resets the board. |
 | `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 | `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |

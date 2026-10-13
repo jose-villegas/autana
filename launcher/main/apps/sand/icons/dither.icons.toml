@@ -1,0 +1,23 @@
+# A swatch per dither mode, in gfx_dither_mode_t's order: cells of dither.png.
+atlas = "dither.png"
+cell_size = [4, 4]
+
+[[icon]]
+name = "dither_none"
+at = [0, 0]
+
+[[icon]]
+name = "dither_cell_checker"
+at = [1, 0]
+
+[[icon]]
+name = "dither_cell_bayer2"
+at = [2, 0]
+
+[[icon]]
+name = "dither_pixel_checker2"
+at = [3, 0]
+
+[[icon]]
+name = "dither_pixel_bayer4"
+at = [4, 0]

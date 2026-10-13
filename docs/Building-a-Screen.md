@@ -161,9 +161,10 @@ code that draws it.
 
 **Icons are always baked assets.** Do not assemble a symbol from
 `mu_draw_rect()` or other drawing primitives inside a renderer. Shared UI
-vocabulary belongs in `design/icons/system.*` and is baked into
-`gfx/draw/icons_system.h`; app-owned symbols use the same generator inside the
-app's folder. Drawing primitives remain appropriate for geometry such as
+vocabulary belongs in the engine pack's system set
+(`launcher/main/engine/icons/`); app-owned symbols are an icon set in the
+app's own pack ([icons](tools/Icon-Baker.md)). An icon can be missing when
+its pack is, so a control keeps a label or a short text to show instead. Drawing primitives remain appropriate for geometry such as
 panels, tracks and status indicators, not pictograms.
 
 ### A panel over a paused app

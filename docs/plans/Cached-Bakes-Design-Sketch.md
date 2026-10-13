@@ -21,10 +21,10 @@ of assets anywhere.
 | `fitted_variant.recipe_digest()`: parsed recipe + camera clip + `source_digest()` | the recipe half of every bake key, for every mesh, not only fits |
 | `import_settings.content_checksum()`: an LFS pointer's oid stands for its content | how a source enters a key, so a clone without `git lfs pull --exclude=""` still computes it |
 | `[fit.hashes] sha256, recipe_sha256` in `sponza.scene.toml`, checked by `mesh_import.check_fitted()` | deleted: `bakes.lock` records key and bytes for every bake, written by the tool |
-| `fitted_variant.reference_digest()` (no tool code), `render_compare.sh` `reference_frames()` (raw `r3d/*.py` bytes, cache under `r3d/.cache/reference/`), `doc_stages.current_stamp()` (hashes tracked `.mesh` files, blind once they are untracked) | all three ask `bake.py` for keys; the fit's reference set is a bake of its own |
+| `fitted_variant.reference_digest()` (no tool code), `render_compare.sh` `reference_frames()` (raw `r3d/*.py` bytes, cache under `r3d/.cache/reference/`), `doc_stages.current_stamp()` (board stage only, hashes tracked files and import sources) | all three ask `bake.py` for keys; the fit's reference set is a bake of its own |
 | `build_pack.pack_files()`: a mesh entry is `<dir>/<id>.mesh` beside its file | a mesh entry is a `Bake`; `pack_entry()` reads it through `fetch`. `--replace` stays (`doc_images_demo.sh` needs it) |
 | `doc-images.yml`: LFS objects cached, r3d requirements on ubuntu | the CPU producer job, same steps |
-| `doc-images-gpu.yml` on the self-hosted GPU runner (the maintainer's machine; main pushes and a weekly run) | the GPU producer job, same environment (`run_doc_gpu.sh`) |
+| `doc-images-gpu.yml` on the self-hosted GPU runner (the maintainer's machine; every main push whose inputs changed, and nightly) | the GPU producer job, same environment (`run_doc_gpu.sh`) |
 | `gltf/blend_skin_to_glb.py` (runs inside Blender), run by hand per the render-lab tools README | the converter for a `.blend` source |
 
 ## 1. Keys, the lock and the store
@@ -35,9 +35,9 @@ stage before it. A fit splits in two, so a fitter edit costs the fit
 
 | Kind | Output | Inputs in its key |
 |---|---|---|
-| `mesh` | a lit mesh, or a fit's start | recipe, sources, `mesh_import.py` closure |
-| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | the start's key, poses recipe, camera clip, `reference_render.py` closure |
-| `fit` | the fitted mesh | the reference key, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements |
+| `mesh` | a lit mesh, or a fit's start (locked and published like any mesh, held by no pack) | recipe, sources, the sampled poses' digest for camera-path visibility, `mesh_import.py` closure |
+| `reference` | a fit's reference frames and poses, a directory kept only in the GPU runner's cache, never published or locked | every field of `fitted_variant.ReferenceInputs`, the sampled poses' digest for training and coverage, `reference_render.py` closure; not the start, so fits that differ only in it share one set |
+| `fit` | the fitted mesh | the reference key, the start's locked bytes, the fit recipe, `fitted_variant.py` + `appearance_simplify.py` closure, the GPU requirements; unknown until the start is locked |
 | `blend` | a `.glb` | the `.blend`, export arguments, `blend_skin_to_glb.py` + the pinned Blender version |
 
 ```python
@@ -212,3 +212,12 @@ whose sha256 differs from the lock.
    and it runs only on the GPU runner, so they live in that runner's local
    cache: `fetch` never looks for them on the release, and `produce` writes
    them there. The release holds meshes and the `.glb`.
+5. **Path-dependent stages key on the sampled poses.** A `[[poses]]` lock row
+   holds the digest of a camera path's sampled rows, keyed on clip bytes, node,
+   interval, size, lens, near plane and sampler code. A build whose rows are all
+   locked needs no host C compiler. A missing row is sampled through `track_host`
+   when the host can, and otherwise leaves the bake unlocked, naming `bake.py lock`.
+   Only `bake.py lock` writes these rows, sampling every needed one again and
+   dropping the rest; `bake.py check` samples every needed row again and rejects
+   one missing, unneeded or different, exactly. Sampler and TRCK changes that
+   keep the poses keep the mesh, reference and fit keys.

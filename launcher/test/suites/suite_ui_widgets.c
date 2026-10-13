@@ -35,6 +35,21 @@ static const ui_theme_t THEME = {
     .icon_side = 32,
 };
 
+static void
+test_theme_from_style_maps_widget_colors(void) {
+    ui_init();
+    mu_Style style = *ui_context()->style;
+    for (int i = 0; i < MU_COLOR_MAX; i++) {
+        style.colors[i] = (mu_Color){(uint8_t)i, (uint8_t)(i + 1), (uint8_t)(i + 2), (uint8_t)(i + 3)};
+    }
+    const ui_theme_t theme = ui_theme_from_style(&style);
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTON], &theme.button_face, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTONFOCUS], &theme.accent_face, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.text, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.on_accent, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_INT(GFX_GLYPH_SCALE, theme.text_scale);
+}
+
 static const mu_Rect BUTTON = {40, 100, 240, 60};
 
 typedef struct {
@@ -916,74 +931,6 @@ test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing(void) {
     TEST_ASSERT_FALSE(dropdown_open);
 }
 
-/* The Control Center's backdrop: the screen underneath repainted through a
- * repaint-only frame on the same frame the real screen is built. */
-static void
-backdrop_repaint(void) {
-    ui_begin(NULL);
-    if (ui_begin_screen(ui_context(), "Launcher", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        mu_layout_set_next(ui_context(), BUTTON, 0);
-        mu_button(ui_context(), "UNDER");
-        mu_end_window(ui_context());
-    }
-    end_frame();
-}
-
-/* A tap into a screen whose backdrop is repainted on frame `repaint_on` of
- * the tap must still submit its button exactly once. */
-static void
-test_a_tap_submits_once_when_the_backdrop_repaints_during_it(void) {
-    for (int repaint_on = 0; repaint_on < 4; repaint_on++) {
-        fixture();
-        const input_t idle = {0};
-        named_screen_frame("Center", &idle);
-        named_screen_frame("Center", &idle);
-
-        const int x = BUTTON.x + BUTTON.w / 2;
-        const int y = BUTTON.y + BUTTON.h / 2;
-        const input_t frames[] = {{.down = true, .pressed = true, .x = x, .y = y},
-                                  {.down = true, .x = x, .y = y},
-                                  {.down = true, .x = x, .y = y},
-                                  {.down = true, .x = x, .y = y},
-                                  {.released = true, .x = x, .y = y}};
-        int submits = 0;
-        for (int f = 0; f < (int)(sizeof frames / sizeof frames[0]); f++) {
-            if (f == repaint_on) {
-                backdrop_repaint();
-            }
-            submits += named_screen_frame("Center", &frames[f]);
-        }
-        char why[48];
-        snprintf(why, sizeof why, "repaint on frame %d", repaint_on);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, why);
-    }
-}
-
-/* A slider held through a backdrop repaint keeps tracking the finger: the
- * repaint builds no slider, and must not be the frame that drops its focus. */
-static void
-test_a_slider_drag_survives_a_backdrop_repaint(void) {
-    fixture();
-    const input_t idle = {0};
-    int value = 0;
-    slider_frame(&idle, &value);
-    slider_frame(&idle, &value);
-
-    const int y = BUTTON.y + BUTTON.h / 2;
-    int x = BUTTON.x + 10;
-    slider_frame(&(input_t){.down = true, .pressed = true, .x = x, .y = y}, &value);
-    int at_repaint = 0;
-    for (int f = 0; f < 12; f++) {
-        if (f == 5) {
-            backdrop_repaint();
-            at_repaint = value;
-        }
-        x += 12;
-        slider_frame(&(input_t){.down = true, .x = x, .y = y}, &value);
-    }
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(at_repaint, value, "the drag must keep moving the slider after the repaint");
-}
-
 /* The lift went to frames that never reached the UI; the next press proves
  * it, and must still get a control hovered and clicked. */
 static void
@@ -1183,9 +1130,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click);
     RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin);
     RUN_TEST(test_a_tap_on_the_first_build_of_another_screen_still_submits_once);
-    RUN_TEST(test_a_tap_submits_once_when_the_backdrop_repaints_during_it);
     RUN_TEST(test_a_press_after_an_unseen_lift_still_submits);
-    RUN_TEST(test_a_slider_drag_survives_a_backdrop_repaint);
     RUN_TEST(test_a_tap_on_a_closing_list_reaches_exactly_one_thing);
     RUN_TEST(test_a_one_frame_tap_on_an_open_list_row_picks_it_and_closes_it);
     RUN_TEST(test_a_one_frame_tap_outside_an_open_list_closes_it_and_picks_nothing);
@@ -1196,6 +1141,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked);
     RUN_TEST(test_a_drag_scroll_sticks_through_later_frames);
     RUN_TEST(test_ui_swatch_grid_tiles_the_rect_exactly);
+    RUN_TEST(test_theme_from_style_maps_widget_colors);
 }
 
 SUITE_REGISTER(run_ui_widgets_suite);

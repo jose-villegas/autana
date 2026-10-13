@@ -6,7 +6,7 @@
 | [render_host.h](render_host.h) | Scene interface for host rendering. |
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
-| [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path. |
+| [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from. |
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity and import images and measured CPU tables through the scene viewer. |
 | [doc_tables.py](doc_tables.py) | Writes the CPU tables from comparison logs, with scene and object names supplied as arguments. |
 | [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
@@ -30,14 +30,64 @@
 ## Pinned code layout
 
 `code_layout.py` reads the Xtensa tools and instruction-cache line size from a
-firmware build. The diagnostics gate checks the address-independent rows in
-`launcher/main/render/code_layout.txt`:
+firmware build. The build gates check address-independent rows in each source folder's
+`code_layout.txt`. The checker discovers these files under `launcher/main/`:
 
 ```sh
 python launcher/tools/render/code_layout.py --check launcher/build.diag
-python launcher/tools/render/code_layout.py --write launcher/build.diag
+python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag
 ```
 
-A changed layout is measured between revisions with the Sponza performance
-suite through `launcher/tools/perf/perf_compare.sh`. A slower layout is retuned
-with `RENDER_ENTRY_OFFSET` before the generated file is written.
+A baseline uses source entry markers unless it carries `# Functions: baseline`,
+which selects the functions recorded in its table without adding entry padding.
+`# Config: CONFIG_NAME` selects the build whose sdkconfig enables that option;
+without it, the baseline applies to `CONFIG_LAUNCHER_SELFTEST` builds. `--write`
+preserves these headers. `--baseline PATH` selects one owner for reporting,
+checking or writing. Missing symbols and changed sizes, loop offsets or
+cache-line spans fail the check.
+
+For a changed baseline, the checker prints the measurement and re-recording
+instruction.
+
+## Meshlet size captures
+
+Prepare the committed scene's size bakes and one scratch firmware tree:
+
+```sh
+python launcher/tools/render/meshlet_capture.py prepare \
+  --scene SCENE.scene.toml --suite SUITE_NAME --sizes 16 32 64
+```
+
+The scene's tools README supplies its scene path and fixed-pose suite name.
+Preparation copies the tracked tree into
+`launcher/tools/results/meshlet-sizes/tree` and re-clusters committed triangles
+through `rebake.py`, without building firmware or accessing the board.
+
+For each size, install its bakes into that tree, then run the single printed
+command before installing the next size:
+
+```sh
+python launcher/tools/render/meshlet_capture.py row 16
+```
+
+The printed `autana --wait 3600 --project TREE suite SUITE_NAME --flash --out LOG`
+command builds incrementally and holds one board lock from flash through capture.
+A capture can take half an hour. The suite measures both culling settings through
+the tune API and restores the previous setting even on assertion failure. Each
+FRAME COST identity carries the image build ID, mounted pack CRC-32, renderer,
+maximum cluster triangle count, culling setting and camera sample interval.
+The cull-off row selects the unculled pass from the size-32 capture.
+
+Refresh the [meshlets block](../../../docs/render/Render-Pipeline.md#meshlets):
+
+```sh
+sh launcher/tools/render/render_doc_images.sh --stage meshlets
+```
+
+`doc_stages.py --stage meshlets --scene PATH --object NAME` validates captures,
+regenerates bakes and their packs, and writes the named table. The renderer must
+have an identity placement. Host counts sample the same fixed camera poses and
+default render size as the suite. Each row averages its own capture's per-pose
+stage reports and draw plus upscale wall times, without panel transfer. Missing
+PASS or completion verdicts, mismatched poses, build IDs, pack hashes, renderer
+geometry or render sizes fail. Monitor logs cannot supply this table.

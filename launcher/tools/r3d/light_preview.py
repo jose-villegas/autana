@@ -109,14 +109,15 @@ def path_poses(animation, node, times):
     """[eye, forward] of camera node `node` at each time in seconds along the clip a .anim.toml names, by the Python
     sampler (no compiler needed): its translation, and its rotation turning -Z, as track_host --poses writes them."""
     tracks, duration_ms = tracks_asset.decode(tracks_asset.bake(animation))
-    found = {track["name"]: track for track in tracks}
-    if f"{node}/translation" not in found or f"{node}/rotation" not in found:
+    found = {track["field"]: track for track in tracks
+             if track["path"] == node and track["component"] == tracks_asset.TRANSFORM}
+    if "position" not in found or "rotation" not in found:
         raise ValueError(f"{animation}: no translation and rotation tracks for node {node!r}")
     poses = []
     for seconds in times:
         seconds = seconds % (duration_ms / 1000) if duration_ms else 0.0
-        eye = np.array(tracks_asset.sample(found[f"{node}/translation"], seconds))
-        x, y, z, w = tracks_asset.sample(found[f"{node}/rotation"], seconds)
+        eye = np.array(tracks_asset.sample(found["position"], seconds))
+        x, y, z, w = tracks_asset.sample(found["rotation"], seconds)
         # The quaternion turning (0, 0, -1).
         forward = -np.array([2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)])
         poses.append(np.concatenate([eye, forward]))

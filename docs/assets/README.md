@@ -8,17 +8,19 @@ mesh or an animation clip is one entry. Nothing is compiled into the app for it,
 the app image does not grow with content.
 
 ```mermaid
-flowchart LR
-    Import["mesh_import.py"] --> Entry["name.mesh<br/><i>one entry, committed</i>"]
-    Entry --> Build["build_pack.py"]
-    Build --> Files["DIR/name.apak<br/><i>one file per pack</i>"]
-    Build --> Image["assets.bin<br/><i>pack directory and every pack</i>"]
-    Image --> Flash["assets partition<br/><i>device: each pack mapped alone</i>"]
-    Store["asset_store_pack(name)<br/><i>mounts on first use, counted</i>"] --> Flash
+flowchart TB
+    Import["mesh_import.py"] -->|source frame| Entry["name.mesh in bake cache"]
+    Entry -->|source frame| Mirror["engine_frame.to_engine"]
+    Authored["scene / clip bake"] -->|source frame| Mirror
+    Mirror -->|engine frame| Build["build_pack.py"]
+    Build --> Files["DIR/name.apak"]
+    Build --> Image["assets.bin"]
+    Image --> Flash["assets partition"]
+    Store["asset_store_pack(name)"] --> Flash
     Store --> Files
-    Flash --> Open["asset_pack_open(base, size)<br/><i>checks, then views</i>"]
+    Flash --> Open["asset_pack_open(base, size)"]
     Files --> Open
-    Open --> View["r3d_lit_mesh_open()<br/><i>pointers into the pack</i>"]
+    Open --> View["r3d_lit_mesh_open()"]
 ```
 
 ## Packs
@@ -28,9 +30,18 @@ searching, so no list is kept:
 
 | Root | Pack | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh its renderers name, the clip its camera flies |
+| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
+| `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
+| `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
+
+A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
+folder puts its entries there instead of making a pack of its own, each with
+its stem for id. Folder packs do not nest, and the file holds no settings yet.
+The engine's own artwork, which any app may draw, is the folder pack
+`engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
+names, mounted while it runs.
 
 The default search is `launcher/main/`. An app's `demo_assets.toml` adds
 each folder it names in `demo = ["name", ...]` from `launcher/demo/`.
@@ -59,7 +70,7 @@ bytes are usable as mapped and there is no fix-up pass.
 
 Offsets in the table count from the start of the pack. The writer pads each
 entry to its alignment (16 by default), and the pack must itself start on a
-16-byte boundary, which a sector-aligned mapping and `aligned_alloc()` both
+16-byte boundary, which a page-aligned mapping and `aligned_alloc()` both
 give. The entry rows are read in one place, `asset_pack_entry()`.
 
 An entry's type is four characters stored in the table, so a hex dump reads it.
@@ -70,6 +81,58 @@ list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
 |---|---|---|
 | `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
 | `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
+| `IMAG` | A picture | [The image entry](#the-image-entry) |
+| `TABL` | Named int16 rows | [The table entry](#the-table-entry) |
+
+### The image entry
+
+`NAME.image.toml` names a PNG in its own folder (`source = "x.png"`) and how
+many quarter turns clockwise take it to the stored pixels
+(`quarter_turns`, 0 to 3; a picture drawn in a landscape frame is turned
+into the panel's portrait one once, here, so drawing it reads rows in
+order). The source must be opaque. Offsets count from the entry's first
+byte.
+
+| Offset | Size | Holds |
+|---|---|---|
+| 0 | 2 | version, 1 |
+| 2 | 2 | format: 1 is `gfx_color_t`, byte-swapped RGB565 as the panel takes it; 2 is one bit a pixel, the most significant bit leftmost and 1 ink, for [icons](../tools/Icon-Baker.md) |
+| 4 | 2 | width |
+| 6 | 2 | height |
+| 8 | 4 | stride: pixels from one row's start to the next, at least the width; a whole number of bytes for one bit a pixel |
+| 12 | 4 | where the rows start, after the header; 4-aligned for RGB565 |
+| rows | stride x (height - 1) + width pixels | the pixels, top row first |
+
+`gfx_image_open()` returns `ASSET_ERR_VERSION` for another version,
+`ASSET_ERR_FORMAT` for a format it does not read, an empty picture, a stride
+shorter than a row or, one bit a pixel, not whole bytes, or rows over the
+header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
+that are misaligned. The pixels it returns point into the
+entry.
+
+### The table entry
+
+[`table_asset.py`](../../launcher/tools/asset/table_asset.py) writes generic
+numeric tables. All fields are little-endian and offsets start at the entry's
+first byte.
+
+| Part | Size | Holds |
+|---|---|---|
+| Header | 8 bytes | u16 version (1), u16 rows, u16 columns, u8 fractional bits, u8 reserved (0) |
+| Row | 24 + 2 x columns bytes | NUL-padded name[24], then int16 values[columns] |
+
+Row i starts at `8 + i * (24 + 2 * columns)`. `asset_table_open()` requires
+a 2-byte-aligned base and a complete header (`ASSET_ERR_BOUNDS`), version 1
+(`ASSET_ERR_VERSION`), nonempty dimensions, zero reserved byte, exact entry
+size and a NUL in every name (`ASSET_ERR_FORMAT`). `asset_table_row()` checks
+the requested column count (`ASSET_ERR_FORMAT`) and looks up a name
+(`ASSET_ERR_NOT_FOUND` when absent). Its values point into the mounted pack;
+the reader allocates nothing.
+
+[`curve_asset.py`](../../launcher/tools/gfx/curve_asset.py) bakes a
+`NAME.curve.toml` and the PNG it names into entry NAME: one bright line
+crossing every column of the panel's landscape frame, stored as row `y` of
+brightness-weighted heights.
 
 ## The pack directory
 
@@ -80,10 +143,12 @@ directory that says where each lies:
 |---|---|---|
 | Header | 16 bytes | `"ABDR"`, CRC-32 of every byte after it to the end of the rows, format version, pack count |
 | Rows | 40 bytes per pack | name (32 bytes, NUL padded), offset from the region's start, size |
-| Packs | each on its own 4 KB sector, after the rows, in row order | the pack's bytes |
+| Packs | each starting on its own 64 KB MMU page, after the rows, in row order | the pack's bytes |
 
-A sector per pack lets one pack be mapped, and rewritten, without the
-others.
+The partition and every pack start on MMU pages so releasing one mapping
+cannot invalidate another pack. Padding costs less than one MMU page per pack;
+[`asset_directory.py`](../../launcher/tools/asset/asset_directory.py) writes version 2
+using `ASSET_MMU_PAGE_SIZE` from `asset_directory.h`.
 
 ## Checks
 
@@ -103,7 +168,7 @@ directory, finding an entry and reading it each report the first failure:
 | `ASSET_ERR_VERSION` | a pack, directory or entry format version this firmware does not read |
 | `ASSET_ERR_SIZE` | the header is malformed: a size that cannot hold it, or reserved bytes in use |
 | `ASSET_ERR_CRC` | the bytes do not match the checksum |
-| `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned; a directory row outside the region, off its sector, over the rows or the pack before it, or with no room for its name's NUL |
+| `ASSET_ERR_BOUNDS` | an entry or one of its parts leaves its range, or is misaligned; a directory row outside the region, off its MMU page, over the rows or the pack before it, or with no room for its name's NUL |
 | `ASSET_ERR_DUPLICATE` | two directory rows share a name |
 | `ASSET_ERR_NOT_FOUND` | no entry or pack has that name |
 | `ASSET_ERR_TYPE` | the entry is not of the type asked for |
@@ -117,8 +182,10 @@ A buffer may be larger than the pack, as a mapping is.
 `asset_store_pack(name)` mounts pack `name` and checks it on its first
 use, then counts uses; `asset_store_release(name)` drops one, and at none the
 pack is unmapped or freed. A missing or bad pack is `NULL` and one log
-line saying why. `scene_load(id)` mounts pack `id` and opens its scene
-entry `id`, every mesh it names and its camera's clip from it, failing on the
+line saying why. At most `ASSET_STORE_MOUNTS_MAX` packs are mounted at once,
+and the engine pack, mounted when the first system icon is drawn, keeps its
+slot for the run; `asset_store_mounted()` counts them. `scene_load(id)` mounts pack `id` and opens its scene
+entry `id`, every mesh, skin, skeleton and clip it names from it, failing on the
 first missing or malformed one with the id and the status; `scene_unload()`
 releases it. A scene that fails to load is not drawn; showing that is up to
 the app.
@@ -133,14 +200,14 @@ the app.
 |---|---|---|
 | `nvs` | `0x9000` | `0x6000` |
 | `phy_init` | `0xF000` | `0x1000` |
-| `factory` (the app) | `0x10000` | 8 MB |
+| `factory` (the app) | `0x10000` | `0x7F0000` |
+| `coredump` | `0x800000` | `0x10000` |
 | `assets` | `0x810000` | `0x7F0000` |
 
 On the first mount the store finds the partition and reads its directory into
 RAM, kept for good. Each pack is then mapped alone from its slot. The
-directory is a copy, not a mapping, because it shares its 64 KB flash page with
-the first packs, and QEMU drops every mapping of a page when one of them is
-unmapped. Reads of a mapped
+directory copy holds no MMU page and keeps enumeration independent of pack
+mounts. Reads of a mapped
 pack go through the flash cache as the app's own const data does, so an entry
 costs no RAM and no copy. When the partition table is older than the firmware,
 the directory is missing or a check fails, the log says why and the content
@@ -164,18 +231,21 @@ renderer.
 | `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
 | `build_pack.py [--bake-cache DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` |
+| `build_pack.py --skip-unlocked FILE` | leaves out each pack whose bakes only lack their lock rows and names it in FILE; any other missing bake still fails |
 | `bake/bake.py list\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
 | `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
 
-`launcher/tools/asset/asset_pack.py` is the one writer of the pack and the
-directory, `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` of the mesh
-entry, `launcher/tools/anim/tracks_asset.py` of the clip entry; `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c` and `anim_tracks.c` are the one reader of
-each.
+`launcher/tools/asset/asset_pack.py` writes the pack,
+`launcher/tools/asset/asset_directory.py` the directory,
+`launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
+entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
+`launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
+the one reader of each.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
-entry is baked from its source when the packs are built. Packs are never
+or image entry is baked from its source when the packs are built. Packs are never
 committed: the firmware build, the host tests and
 the render scripts each write the tree they are in, so there is no second copy
 to keep in step.
@@ -211,6 +281,15 @@ held: its bytes were carried over, not made by the code its key names, and
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
+
+The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
+
+| Who | Does |
+|---|---|
+| a build whose poses rows are all locked | reads them; never builds or runs `track_host`, so needs no host C compiler |
+| a key whose row is missing | samples through `track_host` (a host C compiler), or leaves the bake unlocked, naming `bake.py lock` |
+| `bake.py lock` | samples every needed row again and writes it with its `host`, dropping the rest; the only writer |
+| `bake.py check` | samples every needed row again; a missing, unneeded or differing row fails, exactly |
 
 ### Flashing
 

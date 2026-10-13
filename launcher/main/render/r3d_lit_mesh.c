@@ -1,7 +1,9 @@
 #include "render/r3d_lit_mesh.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
+#include "asset/asset_entry.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, lo) == 8
@@ -13,6 +15,7 @@ _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) =
 
 enum {
     HEADER_WORDS = 11,
+    ENTRY_ALIGNMENT = 4,
     COUNT_VERTEX = 0,
     COUNT_TRIANGLE,
     COUNT_CLUSTER,
@@ -68,6 +71,19 @@ clusters_are_inside(const r3d_lit_mesh_t* mesh) {
 }
 
 static bool
+clusters_cover_vertices(const r3d_lit_mesh_t* mesh) {
+    int end = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
+        if (cluster->vertex_first != end) {
+            return false;
+        }
+        end = cluster->vertex_first + cluster->vertex_count;
+    }
+    return end == mesh->vertex_count;
+}
+
+static bool
 nodes_are_inside(const r3d_lit_mesh_t* mesh) {
     for (int n = 0; n < mesh->node_count; n++) {
         const r3d_lit_node_t* node = &mesh->nodes[n];
@@ -86,8 +102,10 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
-    if (asset->size < HEADER_WORDS * 4U) {
-        return ASSET_ERR_BOUNDS;
+    const asset_status_t status = asset_entry_validate(*asset, ASSET_ENTRY_UNVERSIONED, ASSET_ENTRY_UNVERSIONED,
+                                                       HEADER_WORDS * sizeof(uint32_t), ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
     }
     const uint32_t vertices = word(asset->data, COUNT_VERTEX);
     const uint32_t triangles = word(asset->data, COUNT_TRIANGLE);
@@ -98,8 +116,9 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
         return ASSET_ERR_BOUNDS;
     }
+    const uint32_t scale = word(asset->data, POSITION_SCALE);
     /* One colour source, a scale, and a root for the tree to start from. */
-    if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || word(asset->data, POSITION_SCALE) == 0) {
+    if (clusters == 0 || nodes == 0 || (colors_at == 0) == (face_at == 0) || scale == 0 || scale > INT_MAX) {
         return ASSET_ERR_FORMAT;
     }
     r3d_lit_mesh_t built = {
@@ -112,13 +131,16 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         .triangle_count = (int)triangles,
         .cluster_count = (int)clusters,
         .node_count = (int)nodes,
-        .position_scale = (int)word(asset->data, POSITION_SCALE),
+        .position_scale = (int)scale,
         .face_colors = face_at == 0 ? NULL : array_at(asset, face_at, triangles, 2),
     };
     const bool colours_fit = colors_at == 0 ? built.face_colors != NULL : built.colors != NULL;
     if (built.positions == NULL || built.triangles == NULL || built.clusters == NULL || built.nodes == NULL
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
+    }
+    if (!clusters_cover_vertices(&built)) {
+        return ASSET_ERR_FORMAT;
     }
     *mesh = built;
     return ASSET_OK;

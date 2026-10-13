@@ -1,8 +1,8 @@
 # Scene Files
 
-A scene file is a scenario: objects, each with one transform and one component,
-plus the light and tone-map settings. The offline importer bakes the lit meshes
-the scenario places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
+A scene file holds transformed objects, renderer, light and camera components,
+optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
+the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
 [scene entry](#the-scene-entry) it reads at run time.
 
 ```toml
@@ -61,8 +61,10 @@ mesh = "statue.import.toml"
 
 ## Objects
 
-Every object has a unique `name`, an optional transform and exactly one
-component table. A scene needs a `mesh_renderer`.
+Every object has a unique `name`, an optional transform and one primary
+component table: `mesh_renderer`, `skinned_renderer`, `light` or `camera`.
+A skinned renderer may also have an animator. A scene needs a mesh renderer
+or skinned renderer.
 
 | Key | Meaning |
 |---|---|
@@ -73,8 +75,10 @@ component table. A scene needs a `mesh_renderer`.
 | Component | Fields | What it is |
 |---|---|---|
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
+| `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
+| `animator` | `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. |
 | `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
-| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). A scene has at most one camera. |
+| `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
 ## Option reference
 
@@ -88,8 +92,8 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 | `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounced light. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
-| `[ambient]` | `color`, `intensity` | Constant light for bakes. | Rejected unless a renderer bakes. | [ambient](#ambient) |
-| `tonemap_white` | value | Tone-map white point. | Rejected unless a renderer bakes. | [tonemap_white](#tonemap_white) |
+| `[ambient]` | `color`, `intensity` | Constant linear light for bakes and skinned renderers. | Absent: zero intensity. | [ambient](#ambient) |
+| `tonemap_white` | value | Tone-map white point for bakes and runtime lighting. | Runtime default `0` (identity); required by a baked renderer. | [tonemap_white](#tonemap_white) |
 
 #### bake
 
@@ -160,11 +164,45 @@ cosine-weighted directions each point tests for sky visibility.
 
 #### ambient
 
-`[ambient]` adds its constant coloured light everywhere in the bake.
+`[ambient]` adds constant linear coloured light to baked and runtime skinned shading.
+Colour components are finite in 0..1; intensity is finite and nonnegative.
 
 #### tonemap_white
 
-`tonemap_white` controls the tone map applied to baked light.
+`tonemap_white` $w$ sets the tone map applied to baked and runtime skinned light: radiance $L$
+becomes $L / (1 + wL)$ before the gamma, Reinhard's global operator<sup>[[7]](../Citations.md#7)</sup>
+at $w = 1$ and none at $w = 0$.
+
+### skinned_renderer and animator
+
+| Option | Keys | What it does | Default | Option link |
+|---|---|---|---|---|
+| `skinned_renderer` | `mesh`; `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. | Takes no `bake`. | [skinned_renderer](#skinned_renderer) |
+| `animator` | ; `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. | The import's `source.clips`; no default clip; `loop`. | [animator](#animator) |
+
+#### skinned_renderer
+
+```toml
+[[objects]]
+name = "subject"
+[objects.skinned_renderer]
+mesh = "subject.import.toml"
+
+[objects.animator]
+default_clip = "idle"
+wrap = "loop"
+# clips = ["idle", "walk"]
+```
+
+The mesh id is `<scene>.<object>`; the skin id appends `.skin` and the skeleton
+id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
+
+#### animator
+
+`clips` defaults to the import's `source.clips`; an explicit list selects the
+animator's clips. `default_clip` names one of those clips; absent, nothing plays.
+`wrap` is `loop` (default) or `clamp`. Without an animator the skin uses its
+rest pose. Each component occurs once per entity.
 
 ### mesh_renderer
 
@@ -301,7 +339,7 @@ longest edge, grows the mesh to a larger budget, and fits it again. Generated
 tables compare the current budget and cost settings.
 
 The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
-fit to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
+fit<sup>[[6]](../Citations.md#6)</sup> to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
 triangles $`D_v`$; their screen rows $`\rho_t`$; pixels covered before the depth
 test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 
@@ -313,7 +351,8 @@ test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 frames beside the model. The generated board table records the frames used
 to fit the model. The cost term $`\mathcal{E}_c`$ from
 [fit.optimise](#fitoptimise) trades appearance for predicted time alongside
-the triangle budget. Generated tables and findings live in the scene tools README.
+the triangle budget. Generated tables and findings live in the scene tools
+README.
 
 #### fit.poses
 
@@ -323,7 +362,8 @@ used only for scoring.
 
 #### fit.optimise
 
-The appearance fit starts from the renderer's bake at its budget, smooth or
+The appearance fit is appearance-driven simplification<sup>[[1]](../Citations.md#1)</sup>.
+It starts from the renderer's bake at its budget, smooth or
 [flat](#a-flat-fit), and adjusts welded positions and colours against
 reference renders from camera-path poses.
 The triangles stay fixed, so the budget and frame cost hold. A `fit` table
@@ -339,7 +379,7 @@ needs a CUDA GPU and minutes per mesh, with no run-time cost.
 ![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
 
 The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
-differentiable rasterizer $`\mathcal{R}`$ over a random batch $`B`$ of training
+differentiable rasterizer $`\mathcal{R}`$, nvdiffrast<sup>[[2]](../Citations.md#2)</sup>, over a random batch $`B`$ of training
 poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
 the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
 length, $`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
@@ -362,11 +402,12 @@ term $`\mathcal{E}_c`$:
 \mathcal{L}(P)_i = P_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} P_j
 ```
 
-Here $`\mathcal{E}_{\Delta E}`$ is the mean $`\Delta E_{76}`$ between
+Here $`\mathcal{E}_{\Delta E}`$ is the mean $`\Delta E_{76}`$, the CIE 1976
+$`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup>, between
 $`\mathcal{R}_v(P, C)_p`$ and reference $`T_{v,p}`$ over $`B`$ and $`\Omega`$;
 $`\mathcal{E}_{\mathcal{L}}`$ is the mean squared, edge-length-normalised
-change in the Laplacian; and $`\lambda`$, $`\lambda_n`$, and $`\kappa`$ weigh
-the Laplacian, normal, and cost terms:
+change in the uniform Laplacian<sup>[[5]](../Citations.md#5)</sup>; and $`\lambda`$,
+$`\lambda_n`$, and $`\kappa`$ weigh the Laplacian, normal, and cost terms:
 
 ```math
 \mathcal{E}_{\Delta E}(P, C) =
@@ -393,7 +434,7 @@ $`\mathcal{E}_c`$ is the mean $`\hat t_v(P)`$ over $`B`$:
 \mathcal{E}_c(P) = \frac{1}{|B|}\sum_{v \in B}\hat t_v(P)
 ```
 
-Adam takes the steps, both learning rates decay as
+Adam<sup>[[3]](../Citations.md#3)</sup> takes the steps, both learning rates decay as
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
 $[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
 clear colour, as the device and reference do. The fitted colours are a bake in
@@ -458,6 +499,22 @@ flowchart LR
 [Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
 with its flat fit.
 
+##### Against the paper
+
+The fit keeps the paper's<sup>[[1]](../Citations.md#1)</sup> method: a decimated start with
+fixed triangles, a differentiable rasterizer<sup>[[2]](../Citations.md#2)</sup>, Adam<sup>[[3]](../Citations.md#3)</sup>,
+a uniform-Laplacian drift term relative to the start,
+and a learning rate decaying geometrically. It changes the rest:
+
+| | Paper<sup>[[1]](../Citations.md#1)</sup> | This fit |
+|---|---|---|
+| Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
+| Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
+| Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
+| Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
+| Further terms | none | $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
+| Triangle budget | set by the start | the start's, pruned to `budget` by coverage before the fit; a refined fitted mesh can be the start |
+
 #### indirect: off
 
 `indirect = false` requires `[bake].indirect` and omits its bounces from this
@@ -467,7 +524,7 @@ renderer and its fit reference.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `light` | `type`, `color`, `intensity` | Directional bake light. | Required for an object with this component. | [light](#light) |
+| `light` | `type`, `color`, `intensity` | A directional light: baked into baked renderers, applied at runtime to skinned renderers. | Required for an object with this component. | [light](#light) |
 
 #### light
 
@@ -499,7 +556,8 @@ and `node` the glTF node in it that is the camera. The clip's id is `NAME`, and
 it travels in the scene's pack; `<node>/translation` must fit a track name's
 31 bytes. `background` (0xRRGGBB, default black) is the colour
 a pixel no mesh covers shows, on the panel and in the source reference. Without
-a path the camera sits at its transform, looking down its own -Z.
+a path the camera sits at its transform, looking down its own -z in the
+source frame; the pack carries it in the engine frame ([Mesh-Import.md](Mesh-Import.md#the-offline-tools)).
 
 ## What the scene must carry
 
@@ -508,34 +566,52 @@ A renderer with `bake = true` needs at least one light (a directional object,
 the camera `region`, or `path` for the path source. A scene must carry what a
 baked renderer reads and may not carry what none reads: the importer rejects
 lights, `tonemap_white`, a region or `[indirect]` that no placed mesh reads.
+Directional lights, `[ambient]` and `tonemap_white` are also read by skinned
+renderers, which require none of them; `[sky]` is read only by a bake.
 
 ## The scene entry
 
 `build_pack.py` bakes each scene file into a `SCNE` entry of its own pack,
 named after the file: `NAME.scene.toml` is entry and pack `NAME`, beside every
-mesh its renderers name and the clip its camera flies
+mesh, skin, skeleton and clip it names
 ([assets/README.md](../assets/README.md)). `tools/r3d/scene_asset.py` writes and
 reads it; `scene_load()` opens it ([Scene-Manager.md](Scene-Manager.md)), each
-mesh and the clip, and fails naming whichever is missing or malformed. A scene
+mesh, skin, skeleton and clip it names, and fails naming whichever is missing or malformed. A scene
 and its clip cannot share a stem ([assets/README.md](../assets/README.md#packs)).
 
-An entity is each mesh renderer and the camera, in file order, found by name at
-run time. Its transform is baked as a 3x3 (rotation times scale) and a
-position, so the device does no trigonometry. An entity's name is letters,
-digits and `_`, not starting with a digit, at most 31 bytes. Lights, the
-camera region, sky, ambient and the tone map stay offline.
+Every object is an entity in file order, found by name at runtime. Transforms
+store a 3x3 rotation-times-scale matrix and position. Names are letters, digits
+and `_`, not starting with a digit, at most 31 bytes. Directional lights use
+their entity's rotation applied to `SCENE_LIGHT_AXIS` (+Y). Baked renderers
+keep their LMSH colours; runtime lights shade only skinned renderers. Sky and
+camera regions are bake inputs.
 
-Little-endian; offsets count from the entry's first byte, each 4-aligned:
+SCNE v2 is little-endian; every part offset is four-byte aligned from entry
+start. The header contains only the version, counts and offsets. Parts follow
+this order:
 
 | Part | Layout |
 |---|---|
-| header | `u16 version`, `u16 entity_count`, `u16 renderer_count`, `u16 camera_count`, `u32` offset of each part below |
+| header, 56 bytes | `u16 version=2`, nine `u16` part counts, nine `u32` part offsets |
 | names | `char name[32]` per entity, NUL padded |
-| transforms | `f32 m[3][3]`, `f32 position[3]` per entity |
-| renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]` per renderer |
-| cameras | `u16 entity`, `u16 pad`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb`, `char clip_id[32]`, `char node[32]` per camera; an empty clip: no path |
+| transforms | `f32 m[3][3]`, `f32 position[3]` per entity; count equals names |
+| renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]` |
+| cameras | `u16 entity`, `u16 zero`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb` |
+| lights | `u16 entity`, `u8 kind`, `u8 zero`, `f32 colour[3]` (linear), `f32 intensity` (unscaled) |
+| skinned renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]`, `char skin_id[32]`, `char skeleton_id[32]` |
+| animators | `u16 entity`, `u16 clip_count`, `u32 first_clip`, `u16 default_clip`, `u8 wrap`, `u8 zero` |
+| clip rows | `char clip_id[32]` |
+| settings, exactly one | `f32 ambient_colour[3]` (linear), `f32 ambient_intensity`, `f32 tonemap_white` |
 
-The reader refuses an entity index out of range, a `pad` that is not zero, an
-empty name or mesh id, text with anything but NULs after its end, a lens value
-that is not finite and positive, a clear colour past 0xFFFFFF, and a clip
-without a node or a node without a clip.
+Settings are applied before lights attach. Absent ambient has zero intensity;
+`tonemap_white=0` is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map. A camera
+path becomes an animator on its entity with one clip, default index zero and
+loop wrap. Its `node` selects tracks at bake time; the packed tracks bind to
+the animator's owner through `ANIM_TARGET_SELF`.
+
+Readers refuse v1, invalid entity indices, nonzero padding, malformed text,
+nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
+animator or skinned-renderer entities, unknown kind or wrap, invalid clip
+ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
+settings. `default_clip=SCENE_ASSET_DEFAULT_CLIP_NONE` means no playback. Light-kind codes belong to
+`scene_internal.h`; wrap codes belong to `anim_track.h`.

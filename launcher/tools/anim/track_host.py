@@ -32,11 +32,12 @@ sys.path.insert(0, str(TOOLS))
 
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
+from build import packages  # noqa: E402
 
 HERE = TOOLS / "anim"
 MAIN = TOOLS.parent / "main"
 BUILD = HERE / "build"
-SOURCES = (HERE / "track_host.c", MAIN / "anim" / "anim_track.c", MAIN / "anim" / "anim_tracks.c",
+SOURCES = (HERE / "track_host.c", MAIN / "anim" / "anim_track.c", MAIN / "anim" / "anim_tracks.c", MAIN / "anim" / "anim_binding.c",
            MAIN / "asset" / "asset_pack.c", MAIN / "asset" / "asset_file.c")
 FLAGS = ("-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O2")
 EXE = ".exe" if sys.platform == "win32" else ""
@@ -61,7 +62,8 @@ def compiler():
 def compile_args(cc):
     """The compile, without its output: what both the build and the key's
     file list run, so the key always sees the files the build reads."""
-    return [cc, *FLAGS, "-I", str(MAIN), *map(str, SOURCES)]
+    roots = [arg for root in packages.include_roots() for arg in ("-I", str(root))]
+    return [cc, *FLAGS, *roots, *map(str, SOURCES)]
 
 
 def inputs(cc):
@@ -113,7 +115,10 @@ def program():
 
 def run(args):
     """track_host's output for `args`, as text."""
-    done = subprocess.run([str(program()), *map(str, args)], capture_output=True, text=True)
+    try:
+        done = subprocess.run([str(program()), *map(str, args)], capture_output=True, text=True)
+    except OSError as error:
+        raise TrackHostError(f"cannot build or run track_host: {error}") from error
     if done.returncode != 0:
         raise TrackHostError(f"track_host {' '.join(map(str, args))}: {done.stderr.strip()}")
     return done.stdout

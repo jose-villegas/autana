@@ -3,6 +3,7 @@ scene file says, what it refuses to read, and the pack build_pack makes of a
 scene. The firmware's reader of the same bytes is suite_scene.c."""
 
 import pathlib
+import math
 import struct
 import sys
 import tempfile
@@ -14,11 +15,15 @@ sys.path.insert(0, str(TOOLS / "tests"))
 
 from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
-from asset.asset_pack import parse_pack  # noqa: E402
+from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
+from asset.engine_frame import to_engine  # noqa: E402
+from test_engine_frame import mesh_entry  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 from r3d.scene_asset import CAMERA, HEADER, NAME, RENDERER, TRANSFORM, SceneError  # noqa: E402
+from unittest import mock
+from skin_probe import rig
 from test_r3d_import import HEAD, renderer, sun_object, write_import  # noqa: E402
 
 CLIP = 'source = "probe.glb"\nanimation = "clip"\n'
@@ -43,7 +48,7 @@ class SceneFiles(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         for mesh in ("a", "b"):
             write_import(self.root, f"{mesh}.import.toml", output=f'[output]\nname = "{mesh}"\n')
-            (self.root / f"{mesh}.mesh").write_bytes(mesh.encode())
+            (self.root / f"{mesh}.mesh").write_bytes(mesh_entry())
         (self.root / "clips").mkdir()
         (self.root / "clips" / "probe.glb").write_bytes(probe_glb())
         (self.root / "clips" / "fly.anim.toml").write_text(CLIP)
@@ -68,11 +73,74 @@ class SceneEntryTests(SceneFiles):
         loaded = load_scene(path)
         self.assertEqual(loaded.camera.name, "camera")
         decoded = scene_asset.decode(scene_asset.bake(path))
-        self.assertEqual([c["clip"] for c in decoded["cameras"]], ["fly", "tour"])
+        self.assertEqual(decoded["clips"], ["fly", "tour"])
+        self.assertEqual(decoded["animators"], [dict(entity=entity, clip_count=1, first_clip=first,
+                        default_clip=0, wrap=scene_asset.WRAPS["loop"]) for entity, first in ((2, 0), (3, 1))])
         self.assertEqual([decoded["entities"][c["entity"]]["name"] for c in decoded["cameras"]], ["camera", "tour"])
         packs = build_pack.pack_bytes([self.root])
         self.assertEqual(list(packs), ["hall"])
         self.assertEqual(set(parse_pack(packs["hall"])), {"hall", "a", "b", "fly", "tour"})
+
+    def test_skinned_renderer_and_animator_are_authored(self):
+        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+        objects = (renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
+                   + '[objects.animator]\nclips = ["move"]\ndefault_clip = "move"\nwrap = "clamp"\n' + sun_object().replace('color = [1.0, 1.0, 1.0]', 'color = [0.25, 0.5, 0.75]')
+                   .replace('intensity = 1.0', 'intensity = 2.5'))
+        document, binary = rig()
+        with mock.patch("r3d.skin_pack.load_rig", return_value=(import_file, document, binary, 5)):
+            entry = self.entry(objects, 'tonemap_white = 0.3\n[ambient]\ncolor = [0.4, 0.5, 0.6]\nintensity = 0.2\n')
+            decoded = scene_asset.decode(entry)
+        self.assertEqual(decoded["renderers"], [])
+        self.assertEqual(decoded["skinned_renderers"][0], dict(entity=0, mesh="hall.rig", skin="hall.rig.skin", skeleton="armature"))
+        self.assertEqual(decoded["animators"][0]["wrap"], scene_asset.WRAPS["clamp"])
+        self.assertEqual(decoded["clips"], ["move"])
+        self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL,
+                         color=[0.25, 0.5, 0.75], intensity=2.5))
+        self.assertEqual(decoded["settings"], dict(ambient_color=[single(v) for v in (0.4, 0.5, 0.6)],
+                         ambient_intensity=single(0.2), tonemap_white=single(0.3)))
+        with self.assertRaisesRegex(SettingsError, "takes no bake"):
+            load_scene(self.scene(objects.replace('mesh = "rig.import.toml"', 'mesh = "rig.import.toml"\nbake = false')))
+        for value in ("default_clip = \"missing\"", "wrap = \"unknown\""):
+            setting = "default_clip" if value.startswith("default") else "wrap"
+            bad = objects.replace('default_clip = "move"' if setting == "default_clip" else 'wrap = "clamp"', value)
+            with self.assertRaisesRegex(SettingsError, setting):
+                load_scene(self.scene(bad))
+
+    def test_import_refusals_name_the_rule(self):
+        import_file = write_import(self.root, "rig.import.toml",
+            source='[source]\npath = "rig.blend"\ncredit = "test"\nclips = ["idle", "walk"]\n')
+        skin = renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
+        cases = [(skin + sun_object().replace('color = [1.0, 1.0, 1.0]', 'color = [1.1, 0.5, 0.5]'), '', 'color'),
+                 (skin + sun_object().replace('intensity = 1.0', 'intensity = -1.0'), '', 'intensity'),
+                 (skin, 'tonemap_white = -1.0\n', 'tonemap_white'),
+                 (skin, '[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\n', 'only baked renderers'),
+                 (renderer("a.import.toml") + '[objects.animator]\nclips = ["idle"]\n', '', 'requires a skinned_renderer'),
+                 (skin + '[objects.animator]\nclips = ["missing"]\n', '', 'unique import source.clips'),
+                 (skin + '[objects.animator]\nclips = ["idle", "idle"]\n', '', 'unique import source.clips')]
+        for objects, head, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(SettingsError, message):
+                load_scene(self.scene(objects, head))
+        import_file.write_text(import_file.read_text().replace('["idle", "walk"]', '["idle", "idle"]'))
+        with self.assertRaisesRegex(SettingsError, "duplicate clip names"):
+            load_scene(self.scene(skin))
+
+    def test_camera_node_without_tracks_and_shared_clip_different_nodes_are_refused(self):
+        path = self.root / "clips/fly.anim.toml"
+        with self.assertRaisesRegex(tracks_asset.TracksError, "has no property tracks"):
+            tracks_asset.bake(path, "absent")
+        second = lens("clips/fly.anim.toml").replace('name = "camera"', 'name = "other"').replace('node = "lamp"', 'node = "other"')
+        self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml") + second)
+        with self.assertRaisesRegex(SettingsError, "selects different nodes"):
+            build_pack.pack_bytes([self.root])
+
+    def test_skin_import_modes_and_named_refusal(self):
+        from r3d.import_settings import load_import_settings
+        for mode in ("direct", "renormalised", "table"):
+            path = write_import(self.root, body=f'[skin]\nlighting = "{mode}"\n')
+            self.assertEqual(load_import_settings(path).skin_lighting, mode)
+        path = write_import(self.root, body='[skin]\nlighting = "unknown"\n')
+        with self.assertRaisesRegex(SettingsError, "mesh.import.toml.*direct, renormalised, table"):
+            load_import_settings(path)
 
     def test_a_region_on_a_secondary_camera_is_refused(self):
         second = lens(extra='region = { min = [-1, -1, -1], max = [1, 1, 1] }\n').replace('name = "camera"', 'name = "tour"')
@@ -90,11 +158,13 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual([e["position"] for e in scene["entities"][1:]], [[0.0, 0.0, 0.0]] * 2)
         self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "a"}, {"entity": 1, "mesh": "b"}])
         self.assertEqual(scene["cameras"], [{"entity": 2, "half_fov_short_tan": single(0.6), "near_z": 1.5,
-                                             "clear_rgb": 0x336699, "clip": "fly", "node": "lamp"}])
+                                             "clear_rgb": 0x336699}])
 
     def test_a_camera_without_a_path_has_no_clip_and_clears_to_black(self):
         scene = scene_asset.decode(self.entry(renderer("a.import.toml") + lens()))
-        self.assertEqual((scene["cameras"][0]["clip"], scene["cameras"][0]["node"]), ("", ""))
+        self.assertEqual(scene["animators"], [])
+        self.assertEqual(scene["settings"], dict(ambient_color=list(scene_asset.DEFAULT_COLOR),
+                         ambient_intensity=scene_asset.AMBIENT_NONE, tonemap_white=scene_asset.TONEMAP_NONE))
         self.assertEqual(scene["cameras"][0]["clear_rgb"], 0)
 
     def test_a_placement_is_baked_as_rotation_times_scale(self):
@@ -103,32 +173,36 @@ class SceneEntryTests(SceneFiles):
         for row, want in zip(matrix, ((0.0, 0.0, 3.0), (0.0, 2.0, 0.0), (-1.0, 0.0, 0.0))):
             self.assertTrue(all(abs(a - b) < 1e-6 for a, b in zip(row, want)), matrix)
 
-    def test_a_light_has_no_entity_and_the_indices_step_over_it(self):
+    def test_a_light_is_an_entity_with_its_authored_values(self):
         objects = (renderer("a.import.toml", extra="bake = true\n") + sun_object()
                    + renderer("b.import.toml", extra="bake = true\n") + lens())
         scene = scene_asset.decode(self.entry(objects, HEAD))
-        self.assertEqual([e["name"] for e in scene["entities"]], ["a", "b", "camera"])
-        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "hall.a"}, {"entity": 1, "mesh": "hall.b"}])
+        self.assertEqual([e["name"] for e in scene["entities"]], ["a", "sun", "b", "camera"])
+        self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "hall.a"}, {"entity": 2, "mesh": "hall.b"}])
 
     def test_the_entry_holds_only_what_the_device_reads(self):
         objects = renderer("a.import.toml", extra="bake = true\n") + sun_object() + lens()
         entry = self.entry(objects, HEAD)
-        size = HEADER.size + 2 * (NAME.size + TRANSFORM.size) + RENDERER.size + CAMERA.size
+        size = HEADER.size + 3 * (NAME.size + TRANSFORM.size) + RENDERER.size + CAMERA.size + scene_asset.LIGHT.size + scene_asset.SETTINGS.size
         self.assertEqual(len(entry), size)
-        self.assertNotIn(b"sun", entry)
+        self.assertIn(b"sun", entry)
 
     def test_the_same_scene_bakes_the_same_bytes(self):
         objects = renderer("a.import.toml") + lens("clips/fly.anim.toml")
         self.assertEqual(self.entry(objects), self.entry(objects))
 
-    def test_a_camera_path_names_an_existing_anim_file_and_a_short_node(self):
+    def test_a_camera_path_names_an_existing_anim_file_and_a_valid_node(self):
         for path, pattern in (("clips/gone.anim.toml", "is not an .anim.toml file"),
                               ("clips/probe.glb", "is not an .anim.toml file")):
             with self.subTest(path=path), self.assertRaisesRegex(SettingsError, pattern):
                 load_scene(self.scene(renderer("a.import.toml") + lens(path)))
-        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + "n" * 20 + '"')
-        with self.assertRaisesRegex(SettingsError, "track names exceed"):
-            load_scene(self.scene(renderer("a.import.toml") + long_node))
+        node = "n" * (NAME_BYTES - 1)
+        long_node = lens("clips/fly.anim.toml").replace('node = "lamp"', 'node = "' + node + '"')
+        scene = load_scene(self.scene(renderer("a.import.toml") + long_node))
+        self.assertEqual(scene.camera.component.path.node, node)
+        with self.assertRaisesRegex(SettingsError, "at most"):
+            load_scene(self.scene(renderer("a.import.toml") +
+                       long_node.replace(node, "n" * NAME_BYTES)))
         with self.assertRaisesRegex(SettingsError, "letters, digits and _"):
             load_scene(self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml").replace('"lamp"', '"no-good"')))
 
@@ -156,60 +230,92 @@ class SceneEntryTests(SceneFiles):
             load_scene(self.scene(renderer("a.import.toml", name="n" * 32)))
 
 
+def authored_entry():
+    parts = [
+        NAME.pack(b"first") + NAME.pack(b"second"),
+        TRANSFORM.pack(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0) * 2,
+        RENDERER.pack(0, 0, b"mesh"),
+        CAMERA.pack(1, 0, 0.5, 0.1, 0),
+        b"".join(scene_asset.LIGHT.pack(e, scene_asset.DIRECTIONAL, 0, 0.8, 0.7, 0.6, 1.5) for e in range(2)),
+        b"".join(scene_asset.SKINNED_RENDERER.pack(e, 0, b"mesh", b"mesh.skin", b"rig") for e in range(2)),
+        b"".join(scene_asset.ANIMATOR.pack(e, 1, e, 0, scene_asset.WRAPS["loop"], 0) for e in range(2)),
+        NAME.pack(b"idle") + NAME.pack(b"walk"),
+        scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5)]
+    counts = [len(part) // row.size for part, row in zip(parts, scene_asset.ROWS)]
+    offsets, at = [], HEADER.size
+    for part in parts:
+        offsets.append(at)
+        at += len(part)
+    return bytearray(HEADER.pack(scene_asset.VERSION, *counts, *offsets) + b"".join(parts))
+
+
 class SceneEntryRefusalTests(unittest.TestCase):
-    """decode() refuses what scene_asset_open() refuses: each edit below keeps the size."""
+    def test_authored_rows_round_trip(self):
+        decoded = scene_asset.decode(authored_entry())
+        self.assertEqual(decoded["clips"], ["idle", "walk"])
+        self.assertEqual(decoded["skinned_renderers"][1], dict(entity=1, mesh="mesh", skin="mesh.skin", skeleton="rig"))
+        self.assertEqual(decoded["animators"][1], dict(entity=1, clip_count=1, first_clip=1, default_clip=0,
+                                                      wrap=scene_asset.WRAPS["loop"]))
+        self.assertAlmostEqual(decoded["settings"]["tonemap_white"], 0.5)
 
-    def entry(self):
-        entities = NAME.pack(b"camera") + NAME.pack(b"quad")
-        transforms = TRANSFORM.pack(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10) + TRANSFORM.pack(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
-        renderers = RENDERER.pack(1, 0, b"quad")
-        cameras = CAMERA.pack(0, 0, 1.0, 1.0, 0x336699, b"fly", b"camera")
-        names_at = HEADER.size
-        transforms_at = names_at + len(entities)
-        renderers_at = transforms_at + len(transforms)
-        cameras_at = renderers_at + len(renderers)
-        return bytearray(HEADER.pack(scene_asset.VERSION, 2, 1, 1, names_at, transforms_at, renderers_at, cameras_at)
-                         + entities + transforms + renderers + cameras)
+    def test_v1_and_truncation_are_refused(self):
+        entry = authored_entry()
+        struct.pack_into("<H", entry, 0, 1)
+        with self.assertRaisesRegex(SceneError, "version 1"):
+            scene_asset.decode(entry)
+        with self.assertRaises(SceneError):
+            scene_asset.decode(authored_entry()[:HEADER.size - 1])
 
-    def refuses(self, edit, pattern):
-        entry = self.entry()
-        edit(entry)
-        with self.assertRaisesRegex(SceneError, pattern):
-            scene_asset.decode(bytes(entry))
+    def test_every_authored_refusal(self):
+        original = authored_entry()
+        offsets = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS):]
+        cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", 1),
+                 ("animators", 4, "<I", 2), ("animators", 4, "<I", (1 << 32) - 1), ("animators", 8, "<H", 1),
+                 ("animators", 10, "B", 2), ("animators", 10, "B", 255), ("animators", 11, "B", 1),
+                 ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1),
+                 ("renderers", 2, "<H", 1)]
+        for part in ("lights", "animators", "skinned_renderers"):
+            row = scene_asset.ROWS[scene_asset.PARTS.index(part)]
+            cases.append((part, row.size, "<H", 0))
+            cases.append((part, 0, "<H", 2))
+        for value in (-0.1, 1.1, math.nan, math.inf):
+            for component in range(3):
+                cases.append(("lights", 4 + component * 4, "<f", value))
+                cases.append(("settings", component * 4, "<f", value))
+        for value in (-1, math.nan, math.inf):
+            cases.extend((part, offset, "<f", value) for part, offset in
+                         (("lights", 16), ("settings", 12), ("settings", 16)))
+        for part, offset, fmt, value in cases:
+            message = (part + ": entity" if fmt == "<H" and offset in (0, scene_asset.ROWS[scene_asset.PARTS.index(part)].size)
+                       else "animator: invalid" if part == "animators"
+                       else "light: invalid" if part == "lights"
+                       else "settings: invalid" if part == "settings" else part + ": padding")
+            with self.subTest(part=part, offset=offset, value=value), self.assertRaisesRegex(SceneError, message):
+                entry = bytearray(original)
+                struct.pack_into(fmt, entry, offsets[scene_asset.PARTS.index(part)] + offset, value)
+                scene_asset.decode(entry)
+        entry = bytearray(original)
+        animator_at = offsets[scene_asset.PARTS.index("animators")]
+        struct.pack_into("<H", entry, animator_at + 8, scene_asset.DEFAULT_CLIP_NONE)
+        self.assertEqual(scene_asset.decode(entry)["animators"][0]["default_clip"], scene_asset.DEFAULT_CLIP_NONE)
 
-    def test_the_fixture_reads(self):
-        scene = scene_asset.decode(bytes(self.entry()))
-        self.assertEqual(scene["cameras"][0]["clip"], "fly")
 
-    def test_a_short_entry_or_another_version_is_refused(self):
-        with self.assertRaisesRegex(SceneError, "shorter"):
-            scene_asset.decode(bytes(self.entry()[:HEADER.size - 1]))
-        self.refuses(lambda e: struct.pack_into("<H", e, 0, 2), "version 2")
-
-    def test_a_section_leaving_the_entry_or_misaligned_is_refused(self):
-        for field, value in ((0, 9999), (4, 2), (8, len(self.entry())), (12, HEADER.size - 4)):
-            with self.subTest(field=field):
-                self.refuses(lambda e: struct.pack_into("<I", e, 8 + field, value), "leave the entry or are misaligned")
-
-    def test_a_name_without_its_nul_or_with_bytes_after_it_is_refused(self):
-        names = HEADER.size
-        self.refuses(lambda e: e.__setitem__(slice(names, names + 32), b"x" * 32), "NUL")
-        self.refuses(lambda e: e.__setitem__(names + 20, ord("x")), "NUL")
-
-    def test_a_renderer_naming_no_entity_or_with_padding_in_use_is_refused(self):
-        at = HEADER.size + 2 * (NAME.size + TRANSFORM.size)
-        self.refuses(lambda e: struct.pack_into("<H", e, at, 2), "out of range")
-        self.refuses(lambda e: struct.pack_into("<H", e, at + 2, 1), "out of range")
-
-    def test_a_camera_with_a_bad_lens_or_a_clip_without_a_node_is_refused(self):
-        at = HEADER.size + 2 * (NAME.size + TRANSFORM.size) + RENDERER.size
-        self.refuses(lambda e: struct.pack_into("<f", e, at + 4, 0.0), "does not allow")
-        self.refuses(lambda e: struct.pack_into("<f", e, at + 8, float("nan")), "does not allow")
-        self.refuses(lambda e: struct.pack_into("<I", e, at + 12, 0x1000000), "does not allow")
-        self.refuses(lambda e: e.__setitem__(slice(at + 48, at + 80), bytes(32)), "does not allow")
-        self.refuses(lambda e: e.__setitem__(slice(at + 16, at + 48), bytes(32)), "does not allow")
-        self.refuses(lambda e: struct.pack_into("<H", e, at, 2), "does not allow")
-        self.refuses(lambda e: struct.pack_into("<H", e, at + 2, 1), "does not allow")
+    def test_counts_and_skin_ids_are_strict(self):
+        original = authored_entry()
+        for part, counts in (("transforms", (1, 3)), ("settings", (0, 2))):
+            for count in counts:
+                entry = bytearray(original)
+                struct.pack_into("<H", entry, 2 + 2 * scene_asset.PARTS.index(part), count)
+                with self.subTest(part=part, count=count), self.assertRaisesRegex(SceneError, "transforms must match names"):
+                    scene_asset.decode(entry)
+        skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
+        for field, name in enumerate(("mesh", "skin", "skeleton")):
+            for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):
+                entry = bytearray(original)
+                at = skin + 4 + field * NAME_BYTES
+                entry[at:at + NAME_BYTES] = raw
+                with self.subTest(name=name, raw=raw), self.assertRaisesRegex(SceneError, name + " id is not NUL"):
+                    scene_asset.decode(entry)
 
 
 class ScenePackTests(SceneFiles):
@@ -220,16 +326,16 @@ class ScenePackTests(SceneFiles):
         packs = {name: parse_pack(pack) for name, pack in build_pack.pack_bytes([self.root]).items()}
         self.assertEqual(sorted(packs), ["hall"])
         hall = packs["hall"]
-        self.assertEqual(hall["hall"], (scene_asset.TYPE, scene_asset.bake(path)))
+        self.assertEqual(hall["hall"], (scene_asset.TYPE, to_engine(scene_asset.TYPE, scene_asset.bake(path))))
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
-        self.assertEqual(hall["fly"][1], probe_entry())
+        self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "lamp")))
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
-        (self.root / "scratch.mesh").write_bytes(b"9")
+        (self.root / "scratch.mesh").write_bytes(mesh_entry((9, 3, -7)))
         packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
-        self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, b"9"))
+        self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, to_engine(LIT_MESH, mesh_entry((9, 3, -7)))))
         for entry in ("hall", "fly"):
             with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
                 build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])

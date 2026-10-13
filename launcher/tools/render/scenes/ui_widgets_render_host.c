@@ -9,10 +9,10 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "gfx/draw/icons_system.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/ui.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
 
@@ -92,10 +92,9 @@ landscape(void) {
 }
 
 static ui_widget_button_t
-button(icon_system_id_t icon, const char* label, bool enabled, bool selected) {
+button(ui_icon_id_t icon, const char* label, bool enabled, bool selected) {
     return (ui_widget_button_t){
-        .icon = &icon_system_table[icon],
-        .icon_rows = icon_system_rows,
+        .icon = ui_icon(icon),
         .label = label,
         .enabled = enabled,
         .selected = selected,
@@ -104,11 +103,11 @@ button(icon_system_id_t icon, const char* label, bool enabled, bool selected) {
 
 static void
 draw_dropdown(mu_Context* ctx, mu_Rect r) {
-    static const ui_dropdown_item_t items[] = {
-        {&icon_system_table[ICON_SYSTEM_HOME], icon_system_rows, "HOME"},
-        {&icon_system_table[ICON_SYSTEM_WIFI], icon_system_rows, "WIFI"},
-        {&icon_system_table[ICON_SYSTEM_MONITOR], icon_system_rows, "DISPLAY"},
-        {&icon_system_table[ICON_SYSTEM_GAMEPAD], icon_system_rows, "GAMES"},
+    const ui_dropdown_item_t items[] = {
+        {ui_icon(UI_ICON_HOME), "HOME"},
+        {ui_icon(UI_ICON_WIFI), "WIFI"},
+        {ui_icon(UI_ICON_MONITOR), "DISPLAY"},
+        {ui_icon(UI_ICON_GAMEPAD), "GAMES"},
     };
     const int count = (int)(sizeof items / sizeof items[0]);
     const int picked = ui_dropdown(ctx, "gallery", r, items, count, picked_item, &THEME);
@@ -130,9 +129,9 @@ static void
 draw_tiles(mu_Context* ctx, mu_Rect r) {
     static const char* const IDS[] = {"info", "wifi", "off"};
     const ui_widget_button_t tiles[] = {
-        button(ICON_SYSTEM_INFO, "INFO", true, false),
-        button(ICON_SYSTEM_WIFI, "WIFI", true, true),
-        button(ICON_SYSTEM_ALERT, "OFF", false, false),
+        button(UI_ICON_INFO, "INFO", true, false),
+        button(UI_ICON_WIFI, "WIFI", true, true),
+        button(UI_ICON_ALERT, "OFF", false, false),
     };
     const int w = (r.w - 16) / 3;
     for (int i = 0; i < 3; i++) {
@@ -152,8 +151,8 @@ draw_swatches(mu_Context* ctx, mu_Rect r) {
 
 static void
 draw_icon_buttons(mu_Context* ctx, mu_Rect home_r, mu_Rect on_r) {
-    const ui_widget_button_t home = button(ICON_SYSTEM_HOME, "HOME", true, false);
-    const ui_widget_button_t on = button(ICON_SYSTEM_CHECK, "ON", true, true);
+    const ui_widget_button_t home = button(UI_ICON_HOME, "HOME", true, false);
+    const ui_widget_button_t on = button(UI_ICON_CHECK, "ON", true, true);
     ui_icon_button(ctx, "home", home_r, &home, &THEME);
     ui_icon_button(ctx, "on", on_r, &on, &THEME);
 }

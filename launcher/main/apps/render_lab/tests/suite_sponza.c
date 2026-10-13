@@ -29,6 +29,7 @@
 static scene_t* sponza;
 static const asset_pack_t* pack;
 static const r3d_scene_camera_t* flythrough;
+static scene_entity_t camera_entity;
 static const char* camera_name;
 #define MESH_FULL (&mesh_full)
 #define MESH_LITE (&mesh_lite)
@@ -90,7 +91,7 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
 
 static void
 check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* mesh) {
-    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+    const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     uint16_t* walked = malloc(sizeof(*walked) * (size_t)mesh->cluster_count);
@@ -99,7 +100,8 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     TEST_ASSERT_NOT_NULL(kept);
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
-        const render_view_t view = r3d_scene_view_at(flythrough, t, viewport);
+        (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
+        const render_view_t view = r3d_scene_view_at(flythrough, viewport);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
@@ -141,7 +143,7 @@ add_scaled(v3 a, v3 d, float s) {
     return (v3){a.x + (d.x * s), a.y + (d.y * s), a.z + (d.z * s)};
 }
 
-/* Ericson, Real-Time Collision Detection 5.1.5. */
+/* Ericson, Real-Time Collision Detection 5.1.5 (docs/Citations.md#23). */
 static float
 point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
     const v3 ab = sub(b, a);
@@ -223,11 +225,12 @@ clearance(const r3d_lit_mesh_t* mesh, v3 p) {
 
 static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
-    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+    const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     for (uint32_t t = 0; t < period; t += 100) {
         vec3f_t eye;
         vec3f_t forward;
-        r3d_scene_camera_sample(flythrough, t, &eye, &forward);
+        (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
+        r3d_scene_camera_sample(flythrough, &eye, &forward);
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -280,13 +283,16 @@ check_camera_paths(void (*check)(const r3d_lit_mesh_t*)) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         camera_name = sponza_cameras[camera];
         flythrough = scene_camera_lens(sponza, camera_name);
+        camera_entity = scene_find(sponza, camera_name);
         TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
-        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
+        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0),
+                                                camera_name);
         check(MESH_FULL);
         check(MESH_LITE);
         check(MESH_FLAT);
     }
     flythrough = scene_camera_lens(sponza, NULL);
+    camera_entity = scene_find(sponza, sponza_cameras[0]);
 }
 
 static void
@@ -303,15 +309,19 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         camera_name = sponza_cameras[camera];
         flythrough = scene_camera_lens(sponza, camera_name);
+        camera_entity = scene_find(sponza, camera_name);
         TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
-        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, r3d_scene_camera_period_ms(flythrough), camera_name);
-        const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0),
+                                                camera_name);
+        const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
         vec3f_t previous;
         vec3f_t forward;
-        r3d_scene_camera_sample(flythrough, 0, &previous, &forward);
+        (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, 0);
+        r3d_scene_camera_sample(flythrough, &previous, &forward);
         for (uint32_t t = 10; t <= period + 100; t += 10) {
             vec3f_t eye;
-            r3d_scene_camera_sample(flythrough, t, &eye, &forward);
+            (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
+            r3d_scene_camera_sample(flythrough, &eye, &forward);
             const vec3f_t step = vec3f_sub(eye, previous);
             TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, camera_name);
             TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)), camera_name);
@@ -319,12 +329,14 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
         }
     }
     flythrough = scene_camera_lens(sponza, NULL);
+    camera_entity = scene_find(sponza, sponza_cameras[0]);
 }
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
-    const render_view_t view = r3d_scene_view_at(flythrough, t_ms, (viewport_t){raster->width, raster->height, 0});
+    (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+    const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){raster->width, raster->height, 0});
     raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = raster_depth(raster);
@@ -347,7 +359,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
     void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
-    const uint32_t period = r3d_scene_camera_period_ms(flythrough);
+    const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     float sum = 0.0F;
     int samples = 0;
     for (uint32_t t = 0; t < period; t += SPONZA_POSE_EVERY_MS) {
@@ -376,7 +388,7 @@ test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path(vo
         TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
     }
     TEST_ASSERT_NOT_NULL(flythrough);
-    TEST_ASSERT_GREATER_THAN_UINT32(0, r3d_scene_camera_period_ms(flythrough));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0));
 }
 
 static void
@@ -385,6 +397,7 @@ run_sponza_suite(void) {
     sponza = loaded.scene;
     pack = loaded.pack;
     flythrough = loaded.path;
+    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
     RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
     RUN_TEST(test_both_bakes_are_cut_into_meshlets);
@@ -400,3 +413,4 @@ run_sponza_suite(void) {
 }
 
 SUITE_REGISTER(run_sponza_suite);
+SUITE_READS(run_sponza_suite, SPONZA_SCENE);

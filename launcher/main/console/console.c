@@ -15,7 +15,7 @@
  */
 #include "console/console.h"
 #if CONFIG_LAUNCHER_SELFTEST
-#include "console/console_runsuite.h"
+#include "console/verbs/console_runsuite.h"
 #endif
 
 #include <stdio.h>
@@ -32,6 +32,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+
+#include "core/timing.h"
 
 static const char* TAG = "console";
 
@@ -60,12 +62,6 @@ console_take_unclaimed_line(char* out, size_t out_size) {
     }
     console_copy_text(out, out_size, item);
     return true;
-}
-
-void
-console_reply_stdio(const char* line) {
-    printf("%s\n", line);
-    fflush(stdout);
 }
 
 /* Line endings stay LF, untranslated: console_task() accepts either
@@ -180,7 +176,7 @@ console_task(void* arg) {
             /* Should not happen once the driver is installed (fgetc blocks
              * until a byte arrives); guarded anyway so a console detached
              * mid-run degrades to a slow poll instead of a spin loop. */
-            vTaskDelay(pdMS_TO_TICKS(50));
+            timing_sleep_ms(50);
             continue;
         }
         const bool was_overflowed = overflowed;

@@ -1,23 +1,17 @@
-/* Firmware preview smoke checks with authored geometry overrides. */
+/* Firmware launcher preview smoke checks in both orientations. */
 #include "editor/runtime.h"
 
+#include "ui/ui.h"
+
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define PORTRAIT_WIDTH   editor_runtime_panel_width()
 #define PORTRAIT_HEIGHT  editor_runtime_panel_height()
 #define LANDSCAPE_WIDTH  PORTRAIT_HEIGHT
 #define LANDSCAPE_HEIGHT PORTRAIT_WIDTH
-
-static bool
-differs(const uint16_t* first, const uint16_t* second, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-        if (first[i] != second[i]) {
-            return true;
-        }
-    }
-    return false;
-}
 
 int
 main(void) {
@@ -26,46 +20,41 @@ main(void) {
     }
     const size_t count = (size_t)PORTRAIT_WIDTH * PORTRAIT_HEIGHT;
     uint16_t* pixels = calloc(count, sizeof(*pixels));
-    uint16_t* moved = calloc(count, sizeof(*moved));
-    if (!pixels || !moved) {
+    uint16_t* portrait = calloc(count, sizeof(*portrait));
+    if (!pixels || !portrait) {
+        free(pixels);
+        free(portrait);
         return 1;
     }
 
-    control_center_layout_t layout = control_center_layout_portrait;
-
     int failures = 0;
-    failures += editor_runtime_element_count(EDITOR_SCREEN_CONTROL_CENTER) != CONTROL_CENTER_ELEMENT_COUNT;
-    failures += editor_runtime_element_count(EDITOR_SCREEN_LAUNCHER) != 0;
-    failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, pixels, LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT);
-    failures += !editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, NULL, pixels, LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT);
-    failures += !editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-
-    /* This portrait frame follows a landscape one, and must not be clipped to
-     * the landscape canvas: the last element reaches below row 368. */
-    bool below_landscape_height = false;
-    for (size_t i = (size_t)LANDSCAPE_HEIGHT * PORTRAIT_WIDTH; i < count; i++) {
-        below_landscape_height |= pixels[i] != 0;
+    failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, portrait, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
+    failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, pixels, LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT);
+    bool lit = false;
+    bool differs = false;
+    for (int y = 0; y < LANDSCAPE_HEIGHT; y++) {
+        for (int x = 0; x < LANDSCAPE_WIDTH; x++) {
+            const size_t target = (size_t)y * LANDSCAPE_WIDTH + x;
+            const size_t source = (size_t)x * PORTRAIT_WIDTH + (PORTRAIT_WIDTH - 1 - y);
+            lit |= pixels[target] != 0;
+            differs |= pixels[target] != portrait[source];
+        }
     }
-    failures += !below_landscape_height;
+    if (!lit || !differs || ui_width() != LANDSCAPE_WIDTH || ui_height() != LANDSCAPE_HEIGHT) {
+        fprintf(stderr, "landscape must be lit and differ from portrait read as landscape\n");
+        failures++;
+    }
+    failures += !editor_runtime_render(EDITOR_SCREEN_LAUNCHER, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
+    if (memcmp(portrait, pixels, count * sizeof(*pixels)) != 0) {
+        fprintf(stderr, "portrait after landscape must equal fresh portrait\n");
+        failures++;
+    }
 
-    /* An authored rect has to reach the pixels, not just be accepted. */
-    layout.rects[2].y += 4;
-    failures += !editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, moved, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    failures += !differs(pixels, moved, count);
-    layout.rects[2].y -= 4;
+    failures += editor_runtime_render(EDITOR_SCREEN_LAUNCHER, pixels, 100, 100);
+    failures += editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
+    failures += editor_runtime_render(EDITOR_SCREEN_COUNT, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
 
-    layout.rects[1].width = PORTRAIT_WIDTH;
-    failures += editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    layout.rects[1].width = control_center_layout_portrait.rects[1].width;
-
-    failures += editor_runtime_render(EDITOR_SCREEN_CONTROL_CENTER, &layout, pixels, LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT);
-    failures += editor_runtime_render(EDITOR_SCREEN_LAUNCHER, &layout, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    failures += editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, pixels, 100, 100);
-    failures += editor_runtime_render(EDITOR_SCREEN_LAUNCHER, NULL, NULL, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-    failures += editor_runtime_render(EDITOR_SCREEN_COUNT, NULL, pixels, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
-
-    free(moved);
+    free(portrait);
     free(pixels);
     return failures;
 }

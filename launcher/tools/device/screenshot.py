@@ -11,7 +11,7 @@ otherwise be showing as logs: a SCREENSHOT_BEGIN line announcing the byte
 count, one SCREENSHOT_DATA: line per base64-encoded chunk, one
 SCREENSHOT_STATE: line of plain-text JSON (device state at that same frame:
 sensors, memory, clock; see console_screenshot_dump()'s own comment in
-main/console/console_screenshot.c for the field list), and a
+main/console/verbs/console_screenshot.c for the field list), and a
 SCREENSHOT_END line, or, in place of all of those, one
 SCREENSHOT_REFUSED: line giving the reason, which ends the run at once
 rather than at the timeout. Anything else on the wire, ordinary
@@ -19,7 +19,7 @@ ESP_LOG output in particular, is ignored rather than treated as an
 error, since the device keeps logging normally while it streams.
 
 The device streams its frame as a 24bpp BMP (see screenshot_bmp_header() in
-console/screenshot.h), the simplest thing to emit from a microcontroller with
+console/capture/screenshot.h), the simplest thing to emit from a microcontroller with
 no image library on it, but nothing here ever writes that BMP to disk:
 bmp_bytes_to_png() below converts it to PNG entirely in memory, and a
 capture's output gets only the PNG. This is genuinely lossless, not just
@@ -230,7 +230,6 @@ def read_screenshot(port, timeout, on_status=None):
 
     port.reset_input_buffer()
     port.write(TRIGGER)
-    port.flush()
     last_trigger_sent = time.monotonic()
 
     while time.monotonic() < deadline:
@@ -251,7 +250,6 @@ def read_screenshot(port, timeout, on_status=None):
         if total_size is None and now - last_trigger_sent >= 5.0:
             on_status("  ... no response yet, resending trigger (the device may still be booting)")
             port.write(TRIGGER)
-            port.flush()
             last_trigger_sent = now
 
         if now - last_progress >= 3.0:
@@ -298,7 +296,7 @@ def read_screenshot(port, timeout, on_status=None):
         raise RuntimeError(
             f"timed out after {timeout:g}s without a complete capture. never saw a "
             "SCREENSHOT_BEGIN line - is the firmware built with the screenshot listener "
-            "(console/console_screenshot.c), and is it actually running (not stuck in the boot "
+            "(console/verbs/console_screenshot.c), and is it actually running (not stuck in the boot "
             "animation or a crash loop)?")
     raise RuntimeError(
         f"timed out after {timeout:g}s without a complete capture. saw SCREENSHOT_BEGIN "

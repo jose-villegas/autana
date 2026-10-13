@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,52 @@ class PinnedFunctionTests(unittest.TestCase):
     def test_the_macro_definition_itself_is_not_a_pin(self):
         header = "#define RENDER_ENTRY_OFFSET(slots) __attribute__((patchable_function_entry(slots, slots)))\n"
         self.assertEqual(code_layout.pinned_functions([header]), [])
+
+
+class BaselineDiscoveryTests(unittest.TestCase):
+    def test_each_source_folder_owns_its_baseline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for folder in ("engine", "apps/example"):
+                owner = root / folder
+                owner.mkdir(parents=True)
+                (owner / "walk.c").write_text("RENDER_ENTRY_OFFSET(6) void\nwalk_rows(void) {}\n")
+                (owner / "code_layout.txt").write_text(code_layout.LAYOUT_HEADER + "\n")
+            self.assertEqual(code_layout.baselines(root), {
+                root / "engine/code_layout.txt": ["walk_rows"],
+                root / "apps/example/code_layout.txt": ["walk_rows"],
+            })
+
+    def test_a_pin_without_a_baseline_is_still_checked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "walk.c").write_text("RENDER_ENTRY_OFFSET(0) void\nwalk_rows(void) {}\n")
+            self.assertEqual(code_layout.baselines(root), {root / "code_layout.txt": ["walk_rows"]})
+
+    def test_a_baseline_without_pins_is_still_checked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "code_layout.txt").write_text(code_layout.LAYOUT_HEADER + "\n")
+            self.assertEqual(code_layout.baselines(root), {root / "code_layout.txt": []})
+
+    def test_recorded_functions_require_an_explicit_selection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            baseline = root / "code_layout.txt"
+            table = code_layout.LAYOUT_HEADER + "\nwalk_rows\tfunction\t0\t40\t2\n"
+            baseline.write_text(table)
+            self.assertEqual(code_layout.baselines(root)[baseline], [])
+            baseline.write_text(code_layout.BASELINE_FUNCTIONS_HEADER + "\n" + table)
+            self.assertEqual(code_layout.baselines(root)[baseline], ["walk_rows"])
+
+    def test_a_baseline_checks_only_its_build_configuration(self):
+        text = code_layout.CONFIG_HEADER + "CONFIG_LAUNCHER_RELEASE\n"
+        release = "CONFIG_LAUNCHER_RELEASE=y\n"
+        diagnostics = "CONFIG_LAUNCHER_SELFTEST=y\n"
+        self.assertTrue(code_layout.baseline_applies(text, release))
+        self.assertFalse(code_layout.baseline_applies(text, diagnostics))
+        self.assertTrue(code_layout.baseline_applies("", diagnostics))
+        self.assertFalse(code_layout.baseline_applies("", release))
 
 
 class LineSpanTests(unittest.TestCase):

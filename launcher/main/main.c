@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "boot/boot_anim.h"
+#include "boot/boot_report.h"
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -24,6 +25,7 @@
 #include "shell/shell.h"
 #include "ui/ui.h"
 #include "ui/ui_launcher.h"
+#include "ui/ui_ridge.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
@@ -81,6 +83,7 @@ static __attribute__((noinline)) void
 app_boot_init(void) {
     printf("BUILD_ID=%s\n", build_id());
     fflush(stdout);
+    ui_ridge_load();
     shell_init();
     heap_mark("boot");
 
@@ -131,6 +134,9 @@ app_boot_init(void) {
     console_start();
 #endif
     heap_mark("shell ready");
+    /* Last, not first: the host's port is still re-enumerating after the
+     * PMIC power cycle while the first second of boot is printed. */
+    boot_report_last_reset();
 }
 
 void

@@ -1,10 +1,6 @@
 /*
- * Portable suite: the baked ridge curve, checked against the boot photograph
- * it has to lie on rather than against the drawing the generator read.
- *
- * Host only, listed in run_tests.sh and not in main/CMakeLists.txt:
- * boot_anim_image.h is a static table, so including it here would put a
- * second 644 KiB copy of the photograph in a device image.
+ * Portable suite: the ridge curve in the engine pack, checked against the boot
+ * photograph it has to lie on rather than against the drawing it was baked from.
  */
 
 #include <stdbool.h>
@@ -13,9 +9,13 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "boot/boot_anim_image.h"
+#include "asset/asset_store.h"
+#include "boot/boot_anim.h"
 #include "gfx/draw/gfx_color.h"
-#include "ui/ridge_curve_generated.h"
+#include "gfx/gfx.h"
+#include "gfx/image/gfx_image.h"
+#include "math/motion/spring_line.h"
+#include "ui/ui_ridge.h"
 
 #define VIEW_W               RIDGE_CURVE_POINTS
 #define VIEW_H               RIDGE_CURVE_VIEW_H
@@ -30,17 +30,22 @@
 #define MIN_COLUMNS_ON_EDGE  95
 #define MAX_COLUMNS_OFF_EDGE 85
 
+static const int16_t* curve;
+static uint8_t curve_shift;
+
 static int
 curve_row(int x) {
-    return (ridge_curve_y[x] + (1 << (RIDGE_CURVE_Q_SHIFT - 1))) >> RIDGE_CURVE_Q_SHIFT;
+    return (curve[x] + (1 << (curve_shift - 1))) >> curve_shift;
 }
 
-/* gen_boot_anim_image.py's panel_index() and its byte-swapped RGB565. */
+/* The photograph, stored a quarter turn clockwise into the panel's frame. */
+static gfx_image_t photo;
+
 static void
 photo_rgb(int view_x, int view_y, int rgb[3]) {
-    const int panel_x = BOOT_ANIM_IMAGE_W - 1 - view_y;
+    const int panel_x = photo.width - 1 - view_y;
     const int panel_y = view_x;
-    const uint16_t stored = boot_anim_image[panel_y * BOOT_ANIM_IMAGE_W + panel_x];
+    const uint16_t stored = photo.pixels[(panel_y * (int)photo.stride) + panel_x];
     const uint16_t c = gfx_color_swap(stored);
     rgb[0] = (int)gfx_rgb565_r5(c) * 255 / 31;
     rgb[1] = (int)gfx_rgb565_g6(c) * 255 / 63;
@@ -86,17 +91,17 @@ columns_on_an_edge(int dx, int dy) {
 
 static void
 test_the_curve_shares_the_photographs_frame(void) {
-    TEST_ASSERT_EQUAL_INT(BOOT_ANIM_IMAGE_H, RIDGE_CURVE_POINTS);
-    TEST_ASSERT_EQUAL_INT(BOOT_ANIM_IMAGE_W, RIDGE_CURVE_VIEW_H);
+    TEST_ASSERT_EQUAL_INT(photo.height, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(photo.width, GFX_WIDTH);
 }
 
 static void
 test_every_height_is_inside_the_frame_and_near_its_neighbour(void) {
-    const int one_px = 1 << RIDGE_CURVE_Q_SHIFT;
+    const int one_px = 1 << curve_shift;
     for (int x = 0; x < VIEW_W; x++) {
-        TEST_ASSERT_TRUE(ridge_curve_y[x] >= 0 && ridge_curve_y[x] < VIEW_H * one_px);
+        TEST_ASSERT_TRUE(curve[x] >= 0 && curve[x] < VIEW_H * one_px);
         if (x > 0) {
-            TEST_ASSERT_TRUE(abs(ridge_curve_y[x] - ridge_curve_y[x - 1]) <= 8 * one_px);
+            TEST_ASSERT_TRUE(abs(curve[x] - curve[x - 1]) <= 8 * one_px);
         }
     }
 }
@@ -105,13 +110,13 @@ static void
 test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides(void) {
     int summit = 0;
     for (int x = 1; x < VIEW_W; x++) {
-        if (ridge_curve_y[x] < ridge_curve_y[summit]) {
+        if (curve[x] < curve[summit]) {
             summit = x;
         }
     }
     TEST_ASSERT_TRUE(summit > VIEW_W / 2);
-    TEST_ASSERT_TRUE(ridge_curve_y[0] > ridge_curve_y[summit]);
-    TEST_ASSERT_TRUE(ridge_curve_y[VIEW_W - 1] > ridge_curve_y[summit]);
+    TEST_ASSERT_TRUE(curve[0] > curve[summit]);
+    TEST_ASSERT_TRUE(curve[VIEW_W - 1] > curve[summit]);
 }
 
 static void
@@ -129,13 +134,35 @@ test_a_displaced_curve_does_not(void) {
     TEST_ASSERT_LESS_THAN_INT(MAX_COLUMNS_OFF_EDGE, columns_on_an_edge(-8, 0));
 }
 
+static void
+test_the_boot_picture_loads(void) {
+    TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
+}
+
 void
 suite_ridge_curve(void) {
-    RUN_TEST(test_the_curve_shares_the_photographs_frame);
+    ui_ridge_load();
+    curve = ui_ridge_curve();
+    TEST_ASSERT_NOT_NULL(curve);
+    curve_shift = SPRING_LINE_OUT_SHIFT;
     RUN_TEST(test_every_height_is_inside_the_frame_and_near_its_neighbour);
     RUN_TEST(test_the_summit_is_on_the_right_and_the_slopes_fall_to_both_sides);
-    RUN_TEST(test_the_curve_lies_on_the_photographs_ridge);
-    RUN_TEST(test_a_displaced_curve_does_not);
+    const asset_pack_t* pack = asset_store_pack(BOOT_PHOTO);
+    asset_view_t entry;
+    if (pack == NULL || asset_pack_find(pack, BOOT_PHOTO, GFX_IMAGE_ASSET, &entry) != ASSET_OK
+        || gfx_image_open(entry, &photo) != ASSET_OK) {
+        RUN_TEST(test_the_boot_picture_loads);
+    } else {
+        RUN_TEST(test_the_curve_shares_the_photographs_frame);
+        RUN_TEST(test_the_curve_lies_on_the_photographs_ridge);
+        RUN_TEST(test_a_displaced_curve_does_not);
+    }
+    if (pack != NULL) {
+        asset_store_release(BOOT_PHOTO);
+    }
+    photo = (gfx_image_t){0};
+    curve = NULL;
 }
 
 SUITE_REGISTER(suite_ridge_curve);
+SUITE_READS(suite_ridge_curve, BOOT_PHOTO, ASSET_ENGINE_PACK);
