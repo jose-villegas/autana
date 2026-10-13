@@ -70,7 +70,9 @@ shake_from_sample(const tilt_t* t, int gx, int gy, int gz) {
 
 void
 tilt_update(tilt_t* t, vec3i_t accel, int turn_speed, uint32_t dt_ms) {
-    const int gx = accel.x, gy = accel.y, gz = accel.z;
+    const int gx = accel.x;
+    const int gy = accel.y;
+    const int gz = accel.z;
 
     /* Worked out before anything else returns early. A sample rejected by the
      * trust gate below is precisely a sample where the device is being thrown
