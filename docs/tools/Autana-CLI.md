@@ -43,7 +43,7 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Flag | What it does | Commands |
 |---|---|---|
-| `--lock-token TOKEN` | Run within the live hold named by `TOKEN`; a dead token fails with exit 1. | Global; see [Settings](#settings) |
+| `--lock-token TOKEN` | Global; see [Settings](#settings). | every board command |
 | `--wait SECONDS` | Global; see [Settings](#settings). | every board command |
 | `--owner NAME` | Global; see [Settings](#settings). | every board command |
 | `--board SERIAL` | Global; see [Settings](#settings). | every board command |

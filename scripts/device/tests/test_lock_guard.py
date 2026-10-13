@@ -104,9 +104,9 @@ class Store(unittest.TestCase):
 
 
 class HoldProcessTests(Store):
-    def command(self, *words):
+    def command(self, *words, wait="5"):
         return [sys.executable, str(DEVICE / "device.py"), "--board", BOARD_A,
-                "--wait", "5", *words]
+                "--wait", wait, *words]
 
     def run_command(self, *words, env=None):
         return subprocess.run(self.command(*words), capture_output=True, text=True,
@@ -116,6 +116,21 @@ class HoldProcessTests(Store):
         super().setUp()
         self.environment = dict(os.environ, _AUTANA_DEVICE_LOCK_ROOT=str(self.store.root))
         self.environment.pop(device.TOKEN_ENV, None)
+
+    def start_process(self, command, env=None):
+        process = subprocess.Popen(command, env=env or self.environment,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        return process
+
+    def wait_for_queue(self, count):
+        deadline = time.monotonic() + 20
+        pending = self.store.tickets(BOARD_A)
+        while len(pending) != count and time.monotonic() < deadline:
+            time.sleep(0.05)
+            pending = self.store.tickets(BOARD_A)
+        self.assertEqual(len(pending), count)
+        return pending
 
     @unittest.skipUnless(os.name == "nt", "Windows launcher callers")
     def test_windows_launcher_preserves_the_real_caller(self):
@@ -147,9 +162,7 @@ class HoldProcessTests(Store):
                    'cat /proc/$$/winpid; '
                    f'token=$("{launcher}" --board {BOARD_A} lock take --until-released bench); '
                    'printf "%s\\n" "$token"; sleep 1']
-        shell = subprocess.Popen(command, env=self.environment, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, text=True)
-        self.addCleanup(lambda: shell.kill() if shell.poll() is None else None)
+        shell = self.start_process(command)
         caller = int(shell.stdout.readline().strip())
         token = shell.stdout.readline().strip()
         self.assertTrue(token)
@@ -195,26 +208,156 @@ class HoldProcessTests(Store):
                 stdout, stderr = waiter.communicate(timeout=10)
                 self.assertEqual(waiter.returncode, 0, stdout + stderr)
                 self.assertEqual(self.store.tickets(BOARD_A), [])
-                self.assertIsNone(self.store.status(BOARD_A)["lock"])
+                if ending in ("release", "human"):
+                    self.assertFalse(self.store.lock_path(BOARD_A).exists())
                 if ending in ("death", "lapse"):
                     self.assertEqual(self.store.lock_path(BOARD_A).read_bytes(), before)
                     self.store.release(BOARD_A, taken.stdout.strip())
 
+
+    def test_real_cli_cancelled_take_gives_up_fifo_place(self):
+        taken = self.run_command("take", "bench", env=self.environment)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        launcher = ENGINE / "tools" / ("autana.cmd" if os.name == "nt" else "autana")
+        command = [str(launcher), "--board", BOARD_A, "--wait", "600",
+                   "lock", "take", "cancelled"]
+        first = self.start_process(command)
+        [ticket] = self.wait_for_queue(1)
+        self.addCleanup(self.stop_waiter, ticket["pid"])
+        next_waiter = self.start_waiter(wait="600")
+        self.wait_for_queue(2)
+        if os.name == "nt":
+            parents = subprocess.check_output(
+                ["powershell.exe", "-NoProfile", "-Command",
+                 f"$ancestor = {ticket['pid']}; "
+                 "$deadline = (Get-Date).AddSeconds(10); "
+                 "do { $entry = Get-CimInstance Win32_Process -Filter "
+                 "('ProcessId=' + $ancestor); $ancestor = $entry.ParentProcessId } "
+                 "while ($entry.CommandLine -notmatch 'scripts[\\\\/]autana[\\\\/]autana.py' "
+                 "-and $ancestor -and (Get-Date) -lt $deadline); "
+                 "if ($entry.CommandLine -notmatch 'scripts[\\\\/]autana[\\\\/]autana.py') "
+                 "{ throw 'autana interpreter not found' }; $entry.ProcessId"],
+                text=True)
+            autana_pid = int(parents.strip())
+            subprocess.run(["taskkill", "/F", "/PID", str(autana_pid)], check=True,
+                           capture_output=True)
+        else:
+            import signal
+            stat = Path(f"/proc/{ticket['pid']}/stat").read_text()
+            autana_pid = int(stat[stat.rindex(")") + 2:].split()[1])
+            os.kill(autana_pid, signal.SIGKILL)
+        first.communicate(timeout=15)
+        deadline = time.monotonic() + 10
+        while len(self.store.status(BOARD_A)["queue"]) != 1 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(len(self.store.status(BOARD_A)["queue"]), 1)
+        self.assertFalse(device_lock.process_alive(ticket["pid"]))
+        self.store.release(BOARD_A, taken.stdout.strip())
+        stdout, stderr = next_waiter.communicate(timeout=15)
+        self.assertEqual(next_waiter.returncode, 0, stdout + stderr)
+        self.assertFalse(self.store.lock_path(BOARD_A).exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows program launching Git Bash")
+    def test_powershell_git_bash_preserves_caller(self):
+        script = self.root / "bash-caller.ps1"
+        launcher = (ENGINE / "tools/autana").as_posix()
+        bash = Path(os.environ["ProgramFiles"]) / "Git/bin/bash.exe"
+        script.write_text(f"& '{bash}' '{launcher}' --board {BOARD_A} lock take "
+                          "--until-released bench\nStart-Sleep -Seconds 2\n")
+        shell = self.start_process(["powershell.exe", "-NoProfile", "-File", str(script)])
+        stdout, stderr = shell.communicate(timeout=20)
+        self.assertEqual(shell.returncode, 0, stderr)
+        record = self.store.read_json(self.store.lock_path(BOARD_A))
+        self.assertEqual(record["pid"], shell.pid)
+        self.assertEqual(record["token"], stdout.strip())
+        self.store.release(BOARD_A, record["token"])
+
+
+
+    def test_background_take_cancellation_from_shell(self):
+        taken = self.run_command("take", "bench", env=self.environment)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        stop = self.root / "stop-background"
+        token_file = self.root / "token.txt"
+        launcher = ENGINE / "tools" / ("autana.cmd" if os.name == "nt" else "autana")
+        if os.name == "nt":
+            script = self.root / "background.ps1"
+            script.write_text(
+                f"$p = Start-Process '{launcher}' -ArgumentList '--board','{BOARD_A}',"
+                f"'lock','take','queued' -RedirectStandardOutput '{token_file}' "
+                "-NoNewWindow -PassThru\n"
+                "$deadline = (Get-Date).AddSeconds(30)\n"
+                f"while (!(Test-Path '{stop}') -and (Get-Date) -lt $deadline) "
+                "{ Start-Sleep -Milliseconds 50 }\n"
+                "taskkill /T /F /PID $p.Id | Out-Null\n$p.WaitForExit()\n")
+            command = ["powershell.exe", "-NoProfile", "-File", str(script)]
+        else:
+            import shlex
+            script = self.root / "background.sh"
+            script.write_text(
+                f"{shlex.quote(str(launcher))} --board {BOARD_A} lock take queued "
+                f"> {shlex.quote(str(token_file))} &\n"
+                "waiter=$!\ndeadline=$((SECONDS+30))\n"
+                f"while [ ! -f {shlex.quote(str(stop))} ] && [ $SECONDS -lt $deadline ]; "
+                "do sleep 0.05; done\nkill $waiter\nwait $waiter\n")
+            command = ["bash", str(script)]
+        shell = self.start_process(command)
+        [ticket] = self.wait_for_queue(1)
+        self.addCleanup(self.stop_waiter, ticket["pid"])
+        stop.touch()
+        stdout, stderr = shell.communicate(timeout=30)
+        self.assertFalse(device_lock.process_alive(ticket["pid"]), stdout + stderr)
+        self.assertEqual(self.store.status(BOARD_A)["queue"], [])
+        self.assertEqual(token_file.read_text().strip(), "")
+        self.store.release(BOARD_A, taken.stdout.strip())
+        self.assertFalse(self.store.lock_path(BOARD_A).exists())
+
+    def stop_waiter(self, pid):
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+        else:
+            import signal
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def test_parallel_borrowed_runs_have_independent_scopes(self):
+        taken = self.run_command("take", "bench", env=self.environment)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        environment = dict(self.environment, **{device.TOKEN_ENV: taken.stdout.strip()})
+        ready = self.root / "long-ready"
+        finish = self.root / "short-finished"
+        source = ("import pathlib,time; "
+                  f"pathlib.Path({str(ready)!r}).touch(); "
+                  f"finish=pathlib.Path({str(finish)!r}); "
+                  "deadline=time.monotonic()+15; "
+                  "exec('while not finish.exists() and time.monotonic()<deadline: time.sleep(0.05)'); "
+                  "assert finish.exists(); time.sleep(3)")
+        long = subprocess.Popen(self.command("run", "--", sys.executable, "-c", source),
+                                env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True)
+        self.addCleanup(lambda: long.kill() if long.poll() is None else None)
+        deadline = time.monotonic() + 10
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(ready.exists())
+        short = self.run_command("run", "--", sys.executable, "-c", "pass", env=environment)
+        self.assertEqual(short.returncode, 0, short.stderr)
+        self.assertIsNone(long.poll())
+        finish.touch()
+        stdout, stderr = long.communicate(timeout=20)
+        self.assertEqual(long.returncode, 0, stdout + stderr)
+        self.store.release(BOARD_A, taken.stdout.strip())
+
     def test_cancelled_take_gives_up_fifo_place(self):
         taken = self.run_command("take", "bench", env=self.environment)
         self.assertEqual(taken.returncode, 0, taken.stderr)
-        first = subprocess.Popen(self.command("take", "cancelled"), env=self.environment,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(lambda: first.kill() if first.poll() is None else None)
-        deadline = time.monotonic() + 5
-        while not self.store.tickets(BOARD_A) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        [ticket] = self.store.tickets(BOARD_A)
-        next_waiter = self.start_waiter()
-        deadline = time.monotonic() + 5
-        while len(self.store.tickets(BOARD_A)) != 2 and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertEqual(len(self.store.tickets(BOARD_A)), 2)
+        first = self.start_process(self.command("take", "cancelled", wait="600"))
+        [ticket] = self.wait_for_queue(1)
+        self.addCleanup(self.stop_waiter, ticket["pid"])
+        next_waiter = self.start_waiter(wait="600")
+        self.wait_for_queue(2)
         first.kill()
         first.communicate(timeout=5)
         state = self.store.status(BOARD_A)
@@ -254,8 +397,8 @@ class HoldProcessTests(Store):
         self.assertIsNone(sibling.poll())
         self.assertEqual(self.store.status(BOARD_A)["lock"]["token"], token)
 
-    def start_waiter(self):
-        waiter = subprocess.Popen(self.command("run", "--", sys.executable, "-c", "pass"),
+    def start_waiter(self, wait="5"):
+        waiter = subprocess.Popen(self.command("run", "--", sys.executable, "-c", "pass", wait=wait),
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                   env=self.environment)
         self.addCleanup(lambda: waiter.kill() if waiter.poll() is None else None)
@@ -1570,6 +1713,16 @@ class SuiteFailureTests(Store):
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
             return device.batch(args, self.store, BOARD_A)
+
+    def test_batch_release_skips_console_wait(self):
+        args = self.batch_args(runs=0)
+        args.variant = "release"
+        console = mock.Mock()
+        connection = mock.Mock()
+        self.batched(args, await_console={"new": console},
+                     write_image={"return_value": ("abc", connection)})
+        console.assert_not_called()
+        connection.close.assert_called_once_with()
 
     def test_batch(self):
         code = self.batched(self.batch_args(runs=2), open_when_free={

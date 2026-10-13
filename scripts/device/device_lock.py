@@ -40,6 +40,9 @@ GUARD_STALE_SECONDS = 30
 # .human.json reservations. Update every copy sharing a board.
 LOCK_PROTOCOL = 3
 HOLD_MAX_SECONDS = 3600
+WAIT_POLL_SECONDS = 0.2
+FILETIME_EPOCH_OFFSET = 116444736000000000
+FILETIME_TICKS_PER_SECOND = 10000000
 # A person's reservation has no heartbeat; `hand` renews its expiry.
 HUMAN_RESERVATION_SECONDS = HOLD_MAX_SECONDS
 CALLER_PID_ENV = "_AUTANA_CALLER_PID"
@@ -50,7 +53,9 @@ WINDOWS_AUTANA_HOST = re.compile(
     r'(?:"[^"\n]*[\\/]cmd\.exe"|(?:\S*[\\/])?cmd\.exe)\s+'
     r'(?:/[^c\s]+\s+)*/c\s+"*(?:[^"\r\n]*[\\/])?autana\.cmd(?:"|\s|$)'
     r'|(?:"(?:[^"\n]*[\\/])?python[\d.]*(?:\.exe)?"|(?:\S*[\\/])?python[\d.]*(?:\.exe)?)\s+'
-    r'"?[^"\r\n]*[\\/]scripts[\\/]autana[\\/]autana\.py(?:"|\s|$))', re.IGNORECASE)
+    r'"?[^"\r\n]*[\\/]scripts[\\/]autana[\\/]autana\.py(?:"|\s|$)'
+    r'|(?:"[^"\n]*[\\/]bash(?:\.exe)?"|(?:\S*[\\/])?bash(?:\.exe)?)\s+'
+    r'"?[^"\r\n]*[\\/]tools[\\/]autana(?:"|\s|$))', re.IGNORECASE)
 # The fields that decide something: who a record is, whether a lock is live,
 # stale or dead, or a waiter's place in the FIFO, and so must be readable
 # off ANY record, of any age or protocol, without guessing: boards() reads
@@ -213,6 +218,46 @@ def windows_process_alive(pid, kernel32=None):
         return code.value == STILL_ACTIVE
     finally:
         kernel32.CloseHandle(handle)
+
+
+def windows_process_start(pid):
+    """When `pid` began, in epoch seconds, or None if it cannot be read."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = windows_kernel32()
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        created, unused_exit, unused_kernel, unused_user = (wintypes.FILETIME() for _ in range(4))
+        if not kernel32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(unused_exit),
+                                        ctypes.byref(unused_kernel), ctypes.byref(unused_user)):
+            return None
+        ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime
+        return (ticks - FILETIME_EPOCH_OFFSET) / FILETIME_TICKS_PER_SECOND
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def posix_process_start(pid):
+    """When `pid` began, in epoch seconds, or None where /proc cannot say."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as stream:
+            stat = stream.read()
+        with open("/proc/stat", encoding="utf-8") as stream:
+            boot = next(int(line.split()[1]) for line in stream if line.startswith("btime"))
+        # Field 22, counted from after the parenthesised command name.
+        ticks = int(stat[stat.rindex(")") + 2:].split()[19])
+        return boot + ticks / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
+def process_start(pid):
+    """When the process began, in epoch seconds, or None if unavailable."""
+    return windows_process_start(pid) if os.name == "nt" else posix_process_start(pid)
 
 
 def human_expires_at(human):
@@ -423,8 +468,7 @@ class LockStore:
                 return ""
             if lock.get("host") != socket.gethostname():
                 return ""
-            import lock_scope
-            return "" if self.owner_alive(lock, lock_scope) else "dead process"
+            return "" if self.owner_alive(lock) else "dead process"
         same_host = lock.get("host") == socket.gethostname()
         if same_host and not self.is_alive(lock["pid"]):
             return "dead process"
@@ -432,10 +476,10 @@ class LockStore:
             return "heartbeat expiry"
         return ""
 
-    def owner_alive(self, record, scope):
+    def owner_alive(self, record):
         if not self.is_alive(record["pid"]):
             return False
-        started = scope.process_start(record["pid"])
+        started = process_start(record["pid"])
         acquired = record.get("acquired_at")
         return not (started is not None and isinstance(acquired, (int, float))
                     and started > acquired + PID_REUSE_SLACK_SECONDS)
@@ -566,7 +610,7 @@ class LockStore:
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             now = self.now()
-            lock.update(acquired_at=now, heartbeat_at=now,
+            lock.update(heartbeat_at=now,
                         pid=0 if seconds is not None else (pid if pid is not None else os.getpid()))
             lock.pop("until_released", None)
             lock.pop("expires_at", None)
@@ -781,7 +825,7 @@ def previous_holder_alive(store, last, scope):
         return []
     alive = []
     pid = last.get("pid")
-    if isinstance(pid, int) and pid != os.getpid() and store.owner_alive(last, scope):
+    if isinstance(pid, int) and pid != os.getpid() and store.owner_alive(last):
         alive.append((pid, scope.process_name(pid)))
     for extra in scope.survivors_extra(last):
         if extra != pid and extra != os.getpid():

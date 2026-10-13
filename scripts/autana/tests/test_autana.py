@@ -26,6 +26,12 @@ AUTANA = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AUTANA))
 import autana  # noqa: E402
 
+
+def setUpModule():
+    close = mock.patch.object(autana, "close_process_tree")
+    close.start()
+    unittest.addModuleCleanup(close.stop)
+
 sys.path.insert(0, str(AUTANA.parent / "device"))
 import device_lock  # noqa: E402
 
@@ -41,7 +47,7 @@ def busy_status(owner="someone-else@0001", port="COM3"):
 @contextlib.contextmanager
 def project_call(git_output=None):
     with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-         mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+         mock.patch.object(autana, "call_device", return_value=0) as called, \
          (mock.patch.object(autana, "git", return_value=git_output)
           if git_output is not None else contextlib.nullcontext()):
         yield called
@@ -102,8 +108,8 @@ def user_identity(environ, **user):
 
 @contextlib.contextmanager
 def device_call(status):
-    with mock.patch.object(autana.subprocess, "run", return_value=status), \
-         mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+    with mock.patch.object(autana, "capture_device", return_value=status), \
+         mock.patch.object(autana, "call_device", return_value=0) as called:
         yield called
 
 
@@ -128,7 +134,7 @@ class SendCommandBuildingTests(unittest.TestCase):
             self.calls.append(command)
             return status if "status" in command else answered
 
-        patcher = mock.patch.object(autana.subprocess, "run", side_effect=fake_run)
+        patcher = mock.patch.object(autana, "capture_device", side_effect=fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -166,7 +172,7 @@ class SendCommandBuildingTests(unittest.TestCase):
 
     def test_a_busy_board_sends_nothing(self):
         busy = mock.Mock(stdout=busy_status())
-        with mock.patch.object(autana.subprocess, "run", return_value=busy):
+        with mock.patch.object(autana, "capture_device", return_value=busy):
             code, replies = autana.send("TUNE")
         self.assertEqual(code, autana.EXIT_BUSY)
         self.assertEqual(replies, [])
@@ -186,7 +192,7 @@ class SendCommandBuildingTests(unittest.TestCase):
     def test_a_busy_board_is_waited_for_under_the_global_wait(self):
         busy = mock.Mock(stdout=busy_status(), stderr="", returncode=0)
         with mock.patch.dict(autana.os.environ, {autana.WAIT_ENV: "3600"}), \
-             mock.patch.object(autana.subprocess, "run", return_value=busy) as run:
+             mock.patch.object(autana, "capture_device", return_value=busy) as run:
             code, unused_replies = autana.send("TUNE")
         self.assertEqual(code, 0)
         command = run.call_args[0][0]
@@ -213,7 +219,7 @@ class BoardHolderTests(unittest.TestCase):
         return json.dumps({"boards": [entry]})
 
     def holder_seen(self, status_text):
-        with mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(stdout=status_text)):
+        with mock.patch.object(autana, "capture_device", return_value=mock.Mock(stdout=status_text)):
             return autana.board_holder()
 
     def test_a_lock_whose_holder_died_does_not_make_the_board_busy(self):
@@ -246,8 +252,8 @@ class BorrowedConsoleTests(unittest.TestCase):
         for token, live in (("live", True), ("dead", False), ("", False)):
             with self.subTest(token=token), \
                     mock.patch.dict(os.environ, {autana.TOKEN_ENV: token}), \
-                    mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(stdout=busy_status())), \
-                    mock.patch.object(autana.subprocess, "call") as call, \
+                    mock.patch.object(autana, "capture_device", return_value=mock.Mock(stdout=busy_status())), \
+                    mock.patch.object(autana, "call_device") as call, \
                     mock.patch.object(autana.device_module().device_lock, "LockStore") as store:
                 store.return_value.check_token.return_value = live
                 result = autana.board_holder()
@@ -439,8 +445,8 @@ class ScreenshotCommandTests(unittest.TestCase):
             events.append(line)
             return 0, []
 
-        with mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "call", side_effect=capture), \
+        with mock.patch.object(autana, "capture_device", return_value=status), \
+             mock.patch.object(autana, "call_device", side_effect=capture), \
              mock.patch.object(autana, "send", side_effect=sent), mock.patch("builtins.print"):
             code = autana.screenshot(["--frames", "3", "-o", "cap"])
         self.assertEqual(code, 0)
@@ -455,8 +461,8 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_a_busy_board_is_refused_without_calling_device(self):
         busy = mock.Mock(stdout=busy_status())
-        with mock.patch.object(autana.subprocess, "run", return_value=busy), \
-             mock.patch.object(autana.subprocess, "call") as called:
+        with mock.patch.object(autana, "capture_device", return_value=busy), \
+             mock.patch.object(autana, "call_device") as called:
             code = autana.screenshot([])
         self.assertEqual(code, autana.EXIT_BUSY)
         called.assert_not_called()
@@ -464,8 +470,8 @@ class ScreenshotCommandTests(unittest.TestCase):
     def test_a_busy_board_is_waited_for_under_the_global_wait(self):
         busy = mock.Mock(stdout=busy_status())
         with mock.patch.dict(autana.os.environ, {autana.WAIT_ENV: "3600"}), \
-             mock.patch.object(autana.subprocess, "run", return_value=busy), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+             mock.patch.object(autana, "capture_device", return_value=busy), \
+             mock.patch.object(autana, "call_device", return_value=0) as called:
             code = autana.screenshot([])
         self.assertEqual(code, 0)
         command = called.call_args[0][0]
@@ -473,8 +479,8 @@ class ScreenshotCommandTests(unittest.TestCase):
 
     def test_an_unknown_flag_is_named_and_rejected(self):
         status = mock.Mock(stdout="")
-        with mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+        with mock.patch.object(autana, "capture_device", return_value=status), \
+             mock.patch.object(autana, "call_device", return_value=0) as called, \
              self.assertRaises(SystemExit) as caught:
             autana.screenshot(["--owner", "delegate-1"])
         self.assertEqual(str(caught.exception), "autana screenshot: unknown flag --owner")
@@ -682,7 +688,7 @@ class FlashCommandTests(unittest.TestCase):
     def test_project_is_resolved_and_used_for_both_the_banner_and_the_flash(self):
         with project_directory() as directory:
             with mock.patch.object(autana, "git", return_value=""), \
-                 mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+                 mock.patch.object(autana, "call_device", return_value=0) as called:
                 autana.run_command(autana.flash, ["diag", "--quiet"], flags={"--project": directory})
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
@@ -700,7 +706,7 @@ class BuildCommandTests(unittest.TestCase):
              mock.patch.object(device, "build_worktree", return_value=code) as built, \
              mock.patch.object(device.device_lock, "LockStore",
                                side_effect=AssertionError("lock")), \
-             mock.patch.object(autana.subprocess, "call",
+             mock.patch.object(autana, "call_device",
                                side_effect=AssertionError("device.py")), \
              mock.patch("builtins.print"):
             returned = autana.build(list(args))
@@ -831,12 +837,12 @@ class MonitorCommandTests(unittest.TestCase):
     given; autana no longer guesses an ELF by file mtime."""
 
     def test_no_elf_given_omits_the_flag_entirely(self):
-        with mock.patch.object(autana.subprocess, "Popen") as called:
+        with mock.patch.object(autana, "launch_process_tree") as called:
             autana.monitor(["--follow"])
         self.assertNotIn("--elf", called.call_args[0][0])
 
     def test_an_explicit_elf_is_passed_through_as_is(self):
-        with mock.patch.object(autana.subprocess, "Popen") as called:
+        with mock.patch.object(autana, "launch_process_tree") as called:
             autana.monitor(["30", "--elf", "mine.elf"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--seconds") + 1], "30.0")
@@ -850,19 +856,19 @@ class MonitorCommandTests(unittest.TestCase):
         for tty in (False, True):
             with self.subTest(tty=tty), \
                  mock.patch.object(autana.sys.stdout, "isatty", return_value=tty), \
-                 mock.patch.object(autana.subprocess, "Popen") as started:
+                 mock.patch.object(autana, "launch_process_tree") as started:
                 autana.monitor(["--follow"])
             self.assertEqual("--echo" in started.call_args.args[0], tty)
 
     def test_follow_is_forwarded_without_seconds(self):
-        with mock.patch.object(autana.subprocess, "Popen") as started:
+        with mock.patch.object(autana, "launch_process_tree") as started:
             autana.monitor(["--follow"])
         command = started.call_args.args[0]
         self.assertIn("--follow", command)
         self.assertNotIn("--seconds", command)
 
     def test_follow_and_seconds_is_a_usage_error(self):
-        with mock.patch.object(autana.subprocess, "Popen") as started, \
+        with mock.patch.object(autana, "launch_process_tree") as started, \
              self.assertRaises(SystemExit):
             autana.monitor(["30", "--follow"])
         started.assert_not_called()
@@ -870,19 +876,19 @@ class MonitorCommandTests(unittest.TestCase):
     def test_parent_waits_for_child_after_interrupt(self):
         process = mock.Mock()
         process.wait.side_effect = [KeyboardInterrupt, 7]
-        with mock.patch.object(autana.subprocess, "Popen", return_value=process):
+        with mock.patch.object(autana, "launch_process_tree", return_value=process):
             self.assertEqual(autana.monitor(["--follow"]), 7)
         self.assertEqual(process.wait.call_count, 2)
 
     def test_terminal_without_duration_follows(self):
         with mock.patch.object(autana.sys.stdout, "isatty", return_value=True), \
-             mock.patch.object(autana.subprocess, "Popen") as started:
+             mock.patch.object(autana, "launch_process_tree") as started:
             autana.monitor([])
         self.assertIn("--follow", started.call_args.args[0])
 
     def test_pipe_without_duration_reports_usage_code_two(self):
         with mock.patch.object(autana.sys.stdout, "isatty", return_value=False), \
-             mock.patch.object(autana.subprocess, "Popen") as started, \
+             mock.patch.object(autana, "launch_process_tree") as started, \
              self.assertRaises(SystemExit) as caught:
             autana.monitor([])
         self.assertEqual(caught.exception.code, 2)
@@ -890,12 +896,12 @@ class MonitorCommandTests(unittest.TestCase):
 
     def test_stream_forces_echo_in_pipe(self):
         with mock.patch.object(autana.sys.stdout, "isatty", return_value=False), \
-             mock.patch.object(autana.subprocess, "Popen") as started:
+             mock.patch.object(autana, "launch_process_tree") as started:
             autana.monitor(["30", "--stream"])
         self.assertIn("--echo", started.call_args.args[0])
 
     def test_follow_and_elf_are_forwarded(self):
-        with mock.patch.object(autana.subprocess, "Popen") as started:
+        with mock.patch.object(autana, "launch_process_tree") as started:
             autana.monitor(["--follow", "--elf", "mine.elf"])
         self.assertIn("--follow", started.call_args.args[0])
         self.assertIn("mine.elf", started.call_args.args[0])
@@ -903,18 +909,18 @@ class MonitorCommandTests(unittest.TestCase):
     def test_second_interrupt_stops_waiting(self):
         process = mock.Mock()
         process.wait.side_effect = [KeyboardInterrupt, KeyboardInterrupt]
-        with mock.patch.object(autana.subprocess, "Popen", return_value=process):
+        with mock.patch.object(autana, "launch_process_tree", return_value=process):
             self.assertEqual(autana.monitor(["--follow"]), 130)
 
     def test_an_unknown_flag_is_named_and_rejected(self):
-        with mock.patch.object(autana.subprocess, "Popen") as started, \
+        with mock.patch.object(autana, "launch_process_tree") as started, \
              self.assertRaises(SystemExit) as caught:
             autana.monitor(["--follow", "--purpose", "watching a repro"])
         self.assertEqual(str(caught.exception), "autana monitor: unknown flag --purpose")
         started.assert_not_called()
 
     def test_out_is_forwarded(self):
-        with mock.patch.object(autana.subprocess, "Popen") as started:
+        with mock.patch.object(autana, "launch_process_tree") as started:
             autana.monitor(["--follow", "--out", "capture.log"])
         command = started.call_args.args[0]
         self.assertEqual(command[command.index("--out") + 1], "capture.log")
@@ -922,19 +928,19 @@ class MonitorCommandTests(unittest.TestCase):
 
 class ResetCommandTests(unittest.TestCase):
     def test_verbose_reaches_reset_capture(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             autana.reset(["--capture", "--verbose"])
         self.assertIn("--verbose", called.call_args.args[0])
 
     def test_an_unknown_flag_is_named_and_rejected(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+        with mock.patch.object(autana, "call_device", return_value=0) as called, \
              self.assertRaises(SystemExit) as caught:
             autana.reset(["--owner", "delegate-1"])
         self.assertEqual(str(caught.exception), "autana reset: unknown flag --owner")
         called.assert_not_called()
 
     def test_capture_forwards_its_window_to_device(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             code = autana.reset(["--capture", "15"])
         self.assertEqual(code, 0)
         command = called.call_args[0][0]
@@ -943,7 +949,7 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("--seconds") + 1], "15.0")
 
     def test_capture_without_a_window_leaves_the_default_to_device(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             autana.reset(["--capture"])
         self.assertNotIn("--seconds", called.call_args[0][0])
 
@@ -982,7 +988,7 @@ class SelftestCommandTests(unittest.TestCase):
 
     def test_project_is_resolved_and_used(self):
         with project_directory() as directory:
-            with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            with mock.patch.object(autana, "call_device", return_value=0) as called:
                 autana.run_command(autana.selftest, [], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
@@ -1054,7 +1060,7 @@ class BatchCommandTests(unittest.TestCase):
 
     def test_project_is_resolved_and_used(self):
         with project_directory() as directory:
-            with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            with mock.patch.object(autana, "call_device", return_value=0) as called:
                 autana.run_command(autana.batch, ["run_sand_perf_suite"], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
@@ -1067,7 +1073,7 @@ class SuiteCommandTests(unittest.TestCase):
         self.assertIn("--verbose", called.call_args.args[0])
 
     def test_an_unknown_flag_is_named_and_rejected(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+        with mock.patch.object(autana, "call_device", return_value=0) as called, \
              self.assertRaises(SystemExit) as caught:
             autana.suite(["run_gfx_suite", "--owner", "delegate-1"])
         self.assertEqual(str(caught.exception), "autana suite: unknown flag --owner")
@@ -1090,7 +1096,7 @@ class SuiteCommandTests(unittest.TestCase):
     def test_a_set_without_a_whole_number_is_refused(self):
         for value in ("r3d_span.small_max_side", "=3", "a.b=three"):
             with self.subTest(value=value), \
-                 mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
+                 mock.patch.object(autana, "call_device", return_value=0) as called, \
                  self.assertRaises(SystemExit):
                 autana.suite(["run_gfx_suite", "--set", value])
             called.assert_not_called()
@@ -1108,7 +1114,7 @@ sys.path.insert(0, sys.argv[1])
 import autana
 lock = autana.device_module().device_lock
 with mock.patch.object(autana, "device_command", side_effect=lambda *args: list(args)), \
-     mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+     mock.patch.object(autana, "call_device", return_value=0) as called:
     autana.take(["--until-released", "note"])
 command = called.call_args.args[0]
 seen = {"environment": lock.CALLER_PID_ENV in os.environ,
@@ -1135,13 +1141,13 @@ print(json.dumps(seen))
         self.assertNotEqual(seen["child"]["caller"], os.getpid())
 
     def test_status_takes_no_arguments_and_calls_device(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             code = autana.status([])
         self.assertEqual(code, 0)
         self.assertEqual(called.call_args[0][0][-1], "status")
 
     def test_status_json_is_device_json_passed_through(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             code = autana.status(["--json"])
         self.assertEqual(code, 0)
         self.assertEqual(called.call_args[0][0][-2:], ["status", "--json"])
@@ -1158,7 +1164,7 @@ print(json.dumps(seen))
                          ["--", "autana", "--wait", "0", "status"])
 
     def test_release_forwards_the_token(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             autana.release(["deadbeef"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--token") + 1], "deadbeef")
@@ -1172,7 +1178,7 @@ print(json.dumps(seen))
 
     def test_release_without_a_token_uses_the_one_a_running_command_has(self):
         with mock.patch.dict(autana.os.environ, {autana.TOKEN_ENV: "cafe"}), \
-                mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+                mock.patch.object(autana, "call_device", return_value=0) as called:
             autana.release([])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--token") + 1], "cafe")
@@ -1192,7 +1198,7 @@ print(json.dumps(seen))
             self.assertNotIn(autana.TOKEN_ENV, autana.os.environ)
 
     def test_hand_joins_its_words_into_one_note(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             autana.hand(["checking", "the", "panel"])
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--note") + 1], "checking the panel")
@@ -1202,7 +1208,7 @@ print(json.dumps(seen))
             autana.hand([])
 
     def test_hand_forwards_until_back_and_note(self):
-        with mock.patch.object(autana.subprocess, "Popen") as called:
+        with mock.patch.object(autana, "launch_process_tree") as called:
             called.return_value.wait.return_value = autana.EXIT_BUSY
             code = autana.hand(["--until-back", "10", "enter", "download", "mode"])
         self.assertEqual(code, autana.EXIT_BUSY)
@@ -1212,7 +1218,7 @@ print(json.dumps(seen))
         self.assertEqual(command[command.index("--note") + 1], "enter download mode")
 
     def test_hand_interrupt_returns_the_childs_interrupted_status(self):
-        with mock.patch.object(autana.subprocess, "Popen") as started, \
+        with mock.patch.object(autana, "launch_process_tree") as started, \
              mock.patch("builtins.print") as output:
             started.return_value.wait.side_effect = [KeyboardInterrupt, autana.EXIT_INTERRUPTED]
             code = autana.hand(["--until-back", "10", "download mode"])
@@ -1225,7 +1231,7 @@ print(json.dumps(seen))
             autana.hand(["--until-back", "enter mode"])
 
     def test_take_back_takes_no_arguments(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+        with mock.patch.object(autana, "call_device", return_value=0) as called:
             code = autana.take_back([])
         self.assertEqual(code, 0)
         self.assertIn("take-back", called.call_args[0][0])
@@ -1446,7 +1452,7 @@ class PerfCommandTests(unittest.TestCase):
             Path(command[command.index("--out") + 1]).write_text("perf: x cyc\n", encoding="utf-8")
             return mock.Mock(returncode=0, stdout="", stderr="")
 
-        with mock.patch.object(autana.subprocess, "run", side_effect=fake_run) as ran:
+        with mock.patch.object(autana, "capture_device", side_effect=fake_run) as ran:
             code, text = autana.perf_collect(7.0)
         command = ran.call_args.args[0]
         self.assertEqual((code, text), (0, "perf: x cyc\n"))
@@ -1456,7 +1462,7 @@ class PerfCommandTests(unittest.TestCase):
 
     def test_a_listen_that_fails_gives_its_code_and_no_text(self):
         failed = mock.Mock(returncode=4, stdout="", stderr="no board")
-        with mock.patch.object(autana.subprocess, "run", return_value=failed), mock.patch("builtins.print"):
+        with mock.patch.object(autana, "capture_device", return_value=failed), mock.patch("builtins.print"):
             self.assertEqual(autana.perf_collect(1.0), (4, ""))
 
 
@@ -1852,14 +1858,14 @@ class SuiteFlashAndRunsTests(unittest.TestCase):
         and never validated against PROJECT_MARKER."""
         with mock.patch.object(autana, "resolve_project",
                                side_effect=AssertionError("should not validate")), \
-             mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+             mock.patch.object(autana, "call_device", return_value=0) as called:
             autana.run_command(autana.suite, ["run_gfx_suite"], flags={"--project": "/anywhere"})
         command = called.call_args[0][0]
         self.assertEqual(command[command.index("--worktree") + 1], "/anywhere")
 
     def test_project_with_flash_is_resolved_and_used(self):
         with project_directory() as directory:
-            with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+            with mock.patch.object(autana, "call_device", return_value=0) as called:
                 autana.run_command(autana.suite, ["run_gfx_suite", "--flash"], flags={"--project": directory})
             command = called.call_args[0][0]
             self.assertEqual(command[command.index("--worktree") + 1], str(Path(directory).resolve()))
@@ -1959,7 +1965,7 @@ class BatchAliasTests(unittest.TestCase):
     def test_prints_the_new_spelling_once_to_stderr(self):
         stream = io.StringIO()
         with mock.patch.object(autana, "resolve_project", return_value="C:/wt"), \
-             mock.patch.object(autana.subprocess, "call", return_value=0), \
+             mock.patch.object(autana, "call_device", return_value=0), \
              contextlib.redirect_stderr(stream):
             autana.batch(["run_gfx_suite"])
         self.assertIn("autana batch: use `autana suite", stream.getvalue())
@@ -2038,8 +2044,8 @@ class RemovedLockSpellingTests(unittest.TestCase):
             autana.lock(["id"])
 
     def test_no_command_names_a_purpose_to_the_device(self):
-        with mock.patch.object(autana.subprocess, "call", return_value=0) as called, \
-                mock.patch.object(autana.subprocess, "Popen") as started:
+        with mock.patch.object(autana, "call_device", return_value=0) as called, \
+                mock.patch.object(autana, "launch_process_tree") as started:
             started.return_value.wait.return_value = 0
             autana.reset([])
             autana.take_back([])
@@ -2083,9 +2089,9 @@ class BoardOnlyCommandsTests(unittest.TestCase):
         with sent_reply((0, ["OK"])), \
              mock.patch.object(autana, "resolve_project",
                                side_effect=AssertionError("must not resolve a project")), \
-             mock.patch.object(autana.subprocess, "call", return_value=0), \
-             mock.patch.object(autana.subprocess, "run", return_value=status), \
-             mock.patch.object(autana.subprocess, "Popen", return_value=popen), \
+             mock.patch.object(autana, "call_device", return_value=0), \
+             mock.patch.object(autana, "capture_device", return_value=status), \
+             mock.patch.object(autana, "launch_process_tree", return_value=popen), \
              mock.patch.object(autana.sys.stdout, "isatty", return_value=False):
             return autana.run_command(handler, args)
 

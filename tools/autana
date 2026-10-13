@@ -4,7 +4,13 @@
 # finds a Python to start it with, and autana.py picks ESP-IDF's own for
 # anything that needs pyserial. scripts/add-tools-to-path.sh puts this folder
 # on PATH.
-export _AUTANA_CALLER_PID=$(cat "/proc/$PPID/winpid" 2>/dev/null || echo "$PPID")
+unset _AUTANA_CALLER_PID
+caller_pid=$(cat "/proc/$PPID/winpid" 2>/dev/null)
+if [ -n "$caller_pid" ]; then
+    export _AUTANA_CALLER_PID="$caller_pid"
+elif [ "$PPID" != 1 ]; then
+    export _AUTANA_CALLER_PID="$PPID"
+fi
 here=$(cd "$(dirname "$0")/.." && pwd -P)
 # shellcheck source=../launcher/tools/build/espressif.sh
 . "$here/launcher/tools/build/espressif.sh"

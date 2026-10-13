@@ -97,7 +97,7 @@ class ClockStoreTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.clock = Clock()
-        started = mock.patch.object(lock_scope, "process_start", return_value=None)
+        started = mock.patch.object(device_lock, "process_start", return_value=None)
         started.start()
         self.addCleanup(started.stop)
         self.lock = device_lock.LockStore(
@@ -798,7 +798,8 @@ class PreviousHolderTests(unittest.TestCase):
 
     def test_it_names_the_previous_owner_and_its_live_process_and_leaves_it_running(self):
         held = self.previous_holder(pid=os.getpid())
-        child = self.sleeper(**{lock_scope.backend.TOKEN_VARIABLE: held["token"]})
+        environment = {} if os.name == "nt" else {lock_scope.backend.SCOPE_TAG_VARIABLE: held["token"]}
+        child = self.sleeper(**environment)
         self.point_record_at(child.pid)
         self.clock.advance(185)
         text = self.text()

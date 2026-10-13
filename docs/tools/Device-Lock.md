@@ -77,7 +77,7 @@ Build outside the board lock, then hold it across the board commands:
 | Linux | Windows PowerShell |
 |---|---|
 | `autana build` | `autana build` |
-| `autana lock run -- sh -c 'autana flash && autana open APP_NAME && autana screenshot'` | `autana lock run -- pwsh -c 'autana flash; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana open APP_NAME; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana screenshot; exit $LASTEXITCODE'` |
+| `autana lock run -- sh -c 'autana flash && autana open APP_NAME && autana screenshot'` | `autana lock run -- powershell -NoProfile -Command 'autana flash; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana open APP_NAME; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana screenshot; exit $LASTEXITCODE'` |
 
 For separate shell commands, `take` prints a token alone on stdout. Pass it
 with the global `--lock-token` flag to each board command, then release it:
@@ -98,11 +98,12 @@ autana lock release "$token"
 The default timed hold lasts one hour, and `--for` cannot exceed that hour.
 `--until-released` instead ties the hold to the invoking process, or to
 `--pid <pid>`; it ends when that process exits on this host. A token from a
-released or lapsed hold, or a wrong token, fails with exit 1 immediately. `status` shows time
-left for a timed hold and age for an until-released hold. A holder's children inherit the token.
+released or lapsed hold, or a wrong token, fails with exit 1 immediately.
+`status` shows time left for a timed hold and age for an until-released hold.
 Borrowed commands reap their own descendants when they end. Commands sharing
-a token may run in parallel; an open serial port still excludes another user.
-`take` and `hand` inside a live hold fail immediately. `run --keep-on-failure`
+a token may run in parallel; only one of them can have the serial port
+open at a time.
+`take`, `hand` and `wait` inside a hold fail immediately. `run --keep-on-failure`
 inside another hold is a usage error.
 
 ### From a script or a background job
@@ -112,12 +113,19 @@ polling. It holds a FIFO queue place, and its exit, with the token on stdout,
 is the notification that the board is yours. Cancelling it gives up that
 place so the next waiter moves up.
 
+| Linux | Windows PowerShell |
+|---|---|
+| `autana lock take inspecting the panel > token.txt &` then `wait $!` | `$p = Start-Process autana -ArgumentList 'lock','take','inspecting the panel' -RedirectStandardOutput token.txt -NoNewWindow -PassThru` then `$p.WaitForExit()` |
+| Cancel with `kill $!`. | Cancel with `taskkill /T /F /PID $p.Id`. |
+
+Read the token from `token.txt` after the command ends.
+
 `autana lock wait` is for when you only want to know the board is free. It
 never takes the board or a queue place and delays nobody. It returns 0 when
 no live holder or person's reservation remains, including when a record
 lapses or its owner dies. Another caller may take the board immediately.
 `autana lock wait --wait <seconds>` exits 75 if that cap runs out; without
-`--wait`, it waits without a cap.
+`--wait`, it waits without a cap. Inside a hold it fails at once with exit 1.
 
 ## Board busy?
 
@@ -288,7 +296,7 @@ alone fall back once more to the only board this machine has ever seen.
 |---|---|
 | `0` | Success. For `lock hand --until-back`: the reservation was taken back or lapsed. |
 | `1` | Any other failure, including `device lock was lost` or a dead token (released, lapsed or wrong). |
-| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. `lock wait` uses it when its cap runs out. `lock hand --until-back` uses it when its wait runs out or the reservation is replaced. |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. `lock wait` uses it when its cap runs out. `lock hand --until-back` uses it when its wait runs out (the reservation stands) or the reservation is replaced. |
 | `130` | Ctrl+C: the second one on `monitor`, or the first on `lock hand --until-back`, which leaves the reservation in place. |
 | `2` | `device.py` itself, for a bad command line. |
 
@@ -343,13 +351,12 @@ checkout started it. Name a CI job with `autana --owner NAME`, run its commands 
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 
-Autana runs as one system copy on PATH. Every record carries its `protocol`
-number and `autana_version`; for running commands a difference is shown,
+Every record carries its `protocol` number and `autana_version`; for running commands a difference is shown,
 never refused. Protocol 3 keeps holds and running commands in one record.
 An install older than protocol 3 takes the board from a timed hold or a
 person's reservation at once, and from an until-released hold after the
-stale window. Protocol 3 does not see a protocol-2 `.human.json` reservation
-from before the upgrade. Update every copy that shares a board.
+stale window. Protocol 3 does not see protocol-2 `.human.json` reservations.
+Update every install that shares a board.
 
 ### Forcing a stuck lock clear
 
@@ -393,8 +400,8 @@ python scripts/device/device.py --owner ci-7 --wait 0 run-suite run_gfx_suite --
 ```
 
 `--owner` names the holder, and `--wait` is the lock wait in
-seconds. `release --token <t>`, `take`, `run`, `hand-to-human --note <n>` and `take-back` are
-what `autana lock` calls; `check-token --token <t>` exits 0 when the token is the
+seconds. `release --token <t>`, `take`, `run`, `hand-to-human --note <n>`,
+`take-back` and `wait-free` are what `autana lock` calls; `check-token --token <t>` exits 0 when the token is the
 board's live lock, which `flash_image.sh` asks before it opens the port.
 
 ## How it works
@@ -424,18 +431,21 @@ went stale while it was paused) has lost the board: a capture stops at its
 next read, the next port open refuses, a flash in progress is ended, and the
 command fails with `device lock was lost`. A person's reservation has no
 heartbeat: it lapses one hour after the last `lock hand`.
+Timed holds have no heartbeat and lapse at their expiry. Until-released
+holds have no heartbeat and remain until released or their owner exits on
+this host; a reused pid also counts as an exited owner.
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    state "Running command" as Running
+    state "Acquired" as Running
     state "Timed hold" as Timed
     state "Until released" as Process
     state "Person's hold" as Human
     [*] --> Waiting: needs the board
     Waiting --> Running: first in FIFO
     Waiting --> [*]: timeout or cancellation
-    Running --> Timed: take with duration<br/>or failed run with keep flag
+    Running --> Timed: take, or a failed run<br/>with --keep-on-failure
     Running --> Process: take until released
     Running --> Human: hand
     Running --> Free: command ends<br/>descendants stopped

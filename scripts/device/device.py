@@ -109,7 +109,7 @@ class LockLost(RuntimeError):
         super().__init__(message)
 
 
-class DeadToken(RuntimeError):
+class TokenRefused(RuntimeError):
     pass
 
 
@@ -587,7 +587,7 @@ class HeldLock:
         if token:
             record = store.live_lock(board, token)
             if record is None:
-                raise DeadToken("lock token is not live on this board (released, lapsed or wrong)")
+                raise TokenRefused("lock token is not live on this board (released, lapsed or wrong)")
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
@@ -1037,6 +1037,7 @@ def run_to_end(command, lost=None, timeout=None, **options):
 BUILD_SCRIPT = Path("launcher") / "tools" / "build" / "build.sh"
 FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
+VARIANT_CONSOLE = {"release": False, "dev": True, "diag": True}
 BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag"}
 BUILD_LOCK = "autana-build.lock"
 BUILD_LOCK_POLL_SECONDS = 0.2
@@ -1772,7 +1773,10 @@ def batch(args, store, board):
                 raise RuntimeError(
                     f"build id mismatch: expected {args.expect_build_id}, flashed {build_id} - "
                     "refusing to run any suite")
-            await_console(flash_args, board, build_id, held.held["acquired_at"], connection)
+            if VARIANT_CONSOLE[args.variant]:
+                await_console(flash_args, board, build_id, held.held["acquired_at"], connection)
+            else:
+                connection.close()
         else:
             build_id = args.expect_build_id
         commit = git_commit(worktree)
@@ -2070,16 +2074,17 @@ def main(argv=None):
         board = board_for_lock(store, args.board,
                                remembered=args.command in ("hand-to-human", "take-back"))
         token = os.environ.get(TOKEN_ENV)
-        if token and args.command in ("take", "hand-to-human"):
+        if token and args.command in ("take", "hand-to-human", "wait-free"):
             record = store.live_lock(board, token)
             if record:
-                raise DeadToken("already inside hold " + record["owner"])
+                raise TokenRefused("already inside hold " + record["owner"])
+            raise TokenRefused("lock token is not live on this board (released, lapsed or wrong)")
         if token and args.command == "run" and args.keep_on_failure is not None:
             parser.error("--keep-on-failure is unavailable inside another hold")
         # Validate a borrowed token before any build starts.
         if token and args.command not in ("release", "check-token", "take", "hand-to-human", "take-back", "wait-free"):
             if not store.check_token(board, token):
-                raise DeadToken("lock token is not live on this board (released, lapsed or wrong)")
+                raise TokenRefused("lock token is not live on this board (released, lapsed or wrong)")
         if args.command == "wait-free":
             deadline = None if args.cap is None else time.monotonic() + args.cap
             while True:
@@ -2088,8 +2093,8 @@ def main(argv=None):
                     return 0
                 if deadline is not None and time.monotonic() >= deadline:
                     return device_lock.EXIT_BUSY
-                time.sleep(FLASH_POLL_SECONDS if deadline is None else
-                           min(FLASH_POLL_SECONDS, max(0, deadline - time.monotonic())))
+                time.sleep(device_lock.WAIT_POLL_SECONDS if deadline is None else
+                           min(device_lock.WAIT_POLL_SECONDS, max(0, deadline - time.monotonic())))
         if args.command == "release":
             return 0 if store.release(board, args.token) else 1
         if args.command == "check-token":
@@ -2137,8 +2142,7 @@ def main(argv=None):
                     return 0
                 except subprocess.CalledProcessError as error:
                     held.error = str(error)
-                    if not held.borrowed:
-                        held.keep_seconds = args.keep_on_failure
+                    held.keep_seconds = args.keep_on_failure
                     return error.returncode
                 except KeyboardInterrupt:
                     return EXIT_INTERRUPTED
@@ -2147,7 +2151,7 @@ def main(argv=None):
             with build_image(args, board, extra_flags) as built, \
                     HeldLock(store, board, args.owner, "flash", args.wait) as held:
                 build_id, connection = write_image(built, store, board, held)
-                if args.variant in ("dev", "diag"):
+                if VARIANT_CONSOLE[args.variant]:
                     await_console(args, board, build_id, held.held["acquired_at"], connection)
                 else:
                     connection.close()

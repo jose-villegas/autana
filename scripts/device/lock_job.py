@@ -23,11 +23,8 @@ ERROR_MORE_DATA = 234
 PROCESS_TERMINATE = 0x0001
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
-TOKEN_VARIABLE = "_AUTANA_LOCK_SCOPE_TAG"
-
 _job = None
 _kernel32 = None
-_previous_token = None
 _reported = set()
 
 
@@ -64,7 +61,7 @@ def create_job(kernel32):
 def enter(token=None):
     """Puts this process in a job of its own, once. False, with the reason on
     stderr, where that is not possible: the lock then works as it always did."""
-    global _job, _previous_token
+    global _job
     if os.name != "nt":
         return False
     if _job is not None:
@@ -73,10 +70,6 @@ def enter(token=None):
     job = create_job(kernel32)
     if job and kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
         _job = job
-        # Descendant scope is independent of authority to borrow the board.
-        _previous_token = os.environ.get(TOKEN_VARIABLE)
-        if token:
-            os.environ[TOKEN_VARIABLE] = token
         return True
     if job:
         kernel32.CloseHandle(job)
@@ -86,12 +79,7 @@ def enter(token=None):
 
 
 def leave():
-    """The job lasts as long as the process; only the token is taken back."""
-    if _job is not None:
-        if _previous_token is None:
-            os.environ.pop(TOKEN_VARIABLE, None)
-        else:
-            os.environ[TOKEN_VARIABLE] = _previous_token
+    """The job lasts as long as this process."""
 
 
 def members():
@@ -127,30 +115,6 @@ def survivors_extra(record):
 
 def process_name(pid):
     return ""
-
-
-FILETIME_EPOCH_OFFSET = 116444736000000000
-
-
-def process_start(pid):
-    """When `pid` began, in epoch seconds, or None if it cannot be read."""
-    import ctypes
-    from ctypes import wintypes
-
-    kernel32 = binding()
-    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
-    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    if not handle:
-        return None
-    try:
-        created, unused_exit, unused_kernel, unused_user = (wintypes.FILETIME() for _ in range(4))
-        if not kernel32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(unused_exit),
-                                        ctypes.byref(unused_kernel), ctypes.byref(unused_user)):
-            return None
-        ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime
-        return (ticks - FILETIME_EPOCH_OFFSET) / 1e7
-    finally:
-        kernel32.CloseHandle(handle)
 
 
 def terminate_member(pid):

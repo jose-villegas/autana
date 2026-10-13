@@ -17,7 +17,7 @@ class HoldGuardTests(Store):
         self.store.now = self.clock.now
         self.store.is_alive = lambda pid: True
         self.env = mock.patch.dict(os.environ, {device.TOKEN_ENV: ""})
-        starts = mock.patch.object(device.lock_scope, "process_start", return_value=None)
+        starts = mock.patch.object(device_lock, "process_start", return_value=None)
         starts.start()
         self.addCleanup(starts.stop)
         self.env.start()
@@ -41,6 +41,14 @@ class HoldGuardTests(Store):
                 mock.patch.object(device, "board_for_lock", return_value=BOARD_A):
             return device.main(["--board", BOARD_A, "--wait", "0", *words])
 
+    def assert_token_refused(self, words, message):
+        before = self.store.read_json(self.store.lock_path(BOARD_A))
+        with contextlib.redirect_stderr(io.StringIO()) as error:
+            self.assertEqual(self.main(*words), 1)
+        self.assertIn(message, error.getvalue())
+        self.assertEqual(self.store.tickets(BOARD_A), [])
+        self.assertEqual(self.store.read_json(self.store.lock_path(BOARD_A)), before)
+
     def test_dead_token_fails_before_flash_build(self):
         os.environ[device.TOKEN_ENV] = "wrong"
         with mock.patch.object(device, "build_image") as build:
@@ -50,7 +58,7 @@ class HoldGuardTests(Store):
 
     def test_borrow_constructor_rejects_dead_token(self):
         os.environ[device.TOKEN_ENV] = "wrong"
-        with self.assertRaises(device.DeadToken):
+        with self.assertRaises(device.TokenRefused):
             device.HeldLock(self.store, BOARD_A, "borrower", "run", 0)
         self.assertEqual(self.store.tickets(BOARD_A), [])
 
@@ -114,7 +122,7 @@ class HoldGuardTests(Store):
 
     def test_until_released_reclaims_reused_pid_only_on_this_host(self):
         token = self.take(pid=123)
-        with mock.patch.object(device.lock_scope, "process_start",
+        with mock.patch.object(device_lock, "process_start",
                                return_value=self.clock.now() + device_lock.PID_REUSE_SLACK_SECONDS + 1):
             self.assertEqual(self.store.status(BOARD_A)["reclaimable"]["reason"], "dead process")
             record = self.store.read_json(self.store.lock_path(BOARD_A))
@@ -125,11 +133,9 @@ class HoldGuardTests(Store):
     def test_take_and_hand_inside_hold_refuse_without_queueing(self):
         token = self.take(seconds=30)
         os.environ[device.TOKEN_ENV] = token
-        for words in (("take", "bench"), ("hand-to-human", "--note", "bench")):
-            with contextlib.redirect_stderr(io.StringIO()) as error:
-                self.assertEqual(self.main(*words), 1)
-            self.assertIn("already inside hold holder", error.getvalue())
-            self.assertEqual(self.store.tickets(BOARD_A), [])
+        for words in (("take", "bench"), ("hand-to-human", "--note", "bench"),
+                      ("wait-free", "--cap", "0")):
+            self.assert_token_refused(words, "already inside hold holder")
         with self.assertRaises(SystemExit) as error:
             self.main("run", "--keep-on-failure", "1", "--", "child")
         self.assertEqual(error.exception.code, 2)
@@ -140,7 +146,8 @@ class HoldGuardTests(Store):
                     self.scope(), \
                     mock.patch.object(self.store, "hold", wraps=self.store.hold) as hold, \
                     contextlib.redirect_stderr(io.StringIO()) as output:
-                self.assertNotEqual(self.main("run", "--keep-on-failure", "1", "--", "child"), 0)
+                self.assertEqual(self.main("run", "--keep-on-failure", "1", "--", "child"),
+                                 device.EXIT_INTERRUPTED if isinstance(error, KeyboardInterrupt) else 1)
             hold.assert_not_called()
             self.assertNotIn("lock held for", output.getvalue())
             self.assertIsNone(self.store.status(BOARD_A)["lock"])
@@ -175,3 +182,38 @@ class HoldGuardTests(Store):
         estimates = device_lock.queue_estimates(self.store.status(BOARD_A), self.clock.now(),
                                                 {"hold": 1, "flash": 2})
         self.assertIsNone(estimates[ticket])
+
+    def test_refused_tokens_do_not_touch_reservation_or_queue(self):
+        for kind in ("wrong", "released", "lapsed"):
+            with self.subTest(kind=kind):
+                token = self.take(seconds=1)
+                if kind == "released":
+                    self.store.release(BOARD_A, token)
+                elif kind == "lapsed":
+                    self.clock.advance(1)
+                os.environ[device.TOKEN_ENV] = "wrong" if kind == "wrong" else token
+                for words in (("take", "bench"), ("hand-to-human", "--note", "bench"),
+                              ("wait-free", "--cap", "0")):
+                    self.assert_token_refused(words, "not live")
+                self.store.release(BOARD_A, token)
+                self.store.reserve_human(BOARD_A, "person", "bench")
+                for words in (("take", "bench"), ("hand-to-human", "--note", "changed"),
+                              ("wait-free", "--cap", "0")):
+                    self.assert_token_refused(words, "not live")
+                self.store.end_human(BOARD_A)
+                os.environ[device.TOKEN_ENV] = ""
+
+    def test_maximum_hold_duration_is_accepted(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.main("take", "--for", str(device_lock.HOLD_MAX_SECONDS),
+                                       "bench"), 0)
+        record = self.store.read_json(self.store.lock_path(BOARD_A))
+        self.assertEqual(record["expires_at"], self.clock.now() + device_lock.HOLD_MAX_SECONDS)
+
+    def test_pid_reuse_slack_boundary(self):
+        token = self.take(pid=123)
+        for offset, live in ((device_lock.PID_REUSE_SLACK_SECONDS, True),
+                             (device_lock.PID_REUSE_SLACK_SECONDS + 0.01, False)):
+            with mock.patch.object(device_lock, "process_start",
+                                   return_value=self.clock.now() + offset):
+                self.assertEqual(self.store.check_token(BOARD_A, token), live)
