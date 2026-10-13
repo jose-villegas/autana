@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
+from r3d.import_settings import load_import_settings  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh, write_lit_mesh  # noqa: E402
 
 OPTIONS = ("meshlet_triangles", "leaf_triangles", "max_depth")
@@ -26,12 +27,16 @@ OPTIONS = ("meshlet_triangles", "leaf_triangles", "max_depth")
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mesh", help="a <name>.mesh")
+    parser.add_argument("--import", dest="settings", help="geometry settings for clustering")
     parser.add_argument("--out-dir", help="where to write; the mesh's own directory when omitted")
     parser.add_argument("--meshlet-triangles", type=int, help="most triangles in a cluster")
     parser.add_argument("--leaf-triangles", type=int, help="most triangles an octree leaf holds")
     parser.add_argument("--max-depth", type=int, help="deepest octree")
     args = parser.parse_args(argv)
     options = {key: getattr(args, key) for key in OPTIONS if getattr(args, key) is not None}
+
+    if args.settings:
+        options.setdefault("meshlet_triangles", load_import_settings(args.settings).meshlet_triangles)
 
     path = pathlib.Path(args.mesh)
     out_dir = pathlib.Path(args.out_dir) if args.out_dir else path.parent

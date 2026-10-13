@@ -9,6 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import check_file_headers  # noqa: E402
 
 HEADER = "/* thing: what it is. */\n"
+DECL = "int f(void);\n"
 
 
 class ProblemsTest(unittest.TestCase):
@@ -25,8 +26,8 @@ class ProblemsTest(unittest.TestCase):
 
     def test_a_module_needs_a_header_in_its_c_or_its_h(self):
         cases = (
-            ({"launcher/main/gfx/gfx.h": HEADER, "launcher/main/gfx/gfx.c": "int x;\n"}, []),
-            ({"launcher/main/gfx/gfx.h": "#pragma once\n", "launcher/main/gfx/gfx.c": HEADER + "int x;\n"}, []),
+            ({"launcher/main/gfx/gfx.h": HEADER + DECL, "launcher/main/gfx/gfx.c": "int x;\n"}, []),
+            ({"launcher/main/gfx/gfx.h": "#pragma once\n" + DECL, "launcher/main/gfx/gfx.c": HEADER + "int x;\n"}, []),
             ({"launcher/main/gfx/gfx.h": "#pragma once\nint f(void);\n", "launcher/main/gfx/gfx.c": "int x;\n"},
              ["launcher/main/gfx/gfx.h"]),
             ({"launcher/test/suites/suites_helper.c": "int x;\n"}, ["launcher/test/suites/suites_helper.c"]),
@@ -48,6 +49,18 @@ class ProblemsTest(unittest.TestCase):
                 found = self.problems({"launcher/main/ui/ui.c": text})
                 self.assertEqual([line.split(":")[0] for line in found], expected)
 
+    def test_a_header_that_declares_nothing_fails(self):
+        cases = (
+            (HEADER + "#pragma once\n", ["launcher/main/anim/anim.h"]),
+            ("#pragma once\n" + HEADER + "// more\n", ["launcher/main/anim/anim.h"]),
+            (HEADER + "#pragma once\n#define ANIM_FPS 30\n", []),
+            (HEADER + '#pragma once\n#include "anim/track.h"\n', []),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text[-24:]):
+                found = self.problems({"launcher/main/anim/anim.h": text})
+                self.assertEqual([line.split(":")[0] for line in found], expected)
+
     def test_suites_vendored_and_out_of_scope_files_are_not_checked(self):
         self.assertEqual(self.problems({
             "launcher/test/suites/suite_gfx.c": "int x;\n",
@@ -63,6 +76,26 @@ class ProblemsTest(unittest.TestCase):
                      "launcher/main/core/x.h", "launcher/main/main.c"):
             with self.subTest(path=path):
                 self.assertEqual([line.split(":")[0] for line in self.problems({path: "int x;\n"})], [path])
+
+    def test_a_package_module_is_its_include_header_and_its_source(self):
+        header, source = "launcher/packages/p/include/p/x.h", "launcher/packages/p/src/x.c"
+        lonely = "launcher/packages/p/src/y.c"
+        cases = (
+            ({header: HEADER + DECL, source: "int x;\n"}, []),
+            ({header: "#pragma once\n" + DECL, source: HEADER + "int x;\n"}, []),
+            ({header: "#pragma once\n" + DECL, source: "int x;\n"}, [source]),
+            ({header: "#pragma once\n" + DECL}, [header]),
+            ({header: HEADER + DECL, lonely: "int y;\n"}, [lonely]),
+        )
+        for files, expected in cases:
+            with self.subTest(files=sorted(files)):
+                found = self.problems(files)
+                self.assertEqual([line.split(":")[0] for line in found], expected)
+
+    def test_a_header_under_another_include_folder_does_not_pair_with_the_source(self):
+        source = "launcher/packages/p/src/x.c"
+        found = self.problems({"launcher/packages/p/include/other/x.h": HEADER + DECL, source: "int x;\n"})
+        self.assertEqual([source], [line.split(":")[0] for line in found])
 
 
 if __name__ == "__main__":

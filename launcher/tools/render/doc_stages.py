@@ -1,5 +1,6 @@
-"""Regenerate GPU comparisons or consume board captures with the doc block writer."""
+"""Regenerate measured render documentation from GPU runs or board captures."""
 import argparse
+import ast
 import copy
 import hashlib
 import json
@@ -11,11 +12,15 @@ import subprocess
 import sys
 from typing import NamedTuple
 
+INPUTS_PYTHON_MINIMUM = (3, 12)
+
 ROOT = Path(__file__).resolve().parents[3]
+TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generated_blocks import apply_tables, tracked_files
+from doc_tables import markdown
 from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
@@ -77,6 +82,85 @@ def current_stamp():
     return source_stamp(ROOT, paths)
 
 
+def named_files(path, tracked):
+    """The tracked files a module names by a string, resolved as its code would: from the repository, the
+    tools folder or its own folder."""
+    from bake import bake
+    for node in ast.walk(bake.module_facts(path)[0]):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.strip():
+            for base in (ROOT, TOOLS, path.parent):
+                try:
+                    candidate = (base / node.value).resolve()
+                except (OSError, ValueError):
+                    continue
+                if candidate in tracked:
+                    yield candidate
+                    break
+
+
+def host_inputs(scene_path):
+    """Compile flags and the compiler's -MM list (sources and project headers), repo-relative.
+    System headers and compiler identity/version are not counted."""
+    def relative(token):
+        if not token.startswith("/"):
+            return token
+        path = Path(token).resolve()
+        if not path.is_relative_to(ROOT):
+            raise ValueError(f"the host build reads {token}, outside the repository")
+        return path.relative_to(ROOT).as_posix()
+
+    listing = subprocess.run(["sh", HOST_SCRIPT, scene_path, "--deps"], cwd=ROOT, capture_output=True,
+                             text=True, check=True).stdout
+    flags, _, deps = listing.partition("\n")
+    if not flags.startswith("flags "):
+        raise ValueError(f"{HOST_SCRIPT.name} --deps printed no flags line")
+    files = {relative(token) for token in deps.replace("\\\n", " ").split() if not token.endswith(":")}
+    return {"host flags": " ".join(relative(token) for token in flags.split()[1:]),
+            **{f"host {name}": content_checksum(ROOT / name).decode() for name in sorted(files)}}
+
+
+def gpu_inputs(scene_path, object_name):
+    """{input: digest} of everything the GPU stage's output is made from: the Python it runs (the import
+    closure of this file and of each script its closure names, until none is new, with the C and
+    requirements bake.py counts for them), the other tracked files that code names, the host renderer's
+    compile, the scene file, its non-bake pack entries, and the key and locked bytes of every bake the
+    scene holds. Its digest (fingerprint) names the stage's run."""
+    from bake import bake
+    tracked = {(ROOT / name).resolve() for name in tracked_files(ROOT, ("launcher", "scripts"))}
+    entries = {Path(__file__).resolve()}
+    while True:
+        code = bake.closure(sorted(entries), consumers=True)
+        named = {file for path in code for file in named_files(path, tracked)}
+        scripts = {file for file in named if file.suffix == ".py"} - entries
+        if not scripts:
+            break
+        entries |= scripts
+
+    def name(path):
+        return path.resolve().relative_to(ROOT).as_posix()
+
+    from r3d.build_pack import pack_jobs
+    packs, jobs = pack_jobs([scene_path])
+    lock = bake.read_lock()
+    inputs = {"scene": f"{name(scene_path)} {content_checksum(scene_path).decode()}", "object": object_name,
+              **{f"code {name(path)}": bake.digest(bake.code_tokens(path)) for path in code},
+              **{f"imports {name(path)}": bake.digest([
+                  (node.module if isinstance(node, ast.ImportFrom) else None,
+                   node.level if isinstance(node, ast.ImportFrom) else 0, alias.name, alias.asname)
+                  for node in ast.walk(bake.module_facts(path)[0])
+                  if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names]) for path in code},
+              **{f"pack {entry}": content_checksum(source).decode()
+                 for pack in packs.values() for entry, source in pack.items() if source.resolve() not in jobs},
+              **{f"native {path}": value for path, value in bake.native_inputs(code).items()},
+              **{f"requirement {file} {line}": line for file, line in bake.pinned_requirements(code)},
+              **{f"file {name(path)}": content_checksum(path).decode() for path in sorted(named - set(code))},
+              **host_inputs(scene_path)}
+    for found in bake.bakes([scene_path]):
+        row = lock.get(found.key)
+        inputs[f"bake {found.output}"] = f"{found.key} {row['sha256']}" if row else f"unlocked {found.key}"
+    return inputs
+
+
 def validate_mode(smoke, check):
     if smoke and check:
         raise ValueError("smoke outputs cannot check published docs")
@@ -114,10 +198,6 @@ def run(command, log):
     with log.open("w") as output:
         subprocess.run([str(value) for value in command], cwd=ROOT, stdout=output, stderr=subprocess.STDOUT, check=True)
 
-
-def markdown(headers, rows):
-    lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
-    return "\n".join(lines + ["| " + " | ".join(map(str, row)) + " |" for row in rows]) + "\n"
 
 
 MACHINE_FIELDS = ("CPU", "Cores/threads", "RAM", "GPU", "VRAM", "Driver", "CUDA", "OS", "Python", "Mitsuba", "PyTorch")
@@ -397,7 +477,9 @@ def _gpu(args, out, work, executor):
     jobs = [placed_variant(scene, args.object + entry.name) for entry in FITTED]
     if len({job.renderer.fit.held_out_every_ms for job in jobs}) != 1:
         raise ValueError("GPU comparisons require a common held-out pose interval")
-    stamp = current_stamp()
+    made_from = gpu_inputs(scene_path, args.object)
+    from bake import bake
+    stamp = bake.digest(made_from)
     work = work / ("smoke-" if args.smoke else "full-") / stamp
     work.mkdir(parents=True, exist_ok=True)
     inputs = work / "references"
@@ -538,12 +620,16 @@ def _gpu(args, out, work, executor):
         target = ROOT / "docs/images/render/gpu" / image.name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(image, target)
+    files = {path.relative_to(out).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+             for path in out.rglob("*") if path.is_file()}
+    (out / "source.json").write_text(json.dumps({"source": stamp, "inputs": made_from, "files": files}, indent=2) + "\n")
     return 0
 
 
-def check_gpu(out):
+def check_gpu(args, out):
+    from bake import bake
     manifest = out / "source.json"
-    if not manifest.exists() or json.loads(manifest.read_text())["source"] != current_stamp():
+    if not manifest.exists() or json.loads(manifest.read_text())["source"] != bake.digest(gpu_inputs(args.scene, args.object)):
         raise ValueError("GPU source changed or no full run exists; run --stage gpu without --check")
     for name, checksum in json.loads(manifest.read_text())["files"].items():
         path = out / name
@@ -570,16 +656,27 @@ def check_gpu(out):
     return int(changed)
 
 
+def meshlets(args, out, work):
+    from meshlet_sizes import table
+    body = table(args.scene, args.captures, args.bakes, args.object)
+    (out / "tables/meshlet-sizes.md").write_text(body)
+    changed = apply_tables(ROOT, out / "tables", args.check)
+    return int(args.check and changed)
+
+
 def main(argv=None):
     git_environment()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", type=Path, required=True)
     parser.add_argument("--object", required=True)
-    parser.add_argument("--stage", choices=("gpu", "board"), required=True)
+    parser.add_argument("--stage", choices=("gpu", "board", "meshlets"), required=True)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--inputs", action="store_true", help="gpu: print the stage's input fingerprint, run nothing")
     parser.add_argument("--capture", type=Path, action="append", default=[])
     parser.add_argument("--build-commit", help="capture commit, default HEAD; firmware sources must still match")
+    parser.add_argument("--captures", type=Path, default=ROOT / "docs/render/data")
+    parser.add_argument("--bakes", type=Path, default=ROOT / "launcher/tools/results/meshlet-sizes/bakes")
     args = parser.parse_args(argv)
     try:
         validate_mode(args.smoke, args.check)
@@ -587,19 +684,21 @@ def main(argv=None):
             raise ValueError("board stage needs --capture and does not support --smoke")
         work = RESULTS / "work" / args.stage
         out = RESULTS / "out" / (args.stage + "-smoke" if args.smoke else args.stage)
+        if args.stage == "gpu" and args.inputs:
+            if sys.version_info < INPUTS_PYTHON_MINIMUM:
+                minimum = ".".join(map(str, INPUTS_PYTHON_MINIMUM))
+                raise ValueError(f"--inputs requires Python {minimum} or later for stable code tokens")
+            from bake import bake
+            print(bake.digest(gpu_inputs(args.scene, args.object)))
+            return 0
         if args.stage == "gpu" and args.check:
-            return check_gpu(out)
+            return check_gpu(args, out)
         if out.exists():
             shutil.rmtree(out)
         (out / "tables").mkdir(parents=True)
         (out / "render/gpu").mkdir(parents=True)
         work.mkdir(parents=True, exist_ok=True)
-        result = gpu(args, out, work) if args.stage == "gpu" else board(args, out, work)
-        if args.stage == "gpu" and not args.smoke:
-            files = {path.relative_to(out).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-                     for path in out.rglob("*") if path.is_file()}
-            (out / "source.json").write_text(json.dumps({"source": current_stamp(), "files": files}) + "\n")
-        return result
+        return {"gpu": gpu, "board": board, "meshlets": meshlets}[args.stage](args, out, work)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         print(error, file=sys.stderr)
         return 2

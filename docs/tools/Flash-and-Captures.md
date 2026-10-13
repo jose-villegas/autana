@@ -59,10 +59,15 @@ sequenceDiagram
     Sh->>Board: esptool write_flash @flash_args, hash-verify each region
     Sh->>Board: RTS reset
     Sh-->>Dev: exit status
+    Dev->>Board: reconnect by serial number, even after a failed write
     Dev->>Lock: live-lock check, record the snapshot's BUILD_ID
     Dev->>Snap: remove, whether the write succeeded or not
+    opt flash or selftest
+        Dev->>Board: close the returned handle under the lock
+    end
     opt suite --flash and selftest, still under the same lock
-        Dev->>Board: reopen the port as the board power cycles and boots
+        Dev->>Board: selftest resets again, waits for USB, then captures
+        Dev->>Board: suite --flash reads the boot on the returned handle
         Dev->>Board: suite --flash: once its console is up, send RUNSUITE
         Dev->>Board: capture until the suites end
         Note over Dev,Board: the capture fails on any other BUILD_ID
@@ -85,11 +90,11 @@ takes the lock once, flashes once, captures every suite `--runs` times, and
 writes one summary across all runs.
 
 Between the flash and the first request it waits, still under the lock, for
-the new image to boot to its console. A development bootloader power cycles
-the chip after the flash's reset, so the port the flash used re-enumerates
-about a second later, and a request sent before then is lost. That boot is
-kept as a `boot-diag` capture; a board with no console within 30 s is
-reported, and the first run goes ahead to show what it does instead.
+the new image to boot to its console: a request sent before then is lost.
+That boot is kept as a `boot-diag` capture; a board silent for
+`RESET_FIRST_BYTE_SECONDS`, or with no console within `BOOT_WAIT_SECONDS`
+(both in [device.py](../../scripts/device/device.py)), is reported, and the
+first run goes ahead to show what it does instead.
 
 ```sh
 autana suite run_boot_anim_perf_suite run_gfx_suite --runs 3 --flash
@@ -100,8 +105,10 @@ per suite: every timing per run with min, max and spread; every test whose
 result changed between runs of the image (a test that flaps on one binary is
 a finding, not noise); the tests that failed in every run; and each
 `PERF TARGET` per run. A capture that errors or reports a failed test
-is recorded and the run continues, then exits 1; only a failed build or
-flash stops it. `--perf-scope` builds the perf-scoped image. `--out PATH`
+is recorded and the run continues, then exits 1. A failed build or flash
+stops it, and so does a board that would answer every later run the same
+way: a refused `--test` filter or tunable, or a board that stopped reading
+its console. `--perf-scope` builds the perf-scoped image. `--out PATH`
 writes the one raw capture to `PATH`, only with exactly one suite and
 `--runs 1`. `selftest` builds the autorun diagnostics image and captures the
 boot-time run until `SELFTEST_COMPLETE`.
@@ -111,9 +118,18 @@ A suite capture stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line
 disappears mid-capture ends it as `port lost` with what was read kept, so a
 multi-suite run carries on with its next suite. It fails if the build has no
 suites, does not contain the requested suite, or reports any failed test.
-`autana reset` reboots with esptool and returns once the port is back;
-`reset --capture` and `selftest` reopen the port if it vanishes or stays
-silent after the reset.
+
+A reset that power-cycles the board takes its port off USB and back,
+possibly under another name. The command waits for the board's serial
+number to leave the port list and come back, then opens it; opening sooner
+gets the dying handle. A reset that keeps USB up costs only the bounded
+leave wait in [device.py](../../scripts/device/device.py). Captures that
+read a reset's boot (`reset --capture`, `selftest`, and the boot capture
+after `suite --flash` through `await_console`) reconnect after a mid-capture
+reboot and read on. For
+`reset --capture` and `selftest`, a board silent after the RTS reset for
+`RESET_FIRST_BYTE_SECONDS` in [device.py](../../scripts/device/device.py) is
+taken for a chip in download mode and restarted once through the watchdog.
 
 ## Talking to a running device
 

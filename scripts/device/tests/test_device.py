@@ -1,8 +1,13 @@
 import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import port_guard
+import ast
 import base64
 import io
 import contextlib
+import errno
 import gzip
+import importlib.util
+import itertools
 import json
 import os
 import re
@@ -10,6 +15,7 @@ import struct
 import subprocess
 import tempfile
 import time
+import types
 import unittest
 import zlib
 from argparse import Namespace
@@ -21,7 +27,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
-from fake_serial import FakeConnection
+from fake_serial import FakeConnection, FakeUsbBoard
 import fake_flash  # noqa: E402
 import device_lock
 import device_hook
@@ -84,22 +90,166 @@ class InterpreterTests(unittest.TestCase):
         call.assert_not_called()
 
 
+class SerialTimeoutException(OSError):
+    """pyserial's, an IOError like every port error it raises."""
+
+
+class StalledSerial(FakeConnection):
+    """pyserial's Serial on a port the board stopped draining: a write times
+    out, and what was queued never leaves."""
+
+    out_waiting = 1
+
+    def open(self):
+        pass
+
+    def write(self, unused_data):
+        raise SerialTimeoutException("Write timeout")
+
+
 class OpenSerialTests(unittest.TestCase):
     """A board that stops reading its console (a half-written image, a
     wedged app) must fail the command, not hold the lock forever: pyserial
     with no write timeout blocks in the OS write with no limit."""
 
-    def opened(self):
-        serial = mock.MagicMock()
-        with mock.patch.dict(sys.modules, {"serial": serial}),                 mock.patch.object(device, "locked_port", return_value="COM5"):
-            device.open_serial()
-        return serial.Serial.return_value
+    @contextlib.contextmanager
+    def stalled(self):
+        serial = types.ModuleType("serial")
+        serial.Serial = StalledSerial
+        serial.SerialTimeoutException = SerialTimeoutException
+        with mock.patch.dict(sys.modules, {"serial": serial}), \
+             mock.patch.object(device, "locked_port", return_value="COM5"):
+            yield
 
-    def test_writes_are_bounded_like_reads(self):
-        connection = self.opened()
-        self.assertIsInstance(connection.write_timeout, (int, float))
-        self.assertGreater(connection.write_timeout, 0)
-        connection.open.assert_called_once_with()
+    def test_a_write_waits_no_longer_than_a_boot(self):
+        with self.stalled():
+            connection = device.open_serial()
+        self.assertEqual(connection.write_timeout, device.BOOT_WAIT_SECONDS)
+
+    def test_a_write_the_board_never_takes_is_an_error(self):
+        with self.stalled():
+            connection = device.open_serial()
+        with self.assertRaisesRegex(device.BoardNotReading,
+                                    f"stopped reading its console: a write did not drain "
+                                    f"within {device.BOOT_WAIT_SECONDS}s"):
+            connection.write(b"RUNSUITE sand\n")
+
+    def flushed(self, queued):
+        """(seconds waited, the error or None) for a flush on a port whose
+        output queue reads `queued` in turn, the last value repeating, on a
+        clock only its sleeps move."""
+        with self.stalled():
+            connection = device.open_serial()
+        self.enterContext(mock.patch.object(type(connection), "out_waiting", property(
+            lambda unused: queued.pop(0) if len(queued) > 1 else queued[0])))
+        clock = [0.0]
+        fake_time = types.SimpleNamespace(
+            monotonic=lambda: clock[0],
+            sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+        with mock.patch.object(device, "time", fake_time):
+            try:
+                connection.flush()
+            except device.BoardNotReading as error:
+                return clock[0], error
+        return clock[0], None
+
+    def test_a_flush_returns_once_the_queue_drains(self):
+        self.assertEqual(self.flushed([0]), (0, None))
+        self.assertEqual(self.flushed([2, 1, 0]), (2 * device.FLUSH_POLL_SECONDS, None))
+
+    def test_a_flush_that_never_drains_fails_at_the_write_timeout(self):
+        waited, error = self.flushed([1])
+        self.assertIsInstance(error, device.BoardNotReading)
+        self.assertGreaterEqual(waited, device.BOOT_WAIT_SECONDS)
+        self.assertLess(waited, device.BOOT_WAIT_SECONDS + 2 * device.FLUSH_POLL_SECONDS)
+
+    def test_a_write_that_times_out_releases_the_lock(self):
+        store = mock_store()
+        with tempfile.TemporaryDirectory() as directory, self.stalled(), \
+             mock.patch.object(device, "open_when_free",
+                               side_effect=lambda *unused, **unused_kw: device.open_serial()), \
+             mock.patch.object(device, "records_root", return_value=Path(directory)), \
+             mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+             contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(device.BoardNotReading):
+                device.run_suite(suite_args(), store, BOARD)
+        store.release.assert_called_once_with(BOARD, "token")
+
+    @unittest.skipUnless(hasattr(os, "openpty") and importlib.util.find_spec("serial"),
+                         "needs a pseudo-terminal and pyserial")
+    def test_a_real_port_nobody_reads_fails_the_write(self):
+        """The OS, not a stand-in, refuses the write: a pseudo-terminal whose
+        other end is never read fills, and pyserial's write timeout fires."""
+        with port_guard.fake_port() as (unused, name), \
+             mock.patch.object(device, "locked_port", return_value=name):
+            with device.open_serial() as connection:
+                connection.write_timeout = 0.5
+                started = time.monotonic()
+                with self.assertRaises(device.BoardNotReading):
+                    connection.write(bytes(1 << 20))
+                self.assertLess(time.monotonic() - started, device.BOOT_WAIT_SECONDS)
+
+
+@unittest.skipUnless(importlib.util.find_spec("serial"), "needs pyserial")
+class PortGuardTests(unittest.TestCase):
+    """No test reaches a real board: port_guard fails the run of one that
+    opens a real port or lists the real ones, even where the code under test
+    swallowed the refusal."""
+
+    # A name no host has, so a guard that let it through still opens nothing.
+    PORT = "autana-test-no-such-port"
+
+    def run_swallowing(self, statement, guard="port_guard"):
+        child = ("import sys; sys.path.insert(0, sys.argv[1]); import " + guard + "\n"
+                 "try:\n    " + statement + "\nexcept BaseException:\n    pass\n")
+        return subprocess.run([sys.executable, "-c", child, str(DEVICE / "tests")],
+                              capture_output=True, text=True)
+
+    def test_opening_a_real_port_fails_the_run(self):
+        for guard in ("port_guard", "isolation"):
+            with self.subTest(guard=guard):
+                result = self.run_swallowing(f"import serial; serial.Serial({self.PORT!r})", guard)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("opened the real serial port " + self.PORT, result.stderr)
+
+    def test_listing_the_real_ports_fails_the_run(self):
+        result = self.run_swallowing(
+            "from serial.tools import list_ports; list_ports.comports()")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("listed the real USB serial ports", result.stderr)
+
+    def test_a_refused_open_is_not_waited_out_as_a_busy_port(self):
+        import serial
+        sleeps = []
+        with self.assertRaises(port_guard.RealPortTouched):
+            device.open_when_free(device.PORT_WAIT_SECONDS, opener=lambda: serial.Serial(self.PORT),
+                                  sleep=sleeps.append, now=lambda: sum(sleeps))
+        port_guard.violations.remove("opened the real serial port " + self.PORT)
+        self.assertEqual(sleeps, [])
+
+
+class PortGuardCoverageTests(unittest.TestCase):
+    def test_every_test_module_that_imports_device_imports_the_guard_first(self):
+        """Each test directory runs in its own process, so the guard is only
+        there if the module that brings device in (directly, or through
+        autana) brought it in first."""
+        engine = DEVICE.parents[1]
+        listed = subprocess.run(["git", "ls-files", "*.py"], cwd=engine, capture_output=True,
+                                text=True, check=True).stdout.split()
+        unguarded = []
+        for name in (name for name in listed if "/tests/" in name):
+            tree = ast.parse((engine / name).read_text(encoding="utf-8"))
+            imports = [(node.lineno, alias.name) for node in ast.walk(tree)
+                       if isinstance(node, ast.Import) for alias in node.names]
+            imports += [(node.lineno, node.module) for node in ast.walk(tree)
+                        if isinstance(node, ast.ImportFrom)]
+            device_at = min((line for line, module in imports if module in ("device", "autana")),
+                            default=None)
+            guard_at = min((line for line, module in imports
+                            if module in ("port_guard", "isolation")), default=None)
+            if device_at is not None and (guard_at is None or guard_at > device_at):
+                unguarded.append(name)
+        self.assertEqual(unguarded, [])
 
 
 class HookIsolationTests(unittest.TestCase):
@@ -158,9 +308,23 @@ class PortWaitTests(unittest.TestCase):
         self.assertIs(result, connection)
         connection.close.assert_not_called()
 
-    def test_a_straggler_is_waited_out(self):
-        device.open_when_free(120, self.opener(3), self.sleep, lambda: self.clock[0])
-        self.assertEqual(self.slept, [1.0, 1.0, 1.0])
+    def test_a_straggler_is_waited_out_with_a_bounded_backoff(self):
+        device.open_when_free(120, self.opener(6), self.sleep, lambda: self.clock[0])
+        first, most = device.OPEN_FIRST_PAUSE_SECONDS, device.OPEN_MAX_PAUSE_SECONDS
+        self.assertEqual(self.slept, [first, 2 * first, 4 * first, 8 * first, most, most])
+
+    def test_last_backoff_pause_is_clipped(self):
+        bound = device.OPEN_FIRST_PAUSE_SECONDS / 2
+        with self.assertRaises(device.PortUnavailable):
+            device.open_when_free(bound, self.opener(99), self.sleep, lambda: self.clock[0])
+        self.assertEqual(self.slept, [bound])
+
+    def test_clock_crossing_deadline_cannot_make_sleep_negative(self):
+        bound = device.OPEN_FIRST_PAUSE_SECONDS
+        readings = iter([0, bound / 2, 2 * bound, 2 * bound])
+        with self.assertRaises(device.PortUnavailable):
+            device.open_when_free(bound, self.opener(99), self.sleep, lambda: next(readings))
+        self.assertTrue(all(pause >= 0 for pause in self.slept))
 
     def test_a_port_nobody_frees_reports_at_the_deadline(self):
         with self.assertRaises(device.PortUnavailable) as caught:
@@ -218,7 +382,7 @@ class DeviceTests(unittest.TestCase):
                 b"".join(f"file.c:{line}:bad_{line}:FAIL: wrong {line}\n".encode()
                          for line in range(1, 13)))
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("suite results: 1 PASS, 12 FAIL", lines)
         self.assertIn("bad_1: wrong 1", lines)
@@ -232,7 +396,7 @@ class DeviceTests(unittest.TestCase):
             [f"C:\\w\\suite_gfx.c:{n}:b_{n}:FAIL: y\n".encode() for n in range(3)] +
             [b"/p/suite_gfx.c:99:ok:PASS\n"])
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         lines = [call.args[0] for call in printed.call_args_list]
         by_suite = lines[lines.index("2 more in the capture; by suite:") + 1:][:2]
         self.assertEqual(by_suite, ["  suite_sand_scenes: 9 FAIL", "  suite_gfx: 3 FAIL"])
@@ -240,13 +404,28 @@ class DeviceTests(unittest.TestCase):
     def test_under_the_cap_there_is_no_per_suite_block(self):
         data = b"/p/suite_gfx.c:1:b:FAIL: y\n"
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         self.assertFalse(any("by suite" in call.args[0] for call in printed.call_args_list))
+
+    def test_a_run_that_crashed_fails_with_every_test_passed(self):
+        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\n"
+        with mock.patch("builtins.print") as printed:
+            failed = device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
+        self.assertTrue(failed)
+        printed.assert_any_call("crash: abort() was called at PC 0x40376f2b on core 0")
+
+    def test_a_selftest_may_hold_its_own_boot_and_no_second(self):
+        boot = b"ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
+        with mock.patch("builtins.print"):
+            self.assertFalse(device.print_suite_output(
+                boot + b":1:good:PASS\n", "record.log", "selftest", "complete", False, 1))
+            self.assertTrue(device.print_suite_output(
+                boot + b":1:good:PASS\n" + boot, "record.log", "selftest", "complete", False, 1))
 
     def test_a_passing_run_still_names_its_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "suite", "complete", False)
+            device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("suite capture: record.log", lines)
         self.assertNotIn("boot detail", "\n".join(lines))
@@ -254,7 +433,7 @@ class DeviceTests(unittest.TestCase):
     def test_suite_output_pass_and_verbose_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
         with mock.patch("builtins.print") as printed:
-            device.print_suite_output(data, "record.log", "selftest", "complete", True)
+            device.print_suite_output(data, "record.log", "selftest", "complete", True, 1)
         lines = [call.args[0] for call in printed.call_args_list]
         self.assertIn("boot detail\n:1:good:PASS\n", lines)
         self.assertIn("selftest results: 1 PASS, 0 FAIL", lines)
@@ -878,11 +1057,14 @@ class FlashDefaultPathTests(unittest.TestCase):
              mock.patch.object(device, "now", return_value=datetime(2026, 9, 16, 12, 30, 45)), \
              mock.patch.object(device, "run_to_end", run), \
              mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
-             mock.patch.object(device, "reset"), \
+             mock.patch.object(device, "reconnect_after_reset", return_value=connection) as reconnect, \
              contextlib.redirect_stdout(output):
             with device.build_image(args, BOARD) as built:
-                device.write_image(built, store, BOARD)
+                with device.HeldLock(store, BOARD, built.args.owner, "flash", 0) as held:
+                    _, connection = device.write_image(built, store, BOARD, held)
+                    connection.close()
         self.assertEqual(connection.chunks, [])
+        reconnect.assert_called_once_with()
         return worktree, root, output.getvalue()
 
     def test_flash_uses_esptool_exit_and_build_id_without_boot_console(self):
@@ -965,6 +1147,14 @@ class FlashCommandLineTests(unittest.TestCase):
 
     def run_main(self, argv):
         calls = []
+        connection = mock.Mock()
+        store = mock_store()
+
+        def fake_write_image(built, lock_store, board, held):
+            self.assertIs(held, device.ACTIVE_LOCK.held)
+            self.assertIs(held.store, store)
+            connection.close.side_effect = lambda: self.assertIs(device.ACTIVE_LOCK.held, held)
+            return "abc", connection
 
         def fake_build_image(args, port, extra_flags=()):
             calls.append(list(extra_flags))
@@ -972,11 +1162,33 @@ class FlashCommandLineTests(unittest.TestCase):
 
         with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
              mock.patch.object(device, "build_image", fake_build_image), \
-             mock.patch.object(device, "write_image"), \
-             mock.patch.object(device, "device_lock") as fake_lock_module:
-            fake_lock_module.LockStore.return_value = mock.Mock()
+             mock.patch.object(device, "write_image", side_effect=fake_write_image), \
+             mock.patch.object(device.device_lock, "LockStore", return_value=store):
             device.main(argv)
+        connection.close.assert_called_once_with()
         return calls
+
+    def test_successful_flash_closes_reconnected_handle(self):
+        self.run_main(["--owner", "a", "flash", "--variant", "dev", "--worktree", "C:/wt"])
+
+    def test_standalone_flash_records_one_flash_duration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = fake_flash.worktree(Path(directory) / "engine")
+            store = mock_store()
+            store.root = Path(directory) / "lock"
+            connection = FakeConnection([])
+            with recorded_serial(connection, Path(directory) / "records"), \
+                 mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+                 mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                 mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts()), \
+                 mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
+                 mock.patch.object(device, "reconnect_after_reset", return_value=connection):
+                code = device.main(["--owner", "a", "flash", "--variant", "dev",
+                                    "--worktree", str(worktree)])
+            self.assertEqual(code, 0)
+            rows = device_lock.duration_rows(store.root)
+            self.assertEqual([row["command"] for row in rows], ["flash"])
+            self.assertIsNone(rows[0]["error"])
 
     def test_perf_scope_flag_becomes_an_extra_flag(self):
         calls = self.run_main(["--owner", "a", "flash", "--variant", "diag",
@@ -1247,10 +1459,11 @@ class BatchTests(unittest.TestCase):
             calls["build"].append(list(extra_flags))
             return contextlib.nullcontext("built")
 
-        def fake_write_image(built, store, port, held_lock=None):
+        def fake_write_image(built, store, port, held_lock):
             calls["events"].append("flash")
             calls["flash"].append((held_lock, built))
-            return flashed_build_id
+            calls["flash_connection"] = mock.Mock()
+            return flashed_build_id, calls["flash_connection"]
 
         def fake_run_suite(args, store, port, held_lock=None, worktree=None, commit=None):
             calls["events"].append("capture")
@@ -1290,6 +1503,11 @@ class BatchTests(unittest.TestCase):
                     code = device.batch(args, store, BOARD)
                 except device.TestFilterError:
                     code = "filter error"
+                except RuntimeError:
+                    if expect_build_id and expect_build_id != flashed_build_id:
+                        calls["flash_connection"].close.assert_called_once_with()
+                        self.assertEqual(calls["run_suite"], [])
+                    raise
                 summaries = list((Path(directory) / "rec").rglob("*_batch_*.md"))
                 summary = summaries[0].read_text(encoding="utf-8") if summaries else ""
                 index = Path(directory) / "rec" / "index.jsonl"
@@ -1632,199 +1850,445 @@ class FindElfForBuildIdTests(unittest.TestCase):
         self.assertIsNone(found)
 
 
-class CaptureAfterResetTests(unittest.TestCase):
-    """A watchdog reset can hand the first open the pre-reset handle, which
-    reads nothing and raises nothing. Only a short window after the reset
-    treats that silence as a stale handle; the caller's idle cutoff owns the
-    rest, so a silent board never holds the shared lock to the deadline."""
+class SerialLineOrderTests(unittest.TestCase):
+    def test_posix_line_failure_closes_the_open_handle(self):
+        class Serial:
+            def __init__(self):
+                self.is_open = False
+                self.closed = False
+            def open(self):
+                self.is_open = True
+            def __setattr__(self, name, value):
+                if name == "rts" and self.is_open:
+                    raise failure("port vanished")
+                object.__setattr__(self, name, value)
+            def close(self):
+                self.closed = True
+        original_init = Serial.__init__
+        handles = []
+        def initialized(handle):
+            original_init(handle)
+            handles.append(handle)
+        Serial.__init__ = initialized
+        for failure in (OSError, KeyboardInterrupt):
+            with self.subTest(failure=failure), \
+                 mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
+                 mock.patch.object(device, "locked_port", return_value="fake"), \
+                 mock.patch.object(device, "os", Namespace(name="posix")):
+                with self.assertRaises(failure):
+                    device.open_serial()
+                self.assertTrue(handles[-1].closed)
 
-    def capture(self, connections, seconds, idle_seconds):
-        connections = iter(connections)
-        opened = lambda *unused, **unused_keywords: next(connections)
-        started = time.monotonic()
-        with mock.patch.object(device, "open_when_free", side_effect=opened), \
-             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
-             mock.patch.object(device, "RESET_REOPEN_SECONDS", 0.3):
-            data, reason = device.capture_after_reset(os.devnull, seconds, idle_seconds)
-        return data, reason, time.monotonic() - started
+    def test_posix_port_without_modem_lines_opens_but_io_failure_closes(self):
+        for line in ("rts", "dtr"):
+            for code in (errno.ENOTTY, errno.EINVAL, errno.EIO):
+                with self.subTest(line=line, code=code):
+                    handles = []
+                    class Serial:
+                        def __init__(self):
+                            self.is_open = False
+                            self.closed = False
+                            handles.append(self)
+                        def open(self):
+                            self.is_open = True
+                        def __setattr__(self, name, value):
+                            if name == line and self.is_open:
+                                raise OSError(code, "modem line unavailable")
+                            object.__setattr__(self, name, value)
+                        def close(self):
+                            self.closed = True
+                    with mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
+                         mock.patch.object(device, "locked_port", return_value="fake"), \
+                         mock.patch.object(device, "os", Namespace(name="posix")):
+                        if code == errno.EIO:
+                            with self.assertRaises(OSError) as caught:
+                                device.open_serial()
+                            self.assertEqual(caught.exception.errno, code)
+                            self.assertTrue(handles[0].closed)
+                        else:
+                            connection = device.open_serial()
+                            self.assertIs(connection, handles[0])
+                            self.assertFalse(connection.closed)
+                            connection.close()
 
-    def test_a_handle_silent_since_the_reset_is_reopened_despite_a_long_idle_cutoff(self):
-        data, reason, elapsed = self.capture(
-            [FakeConnection([]), FakeConnection([b"SELFTEST_COMPLETE failures=0\n"])],
-            seconds=30, idle_seconds=300)
-        self.assertEqual(reason, "complete")
-        self.assertIn(b"SELFTEST_COMPLETE", data)
-        self.assertLess(elapsed, 5)
+    def test_posix_lowers_rts_before_dtr_and_windows_uses_one_dcb(self):
+        class Serial:
+            def __init__(self):
+                self.dtr = self.rts = True
+                self.is_open = False
+                self.transitions = []
 
-    def test_a_handle_silent_since_the_reset_is_reopened_with_no_idle_cutoff(self):
-        data, reason, unused_elapsed = self.capture(
-            [FakeConnection([]), FakeConnection([b"SELFTEST_COMPLETE failures=0\n"])],
-            seconds=30, idle_seconds=None)
-        self.assertEqual(reason, "complete")
+            def __setattr__(self, name, value):
+                object.__setattr__(self, name, value)
+                if name in ("dtr", "rts") and getattr(self, "is_open", False):
+                    self.transitions.append((self.dtr, self.rts))
 
-    def test_a_board_silent_for_good_ends_at_its_idle_cutoff_not_the_deadline(self):
-        forever_silent = (FakeConnection([]) for unused in iter(int, 1))
-        data, reason, elapsed = self.capture(forever_silent, seconds=30, idle_seconds=0.5)
-        self.assertEqual((data, reason), (b"", "silent"))
-        self.assertLess(elapsed, 5)
+            def open(self):
+                self.is_open = True
+                if platform == "posix":
+                    self.transitions.extend([(True, True), (self.dtr, True), (self.dtr, self.rts)])
+                else:
+                    self.transitions.append((self.dtr, self.rts))
 
-    def test_output_that_goes_idle_after_bytes_is_not_reopened(self):
-        opens = []
+        for platform in ("posix", "nt"):
+            with self.subTest(platform=platform), \
+                 mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
+                 mock.patch.object(device, "locked_port", return_value="fake-port"), \
+                 mock.patch.object(device, "os", Namespace(name=platform)):
+                connection = device.open_serial()
+                self.assertEqual(connection.transitions[-1], (False, False))
+                self.assertNotIn((False, True), connection.transitions)
+                if platform == "posix":
+                    self.assertEqual(connection.transitions[-2:], [(True, False), (False, False)])
+                    self.assertTrue(connection.exclusive)
+                else:
+                    self.assertEqual(connection.transitions, [(False, False)])
 
-        def opened(*unused, **unused_keywords):
-            opens.append(1)
-            return FakeConnection([b"I (640) boot: some output\n"])
 
-        started = time.monotonic()
-        with mock.patch.object(device, "open_when_free", side_effect=opened), \
-             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05):
-            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.2)
-        self.assertEqual((reason, len(opens)), ("idle", 1))
-        self.assertLess(time.monotonic() - started, 5)
+class ResetReconnectTests(unittest.TestCase):
+    """USB listing and opening are separate stages of the same reset."""
 
-    def test_silence_after_output_on_an_earlier_handle_is_not_reopened(self):
-        class LostAfterOutput(FakeConnection):
-            def read(self, size):
-                if self.chunks:
-                    return super().read(size)
-                raise OSError("device re-enumerated")
-
-        opens = []
-        connections = iter([LostAfterOutput([b"I (640) boot: some output\n"])]
-                           + [FakeConnection([]) for unused in range(20)])
-
-        def opened(*unused, **unused_keywords):
-            opens.append(1)
-            return next(connections)
-
-        with mock.patch.object(device, "open_when_free", side_effect=opened), \
-             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
-             mock.patch.object(device, "RESET_REOPEN_SECONDS", 5):
-            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.5)
-        self.assertEqual((reason, len(opens)), ("idle", 2))
-
-    def test_idle_cutoff_equal_to_the_first_byte_wait_still_reopens_a_stale_handle(self):
-        connections = iter([FakeConnection([]),
-                            FakeConnection([b"SELFTEST_COMPLETE failures=0\n"])])
-        with mock.patch.object(device, "open_when_free",
-                               side_effect=lambda *unused, **unused_keywords: next(connections)), \
-             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.1):
-            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.1)
-        self.assertEqual(reason, "complete")
-
-class WaitForPortTests(unittest.TestCase):
-    """A reset takes the board's port off USB for seconds; it returns by the
-    board's serial number, possibly under another name."""
+    platform = "nt"
 
     def setUp(self):
-        self.clock = [0.0]
-        self.listing = []
+        self.clock = 0.0
+        self.ticks = 0
+        self.slept = []
+        self.events = []
+        self.usb = FakeUsbBoard(BOARD, ["COM5", "COM7"])
+        self.other = []
+        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
+        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
+        original_open, original_reconnect = device.open_when_free, device.reconnect_after_reset
+
+        def opened(*args, **kwargs):
+            return original_open(*args, **dict(kwargs, sleep=self.sleep, now=self.now))
+
+        def reconnect(*args, **kwargs):
+            return original_reconnect(*args, **dict(kwargs, sleep=self.sleep, now=self.now))
+
+        for patch in (mock.patch.dict(sys.modules, {"serial": self.usb.serial_module(self.now, self.sleep, self.platform)}),
+                      mock.patch.object(device, "os", Namespace(name=self.platform)),
+                      mock.patch.object(device, "plugged_boards", self.boards),
+                      mock.patch.object(device, "require_live_lock"),
+                      mock.patch.object(device, "require_unlost"),
+                      mock.patch.object(device, "previous_holder_note", return_value=""),
+                      mock.patch.object(device, "python_with_pyserial", return_value="python"),
+                      mock.patch.object(device.time, "monotonic", self.now),
+                      mock.patch.object(device, "open_when_free", side_effect=opened),
+                      mock.patch.object(device, "reconnect_after_reset", side_effect=reconnect),
+                      mock.patch.object(device.subprocess, "run", self.usb.esptool(self.now, self.sleep))):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def now(self):
+        self.ticks += 1
+        self.assertLess(self.ticks, 10000, "wait did not terminate on the fake clock")
+        return self.clock
 
     def sleep(self, seconds):
-        self.clock[0] += seconds
+        self.assertGreaterEqual(seconds, 0)
+        self.slept.append(seconds)
+        self.clock += seconds
+        self.assertLess(self.clock, 2 * device.PORT_WAIT_SECONDS)
+        for at, action in list(self.events):
+            if self.clock >= at:
+                self.events.remove((at, action))
+                action()
 
     def boards(self):
-        return [device.Board(BOARD, name) for name in self.listing
-                if self.clock[0] >= self.appears_at]
+        return self.other + ([device.Board(BOARD, self.usb.port)]
+                             if self.usb.listed(self.now()) else [])
 
-    def wait(self, seconds=20, probe=lambda port: None):
-        with mock.patch.object(device, "plugged_boards", self.boards):
-            return device.wait_for_port(BOARD, seconds, probe, self.sleep,
-                                        lambda: self.clock[0])
+    def test_listed_but_unopenable_port_waits_for_open(self):
+        probe = FakeUsbBoard(BOARD, ["COM5"])
+        probe.reset(self.now())
+        for at in (probe.busy_at, probe.returns):
+            self.assertTrue(probe.listed(at))
+            with self.assertRaises(FileNotFoundError):
+                probe.open(probe.port, False, False, at)
+        self.usb.reset(self.now())
+        with device.reconnect_after_reset() as connection:
+            self.assertGreaterEqual(self.clock, self.usb.opens)
+            self.assertEqual(connection.boot, self.usb.boot)
 
-    def test_a_port_that_appears_after_a_delay_is_returned_under_its_new_name(self):
-        self.appears_at = 6.0
-        self.listing = ["/dev/ttyACM1"]
-        self.assertEqual(self.wait(), "/dev/ttyACM1")
-        self.assertGreaterEqual(self.clock[0], 6.0)
+    def test_a_reset_returns_the_live_handle_under_its_new_name(self):
+        with device.reset() as connection:
+            self.assertEqual((connection.port, connection.boot), ("COM7", self.usb.boot))
+            self.assertGreaterEqual(self.clock, self.usb.open_at)
+            connection.read(1)
+        self.assertIsNone(connection.boot)
+        self.assertEqual(self.usb.resets, 1)
 
-    def test_a_port_that_never_appears_times_out_cleanly(self):
-        self.appears_at = 1e9
-        self.listing = ["COM5"]
-        with self.assertRaisesRegex(device.PortUnavailable, "did not reappear within 20s"):
-            self.wait()
-        self.assertLess(self.clock[0], 21)
+    def test_a_reset_capture_reads_the_boot_without_a_second_open(self):
+        self.usb.boot_line = b"SELFTEST_COMPLETE failures=0\n"
+        original = device.open_serial
+        opened_boots = []
 
-    def test_a_listed_port_that_cannot_be_opened_yet_is_waited_out(self):
-        self.appears_at = 0.0
-        self.listing = ["COM5"]
-        opens = []
+        def once_per_boot():
+            connection = original()
+            if self.usb.resets:
+                self.assertGreaterEqual(self.clock, self.usb.open_at)
+            self.assertNotIn(connection.boot, opened_boots)
+            opened_boots.append(connection.boot)
+            return connection
 
-        def probe(port):
-            opens.append(port)
-            if len(opens) < 4:
-                raise FileNotFoundError(2, "gone")
+        with mock.patch.object(device, "open_serial", side_effect=once_per_boot):
+            data, reason = device.reset_and_capture(os.devnull, 5, None)
+        self.assertEqual((data, reason, self.usb.resets), (self.usb.boot_line, "complete", 1))
 
-        self.assertEqual(self.wait(probe=probe), "COM5")
-        self.assertEqual(len(opens), 4)
+    def test_another_board_staying_listed_does_not_hide_the_reset(self):
+        self.other = [device.Board("other-board", "COM9")]
+        with device.reset() as connection:
+            self.assertEqual(connection.port, "COM7")
+            self.assertGreaterEqual(self.clock, self.usb.open_at)
+            self.assertLess(self.clock, 0.2 + device.RESET_LEAVE_SECONDS)
 
-    def test_the_liveness_check_runs_on_every_miss(self):
-        self.appears_at = 1e9
-        checks = []
-        with mock.patch.object(device, "plugged_boards", self.boards):
-            with self.assertRaises(device.PortUnavailable):
-                device.wait_for_port(BOARD, 2, lambda port: None, self.sleep,
-                                     lambda: self.clock[0], lambda: checks.append(1))
-        self.assertGreater(len(checks), 1)
+    def test_lock_lost_during_wait_stops(self):
+        self.usb.reset(self.now())
 
+        def live():
+            if self.clock >= self.usb.leaves:
+                raise device.LockLost("lost during reset")
 
-class ResetTests(unittest.TestCase):
-    def after_argument(self, *args, **keywords):
-        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
-        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
-        with mock.patch.object(device, "locked_port", return_value="COM5"), \
-             mock.patch.object(device, "require_live_lock"), \
-             mock.patch.object(device, "wait_for_port", return_value="COM5"), \
-             mock.patch.object(device, "python_with_pyserial", return_value="python"), \
-             mock.patch.object(device.subprocess, "run") as run:
-            device.reset(*args, **keywords)
-        command = run.call_args[0][0]
-        return command[command.index("--after") + 1]
+        with mock.patch.object(device, "require_live_lock", side_effect=live):
+            with self.assertRaises(device.LockLost):
+                device.reconnect_after_reset()
+        self.assertLess(self.clock, self.usb.returns)
 
-    def test_restarts_through_rts_by_default(self):
-        self.assertEqual(self.after_argument(), "hard_reset")
+    def test_silent_rts_reset_gets_one_watchdog_and_captures_new_boot(self):
+        run = self.usb.esptool(self.now, self.sleep)
+        afters = []
 
-    def test_restarts_through_the_watchdog_when_asked(self):
-        self.assertEqual(self.after_argument(after="watchdog_reset"), "watchdog_reset")
+        def resetting(command, **kwargs):
+            after = command[command.index("--after") + 1]
+            afters.append(after)
+            self.usb.boot_line = (b"SELFTEST_COMPLETE failures=0\n"
+                                  if after == "watchdog_reset" else b"")
+            return run(command, **kwargs)
 
+        with mock.patch.object(device.subprocess, "run", side_effect=resetting):
+            data, reason = device.reset_and_capture(os.devnull, 10, None)
+        self.assertEqual(afters, ["hard_reset", "watchdog_reset"])
+        self.assertEqual((data, reason), (self.usb.boot_line, "complete"))
 
-class ResetRetryTests(unittest.TestCase):
-    """esptool loses the port mid-connect while the board re-enumerates."""
+    def test_reconnected_handle_quiet_past_first_byte_cutoff_is_read_on(self):
+        self.usb.boot_line = b"boot before loss\n"
+        connection = device.reset()
+        self.events.append((self.clock + 0.4, lambda: self.usb.reset(self.now())))
+        original = device.reconnect_after_reset
 
-    def run_reset(self, outcomes):
-        device.ACTIVE_LOCK.held = Namespace(board=BOARD)
-        self.addCleanup(delattr, device.ACTIVE_LOCK, "held")
-        calls = []
+        def reconnect(*args, **kwargs):
+            handle = original(*args, **kwargs)
+            handle.unread = b""
+            self.events.append((self.clock + device.RESET_FIRST_BYTE_SECONDS + 0.4,
+                                lambda: setattr(handle, "unread", b"SELFTEST_COMPLETE failures=0\n")))
+            return handle
 
-        def fake_run(command, check):
-            calls.append(command)
-            outcome = outcomes[len(calls) - 1]
-            if outcome:
-                raise subprocess.CalledProcessError(1, command)
+        with mock.patch.object(device, "reconnect_after_reset", side_effect=reconnect):
+            data, reason = device.capture_after_reset(os.devnull, 10, None, connection=connection)
+        self.assertEqual(reason, "complete")
+        self.assertIn(b"boot before loss", data)
+        self.assertIn(b"SELFTEST_COMPLETE", data)
 
-        with mock.patch.object(device, "locked_port", return_value="COM5"), \
-             mock.patch.object(device, "require_live_lock"), \
-             mock.patch.object(device, "wait_for_port", return_value="COM5") as wait, \
-             mock.patch.object(device, "python_with_pyserial", return_value="python"), \
-             mock.patch.object(device.subprocess, "run", side_effect=fake_run):
+    def test_failed_mid_capture_reconnect_keeps_bytes(self):
+        self.usb.boot_line = b"boot before loss\n"
+        connection = device.reset()
+        self.usb.returns = device.PORT_WAIT_SECONDS
+        self.events.append((self.clock + 0.4, lambda: self.usb.reset(self.now())))
+        started = self.clock
+        data, reason = device.capture_after_reset(os.devnull, 3, None, connection=connection)
+        self.assertLessEqual(self.clock - started, 3 + device.USB_POLL_SECONDS)
+        self.assertEqual((data, reason), (self.usb.boot_line, "port lost"))
+        self.assertIsNone(connection.boot)
+
+    def test_never_returns_uses_the_default_reset_bound(self):
+        self.usb.returns = device.PORT_WAIT_SECONDS
+        with self.assertRaises(device.PortUnavailable):
+            device.reset()
+        self.assertAlmostEqual(self.clock, 0.2 + device.PORT_REAPPEAR_SECONDS)
+
+    def test_never_leaves_waits_only_the_default_leave_bound(self):
+        self.usb.leaves = self.usb.returns = self.usb.opens = self.usb.busy_at = device.PORT_WAIT_SECONDS
+        with device.reset():
+            pass
+        self.assertAlmostEqual(self.clock, 0.2 + device.RESET_LEAVE_SECONDS)
+
+    def test_leave_wait_cannot_exceed_remaining_capture_time(self):
+        with device.reconnect_after_reset(0):
+            pass
+        self.assertEqual(self.clock, 0)
+
+    def test_open_gets_only_time_left_in_reconnect_bound(self):
+        self.usb.reset(self.now())
+        self.usb.opens = self.usb.open_at = device.PORT_WAIT_SECONDS
+        with self.assertRaises(device.PortUnavailable):
+            device.reconnect_after_reset(device.RESET_LEAVE_SECONDS)
+        self.assertAlmostEqual(self.clock, device.RESET_LEAVE_SECONDS)
+
+    def test_resetting_thunk_returns_port_or_preserves_failure(self):
+        failures = (None, OSError("open failed"), RuntimeError("write failed"),
+                    subprocess.CalledProcessError(7, ["resetter"]),
+                    device.LockLost("lock was lost during the flash"))
+        for failure in failures:
+            for unavailable in (False, True):
+                with self.subTest(failure=failure, unavailable=unavailable):
+                    connection = mock.Mock()
+                    run = mock.Mock(side_effect=failure)
+                    with mock.patch.object(device, "reconnect_after_reset",
+                            side_effect=device.PortUnavailable("missing") if unavailable else None,
+                            return_value=connection) as reconnect:
+                        if failure is None and not unavailable:
+                            self.assertIs(device.run_resetting(run), connection)
+                        else:
+                            expected = type(failure) if failure else device.PortUnavailable
+                            with self.assertRaises(expected) as caught:
+                                device.run_resetting(run)
+                            if failure:
+                                self.assertIs(caught.exception, failure)
+                        run.assert_called_once_with()
+                        if isinstance(failure, device.LockLost):
+                            reconnect.assert_not_called()
+                        else:
+                            reconnect.assert_called_once_with()
+                        self.assertEqual(connection.close.call_count,
+                                         int(failure is not None and not unavailable
+                                             and not isinstance(failure, device.LockLost)))
+
+    def test_poll_sleeps_clip_leave_and_return_bounds(self):
+        bound = device.USB_POLL_SECONDS * 1.5
+        with device.reconnect_after_reset(bound):
+            pass
+        self.assertAlmostEqual(self.clock, bound)
+        self.clock = 0
+        self.usb.reset(self.now())
+        self.usb.leaves = 0
+        self.usb.returns = device.PORT_WAIT_SECONDS
+        with self.assertRaises(device.PortUnavailable):
+            device.reconnect_after_reset(bound)
+        self.assertAlmostEqual(self.clock, bound)
+
+    def test_failed_flash_reconnects_before_releasing_lock(self):
+        held = Namespace(held={"acquired_at": None}, kind="batch")
+        failure = RuntimeError("write failed")
+        def write(*unused):
+            self.usb.reset(self.now())
+            raise failure
+        built = mock.MagicMock(build_id="abc", write=["flash"], run=mock.Mock(side_effect=write))
+        locked = []
+        @contextlib.contextmanager
+        def lock():
+            locked.append(True)
             try:
-                device.reset()
+                yield held
             finally:
-                self.waits = wait.call_count
-        return calls
+                locked.pop()
+        original = device.reconnect_after_reset
+        def reconnect():
+            self.assertEqual(locked, [True])
+            self.assertFalse(built.record.called)
+            return original()
+        with mock.patch.object(device, "holding", return_value=lock()), \
+             mock.patch.object(device, "reconnect_after_reset", side_effect=reconnect):
+            with self.assertRaises(RuntimeError) as caught:
+                device.write_image(built, None, BOARD, held)
+        self.assertIs(caught.exception, failure)
+        self.assertEqual(self.usb.boot, 1)
+        self.assertGreaterEqual(self.clock, self.usb.open_at)
 
-    def test_a_serial_exception_on_the_first_attempt_is_retried_after_waiting_again(self):
-        calls = self.run_reset([True, False])
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(self.waits, 2)
+    def test_flash_lock_lost_message_survives_without_reconnect(self):
+        held = Namespace(held={"acquired_at": None}, kind="batch")
+        failure = device.LockLost("device lock was lost during the flash; the flash was stopped")
+        built = mock.MagicMock(run=mock.Mock(side_effect=failure))
+        with mock.patch.object(device, "holding", return_value=contextlib.nullcontext(held)), \
+             mock.patch.object(device, "reconnect_after_reset", side_effect=device.LockLost) as reconnect:
+            with self.assertRaises(device.LockLost) as caught:
+                device.write_image(built, None, BOARD, held)
+        self.assertIs(caught.exception, failure)
+        self.assertEqual(str(caught.exception), str(failure))
+        reconnect.assert_not_called()
 
-    def test_two_failures_stop_with_the_error_and_no_third_attempt(self):
-        with self.assertRaises(subprocess.CalledProcessError):
-            self.run_reset([True, True, False])
-        self.assertEqual(self.waits, 2)
+    def test_flash_handle_closes_when_lock_exit_or_record_raises(self):
+        held = Namespace(held={"acquired_at": None}, kind="batch")
+        for stage in ("lock", "record", "snapshot"):
+            with self.subTest(stage=stage):
+                connection = mock.Mock()
+                failure = RuntimeError("cleanup failed")
+                built = mock.MagicMock(build_id="abc")
+                if stage == "record":
+                    built.record.side_effect = failure
+                if stage == "snapshot":
+                    built.__exit__.side_effect = failure
+                @contextlib.contextmanager
+                def lock():
+                    yield held
+                    if stage == "lock":
+                        raise failure
+                with mock.patch.object(device, "holding", return_value=lock()), \
+                     mock.patch.object(device, "reconnect_after_reset", return_value=connection):
+                    with self.assertRaises(RuntimeError) as caught:
+                        device.write_image(built, None, BOARD, held)
+                self.assertIs(caught.exception, failure)
+                connection.close.assert_called_once_with()
 
-    def test_a_clean_first_attempt_runs_esptool_once(self):
-        self.assertEqual(len(self.run_reset([False])), 1)
+    def test_boot_handle_closes_when_capture_path_resolution_raises(self):
+        connection = mock.Mock()
+        args = Namespace(owner="agent", variant="diag")
+        failure = OSError("capture path unavailable")
+        with mock.patch.object(device, "resolve_capture_path", side_effect=failure):
+            with self.assertRaises(OSError) as caught:
+                device.await_console(args, BOARD, "abc", None, connection)
+        self.assertIs(caught.exception, failure)
+        connection.close.assert_called_once_with()
+
+    def test_flash_boot_uses_returned_handle_without_opening_again(self):
+        held = Namespace(held={"acquired_at": None}, kind="batch")
+        def write(*unused):
+            self.usb.reset(self.now())
+        built = mock.MagicMock(build_id="abc", write=["flash"], run=mock.Mock(side_effect=write))
+        self.usb.boot_line = b"BUILD_ID=abc\n" + device.CONSOLE_UP + b"\n"
+        with mock.patch.object(device, "holding", return_value=contextlib.nullcontext(held)):
+            build_id, connection = device.write_image(built, None, BOARD, held)
+        self.assertEqual(build_id, "abc")
+        args = Namespace(owner="agent", purpose="boot", variant="diag", worktree=".")
+        with mock.patch.object(device, "open_when_free", side_effect=AssertionError("second open")), \
+             mock.patch.object(device, "resolve_capture_path", return_value=(os.devnull, False)), \
+             mock.patch.object(device, "record_capture", return_value="boot.log"), \
+             mock.patch.object(device, "git_commit", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            device.await_console(args, BOARD, build_id, None, connection)
+        self.assertIn("booted BUILD_ID=abc", output.getvalue())
+        self.assertIsNone(connection.boot)
+
+
+class PosixResetReconnectTests(ResetReconnectTests):
+    platform = "posix"
+
+
+class CaptureAfterResetTests(unittest.TestCase):
+    """The first handle after a reset is the new boot's: one that hears
+    nothing at all is a board the reset left in download mode."""
+
+    def setUp(self):
+        clock = (tick * device.USB_POLL_SECONDS for tick in itertools.count())
+        patch = mock.patch.object(device.time, "monotonic", side_effect=lambda: next(clock))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_a_board_silent_from_the_reset_ends_as_silent_at_once(self):
+        started = time.monotonic()
+        with mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
+             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05):
+            data, reason = device.capture_after_reset(os.devnull, 30, 300, connection=FakeConnection([]))
+        self.assertEqual((data, reason), (b"", "silent"))
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_output_that_goes_idle_is_not_reopened(self):
+        output = FakeConnection([b"I (640) boot: some output\n"])
+        with mock.patch.object(device, "open_when_free", return_value=output) as opened, \
+             mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05):
+            unused_data, reason = device.capture_after_reset(os.devnull, 30, 0.2, connection=output)
+        self.assertEqual((reason, opened.call_count), ("idle", 0))
 
 
 class ListenElfResolutionTests(unittest.TestCase):
@@ -1917,6 +2381,12 @@ class ListenLifecycleTests(unittest.TestCase):
                 self.assertIn("listen capture: " + entry["capture_path"], output)
                 self.assertIn("listen capture ended: stopped", output)
                 store.release.assert_called_once()
+
+    def test_a_board_that_reboots_while_listened_to_fails_the_listen(self):
+        connection = FakeConnection([b"BUILD_ID=abc123\nrst:0xc (RTC_SW_CPU_RST),boot:0x8\n"])
+        code, output, _, _, _ = self.run_listen(connection, ["--seconds", "0.1"])
+        self.assertEqual(code, 1)
+        self.assertIn("rebooted: 1 boots, expected at most 0", output)
 
     def test_listen_requires_exactly_one_duration_mode(self):
         for flags in ([], ["--seconds", "1", "--follow"]):
@@ -2022,6 +2492,91 @@ class ListenLifecycleTests(unittest.TestCase):
         store.release.assert_called_once()
 
 
+class CoredumpTests(unittest.TestCase):
+    """Decode the dump against the running build, under the board lock."""
+
+    def test_failed_coredump_commands_keep_failure_and_reconnect(self):
+        for erase in (True, False):
+            with self.subTest(erase=erase):
+                command = ["--board", BOARD, "coredump"] + (["--erase"] if erase else ["--elf", "firmware.elf"])
+                connection = FakeConnection()
+                def run(command, check=False):
+                    result = subprocess.CompletedProcess(command, 7)
+                    if check:
+                        result.check_returncode()
+                    return result
+                with mock.patch.object(device.subprocess, "run", run), \
+                     mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
+                     mock.patch.object(device, "locked_port", return_value="COM9"), \
+                     mock.patch.object(device, "toolchain_tool", return_value=None), \
+                     mock.patch.object(device, "idf_path", return_value="idf"), \
+                     mock.patch.object(device, "reconnect_after_reset", return_value=connection) as reconnect, \
+                     mock.patch.object(connection, "close") as closed, \
+                     contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(device.main(command), 1 if erase else 7)
+                self.assertNotIn("erased", output.getvalue())
+                reconnect.assert_called_once_with()
+                closed.assert_called_once_with()
+
+    def test_info_failure_without_returning_port_keeps_exit_status(self):
+        failure = subprocess.CalledProcessError(7, ["esp_coredump"])
+        args = Namespace(owner="agent", purpose="dump", wait=0, erase=False, elf="firmware.elf")
+        with mock.patch.object(device.subprocess, "run", side_effect=failure), \
+             mock.patch.object(device, "locked_port", return_value="COM9"), \
+             mock.patch.object(device, "toolchain_tool", return_value=None), \
+             mock.patch.object(device, "reconnect_after_reset",
+                               side_effect=device.PortUnavailable("missing")) as reconnect:
+            self.assertEqual(device.coredump(args, mock_store(), BOARD), failure.returncode)
+        reconnect.assert_called_once_with()
+
+    def run_coredump(self, erase=False, elf=None, found_elf=Path("wt/launcher/build.dev/launcher.elf")):
+        args = Namespace(owner="agent", purpose="autana coredump", wait=0, erase=erase, elf=elf)
+        store = mock_store()
+        with mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
+             mock.patch.object(device, "exchange", return_value=(["BUILD_ID=abc123-dev"], True)) as asked, \
+             mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder, \
+             mock.patch.object(device, "locked_port", return_value="COM9"), \
+             mock.patch.object(device, "toolchain_tool", return_value=None), \
+             mock.patch.object(device, "idf_path", return_value="idf"), \
+             mock.patch.object(device.subprocess, "run",
+                               return_value=subprocess.CompletedProcess([], 0)) as run, \
+             mock.patch.object(device, "reconnect_after_reset") as reconnect, \
+             mock.patch("builtins.print"):
+            code = device.coredump(args, store, BOARD)
+        store.release.assert_called_once()
+        # esptool resets the board on its way out, read or erase.
+        self.assertEqual(reconnect.call_count, int(found_elf is not None or erase))
+        return code, asked, finder, run
+
+    def test_decodes_against_the_running_builds_elf(self):
+        code, asked, finder, run = self.run_coredump()
+        self.assertEqual(code, 0)
+        self.assertEqual(asked.call_args[0][1], device.BUILD_ID_REQUEST)
+        self.assertEqual(finder.call_args[0][1], "abc123-dev")
+        command = run.call_args[0][0]
+        self.assertEqual(command[command.index("--port") + 1], "COM9")
+        self.assertEqual(command[-2:], ["info_corefile", str(Path("wt/launcher/build.dev/launcher.elf"))])
+
+    def test_no_matching_elf_reads_nothing(self):
+        code, _, _, run = self.run_coredump(found_elf=None)
+        self.assertEqual(code, 1)
+        run.assert_not_called()
+
+    def test_an_elf_given_skips_the_question(self):
+        code, asked, _, run = self.run_coredump(elf="other.elf")
+        self.assertEqual(code, 0)
+        asked.assert_not_called()
+        self.assertEqual(run.call_args[0][0][-1], "other.elf")
+
+    def test_erase_clears_only_the_coredump_partition(self):
+        code, asked, _, run = self.run_coredump(erase=True)
+        self.assertEqual(code, 0)
+        asked.assert_not_called()
+        command = run.call_args[0][0]
+        self.assertIn("erase_partition", command)
+        self.assertIn("--partition-name=" + device.COREDUMP_PARTITION, command)
+
+
 class WaiterNoticeTests(unittest.TestCase):
     def test_holder_reports_each_waiter_once(self):
         store = mock_store()
@@ -2055,7 +2610,7 @@ class ResetCommandTests(unittest.TestCase):
         self.assertTrue(args.capture)
         self.assertEqual(args.seconds, 15.0)
 
-    def test_capture_resets_waits_reopens_after_a_lost_handle_and_records(self):
+    def test_capture_reconnects_after_a_lost_handle_and_records(self):
         class VanishingConnection(FakeConnection):
             def read(self, unused_size):
                 raise OSError("USB device disappeared")
@@ -2067,9 +2622,9 @@ class ResetCommandTests(unittest.TestCase):
         second = FakeConnection([b"cpu_start: Multicore app\nSELFTEST_COMPLETE\n"])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
-            with mock.patch.object(device, "reset") as reset, \
-                 mock.patch.object(device, "open_when_free",
-                                   side_effect=[FakeConnection([]), first, second]) as open_when_free, \
+            with mock.patch.object(device, "reset", return_value=first) as reset, \
+                 mock.patch.object(device, "reconnect_after_reset", return_value=second) as reconnect, \
+                 mock.patch.object(device, "open_when_free") as open_when_free, \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"):
                 code = device.reset_device(args, store, BOARD)
@@ -2077,12 +2632,12 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         reset.assert_called_once_with()
         store.release.assert_called_once_with(BOARD, "token")
-        self.assertEqual(open_when_free.call_count, 3)
-        open_when_free.assert_called_with(mock.ANY, reason="re-enumerating after reset")
+        reconnect.assert_called_once()
+        open_when_free.assert_not_called()
         self.assertEqual(entry["command"], "reset")
         self.assertEqual(entry["reason"], "complete")
 
-    def test_capture_keeps_data_when_a_later_reopen_runs_out_of_time(self):
+    def test_capture_keeps_data_when_a_later_reconnect_runs_out_of_time(self):
         class VanishingConnection(FakeConnection):
             def read(self, unused_size):
                 if self.chunks:
@@ -2096,9 +2651,8 @@ class ResetCommandTests(unittest.TestCase):
         timeout = device.PortUnavailable("board did not come back after reset before capture ended")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
-            with mock.patch.object(device, "reset"), \
-                 mock.patch.object(device, "open_when_free",
-                                   side_effect=[FakeConnection([]), connection, timeout]), \
+            with mock.patch.object(device, "reset", return_value=connection), \
+                 mock.patch.object(device, "reconnect_after_reset", side_effect=timeout), \
                  mock.patch.object(device, "records_root", return_value=root), \
                  mock.patch.object(device, "git_commit", return_value="deadbeef"), \
                  mock.patch("builtins.print") as printed:
@@ -2140,20 +2694,6 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(entry["error"], "port vanished")
         self.assertIsNone(entry["reason"])
 
-    def test_reset_without_capture_waits_before_and_after_reset(self):
-        calls = []
-        store = mock_store()
-        args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=False)
-
-        def waited(*unused, **unused_keywords):
-            calls.append("wait")
-            return FakeConnection([])
-
-        with mock.patch.object(device, "open_when_free", side_effect=waited), \
-             mock.patch.object(device, "reset", side_effect=lambda: calls.append("reset")):
-            self.assertEqual(device.reset_device(args, store, BOARD), 0)
-        self.assertEqual(calls, ["wait", "reset", "wait"])
-
 
 class SelftestTests(unittest.TestCase):
     """selftest() flashes diag+autorun under one held lock, then resets,
@@ -2167,10 +2707,11 @@ class SelftestTests(unittest.TestCase):
             calls["build_saw_lock"] = getattr(device.ACTIVE_LOCK, "held", None)
             return contextlib.nullcontext("built")
 
-        def fake_write_image(built, store, port, held_lock=None):
+        def fake_write_image(built, store, port, held_lock):
             calls["held_lock"] = held_lock
             calls["built"] = built
-            return "abc123-diag"
+            calls["flash_connection"] = mock.Mock()
+            return "abc123-diag", calls["flash_connection"]
 
         connection = FakeConnection([b"free heap after framebuffer: 123456 bytes\n",
                                      b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"])
@@ -2178,6 +2719,7 @@ class SelftestTests(unittest.TestCase):
         def fake_reset():
             calls["events"].append("reset")
             calls["capture_lock"] = device.ACTIVE_LOCK.held
+            return connection
 
         def fake_wait(*unused, **unused_keywords):
             if calls["events"]:
@@ -2202,6 +2744,11 @@ class SelftestTests(unittest.TestCase):
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
 
+    def test_successful_selftest_closes_flash_handle(self):
+        code, calls, _ = self.run_selftest()
+        self.assertEqual(code, 0)
+        calls["flash_connection"].close.assert_called_once_with()
+
     def test_flashes_diag_with_autorun_under_the_batch_lock(self):
         code, calls, entry = self.run_selftest()
         self.assertEqual(code, 0)
@@ -2218,9 +2765,9 @@ class SelftestTests(unittest.TestCase):
         _, calls, _ = self.run_selftest(perf_scope=True)
         self.assertEqual(sorted(calls["flash_extra_flags"]), ["--autorun", "--perf-scope"])
 
-    def test_resets_before_reopening_for_capture(self):
+    def test_captures_from_the_handle_reset_returns(self):
         _, calls, _ = self.run_selftest()
-        self.assertEqual(calls["events"], ["reset", "reopen"])
+        self.assertEqual(calls["events"], ["reset"])
 
     def test_records_the_selftest_command_and_build_id(self):
         _, _, entry = self.run_selftest()
@@ -2244,12 +2791,10 @@ class SelftestTests(unittest.TestCase):
                              worktree=str(worktree), out=None, perf_scope=False,
                              max_seconds=5, idle_seconds=None)
             store = mock_store()
-            with mock.patch.object(device, "build_image"), \
-                 mock.patch.object(device, "write_image", return_value="abc123-diag"), \
-                 mock.patch.object(device, "reset"), \
-                 mock.patch.object(device, "open_when_free", return_value=connection), \
-                 mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+            with recorded_serial(connection, root), \
+                 mock.patch.object(device, "build_image"), \
+                 mock.patch.object(device, "write_image", return_value=("abc123-diag", FakeConnection())), \
+                 mock.patch.object(device, "reset", return_value=connection):
                 code = device.selftest(args, store, BOARD)
         self.assertEqual(code, 1)
 

@@ -1,5 +1,6 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_band_run.h"
@@ -432,7 +433,7 @@ gfx_mode_exit(void) {
             /* Nothing downstream can draw without a framebuffer: the same
              * dead end gfx_init() itself parks in on the same allocation. */
             while (1) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                timing_sleep_ms(1000);
             }
         }
 #endif

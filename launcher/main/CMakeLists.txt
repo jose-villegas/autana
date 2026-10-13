@@ -5,6 +5,8 @@ set(app_srcs
     "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
+    "boot/boot_anim_photo.c"
+    "boot/boot_report.c"
     "selftest/post.c"
     "selftest/post_layout.c"
     "selftest/post_ui.c"
@@ -12,6 +14,8 @@ set(app_srcs
     "display/display_device.c"
     "display/panel_clock.c"
     "gfx/draw/gfx_draw.c"
+    "gfx/image/gfx_image.c"
+    "gfx/draw/icon.c"
     "gfx/present/gfx_debug.c"
     "gfx/present/gfx_mode.c"
     "gfx/present/gfx_present.c"
@@ -26,12 +30,10 @@ set(app_srcs
     "input/input_device.c"
     "input/tilt.c"
     "ui/ui.c"
-    "ui/system_navigation.c"
     "ui/ui_bridge.c"
     "ui/ui_build.c"
     "ui/ui_canvas_marks.c"
-    "ui/ui_control_center.c"
-    "ui/ui_control_center_draw.c"
+    "ui/ui_icons.c"
     "ui/ui_launcher.c"
     "ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
@@ -41,7 +43,16 @@ set(app_srcs
     "ui/ui_widgets.c"
     "anim/anim_track.c"
     "anim/anim_tracks.c"
+    "anim/anim_skeleton.c"
+    "anim/pose/anim_pose.c"
+    "anim/playback/anim_playhead.c"
+    "anim/playback/anim_layer.c"
+    "render/r3d_skin.c"
+    "render/skin/r3d_skinning.c"
+    "render/skin/r3d_skin_light.c"
+    "anim/anim_binding.c"
     "asset/asset_pack.c"
+    "asset/asset_table.c"
     "asset/asset_directory.c"
     "asset/asset_store.c"
     "asset/asset_store_flash.c"
@@ -55,14 +66,16 @@ set(app_srcs
     "render/r3d_span.c"
     "render/r3d_scene.c"
     "scene/scene.c"
+    "scene/scene_animation.c"
+    "scene/scene_light.c"
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "math/motion/orbit_motion.c"
     "input/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
+    "shell/shell_home_edge.c"
     "shell/shell_frame.c"
     "shell/shell_system.c"
     "core/job.c"
@@ -104,23 +117,23 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
         "console/console_verbs.c"
         "console/console.c"
-        "console/console_buildid.c"
-        "console/console_freeze.c"
+        "console/verbs/console_buildid.c"
+        "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
-        "console/console_frame_watch.c"
-        "console/console_navigation.c"
-        "console/console_perf.c"
-        "console/console_tune.c"
-        "console/console_screenshot.c"
-        "console/device_state.c"
+        "console/verbs/console_frame_watch.c"
+        "console/verbs/console_navigation.c"
+        "console/verbs/console_perf.c"
+        "console/verbs/console_tune.c"
+        "console/verbs/console_screenshot.c"
+        "console/capture/device_state.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
-    list(APPEND app_srcs "console/console_runsuite.c")
+    list(APPEND app_srcs "console/verbs/console_runsuite.c")
 endif()
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
-        "console/console_inject.c"
+        "console/verbs/console_inject.c"
         "input/touch_inject_fsm.c"
         "input/touch_gesture.c"
     )
@@ -188,10 +201,10 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format
+             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon, unity and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF
@@ -208,7 +221,8 @@ set(app_reqs microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              perfmon unity esp_mm)
 
 if(CONFIG_LAUNCHER_SELFTEST)
-    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c")
+    launcher_glob(suite_srcs "${CMAKE_CURRENT_LIST_DIR}/../test/suites/suite_*.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../packages/*/tests/suite_*.c")
     # SCOPE: full is the default and stays globbed, so nothing can lose
     # coverage by accident; a scope only ever NARROWS, and only when asked
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
@@ -311,17 +325,9 @@ idf_component_register(
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
-    # Required by self-registration, and easy to get wrong.
-    #
-    # This component becomes libmain.a, and a linker only extracts an archive
-    # member if it resolves an undefined symbol. Nothing references an app by
-    # name any more (that is the entire point), so app_sand.o would never be
-    # extracted, its constructor would never enter .init_array, and the app
-    # would silently vanish from the menu. Not a link error: a smaller binary
-    # and a shorter list.
-    #
-    # WHOLE_ARCHIVE links every member regardless. Section garbage collection
-    # still runs, so genuinely unreachable code is still dropped.
+    # Constructors self-register entries without a referenced symbol pulling
+    # their archive members into the link. Keep those constructors while
+    # section garbage collection drops unreachable code.
     WHOLE_ARCHIVE
 )
 

@@ -16,16 +16,20 @@ main/apps/sand/sand_ui.c
 main/ui/ui_bridge.c
 main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
+main/ui/ui_icons.c
 main/ui/ui_widgets.c
+main/apps/sand/ui/sand_icons.c
 main/apps/sand/ui/sand_theme.c
 main/ui/ui_pointer.c
 main/ui/ui_snap.c
 components/microui/src/microui.c
 main/apps/sand/tools/brush_screen_render_host.c
 "
+scene_assets="main/engine main/apps/sand"
 scene_renders="
 portrait|--quarter 0|368x448
 landscape|--quarter 1|448x368
+portrait-no-pack|--quarter 0|368x448|nopacks
 "
 
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"

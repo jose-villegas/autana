@@ -9,7 +9,7 @@ the command that writes it:
 /*
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_ridge_curve.py ../design/boot/ridge.png main/ui/ridge_curve_generated.h
+ *     python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h
  */
 ```
 
@@ -20,7 +20,7 @@ push a change to a generator or to one of its inputs:
 
 ```sh
 python scripts/gates/check_generated_files.py
-python scripts/gates/check_generated_files.py launcher/main/gfx/draw/icons_system.h
+python scripts/gates/check_generated_files.py launcher/main/boot/boot_anim_curve.h
 ```
 
 It prints `ok` or `FAIL` per file, and for a file that differs, the first

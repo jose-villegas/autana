@@ -1,11 +1,10 @@
 /*
  * scene_capybara: the capybara on its meadow, orbited by one finger.
  *
- * The camera circles the capybara's bounding sphere, measured from its mesh
- * when the scene loads, at the distance that fits the sphere from every
- * angle (orbit_motion.h). A drag turns it, a double tap brings it home, and
- * touches in the shell's edge strips are left alone (orbit_motion_touch.h). The
- * shell draws the scene through the camera; light is baked per vertex.
+ * The camera circles its bounding sphere at the distance that fits it from
+ * every angle (orbit_motion.h); a drag turns it, a double tap brings it home
+ * (orbit_motion_touch.h). The capybara is skinned and lit at run time; the
+ * meadow's light is baked.
  */
 
 #include <math.h>
@@ -14,6 +13,7 @@
 #include <stdio.h>
 
 #include "app/app.h"
+#include "apps/render_lab/render_lab_clips.h"
 #include "display/display.h"
 #include "esp_log.h"
 #include "gfx/draw/gfx_draw.h"
@@ -21,12 +21,16 @@
 #include "gfx/present/gfx_present.h"
 #include "input/orbit_motion_touch.h"
 #include "math/motion/orbit_motion.h"
+#include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "services/tune.h"
+#if CONFIG_LAUNCHER_SELFTEST
+#include "apps/render_lab/tests/render_lab_test.h"
+#endif
 
 static const char* TAG = "capybara";
 
@@ -34,9 +38,10 @@ static const char* TAG = "capybara";
 #define CAPYBARA_SCENE          "capybara"
 #define CAPYBARA_CAMERA         "camera"
 #define CAPYBARA_SUBJECT        "capybara"
+#define CAPYBARA_DEFAULT_CLIP   "idle"
 
 /* Where the view starts: three-quarters from the front, a little above. */
-#define CAPYBARA_HOME_YAW       (MATH_PI * 45.0F / 180.0F)
+#define CAPYBARA_HOME_YAW       (MATH_PI * 135.0F / 180.0F)
 #define CAPYBARA_HOME_PITCH     (MATH_PI * 15.0F / 180.0F)
 
 /* The lowest the eye goes: a little above level, so the meadow stays below it. */
@@ -50,11 +55,12 @@ static const char* TAG = "capybara";
 #define CAPYBARA_ZOOM_OUT       3.0F
 #define CAPYBARA_NEAR_CLEARANCE 2.0F
 
-#define MS_PER_SECOND           1000.0F
 #define DEGREES_PER_RADIAN      (180.0F / MATH_PI)
 
 static scene_t* capybara;
 static scene_entity_t camera_entity;
+static scene_entity_t subject_entity;
+static render_lab_clips_t choice;
 static orbit_motion_t orbit;
 static orbit_motion_touch_t touch;
 
@@ -72,8 +78,7 @@ fail(const char* what) {
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    const scene_transform_t placement = r3d_scene_camera_placement(&pose);
-    scene_entity_set_transform(capybara, camera_entity, &placement);
+    scene_set_transform(capybara, camera_entity, &pose);
 }
 
 /* Home and limits from the subject's sphere and the scene camera's lens. */
@@ -113,6 +118,10 @@ scene_capybara_enter(void) {
     if (!frame_subject()) {
         return;
     }
+    subject_entity = scene_find(capybara, CAPYBARA_SUBJECT);
+    if (!render_lab_clips_init(&choice, capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
+        ESP_LOGW(TAG, "clip picker allocation failed");
+    }
     place_camera();
     (void)scene_activate(capybara, CAPYBARA_CAMERA);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
@@ -124,6 +133,7 @@ scene_capybara_enter(void) {
 
 static void
 scene_capybara_exit(void) {
+    render_lab_clips_destroy(&choice);
     scene_unload(capybara);
     capybara = NULL;
 }
@@ -136,7 +146,7 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
     }
     const viewport_t panel = {GFX_WIDTH, GFX_HEIGHT, display_quarter_now()};
     const orbit_motion_input_t steering = orbit_motion_touch_step(&touch, input, dt_ms, panel, shell_home_edge());
-    orbit_motion_update(&orbit, &steering, (float)dt_ms / MS_PER_SECOND);
+    orbit_motion_update(&orbit, &steering, (float)dt_ms / (float)MATH_MS_PER_S);
     place_camera();
 }
 
@@ -166,10 +176,22 @@ capybara_status(void) {
     return buf;
 }
 
+static inline bool
+scene_capybara_console(const char* args, console_reply_fn reply) {
+    return render_lab_clips_reply(&choice, args, reply);
+}
+
+static void
+scene_capybara_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
+    render_lab_clips_draw(ctx, flow, width, &choice);
+}
+
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .key = "capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
                                            .exit = scene_capybara_exit,
                                            .status = capybara_status,
-                                           .steer = scene_capybara_steer};
+                                           .steer = scene_capybara_steer,
+                                           .controls = scene_capybara_controls,
+                                           .console = RENDER_LAB_SCENE_CONSOLE(scene_capybara_console)};

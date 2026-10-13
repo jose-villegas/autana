@@ -41,8 +41,6 @@ are checked.
 <!-- generated: generated-files-sand check: python scripts/gates/check_generated_files.py --check-table -->
 | Output | Generator | Run in | Command |
 |---|---|---|---|
-| [icons_dither.h](../icons_dither.h) | [gen_icons.py](../../../../tools/gen/gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/dither.png main/apps/sand/icons/dither.json > main/apps/sand/icons_dither.h` |
-| [icons_sand.h](../icons_sand.h) | [gen_icons.py](../../../../tools/gen/gen_icons.py) | `launcher/` | `python tools/gen/gen_icons.py main/apps/sand/icons/sand.png main/apps/sand/icons/sand.json > main/apps/sand/icons_sand.h` |
 | [sand_palette256.h](../sand_palette256.h) | [report_shading_palette.sh](report_shading_palette.sh) | `launcher/` | `main/apps/sand/tools/report_shading_palette.sh main/apps/sand/sand_palette256.h` |
 <!-- /generated: generated-files-sand -->
 

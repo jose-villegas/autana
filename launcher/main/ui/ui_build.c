@@ -32,6 +32,7 @@ static const char* TAG = "ui";
 #include "gfx/gfx.h"
 #include "services/tune.h"
 #include "ui/ui_bridge.h"
+#include "ui/ui_icons.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_pointer.h"
 #include "ui/ui_slider.h"
@@ -45,11 +46,8 @@ bool ui_invalidated = true;
 ui_text_style_t ui_text_style;
 ui_pointer_t ui_pointer_state;
 
-/* Whether the frame in progress only repaints (see ui_begin()) and the
- * interaction state it must hand back as it found it. */
+/* Repaint-only boot frames have no input to feed or pointer state to report. */
 static bool paint_only;
-static mu_Id held_focus;
-static mu_Container* held_next_hover_root;
 uint64_t ui_canvas_hash[MU_CONTAINERPOOL_SIZE];
 ui_canvas_marks_t ui_canvas_marks;
 
@@ -302,6 +300,8 @@ ui_init(void) {
     ui_text_style = UI_TEXT_PLAIN;
     transform = ui_transform_identity();
     transform_valid = true;
+    /* Before an app can hold store slots: the engine pack keeps one. */
+    ui_icons_init();
     ui_pointer_state = (ui_pointer_t){0};
     snap_rect_count = 0;
     snap_rect_overflow = false;
@@ -378,10 +378,6 @@ ui_begin(const input_t* input) {
     paint_only = input == NULL;
     if (!paint_only) {
         feed_input(input);
-    } else {
-        held_focus = ui_ctx.focus;
-        held_next_hover_root = ui_ctx.next_hover_root;
-        ui_ctx.updated_focus = 1;
     }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
@@ -391,10 +387,7 @@ void
 ui_end_pointer_frame(void) {
     if (!paint_only) {
         ui_bridge_end(&ui_ctx, &ui_pointer_state);
-        return;
     }
-    ui_ctx.focus = held_focus;
-    ui_ctx.next_hover_root = held_next_hover_root;
 }
 
 /* See ui.h: the physical viewport mapped through the inverse transform. Both
@@ -446,9 +439,15 @@ ui_draw_icon_emit(void* ctx_, int x, int y, int w, int h) {
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const icon_t* icon, const uint8_t* rows, mu_Color color) {
-    ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
-    icon_walk_blocks(rows + icon->offset, icon->w, icon->h, icon->stride, r.w, r.h, ui_draw_icon_emit, &dc);
+ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color) {
+    if (icon != NULL) {
+        ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
+        icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
+    } else if (text != NULL) {
+        const mu_Font font = c->style->font;
+        const int x = r.x + ((r.w - c->text_width(font, text, -1)) / 2);
+        mu_draw_text(c, font, text, -1, mu_vec2(x, r.y + ((r.h - c->text_height(font)) / 2)), color);
+    }
 }
 
 /* See ui.h. `value`'s own address (not what it points to, same idiom

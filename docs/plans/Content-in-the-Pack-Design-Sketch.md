@@ -42,7 +42,7 @@ to**. A root is a source file nothing else names:
 
 | Root | Pack name | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | the `SCNE` entry, every mesh its renderers name, its camera's clip |
+| `NAME.scene.toml` | `NAME` | the `SCNE` entry and every mesh, skin, skeleton and clip it names |
 | `NAME.anim.toml` no scene names (e.g. the boot clip) | `NAME` | the one `TRCK` entry |
 | `NAME.import.toml` no scene places | `NAME` | its variants' `LMSH` entries |
 
@@ -112,22 +112,15 @@ Python: one module `launcher/tools/anim/tracks_asset.py` writes and reads the
 entry (bake = `gltf_read` + the current `bake_tracks.py` checks, moved in).
 `bake_tracks.py` loses its C emitter.
 
-## 3. `SCNE` entry (replaces `scene_def_t`, `SCENE_REGISTER`, the entity macros)
+## 3. `SCNE` entry
 
-| Part | Layout |
-|---|---|
-| header | `u16 version`, `u16 entity_count`, `u16 renderer_count`, `u16 camera_count`, offsets |
-| entities | `char name[32]` x count, `scene_transform_t` x count (3x3 + position, baked as today) |
-| renderers | `u16 entity`, `u16 pad`, `char mesh_id[32]` |
-| cameras | `u16 entity`, `u16 pad`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb`, `char clip_id[32]`, `char node[32]` (clip empty: no path) |
-
-Lights, region and tone map stay offline, as now. `launcher/tools/r3d/scene_asset.py`
-replaces `scene_table.py`'s C emitter (its `entities()` and placement code
-move). `scene_def_t` and the registry (`defs[]`, `scene_register`) are deleted.
+**As built:** SCNE v2 carries directional lights, ambient, tone map, skinned
+renderers and animators. Region and sky are bake inputs. The mapped layout
+and its writer are documented in [Scene files](../render/Scene-Files.md#the-scene-entry).
 
 ```c
 /* scene.h: changes only */
-scene_t*       scene_load(const char* id, scene_failure_t* why);   /* finds SCNE, opens each mesh and the camera's TRCK */
+scene_t*       scene_load(const char* id, scene_failure_t* why);   /* opens SCNE and every mesh, skin, skeleton and clip it names */
 scene_entity_t scene_find(const scene_t*, const char* name);       /* exists; becomes THE way to get an id (setup time) */
 const char*    scene_entity_mesh_id(const scene_t*, scene_entity_t);                   /* new: tests open a scene's mesh */
 const r3d_scene_camera_t* scene_camera_lens(const scene_t*, const char* camera);       /* new: sample a path from a loaded scene */
@@ -225,10 +218,9 @@ change them twice.
 ## 8. For the content audit, not decided here
 
 Same rule: data goes to the pack and its generated file is deleted; true
-compile-time tables may stay. Files to classify: `boot_anim_image.h`,
+compile-time tables may stay. Files to classify: the boot photograph's header,
 `boot_anim_curve.h`, `boot_anim_timeline.h`, `gfx_palette_standard_generated.h`,
-`gfx_dither_patterns_generated.h`, `control_center_layout_generated.h`,
-`ridge_curve_generated.h`, `icons_system.h`, the sand
+`gfx_dither_patterns_generated.h`, `icons_system.h`, the sand
 icon, palette and `captured_slope_data.h` headers, and the banner-carrying
 `capybara.glb`. Anything needed before or without the pack inherits the
 fallback question section 5 answers.

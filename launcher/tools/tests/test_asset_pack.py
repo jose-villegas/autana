@@ -1,4 +1,4 @@
-"""The asset pack and pack directory writer (asset/asset_pack.py), the
+"""The asset pack writer (asset/asset_pack.py), the
 pack builder and the meshes in the tree: what the firmware's asset_pack.c
 and asset_directory.c read. The C side has its own suite, suite_asset_pack.c;
 this one proves what the tools write is what that reads."""
@@ -18,9 +18,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset  # noqa: E402
 from asset import asset_pack  # noqa: E402
-from asset.asset_pack import PackError, build_directory, build_pack as make_pack, parse_directory, parse_pack  # noqa: E402
-from r3d import build_pack, scene_asset  # noqa: E402
-from r3d.import_settings import SettingsError  # noqa: E402
+from asset.asset_directory import build_directory, parse_directory  # noqa: E402
+from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
+from r3d import build_pack, scene_asset
+from asset.engine_frame import to_engine
+from test_engine_frame import mesh_entry  # noqa: E402
+from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
@@ -113,66 +116,6 @@ class RejectionTests(unittest.TestCase):
             parse_pack(seal(bytes(crooked)))
 
 
-class DirectoryTests(unittest.TestCase):
-    def image(self):
-        return build_directory([("one", make_pack([("a", LIT_MESH, b"1")])), ("two", make_pack([("b", LIT_MESH, b"22" * 3000)]))])
-
-    @staticmethod
-    def row(index):
-        return asset_pack.DIRECTORY_HEADER.size + asset_pack.DIRECTORY_ROW.size * index
-
-    def reseal(self, image):
-        """`image` with its directory CRC-32 recomputed after an edit to a row."""
-        count = struct.unpack_from("<I", image, 12)[0]
-        struct.pack_into("<I", image, 4, asset_pack.zlib.crc32(bytes(image[8:self.row(count)])))
-        return bytes(image)
-
-    def test_each_pack_parses_back_on_its_own_sector(self):
-        image = self.image()
-        packs = parse_directory(image)
-        self.assertEqual(list(packs), ["one", "two"])
-        self.assertEqual(parse_pack(packs["one"]), {"a": (LIT_MESH, b"1")})
-        self.assertEqual(parse_pack(packs["two"]), {"b": (LIT_MESH, b"22" * 3000)})
-        for index in range(2):
-            _, offset, _ = asset_pack.DIRECTORY_ROW.unpack_from(image, self.row(index))
-            self.assertEqual(offset % asset_pack.SECTOR, 0)
-
-    def test_the_same_packs_make_the_same_image(self):
-        self.assertEqual(self.image(), self.image())
-
-    def test_a_pack_name_that_is_empty_too_long_or_repeated_is_refused(self):
-        pack = make_pack([])
-        for packs in ([("", pack)], [("x" * 32, pack)], [("a", pack), ("a", pack)]):
-            with self.assertRaises(PackError):
-                build_directory(packs)
-
-    def test_a_bad_magic_version_or_checksum_is_refused(self):
-        for at, value, pattern in ((0, b"NOPE", "magic"), (8, struct.pack("<I", 2), "version"), (20, b"x", "CRC")):
-            image = bytearray(self.image())
-            image[at:at + len(value)] = value
-            with self.assertRaisesRegex(PackError, pattern):
-                parse_directory(bytes(image))
-
-    def test_a_row_out_of_range_misaligned_or_repeated_is_refused_even_with_a_good_checksum(self):
-        base = self.image()
-        cases = ((self.row(1) + 32, asset_pack.SECTOR, "overlaps"),                     # over the first pack
-                 (self.row(1) + 36, len(base), "outside"),                      # ends past the image
-                 (self.row(1) + 32, asset_pack.SECTOR * 2 + 16, "sector"),
-                 (self.row(0) + 32, 0, "outside"))                              # over the directory itself
-        for at, value, pattern in cases:
-            image = bytearray(base)
-            struct.pack_into("<I", image, at, value)
-            with self.assertRaisesRegex(PackError, pattern):
-                parse_directory(self.reseal(image))
-        repeated = bytearray(base)
-        repeated[self.row(1):self.row(1) + 3] = b"one"
-        with self.assertRaisesRegex(PackError, "repeated"):
-            parse_directory(self.reseal(repeated))
-        repeated[self.row(1):self.row(1) + 32] = b"n" * 32
-        with self.assertRaisesRegex(PackError, "fills"):
-            parse_directory(self.reseal(repeated))
-
-
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -203,11 +146,13 @@ class BuilderTests(unittest.TestCase):
     def test_each_free_import_is_a_pack_named_after_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            for folder, mesh, data in (("a", "one", b"1"), ("a2", "two", b"22"), ("b", "three", b"333")):
+            sources = (("a", "one", (1, 3, -7)), ("a2", "two", (2, 3, -7)), ("b", "three", (3, 3, -7)))
+            for folder, mesh, point in sources:
                 import_file(root / folder, f"{mesh}.import.toml", mesh)
-                (root / folder / f"{mesh}.mesh").write_bytes(data)
+                (root / folder / f"{mesh}.mesh").write_bytes(mesh_entry(point))
             packs = build_pack.pack_bytes([root])
-        self.assertEqual(contents(packs), {"one": {"one": b"1"}, "two": {"two": b"22"}, "three": {"three": b"333"}})
+        expected = {mesh: {mesh: to_engine(LIT_MESH, mesh_entry(point))} for _, mesh, point in sources}
+        self.assertEqual(contents(packs), expected)
 
     def test_a_scene_is_a_pack_of_its_entry_and_every_mesh_it_places_and_its_imports_make_none(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -217,11 +162,12 @@ class BuilderTests(unittest.TestCase):
             variants_file(root, "free.import.toml", "lamp")
             scene_file(root, "room.scene.toml", ("chair.import.toml", "chair"), ("table.import.toml", "table"))
             for mesh in ("chair", "table", "lamp"):
-                (root / f"{mesh}.mesh").write_bytes(mesh.encode())
+                (root / f"{mesh}.mesh").write_bytes(mesh_entry())
             packs = build_pack.pack_bytes([root])
-            room = scene_asset.bake(root / "room.scene.toml")
-        self.assertEqual(contents(packs), {"room": {"room": room, "chair": b"chair", "table": b"table"},
-                                           "free": {"lamp": b"lamp"}})
+            room = to_engine(scene_asset.TYPE, scene_asset.bake(root / "room.scene.toml"))
+        entry = to_engine(LIT_MESH, mesh_entry())
+        self.assertEqual(contents(packs), {"room": {"room": room, "chair": entry, "table": entry},
+                                           "free": {"lamp": entry}})
 
     def test_a_mesh_two_roots_name_is_refused_naming_it(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -245,10 +191,10 @@ class BuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             import_file(root / "a", "a.import.toml", "one")
-            (root / "a" / "one.mesh").write_bytes(b"1")
-            (root / "scratch.mesh").write_bytes(b"9")
+            (root / "a" / "one.mesh").write_bytes(mesh_entry((1, 3, -7)))
+            (root / "scratch.mesh").write_bytes(mesh_entry((9, 3, -7)))
             packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"])
-            self.assertEqual(contents(packs), {"a": {"one": b"9"}})
+            self.assertEqual(contents(packs), {"a": {"one": to_engine(LIT_MESH, mesh_entry((9, 3, -7)))}})
             with self.assertRaisesRegex(SettingsError, "no such mesh"):
                 build_pack.pack_bytes([root / "a"], ["other=x.mesh"])
 
@@ -263,7 +209,7 @@ class BuilderTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for mesh in ("one", "two"):
                 import_file(root / "src", f"{mesh}.import.toml", mesh)
-                (root / "src" / f"{mesh}.mesh").write_bytes(mesh.encode())
+                (root / "src" / f"{mesh}.mesh").write_bytes(mesh_entry())
             out = root / "out"
             out.mkdir()
             (out / "gone.apak").write_bytes(b"old")
@@ -308,14 +254,15 @@ class DemoAssetTests(unittest.TestCase):
         self.main.mkdir(parents=True)
         self.demo = self.root / "launcher/demo/sample"
         import_file(self.demo, "sample.import.toml", "one")
-        (self.demo / "one.mesh").write_bytes(b"demo")
+        (self.demo / "one.mesh").write_bytes(mesh_entry((7, 3, -7)))
+        self.entry = to_engine(LIT_MESH, mesh_entry((7, 3, -7)))
         patch = mock.patch.object(build_pack, "DEMO", self.demo.parent)
         patch.start()
         self.addCleanup(patch.stop)
 
     def test_manifest_pulls_in_named_demo_packs(self):
         write(self.main / "apps/example/demo_assets.toml", 'demo = ["sample"]')
-        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": b"demo"}})
+        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": self.entry}})
 
     def test_unknown_demo_names_its_manifest_and_name(self):
         manifest = write(self.main / "apps/example/demo_assets.toml", 'demo = ["missing"]')
@@ -331,14 +278,14 @@ class DemoAssetTests(unittest.TestCase):
         for app in ("a", "b"):
             write(self.main / app / "demo_assets.toml", 'demo = ["sample", "sample"]')
         self.assertEqual(contents(build_pack.pack_bytes([self.main, self.main / "a", self.demo])),
-                         {"sample": {"one": b"demo"}})
+                         {"sample": {"one": self.entry}})
 
     def test_only_the_named_demo_is_packed_and_removing_the_manifest_drops_it(self):
         other = self.demo.parent / "other"
         import_file(other, "other.import.toml", "two")
-        (other / "two.mesh").write_bytes(b"other")
+        (other / "two.mesh").write_bytes(mesh_entry((8, 3, -7)))
         manifest = write(self.main / "demo_assets.toml", 'demo = ["sample"]')
-        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": b"demo"}})
+        self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": self.entry}})
         manifest.unlink()
         self.assertEqual(build_pack.pack_bytes([self.main]), {})
 
@@ -366,7 +313,7 @@ class DemoAssetTests(unittest.TestCase):
     def test_relative_and_absolute_searches_produce_one_pack(self):
         relative = pathlib.Path(os.path.relpath(self.demo))
         self.assertEqual(contents(build_pack.pack_bytes([relative, self.demo.resolve()])),
-                         {"sample": {"one": b"demo"}})
+                         {"sample": {"one": self.entry}})
 
     def test_a_demo_manifest_is_refused_naming_its_file(self):
         write(self.main / "demo_assets.toml", 'demo = ["sample"]')
@@ -385,10 +332,10 @@ class DemoAssetTests(unittest.TestCase):
     def test_a_manifest_can_select_two_different_demos(self):
         other = self.demo.parent / "other"
         import_file(other, "other.import.toml", "two")
-        (other / "two.mesh").write_bytes(b"other")
+        (other / "two.mesh").write_bytes(mesh_entry((8, 3, -7)))
         write(self.main / "demo_assets.toml", 'demo = ["sample", "other"]')
         self.assertEqual(contents(build_pack.pack_bytes([self.main])),
-                         {"sample": {"one": b"demo"}, "other": {"two": b"other"}})
+                         {"sample": {"one": self.entry}, "other": {"two": to_engine(LIT_MESH, mesh_entry((8, 3, -7)))}})
 
 
 class TreeTests(unittest.TestCase):
@@ -427,14 +374,26 @@ class TreeTests(unittest.TestCase):
                 mesh = renderer["mesh"]
                 self.assertIn(mesh, entries, f"{path.name} names mesh {mesh!r}, which its pack does not hold")
                 self.assertEqual(entries[mesh][0], LIT_MESH)
+            authored = load_scene(path)
+            target = tracks_asset.read_define(tracks_asset.BINDING_OWNER, "ANIM_TARGET_SELF")
+            animators = {row["entity"]: row for row in scene["animators"]}
             for camera in scene["cameras"]:
-                if not camera["clip"]:
+                camera_path = authored.objects[camera["entity"]].component.path
+                if camera_path is None:
                     continue
-                kind, clip = entries[camera["clip"]]
-                self.assertEqual(kind, tracks_asset.TYPE)
-                tracks = {track["name"] for track in tracks_asset.decode(clip)[0]}
-                for part in ("translation", "rotation"):
-                    self.assertIn(f"{camera['node']}/{part}", tracks, f"{path.name}: clip {camera['clip']!r}")
+                self.assertIn(camera["entity"], animators, f"{path.name}: camera path has no animator")
+                animator = animators[camera["entity"]]
+                first = animator["first_clip"]
+                clips = scene["clips"][first:first + animator["clip_count"]]
+                self.assertIn(camera_path.clip, clips, f"{path.name}: camera animator has no path clip")
+                for clip_id in clips:
+                    self.assertIn(clip_id, entries, f"{path.name}: clip {clip_id!r} is absent from its pack")
+                    kind, clip = entries[clip_id]
+                    self.assertEqual(kind, tracks_asset.TYPE)
+                    tracks = {(track["path"], track["component"], track["field"]) for track in tracks_asset.decode(clip)[0]}
+                    for field in ("position", "rotation"):
+                        self.assertIn((target, tracks_asset.TRANSFORM, field), tracks,
+                                      f"{path.name}: clip {clip_id!r}")
 
 
 if __name__ == "__main__":

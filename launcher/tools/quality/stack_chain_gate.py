@@ -15,13 +15,15 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LAUNCHER = os.path.normpath(os.path.join(HERE, "..", ".."))
+sys.path.insert(0, os.path.join(LAUNCHER, "tools"))
+from build.compile_db import compile_flags
+
 MAIN_DIR = os.path.join(LAUNCHER, "main")
 CHECKER = os.path.join(LAUNCHER, "test", "check_stack_usage.py")
 TIMING = os.path.join(LAUNCHER, "test", "timing.c")
@@ -215,18 +217,7 @@ def app_jobs(db_path, app_dir=None, functions=()):
                     continue
         elif marker not in source:
             continue
-        argv, skip = [], 0
-        for tok in shlex.split(entry["command"], posix=(os.name != "nt")):
-            if skip:
-                skip -= 1
-            elif tok in ("-o", "-MT", "-MF", "-c"):
-                skip = 1
-            elif tok in ("-MD", "-MMD"):
-                continue
-            elif tok.startswith('@"'):
-                argv.append("@" + tok[2:-1])
-            else:
-                argv.append(tok)
+        argv = compile_flags(entry)
         jobs.append((argv, entry["directory"], source))
     return jobs
 
@@ -292,11 +283,12 @@ def main(argv):
                 if done.returncode != 0:
                     failed = True
                     print("stack_chain_gate: %s did not compile:\n%s"
-                          % (source, done.stderr[-600:]), file=sys.stderr)
+                          % (source, done.stderr), file=sys.stderr)
         return not failed
 
     shared_jobs = app_jobs(db)
     shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "test"))
+    shared_jobs += app_jobs(db, os.path.join(LAUNCHER, "packages"))
     selected = {source for _cmd, _cwd, source in shared_jobs}
     shared_jobs += [job for job in app_jobs(db, functions={"main_task", "UnityDefaultTestRun", "vPortTaskWrapper"})
                     if job[2] not in selected]

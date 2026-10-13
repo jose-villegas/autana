@@ -16,8 +16,6 @@
 #include "asset/asset_store.h"
 #include "esp_log.h"
 
-#define BOOT_CLIP "boot_anim_motion"
-
 static const char* TAG = "boot_anim";
 
 /* The camera back on -z, unturned. The space turned a quarter about the view

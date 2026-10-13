@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when docs/math/README.md and math/linear/ disagree about what exists.
+"""Fail when docs/math/README.md and the math headers disagree about what exists.
 
     python scripts/gates/check_math_docs.py [--root ROOT]
 
@@ -12,8 +12,8 @@ hand:
     contain `P_name(`;
   * an instantiation is a `MATH_DEFINE_<FAMILY>(prefix, ...)` call in a
     header; the page must name `prefix` in backticks;
-  * a template outside the five families (vec_swizzle_template.h) adds its
-    `P##_name(` functions to the family of the prefix its call passes as P;
+  * template macro calls bind arguments recursively, so shared definers add
+    their `P##_name(` and `P##_##OP(` functions to the calling family;
   * a swizzle family is a `MATH_DEFINE_SWIZZLE<k>(D, S, N)` call in a
     template macro: S's family section must contain the pattern
     `P_<c1>...<ck>(`, its names are every k letters of S's struct fields,
@@ -23,7 +23,11 @@ hand:
     `TRANSFORM<S>_IDENTITY` initializer must be named on the page;
   * the other way round: every `name(` the page puts in backticks must exist,
     as `P_` or a prefix of that function's own family, or as a function a
-    header defines.
+    header defines;
+  * every inline formula, in $...$ or $`...`$, has at most
+    MAX_INLINE_MATH_CHARS characters of TeX outside code spans and fences;
+    a longer one is split into one span per step, joined with <br>.
+    Fenced blocks and `$$...$$` display math are not measured.
 """
 
 import argparse
@@ -32,19 +36,26 @@ import pathlib
 import re
 import sys
 
-MATH = pathlib.Path("launcher/main/math/linear")
+MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
+
+# An inline formula cannot wrap, so a long one overflows a phone-width column.
+# TeX source length stands in for rendered width: 110 fits one step, not a derivation.
+MAX_INLINE_MATH_CHARS = 110
 
 FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
 HEADER_CALL = re.compile(r"^(MATH_DEFINE_\w+)\(([^)]*)\)", re.M)
-TEMPLATE_MACRO = re.compile(r"^#define (MATH_DEFINE_\w+)\(([^)]*)\)(.*?)(?=^#define |\Z)", re.M | re.S)
+TEMPLATE_MACRO = re.compile(r"^#define (MATH_\w+)\(([^)]*)\)(.*?)(?=^#define |\Z)", re.M | re.S)
+MACRO_CALL = re.compile(r"\b(MATH_\w+)\(([^()]*)\)")
+BOUND_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(?:##(\w+)|(\w+))\(", re.M)
 SWIZZLE_CALL = re.compile(r"\bMATH_DEFINE_SWIZZLE(\d+)\((\w+), (\w+), (\d+)\)")
 FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
 HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$|(`+).*?(?<!`)\2(?!`)|(?<![\\$])\$(?!\$)([^$\n]*)\$(?!\$)")
 PAGE_CALL = re.compile(r"`[^`\n]*?\b([A-Za-z][A-Za-z0-9]*_[a-z0-9_]+)\(")
 
 
@@ -73,7 +84,7 @@ def instantiations(root):
     for template in sorted((root / MATH).glob("*_template.h")):
         text = read(template)
         for name, params, body in TEMPLATE_MACRO.findall(text):
-            macros[name] = (split_args(params), body, template.name in family_templates)
+            macros[name] = (split_args(params), body)
         m = FIELDS.search(text)
         if template.name in family_templates and m:
             fields[template.name[: -len("_template.h")]] = split_args(m.group(1))
@@ -92,25 +103,33 @@ def instantiations(root):
     patterns = {f: set() for f in FAMILIES}
     names = set()
     problems = []
-    for name, args in calls:
-        if name not in macros or args[0] not in family_of:
-            continue
-        params, body, own_family = macros[name]
-        if not own_family:
-            functions[family_of[args[0]]].update(TEMPLATE_FUNCTION.findall(body))
+
+    def visit(name, args, family, active):
+        if name not in macros or name in active:
+            return
+        params, body = macros[name]
         bind = dict(zip(params, args))
+        for parameter, literal in BOUND_FUNCTION.findall(body):
+            functions[family].add(bind.get(parameter, parameter) if parameter else literal)
         for length, _, source, count in SWIZZLE_CALL.findall(body):
             prefix = bind.get(source, source)
-            family = family_of.get(prefix)
-            letters = fields.get(family, [])
+            source_family = family_of.get(prefix)
+            letters = fields.get(source_family, [])
             if int(count) != len(letters):
                 problems.append(
                     "%s(%s) swizzles %s as %s components, but %s has %d"
-                    % (name, args[0], prefix, count, family, len(letters))
+                    % (name, args[0], prefix, count, source_family, len(letters))
                 )
                 continue
-            patterns[family].add("P_%s(" % "".join("<c%d>" % i for i in range(1, int(length) + 1)))
+            patterns[source_family].add("P_%s(" % "".join("<c%d>" % i for i in range(1, int(length) + 1)))
             names.update(prefix + "_" + "".join(t) for t in itertools.product(letters, repeat=int(length)))
+        for callee, arguments in MACRO_CALL.findall(body):
+            bound = [bind.get(arg, arg) for arg in split_args(arguments)]
+            visit(callee, bound, family, active | {name})
+
+    for name, args in calls:
+        if args[0] in family_of:
+            visit(name, args, family_of[args[0]], set())
     return family_of, functions, patterns, names, problems
 
 
@@ -118,6 +137,16 @@ def check(root):
     root = pathlib.Path(root)
     page = read(root / PAGE)
     family_of, functions, patterns, swizzle_names, problems = instantiations(root)
+
+    for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), page).splitlines(), start=1):
+        for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
+            formula = quoted_formula or plain_formula
+            if len(formula) > MAX_INLINE_MATH_CHARS:
+                problems.append(
+                    "%s:%d: inline math has %d characters (limit %d); "
+                    "split the formula into one span per step joined with <br>"
+                    % (PAGE.as_posix(), line_number, len(formula), MAX_INLINE_MATH_CHARS)
+                )
 
     for family in FAMILIES:
         template = root / MATH / (family + "_template.h")
@@ -149,6 +178,9 @@ def check(root):
         for name in HAND_WRITTEN.findall(text) + IDENTITY.findall(text):
             if name not in page:
                 problems.append("%s: the page does not name %s (%s)" % (PAGE.as_posix(), name, header.name))
+
+    for header in sorted((root / MATH.parent / "scalar").glob("*.h")):
+        defined.update(HAND_WRITTEN.findall(read(header)))
 
     valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}

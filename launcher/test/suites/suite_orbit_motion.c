@@ -55,7 +55,7 @@ camera_of(const orbit_motion_t* orbit) {
                               NEAR_Z};
 }
 
-/* The i-th of n points spread evenly over the unit sphere (a Fibonacci spiral). */
+/* The i-th of n points spread evenly over the unit sphere (a Fibonacci spiral, docs/Citations.md#34). */
 static vec3f_t
 sphere_point(int i, int n) {
     const float golden = MATH_PI * (3.0F - sqrtf(5.0F));

@@ -1,6 +1,15 @@
 #include "console/console_verbs.h"
 
+#include <stdio.h>
 #include <string.h>
+
+#include "core/registry.h"
+
+void
+console_reply_stdio(const char* line) {
+    (void)printf("%s\n", line);
+    (void)fflush(stdout);
+}
 
 /* Verb names are matched ignoring case, so the lowercase name a person
  * types and the uppercase one a harness has always sent are the same
@@ -33,33 +42,10 @@ name_ncmp(const char* line, const char* name, size_t n) {
     return 0;
 }
 
-static bool
-listed_in(const console_verb_t* list, const console_verb_t* verb) {
-    for (; list != NULL; list = list->next) {
-        if (list == verb) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool
 console_register(console_registry_t* registry, console_verb_t* verb) {
-    if (listed_in(registry->first, verb)) {
-        return true;
-    }
-    for (const console_verb_t* entry = registry->first; entry != NULL; entry = entry->next) {
-        if (name_cmp(entry->name, verb->name) == 0) {
-            return false;
-        }
-    }
-    console_verb_t** link = &registry->first;
-    while (*link != NULL && name_cmp((*link)->name, verb->name) < 0) {
-        link = &(*link)->next;
-    }
-    verb->next = *link;
-    *link = verb;
-    return true;
+    static const registry_rule_t rule = REGISTRY_RULE(console_verb_t, name_cmp, NULL);
+    return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
 }
 
 bool

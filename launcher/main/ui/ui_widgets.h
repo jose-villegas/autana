@@ -33,11 +33,12 @@ typedef struct {
     int icon_side; /* beside a label; a tile sizes its own to fill it */
 } ui_theme_t;
 
+ui_theme_t ui_theme_from_style(const mu_Style* style);
+
 typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 
 typedef struct {
-    const icon_t* icon; /* NULL for a label alone */
-    const uint8_t* icon_rows;
+    const gfx_image_t* icon; /* NULL for a label alone */
     const char* label;
     bool enabled;  /* a disabled button is drawn muted and takes no tap */
     bool selected; /* drawn on accent_face; a press only sinks the bezel */
@@ -76,8 +77,7 @@ bool ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_
                     const ui_theme_t* theme);
 
 typedef struct {
-    const icon_t* icon; /* NULL for a label alone */
-    const uint8_t* icon_rows;
+    const gfx_image_t* icon; /* NULL for a label alone */
     const char* label;
 } ui_dropdown_item_t;
 

@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /* Headroom over the ~130 suites registered; a suite past it fails the run. */
 #define SUITE_MAX 192
@@ -41,6 +42,32 @@ void suite_register_on_request(const char* name, suite_fn fn);
 
 #define SUITE_REGISTER_ON_REQUEST(fn)                                                                                  \
     __attribute__((constructor)) static void fn##_register(void) { suite_register_on_request(#fn, fn); }
+
+/* SUITE_READS(fn, "pack", ...) names the packs suite `fn` reads from the
+ * runner's asset folder (asset/asset_store.h), so a run whose pack waits on the
+ * bake lock skips that suite rather than fail it. The host runner fails a run
+ * in which a suite reads a pack it did not name, so no read goes unnamed.
+ * At most SUITE_READS_MAX suites name packs; one past it fails the run. */
+#define SUITE_READS_MAX 16
+void suite_reads(const char* name, const char* const* packs);
+
+#define SUITE_READS(fn, ...)                                                                                           \
+    __attribute__((constructor)) static void fn##_reads(void) {                                                        \
+        static const char* const packs[] = {__VA_ARGS__, NULL};                                                        \
+        suite_reads(#fn, packs);                                                                                       \
+    }
+
+/* True when the suite running now named `pack` with SUITE_READS. */
+bool suites_current_reads(const char* pack);
+
+/* The suite running now, or NULL between suites. */
+const char* suites_current(void);
+
+/* Pack `pack` was not built: suites_run_all() skips every suite that reads it,
+ * and suites_print_waiting() names them. At most SUITE_WAITING_MAX packs. */
+#define SUITE_WAITING_MAX 16
+void suites_wait_on(const char* pack);
+void suites_print_waiting(void);
 
 /* Runs every registered suite, in name order so the output is stable. */
 void suites_run_all(void);

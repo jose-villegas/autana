@@ -33,17 +33,23 @@
 #include "boot/boot_anim_timeline.h"
 #include "gfx/draw/gfx_color.h"
 #include "gfx/draw/gfx_font.h"
+#include "gfx/image/gfx_image.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
-#include "render/r3d_line_camera.h"
 #include "render/r3d_project_x.h"
+#include "render/render_view.h"
 
 #define BOOT_ANIM_Q   12
 #define BOOT_ANIM_ONE (1 << BOOT_ANIM_Q) /* 4096 == 1.0 */
 #define BOOT_ANIM_TQ  8                  /* t's own fixed point */
+
+/* The boot clip: its pack and its one entry, built from boot_anim_motion.anim.toml. */
+#define BOOT_CLIP     "boot_anim_motion"
+/* The boot photograph: its pack and its one picture entry. */
+#define BOOT_PHOTO    "boot"
 
 /* How the camera and the space move: the boot clip's nodes "camera" and
  * "space", pointing into its pack, or the rest pose when the clip cannot be
@@ -62,6 +68,16 @@ void boot_anim_motion_load(boot_anim_motion_t* out);
 /* Drops the pack boot_anim_motion_load() mounted, if it did, and leaves the
  * rest pose in `motion`, which no longer points into the pack. */
 void boot_anim_motion_release(boot_anim_motion_t* motion);
+
+/* Fills `out` with the photograph the animation crossfades to, the boot
+ * picture's pack entry, mounting its pack. On any failure, including a picture
+ * that is not one panel, it logs why and leaves no pixels, so the animation
+ * draws on without it. */
+void boot_anim_photo_load(gfx_image_t* out);
+
+/* Drops the pack boot_anim_photo_load() mounted, if it did (`photo` has
+ * pixels), and leaves no pixels in `photo`. */
+void boot_anim_photo_release(gfx_image_t* photo);
 
 typedef struct {
     transformf_t camera;
@@ -99,29 +115,29 @@ static inline boot_anim_view_t
 boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
     boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
-    const r3d_line_camera_t camera = {.pose = st.camera, .focal = BOOT_ANIM_CAMERA_FOCAL, .near_z = R3D_LINE_NEAR_Z};
     /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
-     * so r3d_line_camera_view()'s shorter-axis fit is exactly half w; boot's
-     * pixels must not move if that inequality ever changes. */
+     * so render_view_make() fits the lens to w; boot's pixels must not move
+     * if that inequality ever changes. */
     const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
-    const r3d_line_view_t view = r3d_line_camera_view(camera, &st.space, viewport);
-    r3d_line_view_x_t out = r3d_line_view_to_x(&view);
+    const render_view_t view =
+        render_view_make(&st.camera, BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN, R3D_LINE_NEAR_Z, viewport);
     /* Meters per raw unit of (re, t, im): Q12, Q8 climbing 132/512 m a unit, Q12. */
     const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
                                       (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
                                       1.0F / (float)BOOT_ANIM_ONE};
-    r3d_line_view_x_set_inputs(&out, &view, meters_per_unit);
-    return out;
+    return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
 }
 
-/* Q12 re/im and Q8 t convert exactly to Q16.16 metres; the view's Q9 matrix
+/* Q12 re/im and Q8 t convert exactly to Q16.16 meters; the view's Q9 matrix
  * lands them in camera space in 1/512 m. */
 static inline vec3x_t
 boot_anim_to_camera_space(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view) {
-    /* Inside +-2^17 (32 m) on the floor's axes and +-2^15 on t the transform is
-     * three 32-bit products; the long axes and a wild view take the 64-bit one. */
-    const bool near = (uint32_t)(re_q12 + (1 << 17)) < (1u << 18) && (uint32_t)(im_q12 + (1 << 17)) < (1u << 18)
-                      && (uint32_t)(t_q8 + (1 << 15)) < (1u << 16);
+    /* Inside R3D_X_INPUT_XZ_LIMIT on the floor's axes and
+     * R3D_X_INPUT_Y_LIMIT on t the transform is three 32-bit products;
+     * the long axes and a wild view take the 64-bit one. */
+    const bool near = (uint32_t)(re_q12 + R3D_X_INPUT_XZ_LIMIT) < 2u * R3D_X_INPUT_XZ_LIMIT
+                      && (uint32_t)(im_q12 + R3D_X_INPUT_XZ_LIMIT) < 2u * R3D_X_INPUT_XZ_LIMIT
+                      && (uint32_t)(t_q8 + R3D_X_INPUT_Y_LIMIT) < 2u * R3D_X_INPUT_Y_LIMIT;
     if (near && view->units_ok) {
         return r3d_to_camera_space_units(view, re_q12, t_q8, im_q12);
     }
@@ -159,13 +175,6 @@ boot_anim_plane_point(const boot_anim_plane_t* plane, int32_t re_q12, int32_t im
         mathx_dot2c(plane->re_step.y, re, plane->im_step.y, im, plane->origin.y),
         mathx_dot2c(plane->re_step.z, re, plane->im_step.z, im, plane->origin.z),
     };
-}
-
-static inline void
-boot_anim_project(int32_t re_q12, int32_t im_q12, int32_t t_q8, const boot_anim_view_t* view, int* screen_x,
-                  int* screen_y) {
-    const vec3x_t p = boot_anim_to_camera_space(re_q12, im_q12, t_q8, view);
-    r3d_camera_to_screen_x(p, view, screen_x, screen_y);
 }
 
 /* False when the point is at or behind the near plane. */
@@ -292,11 +301,8 @@ boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, in
         return false;
     }
     const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
-    if (view->focal == 0) {
-        return m * view->scale < (int64_t)px * R3D_X_UNIT_ONE;
-    }
     const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * view->focal * view->scale < (int64_t)px * zmin * R3D_X_UNIT_ONE;
+    return m * view->pixels_per_unit < (int64_t)px * zmin;
 }
 
 /* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses
@@ -407,7 +413,7 @@ boot_anim_grid_alpha(uint32_t now_ms, int ring) {
     /* left/FADE, bounded rings. Squared dims too much. Linear keeps depth. */
     const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - ring);
     const uint32_t ceiling =
-        (uint32_t)tween_lerp_i32(BOOT_ANIM_GRID_MAX, BOOT_ANIM_GRID_CEILING_MAX, boot_anim_grid_climb(now_ms));
+        (uint32_t)mathi_lerp_u8(BOOT_ANIM_GRID_MAX, BOOT_ANIM_GRID_CEILING_MAX, boot_anim_grid_climb(now_ms));
     const uint32_t near = left * ceiling / (uint32_t)BOOT_ANIM_GRID_FADE;
 
     return (uint8_t)((arrived * near) / 255u);
@@ -449,7 +455,7 @@ boot_anim_spoke_reveal_target(int32_t near, int32_t far, uint8_t reach) {
 
 static inline uint8_t
 boot_anim_grid_whiten(uint32_t now_ms) {
-    return (uint8_t)tween_lerp_i32(0, BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_climb(now_ms));
+    return (uint8_t)mathi_lerp_u8(0, BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_climb(now_ms));
 }
 
 /* The title is laid out in the viewer's frame because the board is held one
@@ -505,9 +511,9 @@ boot_anim_title_letter(const gfx_font_t* font, int i, uint32_t now_ms) {
     const int start_x = final_x - BOOT_ANIM_TITLE_ENTRY_PX;
 
     vec2i_t p;
-    p.x = tween_lerp_i32(start_x, final_x, u8);
+    p.x = mathi_lerp_u8(start_x, final_x, u8);
 
-    const int32_t d_q12 = BOOT_ANIM_ONE - tween_lerp_i32(0, BOOT_ANIM_ONE, u8);
+    const int32_t d_q12 = BOOT_ANIM_ONE - mathi_lerp_u8(0, BOOT_ANIM_ONE, u8);
     p.y = BOOT_ANIM_TITLE_VIEW_Y + boot_anim_title_wobble(d_q12) + boot_anim_title_wave(i, now_ms);
     return p;
 }
@@ -540,11 +546,11 @@ boot_anim_pen(uint32_t now_ms) {
 
     if (now_ms <= phase1_end_ms) {
         const uint8_t linear = tween_ramp(now_ms, BOOT_ANIM_PEN_START_MS, BOOT_ANIM_PEN_MS);
-        return tween_lerp_i32(0, BOOT_ANIM_CURVE_PHASE1_FRACTION, linear);
+        return mathi_lerp_u8(0, BOOT_ANIM_CURVE_PHASE1_FRACTION, linear);
     }
 
     const uint8_t linear2 = tween_ramp(now_ms, phase1_end_ms, BOOT_ANIM_PEN_FINISH_MS - phase1_end_ms);
-    return tween_lerp_i32(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
+    return mathi_lerp_u8(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
 }
 
 static inline int32_t
@@ -563,17 +569,25 @@ boot_anim_ink(uint32_t now_ms) {
  * FADE_MS. Plain tween_ramp(), not eased: ease_out(r) + ease_out(255-r)
  * is NOT 255 at every r, so easing either half of a cross-dissolve makes
  * the midpoint read brighter than either end; linear is what keeps the
- * two halves summing to one whole picture throughout. */
+ * two halves summing to one whole picture throughout. The scene shows
+ * through what the reveal leaves, 255 - reveal. */
 static inline uint8_t
-boot_anim_image_reveal(uint32_t now_ms) {
+boot_anim_photo_reveal(uint32_t now_ms) {
     return tween_ramp(now_ms, BOOT_ANIM_IMAGE_START_MS, BOOT_ANIM_IMAGE_FADE_MS);
 }
 
-/* Complement the image reveal directly: separately rounded ramps need not
- * sum to 255. */
-static inline uint8_t
-boot_anim_scene_reach(uint32_t now_ms) {
-    return (uint8_t)(255u - boot_anim_image_reveal(now_ms));
+/* The frame, counted from 0, that mounts the photograph's pack. Mounting
+ * checks the whole pack, about 20 ms on the board: on the first frame it
+ * would delay the first picture, and in the crossfade it would stall a frame
+ * already among the dearest. The early frames are the cheapest (about 15 ms),
+ * so it takes the second. */
+#define BOOT_ANIM_PHOTO_MOUNT_FRAME 1U
+
+/* Whether frame `frame` (counted from 0) mounts the photograph's pack, if no
+ * frame before it tried. */
+static inline bool
+boot_anim_photo_due(uint32_t frame) {
+    return frame >= BOOT_ANIM_PHOTO_MOUNT_FRAME;
 }
 
 #define BOOT_ANIM_HUE_START   875  /* azure, at the foot of the climb */
@@ -662,8 +676,9 @@ boot_anim_finale_reach(uint32_t now_ms) {
  * clear the panel. */
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
-/* Host render tests call this directly and read the firmware framebuffer. */
-void boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms);
+/* Host render tests call this directly and read the firmware framebuffer.
+ * `photo` with no pixels draws the scene through to the end in its place. */
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture

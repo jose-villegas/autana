@@ -31,7 +31,6 @@
 
 #include <string.h>
 
-#include "boot/boot_anim_image.h"
 #include "build/build_variant.h"
 #include "core/timing.h"
 #include "display/display.h"
@@ -42,20 +41,8 @@
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 
-/* See gen_boot_anim_image.py; launcher/tools/gen/README.md. Also what
- * draw_image()'s own memcpy fast path below depends on being true. */
-_Static_assert(BOOT_ANIM_IMAGE_W == GFX_WIDTH && BOOT_ANIM_IMAGE_H == GFX_HEIGHT,
-               "boot_anim_image.h was generated for a different panel - regenerate it: "
-               "python tools/gen/gen_boot_anim_image.py ../design/boot/boot.png");
-_Static_assert(sizeof(boot_anim_image) == (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t),
-               "the photo is not exactly one framebuffer - draw_image() hands it to "
-               "gfx_blit_dither() as a full-screen source, which reads exactly that "
-               "many pixels");
-
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 static const char* TAG = "boot_anim";
 #endif
@@ -104,16 +91,6 @@ lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
     return gfx_color_mix(COL_BG, whitened, alpha);
 }
 
-/*
- * Which projection a call site reads depends on what it draws: a lone point
- * reads boot_anim_project_point(), which rejects rather than draw somewhere
- * nonsensical for a point behind the camera; a LINE reads
- * boot_anim_project_segment(), which clips a segment straddling the near
- * plane instead of rejecting it whole. Nothing reads the raw, unclipped
- * boot_anim_project(). There is no "shrunk" variant: scale lives in the
- * space transform's own SCALE channel.
- */
-
 /* A whole number of grid units, as a Q12 value. */
 static int32_t
 units(int n) {
@@ -160,12 +137,9 @@ grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int
     int32_t re, im;
     polar_point(radius, turn, &re, &im);
     *cs = boot_anim_plane_point(plane, re, im);
-    *front = cs->z > view->near_z;
     *sx = 0;
     *sy = 0;
-    if (*front) {
-        r3d_camera_to_screen_x(*cs, view, sx, sy);
-    }
+    *front = r3d_project_point_cs_x(*cs, view, sx, sy);
 }
 
 static void
@@ -302,10 +276,10 @@ draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, 
 }
 
 void
-draw_floor(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
+draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     const int32_t amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255);
     bool last_ring_tiny = false;
-    const int dissolve_level = gfx_dither_level(boot_anim_image_reveal(now_ms));
+    const int dissolve_level = gfx_dither_level(reveal);
 
     for (int ring = 1; ring <= BOOT_ANIM_GRID_RINGS; ring++) {
         const uint8_t alpha = scale8(boot_anim_grid_alpha(now_ms, ring), ink);
@@ -334,9 +308,9 @@ draw_floor(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 /* Arms arrive together despite differing lengths. */
 static void
 draw_arm(int32_t re, int32_t im, int32_t t, uint8_t reach, uint8_t ink, const boot_anim_view_t* view) {
-    const int32_t fre = tween_lerp_i32(0, re, reach);
-    const int32_t fim = tween_lerp_i32(0, im, reach);
-    const int32_t ft = tween_lerp_i32(0, t, reach);
+    const int32_t fre = mathi_lerp_u8(0, re, reach);
+    const int32_t fim = mathi_lerp_u8(0, im, reach);
+    const int32_t ft = mathi_lerp_u8(0, t, reach);
 
     int ax, ay, bx, by;
     if (boot_anim_project_segment(0, 0, 0, fre, fim, ft, view, &ax, &ay, &bx, &by)) {
@@ -362,11 +336,11 @@ draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const uint8_t finale = boot_anim_finale_reach(now_ms);
     const int32_t short_arm = units(4);
     const int32_t long_arm = units(BOOT_ANIM_AXIS_FAR_UNITS);
-    const int32_t arm = tween_lerp_i32(short_arm, long_arm, finale);
+    const int32_t arm = mathi_lerp_u8(short_arm, long_arm, finale);
 
     const int32_t short_top = (BOOT_ANIM_T_MAX_PHASE1 + 1) << BOOT_ANIM_TQ;
     const int32_t long_top = boot_anim_zeta_to_t_q8(long_arm);
-    const int32_t top = tween_lerp_i32(short_top, long_top, finale);
+    const int32_t top = mathi_lerp_u8(short_top, long_top, finale);
 
     draw_arm(arm, 0, 0, reach, ink, view); /* real      */
     draw_arm(0, arm, 0, reach, ink, view); /* imaginary */
@@ -401,8 +375,6 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (t > pen_t_q8) {
             break; /* the table is in order, so nothing after it either */
         }
-        /* Not boot_anim_project(): marker off-screen issue; see
-         * boot_anim_project_point(). */
         int x, y;
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
             continue;
@@ -484,11 +456,10 @@ typedef struct {
 static void
 draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color, int width,
                    const boot_anim_view_t* view) {
-    const bool next_front = next_cs.z > view->near_z;
+    int nsx, nsy;
+    const bool next_front = r3d_project_point_cs_x(next_cs, view, &nsx, &nsy);
 
     if (segment->prev_front && next_front) {
-        int nsx, nsy;
-        r3d_camera_to_screen_x(next_cs, view, &nsx, &nsy);
         draw_stroke(segment->prev_sx, segment->prev_sy, nsx, nsy, color, width, segment->joined);
         segment->joined = true;
         segment->prev_sx = nsx;
@@ -515,7 +486,7 @@ draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color,
 /* Re-colours within half the curve's length of the head. No second
  * framebuffer available. */
 int32_t
-draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
+draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     const int32_t pen = boot_anim_pen(now_ms);
     if (pen <= 0) {
         return 0;
@@ -533,7 +504,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 
     /* BOOT_ANIM_DISSOLVE_HALF_LEVEL halves; COARSE_LEVEL collapses to chord.
      * Quadratic limits deviation. */
-    const int dissolve_level = gfx_dither_level(boot_anim_image_reveal(now_ms));
+    const int dissolve_level = gfx_dither_level(reveal);
     const int max_steps = dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 1
                           : dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL ? 2
                                                                             : BOOT_ANIM_SPLINE_STEPS;
@@ -542,10 +513,8 @@ draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     boot_anim_pt_t s1 = boot_anim_sample(0);
     vec3x_t ta = boot_anim_key_to_camera_space(&s0, view);
     vec3x_t tb = boot_anim_key_to_camera_space(&s1, view);
-    curve_segment_t segment = {.prev_cs = tb, .prev_front = tb.z > view->near_z};
-    if (segment.prev_front) {
-        r3d_camera_to_screen_x(segment.prev_cs, view, &segment.prev_sx, &segment.prev_sy);
-    }
+    curve_segment_t segment = {.prev_cs = tb};
+    segment.prev_front = r3d_project_point_cs_x(tb, view, &segment.prev_sx, &segment.prev_sy);
 
     int32_t a0 = 0;
 
@@ -653,23 +622,16 @@ draw_title(uint32_t now_ms, uint8_t ink) {
  * scene stays as drawn wherever the reveal does not yet cover it.
  */
 void
-draw_image(uint8_t ink, uint8_t reveal) {
+draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal) {
     if (reveal == 0) {
         return;
     }
 
-    const gfx_color_t* photo = (const gfx_color_t*)boot_anim_image;
-
-    if (ink == 255) {
-        /* DITHERED, not blended: no framebuffer-read blend hardware, the
-         * same trade this file makes for the title's shadow (draw_title()).
-         * A per-pixel gfx_color_mix() over every pixel was measurably the
-         * most expensive part of a crossfade frame; see
-         * suite_boot_anim_perf.c. */
-        gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo, GFX_WIDTH, reveal);
-    } else {
-        gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo, GFX_WIDTH, reveal < ink ? reveal : ink);
-    }
+    /* DITHERED, not blended: no framebuffer-read blend hardware, the same
+     * trade this file makes for the title's shadow (draw_title()). A
+     * per-pixel gfx_color_mix() over every pixel was measurably the most
+     * expensive part of a crossfade frame; see suite_boot_anim_perf.c. */
+    gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
 }
 
 /* The loop */
@@ -688,21 +650,20 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 
 /* Keep scene scratch off the stack while the ending backdrop repaints. */
 static __attribute__((noinline)) void
-draw_scene(const boot_anim_motion_t* motion, uint32_t now_ms, uint8_t ink) {
-    const uint8_t reveal = boot_anim_image_reveal(now_ms);
-    const uint8_t scene = boot_anim_scene_reach(now_ms);
+draw_scene(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms, uint8_t ink) {
+    const uint8_t reveal = photo->pixels != NULL ? boot_anim_photo_reveal(now_ms) : 0;
     const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
-    /* Gated like title. Full coverage skips draw_image(). See boot_anim.h. */
-    if (scene > 0) {
-        draw_floor(now_ms, ink, &view);
+    /* A photograph fully revealed covers the whole scene. */
+    if (reveal < 255) {
+        draw_floor(now_ms, ink, reveal, &view);
         draw_axes(now_ms, ink, &view);
 
-        const int32_t reached = draw_curve(now_ms, ink, &view);
+        const int32_t reached = draw_curve(now_ms, ink, reveal, &view);
         draw_zeros(reached, ink, &view);
     }
 
-    draw_image(ink, reveal);
+    draw_image(photo, ink, reveal);
 
     /* Gated to save gfx calls before BOOT_ANIM_TITLE_START_MS. */
     if (now_ms >= BOOT_ANIM_TITLE_START_MS) {
@@ -711,14 +672,14 @@ draw_scene(const boot_anim_motion_t* motion, uint32_t now_ms, uint8_t ink) {
 }
 
 void
-boot_anim_draw_frame(const boot_anim_motion_t* motion, uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
     } else {
         boot_anim_clear_frame();
     }
-    draw_scene(motion, now_ms, ink);
+    draw_scene(motion, photo, now_ms, ink);
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -737,8 +698,16 @@ report_fps_windowed(int64_t now_us, uint32_t now_ms, int64_t* window_start, uint
 #ifdef ESP_PLATFORM
 void
 boot_anim_run(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t entered_us = timing_now_us();
+    int64_t first_frame_us = 0;
+    int64_t photo_mount_us = 0;
+    int64_t photo_frame_us = 0;
+#endif
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
+    gfx_image_t photo = {0};
+    bool photo_tried = false;
     const int64_t started_us = timing_now_us();
     uint32_t frames = 0;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -754,23 +723,42 @@ boot_anim_run(void) {
             break;
         }
 
-        boot_anim_draw_frame(&motion, now_ms);
-        gfx_present();
-        frames++;
+        const bool mounts = !photo_tried && boot_anim_photo_due(frames);
+        if (mounts) {
+            boot_anim_photo_load(&photo);
+            photo_tried = true;
 #if CONFIG_LAUNCHER_DEVELOPMENT
+            photo_mount_us = timing_now_us() - now_us;
+#endif
+        }
+        boot_anim_draw_frame(&motion, &photo, now_ms);
+        gfx_present();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (frames == 0) {
+            first_frame_us = timing_now_us() - entered_us;
+        }
+        if (mounts) {
+            photo_frame_us = timing_now_us() - now_us;
+        }
         report_fps_windowed(now_us, now_ms, &fps_window_start, &fps_window_frames);
 #endif
+        frames++;
 
         /* The same yield the shell's loop makes, for the same reason: the
          * idle task feeds the watchdog. */
-        vTaskDelay(1);
+        timing_yield();
     }
     /* Boot plays once and nothing else reads its clip: releasing gives back the
      * pack and its mount slot. */
     boot_anim_motion_release(&motion);
+    boot_anim_photo_release(&photo);
 
     /* Checked only on the board; not on host. */
     ESP_LOGI(TAG, "%u frames in %d ms (%.1f fps)", (unsigned)frames, BOOT_ANIM_MS,
              (double)frames * 1000.0 / BOOT_ANIM_MS);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    ESP_LOGI(TAG, "first frame %lld us; photograph's frame %lld us, %lld of them mounting it",
+             (long long)first_frame_us, (long long)photo_frame_us, (long long)photo_mount_us);
+#endif
 }
 #endif

@@ -246,6 +246,11 @@ r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out, char* problem, size_t prob
         (void)snprintf(problem, problem_size, "a poses file needs a size, a lens and at least one pose");
         return false;
     }
+    /* Pose files use the source frame; asset/engine_frame.py owns the pack conversion. */
+    for (int index = 0; index < out->count; index++) {
+        out->eye[index].z = -out->eye[index].z;
+        out->forward[index].z = -out->forward[index].z;
+    }
     return true;
 }
 

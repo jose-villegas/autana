@@ -45,7 +45,9 @@ panel framebuffer, 368 by 448.
 `--quarter 0|1` selects portrait or landscape (default: landscape), and
 `--panel` writes the panel's native orientation. `-o FILE` saves the final
 frame as BMP; without it the BMP goes to stdout. `--video FILE.avi` also saves
-every frame through the shared harness's video writer.
+every frame through the shared harness's video writer. `--deps` compiles
+nothing and prints what the viewer is compiled from: a `flags` line, then the
+compiler's `-MM` list.
 
 ## Images in these docs
 
@@ -131,13 +133,74 @@ weights change. `--build-commit SHA` accepts a capture from that commit while
 the firmware sources still match.
 
 GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
-to its own `--check`. GPU `--check` verifies the saved full run and its source
-stamp without fitting again. `--smoke` writes only scratch data.
-The `doc-images-gpu` workflow runs the full stage on the self-hosted Linux GPU
-runner, weekly, on manual dispatch and on main pushes affecting GPU inputs.
-It opens or updates "docs: refresh GPU-rendered images" on the separate
-`feature/refresh-doc-images-gpu` branch. GPU runs are serialized and log GPU
-memory use. The stage-start guard checks WSL and Windows host available memory.
+to its own `--check`. GPU `--check` verifies the saved full run and its input
+fingerprint without fitting again. `--smoke` writes only scratch data.
+`--stage gpu --inputs` prints that fingerprint and runs nothing; it needs
+a Python 3.12 or later (standard library only), a C compiler and the
+tree, with no GPU, LFS objects or bakes.
+It is a SHA-256 over what the stage's output is made from, each found from the
+code rather than listed:
+
+| Input | Found by |
+|---|---|
+| Python the stage runs | tokens and import bindings in `bake.py`'s closure of `doc_stages.py` and each script its code names by path |
+| Native code and requirement pins | `bake.py`'s rules for that closure |
+| Other files that code names | string paths resolving to tracked files, such as `board_cost_weights.txt` |
+| The host renderer | `scene_viewer.sh SCENE --deps`: its compile flags and the compiler's `-MM` list (sources and project headers, excluding system headers and compiler identity/version) |
+| The scene | the scene file, non-bake pack entries, and the key and locked bytes of each bake in `launcher/bakes.lock` |
+
+A comment or blank-line edit in the Python leaves the fingerprint unchanged.
+The stage's work folder is named by it, and its saved `source.json` holds it
+and lists every input.
+
+The `doc-images-gpu` workflow runs on every main push, nightly and on manual
+dispatch. The latest unexpired rendered or failed record on main decides
+whether these inputs are current. A dispatch with `force` bypasses both
+record checks but still skips an obsolete run. The hosted lookup defers to
+the GPU gate while another run of this workflow on main is unfinished. The
+gate holds the concurrency group, skips runs whose trigger SHA is no longer
+main's head, then checks only the latest record. Refresh jobs queue instead of replacing each other
+(`queue: max`); an obsolete one skips in seconds, so the head's job still
+runs; the nightly run is the backstop for anything a missed or failed trigger
+leaves stale. A forced dispatch that becomes obsolete must be dispatched
+again on main.
+
+The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
+GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
+
+```mermaid
+flowchart TD
+    Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
+    Flight -->|yes| Refresh
+    Flight -->|no| Latest{"Latest main record matches?"}
+    Latest -->|yes| Skip["Doc images current"]
+    Latest -->|no or force| Refresh["gpu_refresh_gate.sh<br/>holds GPU concurrency group"]
+    Refresh --> Check{"GPU runner's fingerprint matches hosted?"}
+    Check -->|no| Error["Fail with both fingerprints"]
+    Check -->|yes| Head{"Trigger SHA is main head?"}
+    Head -->|no| Obsolete["Skip obsolete run, record nothing"]
+    Head -->|yes| Again{"Latest main record matches?"}
+    Again -->|yes| Skip
+    Again -->|no or force| Render["Render"]
+    Render -->|success| Publish["Sync or close refresh PR"]
+    Publish -->|success| Recorded["Record rendered inputs"]
+    Render -->|failure| Failed["Record failed inputs and run URL"]
+    Publish -->|failure| Failed
+```
+
+A rendered record means rendered, not merged: closing a refresh PR leaves
+these inputs current until they change or a dispatch uses `force`. Failed
+records also skip until inputs change or force retries. Retention is set in
+`doc-images-gpu.yml`. Runs open or update "docs: refresh GPU-rendered images"
+on `feature/refresh-doc-images-gpu`, and log GPU memory use.
+
+Inputs outside the fingerprint include compiler identity/version and system
+headers, the GPU environment (its Python, CUDA, drivers and ffmpeg), the
+workflow file and `run_doc_gpu.sh`. `scene_viewer_render_host.sh` and
+`render_scene.sh` count only through their `--deps` output. Changes outside
+the fingerprint need a dispatch with `force`.
+
+The stage-start guard checks WSL and Windows host available memory.
 [`process_budget.py`](../../launcher/tools/r3d/process_budget.py) owns the
 floors and worker estimates. Later admission projects each active worker's
 not-yet-resident allocation onto live WSL, GPU and cgroup memory, bounded
@@ -245,7 +308,9 @@ shell does before an app's `frame()`. A scene whose sources include
 active camera; any other scene gets a no-op.
 
 Each line of `scene_renders` is `<label>|<arguments>|<width>x<height>`,
-optionally followed by `|nopin`, and the declared size is checked against
+optionally followed by flags: `|nopin`, and `|nopacks`, which runs that
+render with an empty pack folder to show what the scene draws when its packs
+are missing. The declared size is checked against
 what the binary reports it wrote. That
 is what makes the sweep a check rather than a picture nobody looks at
 twice.
@@ -297,8 +362,10 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `gfx_draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called.
-The boot animation's tracks call `acosf` for the slerp and
-are `|nopin`. A render that is not integer-exact ends its line
+The boot animation is pinned as well: its slerp calls `acosf` and
+`sinf`, whose last bit can differ between libms, but MinGW-w64's and glibc's
+render its pinned frames identically, and a last-bit difference moves a pixel
+only where a sum lands on a rounding boundary. A render that is not integer-exact ends its line
 with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
 or rasterises in float belongs there. A scene whose pin can fail for a

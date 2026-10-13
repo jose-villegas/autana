@@ -14,7 +14,10 @@
 #include <string.h>
 
 #include "heap_arena.h"
+#include "pack_reads.h"
 #include "suites.h"
+#include "ui/ui_icons.h"
+#include "ui/ui_ridge.h"
 #include "unity.h"
 
 /* Unity requires these once per binary. The runner owns the memory audit. */
@@ -78,6 +81,11 @@ main(int argc, char** argv) {
 #ifdef SIGBUS
     (void)signal(SIGBUS, name_the_test_that_died);
 #endif
+    /* The engine pack, as the shell loads it before any app: kept for the
+     * run, so no suite reads it first and none names it. */
+    ui_icons_init();
+    ui_ridge_load();
+    pack_reads_begin();
     UNITY_BEGIN();
 
     if (argc > 1) {
@@ -91,8 +99,14 @@ main(int argc, char** argv) {
     /* A suite that did not fit is a test that did not run, so this run must
      * not come back green having quietly checked less than the whole set. */
     if (suites_dropped() > 0) {
-        printf("FAIL: %d suite(s) dropped; raise SUITE_MAX in suites.h\n", suites_dropped());
+        printf("FAIL: %d registration(s) dropped; raise the limit the SUITE OVERFLOW line names\n", suites_dropped());
         failures += suites_dropped();
     }
+    /* Only a full run skips the suites of a pack waiting on the lock. A read
+     * no SUITE_READS names fails the run, so the skip cannot miss a suite. */
+    if (argc <= 1) {
+        suites_print_waiting();
+    }
+    failures += pack_reads_undeclared();
     return failures;
 }

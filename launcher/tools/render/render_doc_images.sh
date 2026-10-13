@@ -7,7 +7,9 @@
 #   ./launcher/tools/render/render_doc_images.sh --check    # only report which changed
 #   ./launcher/tools/render/render_doc_images.sh --orphans  # only report images no script names
 #   ./launcher/tools/render/render_doc_images.sh --stage gpu [--smoke|--check]
+#   ./launcher/tools/render/render_doc_images.sh --stage gpu --inputs  # print its input fingerprint
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
+#   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
 # Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
 # or newer, and the initialized meshoptimizer submodule for scratch bakes.
@@ -49,12 +51,17 @@ DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
 
 if [ "${1:-}" = --stage ]; then
-    if [ "${2:-}" = gpu ]; then
+    if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
         shift 2
         exec sh "$TOOLS_DIR/run_doc_gpu.sh" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
     fi
     . "$ROOT/scripts/lib/python.sh"
-    PYTHON=$(find_python numpy scipy) || exit 2
+    # --inputs needs no third-party module (doc_stages.py checks the Python version).
+    if [ "${3:-}" = --inputs ]; then
+        PYTHON=$(find_python) || exit 2
+    else
+        PYTHON=$(find_python numpy scipy) || exit 2
+    fi
     exec "$PYTHON" "$TOOLS_DIR/doc_stages.py" --scene "$DEMO_SCENE" --object "$DEMO_OBJECT" "$@"
 fi
 
@@ -204,9 +211,13 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
     set -- "$@" --quality "$camera=$csv"
 done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    "$@" --present docs/render/data/pipeline-present-board.log \
-    --resolve docs/render/data/pipeline-resolve-board.log --tables "$OUT/tables" \
-    --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+
+# The frame stages as shipped and what each debug view adds, from the
+# pipeline captures beside the page.
+run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
+    --views 'docs/render/data/pipeline-view-{view}-board.log' --tables "$OUT/tables" \
+    --chart "$OUT/render/pipeline-frame-stages.png" > "$WORK/frame_stages.log"
 
 table_status=0
 if [ "$CHECK" = 1 ]; then

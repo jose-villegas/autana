@@ -106,7 +106,7 @@ an app leaves by leaving the build:
 
 ## Lifecycle
 
-The shell's state machine (Launcher, Control Center, and a running app) is
+The shell's state machine (the launcher and a running app) is
 in [Firmware-Architecture.md](Firmware-Architecture.md#the-frame-loop). An
 app only ever sees the `Running` state; it leaves by home swipe
 (`home_gesture`), PWR long-press (no `home_gesture`), or its own call to
@@ -228,7 +228,7 @@ edge. An app with an on-screen way out calls
 | Set its own panel clock: `gfx_set_panel_clock_hz()` | yes, and never restore it |
 | Call `gfx_request_full_redraw()` | yes, from anywhere on core 0 |
 | Call `gfx_present()` | **no**; the shell presents |
-| Loop, block or `vTaskDelay` | **no**; return promptly |
+| Loop, block or pause (`timing_sleep_ms`, `timing_yield`) | **no**; return promptly |
 | Keep a second framebuffer | **no**; there is one |
 | Any `gfx_*` call from `update()` | **no**; the buffer may be mid-send |
 
@@ -320,6 +320,8 @@ autana flash dev                      # then look for the app in the list
 
 Boot logs `Ready, N apps registered`; launch and leave log `Starting <name>` /
 `Leaving <name>` under the `shell` tag.
+
+An app's `IRAM_ATTR` function needs the comment directly above it to give a reason and `IRAM budget: N B`; see [Internal memory map](notes/Board-and-Memory.md#internal-memory-map).
 
 ## Related
 

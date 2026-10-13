@@ -24,11 +24,12 @@ such as a tool pulled straight from GitHub) is never walked. Each result
 prints the paragraphs that carry the question, the section's path:line
 range to read the rest, and the code it cites.
 
-Two rankings are fused: BM25F over exact words, with the heading path weighted
-above the body, and embedding similarity from docs_llama.py's local model when
-it is set up. Without the model, search is the first alone and says so. The
-index is rebuilt on every run, in about a second, so it is never stale; only
-the vectors are cached. docs/tools/Docs-Search.md has the setup.
+Two rankings are fused by reciprocal rank (docs/Citations.md#47): BM25F
+(docs/Citations.md#46) over exact words, with the heading path weighted above
+the body, and embedding similarity from docs_llama.py's local model when it is
+set up. Without the model, search is the first alone and says so. The index is
+rebuilt on every run, in about a second, so it is never stale; only the
+vectors are cached. docs/tools/Docs-Search.md has the setup.
 """
 import argparse
 import json

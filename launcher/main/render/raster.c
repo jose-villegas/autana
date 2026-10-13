@@ -9,8 +9,11 @@
 #include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
+#include "services/tune.h"
 
-#define JOB_WAIT_MS 1000
+TUNE_OWNER(render);
+/* The generated meshlet-size table measures both culling settings. */
+TUNE(render, cull, 1, 0, 1);
 
 typedef struct {
     const raster_t* raster;
@@ -156,18 +159,6 @@ upscale_slice(void* ctx) {
     upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
 }
 
-/* Core 1 takes a copy of `second_half`, so a caller may reuse both. */
-static void
-run_split(job_fn_t fn, slice_t* first_half, const slice_t* second_half) {
-    if (!job_try_core1(fn, second_half, sizeof *second_half)) {
-        fn((void*)second_half);
-    }
-    fn(first_half);
-    const bool done = job_wait(JOB_WAIT_MS);
-    assert(done); /* the next stage reads what core 1 wrote */
-    (void)done;
-}
-
 int
 raster_vertex_capacity(const raster_t* raster) {
     int most = 0;
@@ -226,7 +217,15 @@ static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    const int visible = r3d_pipeline_cull(mesh, lens, out, work);
+    int visible;
+    if (cull) {
+        visible = r3d_pipeline_cull(mesh, lens, out, work);
+    } else {
+        visible = mesh->cluster_count;
+        for (int i = 0; i < visible; i++) {
+            out[i] = (uint16_t)i;
+        }
+    }
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
         stats->triangles += mesh->clusters[out[i]].triangle_count;
@@ -272,7 +271,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     *other = *mine;
     other->first = half;
     other->count = count - half;
-    run_split(transform_slice, mine, other);
+    job_run_split(transform_slice, mine, other, sizeof *mine);
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
@@ -287,7 +286,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     mine->count = raster->height - mid;
     other->first = 0;
     other->count = mid;
-    run_split(draw_slice, mine, other);
+    job_run_split(draw_slice, mine, other, sizeof *mine);
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
@@ -333,7 +332,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         work->mine =
             (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
         work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
-        run_split(resolve_slice, &work->mine, &work->other);
+        job_run_split(resolve_slice, &work->mine, &work->other, sizeof work->mine);
         FRAME_COST_END(resolved_from, "r3d.resolve");
     }
 }
@@ -403,6 +402,6 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     const int mid = height / 2;
     slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};
     const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0, NULL, NULL};
-    run_split(upscale_slice, &mine, &other);
+    job_run_split(upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

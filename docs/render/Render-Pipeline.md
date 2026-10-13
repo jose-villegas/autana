@@ -41,7 +41,7 @@ flowchart TB
         Scene["scene/<br/><i>scene and camera</i>"] --> Size["render/context<br/><i>render size</i>"]
         subgraph Update["Update while the last frame is sent: render/raster, both cores"]
             direction LR
-            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve"] --> View["View<br/>modes"]
+            Cull["Cull"] --> Xf["Transform"] --> Clip["Clip"] --> Fill["Span fill<br/><i>+ attachments</i>"] --> Res["Resolve<br/><i>only if an attachment resolves</i>"] --> View["View<br/>modes"]
         end
         subgraph After["After the send"]
             direction LR
@@ -60,15 +60,81 @@ Every step runs on the CPU except the fit, which needs a CUDA GPU.
 The doc-images GPU stage rebakes the demo scene's meshes on the machine in
 the table below:
 
-<!-- generated: bake-machine sha256=d7c3f0467d71a93f5cd91012d607fb0a76afce353bc507ae5ae960e6ecd03648 -->
-The GPU stage's next run on the self-hosted runner fills this table.
+<!-- generated: bake-machine sha256=22db5697ef2f286e26c3119383781e5ee8b7157c6eccd77e726db8e96c916eb6 -->
+| Machine | Value |
+|---|---|
+| CPU | Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz |
+| Cores/threads | 5/10 |
+| RAM | 10.7 GiB |
+| GPU | NVIDIA GeForce RTX 2060 |
+| VRAM | 6144 MiB |
+| Driver | 617.14 |
+| CUDA | 12.8 |
+| OS | Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.39 |
+| Python | 3.12.14 |
+| Mitsuba | 3.9.1 |
+| PyTorch | 2.11.0+cu128 |
 <!-- /generated: bake-machine -->
 
 Each step of those bakes, with the triangles it took and left and the memory
 it peaked at:
 
-<!-- generated: bake-steps sha256=d7c3f0467d71a93f5cd91012d607fb0a76afce353bc507ae5ae960e6ecd03648 -->
-The GPU stage's next run on the self-hosted runner fills this table.
+<!-- generated: bake-steps sha256=fc9888e7a5dc3dd12162390919f7f30c21d46621f647e706eec74ca983cdc60a -->
+| Variant | Step | Wall s | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |
+|---|---|---|---|---|---|---|
+| lite-GI-bake | source load | 6.133 | 0 | 262267 | 1541.1 | not available |
+| lite-GI-bake | alpha mask | 0.218 | 262267 | 245465 | 1511.5 | not available |
+| lite-GI-bake | visibility | 11.790 | 245465 | 211859 | 1807.6 | not available |
+| lite-GI-bake | thin | 0.002 | 211859 | 202188 | 1807.6 | not available |
+| lite-GI-bake | light | 85.391 | 202188 | 681348 | 3334.8 | not available |
+| lite-GI-bake | simplify | 12.776 | 681348 | 8669 | 3459.9 | not available |
+| lite-GI-bake | meshlets | 0.046 | 8669 | 8669 | 3303.7 | not available |
+| lite-GI-bake | write | 0.001 | 8669 | 8669 | 3303.7 | not available |
+| lite-fit-start | source load | 4.660 | 0 | 262267 | 1523.8 | not available |
+| lite-fit-start | alpha mask | 0.142 | 262267 | 245465 | 1496.2 | not available |
+| lite-fit-start | visibility | 431.270 | 245465 | 120792 | 2432.3 | not available |
+| lite-fit-start | thin | 0.002 | 120792 | 114665 | 2087.8 | not available |
+| lite-fit-start | light | 29.146 | 114665 | 288503 | 3405.2 | not available |
+| lite-fit-start | simplify | 11.238 | 288503 | 9972 | 3416.1 | not available |
+| lite-fit-start | meshlets | 0.039 | 9972 | 9972 | 3406.4 | not available |
+| lite-fit-start | write | 0.001 | 9972 | 9972 | 3406.4 | not available |
+| lite-GI-fit | fit | 313.185 | 9972 | 8672 | 1733.5 | 546.0 |
+| full-GI-bake | source load | 5.588 | 0 | 262267 | 1554.9 | not available |
+| full-GI-bake | alpha mask | 0.165 | 262267 | 245465 | 1497.4 | not available |
+| full-GI-bake | visibility | 10.306 | 245465 | 211859 | 1805.4 | not available |
+| full-GI-bake | thin | 0.002 | 211859 | 202188 | 1765.9 | not available |
+| full-GI-bake | light | 57.694 | 202188 | 681348 | 3328.6 | not available |
+| full-GI-bake | simplify | 8.765 | 681348 | 17367 | 3452.5 | not available |
+| full-GI-bake | meshlets | 0.073 | 17367 | 17367 | 3285.9 | not available |
+| full-GI-bake | write | 0.002 | 17367 | 17367 | 3285.9 | not available |
+| full-fit-start | source load | 6.689 | 0 | 262267 | 1556.0 | not available |
+| full-fit-start | alpha mask | 0.169 | 262267 | 245465 | 1498.6 | not available |
+| full-fit-start | visibility | 713.396 | 245465 | 120792 | 2538.3 | not available |
+| full-fit-start | thin | 0.003 | 120792 | 114665 | 2055.7 | not available |
+| full-fit-start | light | 50.996 | 114665 | 288503 | 3390.0 | not available |
+| full-fit-start | simplify | 7.594 | 288503 | 19987 | 3391.2 | not available |
+| full-fit-start | meshlets | 0.115 | 19987 | 19987 | 3391.3 | not available |
+| full-fit-start | write | 0.003 | 19987 | 19987 | 3391.3 | not available |
+| full-GI-fit | fit | 333.345 | 19987 | 17177 | 1742.9 | 560.0 |
+| flat-GI-bake | source load | 5.153 | 0 | 262267 | 1498.6 | not available |
+| flat-GI-bake | alpha mask | 0.140 | 262267 | 245465 | 1499.0 | not available |
+| flat-GI-bake | visibility | 9.647 | 245465 | 211859 | 1815.3 | not available |
+| flat-GI-bake | thin | 0.002 | 211859 | 202188 | 1777.5 | not available |
+| flat-GI-bake | light | 53.539 | 202188 | 681348 | 3326.7 | not available |
+| flat-GI-bake | simplify | 9.379 | 681348 | 17367 | 3458.5 | not available |
+| flat-GI-bake | face colours | 9.031 | 17367 | 17367 | 3303.8 | not available |
+| flat-GI-bake | meshlets | 0.156 | 17367 | 17367 | 3299.0 | not available |
+| flat-GI-bake | write | 0.002 | 17367 | 17367 | 3299.0 | not available |
+| flat-fit-start | source load | 6.013 | 0 | 262267 | 1539.1 | not available |
+| flat-fit-start | alpha mask | 0.189 | 262267 | 245465 | 1500.2 | not available |
+| flat-fit-start | visibility | 581.062 | 245465 | 120792 | 2436.9 | not available |
+| flat-fit-start | thin | 0.002 | 120792 | 114665 | 2063.2 | not available |
+| flat-fit-start | light | 30.504 | 114665 | 288503 | 3393.0 | not available |
+| flat-fit-start | simplify | 4.797 | 288503 | 19987 | 3399.5 | not available |
+| flat-fit-start | face colours | 8.835 | 19987 | 19987 | 3397.1 | not available |
+| flat-fit-start | meshlets | 0.198 | 19987 | 19987 | 3397.2 | not available |
+| flat-fit-start | write | 0.003 | 19987 | 19987 | 3397.2 | not available |
+| flat-GI-fit | fit | 281.863 | 19987 | 17177 | 1760.4 | 588.0 |
 <!-- /generated: bake-steps -->
 
 ### Geometry
@@ -140,7 +206,7 @@ Reference: [Mesh-Import.md](Mesh-Import.md#thin).
 ### Light
 
 Bakes each vertex's colour: direct sun and sky, local occlusion, and
-path-traced bounced light. Rays are traced by Mitsuba on the CPU (its LLVM
+path-traced bounced light. Rays are traced by Mitsuba<sup>[[15]](../Citations.md#15)</sup> on the CPU (its LLVM
 backend).
 
 | Reads | Writes | Settings |
@@ -178,8 +244,8 @@ Reference: [Mesh-Import.md](Mesh-Import.md#simplify).
 #### Fit
 
 Optional: moves a variant's vertices and colours to match the reference from
-the camera's poses.
-It needs an NVIDIA GPU with CUDA: PyTorch and nvdiffrast draw what the board
+the camera's poses<sup>[[1]](../Citations.md#1)</sup>.
+It needs an NVIDIA GPU with CUDA: PyTorch and nvdiffrast<sup>[[2]](../Citations.md#2)</sup> draw what the board
 draws and fit against the reference; see the
 [fit environment](../../launcher/tools/r3d/README.md#appearance-fit). A smooth mesh fits colours per vertex, a flat one a colour
 per face.
@@ -206,7 +272,7 @@ culls and draws.
 
 | Reads | Writes | Settings |
 |---|---|---|
-| the final mesh | clusters, nodes, the `.mesh` entry | none |
+| the final mesh | clusters, nodes, the `.mesh` entry | `geometry.meshlet_triangles` |
 
 Cost: `meshlets` and `write` in the bake-steps table.
 
@@ -215,6 +281,20 @@ full, lite and fitted meshes. Each instance owns a disjoint ID range, reset on
 every draw; empty pixels keep the clear colour.
 
 ![Clusters painted by the meshlets debug view](../images/render/sponza-meshlets.png)
+
+Culling clusters about halves the triangles submitted and takes roughly a
+third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
+boxes let through more triangles than its fewer culls save. Each size on the
+board, against submitting every cluster:
+
+<!-- generated: meshlet-sizes sha256=a2394a367bfaeaea5674c00debb910455e0d05d3ab6a5d512b84eae7023763b0 -->
+| Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
+|---|---|---|---|---|---|---|---|
+| cull off | 583 | 0.934 | 17376.0 | 0.35 | 5.21 | 63.37 | 74.85 |
+| meshlets of 16 | 1225 | 1.061 | 8661.6 | 0.99 | 3.57 | 42.01 | 52.50 |
+| meshlets of 32 (shipped) | 583 | 0.934 | 9564.1 | 0.66 | 3.21 | 42.98 | 52.80 |
+| meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
+<!-- /generated: meshlet-sizes -->
 
 Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
 
@@ -234,20 +314,41 @@ Reference: [the asset packs](../assets/README.md#packs).
 
 ## Every frame, on the board
 
-Each stage of the scene as shipped:
+Separate charts show the shipped frame and each debug view. The shipped
+chart uses solid segments; each view chart shows hatched additions, with an
+label and elbow leader marking the base frame at the bar's start. A segment
+is drawn only when its share rounds above zero percent. Legends match the
+drawn segments; the table retains every stage in milliseconds. Each axis fits
+its own data, and view ticks show added milliseconds.
+The shipped label gives the total; view labels give the signed net addition
+and its share of the shipped total. Segment labels and legends give each
+stage's share of the shipped total, signed for view additions. Dotted lines
+mark the frame-rate budgets when they fall inside the chart.
 
-<!-- generated: pipeline-frame-stages sha256=866982c25d43099be4e7a5d0afac643e454c551f6de1930496a3590a742e50c3 -->
-| Stage | Board ms/frame |
-|---|---|
-| r3d.cull | 0.72 |
-| r3d.transform | 6.61 |
-| r3d.draw | 40.79 |
-| r3d.resolve, with motion vectors attached | 14.84 |
-| present.wait | 0.00 |
-| r3d.upscale | 2.88 |
-| frame.rest | 1.13 |
+<!-- generated: pipeline-frame-stages sha256=4ca11d90dd2b848aa4842035ac3193109d3428e9c6ec73ccb768b6904f650410 -->
+![Frame stages as shipped](../images/render/pipeline-frame-stages.png)
 
-Source: the scene as shipped, mean of 20 windows; the resolve row is from the scene with the motion attachment shown.
+![Frame stages with the depth view](../images/render/pipeline-frame-stages.depth.png)
+
+![Frame stages with the tiles view](../images/render/pipeline-frame-stages.tiles.png)
+
+![Frame stages with the motion view](../images/render/pipeline-frame-stages.motion.png)
+
+![Frame stages with the meshlets view](../images/render/pipeline-frame-stages.meshlets.png)
+
+| Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
+|---|---|---|---|---|---|---|
+| r3d.cull | 0.76 | 1% | +0.01 | +0.00 | +0.02 | +0.01 |
+| r3d.transform | 4.87 | 10% | +0.10 | +0.02 | +0.22 | +0.02 |
+| r3d.draw | 41.94 | 82% | +0.25 | +0.20 | +1.85 | +23.89 |
+| r3d.resolve | not run | not run | +0.00 | +0.00 | +14.29 | +0.00 |
+| r3d.show | not run | not run | +6.89 | +4.60 | +9.05 | +10.21 |
+| present.wait | 0.00 | 0% | +0.00 | +0.00 | +0.00 | +0.00 |
+| r3d.upscale | 2.59 | 5% | +0.16 | +0.17 | +0.16 | +0.16 |
+| frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.11 | +0.12 |
+| total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
+
+Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped.
 <!-- /generated: pipeline-frame-stages -->
 
 ### Scene and camera
@@ -260,7 +361,7 @@ view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 |---|---|---|
 | the scene's pack: meshes, placements, the camera clip | the frame's instances and view | the active camera, which renderers are enabled |
 
-Cost: part of `frame.rest` in the frame-stages table.
+Cost: part of `frame.rest` in the frame-stages chart.
 
 ![The demo scene along its flythrough](../images/render/sponza-full.gif)
 
@@ -276,7 +377,7 @@ cost or, predicted, from what the census kept.
 |---|---|---|
 | recent frames' cost, or the census's triangles | the render width and height | the scale, or the budget, ladder and policy |
 
-Cost: part of `frame.rest` in the frame-stages table.
+Cost: part of `frame.rest` in the frame-stages chart.
 
 ![The size chosen along the path](../images/render/dynamic-resolution-flight.png)
 
@@ -298,7 +399,7 @@ list, and the draw reuses it.
 |---|---|---|
 | node and cluster bounds, the camera | the kept clusters | none |
 
-Cost: `r3d.cull` in the frame-stages table; a predicted size is charged to
+Cost: `r3d.cull` in the frame-stages chart; a predicted size is charged to
 `r3d.census` instead.
 
 Picture: none yet.
@@ -314,7 +415,7 @@ halves of the vertex work; each cluster also records the screen rows it spans.
 |---|---|---|
 | the kept clusters, positions, the lens fitted to the render size | screen vertices, each cluster's rows | none |
 
-Cost: `r3d.transform` in the frame-stages table.
+Cost: `r3d.transform` in the frame-stages chart.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#on-both-cores).
 
@@ -328,7 +429,7 @@ the draw's.
 |---|---|---|
 | screen vertices | clipped triangles | none |
 
-Cost: part of `r3d.draw` in the frame-stages table.
+Cost: part of `r3d.draw` in the frame-stages chart.
 
 Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
@@ -342,7 +443,7 @@ triangle won. The two cores split the rows where the estimated cost halves.
 |---|---|---|
 | triangles and their colours | colour, depth, each attachment's pixels | the attachments listed |
 
-Cost: `r3d.draw` in the frame-stages table.
+Cost: `r3d.draw` in the frame-stages chart.
 
 ![The depth the fill writes](../images/render/sponza-depth.gif)
 
@@ -350,14 +451,15 @@ Reference: [Mesh-Rendering.md](Mesh-Rendering.md#coverage-and-small-triangles).
 
 #### Resolve
 
-Once every instance is drawn, each attachment turns what was written into its
-final map, the two cores on disjoint rows.
+Once every instance is drawn, each attachment that resolves turns what was
+written into its final map, the two cores on disjoint rows.
 
 | Reads | Writes | Settings |
 |---|---|---|
 | depth, the attachment's pixels | the attachment's map | none |
 
-Cost: `r3d.resolve, with motion vectors attached` in the frame-stages table.
+Cost: `r3d.resolve` in the frame-stages chart, only when a view's attachment
+resolves; the scene as shipped has none.
 
 ![Motion vectors, an attachment resolved from depth](../images/render/sponza-motion-vectors.gif)
 
@@ -373,7 +475,7 @@ attachment paints colour from the renderer's maps.
 |---|---|---|
 | depth, an attachment | colour | the debug view |
 
-Cost: part of `frame.rest` in the frame-stages table when enabled.
+Cost: `r3d.show` in each view's chart.
 
 Pictures: [depth](../images/render/sponza-depth.gif),
 [tiles](../images/render/sponza-tiles.gif),
@@ -397,21 +499,21 @@ is copied into a half picture instead, and the present doubles it as it sends.
 |---|---|---|
 | the picture | the framebuffer, or a half picture | the render size against the panel |
 
-Cost: `r3d.upscale` in the frame-stages table.
+Cost: `r3d.upscale` in the frame-stages chart.
 
 Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#expanded-frames).
 
 #### Present
 
 The framebuffer's dirty rows, or a half picture doubled on the way, go to the
-panel over QSPI while the next frame is prepared; the frame-stages table shows
+panel over QSPI while the next frame is prepared; the frame-stages chart shows
 what the frame waits for it.
 
 | Reads | Writes | Settings |
 |---|---|---|
 | the framebuffer or half picture, its dirty rows | the panel | the framebuffer layout (`gfx_mode.h`) |
 
-Cost: `present.wait` in the frame-stages table.
+Cost: `present.wait` in the frame-stages chart.
 
 Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-gets-sent).
 
@@ -420,20 +522,30 @@ Reference: [Gfx-and-Presentation.md](../Gfx-and-Presentation.md#present-what-get
 The docs generator, `launcher/tools/render/render_doc_images.sh`, refreshes
 this page's measured blocks from the committed captures and GPU stage.
 
-The generator writes the `pipeline-frame-stages` table from frame-cost
-report windows: every bracket of the scene as shipped, plus the resolve row
-from a capture with motion vectors attached. Capture both from the same build:
+The generator writes the `pipeline-frame-stages` chart and table from
+frame-cost report windows: every bracket of the scene as shipped, and for each
+debug view in the view table of `render/context/render_context.c`, what its
+capture adds to each bracket. Capture them all from one development build
+running the demo scene, the first with the scene as shipped, then one per view.
+Two minutes spans several passes of the camera path, so where along the path a
+capture starts barely moves its means:
 
 ```sh
-autana monitor 30 --out docs/render/data/pipeline-present-board.log
-autana monitor 30 --out docs/render/data/pipeline-resolve-board.log
+autana monitor 120 --out docs/render/data/pipeline-present-board.log
+autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
 ```
 
-The first runs with the scene as shipped; the second with the scene's debug
-view set to the motion attachment (a development-build tunable; `autana tune`
-lists it). Check `autana status` and `autana buildid` before and after each
-capture. A missing capture leaves its row `not in capture`; a capture without
-report windows fails the run.
+The debug view is a development-build tunable (`autana tune view` lists it):
+0 (`RENDER_DEBUG_VIEW_SHADED` in `render/context/render_context.h`) is the
+scene as shipped, and each view is its place in the view table,
+counted from 1. Each view's capture is `pipeline-view-<name>-board.log`, and a
+view without one is listed as not captured. Check `autana status` and `autana buildid`
+before and after each capture. A missing capture of the scene as shipped, or a
+capture without report windows, fails the run.
+
+The `meshlet-sizes` table is generated from each size's own suite capture and
+regenerated bake. The [meshlet capture recipe](../../launcher/tools/render/README.md#meshlet-size-captures)
+owns preparation, capture validation and refresh commands.
 
 The GPU stage writes the `bake-machine` and `bake-steps` tables from its own
 rebakes and fits. Refresh them on the GPU runner with:

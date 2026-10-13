@@ -8,18 +8,18 @@
 #include "unity.h"
 
 static inline bool
-icon_test_bit(const uint8_t* rows, const icon_t* icon, int x, int y) {
-    const uint8_t byte = rows[icon->offset + (unsigned)y * icon->stride + (unsigned)(x / 8)];
-    return (byte & (0x80 >> (x % 8))) != 0;
+icon_test_bit(const gfx_image_t* icon, int x, int y) {
+    const unsigned bit = (unsigned)y * icon->stride + (unsigned)x;
+    return (icon->bits[bit / 8] & (0x80 >> (bit % 8))) != 0;
 }
 
 static inline int
-icon_test_runs(const uint8_t* rows, const icon_t* icon) {
+icon_test_runs(const gfx_image_t* icon) {
     int total = 0;
-    for (int y = 0; y < icon->h; y++) {
+    for (int y = 0; y < icon->height; y++) {
         bool in_run = false;
-        for (int x = 0; x < icon->w; x++) {
-            const bool on = icon_test_bit(rows, icon, x, y);
+        for (int x = 0; x < icon->width; x++) {
+            const bool on = icon_test_bit(icon, x, y);
             if (on && !in_run) {
                 total++;
             }

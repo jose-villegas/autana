@@ -14,8 +14,7 @@ view_frame(render_view_t* view, vec3f_t right, vec3f_t down, float half_fov_shor
 
 render_view_t
 render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_z, viewport_t viewport) {
-    /* Baked scenes use a right-handed frame, so picture right is pose -x. */
-    const vec3f_t right = quatf_rotate(pose->rotation, (vec3f_t){-1.0F, 0.0F, 0.0F});
+    const vec3f_t right = quatf_rotate(pose->rotation, (vec3f_t){1.0F, 0.0F, 0.0F});
     const vec3f_t down = quatf_rotate(pose->rotation, (vec3f_t){0.0F, -1.0F, 0.0F});
     render_view_t view = {
         .position = pose->position,

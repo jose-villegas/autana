@@ -3,8 +3,10 @@ key got. Needs the tool's environment: the r3d requirements for a mesh, and for 
 GPU with requirements-gpu.txt (r3d/gpu_python.sh). Before it runs, every requirement pin the key
 counts must match what is installed, so a key never names bytes made with other packages.
 
-A fit's references are made once per reference key into the cache's reference/ folder and never
-leave the machine that made them: only the fit stage reads them, and it runs there.
+A fit's start is a mesh bake of its own; the fit reads the bytes its key names, from the lock or this
+cache. A fit's references are made once per reference key into the cache's reference/ folder, so fits
+that share their inputs share them, and never leave the machine that made them: only the fit stage reads
+them, and it runs there.
 """
 
 import copy
@@ -144,7 +146,7 @@ def produce_blend(bake, cache, blender=None):
 
 def references(bake, cache):
     """The fit's reference folder in this cache, prepared there when its key has none."""
-    from r3d.fitted_variant import prepare
+    from r3d.fitted_variant import prepare_references, reference_inputs
 
     folder = pathlib.Path(cache) / REFERENCES / bake.stages["reference"]
     if (folder / DONE).is_file():
@@ -152,20 +154,31 @@ def references(bake, cache):
     partial = folder.with_name(folder.name + ".partial")
     shutil.rmtree(partial, ignore_errors=True)
     partial.mkdir(parents=True)
-    prepare(bake.scene.path, bake.scene, bake.job, partial)
+    prepare_references(reference_inputs(bake.job, bake.scene), partial)
     (partial / DONE).write_text(bake.stages["reference"] + "\n", encoding="utf-8")
     shutil.rmtree(folder, ignore_errors=True)
     os.replace(partial, folder)
     return folder
 
 
-def produce_fit(bake, cache):
+def start_file(bake, cache, lock):
+    """The start whose bytes the fit's key names, from the lock or, when this run made it, this cache."""
+    start, sha256 = bake.start, bake.stages["start_sha256"]
+    row = next((row for row in (lock.get(start.key), made(start.key, cache)) if row and row["sha256"] == sha256), None)
+    if row is None:
+        raise keys.BakeMissing(f"{bake.output}: its start {start.key} with sha256 {sha256} is neither locked nor "
+                               "made here; bake.py bake --kind mesh first")
+    return keys.fetch_all([start], {start.key: row}, cache)[start]
+
+
+def produce_fit(bake, cache, lock):
     from r3d.fitted_variant import fit
 
+    start = start_file(bake, cache, lock)
     inputs = references(bake, cache)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
-        fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs)
+        fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
         return record(bake, target, cache)
 
 
@@ -175,7 +188,7 @@ def produce(bake, cache, lock=None, blender=None):
         return produce_blend(bake, cache, blender)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
-        return produce_fit(bake, cache)
+        return produce_fit(bake, cache, lock or {})
     return produce_mesh(bake, cache, lock or {})
 
 

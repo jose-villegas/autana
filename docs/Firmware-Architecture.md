@@ -12,7 +12,7 @@ home when the app exits. Each frame has one owner per step:
 | Step | Owner | Job |
 |---|---|---|
 | Read touch and motion | shell (`shell/`) | Make one `input_t` for the frame. |
-| Update and draw | current app, or a system screen | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
+| Update and draw | current app, or the launcher | Draw into the shared framebuffer, or regenerate dirty band rows, then return. |
 | Present | shell and `gfx/` | Send changed pixels to the panel. |
 
 ![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
@@ -59,7 +59,7 @@ flowchart TB
         Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
     end
     subgraph R4["UI, console and scenes"]
-        Ui["ui/<br/><i>microui, launcher, Control Center</i>"]
+        Ui["ui/<br/><i>microui, launcher</i>"]
         Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
     end
@@ -94,33 +94,34 @@ flowchart TB
     subgraph R13["board"]
         Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
     end
-    subgraph R14["motion"]
-        Motion["math/motion/<br/><i>springs, orbiting a target</i>"]
-    end
-    subgraph R15["vectors"]
-        Linear["math/linear/<br/><i>float and fixed vectors, quaternions, matrices, transforms</i>"]
-    end
-    subgraph R16["scalars and the build switch"]
-        Scalar["math/scalar/<br/><i>scalar operations per number type (f, i, s, x), trig tables, random numbers</i>"]
+    subgraph R14["the build switch"]
         Build["build/<br/><i>which build variant this is</i>"]
     end
+    subgraph R15["packages: launcher/packages/"]
+        Math["math/<br/><i>scalars per number type, vectors to transforms, motion</i>"]
+    end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
-- **core/, math/ and build/ are the base.** Every layer above `core/`
-  builds on it: `core/job.h` hands one copied job at a time to core 1, and
-  runs it inline when core 1 is busy or on a host; `core/memory.h` places
-  memory by kind; `core/timing.h` reads time. `math/` and `build/` are
-  shared headers under every other layer, `board/` included: they never
-  touch the chip and include nothing outside themselves but the build
-  config, so the firmware and the host tools both use them. `scalar/` is
-  per number type, `linear/` vectors to transforms over it, `motion/` over
-  both; `build/build_variant.h` says which build this is.
+- **core/, build/ and the packages are the base.** Every layer above
+  `core/` builds on `core/`: `core/job.h` hands one copied job at a time to
+  core 1, and runs it inline when core 1 is busy or on a host;
+  `core/memory.h` places memory by kind; `core/timing.h` reads time.
+  `build/build_variant.h` says which build this is. Below every folder of
+  `main/`, `board/` included, sit the packages: first-party libraries in
+  `launcher/packages/<name>/`, each its own ESP-IDF component with an
+  `include/` root, `src/` and `tests/`;
+  [math](../launcher/packages/math/README.md) is one. A package includes nothing
+  outside itself but the C library and the build config, so the firmware,
+  the host tests, the tools and the editor all build it: the style audit's
+  PACKAGE-INCLUDE rule names a reach into the firmware, and
+  `launcher/test/check_packages_alone.sh` compiles each package file with
+  only its own include root.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
@@ -142,14 +143,16 @@ flowchart TB
   `scripts/gates/check_shell_firmware.py` fails `main.c` and any file
   under `shell/` on an ESP-IDF, FreeRTOS, NVS or BSP include or call,
   logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted.
-- **The vendor timer and heap have one owner each.** Code above the drivers
-  reads time with `timing_now_us()` (`core/timing.h`, inlined to the
-  hardware timer's own call) and places or measures memory by kind with
+- **The vendor clock, pause and heap have one owner each.** Code above the
+  drivers reads time with `timing_now_us()` (`core/timing.h`, inlined to the
+  hardware timer's own call), pauses with `timing_sleep_ms()` or
+  `timing_yield()`, and places or measures memory by kind with
   `core/memory.h` (`MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`,
   `MEMORY_PSRAM`), whose header says which heap is beneath it on each
   platform. In the firmware, its suites and its tools the same gate fails
-  any `esp_timer_*`, `heap_caps_*` or `MALLOC_CAP_*` name outside those two
-  modules, `board/` and a driver's `*_device.c`; `launcher/test/` outside
+  any `esp_timer_*`, `vTaskDelay`, `heap_caps_*`, `MALLOC_CAP_*`,
+  `multi_heap_*`, `esp_psram_*` or `esp_get_*heap_size` name outside those
+  two modules, `board/` and a driver's `*_device.c`; `launcher/test/` outside
   `suites/` (the host heap model, the stubs, and the harness both platforms
   build) is not checked.
 - **Generated sources are checked in** beside the code that uses them, each
@@ -183,7 +186,7 @@ The same rule is why the span rasterizer (`render/r3d_span.h`) owns no
 framebuffer: it fills a caller's window of rows, with a depth plane only as
 tall as that window. A full colour+depth pair would want ~1.3 MB here.
 `math/linear/` supplies the float vector, quaternion, matrix and transform maths
-the line camera and the boot scene share, and no rasterizer.
+`render/` and boot share, and no rasterizer.
 
 ### 2. There is exactly one frame loop, and it belongs to the shell
 
@@ -191,7 +194,7 @@ Apps do not loop, do not present, do not block and do not yield. An app's
 `frame()` draws and returns. So:
 
 - switching apps is instant: no teardown of a running loop
-- no app can wedge the device by forgetting to `vTaskDelay`
+- no app can wedge the device by forgetting to yield
 - the shell decides when to present, and can draw its own chrome afterwards
 
 The boot animation runs a loop of its own and `show_post_failures()`
@@ -215,6 +218,7 @@ become a goal.
 the order is most of the point:
 
 ```
+ui_ridge_load()             the curve from the engine pack, mounted for good; none: a level ridge
 shell_init()                the shell's own state, which the self-tests
                             step before the loop runs
 post_run_before_display()   the SD card, on its own SDMMC bus
@@ -229,10 +233,8 @@ shell_check_console_prefixes()
                             prefixes that clash
 display_reset_quarter(), ui_launcher_init(), ui_set_transform()
                             the launcher exists, turned the way boot draws
-boot_anim_run()             the startup animation, 5.5 s; it mounts the
-                            first pack (its clip's), which first reads
-                            the asset directory; with no pack it holds a
-                            rest pose
+boot_anim_run()             the startup animation, 5.5 s; it mounts its
+                            clip's pack; with no pack it holds a rest pose
 gfx_request_full_redraw()
 input_start()               touch, buttons, then the motion sensor; no
                             sensor: the display stays upright
@@ -256,9 +258,8 @@ described in `boot/boot_anim.h`.
 
 ## The frame loop
 
-The shell is a two-state machine. `current == NULL` means a system screen is
-showing; anything else is the running app. Which system screen, the
-launcher or Control Center, is `system_navigation_t`'s one field.
+The shell is a two-state machine. `current == NULL` means the launcher is
+showing; anything else is the running app.
 
 ```mermaid
 stateDiagram-v2
@@ -267,12 +268,9 @@ stateDiagram-v2
 
     Running : Running<br/>one pass per frame
     Launcher : Launcher<br/>ui_launcher_frame()<br/>draws the app list
-    ControlCenter : Control Center<br/>ui_control_center_frame()<br/>over the dimmed launcher
 
     Launcher --> Running: tap an entry<br/><i>the app's enter()</i>
     Running --> Launcher: home swipe or<br/>PWR long-press,<br/>or shell_request_exit()<br/><i>the app's exit(),<br/>then the arena emptied</i>
-    Launcher --> ControlCenter: swipe in from<br/>the logical top
-    ControlCenter --> Launcher: swipe in from<br/>the logical bottom
 ```
 
 An app gets exactly one way home by gesture: the home swipe when it sets
@@ -352,10 +350,9 @@ manager at `SHELL_ORDER_SCENE`.
 flag ([Gfx-and-Presentation.md](Gfx-and-Presentation.md#repaint-controls)).
 gfx has no idea what anyone caches above it, so the shell answers the flag
 at the top of a pass, before anything draws: a running app gets its
-`invalidate()`, the launcher gets `ui_invalidate()`, and Control Center
-repaints its dimmed backdrop. Clearing the flag before the draw rather than
-after is what lets a request made inside that very `frame()` reach the next
-pass. The app's side is in
+`invalidate()` and the launcher gets `ui_invalidate()`. Clearing the flag
+before the draw rather than after is what lets a request made inside that
+very `frame()` reach the next pass. The app's side is in
 [Building-an-App.md](Building-an-App.md#full-redraw).
 
 ### The frame watch: no allocating or logging in steady state
@@ -411,8 +408,8 @@ visit gets the same block, and taking from it is no dynamic-memory call
 
 ## Drawing a UI, in the shell or in an app
 
-`ui/ui.c` owns the microui integration; the launcher and Control Center are
-callers like any app. The controls and helpers are catalogued in
+`ui/ui.c` owns the microui integration; the launcher is a caller like any
+app. The controls and helpers are catalogued in
 [UI-Toolkit.md](UI-Toolkit.md), and how to put a screen together is
 [Building-a-Screen.md](Building-a-Screen.md). What follows is how the
 integration underneath them works.
@@ -472,9 +469,7 @@ be: everything in the command list is re-emitted on every repaint, and a
 blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
 underneath**: when the panel opens, and again whenever the backdrop itself
-is redrawn (a full-redraw request, a turn). The shell's own Control Center is
-the reference implementation: `paint_control_center_backdrop()` in
-`shell/shell_apps.c`.
+is redrawn (a full-redraw request, a turn).
 `suite_gfx_color.c` pins the arithmetic; the recipe for an app is in
 [Building-a-Screen.md](Building-a-Screen.md#a-panel-over-a-paused-app).
 
@@ -553,9 +548,9 @@ different from the root found; the DOWN then waits, frame by frame, and the
 tap is never lost. Ship the press with no hover frame and nothing takes focus:
 every button draws its pressed look while returning 0. A press and release
 inside one frame resolves at once, so on an unsettled root it is lost.
-A repaint-only frame (`ui_begin(NULL)`, the Control Center's backdrop) leaves
-no trace: it neither steps nor reports to the pointer, and microui's focus and
-hover root are as it found them. `ui/ui_pointer.c` also owns the held `DOWN` a
+A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input
+and neither steps nor reports to the pointer. It runs before `input_start()`,
+with no touch in progress. `ui/ui_pointer.c` also owns the held `DOWN` a
 slider needs to track a drag and the UP owed when a lift never reached the UI
 (`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list

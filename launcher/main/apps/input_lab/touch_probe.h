@@ -43,7 +43,7 @@ void touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int*
  * touch_probe_next() draws from, corner to corner, row by row. */
 touch_probe_target_t touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int side, int margin);
 
-/* `order` becomes 0..n-1 in a random order. */
+/* `order` becomes 0..n-1 in a random order, by Durstenfeld's shuffle (docs/Citations.md#45). */
 void touch_probe_shuffle(rng_t* rng, int* order, int n);
 
 typedef struct {

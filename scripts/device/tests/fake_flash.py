@@ -4,6 +4,7 @@ directory, the write notes in its log which snapshot it was handed."""
 
 from pathlib import Path
 
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device
 
 FLASH_ARGS = ("--flash_mode dio --flash_freq 80m --flash_size 16MB\n"

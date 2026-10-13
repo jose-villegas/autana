@@ -64,9 +64,9 @@ MAX_UNITS="${MISRA_MAX_UNITS:-150}"
 # any spelling of this. What is actually analysed is counted below, and that
 # count is what refuses to run.
 case "$FILE_FILTER" in
-    '*/main/'*) ;;
+    '*/main/'* | '*/packages/'*) ;;
     *)
-        echo "Refusing unsafe file filter '$FILE_FILTER'. It must start with '*/main/'." >&2
+        echo "Refusing unsafe file filter '$FILE_FILTER'. It must start with '*/main/' or '*/packages/'." >&2
         exit 2
         ;;
 esac
@@ -227,13 +227,13 @@ other_count="$(grep -cE ': (error|warning):' "$REPORT" 2>/dev/null || true)"
 
 # Findings inside ESP-IDF and vendored headers are reported too, and on a
 # whole-project scan they are nearly half the total (mostly 2.5, unused macros).
-own="$(grep 'misra-c2012-' "$REPORT" 2>/dev/null | grep -E '[\\/]launcher[\\/]main[\\/]' || true)"
+own="$(grep 'misra-c2012-' "$REPORT" 2>/dev/null | grep -E '[\\/]launcher[\\/](main|packages)[\\/]' || true)"
 own_count="$(printf '%s' "$own" | grep -c . || true)"
 
 echo ""
 echo "Report: $REPORT ($total lines)"
-echo "  MISRA findings:        ${misra_count:-0} (${own_count:-0} in main/)"
+echo "  MISRA findings:        ${misra_count:-0} (${own_count:-0} in main/ and packages/)"
 echo "  native error/warning:  ${other_count:-0}"
 echo ""
-echo "Top MISRA rules hit in main/:"
+echo "Top MISRA rules hit in main/ and packages/:"
 printf '%s\n' "$own" | grep -oE 'misra-c2012-[0-9.]+' | sort | uniq -c | sort -rn | head -10 || true

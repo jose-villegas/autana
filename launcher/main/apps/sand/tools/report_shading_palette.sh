@@ -26,6 +26,8 @@ RESULTS_DIR="${2:-$BUILD_DIR/shading_palette_results}"
 
 # shellcheck source=../../../../tools/build/find_cc.sh
 . "$LAUNCHER_DIR/tools/build/find_cc.sh"
+# shellcheck source=../../../../tools/build/packages.sh
+. "$LAUNCHER_DIR/tools/build/packages.sh"
 
 if ! CC_BIN=$(find_cc); then
     echo "No C compiler found." >&2
@@ -45,7 +47,7 @@ trap 'rm -rf "$BIN_DIR"' EXIT HUP INT TERM
 OUT_BIN="$BIN_DIR/shading_palette"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools/gen" \
+"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" -I "$LAUNCHER_DIR/tools/gen" \
     "$SCRIPT_DIR/shading_palette.c" \
     "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \

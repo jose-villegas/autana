@@ -13,16 +13,21 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 FUNCTION = "    static inline int P##_add(int a) { return a; } \\\n"
 
 
-def make_tree(root, page_extra="", template_extra="", header_extra="", skip_section=None, empty_template=None):
+def make_tree(root, page_extra="", template_extra="", header_extra="", skip_section=None, empty_template=None,
+              scalar_extra="", outside_extra=""):
     """A minimal tree that agrees with itself; each argument breaks one rule."""
-    math = root / "launcher/main/math/linear"
+    math = root / "launcher/packages/math/include/math/linear"
     math.mkdir(parents=True)
     (root / "docs/math").mkdir(parents=True)
     for family in check_math_docs.FAMILIES:
         body = "#define MATH_DEFINE_X(P) \\\n" + FUNCTION + (template_extra if family == "vec2" else "")
         if family == empty_template:
             body = "#define MATH_DEFINE_X(P)\n"
-        (math / (family + "_template.h")).write_text(body)
+        (math / (family + "_template.h")).write_text(body.replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
+    for directory, body in (("scalar", scalar_extra), ("motion", outside_extra)):
+        headers = math.parent / directory
+        headers.mkdir()
+        (headers / "helpers.h").write_text(body)
     (math / "vec2f.h").write_text("MATH_DEFINE_VEC2(vec2f, float)\n" + header_extra)
     page = "".join("### %s\n\n| `P_add(` |\n\n" % f for f in check_math_docs.FAMILIES if f != skip_section)
     page += "`vec2f`\n" + page_extra
@@ -42,9 +47,101 @@ class CheckMathDocs(unittest.TestCase):
     def test_a_synthetic_tree_that_agrees_passes(self):
         self.assertEqual([], problems_for())
 
+    def test_a_short_inline_math_span_passes(self):
+        self.assertEqual([], problems_for(page_extra="$`a + b`$\n"))
+
+    def test_an_inline_math_span_at_the_limit_passes(self):
+        formula = "x" * check_math_docs.MAX_INLINE_MATH_CHARS
+        self.assertEqual([], problems_for(page_extra="$`%s`$\n" % formula))
+
+    def test_an_over_limit_inline_math_span_fails_with_its_line(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for prefix in ("\n", "```math\na + b\nc + d\n```\n"):
+            with self.subTest(prefix=prefix):
+                with tempfile.TemporaryDirectory() as d:
+                    root = pathlib.Path(d)
+                    make_tree(root, page_extra=prefix + "$`%s`$\n" % formula)
+                    page = (root / check_math_docs.PAGE).read_text()
+                    expected_line = next(i for i, line in enumerate(page.splitlines(), start=1) if formula in line)
+                    problems = check_math_docs.check(root)
+                self.assertEqual(1, len(problems))
+                self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
+                self.assertIn("split the formula into one span per step joined with <br>", problems[0])
+
+    def test_separate_inline_math_spans_are_measured_individually(self):
+        formula = "x" * check_math_docs.MAX_INLINE_MATH_CHARS
+        self.assertEqual([], problems_for(page_extra="$`%s`$<br> $`%s`$\n" % (formula, formula)))
+
+    def test_every_inline_math_span_on_a_line_is_measured(self):
+        for delimiters in (("$`", "`$"), ("$", "$")):
+            with self.subTest(delimiters=delimiters):
+                opening, closing = delimiters
+                for length in (check_math_docs.MAX_INLINE_MATH_CHARS, check_math_docs.MAX_INLINE_MATH_CHARS + 1):
+                    with self.subTest(length=length):
+                        formula = "x" * length
+                        problems = problems_for(page_extra="%sa%s then %s%s%s\n" %
+                                                (opening, closing, opening, formula, closing))
+                        self.assertEqual(int(length > check_math_docs.MAX_INLINE_MATH_CHARS), len(problems))
+
+    def test_an_over_limit_plain_dollar_math_span_fails(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        problems = problems_for(page_extra="$%s$\n" % formula)
+        self.assertEqual(1, len(problems))
+        self.assertIn("inline math has %d characters" % len(formula), problems[0])
+
+    def test_dollars_inside_code_spans_are_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for code in ("`$%s$`", "``$`%s`$``"):
+            with self.subTest(code=code):
+                self.assertEqual([], problems_for(page_extra=code % formula + "\n"))
+
+    def test_inline_math_inside_code_fences_is_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for language in ("math", "c"):
+            with self.subTest(language=language):
+                self.assertEqual([], problems_for(page_extra="```%s\n$%s$ and $`%s`$\n```\n" %
+                                                 (language, formula, formula)))
+
+    def test_escaped_dollars_are_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        self.assertEqual([], problems_for(page_extra=r"\$%s\$" % formula + "\n"))
+
+    def test_display_dollar_math_is_not_measured(self):
+        formula = "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1)
+        for display in ("$$%s$$", r"$$\verb|$|%s$$"):
+            with self.subTest(display=display):
+                self.assertEqual([], problems_for(page_extra=display % formula + "\n"))
+
     def test_a_template_function_missing_from_the_page_fails(self):
         extra = "    static inline int P##_wobble(int a) { return a; } \\\n"
         self.assertTrue(any("P_wobble(" in p for p in problems_for(template_extra=extra)))
+
+    def test_nested_definers_bind_renamed_operation_parameters(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, template_extra="    MATH_FORWARD(P, wobble)\n")
+            math = root / check_math_docs.MATH
+            (math / "vec_ops_template.h").write_text(
+                "#define MATH_FORWARD(P, NAME) MATH_OP(P, NAME)\n"
+                "#define MATH_OP(P, OP) static inline int P##_##OP(int a) { return a; }\n"
+            )
+            self.assertEqual(
+                ["docs/math/README.md: the vec2 section lacks `P_wobble(`"],
+                check_math_docs.check(root),
+            )
+            page = root / check_math_docs.PAGE
+            page.write_text(page.read_text().replace("### vec2\n", "### vec2\n`P_wobble(a)`\n"))
+            self.assertEqual([], check_math_docs.check(root))
+
+    def test_recursive_definers_stop_at_a_cycle(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, template_extra="    MATH_CYCLE(P)\n")
+            (root / check_math_docs.MATH / "vec_ops_template.h").write_text(
+                "#define MATH_CYCLE(P) MATH_BACK(P)\n"
+                "#define MATH_BACK(P) MATH_CYCLE(P)\n"
+            )
+            self.assertEqual([], check_math_docs.check(root))
 
     def test_a_hand_written_function_the_page_lacks_fails(self):
         extra = "static inline int\nvec2f_wobble(int a) {\n    return a;\n}\n"
@@ -54,6 +151,19 @@ class CheckMathDocs(unittest.TestCase):
         extra = "static inline int\nvec2f_wobble(int a) {\n    return a;\n}\n"
         self.assertEqual([], problems_for(header_extra=extra, page_extra="`vec2f_wobble(a)`\n"))
 
+    def test_a_page_entry_defined_in_a_scalar_header_passes(self):
+        definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
+        self.assertEqual([], problems_for(scalar_extra=definition, page_extra="`mathi_wrap(a)`\n"))
+
+    def test_a_page_entry_removed_from_a_scalar_header_fails(self):
+        problems = problems_for(page_extra="`mathi_wrap(a)`\n")
+        self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
+
+    def test_a_page_entry_defined_only_outside_linear_and_scalar_fails(self):
+        definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
+        problems = problems_for(outside_extra=definition, page_extra="`mathi_wrap(a)`\n")
+        self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
+
     def test_an_identity_initializer_the_page_lacks_fails(self):
         extra = "#define TRANSFORMQ_IDENTITY {0}\n"
         self.assertTrue(any("TRANSFORMQ_IDENTITY" in p for p in problems_for(header_extra=extra)))
@@ -62,7 +172,7 @@ class CheckMathDocs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
             make_tree(root)
-            (root / "launcher/main/math/linear/vec2q.h").write_text("MATH_DEFINE_VEC2(vec2q, float)\n")
+            (root / "launcher/packages/math/include/math/linear/vec2q.h").write_text("MATH_DEFINE_VEC2(vec2q, float)\n")
             self.assertTrue(any("vec2q" in p for p in check_math_docs.check(d)))
 
     def test_a_missing_family_section_fails(self):
@@ -96,7 +206,7 @@ def swizzle_problems(sections=None, page_extra="", vec2_n=2):
     with tempfile.TemporaryDirectory() as d:
         root = pathlib.Path(d)
         make_tree(root)
-        math = root / "launcher/main/math/linear"
+        math = root / "launcher/packages/math/include/math/linear"
         (math / "vec_swizzle_template.h").write_text(SWIZZLE_TEMPLATE)
         for family, fields, call in (
             ("vec2", "x, y", "    MATH_DEFINE_SWIZZLE2(P, P, %d)\n" % vec2_n),

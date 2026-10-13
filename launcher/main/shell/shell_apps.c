@@ -1,7 +1,7 @@
 /*
  * The shell's app switching: what it does on entering and leaving an app,
- * the launcher and Control Center it steps while none runs, the home hint,
- * and when a frame is presented.
+ * the launcher it steps while none runs, the home hint, and when a frame
+ * is presented.
  */
 
 #include <stdbool.h>
@@ -27,10 +27,8 @@
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
 #include "shell/shell_system.h"
-#include "ui/system_navigation.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "ui/ui_control_center.h"
 #include "ui/ui_launcher.h"
 #include "ui/ui_ridge.h"
 
@@ -47,23 +45,6 @@ static size_t app_8bit_free_before_enter;
 #define HOME_HINT_HEIGHT 4
 #define HOME_HINT_MARGIN 10
 #define HOME_HINT_RGB    0x4A5268
-
-/* Content-driven, not a fixed physical reference: the exit gesture lives
- * on whichever PHYSICAL edge the content's logical bottom maps to,
- * tracking rotation the same way ui_transform_rect() makes buttons/text
- * do. Not hand-derived per quarter: this table maps a strip along the
- * logical canvas's bottom edge through the same transform pipeline the
- * exhaustive sweep already proved exact. */
-gesture_edge_t
-shell_exit_edge_for_quarter(int quarter) {
-    static const gesture_edge_t edge_for_quarter[4] = {
-        GESTURE_EDGE_BOTTOM, /* quarter 0: Portrait */
-        GESTURE_EDGE_LEFT,   /* quarter 1: Landscape */
-        GESTURE_EDGE_TOP,    /* quarter 2: Portrait upside down */
-        GESTURE_EDGE_RIGHT,  /* quarter 3: Landscape upside down */
-    };
-    return edge_for_quarter[quarter];
-}
 
 gesture_edge_t
 shell_home_edge(void) {
@@ -186,9 +167,6 @@ apply_pending_full_redraw(const app_t* app) {
     }
 }
 
-static system_navigation_t system_navigation;
-static int control_center_backdrop_quarter;
-
 void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
@@ -233,7 +211,6 @@ void
 shell_start_app(const app_t** current, const app_t* next) {
     *current = next;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
-    system_navigation_init(&system_navigation);
     gfx_request_full_redraw();
     display_restore_system_state();
     exit_requested = false;
@@ -244,28 +221,6 @@ shell_start_app(const app_t** current, const app_t* next) {
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();
-}
-
-/* The backdrop is the launcher's own frame under a scrim, drawn once and
- * then painted over, so anything that replaces the framebuffer or turns the
- * content has to draw it again. */
-static void
-paint_control_center_backdrop(uint32_t dt_ms) {
-    ui_invalidate();
-    ui_launcher_frame(NULL, dt_ms);
-    ui_control_center_dim_backdrop();
-    ui_invalidate();
-    control_center_backdrop_quarter = display_quarter_now();
-}
-
-static void
-step_control_center(const input_t* input, uint32_t dt_ms) {
-    const bool redraw_requested = gfx_full_redraw_pending();
-    gfx_full_redraw_clear_pending();
-    if (redraw_requested || control_center_backdrop_quarter != display_quarter_now()) {
-        paint_control_center_backdrop(dt_ms);
-    }
-    ui_control_center_frame(input);
 }
 
 static tilt_t launcher_tilt;
@@ -286,14 +241,6 @@ feed_launcher_gravity(uint32_t dt_ms) {
 
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
-    if (system_navigation_step(&system_navigation, input, gesture_opposite_edge(exit_edge), exit_edge, GFX_WIDTH,
-                               GFX_HEIGHT)) {
-        gfx_request_full_redraw();
-    }
-    if (system_navigation.screen == SYSTEM_SCREEN_CONTROL_CENTER) {
-        step_control_center(input, dt_ms);
-        return;
-    }
     apply_pending_full_redraw(NULL);
     feed_launcher_gravity(dt_ms);
     const app_t* chosen = ui_launcher_frame(input, dt_ms);
@@ -386,7 +333,6 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 void
 shell_apps_init(void) {
     gfx_set_frame_overlay(shell_frame_overlay);
-    system_navigation_init(&system_navigation);
     tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
 }
 

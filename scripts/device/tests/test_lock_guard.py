@@ -28,6 +28,7 @@ sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
 import device_lock  # noqa: E402
 from fake_serial import FakeConnection, Replies
+import fake_esp_idf  # noqa: E402
 import fake_flash  # noqa: E402
 from autana_config import BOARD_ENV  # noqa: E402
 
@@ -50,6 +51,12 @@ class FakeSerial:
 
     def close(self):
         pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *unused):
+        return False
 
 
 @contextlib.contextmanager
@@ -103,12 +110,14 @@ class PrimitiveGuardTests(Store):
         primitives = {
             node.name for node in tree.body if isinstance(node, ast.FunctionDef)
             and not (node.args.args and node.args.args[0].arg == "port")  # handed its port, not asking
-            and (any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                     and call.func.attr == "Serial" for call in ast.walk(node))
+            and (any(isinstance(use, ast.Attribute) and use.attr == "Serial"
+                     for use in ast.walk(node))  # a call or a subclass
                  or (any(isinstance(arg, ast.Constant) and arg.value == "esptool"
                          for arg in ast.walk(node))
                      and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                             and call.func.attr == "run" for call in ast.walk(node))))
+                             and call.func.attr == "run"
+                             or isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                             and call.func.id == "run_resetting" for call in ast.walk(node))))
         }
         self.assertEqual(primitives, {"open_serial", "reset"})
         for name in primitives:
@@ -272,15 +281,18 @@ class PortFollowingTests(Store):
 
     def test_open_and_reset_use_the_port_the_board_has_now(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM6")) as ports, \
-                mock.patch.object(device.subprocess, "run") as run, \
+                mock.patch.object(device.subprocess, "run",
+                                  return_value=subprocess.CompletedProcess([], 0)) as run, \
                 mock.patch.object(device, "python_with_pyserial", return_value="python"), \
+                mock.patch.object(device, "reconnect_after_reset"), \
                 device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
             device.open_serial()
             device.reset()
             ports[:] = [usb(BOARD_B, "COM5"), usb(BOARD_A, "COM9")]
             device.open_serial()
             device.reset()
-        self.assertEqual(FakeSerial.opened, ["COM5", "COM9"])
+        # A reset opens the port first, to wait out a straggler still holding it.
+        self.assertEqual(FakeSerial.opened, ["COM5", "COM5", "COM9", "COM9"])
         reset_ports = [call.args[0][call.args[0].index("-p") + 1] for call in run.call_args_list]
         self.assertEqual(reset_ports, ["COM5", "COM9"])
 
@@ -347,7 +359,7 @@ class LostLockTests(Store):
         self.assertIsNone(durations_rows(self.store)[-1]["error"])
         self.assertIsNone(self.store.status(BOARD_A)["lock"])
 
-    def reopen_after_reset(self, second_open):
+    def reopen_after_reset(self, reconnected):
         class PortGone(FakeConnection):
             said = False
 
@@ -357,10 +369,10 @@ class LostLockTests(Store):
                     return b"boot line\n"
                 raise OSError("USB device disappeared")
 
-        opens = mock.Mock(side_effect=[PortGone(), second_open])
-        with mock.patch.object(device, "open_when_free", opens), \
+        with mock.patch.object(device, "open_when_free", return_value=PortGone()), \
+                mock.patch.object(device, "reconnect_after_reset", side_effect=reconnected), \
                 contextlib.redirect_stderr(io.StringIO()):
-            return device.capture_after_reset(self.root / "reset.log", 30, None)
+            return device.capture_after_reset(self.root / "reset.log", 30, None, connection=PortGone())
 
     def test_a_reopen_after_reset_ends_port_lost_only_on_usb_absence(self):
         with device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
@@ -416,6 +428,8 @@ class FlashTests(Store):
     @contextlib.contextmanager
     def scripts(self, **fakes):
         with mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
+                mock.patch.object(device, "reconnect_after_reset",
+                                  side_effect=lambda: (device.require_live_lock(), FakeConnection())[1]), \
                 mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts(**fakes)), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
@@ -428,7 +442,9 @@ class FlashTests(Store):
         store = store or self.store
         args = self.args(variant, out)
         with self.scripts(**fakes), device.build_image(args, BOARD_A) as built:
-            device.write_image(built, store, BOARD_A)
+            with device.HeldLock(store, BOARD_A, built.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(built, store, BOARD_A, held)
+                connection.close()
         return self.output
 
     def entry(self):
@@ -497,7 +513,9 @@ class FlashTests(Store):
     def test_the_snapshot_is_gone_as_soon_as_the_write_ends(self):
         with self.snapshots() as made, self.scripts(), \
                 device.build_image(self.args(), BOARD_A) as built:
-            device.write_image(built, self.store, BOARD_A)
+            with device.HeldLock(self.store, BOARD_A, built.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(built, self.store, BOARD_A, held)
+                connection.close()
             self.assertFalse(made[0].exists())
 
     def test_batch_and_selftest_record_the_snapshots_id_from_a_write_that_prints_none(self):
@@ -550,8 +568,12 @@ class FlashTests(Store):
                 device.build_image(first_args, BOARD_A) as first, \
                 device.build_image(second_args, BOARD_A) as second:
             self.assertNotEqual(first.image, second.image)
-            device.write_image(first, self.store, BOARD_A)
-            device.write_image(second, self.store, BOARD_A)
+            with device.HeldLock(self.store, BOARD_A, first.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(first, self.store, BOARD_A, held)
+                connection.close()
+            with device.HeldLock(self.store, BOARD_A, second.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(second, self.store, BOARD_A, held)
+                connection.close()
         self.assertEqual(written, ["first", "second"])
 
     def test_the_build_runs_with_the_board_free_for_anyone_else(self):
@@ -611,7 +633,9 @@ class FlashTests(Store):
         args = self.args()
         with self.scripts(write=write), device.build_image(args, BOARD_A) as built:
             fake_flash.write_image(built.build_dir, "xyz", app=b"another build")
-            device.write_image(built, self.store, BOARD_A)
+            with device.HeldLock(self.store, BOARD_A, built.args.owner, "flash", 0) as held:
+                _, connection = device.write_image(built, self.store, BOARD_A, held)
+                connection.close()
         self.assertEqual(written, [b"app"])
         self.assertEqual(self.entry()["build_id"], "abc")
         self.assertEqual(self.store.status(BOARD_A)["lock"], None)
@@ -688,11 +712,14 @@ class FlashTests(Store):
         args = Namespace(owner="agent", purpose="flash", wait=0, variant="dev",
                          worktree=str(worktree), out=str(log))
         with mock.patch.object(device, "git_bash", return_value=sys.executable), \
+                mock.patch.object(device, "reconnect_after_reset", return_value=FakeConnection()), \
                 mock.patch.object(device, "open_when_free", return_value=contextlib.nullcontext()), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaises(RuntimeError) as caught:
                 with device.build_image(args, BOARD_A) as built:
-                    device.write_image(built, self.store, BOARD_A)
+                    with device.HeldLock(self.store, BOARD_A, built.args.owner, "flash", 0) as held:
+                        _, connection = device.write_image(built, self.store, BOARD_A, held)
+                        connection.close()
         self.assertEqual(str(caught.exception),
                          "flash_image.sh failed (exit 2): A fatal error occurred: Could not open "
                          f"COM3, the port is busy - flash log: {log}")
@@ -900,26 +927,10 @@ class FlashImageScriptTests(unittest.TestCase):
             f"with open({str(self.log)!r}, 'a') as log:\n"
             "    log.write('esptool ' + ' '.join(sys.argv[1:]) + ' | ' + os.getcwd() + ' | '\n"
             "              + open(app[0], 'rb').read().decode() + '\\n')\n")
-        (stubs / "idf_stub.py").write_text(
-            "import sys\n"
+        self.export = fake_esp_idf.stub_esp_idf(
+            stubs, "import sys\n"
             f"with open({str(self.log)!r}, 'a') as log:\n"
             "    log.write('idf.py ' + ' '.join(sys.argv[1:]) + '\\n')\n")
-        # One stub per platform: cmd would run a POSIX idf.py found first on
-        # PATH through the .py file association instead of idf.py.bat.
-        if os.name == "nt":
-            (stubs / "idf.py.bat").write_bytes(
-                f'@"{sys.executable}" "{stubs / "idf_stub.py"}" %*\r\n'.encode())
-            self.export = stubs / "export.bat"
-            self.export.write_bytes(f'@set "PATH={stubs};%PATH%"\r\n'.encode())
-        else:
-            (stubs / "idf.py").write_text(
-                f'#!/bin/sh\nexec "{sys.executable}" "{stubs / "idf_stub.py"}" "$@"\n')
-            (stubs / "idf.py").chmod(0o755)
-            self.export = stubs / "export.sh"
-            self.export.write_text(f'PATH="{stubs.as_posix()}:$PATH"\n')
-            # ESP-IDF's export puts its own interpreter on PATH as plain `python`.
-            (stubs / "python").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
-            (stubs / "python").chmod(0o755)
         self.stubs = stubs
         self.image = self.tree / "flash.image"
         fake_flash.write_image(self.image, "abc123-dev", app=b"the built app")
@@ -1173,48 +1184,59 @@ class SuiteFailureTests(Store):
                          perf_scope=False, max_seconds=5, idle_seconds=None)
         replies = Replies(b":1:test_one:FAIL: boom\nSELFTEST_COMPLETE failures=1\n")
         with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc"), \
-                mock.patch.object(device, "reset"), \
+                mock.patch.object(device, "write_image", return_value=("abc", FakeConnection())), \
+                mock.patch.object(device, "reset", return_value=replies), \
                 mock.patch.object(device, "open_when_free", return_value=replies), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(device.selftest(args, self.store, BOARD_A), 1)
         self.assertIsNone(self.errors()["selftest"])
 
-    def test_batch(self):
-        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
-                         suite=["sand"], runs=2, perf_scope=False, flash=True, max_seconds=5,
+    def batch_args(self, runs, flash=True):
+        return Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
+                         suite=["sand"], runs=runs, perf_scope=False, flash=flash, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None)
-        with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc"), \
-                mock.patch.object(device, "open_when_free",
-                                  side_effect=lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)), \
-                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
-                contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
+
+    def batched(self, args, **stubs):
+        """device.batch(args) with the build, the image write, the boot wait
+        and git stubbed, plus `stubs` (name: patch keywords) on device."""
+        stubs = {"build_image": {}, "write_image": {"return_value": ("abc", FakeConnection())}, "await_console": {},
+                 "git_commit": {"return_value": "c0ffee"}, **stubs}
+        with contextlib.ExitStack() as stack:
+            for name, keywords in stubs.items():
+                stack.enter_context(mock.patch.object(device, name, **keywords))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            return device.batch(args, self.store, BOARD_A)
+
+    def test_batch(self):
+        code = self.batched(self.batch_args(runs=2), open_when_free={
+            "side_effect": lambda *unused, **unused_kw: Replies(self.FAILED_SUITE)})
+        self.assertEqual(code, 1)
         self.assertIsNone(self.errors()["batch"])
         index = isolation.RECORDS / "index.jsonl"
         entry = json.loads(index.read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual((entry["command"], entry["error"]), ("batch", None))
 
     def test_a_batch_capture_that_breaks_is_an_error(self):
-        args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
-                         suite=["sand"], runs=1, perf_scope=False, flash=True, max_seconds=5,
-                         idle_seconds=None, out=None, expect_build_id=None)
-        with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc"), \
-                mock.patch.object(device, "run_suite", side_effect=RuntimeError("port lost")), \
-                mock.patch.object(device, "git_commit", return_value="c0ffee"), \
-                contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(device.batch(args, self.store, BOARD_A), 1)
+        code = self.batched(self.batch_args(runs=1),
+                                    run_suite={"side_effect": RuntimeError("port lost")})
+        self.assertEqual(code, 1)
         self.assertEqual(self.errors()["batch"], "a batch capture failed")
+
+    def test_a_board_that_would_answer_every_run_the_same_ends_the_batch(self):
+        for error in (device.BoardNotReading("not reading"), device.TuneRefused("refused"),
+                      device.TestFilterError("no filter")):
+            run_suite = mock.Mock(side_effect=error)
+            with self.subTest(error=type(error).__name__):
+                with self.assertRaises(type(error)):
+                    self.batched(self.batch_args(runs=2, flash=False), run_suite={"new": run_suite})
+                self.assertEqual(run_suite.call_count, 1)
+                self.assertIsNone(self.store.read_json(self.store.lock_path(BOARD_A)))
 
 
 class DyingHandle(Replies):
-    """The port as the flash left it: a development bootloader power cycles
-    the chip, and the handle opened before that dies unread."""
+    """A handle whose board resets under it: the port leaves USB."""
 
     def __init__(self):
         super().__init__(b"")
@@ -1240,8 +1262,8 @@ class Booted(Replies):
 
 
 class PostFlashBoard:
-    """Every port open under one batch, the order a flash leaves them in:
-    the handle about to die, the boot to the console, then the board up."""
+    """Every port open under one batch after the flash's reset is waited
+    out: the boot to the console, then the board up."""
 
     BOOT = (b"BUILD_ID=abc-diag\nI (2100) shell: listening for 'screenshot' on the console\n"
             b"I (2101) shell: Ready, 4 apps registered\nBUILD_ID=abc-diag\n")
@@ -1259,8 +1281,6 @@ class PostFlashBoard:
         # Another command asking for the board between any two steps.
         self.refused.append(self.store.acquire(BOARD_A, self.contender, "run-suite", wait=0))
         if self.opens == 1:
-            return DyingHandle()
-        if self.opens == 2:
             board = self
 
             class Boot(Replies):
@@ -1287,11 +1307,11 @@ class BatchLockTests(Store):
             self.waiter_got_it.append((time.monotonic(), held))
             self.store.release(BOARD_A, held["token"])
 
-        def write_image(built, store, board_id, held_lock=None):
+        def write_image(built, store, board_id, held_lock):
             tokens.append(store.status(board_id)["lock"]["token"])
             self.waiter = threading.Thread(target=wait_for_the_board)
             self.waiter.start()
-            return "abc-diag"
+            return "abc-diag", board.open()
 
         args = Namespace(owner="a", purpose="p", wait=0, worktree=str(self.root), variant="diag",
                          suite=["sand"], runs=runs, perf_scope=False, flash=True, max_seconds=5,
@@ -1332,12 +1352,12 @@ class BatchLockTests(Store):
                                return_value=(b"Guru Meditation Error\n", "timeout")), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \
                 contextlib.redirect_stderr(errors):
-            device.await_console(args, BOARD_A, "abc-diag", None)
+            device.await_console(args, BOARD_A, "abc-diag", None, FakeConnection())
         self.assertIn("no console from BUILD_ID=abc-diag", errors.getvalue())
 
     def test_a_filtered_capture_cut_short_does_not_end_the_batch(self):
         board = PostFlashBoard(self.store, "someone-else")
-        connections = iter([DyingHandle(), Replies(PostFlashBoard.BOOT), DyingHandle()])
+        connections = iter([Replies(PostFlashBoard.BOOT), DyingHandle()])
 
         def open_port(*unused, **unused_keywords):
             board.console_up = True
@@ -1347,7 +1367,7 @@ class BatchLockTests(Store):
                          suite=["sand"], runs=3, perf_scope=False, flash=True, max_seconds=5,
                          idle_seconds=None, out=None, expect_build_id=None, test_filter=["one"])
         with mock.patch.object(device, "build_image"), \
-                mock.patch.object(device, "write_image", return_value="abc-diag"), \
+                mock.patch.object(device, "write_image", side_effect=lambda *a, **kw: ("abc-diag", open_port())), \
                 mock.patch.object(device, "open_when_free", side_effect=open_port), \
                 mock.patch.object(device, "RESET_FIRST_BYTE_SECONDS", 0.05), \
                 mock.patch.object(device, "git_commit", return_value="c0ffee"), \

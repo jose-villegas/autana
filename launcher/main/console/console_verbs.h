@@ -88,6 +88,9 @@ console_copy_text(char* into, size_t into_size, const char* from) {
 
 typedef void (*console_reply_fn)(const char* line);
 
+/* printf()+fflush() for a one-line reply; a long stream such as SCREENSHOT's uses console_emit_line(). */
+void console_reply_stdio(const char* line);
+
 /* `args` is what follows the verb and one space, or "" for a bare verb with
  * nothing after it. */
 typedef void (*console_verb_fn)(const char* args, console_reply_fn reply);
@@ -102,11 +105,8 @@ typedef struct {
     console_verb_t* first;
 } console_registry_t;
 
-/* Kept in name order, so dispatch and any future listing never depend on
- * link order, the same discipline tune_register() (services/tune.c) already
- * uses. A name already taken by a different verb is refused (false); the
- * same verb object registered twice is a no-op (true, since it is already
- * there). */
+/* ASCII case-folded name order makes dispatch independent of link order.
+ * A different verb with the same name returns false; re-registering the same object returns true. */
 bool console_register(console_registry_t* registry, console_verb_t* verb);
 
 /* True if `line` is `name`, or `name` plus one space and more (never a

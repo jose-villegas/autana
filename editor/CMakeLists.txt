@@ -5,7 +5,7 @@ project(autana_editor LANGUAGES C CXX)
 
 include(CTest)
 
-find_package(Python3 COMPONENTS Interpreter)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -27,6 +27,17 @@ include(FetchContent)
 
 set(LAUNCHER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../launcher")
 
+# The firmware's packages (launcher/packages/<name>/), each a library target of
+# its own name: its CMakeLists.txt builds one outside ESP-IDF.
+file(GLOB package_lists CONFIGURE_DEPENDS ${LAUNCHER_DIR}/packages/*/CMakeLists.txt)
+set(launcher_packages "")
+foreach(package_list IN LISTS package_lists)
+    get_filename_component(package_dir "${package_list}" DIRECTORY)
+    get_filename_component(package "${package_dir}" NAME)
+    add_subdirectory("${package_dir}" "packages/${package}")
+    list(APPEND launcher_packages ${package})
+endforeach()
+
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     nlohmann_json
@@ -44,14 +55,17 @@ add_library(editor_runtime STATIC
     runtime/runtime.c
     ${gfx_srcs}
     ${LAUNCHER_DIR}/main/app/app_registry.c
+    ${LAUNCHER_DIR}/main/asset/asset_file.c
+    ${LAUNCHER_DIR}/main/asset/asset_pack.c
+    ${LAUNCHER_DIR}/main/asset/asset_table.c
+    ${LAUNCHER_DIR}/main/asset/asset_store.c
+    ${LAUNCHER_DIR}/main/asset/asset_store_file.c
     ${LAUNCHER_DIR}/main/input/gesture.c
-    ${LAUNCHER_DIR}/main/ui/system_navigation.c
     ${LAUNCHER_DIR}/main/ui/ui.c
     ${LAUNCHER_DIR}/main/ui/ui_bridge.c
     ${LAUNCHER_DIR}/main/ui/ui_build.c
     ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
-    ${LAUNCHER_DIR}/main/ui/ui_control_center.c
-    ${LAUNCHER_DIR}/main/ui/ui_control_center_draw.c
+    ${LAUNCHER_DIR}/main/ui/ui_icons.c
     ${LAUNCHER_DIR}/main/ui/ui_launcher.c
     ${LAUNCHER_DIR}/main/ui/ui_launcher_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_pointer.c
@@ -68,12 +82,23 @@ target_include_directories(editor_runtime
         runtime/host
         ${LAUNCHER_DIR}/components/microui/include
 )
+target_link_libraries(editor_runtime PUBLIC ${launcher_packages})
 # ui_scroll.c's momentum uses expf(); only MinGW links libm unasked.
 if(NOT WIN32)
     target_link_libraries(editor_runtime PUBLIC m)
 endif()
+set(engine_assets "${CMAKE_BINARY_DIR}/assets")
+add_custom_target(editor_engine_assets ALL
+    COMMAND ${Python3_EXECUTABLE} "${LAUNCHER_DIR}/tools/r3d/build_pack.py"
+        -o "${engine_assets}" "${LAUNCHER_DIR}/main/engine"
+    BYPRODUCTS "${engine_assets}/engine.apak"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    VERBATIM
+)
+add_dependencies(editor_runtime editor_engine_assets)
 target_compile_definitions(editor_runtime PRIVATE
     CONFIG_LAUNCHER_DEVELOPMENT=0
+    ASSET_DIR_DEFAULT_PATH="${engine_assets}"
 )
 
 if(MSVC)
@@ -208,7 +233,20 @@ if(BUILD_TESTING)
 
     add_executable(editor_runtime_smoke tests/runtime_smoke.c)
     target_link_libraries(editor_runtime_smoke PRIVATE editor_runtime)
+    target_include_directories(editor_runtime_smoke PRIVATE ${LAUNCHER_DIR}/components/microui/include)
     add_test(NAME editor_runtime_smoke COMMAND editor_runtime_smoke)
+
+    set(EDITOR_SAMPLE_LAYOUT "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample_layout.json")
+    set(EDITOR_SAMPLE_HEADER "${CMAKE_CURRENT_BINARY_DIR}/sample_layout_generated.h")
+    add_custom_command(
+        OUTPUT "${EDITOR_SAMPLE_HEADER}"
+        COMMAND editor_layout_bake "${EDITOR_SAMPLE_LAYOUT}" "${EDITOR_SAMPLE_HEADER}"
+        DEPENDS editor_layout_bake "${EDITOR_SAMPLE_LAYOUT}"
+        VERBATIM
+    )
+    add_executable(editor_layout_bake_c_test tests/layout_bake_c_test.c "${EDITOR_SAMPLE_HEADER}")
+    target_include_directories(editor_layout_bake_c_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" ${LAUNCHER_DIR}/main)
+    add_test(NAME editor_layout_bake_c COMMAND editor_layout_bake_c_test)
 
     add_executable(editor_ridge_backdrop_test tests/ridge_backdrop_test.c)
     target_include_directories(editor_ridge_backdrop_test PRIVATE
@@ -222,8 +260,8 @@ if(BUILD_TESTING)
     add_executable(editor_layout_document_test tests/layout_document_test.cpp)
     target_link_libraries(editor_layout_document_test PRIVATE editor_document GTest::gmock_main)
     target_compile_definitions(editor_layout_document_test PRIVATE
+        EDITOR_TEST_LAYOUT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample_layout.json"
         EDITOR_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/layout_document"
-        EDITOR_TEST_LAYOUT_PATH="${LAUNCHER_DIR}/main/ui/control_center_layout.json"
     )
     gtest_discover_tests(editor_layout_document_test TEST_PREFIX "editor_document.")
 
@@ -231,11 +269,6 @@ if(BUILD_TESTING)
     target_include_directories(editor_core_test PRIVATE src ${LAUNCHER_DIR}/main)
     target_link_libraries(editor_core_test PRIVATE GTest::gtest_main)
     gtest_discover_tests(editor_core_test TEST_PREFIX "editor_core.")
-
-    add_executable(editor_system_navigation_test tests/system_navigation_test.cpp)
-    target_include_directories(editor_system_navigation_test PRIVATE ${LAUNCHER_DIR}/main)
-    target_link_libraries(editor_system_navigation_test PRIVATE editor_runtime GTest::gtest_main)
-    gtest_discover_tests(editor_system_navigation_test TEST_PREFIX "editor_navigation.")
 endif()
 
 if(EDITOR_ENABLE_COVERAGE)
@@ -266,7 +299,6 @@ if(EDITOR_ENABLE_COVERAGE)
         editor_runtime
         editor_layout_document_test
         editor_core_test
-        editor_system_navigation_test
         editor_runtime_smoke
     )
     foreach(target IN LISTS EDITOR_COVERAGE_TARGETS)
@@ -295,7 +327,6 @@ if(EDITOR_ENABLE_COVERAGE)
             --filter editor/src/layout_document.cpp
             --filter editor/src/core/edit_history.h
             --filter editor/runtime/runtime.c
-            --filter launcher/main/ui/system_navigation.c
             --exclude-throw-branches
             --exclude-unreachable-branches
             --delete
@@ -306,8 +337,7 @@ if(EDITOR_ENABLE_COVERAGE)
             --fail-under-line 80
             --fail-under-branch 70
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
-        DEPENDS editor_layout_bake editor_layout_document_test editor_core_test
-                editor_system_navigation_test editor_runtime_smoke
+        DEPENDS editor_layout_bake editor_layout_document_test editor_core_test editor_runtime_smoke
         USES_TERMINAL
         COMMENT "Running tests and enforcing editor coverage gates"
     )

@@ -12,6 +12,11 @@
 
 #include "asset/asset_pack.h"
 
+#define ASSET_ENGINE_PACK      "engine"
+
+/* The variable that names a host's pack folder. */
+#define ASSET_STORE_DIR_ENV    "AUTANA_ASSET_DIR"
+
 /* How many packs may be mounted at once. */
 #define ASSET_STORE_MOUNTS_MAX 8
 
@@ -19,6 +24,10 @@
  * when it is missing or bad, with one log line saying why; a caller leaves
  * its content out rather than draw from nothing. */
 const asset_pack_t* asset_store_pack(const char* name);
+
+/* How many packs are mounted now: a pack kept for the whole run, such as the
+ * engine's artwork, holds its slot for good. */
+int asset_store_mounted(void);
 
 /* Drops one use of pack `name`; at none it is unmapped or freed, and the
  * pack asset_store_pack() returned for it is gone. */

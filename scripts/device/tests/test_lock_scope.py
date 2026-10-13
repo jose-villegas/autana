@@ -12,6 +12,7 @@ holders at another copy of the device scripts, to watch these fail against an
 older one."""
 
 import isolation  # (first: keeps the suite out of real records)
+import port_guard
 import os
 import signal
 import socket
@@ -374,16 +375,10 @@ class ExclusiveOpenTests(unittest.TestCase):
             self.skipTest("pyserial is not installed")
         if WINDOWS:
             self.skipTest("Windows refuses a second open on its own")
-        import pty
         import device
         self.device = device
-        master, slave = pty.openpty()
-        patcher = mock.patch.object(device, "locked_port", lambda: self.path)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(os.close, master)
-        self.addCleanup(os.close, slave)
-        self.path = os.ttyname(slave)
+        unused, self.path = self.enterContext(port_guard.fake_port())
+        self.enterContext(mock.patch.object(device, "locked_port", lambda: self.path))
 
     def test_a_second_open_fails_while_the_first_is_held(self):
         with self.device.open_serial():
