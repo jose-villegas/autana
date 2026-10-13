@@ -13,7 +13,7 @@
 typedef struct {
     scene_t* scene;
     const asset_pack_t* pack;
-    const r3d_scene_camera_t* path;
+    const camera_t* lens;
 } sponza_suite_t;
 
 /* Loads it, printing why when it cannot; every field is then NULL. */
@@ -26,7 +26,7 @@ sponza_suite_load(void) {
                asset_status_text(why.asset), why.what);
     } else {
         s.pack = asset_store_pack(SPONZA_SCENE);
-        s.path = scene_camera_lens(s.scene, NULL);
+        s.lens = scene_camera_lens(s.scene, NULL);
     }
     return s;
 }

@@ -7,7 +7,7 @@
 #include "anim/anim_tracks.h"
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"
-#include "render/r3d_scene.h"
+#include "scene/camera/camera.h"
 #include "suites.h"
 #include "test_alloc.h"
 #include "test_anim_tracks.h"

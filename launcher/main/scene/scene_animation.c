@@ -36,7 +36,7 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     }
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;
-        out.components[(e * 2) + 1] = (anim_component_ref_t){&R3D_SCENE_CAMERA_FIELDS, &scene->cameras[c].lens};
+        out.components[(e * 2) + 1] = (anim_component_ref_t){&CAMERA_FIELDS, &scene->cameras[c].lens};
         out.targets[e].component_count = 2;
     }
     const anim_target_t first = out.targets[0];

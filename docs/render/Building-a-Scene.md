@@ -173,7 +173,7 @@ composes the active scene before the app's `frame()`, as the shell does.
 - `python -m unittest discover -s launcher/tools/tests -p "test_r3d*.py"` checks
   the import and scene files, with the environment installed.
 - A host suite that draws instances at transforms and checks where they appear
-  is `launcher/test/suites/suite_r3d_scene.c`; copy its quad meshes to test your
+  is `launcher/test/suites/suite_r3d_instance.c`; copy its quad meshes to test your
   own placement.
 - After a change to the tools, bake again: the committed `.mesh` entries change
   only where the change reaches them.

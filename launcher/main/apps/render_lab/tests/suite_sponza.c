@@ -28,7 +28,7 @@
 /* The scene, loaded for the suite, its pack, and the three bakes in it. */
 static scene_t* sponza;
 static const asset_pack_t* pack;
-static const r3d_scene_camera_t* flythrough;
+static const camera_t* flythrough;
 static scene_entity_t camera_entity;
 static const char* camera_name;
 #define MESH_FULL (&mesh_full)
@@ -101,7 +101,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
     for (uint32_t t = 0; t < period; t += 2500) {
         const viewport_t viewport = {SPONZA_RENDER_WIDTH, SPONZA_RENDER_HEIGHT, (int)(t / 2500) & 3};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        const render_view_t view = r3d_scene_view_at(flythrough, viewport);
+        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity), viewport);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
@@ -227,10 +227,8 @@ static void
 check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     for (uint32_t t = 0; t < period; t += 100) {
-        vec3f_t eye;
-        vec3f_t forward;
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-        r3d_scene_camera_sample(flythrough, &eye, &forward);
+        const vec3f_t eye = scene_entity_transform(sponza, camera_entity)->position;
         const float d = clearance(mesh, (v3){eye.x, eye.y, eye.z});
         if (d < SPONZA_FLYTHROUGH_CLEARANCE) {
             char message[96];
@@ -278,21 +276,26 @@ test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
     check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(MESH_FLAT);
 }
 
+/* Points the suite's camera statics at camera `name`, which must have a path. */
 static void
+select_camera(const char* name) {
+    camera_name = name;
+    flythrough = scene_camera_lens(sponza, name);
+    camera_entity = scene_find(sponza, name);
+    TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, name);
+    TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0), name);
+}
+
+/* Kept out of line: the stack gate follows its calls through `check`. */
+static __attribute__((noinline)) void
 check_camera_paths(void (*check)(const r3d_lit_mesh_t*)) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
-        camera_name = sponza_cameras[camera];
-        flythrough = scene_camera_lens(sponza, camera_name);
-        camera_entity = scene_find(sponza, camera_name);
-        TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
-        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0),
-                                                camera_name);
+        select_camera(sponza_cameras[camera]);
         check(MESH_FULL);
         check(MESH_LITE);
         check(MESH_FLAT);
     }
-    flythrough = scene_camera_lens(sponza, NULL);
-    camera_entity = scene_find(sponza, sponza_cameras[0]);
+    select_camera(sponza_cameras[0]);
 }
 
 static void
@@ -307,36 +310,31 @@ static void
 test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     require_the_scene();
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
-        camera_name = sponza_cameras[camera];
-        flythrough = scene_camera_lens(sponza, camera_name);
-        camera_entity = scene_find(sponza, camera_name);
-        TEST_ASSERT_NOT_NULL_MESSAGE(flythrough, camera_name);
-        TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(0, scene_animator_clip_duration_ms(sponza, camera_entity, 0),
-                                                camera_name);
+        select_camera(sponza_cameras[camera]);
         const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
-        vec3f_t previous;
-        vec3f_t forward;
+        const vec3f_t forward_axis = {0.0F, 0.0F, 1.0F};
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, 0);
-        r3d_scene_camera_sample(flythrough, &previous, &forward);
+        const scene_transform_t* pose = scene_entity_transform(sponza, camera_entity);
+        vec3f_t previous = pose->position;
         for (uint32_t t = 10; t <= period + 100; t += 10) {
-            vec3f_t eye;
             (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t);
-            r3d_scene_camera_sample(flythrough, &eye, &forward);
+            const vec3f_t eye = pose->position;
+            const vec3f_t forward = quatf_rotate(pose->rotation, forward_axis);
             const vec3f_t step = vec3f_sub(eye, previous);
             TEST_ASSERT_TRUE_MESSAGE(vec3f_dot(step, step) < 2.0F * 2.0F, camera_name);
             TEST_ASSERT_FLOAT_WITHIN_MESSAGE(0.001F, 1.0F, sqrtf(vec3f_dot(forward, forward)), camera_name);
             previous = eye;
         }
     }
-    flythrough = scene_camera_lens(sponza, NULL);
-    camera_entity = scene_find(sponza, sponza_cameras[0]);
+    select_camera(sponza_cameras[0]);
 }
 
 /* The fraction of the picture covered at `t_ms` into the flythrough. */
 static float
 share_covered_at(const raster_t* raster, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){raster->width, raster->height, 0});
+    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
+                                           (viewport_t){raster->width, raster->height, 0});
     raster_draw(raster, &view);
     const int pixels = raster->width * raster->height;
     const uint16_t* depth = raster_depth(raster);
@@ -396,7 +394,7 @@ run_sponza_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
     sponza = loaded.scene;
     pack = loaded.pack;
-    flythrough = loaded.path;
+    flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
     RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
     RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);

@@ -74,7 +74,7 @@ static const resolution_step_t mapped_sizes[] = {
 
 static scene_t* scene;
 static const asset_pack_t* pack;
-static const r3d_scene_camera_t* path;
+static const camera_t* lens;
 static scene_entity_t camera_entity;
 static r3d_lit_mesh_t mesh;
 
@@ -110,7 +110,8 @@ typedef struct {
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = r3d_scene_view_at(path, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    const render_view_t view =
+        camera_view(lens, scene_entity_transform(scene, camera_entity), (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh.position_scale);
     r3d_lens_fit(&lens, raster->width, raster->height);
@@ -141,7 +142,8 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = r3d_scene_view_at(path, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+        const render_view_t view =
+            camera_view(lens, scene_entity_transform(scene, camera_entity), (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
         raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
@@ -237,7 +239,8 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = r3d_scene_view_at(path, raster_viewport(raster, 0));
+        const render_view_t view =
+            camera_view(lens, scene_entity_transform(scene, camera_entity), raster_viewport(raster, 0));
         (void)raster_draw(raster, &view);
         raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
     }
@@ -332,7 +335,8 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
             raster->height = config->steps[step].height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-                *view = r3d_scene_view_at(path, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+                *view = camera_view(lens, scene_entity_transform(scene, camera_entity),
+                                    (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();
@@ -530,7 +534,7 @@ run_raster_scale_perf_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
     scene = loaded.scene;
     pack = loaded.pack;
-    path = loaded.path;
+    lens = loaded.lens;
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
     if (scene != NULL) {
         const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
@@ -545,11 +549,11 @@ run_raster_scale_perf_suite(void) {
     RUN_TEST(test_raster_stage_split_by_size);
     RUN_TEST(test_raster_counters);
     RUN_TEST(test_dynamic_resolution_policies_along_the_path);
-    loaded = (sponza_suite_t){scene, pack, path};
+    loaded = (sponza_suite_t){scene, pack, lens};
     sponza_suite_release(&loaded);
     scene = NULL;
     pack = NULL;
-    path = NULL;
+    lens = NULL;
 }
 
 #else /* !DEVICE_BUILD */

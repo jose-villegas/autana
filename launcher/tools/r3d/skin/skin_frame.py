@@ -39,7 +39,7 @@ SOURCES = [pathlib.Path(__file__).with_name("skin_host.c"), *[MAIN / name for na
     "anim/pose/anim_pose.c", "anim/playback/anim_playhead.c", "render/r3d_skin.c",
     "render/skin/r3d_skinning.c", "render/skin/r3d_skin_light.c", "render/r3d_lit_mesh.c", "asset/asset_pack.c",
     "asset/asset_file.c", "core/job.c", "scene/scene.c", "scene/scene_animation.c", "scene/scene_light.c", "scene/scene_asset.c",
-    "anim/playback/anim_layer.c", "render/r3d_scene.c", "render/render_view.c", "asset/asset_store.c", "asset/asset_store_file.c")]]
+    "anim/playback/anim_layer.c", "scene/camera/camera.c", "render/render_view.c", "asset/asset_store.c", "asset/asset_store_file.c")]]
 
 
 def program(directory):

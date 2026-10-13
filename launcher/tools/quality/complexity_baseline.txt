@@ -1134,7 +1134,6 @@
 5	launcher/main/render/r3d_pipeline.c:290	draw_split_histogram
 5	launcher/main/render/r3d_pipeline.c:305	draw_split_row
 5	launcher/main/render/r3d_pipeline.c:146	push_children
-5	launcher/main/render/r3d_scene.c:11	r3d_scene_camera_sample
 5	launcher/main/render/r3d_span.c:116	fill_span
 5	launcher/main/render/r3d_span.c:410	r3d_span_plane_in_range
 5	launcher/main/render/raster_show.c:73	fill_tile

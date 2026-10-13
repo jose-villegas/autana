@@ -64,7 +64,7 @@ set(app_srcs
     "render/resolution/resolution.c"
     "render/context/render_context.c"
     "render/r3d_span.c"
-    "render/r3d_scene.c"
+    "scene/camera/camera.c"
     "scene/scene.c"
     "scene/scene_animation.c"
     "scene/scene_light.c"
