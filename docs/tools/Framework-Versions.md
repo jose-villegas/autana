@@ -43,7 +43,9 @@ microui, Waveshare BSP, meshoptimizer, ufbx and Blender bumps carry the
 Compare the bump with main on the board, seeded,
 `launcher/tools/perf/perf_compare.sh origin/main <bump branch> --suite ...`
 (`--help` lists the options), post the result on the pull request, then remove
-the label. A regression blocks the bump until it is fixed. Bumps that cannot
+the label. A regression blocks the bump until it is fixed. A new GCC major
+also re-measures each optimisation flag in `launcher/main/CMakeLists.txt`'s
+pinned-GCC block on and off. Bumps that cannot
 change the firmware (Python and Node, their packages, Actions, the runner) are
 exempt.
 
