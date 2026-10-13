@@ -13,9 +13,11 @@ name: Pages
 # builds without publishing.
 #
 # The explorer's generator lives in the private development repository,
-# checked out as .dev the way a local checkout holds it. Needs the
-# repository setting Pages > Source set to "GitHub Actions", and a secret
-# AUTANA_DEV_TOKEN that can read jose-villegas/autana-dev.
+# checked out as .dev the way a local checkout holds it, and runs in the
+# pinned ESP-IDF image (launcher/idf-pin.json) beside the firmware variants
+# it reads. Needs the repository setting Pages > Source set to "GitHub
+# Actions", and a secret AUTANA_DEV_TOKEN that can read
+# jose-villegas/autana-dev.
 
 on:
   push:
@@ -59,8 +61,26 @@ jobs:
           sh launcher/main/apps/sand/tools/web/build_web.sh _site/sand
       - name: Test the explorer's generator
         run: python3 .dev/launcher/tools/architecture/test_build.py
+      # The explorer marks what only the dev and diag images compile, read
+      # from each variant's compile database. Configuring a variant writes
+      # it without compiling; the explorer asks the variant's own compiler
+      # which headers each source reaches, so it runs in the same image.
       - name: Architecture explorer
-        run: python3 .dev/launcher/tools/architecture/build.py -o _site/architecture
+        uses: ./.github/actions/idf-build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          cache-name: architecture
+          command: >-
+            tools/build/build.sh --configure
+            && tools/build/build.sh --configure --dev
+            && tools/build/build.sh --configure --diag
+            && cd ..
+            && python3 .dev/launcher/tools/architecture/build.py
+            --compile-db release=launcher/build/compile_commands.json
+            --compile-db dev=launcher/build.dev/compile_commands.json
+            --compile-db diag=launcher/build.diag/compile_commands.json
+            -o _site/architecture
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
