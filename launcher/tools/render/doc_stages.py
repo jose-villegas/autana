@@ -103,10 +103,12 @@ def host_inputs(scene_path):
     """Compile flags and the compiler's -MM list (sources and project headers), repo-relative.
     System headers and compiler identity/version are not counted."""
     def relative(token):
-        path = Path(token).resolve() if Path(token).is_absolute() else None
-        if path is not None and not path.is_relative_to(ROOT):
+        if not Path(token).is_absolute():
+            return token
+        path = Path(token).resolve()
+        if not path.is_relative_to(ROOT):
             raise ValueError(f"the host build reads {token}, outside the repository")
-        return path.relative_to(ROOT).as_posix() if path is not None else token
+        return path.relative_to(ROOT).as_posix()
 
     listing = subprocess.run(["sh", HOST_SCRIPT, scene_path, "--deps"], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout
